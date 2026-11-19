@@ -2613,10 +2613,7 @@ pub(crate) fn rename_expr_with_params(
                         span: expr.span,
                         kind: ExprKind::Call {
                             callee: Ident {
-                                name: format!(
-                                    "module.global.get:{}",
-                                    event_cell_name(&f.name)
-                                ),
+                                name: format!("module.global.get:{}", event_cell_name(&f.name)),
                                 span: name.span,
                             },
                             args: Vec::new(),
@@ -2702,10 +2699,7 @@ pub(crate) fn rename_expr_with_params(
                         span: expr.span,
                         kind: ExprKind::Call {
                             callee: Ident {
-                                name: format!(
-                                    "module.global.get:{}",
-                                    event_cell_name(&f.name)
-                                ),
+                                name: format!("module.global.get:{}", event_cell_name(&f.name)),
                                 span: id.span,
                             },
                             args: Vec::new(),
@@ -3179,7 +3173,6 @@ pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // PLAN-1106 T-02：组件面的**增量事件程序**（可保留执行形态）
 // ---------------------------------------------------------------------------
@@ -3451,7 +3444,12 @@ pub fn compile_component_event_program(
         let mut stmts = Vec::new();
         for (i, f) in node.fields.iter().enumerate() {
             let init = rename_expr(&f.init, FieldBinding::GlobalCell, &node.fields)?;
-            stmts.push(cell_set_stmt(&format!("__age_ev_iw_{i}"), &f.name, init, f.span));
+            stmts.push(cell_set_stmt(
+                &format!("__age_ev_iw_{i}"),
+                &f.name,
+                init,
+                f.span,
+            ));
         }
         stmts.push(Stmt::Return {
             value: zero_literal(TypeWord::I32, node.span),
@@ -3529,7 +3527,12 @@ pub fn compile_component_event_program(
                     }),
                 }
             };
-            stmts.push(cell_set_stmt(&format!("__age_ev_sw_{i}"), &f.name, value, f.span));
+            stmts.push(cell_set_stmt(
+                &format!("__age_ev_sw_{i}"),
+                &f.name,
+                value,
+                f.span,
+            ));
         }
         stmts.push(Stmt::Return {
             value: zero_literal(TypeWord::I32, node.span),
@@ -3718,11 +3721,7 @@ pub fn compile_component_event_program(
         for (ti, leaf) in node.view.texts.iter().enumerate() {
             let fn_name = format!("__age_ev_text_{ti}");
             let bound = rename_expr(&leaf.expr, FieldBinding::GlobalCell, &node.fields)?;
-            out_items.push(Item::Fn(hidden_fn(
-                &fn_name,
-                &bound,
-                leaf.expr.span,
-            )));
+            out_items.push(Item::Fn(hidden_fn(&fn_name, &bound, leaf.expr.span)));
             text_def_ids.push(super::adapter::free_fn_def_id(&fn_name));
         }
     }

@@ -1189,10 +1189,9 @@ pub fn execute_program_text_platform(
             .and_then(|f| m.sig_of(f.sig))
             .map(|sig| {
                 !sig.params.is_empty()
-                    && sig
-                        .params
-                        .iter()
-                        .all(|p| matches!(m.types.get(*p as usize), Some(crate::mir::MirType::StrView)))
+                    && sig.params.iter().all(|p| {
+                        matches!(m.types.get(*p as usize), Some(crate::mir::MirType::StrView))
+                    })
             })
             .unwrap_or(false);
         if !(m.has_text_entry_capability() && sig_all_strview) {
@@ -1462,9 +1461,7 @@ pub fn execute_program_entry_args(
             EntryArg::Value(v) => values.push(v.clone()),
             EntryArg::Text(bytes) => {
                 let Ok(text) = std::str::from_utf8(bytes.as_ref()) else {
-                    let out = ExecOutcome::Infra(
-                        "entry text argument is not valid UTF-8".into(),
-                    );
+                    let out = ExecOutcome::Infra("entry text argument is not valid UTF-8".into());
                     finish_trace(&mut st, &limits);
                     return (out, st.trace);
                 };

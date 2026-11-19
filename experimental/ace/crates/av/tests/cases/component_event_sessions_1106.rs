@@ -27,9 +27,7 @@ fn compile(src: &str) -> ComponentEventSessionProgram {
         .unwrap_or_else(|e| panic!("compile: {e}"))
 }
 
-fn states_of(
-    s: &ace_av::component_event_sessions::ComponentEventSession,
-) -> Vec<(String, String)> {
+fn states_of(s: &ace_av::component_event_sessions::ComponentEventSession) -> Vec<(String, String)> {
     s.read_states()
         .unwrap()
         .into_iter()
@@ -37,7 +35,10 @@ fn states_of(
         .collect()
 }
 
-fn field<'a>(s: &'a ace_av::component_event_sessions::ComponentEventSession, name: &str) -> ComponentFieldValue {
+fn field<'a>(
+    s: &'a ace_av::component_event_sessions::ComponentEventSession,
+    name: &str,
+) -> ComponentFieldValue {
     s.read_state(name).unwrap().unwrap()
 }
 
@@ -50,10 +51,12 @@ fn v02_incremental_entries_linear_and_reads_free() {
         assert_eq!(prog.compile_count, 1, "one compile for the fixed source");
         let mut s = prog.open_session(&[]).unwrap();
         for i in 0..n {
-            s.dispatch("Inc", &[]).unwrap_or_else(|e| panic!("inc #{i}: {e}"));
+            s.dispatch("Inc", &[])
+                .unwrap_or_else(|e| panic!("inc #{i}: {e}"));
         }
         assert_eq!(
-            s.audit().handler_entries, n as u64,
+            s.audit().handler_entries,
+            n as u64,
             "exactly one handler entry per accepted event (n={n})"
         );
         let expect = if n == 0 { 0 } else { n as i32 };
@@ -64,7 +67,11 @@ fn v02_incremental_entries_linear_and_reads_free() {
             let _ = s.read_states().unwrap();
             let _ = s.read_state("count").unwrap();
         }
-        assert_eq!(s.audit().handler_entries, before, "reads are pure (zero dispatch)");
+        assert_eq!(
+            s.audit().handler_entries,
+            before,
+            "reads are pure (zero dispatch)"
+        );
     }
     // 3 → Reset → 0 → Inc → 1。
     let prog = compile(COUNTER_SRC);
@@ -108,13 +115,19 @@ fn v03_session_isolation_and_typed_support() {
     let mut t = tprog
         .open_session(&[
             ("count".to_string(), ComponentFieldValue::Int(10)),
-            ("label".to_string(), ComponentFieldValue::Str("seeded".to_string())),
+            (
+                "label".to_string(),
+                ComponentFieldValue::Str("seeded".to_string()),
+            ),
             ("ratio".to_string(), ComponentFieldValue::F32(1.5)),
         ])
         .unwrap();
     assert_eq!(field(&t, "count"), ComponentFieldValue::Int(10));
     assert_eq!(field(&t, "enabled"), ComponentFieldValue::Bool(true));
-    assert_eq!(field(&t, "label"), ComponentFieldValue::Str("seeded".to_string()));
+    assert_eq!(
+        field(&t, "label"),
+        ComponentFieldValue::Str("seeded".to_string())
+    );
     assert_eq!(field(&t, "ratio"), ComponentFieldValue::F32(1.5));
     t.dispatch("Off", &[]).unwrap();
     t.dispatch("SetRatio", &[]).unwrap();
@@ -124,9 +137,7 @@ fn v03_session_isolation_and_typed_support() {
     assert_eq!(field(&t, "count"), ComponentFieldValue::Int(15));
 
     // 错型种子：效果前具名拒（零链接——会话不开）。
-    let err = match tprog
-        .open_session(&[("count".to_string(), ComponentFieldValue::Bool(true))])
-    {
+    let err = match tprog.open_session(&[("count".to_string(), ComponentFieldValue::Bool(true))]) {
         Ok(_) => panic!("type-mismatched seed must be refused"),
         Err(e) => e,
     };
@@ -134,8 +145,14 @@ fn v03_session_isolation_and_typed_support() {
 
     // 未知消息/错 arity/错载荷类型：具名拒 + 零入口增长。
     let before = t.audit().handler_entries;
-    assert!(t.dispatch("Nope", &[]).unwrap_err().contains("component-event"));
-    assert!(t.dispatch("Bump", &[]).unwrap_err().contains("component-event"));
+    assert!(t
+        .dispatch("Nope", &[])
+        .unwrap_err()
+        .contains("component-event"));
+    assert!(t
+        .dispatch("Bump", &[])
+        .unwrap_err()
+        .contains("component-event"));
     assert!(t
         .dispatch("Bump", &[ComponentFieldValue::Str("x".to_string())])
         .unwrap_err()
@@ -151,12 +168,18 @@ fn v03b_str_payload_binding() {
     let mut s = prog.open_session(&[]).unwrap();
     s.dispatch("Rename", &[ComponentFieldValue::Str("hello".to_string())])
         .unwrap();
-    assert_eq!(field(&s, "label"), ComponentFieldValue::Str("hello".to_string()));
+    assert_eq!(
+        field(&s, "label"),
+        ComponentFieldValue::Str("hello".to_string())
+    );
     assert_eq!(field(&s, "hits"), ComponentFieldValue::Int(1));
     // 第二次（不同 str）再绑定。
     s.dispatch("Rename", &[ComponentFieldValue::Str("world".to_string())])
         .unwrap();
-    assert_eq!(field(&s, "label"), ComponentFieldValue::Str("world".to_string()));
+    assert_eq!(
+        field(&s, "label"),
+        ComponentFieldValue::Str("world".to_string())
+    );
     assert_eq!(field(&s, "hits"), ComponentFieldValue::Int(2));
     assert_eq!(s.audit().handler_entries, 2);
 }
@@ -172,7 +195,11 @@ fn v04_trap_rollback_seq_watermark_and_close() {
     let err = s.dispatch("Bad", &[]).unwrap_err();
     assert!(err.contains("rolled back"), "{err}");
     assert_eq!(field(&s, "count"), ComponentFieldValue::Int(7));
-    assert_eq!(field(&s, "other"), ComponentFieldValue::Int(3), "no half-state");
+    assert_eq!(
+        field(&s, "other"),
+        ComponentFieldValue::Int(3),
+        "no half-state"
+    );
     assert_eq!(s.audit().handler_entries, 0);
     // 失败后合法事件正常处理（不回放历史恢复）。
     s.dispatch("Good", &[]).unwrap();
@@ -245,14 +272,22 @@ fn v02b_text_leaves_are_pure_reads() {
     let before = s.audit().handler_entries;
     let texts = s.read_texts().unwrap();
     assert!(!texts.is_empty());
-    assert_eq!(s.audit().handler_entries, before, "text evals are not business handlers");
+    assert_eq!(
+        s.audit().handler_entries,
+        before,
+        "text evals are not business handlers"
+    );
     assert!(s.audit().text_evals >= 1);
 
     // f-string 叶（states-only 边界）：状态面照常、文本面具名不可用。
     let fsrc = "node F {\n    model {\n        count int = 0\n    }\n    on Inc {\n        count = count + 1\n    }\n    view {\n        text `n ${count}` {}\n    }\n}\n";
-    let fprog = ComponentEventSessionProgram::compile(fsrc, "ase_m0.f.1106", LegacyWidgetAlias::Accept)
-        .unwrap();
-    assert!(!fprog.texts_available, "f-string leaves stay on the states-only boundary");
+    let fprog =
+        ComponentEventSessionProgram::compile(fsrc, "ase_m0.f.1106", LegacyWidgetAlias::Accept)
+            .unwrap();
+    assert!(
+        !fprog.texts_available,
+        "f-string leaves stay on the states-only boundary"
+    );
     assert!(fprog.texts_unavailable_reason.is_some());
     let mut fs = fprog.open_session(&[]).unwrap();
     fs.dispatch("Inc", &[]).unwrap();

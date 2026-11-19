@@ -15,8 +15,8 @@
 //!   的真实派发身份与次数（`execution_seq` + `dispatched` 载荷名）。
 
 use ace_av::age_component::{
-    observe_component_scenario_states, ComponentFieldValue, ComponentInitials,
-    ComponentScenario, LegacyWidgetAlias, ScenarioOp,
+    observe_component_scenario_states, ComponentFieldValue, ComponentInitials, ComponentScenario,
+    LegacyWidgetAlias, ScenarioOp,
 };
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::program_snapshot::ProgramSnapshot;
@@ -42,22 +42,34 @@ fn sp() -> Span {
 }
 
 fn ident(name: &str) -> Ident {
-    Ident { name: name.into(), span: sp() }
+    Ident {
+        name: name.into(),
+        span: sp(),
+    }
 }
 
 fn int_lit(v: i32) -> Expr {
-    Expr { span: sp(), kind: ExprKind::IntLit(v) }
+    Expr {
+        span: sp(),
+        kind: ExprKind::IntLit(v),
+    }
 }
 
 fn int_ann() -> TypeAnn {
-    TypeAnn { kind: TypeRef::Builtin(TypeWord::I32), span: sp() }
+    TypeAnn {
+        kind: TypeRef::Builtin(TypeWord::I32),
+        span: sp(),
+    }
 }
 
 /// `module.global.get:<sym>()`
 fn g_get(sym: &str) -> Expr {
     Expr {
         span: sp(),
-        kind: ExprKind::Call { callee: ident(&format!("module.global.get:{sym}")), args: Vec::new() },
+        kind: ExprKind::Call {
+            callee: ident(&format!("module.global.get:{sym}")),
+            args: Vec::new(),
+        },
     }
 }
 
@@ -85,7 +97,10 @@ fn fn_item(name: &str, params: Vec<Param>, body: Vec<Stmt>) -> Item {
         type_params: Vec::new(),
         params,
         ret: int_ann(),
-        body: Block { stmts: body, span: sp() },
+        body: Block {
+            stmts: body,
+            span: sp(),
+        },
         span: sp(),
         receiver: ace_core::source::ast::Receiver::Free,
         owner: None,
@@ -120,7 +135,10 @@ fn incremental_program() -> Program {
         Vec::new(),
         vec![
             g_set("__age_w0", "__age_c_count", int_lit(0)),
-            Stmt::Return { value: int_lit(0), span: sp() },
+            Stmt::Return {
+                value: int_lit(0),
+                span: sp(),
+            },
         ],
     ));
     items.push(fn_item(
@@ -130,9 +148,15 @@ fn incremental_program() -> Program {
             g_set(
                 "__age_w0",
                 "__age_c_count",
-                Expr { span: sp(), kind: ExprKind::Var(ident("__age_p0")) },
+                Expr {
+                    span: sp(),
+                    kind: ExprKind::Var(ident("__age_p0")),
+                },
             ),
-            Stmt::Return { value: int_lit(0), span: sp() },
+            Stmt::Return {
+                value: int_lit(0),
+                span: sp(),
+            },
         ],
     ));
     items.push(fn_item(
@@ -155,12 +179,18 @@ fn incremental_program() -> Program {
                     span: sp(),
                     kind: ExprKind::Binary {
                         op: ace_core::source::ast::BinOp::Add,
-                        lhs: Box::new(Expr { span: sp(), kind: ExprKind::Var(ident("__age_r0")) }),
+                        lhs: Box::new(Expr {
+                            span: sp(),
+                            kind: ExprKind::Var(ident("__age_r0")),
+                        }),
                         rhs: Box::new(int_lit(1)),
                     },
                 },
             ),
-            Stmt::Return { value: int_lit(0), span: sp() },
+            Stmt::Return {
+                value: int_lit(0),
+                span: sp(),
+            },
         ],
     ));
     items.push(fn_item(
@@ -182,12 +212,21 @@ fn incremental_program() -> Program {
                     span: sp(),
                     kind: ExprKind::Binary {
                         op: ace_core::source::ast::BinOp::Add,
-                        lhs: Box::new(Expr { span: sp(), kind: ExprKind::Var(ident("__age_r0")) }),
-                        rhs: Box::new(Expr { span: sp(), kind: ExprKind::Var(ident("__age_p0")) }),
+                        lhs: Box::new(Expr {
+                            span: sp(),
+                            kind: ExprKind::Var(ident("__age_r0")),
+                        }),
+                        rhs: Box::new(Expr {
+                            span: sp(),
+                            kind: ExprKind::Var(ident("__age_p0")),
+                        }),
                     },
                 },
             ),
-            Stmt::Return { value: int_lit(0), span: sp() },
+            Stmt::Return {
+                value: int_lit(0),
+                span: sp(),
+            },
         ],
     ));
     items.push(fn_item(
@@ -195,7 +234,10 @@ fn incremental_program() -> Program {
         Vec::new(),
         vec![
             g_set("__age_w0", "__age_c_count", int_lit(0)),
-            Stmt::Return { value: int_lit(0), span: sp() },
+            Stmt::Return {
+                value: int_lit(0),
+                span: sp(),
+            },
         ],
     ));
     Program { items }
@@ -254,10 +296,12 @@ fn assert_success(name: &str, out: &ExecOutcome) {
 /// P1：候选①最长链——前门→lower+init 链→链→单事件派发→cell 纯读取。
 #[test]
 fn p1_candidate1_globals_cells_longest_chain() {
-    let checked = front_door(&incremental_program()).expect("front door admits the incremental form");
-    let mir = lower_checked_owned_with_init(&checked, "d___age_init", 0, &["d___age_init".to_string()])
-        .map_err(|e| format!("{e:?}"))
-        .unwrap();
+    let checked =
+        front_door(&incremental_program()).expect("front door admits the incremental form");
+    let mir =
+        lower_checked_owned_with_init(&checked, "d___age_init", 0, &["d___age_init".to_string()])
+            .map_err(|e| format!("{e:?}"))
+            .unwrap();
     assert!(
         !mir.globals.is_empty(),
         "lowering must register the store cell as a MIR global"
@@ -286,7 +330,10 @@ fn p1_candidate1_globals_cells_longest_chain() {
     // `dispatched` 是本快照全部已链载荷的身份面（非单入口记录）：5 个函数全量。
     assert_eq!(trace.dispatched.len(), codes.len());
     let names: Vec<&str> = trace.dispatched.iter().map(|d| d.name.as_str()).collect();
-    assert!(names.contains(&"d___age_on_inc"), "handler linked: {names:?}");
+    assert!(
+        names.contains(&"d___age_on_inc"),
+        "handler linked: {names:?}"
+    );
     let (out, _t) = execute_program_entry_at(&snap_a, "d___age_on_inc", &limits, &cancel, &[]);
     assert_success("second inc", &out);
     let seq_after_two = ace_av_core::av::execution_seq();
@@ -306,15 +353,16 @@ fn p1_candidate1_globals_cells_longest_chain() {
     assert_eq!(snap_a.global_cells(), vec![Value::I32(7)]);
 
     // seed 覆盖（props 车道）：seed(41) → add(1) → 42。
+    let (out, _t) =
+        execute_program_entry_at(&snap_a, "d___age_seed", &limits, &cancel, &[Value::I32(41)]);
+    assert_success("seed", &out);
     let (out, _t) = execute_program_entry_at(
         &snap_a,
-        "d___age_seed",
+        "d___age_on_add",
         &limits,
         &cancel,
-        &[Value::I32(41)],
+        &[Value::I32(1)],
     );
-    assert_success("seed", &out);
-    let (out, _t) = execute_program_entry_at(&snap_a, "d___age_on_add", &limits, &cancel, &[Value::I32(1)]);
     assert_success("add after seed", &out);
     assert_eq!(snap_a.global_cells(), vec![Value::I32(42)]);
 
@@ -332,7 +380,10 @@ fn p1_candidate1_globals_cells_longest_chain() {
 
     // 未链函数：具名 Infra 拒（不静默落 entry）。
     let (out, _t) = execute_program_entry_at(&snap_a, "d___age_missing", &limits, &cancel, &[]);
-    assert!(matches!(out, ExecOutcome::Infra(_)), "missing def must be a named Infra refusal");
+    assert!(
+        matches!(out, ExecOutcome::Infra(_)),
+        "missing def must be a named Infra refusal"
+    );
 }
 
 /// P2：候选②——handler 作为纯函数、状态经实参/返回值穿线（既有 per-def 执行面）。
@@ -349,8 +400,14 @@ fn p2_candidate2_state_threading_per_def() {
                     span: sp(),
                     kind: ExprKind::Binary {
                         op: ace_core::source::ast::BinOp::Add,
-                        lhs: Box::new(Expr { span: sp(), kind: ExprKind::Var(ident("__age_p0")) }),
-                        rhs: Box::new(Expr { span: sp(), kind: ExprKind::Var(ident("__age_p1")) }),
+                        lhs: Box::new(Expr {
+                            span: sp(),
+                            kind: ExprKind::Var(ident("__age_p0")),
+                        }),
+                        rhs: Box::new(Expr {
+                            span: sp(),
+                            kind: ExprKind::Var(ident("__age_p1")),
+                        }),
                     },
                 },
                 span: sp(),
@@ -372,13 +429,18 @@ fn p2_candidate2_state_threading_per_def() {
     let limits = ExecLimits::default();
     let cancel = CancelFlag::new(false);
     for _ in 0..3 {
-        let (out, _trace) = ace_av_core::execute_entry(&loaded, &limits, &cancel, &[state.clone(), Value::I32(1)]);
+        let (out, _trace) =
+            ace_av_core::execute_entry(&loaded, &limits, &cancel, &[state.clone(), Value::I32(1)]);
         match out {
             ExecOutcome::Success { value, .. } => state = value,
             other => panic!("step did not succeed: {other:?}"),
         }
     }
-    assert_eq!(state, Value::I32(3), "candidate-2 mechanically threads state");
+    assert_eq!(
+        state,
+        Value::I32(3),
+        "candidate-2 mechanically threads state"
+    );
 }
 
 /// P3：V-01 事实基线——当前场景车道每事件的真实派发身份与次数。
@@ -394,8 +456,13 @@ fn p2_candidate2_state_threading_per_def() {
 #[test]
 fn p3_v01_baseline_current_lane_replays_history_per_observation() {
     let alias = LegacyWidgetAlias::Accept;
-    let initials = ComponentInitials { per_instance: vec![Vec::new()] };
-    let inc = || ScenarioOp::Send { instance: 0, msg: "Inc".to_string() };
+    let initials = ComponentInitials {
+        per_instance: vec![Vec::new()],
+    };
+    let inc = || ScenarioOp::Send {
+        instance: 0,
+        msg: "Inc".to_string(),
+    };
 
     // (a)+(b)：编译 3 个 Inc 的场景，产物 def 集只含状态函数；单次执行该
     // def 得整段历史终值 3。
@@ -405,7 +472,10 @@ fn p3_v01_baseline_current_lane_replays_history_per_observation() {
         "ase_m0.counter.t01",
         alias,
         &caps,
-        &ComponentScenario { instances: 1, ops: vec![inc(), inc(), inc()] },
+        &ComponentScenario {
+            instances: 1,
+            ops: vec![inc(), inc(), inc()],
+        },
         &initials,
     )
     .unwrap();
@@ -413,14 +483,18 @@ fn p3_v01_baseline_current_lane_replays_history_per_observation() {
     assert_eq!(states.len(), 1, "1 field = 1 state fn");
     assert_eq!(states[0].def_id, "d___age_state_0_count");
     // 真实执行层：一次执行这个 def → 整段历史（3 个事件）的终值。
-    let v = ace_av::age_component::execute_component_def(&compiled, "d___age_state_0_count")
-        .unwrap();
-    assert_eq!(v, Value::I32(3), "one state-def call replays the WHOLE history");
+    let v =
+        ace_av::age_component::execute_component_def(&compiled, "d___age_state_0_count").unwrap();
+    assert_eq!(
+        v,
+        Value::I32(3),
+        "one state-def call replays the WHOLE history"
+    );
 
     // (c)：per-def 车道不进进程级 seq（无入口计数端口）。
     let seq0 = ace_av_core::av::execution_seq();
-    let _ = ace_av::age_component::execute_component_def(&compiled, "d___age_state_0_count")
-        .unwrap();
+    let _ =
+        ace_av::age_component::execute_component_def(&compiled, "d___age_state_0_count").unwrap();
     assert_eq!(
         ace_av_core::av::execution_seq() - seq0,
         0,
@@ -434,11 +508,18 @@ fn p3_v01_baseline_current_lane_replays_history_per_observation() {
         "ase_m0.counter.t01",
         alias,
         &caps,
-        &ComponentScenario { instances: 1, ops: vec![inc(); 5] },
+        &ComponentScenario {
+            instances: 1,
+            ops: vec![inc(); 5],
+        },
         &initials,
     )
     .unwrap();
-    let v5 = ace_av::age_component::execute_component_def(&compiled5, "d___age_state_0_count")
-        .unwrap();
-    assert_eq!(v5, Value::I32(5), "history length drives per-call work (replay)");
+    let v5 =
+        ace_av::age_component::execute_component_def(&compiled5, "d___age_state_0_count").unwrap();
+    assert_eq!(
+        v5,
+        Value::I32(5),
+        "history length drives per-call work (replay)"
+    );
 }

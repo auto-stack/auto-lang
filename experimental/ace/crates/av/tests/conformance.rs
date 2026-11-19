@@ -4,12 +4,12 @@ mod abc_semantics_tier;
 mod component_event_sessions_1106;
 #[path = "cases/plan1106_t01_probe.rs"]
 mod plan1106_t01_probe;
+#[path = "cases/plan980_lambda_if.rs"]
+mod plan980_lambda_if;
 #[path = "cases/plan980_web_6o_face.rs"]
 mod plan980_web_6o_face;
 #[path = "cases/plan980_web_6p_channel_call.rs"]
 mod plan980_web_6p_channel_call;
-#[path = "cases/plan980_lambda_if.rs"]
-mod plan980_lambda_if;
 #[path = "cases/plan980_web_grammar_6m.rs"]
 mod plan980_web_grammar_6m;
 #[path = "cases/sched_m2_968.rs"]

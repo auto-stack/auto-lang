@@ -74,6 +74,10 @@ mod plan979_domain_package;
 mod plan980_dialect_full;
 #[path = "cases/plan980_field_manifest.rs"]
 mod plan980_field_manifest;
+#[path = "cases/plan980_lambda_if.rs"]
+mod plan980_lambda_if;
+#[path = "cases/plan980_on_if.rs"]
+mod plan980_on_if;
 #[path = "cases/plan980_view_if.rs"]
 mod plan980_view_if;
 #[path = "cases/plan981_age_fields.rs"]
@@ -96,10 +100,6 @@ mod plan981_design_slot;
 mod plan981_event_a;
 #[path = "cases/plan981_event_b.rs"]
 mod plan981_event_b;
-#[path = "cases/plan980_on_if.rs"]
-mod plan980_on_if;
-#[path = "cases/plan980_lambda_if.rs"]
-mod plan980_lambda_if;
 #[path = "cases/plan981_g2_hooks.rs"]
 mod plan981_g2_hooks;
 #[path = "cases/plan981_gfx_seam.rs"]

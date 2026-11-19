@@ -124,7 +124,9 @@ fn field_value_to_arg(v: &ComponentFieldValue) -> EntryArg<'static> {
         ComponentFieldValue::Bool(b) => EntryArg::Value(Value::Bool(*b)),
         ComponentFieldValue::F32(f) => EntryArg::Value(Value::F32(*f)),
         // owned str 不是合法入口实参：按文本车道（借用 StrView，本执行 arena）。
-        ComponentFieldValue::Str(s) => EntryArg::Text(std::borrow::Cow::Owned(s.as_bytes().to_vec())),
+        ComponentFieldValue::Str(s) => {
+            EntryArg::Text(std::borrow::Cow::Owned(s.as_bytes().to_vec()))
+        }
     }
 }
 
@@ -157,17 +159,12 @@ impl ComponentEventSessionProgram {
     /// 编译（一次）：先带文本叶；lowering 失败（f-string 叶在 av.owned/1 的
     /// 既有边界）时按 states-only 重试并把原因留痕——与场景车道的
     /// states-only 边界同一形状，不是静默 fallback。
-    pub fn compile(
-        src: &str,
-        module_path: &str,
-        alias: LegacyWidgetAlias,
-    ) -> Result<Self, String> {
+    pub fn compile(src: &str, module_path: &str, alias: LegacyWidgetAlias) -> Result<Self, String> {
         let caps = ["ac.runtime.text.v1".to_string()];
         let attempt = |emit_texts: bool| -> Result<CoreEventProgram, String> {
-            let core = compile_component_event_program(
-                src, module_path, alias, &caps, None, emit_texts,
-            )
-            .map_err(|ds| format_diags(&ds))?;
+            let core =
+                compile_component_event_program(src, module_path, alias, &caps, None, emit_texts)
+                    .map_err(|ds| format_diags(&ds))?;
             // lowering 先探（同一 producer 真跑；失败即本形态不可降落）。
             Self::lower_and_admit(&core).map(|_| core)
         };
@@ -247,8 +244,7 @@ impl ComponentEventSessionProgram {
                 .admit_bytes(&bytes, &unit.owner)
                 .map_err(|e| format!("admit `{}`: {e:?}", unit.funcs[0].name))?;
             codes.push(Arc::new(
-                FunctionCode::admit_unit(loaded, 0)
-                    .map_err(|e| format!("admit unit: {e}"))?,
+                FunctionCode::admit_unit(loaded, 0).map_err(|e| format!("admit unit: {e}"))?,
             ));
         }
         Ok(Built {
@@ -461,8 +457,7 @@ impl ComponentEventSession {
                 return Ok(EventOutcome::Duplicate);
             }
         }
-        let entry_args: Vec<EntryArg<'static>> =
-            args.iter().map(field_value_to_arg).collect();
+        let entry_args: Vec<EntryArg<'static>> = args.iter().map(field_value_to_arg).collect();
         // 事务兜底：派发前备份 cell；失败恢复（业务中途 trap 由编译期
         // locals-先行/统一提交承担；这是预算边界的残余半提交兜底）。
         let backup = self.snap.as_ref().expect("session is live").global_cells();
@@ -471,12 +466,14 @@ impl ComponentEventSession {
         match out {
             ExecOutcome::Success { .. } => {
                 self.audit.handler_entries += 1;
-                match self.audit.handler_entries_by_msg.iter_mut().find(|(m, _)| m == msg) {
+                match self
+                    .audit
+                    .handler_entries_by_msg
+                    .iter_mut()
+                    .find(|(m, _)| m == msg)
+                {
                     Some((_, c)) => *c += 1,
-                    None => self
-                        .audit
-                        .handler_entries_by_msg
-                        .push((msg.to_string(), 1)),
+                    None => self.audit.handler_entries_by_msg.push((msg.to_string(), 1)),
                 }
                 if let Some(seq) = seq {
                     self.watermark = Some(seq);
@@ -504,7 +501,10 @@ impl ComponentEventSession {
         let cells = snap.global_cells();
         let mut out = Vec::with_capacity(self.fields.len());
         for (i, (name, _)) in self.fields.iter().enumerate() {
-            out.push((name.clone(), cell_value_to_field(&cells[self.cell_of_field[i]])?));
+            out.push((
+                name.clone(),
+                cell_value_to_field(&cells[self.cell_of_field[i]])?,
+            ));
         }
         Ok(out)
     }
