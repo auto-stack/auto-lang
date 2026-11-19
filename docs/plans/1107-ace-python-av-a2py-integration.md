@@ -453,6 +453,21 @@ Round 15 增量：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
+2026-11-20 · stage: work（round 16 · **V-06 冷/暖/编辑真实计数**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 主体 | outcome: pass（round 级）| next_responsible_role: work（支持矩阵/SD-*）→ review/merge
+
+Round 16 增量：
+- `p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated`（978 A2py 真实入口）：
+  - 冷构建：`rebuilt=true`、`fragments_produced>0`、`tool_spawns` 为空（emit 不 spawn 工具链/解释器）；
+  - 同输入暖构建：`rebuilt=false`、`lane="cache-hit"`（整工程缓存命中；片段计数为 0 属该层短路，不是自报布尔）、`tool_spawns` 为空、**BuildIdentity 不变**；
+  - body 编辑（`var total = 0` → `1`）：`rebuilt=true`、片段重产、**BuildIdentity 改变**、仍零工具 spawn。
+- 说明：本轮以仓内实测计数（`BuildCounts`）为证据，未引入自报标志；`counts.lane=="cache-hit"` 作为整工程复用层的具名口径写入用例注释。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v06)'` PASS；组级 `cargo t ace-m2-build` PASS。
+
+余量：解释器/包身份轴（RuntimeCompatibility 侧）、helper/包/provider 兼容换包的失效矩阵（V-06 剩余）、AC-06 支持矩阵、SD-01..04 Specs、T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -507,6 +522,21 @@ Round 15 增量：
 余量：V-06（冷/暖/body 编辑/helper 变更/包与 provider 身份/兼容换包的计数与失效）；AC-06 支持矩阵；SD-01..04 Specs；T-07 复审、T-08 合入。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 15 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
+2026-11-20 · stage: work（round 16 · **V-06 冷/暖/编辑真实计数**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 主体 | outcome: pass（round 级）| next_responsible_role: work（支持矩阵/SD-*）→ review/merge
+
+Round 16 增量：
+- `p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated`（978 A2py 真实入口）：
+  - 冷构建：`rebuilt=true`、`fragments_produced>0`、`tool_spawns` 为空（emit 不 spawn 工具链/解释器）；
+  - 同输入暖构建：`rebuilt=false`、`lane="cache-hit"`（整工程缓存命中；片段计数为 0 属该层短路，不是自报布尔）、`tool_spawns` 为空、**BuildIdentity 不变**；
+  - body 编辑（`var total = 0` → `1`）：`rebuilt=true`、片段重产、**BuildIdentity 改变**、仍零工具 spawn。
+- 说明：本轮以仓内实测计数（`BuildCounts`）为证据，未引入自报标志；`counts.lane=="cache-hit"` 作为整工程复用层的具名口径写入用例注释。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v06)'` PASS；组级 `cargo t ace-m2-build` PASS。
+
+余量：解释器/包身份轴（RuntimeCompatibility 侧）、helper/包/provider 兼容换包的失效矩阵（V-06 剩余）、AC-06 支持矩阵、SD-01..04 Specs、T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 ## 10. 待澄清事项
 
