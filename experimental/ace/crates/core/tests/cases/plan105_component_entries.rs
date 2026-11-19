@@ -682,3 +682,45 @@ fn p105_handler_for_structure_and_named_reject() {
         "named reject expected, got {err:?}"
     );
 }
+
+/// 012 真语料形：**handler 体顶层的裸名赋值**（`civil_y += 1` / `y = 2`）——
+/// 点前缀在 `age-view-assign-stmt` 可省，投影按 `dot` 字段区分裸名/点前缀；
+/// 裸名读侧是 `Var`（局部遮蔽），点前缀读侧是 `self.<field>`。
+#[test]
+fn p105_toplevel_bare_assign() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0\n var y int = 0 }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                var a = 1\n\
+                a += 2\n\
+                y = a\n\
+                .n = y\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("top-level bare assignments project");
+    let handler = &nodes[0].handlers[0];
+    let assigns: Vec<(String, bool)> = handler
+        .stmts
+        .iter()
+        .filter_map(|s| match s {
+            ace_core::source::age_component::ComponentStmt::Assign(a) => {
+                Some((a.field.clone(), a.bare))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        assigns,
+        vec![
+            ("a".to_string(), true),
+            ("y".to_string(), true),
+            ("n".to_string(), false),
+        ]
+    );
+    assert!(compiles(src), "package face admits top-level bare assignments");
+}

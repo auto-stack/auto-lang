@@ -6136,40 +6136,56 @@ impl<'a> Engine<'a> {
         let op_inner = self.unwrap_child(op_node);
         let op_rule = self.rule_name_of_kind(self.cx.tree.kind(op_inner));
         let span = self.cx.span_of(stmt);
+        let has_dot = self.cx.field_child(stmt, "dot").is_some();
         if op_rule == "age-op-plus-assign" || op_rule == "age-op-minus-assign" {
             let op = if op_rule == "age-op-plus-assign" {
                 crate::source::ast::BinOp::Add
             } else {
                 crate::source::ast::BinOp::Sub
             };
+            // 裸名复合赋值（无点）：读侧是裸名 `Var`（执行期按绑定表解析为
+            // 局部量或字段）；点前缀形读侧是 `self.<field>`。
+            let lhs = if has_dot {
+                Expr {
+                    span,
+                    kind: ExprKind::Field {
+                        base: Box::new(Expr {
+                            span,
+                            kind: ExprKind::Var(Ident {
+                                name: "self".to_string(),
+                                span,
+                            }),
+                        }),
+                        name: Ident {
+                            name: field_name.clone(),
+                            span,
+                        },
+                    },
+                }
+            } else {
+                Expr {
+                    span,
+                    kind: ExprKind::Var(Ident {
+                        name: field_name.clone(),
+                        span,
+                    }),
+                }
+            };
             rhs = Expr {
                 span,
                 kind: ExprKind::Binary {
                     op,
-                    lhs: Box::new(Expr {
-                        span,
-                        kind: ExprKind::Field {
-                            base: Box::new(Expr {
-                                span,
-                                kind: ExprKind::Var(Ident {
-                                    name: "self".to_string(),
-                                    span,
-                                }),
-                            }),
-                            name: Ident {
-                                name: field_name.clone(),
-                                span,
-                            },
-                        },
-                    }),
+                    lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                 },
             };
         }
+        // PLAN-105 T-02：点号缺省即裸名赋值（局部遮蔽候选，语义同
+        // `age-on-assign`）；显式 `.field` 恒指实例字段。
+        let bare = self.cx.field_child(stmt, "dot").is_none();
         assigns.push(ComponentAssign {
             field: field_name,
-            // 点语法赋值恒指实例字段（PLAN-105：裸名才走局部遮蔽查表）。
-            bare: false,
+            bare,
             rhs,
             span,
         });

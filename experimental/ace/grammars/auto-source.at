@@ -740,8 +740,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             many { age-view-item() {} }
             rbrace() {}
         }
+        // PLAN-105 T-02（U03 真语料 012）：点前缀可省——widget 形 handler 体
+        // 顶层的**裸名赋值**（`civil_y += 1` / `y = 2`）与 `.field =` 同一条
+        // 赋值面；点号是否出现由投影按 `dot` 字段区分（裸名=局部遮蔽候选）。
         age-view-assign-stmt(profiles: [age-component, age-package]) {
-            dot() {}
+            opt { dot(field: "dot") {} }
             ident(field: "field")
             age-assign-op(field: "op") {}
             pratt(of: "wide-ops", field: "rhs")
