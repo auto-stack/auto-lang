@@ -636,5 +636,128 @@ class RegularAcceptanceTests(unittest.TestCase):
         self.assertEqual(before, digest())
 
 
+class SessionReports(unittest.TestCase):
+    """PLAN-1098 T-08: session scope = per-module budget + identity diff + new-item cap."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def session(self, runs, name='session', extra=()):
+        out = Path(self.tmp.name) / name / 'report.md'
+        out.parent.mkdir(parents=True, exist_ok=True)
+        json_out = out.with_suffix('.json')
+        argv = ['--mode', 'session', '--repo', str(REPO_ROOT),
+                '--out', str(out), '--json-out', str(json_out)]
+        for run in runs:
+            argv += ['--run', str(run.dir)]
+        code = report.main(argv + list(extra))
+        return code, json.loads(json_out.read_text(encoding='utf-8')), out.read_text(encoding='utf-8')
+
+    def empty_baseline(self, name='empty'):
+        path = Path(self.tmp.name) / (name + '.json')
+        path.write_text(json.dumps({'schema': 'ace-session-baseline/1', 'identities': {}}),
+                        encoding='utf-8')
+        return path
+
+    def test_without_baseline_no_diff_and_green(self):
+        run = RegularRun(Path(self.tmp.name) / 'one')
+        code, document, markdown = self.session([run])
+        self.assertEqual(code, 0)
+        self.assertEqual(document['schema'], 'ace-session-report/1')
+        self.assertEqual(document['status'], 'GREEN')
+        self.assertEqual(document['added'], [])
+        self.assertIsNone(document['baseline'])
+        self.assertIn('| ace-syntax | GREEN |', markdown)
+
+    def test_baseline_out_round_trips(self):
+        run = RegularRun(Path(self.tmp.name) / 'one')
+        baseline = Path(self.tmp.name) / 'baseline.json'
+        code, document, _ = self.session([run], name='emit',
+                                         extra=['--baseline-out', str(baseline)])
+        self.assertEqual(code, 0)
+        stored = json.loads(baseline.read_text(encoding='utf-8'))
+        self.assertEqual(stored['schema'], 'ace-session-baseline/1')
+        self.assertIn(REGULAR_NATIVE, stored['identities'])
+        code, document, _ = self.session([run], name='replay',
+                                         extra=['--baseline', str(baseline)])
+        self.assertEqual(code, 0)
+        self.assertEqual(document['added'], [])
+        self.assertEqual(document['removed'], [])
+
+    def test_new_identity_over_the_cap_is_a_violation(self):
+        run = RegularRun(Path(self.tmp.name) / 'one',
+                         events=[event(REGULAR_NATIVE, 'ok', 12.5)])
+        code, document, markdown = self.session(
+            [run], extra=['--baseline', str(self.empty_baseline())])
+        self.assertEqual(code, 1)
+        self.assertEqual(document['status'], 'OVER_BUDGET')
+        self.assertEqual([row['identity'] for row in document['new_item_violations']],
+                         [REGULAR_NATIVE])
+        self.assertEqual(document['new_item_violations'][0]['exec_time_ms'], 12500.0)
+        self.assertIn('New-item cap violations', markdown)
+
+    def test_new_identity_within_the_cap_is_green(self):
+        run = RegularRun(Path(self.tmp.name) / 'one',
+                         events=[event(REGULAR_NATIVE, 'ok', 4.0)])
+        code, document, _ = self.session(
+            [run], extra=['--baseline', str(self.empty_baseline())])
+        self.assertEqual(code, 0)
+        self.assertEqual(document['status'], 'GREEN')
+        self.assertEqual(document['added'], [REGULAR_NATIVE])
+        self.assertEqual(document['new_item_violations'], [])
+
+    def test_removed_identity_is_reported(self):
+        baseline = Path(self.tmp.name) / 'older.json'
+        baseline.write_text(json.dumps({'schema': 'ace-session-baseline/1',
+                                        'identities': {'gone::binary$removed_case': 100.0}}),
+                            encoding='utf-8')
+        run = RegularRun(Path(self.tmp.name) / 'one',
+                         events=[event(REGULAR_NATIVE, 'ok', 4.0)])
+        code, document, markdown = self.session([run], extra=['--baseline', str(baseline)])
+        self.assertEqual(code, 0)
+        self.assertEqual(document['removed'], ['gone::binary$removed_case'])
+        self.assertIn('Removed identities (1)', markdown)
+
+    def test_missing_evidence_makes_the_session_unverifiable(self):
+        run = RegularRun(Path(self.tmp.name) / 'bad', executed=0,
+                         events=[])
+        code, document, _ = self.session([run])
+        self.assertEqual(code, 2)
+        self.assertEqual(document['status'], 'UNVERIFIABLE')
+        self.assertEqual(document['unverifiable_modules'], ['ace-syntax'])
+
+    def test_bad_baseline_schema_is_unverifiable_not_green(self):
+        baseline = Path(self.tmp.name) / 'wrong.json'
+        baseline.write_text(json.dumps({'schema': 'something/1', 'identities': {}}),
+                            encoding='utf-8')
+        run = RegularRun(Path(self.tmp.name) / 'one')
+        code, document, _ = self.session([run], extra=['--baseline', str(baseline)])
+        self.assertEqual(code, 2)
+        self.assertEqual(document['status'], 'UNVERIFIABLE')
+        self.assertIn('unreadable session baseline', document['baseline_error'])
+
+    def test_session_judges_several_modules_together(self):
+        first = RegularRun(Path(self.tmp.name) / 'a', module='ace-syntax',
+                           events=[event(REGULAR_NATIVE, 'ok', 4.0)])
+        second_identity = REGULAR_BINARY + '$second_probe::ordinary_case'
+        second = RegularRun(Path(self.tmp.name) / 'b', module='ace-native',
+                            selected=[{'binary': REGULAR_BINARY,
+                                       'test': 'second_probe::ordinary_case', 'ignored': False}],
+                            events=[event(second_identity, 'ok', 6.0)])
+        code, document, markdown = self.session([first, second])
+        self.assertEqual(code, 0)
+        self.assertEqual([row['module'] for row in document['modules']],
+                         ['ace-syntax', 'ace-native'])
+        self.assertEqual(document['identities'], 2)
+
+    def test_baseline_flags_belong_to_session_mode_only(self):
+        run = RegularRun(Path(self.tmp.name) / 'one')
+        out = Path(self.tmp.name) / 'regular.md'
+        with self.assertRaises(SystemExit):
+            report.main(['--mode', 'regular', '--run', str(run.dir), '--repo', str(REPO_ROOT),
+                         '--out', str(out), '--baseline', str(self.empty_baseline())])
+
+
 if __name__ == '__main__':
     unittest.main()
