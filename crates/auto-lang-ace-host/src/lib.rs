@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use ace_av_core::av::{CancelFlag, ExecLimits};
-use ace_av_core::contract::{fnv1a64, ExecOutcome, Value};
+use ace_av_core::contract::{ExecOutcome, Value, fnv1a64};
 use ace_av_core::mir::MirModule;
 use ace_core::atom_text::Diagnostic;
 use ace_core::verify::CheckedModule;
@@ -543,8 +543,8 @@ fn lower_and_check_entry(
 pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
     use ace_core::source::cst::FrontBudget;
     use ace_core::source::packages::{
-        stdlib_sys_argv_process_source, AssemblyBackend, PackageAssemblyContext,
-        PackageModuleInput, ProviderChoice, TargetOs, STDLIB_PACKAGE, STDLIB_VERSION,
+        AssemblyBackend, PackageAssemblyContext, PackageModuleInput, ProviderChoice,
+        STDLIB_PACKAGE, STDLIB_VERSION, TargetOs, stdlib_sys_argv_process_source,
     };
     use ace_source_query::modules::packages::{
         assemble_package_inputs, compile_assembled_aggregates_inputs,
@@ -626,7 +626,7 @@ pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
                 0,
                 None,
                 None,
-            )
+            );
         }
     };
     let target = match ace_av::modules::packages::PackageAvTarget::cold_with_entry(
@@ -644,7 +644,7 @@ pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
                 0,
                 None,
                 None,
-            )
+            );
         }
     };
 
@@ -684,13 +684,30 @@ pub fn run_sys_script(request: &AceRequest<'_>) -> AceRunReport {
     // ⑤ PLAN-982 (Q-982-2 step 2): the product-entry budgets — the door
     //    owns wall/cancel and the CONSOLE HOST (capture for the CLI face;
     //    the re-emission discipline is the caller's).
+    //    PLAN-982（aggregates 文本入口裁定，2026-11-19）：`request.input`
+    //    ⇒ 受检文本入口（入口单元借用 `str` 形参收 stdin 文本；执行端核对
+    //    入口单元的 `ac.runtime.text.v1` 与全 `StrView` 签名，arena 归零）；
+    //    `None` 保持零参路径（`fn main()` 入口 ABI 不变）。
     let limits = limits_from(request);
     let fallback = CancelFlag::new(false);
     let cancel = cancel_flag(request, &fallback);
     let mut cap = ace_av::console_host::ConsoleCapture::default();
-    let console: Option<&mut dyn ace_av_core::host::ConsoleHost> =
-        if request.console { Some(&mut cap) } else { None };
-    let run = target.run_platform_value_with(&limits, cancel, console, &grants, &mut backend);
+    let console: Option<&mut dyn ace_av_core::host::ConsoleHost> = if request.console {
+        Some(&mut cap)
+    } else {
+        None
+    };
+    let run = match request.input {
+        Some(text) => target.run_platform_text_value_with(
+            &limits,
+            cancel,
+            console,
+            &grants,
+            &mut backend,
+            &[text.as_bytes()],
+        ),
+        None => target.run_platform_value_with(&limits, cancel, console, &grants, &mut backend),
+    };
     let mut out = match run {
         Ok((outcome, _summary)) => map_outcome(outcome, None, None),
         Err(e) => return denied_report("ace.sys/run", e),
@@ -1003,7 +1020,7 @@ impl HostExecutor {
                 return denied_report(
                     "ace.admission/refused",
                     format!("per-run manifest admission failed: {e}"),
-                )
+                );
             }
         };
         // Per-run provider load: an OWN table gives this request isolated
@@ -1014,7 +1031,7 @@ impl HostExecutor {
                 return host_report(
                     "ace.provider/load-failed",
                     format!("provider `{name}` failed to load: {e}"),
-                )
+                );
             }
         };
         // Compile the source against the admitted environment.

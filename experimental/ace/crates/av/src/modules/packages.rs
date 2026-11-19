@@ -139,6 +139,31 @@ impl PackageAvTarget {
         )
     }
 
+    /// PLAN-982（aggregates 文本入口裁定，2026-11-19）：受检文本入口的包车道
+    /// 产品入口形——请求文本（如管道 stdin）作为入口单元借用 `str` 形参的
+    /// 运行时实参（`ac.runtime.text.v1` 谱系；执行端从入口所属单元核对能力
+    /// 与 `StrView` 签名，arena 归零与资源收尾同 `execute_program_platform`）。
+    pub fn run_platform_text_value_with(
+        &self,
+        limits: &ace_av_core::ExecLimits,
+        cancel: &ace_av_core::CancelFlag,
+        console: Option<&mut dyn ace_av_core::host::ConsoleHost>,
+        grants: &[String],
+        backend: &mut dyn ace_av_core::platform_io::PlatformIoBackend,
+        texts: &[&[u8]],
+    ) -> Result<
+        (
+            ace_av_core::contract::ExecOutcome,
+            ace_av_core::PlatformSessionSummary,
+        ),
+        String,
+    > {
+        let (out, _trace, summary) =
+            ace_av_core::execute_program_text_platform(&self.current, limits, cancel, grants, texts, console, backend)
+                .map_err(|e| format!("{}: {}", e.code, e.message))?;
+        Ok((out, summary))
+    }
+
     /// PLAN-982 (Q-982-2 step 2): the product-entry form — the caller owns
     /// the wall/cancel budgets and the CONSOLE HOST (capture or pass-through
     /// is the door's choice); grants stay the per-declared-import authority.
