@@ -131,6 +131,29 @@ def prepare(root, names, output, prepared, source_state=None):
             written = [{"path": str(p), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in paths]
             write(receipt_path(target, name), {"schema": RECEIPT_SCHEMA, "tool": name,
                                                "identity": identity, "artifacts": written})
+        # PLAN-1098 T-02: content-bound runtime builders cache by their own
+        # identity stamp and only avoid a rebuild after the builder itself ran
+        # once in this target tree. Warm them here so the run phase never
+        # compiles; the builder still validates any reused library.
+        warm = tool.get("warm")
+        if warm:
+            binary = target/tool["profile"]/(warm[0]+(".exe" if os.name=="nt" else ""))
+            if not binary.is_file():
+                raise ValueError(f"prepared warm binary missing: {binary}")
+            started_warm = time.monotonic()
+            output.mkdir(parents=True, exist_ok=True)
+            warm_log = output/(name+"-warm.log")
+            warm_env = dict(os.environ)
+            warm_env.pop('CARGO_TARGET_DIR', None)
+            warm_result = capture([str(binary), *[str(a) for a in warm[1:]]], cwd=cwd,
+                                  env=warm_env, timeout=1800, compiler_auxiliary_cleanup=True)
+            warm_log.write_bytes(warm_result.stdout + warm_result.stderr)
+            if warm_result.measurement is not None:
+                write(warm_log.with_suffix('.meter.json'), warm_result.measurement)
+            if warm_result.returncode:
+                raise ValueError(f"tool warm-up failed: {name}; {warm_log}")
+            receipts.append({"tool":name+"#warm","command":[str(binary), *[str(a) for a in warm[1:]]],
+                             "exit":0,"warm_seconds":time.monotonic()-started_warm,"log":str(warm_log)})
         for path in paths:
             receipts.append({"tool":name,"path":str(path),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
         if tool.get("env"):env[tool["env"]]=str(paths[0])

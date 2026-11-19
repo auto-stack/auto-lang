@@ -37,6 +37,10 @@ path = "src/bin/mn-collections-worker.rs"
 name = "ac-native"
 path = "src/bin/ac-native.rs"
 
+[[bin]]
+name = "runtime-warm"
+path = "src/bin/runtime-warm.rs"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

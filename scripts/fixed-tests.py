@@ -526,24 +526,34 @@ def prepare_plan(plan, output, summary, args):
                 'toolchain': toolchain_marker(), 'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
                 'invocations': []}
     started = time.monotonic()
+    entries = []
+    # Phase 1 — archives. `cargo nextest archive` builds with nextest's `test`
+    # profile into the same target dir, which REBUILDS (and rewrites) any
+    # binary a tool preparation just produced. Build every archive first, then
+    # prepare tools, so tool artifact hashes describe the final bytes.
     for index, group in enumerate(plan):
         destination = output / str(index)
         destination.mkdir(exist_ok=True)
         env = {**os.environ, 'AUTO_TEST_DOMAIN': group['domain']}
         env.pop('CARGO_TARGET_DIR', None)
-        extra, receipts = prepare(ROOT, group['tools'], destination / 'tools', prepared, before)
-        env.update(extra)
         entry = {'index': index, 'groups': group['groups'], 'runner': group['runner'],
                  'workspace': group['workspace'], 'domain': group['domain'],
                  'expression': group['expression'],
                  'expressions': group.get('expressions') or [group['expression']],
-                 'tools': group['tools'], 'tool_env': extra, 'receipts': receipts,
+                 'tools': group['tools'], 'tool_env': {},
                  'file': group.get('file'), 'suite': group.get('suite'),
-                 'timeout_seconds': group.get('timeout_seconds'),
-                 'tool_identity': {name: tool_identity(tools[name], (ROOT / tools[name]['target']).resolve(), before)
-                                   for name in group['tools']}}
+                 'timeout_seconds': group.get('timeout_seconds')}
         if group['runner'] == 'nextest':
             entry['archive'] = build_archive(group, destination, env, index)
+        entries.append(entry)
+    # Phase 2 — tools (and their content-bound warm-up), after every archive.
+    for entry in entries:
+        destination = output / str(entry['index'])
+        extra, receipts = prepare(ROOT, entry['tools'], destination / 'tools', prepared, before)
+        entry['tool_env'] = extra
+        entry['receipts'] = receipts
+        entry['tool_identity'] = {name: tool_identity(tools[name], (ROOT / tools[name]['target']).resolve(), before)
+                                  for name in entry['tools']}
         manifest['invocations'].append(entry)
         write(destination / 'prepared.json', entry)
     manifest['prepared_seconds'] = time.monotonic() - started
@@ -576,6 +586,10 @@ def verify_prepared(manifest):
             if tool_identity(tools[name], target, current) != expected:
                 raise ValueError('PREPARATION_REQUIRED: tool configuration changed: ' + name)
         for row in entry.get('receipts', []):
+            if not row.get('path'):
+                # warm-up receipts carry no artifact path; the builder's own
+                # content-bound stamp validates the library at run time.
+                continue
             path = Path(row['path'])
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != row['sha256']:
                 raise ValueError('PREPARATION_REQUIRED: tool artifact missing or tampered: ' + str(path))

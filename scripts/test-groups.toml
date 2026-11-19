@@ -508,7 +508,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-core", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -563,7 +563,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-av-core", "-p", "ace-av", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -589,7 +589,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-case-worker", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -600,7 +600,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-native", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -611,7 +611,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-abi", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -1447,7 +1447,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -1469,7 +1469,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-conformance", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(test(/^console::/)) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -1653,7 +1653,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "all() and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes", "execution-fixture"]
 domain = "ace"
 all = false
 
@@ -1675,7 +1675,7 @@ runner = "nextest"
 workspace = "."
 args = ["-p", "auto-lang-core", "--lib", "--features", "code-editor", "--config-file", ".config/nextest-full.toml"]
 expression = "test(/^test_cases::(ac|abi|sema|ace_)/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes"]
 domain = "ace"
 all = false
 
@@ -1697,7 +1697,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-a2x-core", "-p", "ace-a2x-rust", "-p", "ace-a2x-python", "-p", "ace-a2x-store", "-p", "ace-a2x-worker", "-p", "ace-abi", "-p", "ace-artifacts", "-p", "ace-av", "-p", "ace-av-core", "-p", "ace-case-worker", "-p", "ace-comptime", "-p", "ace-comptime-contract", "-p", "ace-comptime-core", "-p", "ace-core", "-p", "ace-lowering", "-p", "ace-native", "-p", "ace-semantics", "-p", "ace-semantics-contract", "-p", "ace-semantics-store", "-p", "ace-syntax-artifacts", "-p", "ace-syntax-core", "-p", "ace-syntax-grammar", "-p", "ace-syntax-runtime", "-p", "ace-conformance", "-p", "ace-stdlib-conformance", "-p", "ace-data-conformance", "-p", "ace-text-conformance", "-p", "ace-source-cte", "--lib", "--tests", "--profile", "ace-perf", "--config-file", "../../.config/nextest-full.toml", "--features", "ace-av/test-case-batch"]
 expression = "test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "execution-fixture"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes", "execution-fixture"]
 domain = "ace"
 all = false
 # Serial full campaigns have their own parent budget; ordinary groups stay 1800s.

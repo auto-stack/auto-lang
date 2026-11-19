@@ -151,6 +151,18 @@
    "features": "",
    "target": "target",
    "env": "AUTO_TOOL_EXECUTION_FIXTURE"
+  },
+  "native-runtimes": {
+   "workspace": "experimental/ace",
+   "package": "ace-native",
+   "binaries": [
+    "runtime-warm"
+   ],
+   "profile": "debug",
+   "target": "experimental/ace/target",
+   "warm": [
+    "runtime-warm"
+   ]
   }
  }
 }
