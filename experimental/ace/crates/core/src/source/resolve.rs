@@ -10668,11 +10668,16 @@ F:{d}
             // PLAN-1082 (T-03): the 972 HOF method surface — dispatch to
             // the grafted frozen stdlib public functions (same source, same
             // compiler; never a second algorithm). List<int> only: the
-            // stdlib family is int-instantiated.
+            // stdlib family is int-instantiated. `pop` rides the same seam
+            // for the legacy push/pop obligation rows (the frozen stdlib
+            // pop keeps the None-not-trap empty contract).
             "map" | "filter" | "find" | "any" | "all" if rargs.len() == 1 => {
                 return self.std_list_hof(name, *list, rargs, span);
             }
             "reduce" if rargs.len() == 2 => {
+                return self.std_list_hof(name, *list, rargs, span);
+            }
+            "pop" if rargs.is_empty() => {
                 return self.std_list_hof(name, *list, rargs, span);
             }
             "len" if rargs.is_empty() => mk(VT::I32, RExprKind::ListLen { list }),

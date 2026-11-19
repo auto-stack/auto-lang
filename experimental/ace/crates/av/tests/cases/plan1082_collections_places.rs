@@ -268,6 +268,60 @@ fn t01_observe_face_matrix() {
             "O32 manual compound spelling",
             "fn main() int { let xs = [19, 20]\n xs[0] = xs[0] + 1\n return xs[0] + xs[1] }\n",
         ),
+        (
+            "O33 record named-ctor literal + path write",
+            concat!(
+                "type Point { x int; y int }\n",
+                "fn main() int {\n",
+                " var p = Point { x: 10, y: 20 }\n",
+                " p.x = 30\n",
+                " return p.x\n",
+                "}\n"
+            ),
+        ),
+        (
+            "O34 record nested field path write",
+            concat!(
+                "type Inner { val int }\n",
+                "type Outer { inner Inner }\n",
+                "fn main() int {\n",
+                " var o = Outer { inner: Inner { val: 10 } }\n",
+                " o.inner.val = 20\n",
+                " return o.inner.val\n",
+                "}\n"
+            ),
+        ),
+        (
+            "O35 compound scalar ops family",
+            concat!(
+                "fn main() int {\n",
+                " var a = 1\n a += 1\n",
+                " var b = 9\n b -= 2\n",
+                " var c = 5\n c *= 3\n",
+                " var d = 10\n d /= 2\n",
+                " return a + b + c + d\n",
+                "}\n"
+            ),
+        ),
+        (
+            "O36 for-in over List.new list",
+            "fn main() int { let xs = List.new(1, 2, 3, 4, 5)\n var s = 0\n for x in xs { s = s + x }\n return s }\n",
+        ),
+        (
+            "O37 HOF pipeline legacy oracles",
+            concat!(
+                "fn main() int {\n",
+                " let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n",
+                " let evens = nums.filter((x int) => x % 2 == 0)\n",
+                " let doubled = evens.map((x int) => x * 2)\n",
+                " let total = doubled.reduce(0, (acc int, x int) => acc + x)\n",
+                " print(total)\n",
+                " print(evens.len())\n",
+                " print(doubled.len())\n",
+                " return total\n",
+                "}\n"
+            ),
+        ),
     ];
     for (name, src) in faces {
         println!("PLAN1082-OBS {name} => {}", observe(src));

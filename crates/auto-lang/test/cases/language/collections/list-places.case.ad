@@ -1,0 +1,1038 @@
+# PLAN-1082 — AV 数组、集合语法与嵌套 place（语言共享语料 collections 面）
+
+The canonical author of the collections-and-places language family.
+Every case carries ONE Auto source; the `av` check runs the ordinary AV
+language chain (`ac-av/language-source-run-v1`); legacy `VM result`
+checks keep their original oracles and owners with the AV-phase
+`#ignore` marker (AV-ONLY-1078-1096) — not executed in this phase, never
+blocking the AV gate; their backend tasks remove the marker when they
+land.
+
+Auditable normalizations (recorded per row in
+`language/migration/legacy-map.tsv`, same policy as PLAN-1080's
+`double`→`twice` and PLAN-1081's typed-lambda annotations):
+
+- Legacy script-top programs (`[1, 2, 3]` as the trailing value) wrap in
+  `fn main` and observe through typed exits/prints — the legacy display
+  oracle stays the row's original oracle in the map.
+- Legacy lambdas were untyped (`x =>`); the canonical spellings carry
+  `int` annotations (no lambda parameter inference on this face).
+- Legacy `List.new()` (zero args) and `[]` have no element-type
+  inference site — the canonical spelling is `List<int>.new()` (oracles
+  only observe len/emptiness); the zero-arg sugar keeps a NAMED
+  rejection.
+- Legacy `list.drop()` cleanup is scope-exit release on the checked face
+  (omitted); `is_empty()` is `len() == 0`; `pop()` prints through the
+  Option `is Some` unwrap (the frozen stdlib pop keeps None-not-trap);
+  `contains(v)` rides the real 972 `find` family; `for_each` is a plain
+  `for` (not in the 972 assembled set); `reserve` (unobservable capacity
+  pre-allocation) is dropped with the len oracle intact.
+- Legacy negative indexing (`a[-1]` = from-end) keeps the frozen SEM-02
+  approved difference: negative subscripts trap `av.trap.list-index`
+  like every other out-of-domain index — the legacy from-end oracle is a
+  difference account, never a green oracle.
+
+## Case: bracket-read-write
+id: "av.parity.1082.bracket-read-write"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ var xs = [19, 20]
+ xs[0] += 1
+ xs[1] = xs[1] + 2
+ return xs[0] + xs[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+§6 contract case: bare index read, plain and compound writes in source
+order (legacy.06_arrays.002/003/005 positive faces,
+legacy.15_nested_mutation.002/004; the bracket chain itself was green
+since 962/964 — this case pins the compound form this batch landed).
+
+## Case: legacy-list-new
+id: "av.parity.1082.legacy-list-new"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = List.new(19, 23); return xs[0] + xs[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case: the old varargs constructor as checked compat sugar
+(element VT from the first argument, homogeneous rule, same push
+admission — never a general varargs surface). legacy.13_collections.032
+(five-arg form asserted by list-iteration; .033 zero-arg →
+`List<int>.new()` normalization in list-ops-family).
+
+## Case: hof-real-call
+id: "av.parity.1082.hof-real-call"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082", "PLAN-972"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let xs = [1, 2, 3, 4]
+ let ys = xs.filter((x int) => x % 2 == 0).map((x int) => x * 3)
+ return ys.reduce(24, (acc int, x int) => acc + x)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case: filter/map/reduce as METHOD calls dispatching to the
+frozen 972 assembled stdlib public functions (same source, same
+compiler, grafted on demand — no second algorithm). Typed-lambda
+normalization of the legacy spellings (legacy.09_functions.011/012).
+
+## Case: nested-place
+id: "av.parity.1082.nested-place"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Row { xs List<int> }
+fn main() int {
+ var r = Row([19, 20])
+ r.xs[1] += 3
+ return r.xs[0] + r.xs[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case: the field×index chained place with compound
+write-back (typed-record spelling; the legacy.15_nested_mutation.008
+object-literal shape stays with the AVP-06 dynamic-object face).
+legacy.15_nested_mutation.009 (`m[0][1] = 20`) is asserted by
+nested-index-place below.
+
+## Case: place-side-effect
+id: "av.parity.1082.place-side-effect"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn idx() int { print("i")
+ return 0 }
+fn val() int { print("v")
+ return 5 }
+fn main() {
+ let xs = [19, 20]
+ xs[idx()] += val()
+ print("|")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+i
+v
+|
+```
+
+### Notes
+
+§6 PLACE-SIDE-EFFECT: the compound place evaluates the index exactly
+once, then the rhs exactly once, in source order (place bases are local
+bindings — no base call face exists in the place grammar).
+
+## Case: nested-index-place
+id: "av.parity.1082.nested-index-place"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let m = [[1, 2], [3, 4]]
+ m[0][1] = 20
+ return m[0][0] + m[0][1] + m[1][0] + m[1][1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 28
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+20
+```
+
+### Notes
+
+legacy.15_nested_mutation.009 (write 20; oracle '20') and .013's
+structure-preservation face: a chained index write preserves every
+sibling element (1+20+3+4=28).
+
+## Case: bounds-endpoints
+id: "av.parity.1082.bounds-endpoints"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = [19, 20]
+ return xs[0] + xs[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 39
+
+### Notes
+
+§6 BOUNDS positive face: both endpoints 0 and len-1 read.
+
+## Case: bounds-trap-oob
+id: "av.parity.1082.bounds-trap-oob"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = [19, 20]
+ return xs[2] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+### Notes
+
+§6 BOUNDS: index == len traps the frozen SEM-02 single code (before any
+buffer access) — never a default value. legacy.15_nested_mutation.014's
+trap face (its object-literal carrier stays with AVP-06).
+
+## Case: bounds-trap-negative
+id: "av.parity.1082.bounds-trap-negative"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = [19, 20]
+ return xs[-1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+### Notes
+
+§6 BOUNDS / SEM-02: negative subscripts trap with the SAME single code
+(the approved difference against legacy.06_arrays.002's from-end oracle
+'[1, 2, 3, 3, 2, 1]' — a difference account row, never a green oracle).
+
+## Case: bounds-trap-empty
+id: "av.parity.1082.bounds-trap-empty"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = List<int>.new()
+ return xs[0] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+### Notes
+
+§6 BOUNDS: the empty container traps before buffer access (same single
+code — no per-shape error zoo).
+
+## Case: bounds-trap-write
+id: "av.parity.1082.bounds-trap-write"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = [19, 20]
+ xs[2] = 5
+ return xs[0] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+### Notes
+
+§6 BOUNDS: the out-of-bounds WRITE traps before mutation (errors reach
+the error batch through the trap channel; never a silent grow).
+
+## Case: array-literal-shape
+id: "av.parity.1082.array-literal-shape"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let xs = [1, 2, 3]
+ var ok = 0
+ if xs.len() == 3 { if xs[0] == 1 { if xs[1] == 2 { if xs[2] == 3 { ok = 1 } } } }
+ return ok
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 1
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+[1, 2, 3]
+```
+
+### Notes
+
+legacy.06_arrays.001/004 (script-top display '[1, 2, 3]'): the fn-main
+normalization observes length + all elements (the display oracle stays
+the row's original oracle in the migration map).
+
+## Case: negative-index-positive-face
+id: "av.parity.1082.negative-index-positive-face"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let a = [1, 2, 3]
+ return a[0] + a[1] + a[2] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 6
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+[1, 2, 3, 3, 2, 1]
+```
+
+### Notes
+
+legacy.06_arrays.002: the positive-index half (1+2+3=6); the legacy
+negative from-end half ('[... 3, 2, 1]') is the SEM-02 difference
+account (see bounds-trap-negative) — not claimed green on this face.
+
+## Case: tuple-literal-destructure
+id: "av.parity.1082.tuple-literal-destructure"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let t = (10, 20, 30)
+ let (a, b, c) = t
+ var ok = 0
+ if a == 10 { if b == 20 { if c == 30 { ok = 1 } } }
+ let m = (7, 42)
+ let (m0, m1) = m
+ if m1 == 42 { } else { ok = 0 }
+ if ok == 1 { print("tuple: all assertions passed") }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+tuple: all assertions passed
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+tuple: all assertions passed
+```
+
+### Notes
+
+legacy.06_arrays.010: positional tuple reads normalize to the flat
+destructuring binding (the `.0` postfix spelling has no grammar on this
+face — T-01 decision D-1082-07); `assert_eq` normalizes to explicit
+comparisons. The legacy MIXED tuple ("hello", 42) carries a Str slot —
+Str-in-tuple locals belong to the text face (verify.local-type on this
+face), so the second positional observation rides the int-pair (7, 42);
+the Str-slot row stays a named text-face hold.
+
+## Case: compound-statement-family
+id: "av.parity.1082.compound-statement-family"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ var a = 1
+ a += 1
+ print(a)
+ var b = 9
+ b -= 2
+ print(b)
+ var c = 5
+ c *= 3
+ print(c)
+ var d = 10
+ d /= 2
+ print(d)
+ var e = 1
+ e += 1
+ e += 2
+ e += 3
+ print(e)
+ var f = 20
+ f /= 4
+ print(f)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+2
+7
+15
+5
+7
+5
+```
+
+### Notes
+
+legacy.11_compound_ops.001..006, every ORIGINAL oracle digit preserved:
++=→2, -=→7, *=→15, /=→5, the chained .005 (1+1+2+3)→7, the oneline .006
+(20/4)→5 (the `;`-separated one-line spelling normalizes to separate
+lines). This batch landed the compound statement surface (T-01
+D-1082-02), closing the statement-surface research-hold rows.
+
+## Case: record-field-place
+id: "av.parity.1082.record-field-place"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Point { x int; y int }
+type Inner { val int }
+type Outer { inner Inner }
+fn main() {
+ var p = Point { x: 10, y: 20 }
+ p.x = 30
+ print(p.x)
+ var o = Outer { inner: Inner { val: 10 } }
+ o.inner.val = 20
+ print(o.inner.val)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+30
+20
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+30
+20
+```
+
+### Notes
+
+legacy.15_nested_mutation.005 (30) and .010 (20): byte-faithful field
+paths on typed records (the 962/771 place face; `;` field separators
+and named-ctor literals admitted).
+
+## Case: list-ops-family
+id: "av.parity.1082.list-ops-family"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ var list = List<int>.new()
+ print(list.len())
+ list.push(10)
+ list.push(20)
+ list.push(30)
+ print(list.len())
+ print(list.get(1))
+ print(list[1])
+ list.set(1, 99)
+ print(list.get(1))
+ list.set(1, 20)
+ var popped = 0
+ let p = list.pop()
+ is p { Some(v) -> { popped = v } None -> { popped = 0 } }
+ print(popped)
+ print(list.len())
+ list.insert(1, 55)
+ var v = list.get(1)
+ list.remove(1)
+ print(v)
+ print(list.len())
+ list.clear()
+ print(list.len())
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+0
+3
+20
+20
+99
+30
+2
+55
+2
+0
+```
+
+### Notes
+
+legacy.13_collections.020/021/022/023/025/026/027/028/029/030/031 —
+the List ops family, original oracle digits preserved: empty len 0
+(.020/.029 e1), len 3 (.023), get(1) 20 (.030 v), bare index 20 (.031),
+set+get 99 (.030 v2), pop 30 (.021), len-after-pop 2 (.022 len2),
+insert/get/remove 55 then len 2 (.027), clear len 0 (.025/.029 e2);
+.028's reserve (capacity pre-allocation, unobservable) drops with its
+len-2 oracle intact; `.drop()` normalizes to scope-exit release.
+legacy.13_collections.026's display oracle '[10, 99, 30]' is the row's
+original oracle in the map (its three values print as digits here).
+
+## Case: list-iteration
+id: "av.parity.1082.list-iteration"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let xs = List.new(1, 2, 3, 4, 5)
+ var s = 0
+ for x in xs { s = s + x }
+ print(s)
+ let empty = List<int>.new()
+ var t = 0
+ for y in empty { t = t + 1 }
+ print(t)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+15
+0
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+15
+0
+```
+
+### Notes
+
+legacy.13_collections.032 (varargs five-arg constructor), .034 (15) and
+.035 (0): for-in over a non-empty and an empty list.
+
+## Case: hof-pipeline-legacy
+id: "av.parity.1082.hof-pipeline-legacy"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082", "PLAN-972"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+ let evens = nums.filter((x int) => x % 2 == 0)
+ let doubled = evens.map((x int) => x * 2)
+ let total = doubled.reduce(0, (acc int, x int) => acc + x)
+ print(total)
+ print(evens.len())
+ print(doubled.len())
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+60
+5
+5
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+60
+5
+5
+```
+
+### Notes
+
+legacy.09_functions.015 (60/5/5) byte-faithful through the method
+surface (typed-lambda normalization only). The existing input/oracle
+fixture `09_functions/015_list_chain_pipeline` remains the frozen
+historical author copy.
+
+## Case: hof-family-legacy
+id: "av.parity.1082.hof-family-legacy"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082", "PLAN-972"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let nums = [1, 2, 3, 4, 5]
+ print(nums.reduce(0, (acc int, x int) => acc + x))
+ var found = 0
+ let hit = nums.find((x int) => x > 3)
+ is hit { Some(v) -> { found = v } None -> { found = 0 } }
+ print(found)
+ var has_neg = 0
+ if nums.any((x int) => x < 0) { has_neg = 1 }
+ print(has_neg)
+ var all_pos = 0
+ if nums.all((x int) => x > 0) { all_pos = 1 }
+ print(all_pos)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+15
+4
+0
+1
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+15
+4
+0
+1
+```
+
+### Notes
+
+legacy.09_functions.012 (15/4/0/1): `find` returns the Option family —
+the legacy auto-unwrap print normalizes to the explicit `is Some`
+extraction (auditable; the printed digit keeps the original oracle).
+
+## Case: hof-empty-face
+id: "av.parity.1082.hof-empty-face"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082", "PLAN-972"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let empty = List<int>.new()
+ let mapped = empty.map((x int) => x * 2)
+ print(mapped.len())
+ print(mapped.reduce(0, (acc int, x int) => acc + x))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+0
+0
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+0
+0
+```
+
+### Notes
+
+legacy.09_functions.014's empty-list half (map len 0, reduce init 0);
+its `for_each` half normalizes to the plain `for` in list-iteration
+(for_each is not in the 972 assembled set — named owner note).
+
+## Case: shims-int-list
+id: "av.parity.1082.shims-int-list"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082", "PLAN-335"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+ let items = List.new(10, 20, 30)
+ print(items.len())
+ print(items.get(1))
+ items.set(0, 99)
+ print(items.get(0))
+ items.insert(1, 55)
+ print(items.len())
+ var popped = 0
+ let p = items.pop()
+ is p { Some(v) -> { popped = v } None -> { popped = 0 } }
+ print(popped)
+ items.remove(0)
+ print(items.len())
+ var contains = 0
+ let hit = items.find((x int) => x == 20)
+ is hit { Some(v) -> { contains = 1 } None -> { contains = 0 } }
+ print(contains)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+20
+99
+4
+30
+2
+1
+```
+
+### VM result
+#ignore
+check-id: "legacy-stdout"
+
+```text
+3
+20
+99
+4
+30
+2
+1
+```
+
+### Notes
+
+legacy.29_list_shims.001 (Plan 335 full-shim face): `List<int>.new([10,
+20, 30])` normalizes to the varargs sugar; `pop()` prints through the
+Option unwrap (the frozen stdlib pop keeps the None-not-trap contract);
+`contains(55)` normalizes to the real 972 `find` family (contains is
+not a face method — auditable; after remove(0) the list is [55, 20] so
+find(==20) = Some → 1 keeps the original '1').
+
+## Case: empty-array-rejects
+id: "av.parity.1082.empty-array-rejects"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = []
+ return xs.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.array-lit-empty"
+
+### Notes
+
+The empty `[]` literal carries NO element-type inference on this face
+(D-1082-04): a NAMED bind rejection pointing at `List<T>.new()` — never
+a silent default or a guess.
+
+## Case: list-new-zero-arg-rejects
+id: "av.parity.1082.list-new-zero-arg-rejects"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let list = List.new()
+ return list.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.list-new-empty"
+
+### Notes
+
+legacy.13_collections.020/033's zero-arg spelling: no element-type
+inference site (D-1082-05) — the NAMED rejection; the green empty-list
+face (len 0) is asserted by list-ops-family.
+
+## Case: place-elem-field-rejects
+id: "av.parity.1082.place-elem-field-rejects"
+tags: ["av-language-parity", "plan-1082", "collections"]
+links: ["PLAN-1082"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { x int }
+fn main() int { let a = [P(1), P(2)]
+ a[0].x = 10
+ return a[0].x }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.place-elem-field"
+
+### Notes
+
+Element FIELD writes (`xs[i].f = v`) ride LIST_FIELD_SET, whose source
+seam is not on this face (D-1082-10 — the records batch owns it); the
+named rejection names the replacement spellings.

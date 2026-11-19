@@ -558,6 +558,7 @@ def prepare_plan(plan, output, summary, args):
                  'expressions': group.get('expressions') or [group['expression']],
                  'tools': group['tools'], 'tool_env': {},
                  'file': group.get('file'), 'suite': group.get('suite'),
+                 'check': group.get('check'),
                  'timeout_seconds': group.get('timeout_seconds')}
         if group['runner'] == 'nextest':
             entry['archive'] = build_archive(group, destination, env, index)
@@ -627,7 +628,7 @@ def plan_from_manifest(manifest):
                  'expression': entry['expression'],
                  'expressions': entry.get('expressions') or [entry['expression']],
                  'tools': entry.get('tools', []), 'file': entry.get('file'),
-                 'suite': entry.get('suite')}
+                 'suite': entry.get('suite'), 'check': entry.get('check')}
         if entry.get('timeout_seconds'):
             group['timeout_seconds'] = entry['timeout_seconds']
         plan.append(group)

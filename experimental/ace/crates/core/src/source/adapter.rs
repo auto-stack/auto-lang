@@ -246,6 +246,7 @@ fn needs_stdlib_list_graft(src: &str) -> bool {
         || src.contains(".find(")
         || src.contains(".any(")
         || src.contains(".all(")
+        || src.contains(".pop(")
 }
 
 /// Rename every function of the frozen module (declarations AND internal

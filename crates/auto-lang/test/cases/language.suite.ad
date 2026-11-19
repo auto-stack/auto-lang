@@ -9,5 +9,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/text/interpolation-unicode.case.ad",
   "language/calls/binding-pipeline.case.ad",
   "language/functions/references-closures.case.ad",
+  "language/collections/list-places.case.ad",
 ] }
 ```
