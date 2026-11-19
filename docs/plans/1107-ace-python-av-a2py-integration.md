@@ -412,6 +412,19 @@ Round 12 增量（无实现提交；探针已删除，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
 
+2026-11-20 · stage: work（round 13 · **V-02 AV 缺陷已修复，AV/A2PY 两端同源通过**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `efb78858a` | task_ids: V-02 关闭（两端）；T-05/T-06 余量仍在 | outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量 / V-04）
+
+Round 13 实现（冻结提交 `efb78858a`，树内 clean）：
+- **共享前门帧操作数单次求值**：新增 `PyFramePart::TextExpr` 与 `__py_chunk_o/__py_chunk_i/__py_chunk_b(n)` 三个注入 helper（由同一入参生成 `tag <dlen>\n<value>\n`）；`py_frame_val`、`py_recv_frame`、`py_call_sugar`、getattr/getitem/binop 的接收者/动态操作数全部改走 chunk（一次求值），帧字节形状保持 `p967.frame/1` 不变。修复了两类缺陷：①两位及以上 token 时 `dlen` 与 payload 位数失配（`payload not LF-terminated` / `expected the positional count line`）；②内联副作用的接收者被求值两次。
+- **A2PY/978 不发射 AV 帧 helper**：新增 `ace_a2x_python::provider::is_py_lane_helper`，`a2x-store` 组装与 a2x-python 测试都过滤 `__py_dlen`/`__py_chunk_*`（目标侧按 `py_ops` 事实 lowering，不调用它们；也避免 A2PY 去 lowering helper 里的 f-string）。
+- 回归用例固化为常驻：`p1107_v02_av_frame_operand_is_evaluated_once`（原失败最小例，现输出 `1\n` 且 Success）、`p1107_v02_av_inline_side_effect_is_evaluated_once`（`l.pop()` 内联接收者只弹一次：输出 `8\n1\n`）、`p1107_v02_protocol_case_av_matches_the_native_oracle`（`[5,1,2,6]` 与独立 Python oracle 一致）。两条旧 `#[ignore]` 复现已删除/转正。
+
+证据：`cargo nextest -p ace-abi --test conformance -E 'test(p1026)+test(p1107_v0)'` **15/15 PASS**（1026 冻结基线全部保持，含 f64 位精确重建/身份变更/训练）；`cargo nextest -p ace-a2x-python -E 'test(p1107)+test(a2py_)'` 5/5；组级 `cargo t ace-python` PASS、`cargo t ace-m2-build` PASS、`cargo t ace-a2x` 仍仅预存 ts tripwire 与 pyready_03 并行偶发。
+
+AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同一共享语料 + 独立 oracle）。余量：T-05 解释器/包身份轴与暖编辑、V-04 错误/位置、V-08 回归控制、支持矩阵与 Specs。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -425,6 +438,19 @@ goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 
 **修复方向（下一 round 实施）**：让帧的每个动态操作数**只求值一次**——在共享前门注入 Auto 侧 chunk helper（`__py_chunk_i/__py_chunk_o/__py_chunk_b(n)`：由同一个入参生成 `tag <len>\n<digits>\n`），resolver 用一次 helper 调用替换现有的 `Disp(dlen)+Disp(value)` 两段；帧字节与 AV wire **保持逐字节不变**（同一输入生成同一文本），A2PY 事实不变。修复须带两类回归：①一位数 token 的重复求值（副作用一次）；②两位数及以上 token 的帧长度一致（本次失败用例）。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
+
+2026-11-20 · stage: work（round 13 · **V-02 AV 缺陷已修复，AV/A2PY 两端同源通过**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `efb78858a` | task_ids: V-02 关闭（两端）；T-05/T-06 余量仍在 | outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量 / V-04）
+
+Round 13 实现（冻结提交 `efb78858a`，树内 clean）：
+- **共享前门帧操作数单次求值**：新增 `PyFramePart::TextExpr` 与 `__py_chunk_o/__py_chunk_i/__py_chunk_b(n)` 三个注入 helper（由同一入参生成 `tag <dlen>\n<value>\n`）；`py_frame_val`、`py_recv_frame`、`py_call_sugar`、getattr/getitem/binop 的接收者/动态操作数全部改走 chunk（一次求值），帧字节形状保持 `p967.frame/1` 不变。修复了两类缺陷：①两位及以上 token 时 `dlen` 与 payload 位数失配（`payload not LF-terminated` / `expected the positional count line`）；②内联副作用的接收者被求值两次。
+- **A2PY/978 不发射 AV 帧 helper**：新增 `ace_a2x_python::provider::is_py_lane_helper`，`a2x-store` 组装与 a2x-python 测试都过滤 `__py_dlen`/`__py_chunk_*`（目标侧按 `py_ops` 事实 lowering，不调用它们；也避免 A2PY 去 lowering helper 里的 f-string）。
+- 回归用例固化为常驻：`p1107_v02_av_frame_operand_is_evaluated_once`（原失败最小例，现输出 `1\n` 且 Success）、`p1107_v02_av_inline_side_effect_is_evaluated_once`（`l.pop()` 内联接收者只弹一次：输出 `8\n1\n`）、`p1107_v02_protocol_case_av_matches_the_native_oracle`（`[5,1,2,6]` 与独立 Python oracle 一致）。两条旧 `#[ignore]` 复现已删除/转正。
+
+证据：`cargo nextest -p ace-abi --test conformance -E 'test(p1026)+test(p1107_v0)'` **15/15 PASS**（1026 冻结基线全部保持，含 f64 位精确重建/身份变更/训练）；`cargo nextest -p ace-a2x-python -E 'test(p1107)+test(a2py_)'` 5/5；组级 `cargo t ace-python` PASS、`cargo t ace-m2-build` PASS、`cargo t ace-a2x` 仍仅预存 ts tripwire 与 pyready_03 并行偶发。
+
+AC-03/V-02：**两端均已成立**（AV 真实运行 + A2PY 原生 Python，同一共享语料 + 独立 oracle）。余量：T-05 解释器/包身份轴与暖编辑、V-04 错误/位置、V-08 回归控制、支持矩阵与 Specs。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 13 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: efb78858a | next: work`
 
 ## 10. 待澄清事项
 
