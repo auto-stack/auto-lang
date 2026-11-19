@@ -92,6 +92,20 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 next_responsible_role: work（T-02 刀A 起）
 
+2026-11-19 stage: work（T-02 刀A：组件面 style + type 键——005 整例翻转）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass（切片交付）| worktree: lang-1072 双仓 @ plan-1072-dev | task_ids: T-02（刀A）| code: lang `plan-1072-dev`（待提交）+ ui `plan-1072-dev`（待提交）。
+
+**交付。** ①文法：style-head/style-item 开 age-component（981 r18 会签 (c)3 投影期字面量替换路径——**非** const 面，组件面三锁条件不触发；params 步骤包面门控=文法层边界）+ age-event-key 增 type-kw 键臂（005 `type: "password"`——type 是全局 token；红相=修复前错误经恢复链归因到 λ 收尾 `}`）。②投影：`apply_component_face_styles`（惰性视图数据表+`replace_style_in_items` 复用+reject_unknown 限 style 键——空表也走查=未声明名/导入名引用 fail-closed 具名拒）；重名沿 (c)1 同码、带参调用/不可折叠值沿 style-call 族。③UI：`generate_sfc_with_lane(_product)` 两入口 prepare→parse→replay 显式注册 style 配方（修复前独立入口空注册表——`style: NAME` 落 `:style="NAME"`=运行时 undefined；产品道四调用点靠线程局部余温隐式生效）。④**005 整例翻转**：6 handler 全派生（Submit 双 if-else 结构化/UseAuto/UseSolarized/ToggleMode/λ-if×2）、absent=[]；SFC 配方展开为字面量 class（field_label→"text-sm font-medium text-foreground mt-6"）。
+
+**验证。** lang 永久用例 10（plan1072_component_style：字面量/复制/重名/导入拒/调用拒/未知拒/params 包面/普通标识符/type 键）；grammar-id：age-component `61799f12…→4755265c…→c8a7479d…`（style+type 两刀）、age-package `93cd6814…→c337685c…`（type 刀）、13 邻居逐字节不变。UI 永久用例 3（plan1072_vue_web）。门禁：ace-source **PASS**；ace-av **1425/1428**——3 红全归因（host_console×2=预存 stash 实证在案 982 谱系、kv_zip=隔离重放绿并发归因）；UI：ace_ts_provider 串行 **27/27**（census 冻结聚合 (75,8,8,22) 稳定）、package_sfc **8/8**、U0 002 **2/2**、notes fp **1/1**、vue_capabilities 77+5=主检出基线同红（chart 族预存）。
+
+2026-11-19 stage: work（T-02 刀B：view-for + 仅视图数据字段 + 条件样式值——010 整例翻转）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass（切片交付）| worktree: lang-1072 双仓 @ plan-1072-dev | task_ids: T-02（刀B）。
+
+**交付。** ①文法：`age-view-for`（双名形 `for i, f in .expr`，两 AGE 面）+ `age-view-data-lit` 惰性数据文法族（模型无类型 alt 专属——记录/标量条目+尾随逗号；**不开受检表达式面**，数组/对象字面量属 aggregates 域）+ `age-entry-value` 增 if-expr 臂（条件样式值）。②结构：`ComponentViewItem::For`（结构承载惰性语义——循环体文本叶**不**进 texts：循环变量无绑定域；`view_contains_for`=渲染腿判据）+ `ComponentViewDataField`（无类型列表字段=**仅视图数据**，1071 边界：原始字面量文本承载、不进 fields/state/scenario；handler 写它=未声明字段具名拒）+ `ComponentEntryValue::If`（design 三段同形）。③遍历九处臂（lambda 收集/绑定验证/style 替换/manifest/事件绑定/计数/观察——各按其语义递归或惰性）。④渲染腿 fail-closed：native/desktop 装载点 `view-for-unsupported` 具名拒（镜像 view-if）；包面 SFC `sfc-view-for` 具名拒（for+视图数据=组件面形，包面保持标量边界）。⑤UI：`__bind_*` 方言合成件出 lane 规格集（值绑定由模板 `:value` 承载——红相实证：进 ops=整 lane 编译失败连带真 handler 全体缺席）。**010 整例翻转**：3 handler 全派生（Submit/SetTheme 双 bare-if/SetAccent 实读参）、absent=[]；产物 v-for over faqs + field_col 展开。
+
+**验证。** lang 永久用例 +5（⑪view-data 字面量承载 ⑫for 结构惰性（含 texts 不平铺判据）⑬条件样式值 ⑭view-data 写具名拒 ⑮无类型标量=文法层拒）；grammar-id：age-component `c8a7479d…→42afe2cb…`、age-package `c337685c…→91c53cde…`（第三次重基线，13 邻居逐字节不变）。UI：plan1072 **3/3**（010 翻转态断言）、010 工具档键下生成成功（a2x_str_eq/a2x_rt 标记+v-for/faqs 产物断言——历史 0/6 具名拒口径收档）、census **27/27** 稳定、package_sfc **8/8**、U0 002 **2/2**+product **2/2**、notes fp **1/1**。
+
+**残余（T-02 记账项）。** quick_switcher/AutoNotes app.at 整源按既名墙保留（981 合同 use 块/`use { package }` 域决策）；n_assigns census 漂移记账、AC-LIF-07 记账、owned-wrap 统一决策、#6p 分支内调用形谱系归档——随 T-03/收尾轮落档。
+
 ## 10. 待澄清事项
 
 T-01 已核（§9 收据）：原用例位置/依赖接口/生产入口冻结完毕；005/010 墙与路由已勘定。遗留观察项：①auto-ui master 未提交 WIP（examples/stylekit、packages/themes `.at` 删除族）owner 未明——merge 落地前需路由，非本计划阻塞；②owned-wrap 统一（原 980 §10-1 谱系）与 #6p 分支内调用形承载随 T-02 残余记账按证据决策。
