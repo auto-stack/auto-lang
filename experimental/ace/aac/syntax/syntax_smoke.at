@@ -1,0 +1,124 @@
+// AAC syntax stage driver (PLAN-1046 T-02+): the frozen case table for the
+// Gen0-compiled Auto stage driver. Every case returns an owned Str so each
+// observation is byte-exact.
+//
+// SMOKE STAGE: only the program-decode cases are wired; parse/edit/project
+// cases land with their tasks.
+
+use app.syntax_program.decode_program_parts
+use app.syntax_program.decode_program
+use app.syntax_program.decode_program_bytes_dbg
+use app.syntax_program.pg_ok
+use app.syntax_program.pg_err
+use app.syntax_program.n_tokens
+use app.syntax_program.n_rules
+use app.syntax_program.n_scan
+use app.syntax_program.n_pratt
+use app.syntax_program.validate_references
+use app.syntax_grammar_data.auto_parts
+use app.syntax_grammar_data.age_package_parts
+use app.syntax_grammar_data.packages_ct_parts
+use app.syntax_grammar_data.packages_modules_parts
+use app.syntax_grammar_data.text_record_instances_parts
+use app.syntax_grammar_data.scalar_parts
+use app.syntax_program.hex_to_bytes
+use app.syntax_program.hex_to_bytes_parts
+
+fn itoa(v int) Str {
+    if (v == 0) {
+        return "0"
+    }
+    var digits = List<int>.new()
+    var x = v
+    for (x > 0) {
+        digits.push(x % 10)
+        x = x / 10
+    }
+    var out = ""
+    var i = digits.len() - 1
+    for (i >= 0) {
+        out = out + table_digit(digits.get(i))
+        i = i - 1
+    }
+    return out
+}
+
+fn table_digit(d int) Str {
+    var table = "0123456789"
+    return table.slice(d, d + 1).clone()
+}
+
+pub fn decode_dbg_case(name Str) Str {
+    var dbg = List<int>.new()
+    dbg.push(0)
+    var pg = decode_program_bytes_dbg(hex_to_bytes_parts(fetch_parts(name)), dbg)
+    if (!pg_ok(pg)) {
+        return "ERR " + itoa(pg_err(pg)) + " SEC " + itoa(dbg.get(0))
+    }
+    return "OK"
+}
+
+pub fn fetch_parts(name Str) List<Str> {
+    if (name == "auto") {
+        return auto_parts()
+    }
+    if (name == "age-package") {
+        return age_package_parts()
+    }
+    if (name == "packages-ct") {
+        return packages_ct_parts()
+    }
+    if (name == "packages-modules") {
+        return packages_modules_parts()
+    }
+    if (name == "text-record-instances") {
+        return text_record_instances_parts()
+    }
+    return scalar_parts()
+}
+
+pub fn decode_case(name Str) Str {
+    var pg = decode_program_parts(fetch_parts(name))
+    if (!pg_ok(pg)) {
+        return "ERR " + itoa(pg_err(pg))
+    }
+    let v = validate_references(pg)
+    if (v != 0) {
+        return "BADREF " + itoa(v)
+    }
+    return "OK tok=" + itoa(n_tokens(pg)) + " rules=" + itoa(n_rules(pg)) + " scan=" + itoa(n_scan(pg)) + " pratt=" + itoa(n_pratt(pg))
+}
+
+/// Truncated-wire refusal: drop the last byte's worth of hex and expect the
+/// decode to refuse (controlled, never a partial program).
+pub fn decode_truncated_case(name Str) Str {
+    // Drop the last wire byte (2 hex chars from the final chunk): a
+    // controlled malformed program must be refused, never partially
+    // accepted.
+    var parts = fetch_parts(name)
+    var bytes = hex_to_bytes_parts(parts)
+    if (bytes.len() == 0) {
+        return "BADHEX"
+    }
+    var cut = List<int>.new()
+    var i = 0
+    for (i < bytes.len() - 1) {
+        cut.push(bytes.get(i))
+        i = i + 1
+    }
+    var pg = decode_program(cut)
+    if (!pg_ok(pg)) {
+        return "REFUSED " + itoa(pg_err(pg))
+    }
+    return "ACCEPTED"
+}
+
+pub fn byte_len_case(name Str) Str {
+    let b = hex_to_bytes_parts(fetch_parts(name))
+    return "bytes=" + itoa(b.len())
+}
+
+pub fn hex_roundtrip_case(name Str) Str {
+    let b = hex_to_bytes_parts(fetch_parts(name))
+    return "bytes=" + itoa(b.len())
+}

@@ -1,0 +1,746 @@
+// AAC mode-driven scanner (PLAN-1046 T-02): Auto port of
+// `ace_syntax_runtime::lexer` over an exact byt vector.
+//
+// Match semantics (frozen with the Rust runtime, T-01 of PLAN-787):
+// longest match wins among the candidate rules of the current mode; ties
+// break by declaration order. Zero-length matches are rejected at grammar
+// compile time (Rust side). A byt with no match becomes a single-byt
+// ERROR leaf — the stream stays lossless. Trivia keeps its raw spelling
+// range. Token lines count `\n` only (a CRLF `\r` is line-tail content).
+//
+// The bucket index (first byt -> rule list, literal-longest-first) is
+// compiled once per program into a CSR layout: [257 offsets][rule ids].
+
+use app.syntax_program.scan_mtag
+use app.syntax_program.scan_a
+use app.syntax_program.scan_b
+use app.syntax_program.scan_c
+use app.syntax_program.scan_d
+use app.syntax_program.scan_e
+use app.syntax_program.scan_mode
+use app.syntax_program.scan_token
+use app.syntax_program.scan_trivia
+use app.syntax_program.scan_next_mode
+use app.syntax_program.cs_contains
+use app.syntax_program.n_scan
+use app.syntax_program.pool_byte
+use app.syntax_program.mtag_lit
+use app.syntax_program.mtag_charset
+use app.syntax_program.mtag_line
+use app.syntax_program.mtag_block
+use app.syntax_program.mtag_strlit
+
+// ---------------------------------------------------------------------------
+// Bucket index (CompiledScanner::compile)
+// ---------------------------------------------------------------------------
+
+fn lit_len_of(pg List<int>, ri int) int {
+    let mtag = scan_mtag(pg, ri)
+    if (mtag == mtag_lit()) {
+        return scan_b(pg, ri)
+    }
+    if (mtag == mtag_line()) {
+        return scan_b(pg, ri)
+    }
+    if (mtag == mtag_block()) {
+        return scan_b(pg, ri)
+    }
+    return 0
+}
+
+/// Compile the CSR bucket index: [257 bucket offsets][rule ids]. Rules with
+/// empty literal/comment starts cannot occur (the Rust compiler rejects
+/// them); non-ASCII charsets are refused (ASCII-only language surface).
+pub fn compile_scanner(pg List<int>) List<int> {
+    var cs = List<int>.new()
+    var i = 0
+    for (i < 257) {
+        cs.push(0)
+        i = i + 1
+    }
+    // Pass 1: count bucket sizes.
+    var counts = List<int>.new()
+    i = 0
+    for (i < 256) {
+        counts.push(0)
+        i = i + 1
+    }
+    var ri = 0
+    for (ri < n_scan(pg)) {
+        let mtag = scan_mtag(pg, ri)
+        if (mtag == mtag_lit() || mtag == mtag_line() || mtag == mtag_block()) {
+            let b0 = pool_byte(pg, scan_a(pg, ri))
+            counts.set(b0, counts.get(b0) + 1)
+        }
+        if (mtag == mtag_charset()) {
+            let tab = scan_a(pg, ri)
+            let non_ascii = scan_b(pg, ri)
+            var c = 0
+            var placed = 0
+            for (c < 128) {
+                if (cs_contains(pg, tab, non_ascii, c)) {
+                    counts.set(c, counts.get(c) + 1)
+                    placed = placed + 1
+                }
+                c = c + 1
+            }
+            // A charset matching nothing is a compile-time refusal upstream;
+            // here it just places nothing (the Rust side never ships one).
+            placed = placed
+        }
+        if (mtag == mtag_strlit()) {
+            let q = scan_a(pg, ri)
+            counts.set(q, counts.get(q) + 1)
+        }
+        ri = ri + 1
+    }
+    var acc = 257
+    i = 0
+    for (i < 256) {
+        cs.set(i, acc)
+        acc = acc + counts.get(i)
+        i = i + 1
+    }
+    cs.set(256, acc)
+    // Pass 2: fill ids.
+    var fill = List<int>.new()
+    i = 0
+    for (i < 256) {
+        fill.push(0)
+        i = i + 1
+    }
+    var ids = List<int>.new()
+    i = 0
+    for (i < acc - 257) {
+        ids.push(0)
+        i = i + 1
+    }
+    ri = 0
+    for (ri < n_scan(pg)) {
+        let mtag = scan_mtag(pg, ri)
+        if (mtag == mtag_lit() || mtag == mtag_line() || mtag == mtag_block()) {
+            let b0 = pool_byte(pg, scan_a(pg, ri))
+            put_id(cs, fill, ids, b0, ri)
+        }
+        if (mtag == mtag_charset()) {
+            let tab = scan_a(pg, ri)
+            let non_ascii = scan_b(pg, ri)
+            var c = 0
+            for (c < 128) {
+                if (cs_contains(pg, tab, non_ascii, c)) {
+                    put_id(cs, fill, ids, c, ri)
+                }
+                c = c + 1
+            }
+        }
+        if (mtag == mtag_strlit()) {
+            let q = scan_a(pg, ri)
+            put_id(cs, fill, ids, q, ri)
+        }
+        ri = ri + 1
+    }
+    // Sort each bucket: literal length desc, declaration order asc (stable
+    // insertion sort by lit_len desc — ids were appended in declaration
+    // order, so inserting after equals keeps declaration order).
+    i = 0
+    for (i < 256) {
+        let lo = cs.get(i)
+        let hi = cs.get(i + 1)
+        var k = lo + 1
+        for (k < hi) {
+            let cur = ids.get(k)
+            let cur_len = lit_len_bucket(pg, cur)
+            var j = k - 1
+            var done = 0
+            for (j >= lo && done == 0) {
+                let prev = ids.get(j)
+                if (lit_len_bucket(pg, prev) < cur_len) {
+                    ids.set(j + 1, prev)
+                    j = j - 1
+                } else {
+                    done = 1
+                }
+            }
+            ids.set(j + 1, cur)
+            k = k + 1
+        }
+        i = i + 1
+    }
+    var out = List<int>.new()
+    i = 0
+    for (i < 257) {
+        out.push(cs.get(i))
+        i = i + 1
+    }
+    i = 0
+    for (i < ids.len()) {
+        out.push(ids.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+fn lit_len_bucket(pg List<int>, ri int) int {
+    return lit_len_of(pg, ri)
+}
+
+fn put_id(cs List<int>, fill List<int>, ids List<int>, byt int, ri int) int {
+    let at = cs.get(byt) + fill.get(byt)
+    ids.set(at, ri)
+    fill.set(byt, fill.get(byt) + 1)
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Scanner state
+// ---------------------------------------------------------------------------
+// st layout: [0]=pos, [1]=line, [2]=mode, [3]=mid_tag (0 none, 1 str,
+// 2 block), [4]=mid_start, [5]=mid_start_line, [6]=mid_quote,
+// [7]=mid_escape_pending, [8]=mid_depth, [9]=limit (-1 = unbounded).
+
+pub fn st_new() List<int> {
+    var st = List<int>.new()
+    var i = 0
+    for (i < 10) {
+        st.push(0)
+        i = i + 1
+    }
+    st.set(1, 1)
+    st.set(9, -1)
+    return st
+}
+
+pub fn st_checkpoint(st List<int>, out List<int>) int {
+    var i = 0
+    for (i < 10) {
+        out.push(st.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn st_restore(st List<int>, cp List<int>) int {
+    var i = 0
+    for (i < 10) {
+        st.set(i, cp.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn hard_len(b List<int>, st List<int>) int {
+    let lim = st.get(9)
+    if (lim < 0) {
+        return b.len()
+    }
+    if (lim < b.len()) {
+        return lim
+    }
+    return b.len()
+}
+
+fn byte_at(b List<int>, st List<int>, at int) int {
+    // -1 = EOF (at or beyond the hard limit).
+    if (at >= hard_len(b, st)) {
+        return -1
+    }
+    return b.get(at)
+}
+
+fn count_newlines(b List<int>, st List<int>, from int, end int) int {
+    var n = 0
+    var i = from
+    for (i < end) {
+        if (b.get(i) == 10) {
+            n = n + 1
+        }
+        i = i + 1
+    }
+    return n
+}
+
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
+
+fn try_literal(b List<int>, st List<int>, at int, pg List<int>, off int, len int) bool {
+    var k = 0
+    for (k < len) {
+        if (byte_at(b, st, at + k) != pool_byte(pg, off + k)) {
+            return false
+        }
+        k = k + 1
+    }
+    return true
+}
+
+fn try_charset(b List<int>, st List<int>, at int, pg List<int>, ri int) int {
+    // Returns matched length or -1.
+    let ftab = scan_a(pg, ri)
+    let f_na = scan_b(pg, ri)
+    let min_len = scan_c(pg, ri)
+    let ctab = scan_d(pg, ri)
+    let c_na = scan_e(pg, ri)
+    let c0 = byte_at(b, st, at)
+    if (c0 < 0) {
+        return -1
+    }
+    if (!cs_contains(pg, ftab, f_na, c0)) {
+        return -1
+    }
+    let n0 = at + 1
+    var n = n0
+    var probing = 1
+    for (probing == 1) {
+        let c = byte_at(b, st, n)
+        if (c < 0) {
+            probing = 0
+        } else {
+            if (cs_contains(pg, ctab, c_na, c)) {
+                n = n + 1
+            } else {
+                probing = 0
+            }
+        }
+    }
+    let len = n - at
+    if (len < min_len) {
+        return -1
+    }
+    return len
+}
+
+fn scan_block(b List<int>, st List<int>, at int, pg List<int>, ri int) int {
+    // Returns packed (len<<1 | error) or -1 (no start match handled by
+    // caller). Here the start literal already matched.
+    let s_off = scan_a(pg, ri)
+    let s_len = scan_b(pg, ri)
+    let e_off = scan_c(pg, ri)
+    let e_len = scan_d(pg, ri)
+    let nested = scan_e(pg, ri) != 0
+    var i = at + s_len
+    var depth = 1
+    var probing = 1
+    for (probing == 1) {
+        let c = byte_at(b, st, i)
+        if (c < 0) {
+            // EOF: unterminated — from `at` end hard EOF, error.
+            return ((hard_len(b, st) - at) * 2) + 1
+        }
+        if (try_literal(b, st, i, pg, e_off, e_len) && depth == 1) {
+            return ((i + e_len - at) * 2) + 0
+        }
+        if (nested && try_literal(b, st, i, pg, s_off, s_len)) {
+            depth = depth + 1
+            i = i + s_len
+        } else {
+            if (try_literal(b, st, i, pg, e_off, e_len)) {
+                depth = depth - 1
+                i = i + e_len
+            } else {
+                i = i + 1
+            }
+        }
+    }
+    return -1
+}
+
+fn scan_string(b List<int>, st List<int>, from int, quote int, escape bool) int {
+    // From just after the opening quote. Returns packed len<<1|error where
+    // len INCLUDES the opening quote (caller adds 1: scan starts at+1 and
+    // Rust adds +1 for the opening quote).
+    var i = from
+    var pending = 0
+    var probing = 1
+    for (probing == 1) {
+        let c = byte_at(b, st, i)
+        if (c < 0) {
+            // EOF: whole span from quote end EOF, error.
+            return ((hard_len(b, st) - from + 1) * 2) + 1
+        }
+        if (pending != 0) {
+            pending = 0
+            i = i + 1
+        } else {
+            if (escape && c == 92) {
+                pending = 1
+                i = i + 1
+            } else {
+                if (c == quote) {
+                    // +1 = the opening quote (from = at+1).
+                    return ((i + 1 - from + 1) * 2) + 0
+                }
+                i = i + 1
+            }
+        }
+    }
+    return -1
+}
+
+// ---------------------------------------------------------------------------
+// One step
+// ---------------------------------------------------------------------------
+
+// Matched scratch layout: [0]=rule, [1]=len, [2]=err.
+// toks layout (append per token): token, start, end, line, error.
+// diags layout (append per diag): start, end.
+pub fn scan_next(pg List<int>, cs List<int>, b List<int>, st List<int>, toks List<int>, diags List<int>) int {
+    let mid_tag = st.get(3)
+    var mid_start = -1
+    if (mid_tag != 0) {
+        mid_start = st.get(4)
+    }
+    let pos = st.get(0)
+    var start = pos
+    if (mid_start >= 0) {
+        start = mid_start
+    }
+    var line = st.get(1)
+    if (mid_tag == 1 || mid_tag == 2) {
+        line = st.get(5)
+    }
+    let hard = hard_len(b, st)
+    if (pos >= hard && mid_start < 0) {
+        return 0
+    }
+    var m = List<int>.new()
+    m.push(0)
+    m.push(0)
+    m.push(0)
+    var have = 0
+    if (mid_tag != 0) {
+        have = resume_mid(pg, b, st, mid_tag, m)
+    } else {
+        have = match_at(pg, cs, b, st, pos, m)
+    }
+    if (have == 0) {
+        // No match: single-byt error leaf (controlled, lossless, advancing).
+        advance_past(b, st, pos + 1)
+        toks.push(-1)
+        toks.push(pos)
+        toks.push(pos + 1)
+        toks.push(line)
+        toks.push(1)
+        diags.push(pos)
+        diags.push(pos + 1)
+        return 1
+    }
+    let ri = m.get(0)
+    let mlen = m.get(1)
+    let merr = m.get(2)
+    let end = start + mlen
+    st.set(2, scan_next_mode(pg, ri))
+    st.set(3, 0)
+    advance_past(b, st, end)
+    // Multi-line tokens report their END line (matches the Rust scanner's
+    // push-time newline accounting; single-line tokens are unchanged).
+    toks.push(scan_token(pg, ri))
+    toks.push(start)
+    toks.push(end)
+    toks.push(st.get(1))
+    toks.push(merr)
+    return 1
+}
+
+fn advance_past(b List<int>, st List<int>, end int) int {
+    let n = count_newlines(b, st, st.get(0), end)
+    st.set(1, st.get(1) + n)
+    st.set(0, end)
+    return 0
+}
+
+fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m List<int>) int {
+    let first = byte_at(b, st, at)
+    if (first < 0) {
+        return 0
+    }
+    let lo = cs.get(first)
+    let hi = cs.get(first + 1)
+    var best_len = -1
+    var best_rule = -1
+    var best_err = 0
+    var k = lo
+    for (k < hi) {
+        let ri = cs.get(k)
+        if (scan_mode(pg, ri) != st.get(2)) {
+            k = k + 1
+        } else {
+            let r = try_rule(pg, b, st, ri, at)
+            if (r >= 0) {
+                let len = r / 2
+                let err = r % 2
+                var better = 0
+                if (best_rule < 0) {
+                    better = 1
+                } else {
+                    if (len > best_len) {
+                        better = 1
+                    }
+                }
+                // Ties keep the earlier (declaration-order) rule: buckets are
+                // declaration-ordered within equal literal lengths, and the
+                // cursor only advances — `len == best_len` never replaces.
+                if (better == 1) {
+                    best_len = len
+                    best_rule = ri
+                    best_err = err
+                }
+            }
+            k = k + 1
+        }
+    }
+    if (best_rule < 0) {
+        return 0
+    }
+    m.set(0, best_rule)
+    m.set(1, best_len)
+    m.set(2, best_err)
+    return 1
+}
+
+fn try_rule(pg List<int>, b List<int>, st List<int>, ri int, at int) int {
+    // Returns packed len<<1|err, or -1 = no match.
+    let mtag = scan_mtag(pg, ri)
+    if (mtag == mtag_lit()) {
+        if (try_literal(b, st, at, pg, scan_a(pg, ri), scan_b(pg, ri))) {
+            return scan_b(pg, ri) * 2
+        }
+        return -1
+    }
+    if (mtag == mtag_charset()) {
+        let l = try_charset(b, st, at, pg, ri)
+        if (l < 0) {
+            return -1
+        }
+        return l * 2
+    }
+    if (mtag == mtag_line()) {
+        let s_off = scan_a(pg, ri)
+        let s_len = scan_b(pg, ri)
+        if (try_literal(b, st, at, pg, s_off, s_len)) {
+            var i = at + s_len
+            var probing = 1
+            for (probing == 1) {
+                let c = byte_at(b, st, i)
+                if (c < 0) {
+                    probing = 0
+                } else {
+                    if (c == 10) {
+                        probing = 0
+                    } else {
+                        i = i + 1
+                    }
+                }
+            }
+            return (i - at) * 2
+        }
+        return -1
+    }
+    if (mtag == mtag_block()) {
+        let s_off = scan_a(pg, ri)
+        let s_len = scan_b(pg, ri)
+        if (try_literal(b, st, at, pg, s_off, s_len)) {
+            return scan_block(b, st, at, pg, ri)
+        }
+        return -1
+    }
+    if (mtag == mtag_strlit()) {
+        let quote = scan_a(pg, ri)
+        if (byte_at(b, st, at) == quote) {
+            return scan_string(b, st, at + 1, quote, scan_b(pg, ri) != 0)
+        }
+        return -1
+    }
+    return -1
+}
+
+fn resume_mid(pg List<int>, b List<int>, st List<int>, mid_tag int, m List<int>) int {
+    let at = st.get(0)
+    let start = st.get(4)
+    let hard = hard_len(b, st)
+    if (mid_tag == 1) {
+        let quote = st.get(6)
+        let ri = find_string_rule(pg, quote, st.get(2))
+        if (ri < 0) {
+            // "checkpoint mid-str has no rule" — a controlled invalid-program
+            // condition upstream; treat as no match (caller reports the byt
+            // error leaf; the Rust side refuses the program earlier).
+            return 0
+        }
+        let esc = string_rule_escapes(pg, ri)
+        var pending = st.get(7)
+        var i = at
+        var probing = 1
+        for (probing == 1) {
+            let c = byte_at(b, st, i)
+            if (c < 0) {
+                m.set(0, ri)
+                m.set(1, hard - start)
+                m.set(2, 1)
+                probing = 0
+            } else {
+                if (pending != 0) {
+                    pending = 0
+                    i = i + 1
+                } else {
+                    if (esc && c == 92) {
+                        pending = 1
+                        i = i + 1
+                    } else {
+                        if (c == quote) {
+                            m.set(0, ri)
+                            m.set(1, i + 1 - start)
+                            m.set(2, 0)
+                            probing = 0
+                        } else {
+                            i = i + 1
+                        }
+                    }
+                }
+            }
+        }
+        return 1
+    }
+    // Block.
+    let ri = find_block_rule(pg, st.get(2))
+    if (ri < 0) {
+        return 0
+    }
+    let s_off = scan_a(pg, ri)
+    let s_len = scan_b(pg, ri)
+    let e_off = scan_c(pg, ri)
+    let e_len = scan_d(pg, ri)
+    let nested = scan_e(pg, ri) != 0
+    var i = at
+    var d = st.get(8)
+    var probing = 1
+    for (probing == 1) {
+        let c = byte_at(b, st, i)
+        if (c < 0) {
+            m.set(0, ri)
+            m.set(1, hard - start)
+            m.set(2, 1)
+            probing = 0
+        } else {
+            if (try_literal(b, st, i, pg, e_off, e_len)) {
+                d = d - 1
+                i = i + e_len
+                if (d == 0) {
+                    m.set(0, ri)
+                    m.set(1, i - start)
+                    m.set(2, 0)
+                    probing = 0
+                }
+            } else {
+                if (nested && try_literal(b, st, i, pg, s_off, s_len)) {
+                    d = d + 1
+                    i = i + s_len
+                } else {
+                    i = i + 1
+                }
+            }
+        }
+    }
+    return 1
+}
+
+fn find_string_rule(pg List<int>, quote int, mode int) int {
+    var i = 0
+    for (i < n_scan(pg)) {
+        if (scan_mode(pg, i) == mode) {
+            if (scan_mtag(pg, i) == mtag_strlit()) {
+                if (scan_a(pg, i) == quote) {
+                    return i
+                }
+            }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn string_rule_escapes(pg List<int>, ri int) bool {
+    return scan_b(pg, ri) != 0
+}
+
+fn find_block_rule(pg List<int>, mode int) int {
+    var i = 0
+    for (i < n_scan(pg)) {
+        if (scan_mode(pg, i) == mode) {
+            if (scan_mtag(pg, i) == mtag_block()) {
+                return i
+            }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+// ---------------------------------------------------------------------------
+// Full / resumable lex
+// ---------------------------------------------------------------------------
+
+/// Full scan (fresh path). Appends tokens/diags; returns scanned bytes.
+pub fn lex_all(pg List<int>, cs List<int>, b List<int>, limit int, toks List<int>, diags List<int>) int {
+    let st = st_new()
+    if (limit >= 0) {
+        st.set(9, limit)
+    }
+    var probing = 1
+    for (probing == 1) {
+        let r = scan_next(pg, cs, b, st, toks, diags)
+        if (r == 0) {
+            probing = 0
+        }
+    }
+    return st.get(0)
+}
+
+/// Resumable scan from a checkpoint (list of 10 state slots); the caller's
+/// lists keep prior content. Returns the scanner end state via `st_out`
+/// (restored into a fresh state list first).
+pub fn lex_from(pg List<int>, cs List<int>, b List<int>, cp List<int>, toks List<int>, diags List<int>, st_out List<int>) int {
+    let st = st_new()
+    st_restore(st, cp)
+    var probing = 1
+    for (probing == 1) {
+        let r = scan_next(pg, cs, b, st, toks, diags)
+        if (r == 0) {
+            probing = 0
+        }
+    }
+    st_checkpoint(st, st_out)
+    // scanned bytes measured from the resume start (mid tokens count from
+    // the token start).
+    let resume_start = cp.get(4)
+    var base = cp.get(0)
+    if (cp.get(3) != 0) {
+        base = resume_start
+    }
+    return st.get(0) - base
+}
+
+/// Token count of a toks vector (5 slots per token).
+pub fn tok_count(toks List<int>) int {
+    return toks.len() / 5
+}
+
+pub fn tok_token(toks List<int>, i int) int {
+    return toks.get(i * 5)
+}
+
+pub fn tok_start(toks List<int>, i int) int {
+    return toks.get(i * 5 + 1)
+}
+
+pub fn tok_end(toks List<int>, i int) int {
+    return toks.get(i * 5 + 2)
+}
+
+pub fn tok_line(toks List<int>, i int) int {
+    return toks.get(i * 5 + 3)
+}
+
+pub fn tok_error(toks List<int>, i int) bool {
+    return toks.get(i * 5 + 4) != 0
+}

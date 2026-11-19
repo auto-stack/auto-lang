@@ -1,0 +1,23 @@
+[package]
+name = "ace-aac-syntax-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "PLAN-1046 AAC syntax runtime / source projection / module assembly: the Auto stage driver (aac/syntax/*.at + aac/source/*.at) compiled on the assembled packages-aggregates-ct lane and executed on the AV executor, with the Rust ace-syntax-runtime/ace-core front door as the independent same-source oracle (byte-exact canonical CST/AST/catalog parity, frozen grammar identity binding, budget/edit/position negative controls)"
+
+[dependencies]
+ace-core = { path = "../../crates/core" }
+ace-source-query = { path = "../../crates/source-query" }
+ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
+ace-syntax-runtime = { path = "../../crates/syntax-runtime" }
+ace-syntax-grammar = { path = "../../crates/syntax-grammar" }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[[test]]
+name = "repro"
+path = "tests/repro.rs"

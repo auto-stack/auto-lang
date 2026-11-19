@@ -1,0 +1,318 @@
+// AAC lossless CST (PLAN-1046 T-02): Auto port of `ace_syntax_runtime::cst`
+// as flat arenas.
+//
+// Layout:
+//   `t`   — node arena, stride 8: [kind, start, len, first_child, child_count,
+//           expected, flags, decl] (identical fields to Rust's CstNode POD;
+//           starts are DECL-RELATIVE, decl is the tree-global decl index+1,
+//           0 = root-level absolute span).
+//   `ef`  — edge arena, stride 2: [child_node, field] appended in document
+//           order; a node's children are the contiguous slice
+//           [first_child, first_child+child_count).
+//   `decls` — decl units, stride 3: [origin, node, node_lo].
+//
+// The Rust side seals immutable blocks shared via Rc across incremental
+// trees; the Auto side re-derives the same observable tree with a single
+// arena and copy-adopted grafts (relative spans are copied verbatim, so the
+// canonical form, decl directory, and diagnostics are byte-identical; the
+// Rc sharing itself is a storage optimization, not an observable).
+
+use app.syntax_program.token_kind
+use app.syntax_program.rule_kind
+use app.syntax_program.kind_error
+use app.syntax_program.kind_missing
+use app.syntax_program.no_field
+use app.syntax_program.n_tokens
+use app.syntax_program.n_rules
+
+// Flag bits (Rust cst).
+pub fn flag_missing() int { return 1 }
+pub fn flag_error() int { return 2 }
+pub fn flag_trivia() int { return 4 }
+
+pub fn node_stride() int { return 8 }
+
+pub fn nk(t List<int>, n int) int {
+    return t.get(n * 8)
+}
+
+pub fn nstart(t List<int>, n int) int {
+    return t.get(n * 8 + 1)
+}
+
+pub fn nlen(t List<int>, n int) int {
+    return t.get(n * 8 + 2)
+}
+
+pub fn nfc(t List<int>, n int) int {
+    return t.get(n * 8 + 3)
+}
+
+pub fn ncc(t List<int>, n int) int {
+    return t.get(n * 8 + 4)
+}
+
+pub fn nexpected(t List<int>, n int) int {
+    return t.get(n * 8 + 5)
+}
+
+pub fn nflags(t List<int>, n int) int {
+    return t.get(n * 8 + 6)
+}
+
+pub fn ndecl(t List<int>, n int) int {
+    return t.get(n * 8 + 7)
+}
+
+pub fn child_count(t List<int>, n int) int {
+    return ncc(t, n)
+}
+
+/// Child (node, field) at in-order position k of node n.
+pub fn child_at(t List<int>, ef List<int>, n int, k int, out List<int>) int {
+    let e = nfc(t, n) + k
+    out.set(0, ef.get(e * 2))
+    out.set(1, ef.get(e * 2 + 1))
+    return 0
+}
+
+pub fn decl_origin(decls List<int>, d int) int {
+    return decls.get(d * 3)
+}
+
+pub fn decl_node(decls List<int>, d int) int {
+    return decls.get(d * 3 + 1)
+}
+
+pub fn decl_node_lo(decls List<int>, d int) int {
+    return decls.get(d * 3 + 2)
+}
+
+/// Absolute byte range of node n (origin + relative start).
+pub fn abs_range(t List<int>, decls List<int>, n int, out List<int>) int {
+    var base = 0
+    let d = ndecl(t, n)
+    if (d > 0) {
+        base = decl_origin(decls, d - 1)
+    }
+    let s = base + nstart(t, n)
+    out.set(0, s)
+    out.set(1, s + nlen(t, n))
+    return 0
+}
+
+/// Does the tree contain error/missing nodes reachable from `root`?
+/// (Reachability semantics: grafted-away old errors never pollute the tree.)
+pub fn has_error_nodes(t List<int>, ef List<int>, root int) bool {
+    // LIFO via a logical-depth cursor over a high-water list (the lane's
+    // List has no pop): read top at depth-1, decrement to pop, write at the
+    // logical top to push.
+    var stack = List<int>.new()
+    stack.push(root)
+    var depth = 1
+    for (depth > 0) {
+        let cur = stack.get(depth - 1)
+        depth = depth - 1
+        let fl = nflags(t, cur)
+        if ((fl & (flag_error() | flag_missing())) != 0) {
+            return true
+        }
+        var k = ncc(t, cur) - 1
+        for (k >= 0) {
+            let e = nfc(t, cur) + k
+            let c = ef.get(e * 2)
+            if (depth == stack.len()) {
+                stack.push(c)
+            } else {
+                stack.set(depth, c)
+            }
+            depth = depth + 1
+            k = k - 1
+        }
+    }
+    return false
+}
+
+/// Leaf facts in document order: (start, end, kind, is_error) — flattened
+/// four slots per leaf into `out`.
+pub fn leaves_in_order(t List<int>, ef List<int>, decls List<int>, root int, out List<int>) int {
+    // Iterative DFS preserving document order (children pushed in reverse).
+    var stack = List<int>.new()
+    stack.push(root)
+    var depth = 1
+    for (depth > 0) {
+        let cur = stack.get(depth - 1)
+        depth = depth - 1
+        if (ncc(t, cur) == 0) {
+            var base = 0
+            let d = ndecl(t, cur)
+            if (d > 0) {
+                base = decl_origin(decls, d - 1)
+            }
+            let s = base + nstart(t, cur)
+            out.push(s)
+            out.push(s + nlen(t, cur))
+            out.push(nk(t, cur))
+            if ((nflags(t, cur) & flag_error()) != 0) {
+                out.push(1)
+            } else {
+                out.push(0)
+            }
+        } else {
+            var k = ncc(t, cur) - 1
+            for (k >= 0) {
+                let e = nfc(t, cur) + k
+                let c = ef.get(e * 2)
+                if (depth == stack.len()) {
+                    stack.push(c)
+                } else {
+                    stack.set(depth, c)
+                }
+                depth = depth + 1
+                k = k - 1
+            }
+        }
+    }
+    return 0
+}
+
+/// Lossless check: leaves must tile [0, snapshot_len) exactly.
+/// Returns 0 = ok, else the offending offset (or -1 = bad span).
+pub fn assert_lossless(t List<int>, ef List<int>, decls List<int>, root int, total_len int) int {
+    var lv = List<int>.new()
+    leaves_in_order(t, ef, decls, root, lv)
+    var expect = 0
+    var i = 0
+    for (i < lv.len() / 4) {
+        let s = lv.get(i * 4)
+        let e = lv.get(i * 4 + 1)
+        if (s != expect) {
+            return s
+        }
+        if (e < s) {
+            return -1
+        }
+        expect = e
+        i = i + 1
+    }
+    if (expect != total_len) {
+        return expect
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Canonical form (incremental-vs-fresh equivalence oracle)
+// ---------------------------------------------------------------------------
+
+fn dig(v int) Str {
+    // Decimal render, non-negative only (kinds/spans/expected are unsigned).
+    if (v == 0) {
+        return "0"
+    }
+    var digits = List<int>.new()
+    var x = v
+    for (x > 0) {
+        digits.push(x % 10)
+        x = x / 10
+    }
+    var out = ""
+    var i = digits.len() - 1
+    for (i >= 0) {
+        out = out + one_digit(digits.get(i))
+        i = i - 1
+    }
+    return out
+}
+
+fn one_digit(d int) Str {
+    var table = "0123456789"
+    return table.slice(d, d + 1).clone()
+}
+
+/// The canonical tree text — byte-identical to Rust `CstTree::canonical()`
+/// (kind/structure/spans/fields/flags; allocation ids never participate).
+pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
+    var out = ""
+    // Explicit DFS stack of (node, depth): parallel lists with a logical
+    // depth cursor (no pop on this lane's List).
+    var sn = List<int>.new()
+    var sd = List<int>.new()
+    sn.push(root)
+    sd.push(0)
+    var depth = 1
+    for (depth > 0) {
+        let node = sn.get(depth - 1)
+        let d = sd.get(depth - 1)
+        depth = depth - 1
+        var i = 0
+        for (i < d) {
+            out = out + " "
+            i = i + 1
+        }
+        out = out + "n"
+        out = out + dig(nk(t, node))
+        let fl = nflags(t, node)
+        if ((fl & flag_missing()) != 0) {
+            out = out + "!"
+        }
+        if ((fl & flag_error()) != 0) {
+            out = out + "^"
+        }
+        if ((fl & flag_trivia()) != 0) {
+            out = out + "~"
+        }
+        var rng = List<int>.new()
+        rng.push(0)
+        rng.push(0)
+        abs_range(t, decls, node, rng)
+        out = out + ":["
+        out = out + dig(rng.get(0))
+        out = out + ","
+        out = out + dig(rng.get(1))
+        out = out + ") exp="
+        out = out + dig(nexpected(t, node))
+        out = out + " f=["
+        var k = 0
+        for (k < ncc(t, node)) {
+            let e = nfc(t, node) + k
+            out = out + dig(ef.get(e * 2 + 1))
+            out = out + ","
+            k = k + 1
+        }
+        out = out + "]\n"
+        var c = ncc(t, node) - 1
+        for (c >= 0) {
+            let e = nfc(t, node) + c
+            let cn = ef.get(e * 2)
+            if (depth == sn.len()) {
+                sn.push(cn)
+                sd.push(d + 1)
+            } else {
+                sn.set(depth, cn)
+                sd.set(depth, d + 1)
+            }
+            depth = depth + 1
+            c = c - 1
+        }
+    }
+    return out
+}
+
+/// Reconstruct the source bytes from the leaf order (lossless tiling).
+pub fn reconstruct(t List<int>, ef List<int>, decls List<int>, root int, src List<int>, out List<int>) int {
+    var lv = List<int>.new()
+    leaves_in_order(t, ef, decls, root, lv)
+    var i = 0
+    for (i < lv.len() / 4) {
+        let s = lv.get(i * 4)
+        let e = lv.get(i * 4 + 1)
+        var k = s
+        for (k < e) {
+            out.push(src.get(k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return 0
+}

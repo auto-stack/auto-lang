@@ -153,6 +153,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-aac-syntax-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-source-query",
+ "ace-syntax-grammar",
+ "ace-syntax-runtime",
+]
+
+[[package]]
 name = "ace-abi"
 version = "0.1.0"
 dependencies = [

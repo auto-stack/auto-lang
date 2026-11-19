@@ -1,0 +1,1754 @@
+// AAC syntax program (PLAN-1046 T-02): the versioned GrammarProgram tables
+// decoded in Auto from the canonical binary produced by the Rust grammar
+// compiler (ac-syntax-grammar over `grammars/auto-source.at`).
+//
+// The Rust grammar DATA GENERATION stays (the plan's T-02 contract allows
+// it); what executes over input source text is entirely Auto from here on.
+//
+// Representation: ONE flat `List<int>` arena with a fixed header followed by
+// regions (scan rules / tokens / rules / alts / steps / pratt ops / pratt
+// tables / field names / ctx names / rule expects / newline+recovery token
+// lists / outline / string pool / charset tables). All multi-int records use
+// a fixed stride documented at each accessor. Strings live in the pool as
+// raw bytes addressed by (off, len); charsets are pre-expanded into
+// 128-entry membership tables so per-byte classification is O(1).
+//
+// Wire format: `program_codec::encode_canonical` (PROGRAM_CODEC_VERSION 5,
+// little-endian, length-prefixed strings, declaration order). Decode mirrors
+// `program_codec::decode_program` with the same structural admission
+// (truncation / bad mtag / count-vs-remaining) and the same reference
+// validation (`GrammarProgram::validate_references`), then the same
+// identity binding (GrammarId over name + canonical bytes + version blob).
+
+
+// ---------------------------------------------------------------------------
+// Header slots
+// ---------------------------------------------------------------------------
+
+fn h_schema() int { return 0 }
+fn h_rev() int { return 1 }
+fn h_n_tokens() int { return 2 }
+fn h_n_rules() int { return 3 }
+fn h_n_pratt() int { return 4 }
+fn h_n_modes() int { return 5 }
+fn h_n_scan() int { return 6 }
+fn h_n_fields() int { return 7 }
+fn h_n_ctx() int { return 8 }
+fn h_n_expects() int { return 9 }
+fn h_start() int { return 10 }
+fn h_newline_sig() int { return 11 }
+fn h_n_stmt_end() int { return 12 }
+fn h_n_sep() int { return 13 }
+fn h_n_sync() int { return 14 }
+fn h_has_outline() int { return 15 }
+fn h_name_off() int { return 16 }
+fn h_name_len() int { return 17 }
+fn o_scan() int { return 18 }
+fn o_tokens() int { return 19 }
+fn o_rules() int { return 20 }
+fn o_alts() int { return 21 }
+fn o_steps() int { return 22 }
+fn o_ops() int { return 23 }
+fn o_pratt() int { return 24 }
+fn o_fields() int { return 25 }
+fn o_ctx() int { return 26 }
+fn o_expects() int { return 27 }
+fn o_stmt_end() int { return 28 }
+fn o_sep() int { return 29 }
+fn o_sync() int { return 30 }
+fn o_outline() int { return 31 }
+fn o_pool() int { return 32 }
+fn o_cstab() int { return 33 }
+fn h_slots() int { return 34 }
+
+// Region strides.
+fn scan_stride() int { return 10 }
+fn tok_stride() int { return 2 }
+fn rule_stride() int { return 5 }
+fn alt_stride() int { return 2 }
+fn step_stride() int { return 6 }
+fn op_stride() int { return 3 }
+fn pratt_stride() int { return 12 }
+fn field_stride() int { return 2 }
+fn ctx_stride() int { return 8 }
+fn expect_stride() int { return 3 }
+fn outline_stride() int { return 7 }
+
+// Matcher tags (wire order).
+fn mtag_lit() int { return 0 }
+fn mtag_charset() int { return 1 }
+fn mtag_line() int { return 2 }
+fn mtag_block() int { return 3 }
+fn mtag_strlit() int { return 4 }
+
+// Error codes (decode/validate refusals; 0 = ok).
+fn e_ok() int { return 0 }
+fn e_version() int { return 1 }
+fn e_truncated() int { return 2 }
+fn e_bad_tag() int { return 3 }
+fn e_count() int { return 4 }
+fn e_bad_ref() int { return 5 }
+fn e_trailing() int { return 6 }
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+pub fn hex_val(c int) int {
+    if (c >= 48 && c <= 57) {
+        return c - 48
+    }
+    if (c >= 97 && c <= 102) {
+        return c - 87
+    }
+    if (c >= 65 && c <= 70) {
+        return c - 55
+    }
+    return -1
+}
+
+/// Hex text → exact bytes. Returns [] on any non-hex character. Hex text
+/// is pure ASCII, so the char index IS the byte index here. Per-index text
+/// access on the AV executor copies the operand's whole backing buffer, so
+/// long hex data must arrive in CHUNKS (`hex_to_bytes_parts`); this scalar
+/// entry stays for short inputs.
+pub fn hex_to_bytes(hex Str) List<int> {
+    var out = List<int>.new()
+    let n = hex.len()
+    if (n % 2 != 0) {
+        return out
+    }
+    var i = 0
+    for (i < n) {
+        let hi = hex_val(hex.char_at(i).to_codepoint())
+        let lo = hex_val(hex.char_at(i + 1).to_codepoint())
+        if (hi < 0 || lo < 0) {
+            return List<int>.new()
+        }
+        out.push(hi * 16 + lo)
+        i = i + 2
+    }
+    return out
+}
+
+/// Chunked hex → exact bytes (chunks of even length; the data module
+/// generates 128-char chunks). Any non-hex character or odd total length
+/// refuses with [].
+pub fn hex_to_bytes_parts(parts List<Str>) List<int> {
+    var out = List<int>.new()
+    for (parts.len() > 0) {
+        let owned Str = parts.remove(0)
+        let n = owned.len()
+        if (n % 2 != 0) {
+            return List<int>.new()
+        }
+        var i = 0
+        for (i < n) {
+            let hi = hex_val(owned.char_at(i).to_codepoint())
+            let lo = hex_val(owned.char_at(i + 1).to_codepoint())
+            if (hi < 0 || lo < 0) {
+                return List<int>.new()
+            }
+            out.push(hi * 16 + lo)
+            i = i + 2
+        }
+    }
+    return out
+}
+
+fn rd_u8(b List<int>, pos int) int {
+    return b.get(pos)
+}
+
+fn rd_u32(b List<int>, pos int) int {
+    return b.get(pos) + b.get(pos + 1) * 256 + b.get(pos + 2) * 65536 + b.get(pos + 3) * 16777216
+}
+
+fn rd_u64lo(b List<int>, pos int) int {
+    // Low 32 bits; revisions fit in i32 in practice (grammar revision is
+    // small). High word is checked tfo be zero for honesty.
+    return rd_u32(b, pos)
+}
+
+fn rd_u64hi_zero(b List<int>, pos int) bool {
+    return b.get(pos + 4) == 0 && b.get(pos + 5) == 0 && b.get(pos + 6) == 0 && b.get(pos + 7) == 0
+}
+
+/// Count admission (PLAN-1029 ADM-01): count×min_item must fit in the
+/// remaining bytes before any reservation is made.
+fn count_ok(b List<int>, pos int, min_item int, n_out List<int>) bool {
+    let n = rd_u32(b, pos)
+    n_out.set(0, n)
+    let rem = b.len() - pos - 4
+    // n and min_item are small in practice; the product is computed in i64 tfo
+    // avoid any i32 overflow on hostile inputs.
+    let need = n.to(i64) * min_item.to(i64)
+    if (need > rem.to(i64)) {
+        return false
+    }
+    return true
+}
+
+// ---------------------------------------------------------------------------
+// Decode
+// ---------------------------------------------------------------------------
+
+// The builder carries the decoded regions while filling the flat arena.
+// Passed as parallel lists (the lane has no nested records); `err` holds the
+// first refusal code.
+
+/// Decode the canonical program bytes into the flat arena.
+/// Returns [ -1, code ] on refusal, or the arena (length >= h_slots()+3).
+pub fn decode_program(b List<int>) List<int> {
+    var pg = List<int>.new()
+    var pool = List<int>.new()
+    var cstab = List<int>.new()
+    var scan = List<int>.new()
+    var toks = List<int>.new()
+    var rules = List<int>.new()
+    var alts = List<int>.new()
+    var steps = List<int>.new()
+    var ops = List<int>.new()
+    var pratt = List<int>.new()
+    var fields = List<int>.new()
+    var ctxs = List<int>.new()
+    var expects = List<int>.new()
+    var stmt_end = List<int>.new()
+    var sepL = List<int>.new()
+    var sync = List<int>.new()
+    var outline = List<int>.new()
+    var one = List<int>.new()
+    one.push(0)
+    var err = List<int>.new()
+    err.push(0)
+
+    let ok = decode_into(b, pg, pool, cstab, scan, toks, rules, alts, steps, ops, pratt, fields, ctxs, expects, stmt_end, sepL, sync, outline, one, err)
+    if (!ok) {
+        var bad = List<int>.new()
+        bad.push(-1)
+        bad.push(err.get(0))
+        return bad
+    }
+    assemble(pg, pool, cstab, scan, toks, rules, alts, steps, ops, pratt, fields, ctxs, expects, stmt_end, sepL, sync, outline)
+    return pg
+}
+
+/// Debug variant: `dbg`[0] receives the last section marker (1..9) on
+/// refusal (diagnostic aid; the conformance suite consumes it for the
+/// refusal-position observable).
+pub fn decode_program_hex_dbg(hex Str, dbg List<int>) List<int> {
+    let b = hex_to_bytes(hex)
+    if (b.len() == 0) {
+        var bad = List<int>.new()
+        bad.push(-1)
+        bad.push(e_truncated())
+        return bad
+    }
+    return decode_program_bytes_dbg(b, dbg)
+}
+
+/// Chunked entry: decode a program from `hex_to_bytes_parts` chunks.
+pub fn decode_program_parts(parts List<Str>) List<int> {
+    let b = hex_to_bytes_parts(parts)
+    if (b.len() == 0) {
+        var bad = List<int>.new()
+        bad.push(-1)
+        bad.push(e_truncated())
+        return bad
+    }
+    return decode_program(b)
+}
+
+pub fn decode_program_bytes_dbg(b List<int>, dbg List<int>) List<int> {
+    var pg = List<int>.new()
+    var pool = List<int>.new()
+    var cstab = List<int>.new()
+    var scan = List<int>.new()
+    var toks = List<int>.new()
+    var rules = List<int>.new()
+    var alts = List<int>.new()
+    var steps = List<int>.new()
+    var ops = List<int>.new()
+    var pratt = List<int>.new()
+    var fields = List<int>.new()
+    var ctxs = List<int>.new()
+    var expects = List<int>.new()
+    var stmt_end = List<int>.new()
+    var sepL = List<int>.new()
+    var sync = List<int>.new()
+    var outline = List<int>.new()
+    var one = List<int>.new()
+    one.push(0)
+    var err = List<int>.new()
+    err.push(0)
+    let ok = decode_into_dbg(b, pg, pool, cstab, scan, toks, rules, alts, steps, ops, pratt, fields, ctxs, expects, stmt_end, sepL, sync, outline, one, err, dbg)
+    if (!ok) {
+        var bad = List<int>.new()
+        bad.push(-1)
+        bad.push(err.get(0))
+        return bad
+    }
+    assemble(pg, pool, cstab, scan, toks, rules, alts, steps, ops, pratt, fields, ctxs, expects, stmt_end, sepL, sync, outline)
+    return pg
+}
+
+/// Decode the hex text form directly.
+pub fn decode_program_hex(hex Str) List<int> {
+    let b = hex_to_bytes(hex)
+    if (b.len() == 0) {
+        var bad = List<int>.new()
+        bad.push(-1)
+        bad.push(e_truncated())
+        return bad
+    }
+    return decode_program(b)
+}
+
+// Pool append: returns the offset of the appended bytes.
+fn pool_put(pool List<int>, b List<int>, pos int, len int, off_out List<int>) int {
+    off_out.set(0, pool.len())
+    var i = 0
+    for (i < len) {
+        pool.push(b.get(pos + i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn take_str(b List<int>, pos int, pool List<int>, off_out List<int>, len_out List<int>, err List<int>) bool {
+    if (pos + 4 > b.len()) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let n = rd_u32(b, pos)
+    if (pos + 4 + n > b.len()) {
+        err.set(0, e_truncated())
+        return false
+    }
+    pool_put(pool, b, pos + 4, n, off_out)
+    len_out.set(0, n)
+    return true
+}
+
+fn get_matcher(b List<int>, pos List<int>, pool List<int>, cstab List<int>, scan List<int>, err List<int>) bool {
+    let at = pos.get(0)
+    if (at + 1 > b.len()) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let mtag = rd_u8(b, at)
+    pos.set(0, at + 1)
+    if (mtag == mtag_lit()) {
+        var so = List<int>.new()
+        var sl = List<int>.new()
+        so.push(0)
+        sl.push(0)
+        if (!take_str(b, pos.get(0), pool, so, sl, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + sl.get(0))
+        scan.push(mtag)
+        scan.push(so.get(0))
+        scan.push(sl.get(0))
+        scan.push(0)
+        scan.push(0)
+        scan.push(0)
+        return true
+    }
+    if (mtag == mtag_charset()) {
+        // bits0(8) bits1(8) non_ascii(1) ×2 + min_len(4)
+        if (pos.get(0) + 8 + 1 + 8 + 1 + 4 > b.len()) {
+            err.set(0, e_truncated())
+            return false
+        }
+        var bits = List<int>.new()
+        var k = 0
+        for (k < 16) {
+            bits.push(0)
+            k = k + 1
+        }
+        var w = 0
+        for (w < 2) {
+            var j = 0
+            for (j < 8) {
+                bits.set(w * 8 + j, b.get(pos.get(0) + w * 8 + j))
+                j = j + 1
+            }
+            w = w + 1
+        }
+        let base = pos.get(0)
+        let f_non_ascii = b.get(base + 16)
+        pos.set(0, base + 17)
+        // Second charset (cont): 8+8+1.
+        var cbits = List<int>.new()
+        k = 0
+        for (k < 16) {
+            cbits.push(0)
+            k = k + 1
+        }
+        w = 0
+        for (w < 2) {
+            var j = 0
+            for (j < 8) {
+                cbits.set(w * 8 + j, b.get(pos.get(0) + w * 8 + j))
+                j = j + 1
+            }
+            w = w + 1
+        }
+        let cbase = pos.get(0)
+        let c_non_ascii = b.get(cbase + 16)
+        pos.set(0, cbase + 17)
+        let min_len = rd_u32(b, pos.get(0))
+        pos.set(0, pos.get(0) + 4)
+        // Expand the FIRST charset into a 128-entry membership table.
+        let tab_off = cstab.len()
+        var c = 0
+        for (c < 128) {
+            cstab.push(0)
+            c = c + 1
+        }
+        c = 0
+        for (c < 128) {
+            let word = c / 64
+            let bit = c % 64
+            // bit `bit` of the little-endian u64 in bits[word*8..word*8+8)
+            let byi = bit / 8
+            let mask = pow2(bit % 8)
+            let v = bits.get(word * 8 + byi) & mask
+            if (v != 0) {
+                cstab.set(tab_off + c, 1)
+            }
+            c = c + 1
+        }
+        // Cont table likewise.
+        let ctab_off = cstab.len()
+        c = 0
+        for (c < 128) {
+            cstab.push(0)
+            c = c + 1
+        }
+        c = 0
+        for (c < 128) {
+            let word = c / 64
+            let bit = c % 64
+            let byi = bit / 8
+            let mask = pow2(bit % 8)
+            let v = cbits.get(word * 8 + byi) & mask
+            if (v != 0) {
+                cstab.set(ctab_off + c, 1)
+            }
+            c = c + 1
+        }
+        scan.push(mtag)
+        scan.push(tab_off)
+        scan.push(f_non_ascii)
+        scan.push(min_len)
+        scan.push(ctab_off)
+        scan.push(c_non_ascii)
+        return true
+    }
+    if (mtag == mtag_line()) {
+        var so = List<int>.new()
+        var sl = List<int>.new()
+        so.push(0)
+        sl.push(0)
+        if (!take_str(b, pos.get(0), pool, so, sl, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + sl.get(0))
+        scan.push(mtag)
+        scan.push(so.get(0))
+        scan.push(sl.get(0))
+        scan.push(0)
+        scan.push(0)
+        scan.push(0)
+        return true
+    }
+    if (mtag == mtag_block()) {
+        var s1o = List<int>.new()
+        var s1l = List<int>.new()
+        var s2o = List<int>.new()
+        var s2l = List<int>.new()
+        s1o.push(0)
+        s1l.push(0)
+        s2o.push(0)
+        s2l.push(0)
+        if (!take_str(b, pos.get(0), pool, s1o, s1l, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + s1l.get(0))
+        if (!take_str(b, pos.get(0), pool, s2o, s2l, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + s2l.get(0))
+        if (pos.get(0) + 1 > b.len()) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let nested = b.get(pos.get(0))
+        pos.set(0, pos.get(0) + 1)
+        scan.push(mtag)
+        scan.push(s1o.get(0))
+        scan.push(s1l.get(0))
+        scan.push(s2o.get(0))
+        scan.push(s2l.get(0))
+        scan.push(nested)
+        return true
+    }
+    if (mtag == mtag_strlit()) {
+        if (pos.get(0) + 2 > b.len()) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let quote = b.get(pos.get(0))
+        let esc = b.get(pos.get(0) + 1)
+        pos.set(0, pos.get(0) + 2)
+        scan.push(mtag)
+        scan.push(quote)
+        scan.push(esc)
+        scan.push(0)
+        scan.push(0)
+        scan.push(0)
+        return true
+    }
+    err.set(0, e_bad_tag())
+    return false
+}
+
+fn pow2(k int) int {
+    var v = 1
+    var i = 0
+    for (i < k) {
+        v = v * 2
+        i = i + 1
+    }
+    return v
+}
+
+// The main wire walk. `pos` is a single-element cursor list; `one` is the
+// count scratch; `err` the refusal code.
+// The main wire walk, split into small per-section functions (the AV
+// ownership analysis bound scales with blocks × slots per unit, so the
+// monolithic walk is decomposed; the wire order and admission checks are
+// unchanged). `pos` is the single-element cursor; `one` the count scratch;
+// `err` the first refusal code.
+
+fn dec_head(b List<int>, pos List<int>, pool List<int>, pg List<int>, err List<int>) bool {
+    if (b.len() < pos.get(0) + 4) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let schema = rd_u32(b, pos.get(0))
+    pos.set(0, pos.get(0) + 4)
+    pg.push(schema)
+    var no = List<int>.new()
+    var nl = List<int>.new()
+    no.push(0)
+    nl.push(0)
+    if (!take_str(b, pos.get(0), pool, no, nl, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + nl.get(0))
+    pg.push(0)
+    pg.push(no.get(0))
+    pg.push(nl.get(0))
+    if (b.len() < pos.get(0) + 8) {
+        err.set(0, e_truncated())
+        return false
+    }
+    if (!rd_u64hi_zero(b, pos.get(0))) {
+        err.set(0, e_version())
+        return false
+    }
+    pg.set(1, rd_u64lo(b, pos.get(0)))
+    pos.set(0, pos.get(0) + 8)
+    return true
+}
+
+fn dec_modes(b List<int>, pos List<int>, pool List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 4, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var mi = 0
+    for (mi < one.get(0)) {
+        var mo = List<int>.new()
+        var ml = List<int>.new()
+        mo.push(0)
+        ml.push(0)
+        if (!take_str(b, pos.get(0), pool, mo, ml, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + ml.get(0))
+        mi = mi + 1
+    }
+    return true
+}
+
+fn dec_scan_rules(b List<int>, pos List<int>, pool List<int>, cstab List<int>, scan List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 16, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var si = 0
+    for (si < one.get(0)) {
+        if (b.len() < pos.get(0) + 4) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let mode = rd_u32(b, pos.get(0))
+        pos.set(0, pos.get(0) + 4)
+        if (!get_matcher(b, pos, pool, cstab, scan, err)) {
+            return false
+        }
+        if (b.len() < pos.get(0) + 9) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let token = rd_u32(b, pos.get(0))
+        let trivia = b.get(pos.get(0) + 4)
+        let next_mode = rd_u32(b, pos.get(0) + 5)
+        pos.set(0, pos.get(0) + 9)
+        scan.push(mode)
+        scan.push(token)
+        scan.push(trivia)
+        scan.push(next_mode)
+        si = si + 1
+    }
+    return true
+}
+
+fn dec_tokens(b List<int>, pos List<int>, pool List<int>, toks List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 4, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var ti = 0
+    for (ti < one.get(0)) {
+        var tfo = List<int>.new()
+        var tl = List<int>.new()
+        tfo.push(0)
+        tl.push(0)
+        if (!take_str(b, pos.get(0), pool, tfo, tl, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + tl.get(0))
+        toks.push(tfo.get(0))
+        toks.push(tl.get(0))
+        ti = ti + 1
+    }
+    return true
+}
+
+fn dec_rule_steps(b List<int>, pos List<int>, steps List<int>, one List<int>, err List<int>) bool {
+    if (!count_ok(b, pos.get(0), 9, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    let ns = one.get(0)
+    var xi = 0
+    for (xi < ns) {
+        if (b.len() < pos.get(0) + 9) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let atag = b.get(pos.get(0))
+        let aref = rd_u32(b, pos.get(0) + 1)
+        if (atag > 3) {
+            err.set(0, e_bad_tag())
+            return false
+        }
+        let rep = b.get(pos.get(0) + 5)
+        if (rep > 4) {
+            err.set(0, e_bad_tag())
+            return false
+        }
+        let same_line = b.get(pos.get(0) + 6)
+        let cut = b.get(pos.get(0) + 7)
+        let fp = b.get(pos.get(0) + 8)
+        pos.set(0, pos.get(0) + 9)
+        var fid = -1
+        if (fp != 0) {
+            if (b.len() < pos.get(0) + 4) {
+                err.set(0, e_truncated())
+                return false
+            }
+            fid = rd_u32(b, pos.get(0))
+            pos.set(0, pos.get(0) + 4)
+        }
+        steps.push(atag)
+        steps.push(aref)
+        steps.push(rep)
+        steps.push(same_line)
+        steps.push(cut)
+        if (fid < 0) {
+            steps.push(0)
+        } else {
+            steps.push(fid + 1)
+        }
+        xi = xi + 1
+    }
+    return true
+}
+
+fn dec_rules(b List<int>, pos List<int>, pool List<int>, rules List<int>, alts List<int>, steps List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 9, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    let nr = one.get(0)
+    var ri = 0
+    for (ri < nr) {
+        var ro = List<int>.new()
+        var rl = List<int>.new()
+        ro.push(0)
+        rl.push(0)
+        if (!take_str(b, pos.get(0), pool, ro, rl, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + rl.get(0))
+        if (b.len() < pos.get(0) + 1) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let recover = b.get(pos.get(0))
+        pos.set(0, pos.get(0) + 1)
+        if (!count_ok(b, pos.get(0), 4, one)) {
+            err.set(0, e_count())
+            return false
+        }
+        pos.set(0, pos.get(0) + 4)
+        let na = one.get(0)
+        let alt_start = alts.len() / alt_stride()
+        var ai = 0
+        for (ai < na) {
+            let step_start = steps.len() / step_stride()
+            if (!dec_rule_steps(b, pos, steps, one, err)) {
+                return false
+            }
+            alts.push(step_start)
+            alts.push(one.get(0))
+            ai = ai + 1
+        }
+        rules.push(ro.get(0))
+        rules.push(rl.get(0))
+        rules.push(recover)
+        rules.push(alt_start)
+        rules.push(na)
+        ri = ri + 1
+    }
+    return true
+}
+fn dec_expects(b List<int>, pos List<int>, pool List<int>, expects List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 1, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var ei = 0
+    for (ei < one.get(0)) {
+        if (b.len() < pos.get(0) + 1) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let hflag = b.get(pos.get(0))
+        pos.set(0, pos.get(0) + 1)
+        if (hflag != 0) {
+            var eo = List<int>.new()
+            var el = List<int>.new()
+            eo.push(0)
+            el.push(0)
+            if (!take_str(b, pos.get(0), pool, eo, el, err)) {
+                return false
+            }
+            pos.set(0, pos.get(0) + 4 + el.get(0))
+            expects.push(1)
+            expects.push(eo.get(0))
+            expects.push(el.get(0))
+        } else {
+            expects.push(0)
+            expects.push(0)
+            expects.push(0)
+        }
+        ei = ei + 1
+    }
+    return true
+}
+
+fn dec_pratt(b List<int>, pos List<int>, ops List<int>, pratt List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 13, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    let np = one.get(0)
+    var pi = 0
+    for (pi < np) {
+        if (b.len() < pos.get(0) + 4) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let primary = rd_u32(b, pos.get(0))
+        pos.set(0, pos.get(0) + 4)
+        if (!count_ok(b, pos.get(0), 6, one)) {
+            err.set(0, e_count())
+            return false
+        }
+        pos.set(0, pos.get(0) + 4)
+        let nops = one.get(0)
+        let op_start = ops.len() / op_stride()
+        if (!dec_pratt_ops(b, pos, ops, err, nops)) {
+            return false
+        }
+        if (b.len() < pos.get(0) + 1) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let go_p1 = opt_tok(b, pos)
+        let gc_p1 = opt_tok(b, pos)
+        if (b.len() < pos.get(0) + 1) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let has_cp = b.get(pos.get(0))
+        pos.set(0, pos.get(0) + 1)
+        var cp_open = 0
+        var cp_close = 0
+        var cp_nfi = 0
+        var cp_csl = 0
+        if (has_cp != 0) {
+            if (b.len() < pos.get(0) + 10) {
+                err.set(0, e_truncated())
+                return false
+            }
+            cp_open = rd_u32(b, pos.get(0))
+            cp_close = rd_u32(b, pos.get(0) + 4)
+            cp_nfi = b.get(pos.get(0) + 8)
+            cp_csl = b.get(pos.get(0) + 9)
+            pos.set(0, pos.get(0) + 10)
+        }
+        let ca_p1 = opt_tok(b, pos)
+        let pt_p1 = opt_tok(b, pos)
+        pratt.push(primary)
+        pratt.push(op_start)
+        pratt.push(nops)
+        pratt.push(go_p1)
+        pratt.push(gc_p1)
+        pratt.push(has_cp)
+        pratt.push(cp_open)
+        pratt.push(cp_close)
+        pratt.push(cp_nfi)
+        pratt.push(cp_csl)
+        pratt.push(ca_p1)
+        pratt.push(pt_p1)
+        pi = pi + 1
+    }
+    return true
+}
+
+fn dec_pratt_ops(b List<int>, pos List<int>, ops List<int>, err List<int>, nops int) bool {
+    var oi = 0
+    for (oi < nops) {
+        if (b.len() < pos.get(0) + 6) {
+            err.set(0, e_truncated())
+            return false
+        }
+        let op = rd_u32(b, pos.get(0))
+        let binding = b.get(pos.get(0) + 4)
+        let assoc = b.get(pos.get(0) + 5)
+        if (assoc > 1) {
+            err.set(0, e_bad_tag())
+            return false
+        }
+        pos.set(0, pos.get(0) + 6)
+        ops.push(op)
+        ops.push(binding)
+        ops.push(assoc)
+        oi = oi + 1
+    }
+    return true
+}
+
+fn dec_fields(b List<int>, pos List<int>, pool List<int>, fields List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 4, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var fi = 0
+    for (fi < one.get(0)) {
+        var fo = List<int>.new()
+        var fl = List<int>.new()
+        fo.push(0)
+        fl.push(0)
+        if (!take_str(b, pos.get(0), pool, fo, fl, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + fl.get(0))
+        fields.push(fo.get(0))
+        fields.push(fl.get(0))
+        fi = fi + 1
+    }
+    return true
+}
+
+fn dec_ctx_names(b List<int>, pos List<int>, pool List<int>, ctxs List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 16, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var ci = 0
+    for (ci < one.get(0)) {
+        if (!dec_ctx_one(b, pos, pool, ctxs, err)) {
+            return false
+        }
+        ci = ci + 1
+    }
+    return true
+}
+
+fn dec_ctx_one(b List<int>, pos List<int>, pool List<int>, ctxs List<int>, err List<int>) bool {
+    var c1o = List<int>.new()
+    var c1l = List<int>.new()
+    var c2o = List<int>.new()
+    var c2l = List<int>.new()
+    var c3o = List<int>.new()
+    var c3l = List<int>.new()
+    c1o.push(0)
+    c1l.push(0)
+    c2o.push(0)
+    c2l.push(0)
+    c3o.push(0)
+    c3l.push(0)
+    if (!take_str(b, pos.get(0), pool, c1o, c1l, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + c1l.get(0))
+    if (!take_str(b, pos.get(0), pool, c2o, c2l, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + c2l.get(0))
+    if (b.len() < pos.get(0) + 4) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let ctok = rd_u32(b, pos.get(0))
+    pos.set(0, pos.get(0) + 4)
+    if (!take_str(b, pos.get(0), pool, c3o, c3l, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + c3l.get(0))
+    ctxs.push(c1o.get(0))
+    ctxs.push(c1l.get(0))
+    ctxs.push(c2o.get(0))
+    ctxs.push(c2l.get(0))
+    ctxs.push(ctok)
+    ctxs.push(c3o.get(0))
+    ctxs.push(c3l.get(0))
+    ctxs.push(0)
+    return true
+}
+
+fn dec_token_list(b List<int>, pos List<int>, out List<int>, one List<int>, err List<int>, n_out List<int>) bool {
+    if (!count_ok(b, pos.get(0), 4, one)) {
+        err.set(0, e_count())
+        return false
+    }
+    pos.set(0, pos.get(0) + 4)
+    n_out.set(0, one.get(0))
+    var i = 0
+    for (i < one.get(0)) {
+        if (b.len() < pos.get(0) + 4) {
+            err.set(0, e_truncated())
+            return false
+        }
+        out.push(rd_u32(b, pos.get(0)))
+        pos.set(0, pos.get(0) + 4)
+        i = i + 1
+    }
+    return true
+}
+
+fn dec_outline(b List<int>, pos List<int>, pool List<int>, outline List<int>, err List<int>) bool {
+    if (b.len() < pos.get(0) + 1) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let has_outline = b.get(pos.get(0))
+    pos.set(0, pos.get(0) + 1)
+    if (has_outline == 0) {
+        var k = 0
+        for (k < 8) {
+            outline.push(0)
+            k = k + 1
+        }
+        return true
+    }
+    return dec_outline_body(b, pos, pool, outline, err)
+}
+
+fn dec_outline_body(b List<int>, pos List<int>, pool List<int>, outline List<int>, err List<int>) bool {
+    var oo1 = List<int>.new()
+    var ol1 = List<int>.new()
+    var oo2 = List<int>.new()
+    var ol2 = List<int>.new()
+    var oo3 = List<int>.new()
+    var ol3 = List<int>.new()
+    oo1.push(0)
+    ol1.push(0)
+    oo2.push(0)
+    ol2.push(0)
+    oo3.push(0)
+    ol3.push(0)
+    if (!take_str(b, pos.get(0), pool, oo1, ol1, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + ol1.get(0))
+    if (!take_str(b, pos.get(0), pool, oo2, ol2, err)) {
+        return false
+    }
+    pos.set(0, pos.get(0) + 4 + ol2.get(0))
+    if (b.len() < pos.get(0) + 1) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let has_p = b.get(pos.get(0))
+    pos.set(0, pos.get(0) + 1)
+    var po = 0
+    var pl = 0
+    if (has_p != 0) {
+        if (!take_str(b, pos.get(0), pool, oo3, ol3, err)) {
+            return false
+        }
+        pos.set(0, pos.get(0) + 4 + ol3.get(0))
+        po = oo3.get(0)
+        pl = ol3.get(0)
+    }
+    outline.push(1)
+    outline.push(oo1.get(0))
+    outline.push(ol1.get(0))
+    outline.push(oo2.get(0))
+    outline.push(ol2.get(0))
+    outline.push(has_p)
+    outline.push(po)
+    outline.push(pl)
+    return true
+}
+fn decode_into(b List<int>, pg List<int>, pool List<int>, cstab List<int>, scan List<int>, toks List<int>, rules List<int>, alts List<int>, steps List<int>, ops List<int>, pratt List<int>, fields List<int>, ctxs List<int>, expects List<int>, stmt_end List<int>, sepL List<int>, sync List<int>, outline List<int>, one List<int>, err List<int>) bool {
+    var sink = List<int>.new()
+    sink.push(0)
+    return decode_into_dbg(b, pg, pool, cstab, scan, toks, rules, alts, steps, ops, pratt, fields, ctxs, expects, stmt_end, sepL, sync, outline, one, err, sink)
+}
+
+fn decode_into_dbg(b List<int>, pg List<int>, pool List<int>, cstab List<int>, scan List<int>, toks List<int>, rules List<int>, alts List<int>, steps List<int>, ops List<int>, pratt List<int>, fields List<int>, ctxs List<int>, expects List<int>, stmt_end List<int>, sepL List<int>, sync List<int>, outline List<int>, one List<int>, err List<int>, dbg List<int>) bool {
+    var pos = List<int>.new()
+    pos.push(0)
+    var n1 = List<int>.new()
+    n1.push(0)
+    // counts in assemble order: [n_tokens, n_rules, n_pratt, n_modes,
+    // n_scan, n_fields, n_ctx, n_expects, start, sig, n_stmt_end, n_sep,
+    // n_sync, has_outline]
+    var c = List<int>.new()
+    var ci = 0
+    for (ci < 14) {
+        c.push(0)
+        ci = ci + 1
+    }
+    if (b.len() < 2) {
+        err.set(0, e_truncated())
+        return false
+    }
+    let ver = b.get(0) + b.get(1) * 256
+    if (ver != 5) {
+        err.set(0, e_version())
+        return false
+    }
+    pos.set(0, 2)
+    dbg.set(0, 1)
+    if (!dec_head(b, pos, pool, pg, err)) {
+        return false
+    }
+    dbg.set(0, 2)
+    if (!dec_modes(b, pos, pool, one, err, n1)) {
+        return false
+    }
+    c.set(3, n1.get(0))
+    dbg.set(0, 3)
+    if (!dec_scan_rules(b, pos, pool, cstab, scan, one, err, n1)) {
+        return false
+    }
+    c.set(4, n1.get(0))
+    dbg.set(0, 4)
+    if (!dec_tokens(b, pos, pool, toks, one, err, n1)) {
+        return false
+    }
+    c.set(0, n1.get(0))
+    dbg.set(0, 5)
+    if (!dec_rules(b, pos, pool, rules, alts, steps, one, err, n1)) {
+        return false
+    }
+    c.set(1, n1.get(0))
+    dbg.set(0, 6)
+    if (!dec_expects(b, pos, pool, expects, one, err, n1)) {
+        return false
+    }
+    c.set(7, n1.get(0))
+    dbg.set(0, 7)
+    if (!dec_pratt(b, pos, ops, pratt, one, err, n1)) {
+        return false
+    }
+    c.set(2, n1.get(0))
+    if (b.len() < pos.get(0) + 4) {
+        err.set(0, e_truncated())
+        return false
+    }
+    c.set(8, rd_u32(b, pos.get(0)))
+    pos.set(0, pos.get(0) + 4)
+    dbg.set(0, 8)
+    if (!dec_fields(b, pos, pool, fields, one, err, n1)) {
+        return false
+    }
+    c.set(5, n1.get(0))
+    dbg.set(0, 9)
+    if (!dec_ctx_names(b, pos, pool, ctxs, one, err, n1)) {
+        return false
+    }
+    c.set(6, n1.get(0))
+    if (!dec_token_list(b, pos, stmt_end, one, err, n1)) {
+        return false
+    }
+    c.set(10, n1.get(0))
+    if (!dec_token_list(b, pos, sepL, one, err, n1)) {
+        return false
+    }
+    c.set(11, n1.get(0))
+    if (b.len() < pos.get(0) + 1) {
+        err.set(0, e_truncated())
+        return false
+    }
+    c.set(9, b.get(pos.get(0)))
+    pos.set(0, pos.get(0) + 1)
+    if (!dec_token_list(b, pos, sync, one, err, n1)) {
+        return false
+    }
+    c.set(12, n1.get(0))
+    if (!dec_outline(b, pos, pool, outline, err)) {
+        return false
+    }
+    c.set(13, outline.get(0))
+    if (pos.get(0) != b.len()) {
+        err.set(0, e_trailing())
+        return false
+    }
+    ci = 0
+    for (ci < 14) {
+        pg.push(c.get(ci))
+        ci = ci + 1
+    }
+    return true
+}
+fn opt_tok(b List<int>, pos List<int>) int {
+    let at = pos.get(0)
+    let hflag = b.get(at)
+    pos.set(0, at + 1)
+    if (hflag != 0) {
+        let v = rd_u32(b, pos.get(0))
+        pos.set(0, pos.get(0) + 4)
+        return v + 1
+    }
+    return 0
+}
+
+/// Lay the decoded regions into the final flat arena with the fixed header.
+fn assemble(pg List<int>, pool List<int>, cstab List<int>, scan List<int>, toks List<int>, rules List<int>, alts List<int>, steps List<int>, ops List<int>, pratt List<int>, fields List<int>, ctxs List<int>, expects List<int>, stmt_end List<int>, sepL List<int>, sync List<int>, outline List<int>) int {
+    // pg currently: [schema, rev, name_off, name_len, n_tokens, n_rules,
+    // n_pratt, n_modes, n_scan, n_fields, n_ctx, n_expects, start, sig,
+    // n_stmt_end, n_sep, n_sync, has_outline] (18 slots) — normalize into
+    // the canonical header order with placeholders for region offsets.
+    var hdr = List<int>.new()
+    var i = 0
+    for (i < h_slots()) {
+        hdr.push(0)
+        i = i + 1
+    }
+    hdr.set(h_schema(), pg.get(0))
+    hdr.set(h_rev(), pg.get(1))
+    hdr.set(h_name_off(), pg.get(2))
+    hdr.set(h_name_len(), pg.get(3))
+    hdr.set(h_n_tokens(), pg.get(4))
+    hdr.set(h_n_rules(), pg.get(5))
+    hdr.set(h_n_pratt(), pg.get(6))
+    hdr.set(h_n_modes(), pg.get(7))
+    hdr.set(h_n_scan(), pg.get(8))
+    hdr.set(h_n_fields(), pg.get(9))
+    hdr.set(h_n_ctx(), pg.get(10))
+    hdr.set(h_n_expects(), pg.get(11))
+    hdr.set(h_start(), pg.get(12))
+    hdr.set(h_newline_sig(), pg.get(13))
+    hdr.set(h_n_stmt_end(), pg.get(14))
+    hdr.set(h_n_sep(), pg.get(15))
+    hdr.set(h_n_sync(), pg.get(16))
+    hdr.set(h_has_outline(), pg.get(17))
+
+    var out = hdr
+    out.set(o_scan(), out.len())
+    append_all(out, scan)
+    out.set(o_tokens(), out.len())
+    append_all(out, toks)
+    out.set(o_rules(), out.len())
+    append_all(out, rules)
+    out.set(o_alts(), out.len())
+    append_all(out, alts)
+    out.set(o_steps(), out.len())
+    append_all(out, steps)
+    out.set(o_ops(), out.len())
+    append_all(out, ops)
+    out.set(o_pratt(), out.len())
+    append_all(out, pratt)
+    out.set(o_fields(), out.len())
+    append_all(out, fields)
+    out.set(o_ctx(), out.len())
+    append_all(out, ctxs)
+    out.set(o_expects(), out.len())
+    append_all(out, expects)
+    out.set(o_stmt_end(), out.len())
+    append_all(out, stmt_end)
+    out.set(o_sep(), out.len())
+    append_all(out, sepL)
+    out.set(o_sync(), out.len())
+    append_all(out, sync)
+    out.set(o_outline(), out.len())
+    append_all(out, outline)
+    out.set(o_pool(), out.len())
+    append_all(out, pool)
+    out.set(o_cstab(), out.len())
+    append_all(out, cstab)
+
+    // Replace pg contents with `out`.
+    pg.set(0, out.get(0))
+    i = 1
+    for (i < out.len()) {
+        if (i < pg.len()) {
+            pg.set(i, out.get(i))
+        } else {
+            pg.push(out.get(i))
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+fn append_all(dst List<int>, src List<int>) int {
+    var i = 0
+    for (i < src.len()) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Accessors
+// ---------------------------------------------------------------------------
+
+pub fn pg_ok(pg List<int>) bool {
+    return pg.len() >= h_slots() && pg.get(0) != -1
+}
+
+pub fn pg_err(pg List<int>) int {
+    if (pg.len() == 2 && pg.get(0) == -1) {
+        return pg.get(1)
+    }
+    return e_ok()
+}
+
+pub fn n_tokens(pg List<int>) int {
+    return pg.get(h_n_tokens())
+}
+
+pub fn n_rules(pg List<int>) int {
+    return pg.get(h_n_rules())
+}
+
+pub fn n_pratt(pg List<int>) int {
+    return pg.get(h_n_pratt())
+}
+
+pub fn n_scan(pg List<int>) int {
+    return pg.get(h_n_scan())
+}
+
+pub fn n_modes(pg List<int>) int {
+    return pg.get(h_n_modes())
+}
+
+pub fn start_rule(pg List<int>) int {
+    return pg.get(h_start())
+}
+
+pub fn newline_significant(pg List<int>) bool {
+    return pg.get(h_newline_sig()) != 0
+}
+
+/// Pool byte at absolute offset.
+pub fn pool_byte(pg List<int>, off int) int {
+    return pg.get(pg.get(o_pool()) + off)
+}
+
+/// Pool bytes [off, off+len) vs a literal ASCII string's bytes.
+pub fn pool_equals(pg List<int>, off int, len int, s Str) bool {
+    if (s.len() != len) {
+        return false
+    }
+    var i = 0
+    for (i < len) {
+        if (pool_byte(pg, off + i) != s.char_at(i).to_codepoint()) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+/// Pool slice rendered as text (raw bytes; pool content is ASCII in every
+/// real grammar, and callers only use this for names).
+pub fn pool_str(pg List<int>, off int, len int) Str {
+    var out = ""
+    var i = 0
+    for (i < len) {
+        out = out + from_byte(pool_byte(pg, off + i))
+        i = i + 1
+    }
+    return out
+}
+
+fn from_byte(b int) Str {
+    // Grammar pool strings (names, spellings, roles, expects) are printable
+    // ASCII; one table covers [32, 126]. Anything else renders as "?".
+    if (b < 32 || b > 126) {
+        return "?"
+    }
+    var table = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    return table.slice(b - 32, b - 31).clone()
+}
+
+pub fn token_name(pg List<int>, t int) Str {
+    let base = pg.get(o_tokens()) + t * tok_stride()
+    return pool_str(pg, pg.get(base), pg.get(base + 1))
+}
+
+pub fn rule_name(pg List<int>, r int) Str {
+    let base = pg.get(o_rules()) + r * rule_stride()
+    return pool_str(pg, pg.get(base), pg.get(base + 1))
+}
+
+pub fn field_name(pg List<int>, f int) Str {
+    let base = pg.get(o_fields()) + f * field_stride()
+    return pool_str(pg, pg.get(base), pg.get(base + 1))
+}
+
+// Scan rule fields. Layout (stride 10): [mtag, a, b, c, d, e, mode, token,
+// trivia, next_mode] — matcher payload first (pushed by get_matcher), then
+// the wire's mode/token/trivia/next_mode quad.
+pub fn scan_mode(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 6)
+}
+
+pub fn scan_mtag(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 0)
+}
+
+pub fn scan_a(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 1)
+}
+
+pub fn scan_b(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 2)
+}
+
+pub fn scan_c(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 3)
+}
+
+pub fn scan_d(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 4)
+}
+
+pub fn scan_e(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 5)
+}
+
+pub fn scan_token(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 7)
+}
+
+pub fn scan_trivia(pg List<int>, i int) bool {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 8) != 0
+}
+
+pub fn scan_next_mode(pg List<int>, i int) int {
+    return pg.get(pg.get(o_scan()) + i * scan_stride() + 9)
+}
+
+/// Is this token id a trivia token (any scan rule produces it with trivia)?
+pub fn is_trivia_token(pg List<int>, t int) bool {
+    var i = 0
+    for (i < n_scan(pg)) {
+        if (scan_token(pg, i) == t) {
+            if (scan_trivia(pg, i)) {
+                return true
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// Rule fields.
+pub fn rule_recover(pg List<int>, r int) bool {
+    return pg.get(pg.get(o_rules()) + r * rule_stride() + 2) != 0
+}
+
+pub fn rule_alt_start(pg List<int>, r int) int {
+    return pg.get(pg.get(o_rules()) + r * rule_stride() + 3)
+}
+
+pub fn rule_alt_count(pg List<int>, r int) int {
+    return pg.get(pg.get(o_rules()) + r * rule_stride() + 4)
+}
+
+pub fn alt_step_start(pg List<int>, a int) int {
+    return pg.get(pg.get(o_alts()) + a * alt_stride())
+}
+
+pub fn alt_step_count(pg List<int>, a int) int {
+    return pg.get(pg.get(o_alts()) + a * alt_stride() + 1)
+}
+
+// Step fields.
+pub fn step_atom_tag(pg List<int>, s int) int {
+    return pg.get(pg.get(o_steps()) + s * step_stride())
+}
+
+pub fn step_atom_ref(pg List<int>, s int) int {
+    return pg.get(pg.get(o_steps()) + s * step_stride() + 1)
+}
+
+pub fn step_repeat(pg List<int>, s int) int {
+    return pg.get(pg.get(o_steps()) + s * step_stride() + 2)
+}
+
+pub fn step_same_line(pg List<int>, s int) bool {
+    return pg.get(pg.get(o_steps()) + s * step_stride() + 3) != 0
+}
+
+pub fn step_cut(pg List<int>, s int) bool {
+    return pg.get(pg.get(o_steps()) + s * step_stride() + 4) != 0
+}
+
+/// Field id + 1, or 0 = no field.
+pub fn step_field_p1(pg List<int>, s int) int {
+    return pg.get(pg.get(o_steps()) + s * step_stride() + 5)
+}
+
+// Pratt table fields.
+pub fn pratt_primary(pg List<int>, t int) int {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride())
+}
+
+pub fn pratt_op_start(pg List<int>, t int) int {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 1)
+}
+
+pub fn pratt_op_count(pg List<int>, t int) int {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 2)
+}
+
+pub fn pratt_group_open(pg List<int>, t int) int {
+    let v = pg.get(pg.get(o_pratt()) + t * pratt_stride() + 3)
+    if (v == 0) {
+        return -1
+    }
+    return v - 1
+}
+
+pub fn pratt_group_close(pg List<int>, t int) int {
+    let v = pg.get(pg.get(o_pratt()) + t * pratt_stride() + 4)
+    if (v == 0) {
+        return -1
+    }
+    return v - 1
+}
+
+pub fn pratt_has_cp(pg List<int>, t int) bool {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 5) != 0
+}
+
+pub fn pratt_cp_open(pg List<int>, t int) int {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 6)
+}
+
+pub fn pratt_cp_close(pg List<int>, t int) int {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 7)
+}
+
+pub fn pratt_cp_newline_free(pg List<int>, t int) bool {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 8) != 0
+}
+
+pub fn pratt_cp_callee_same_line(pg List<int>, t int) bool {
+    return pg.get(pg.get(o_pratt()) + t * pratt_stride() + 9) != 0
+}
+
+/// RuleId or -1 (stored +1 / 0).
+pub fn pratt_call_args(pg List<int>, t int) int {
+    let v = pg.get(pg.get(o_pratt()) + t * pratt_stride() + 10)
+    if (v == 0) {
+        return -1
+    }
+    return v - 1
+}
+
+pub fn pratt_postfix_tail(pg List<int>, t int) int {
+    let v = pg.get(pg.get(o_pratt()) + t * pratt_stride() + 11)
+    if (v == 0) {
+        return -1
+    }
+    return v - 1
+}
+
+pub fn pratt_op_token(pg List<int>, o int) int {
+    return pg.get(pg.get(o_ops()) + o * op_stride())
+}
+
+pub fn pratt_op_binding(pg List<int>, o int) int {
+    return pg.get(pg.get(o_ops()) + o * op_stride() + 1)
+}
+
+pub fn pratt_op_assoc(pg List<int>, o int) int {
+    return pg.get(pg.get(o_ops()) + o * op_stride() + 2)
+}
+
+pub fn stmt_end_at(pg List<int>, i int) int {
+    return pg.get(pg.get(o_stmt_end()) + i)
+}
+
+pub fn sep_at(pg List<int>, i int) int {
+    return pg.get(pg.get(o_sep()) + i)
+}
+
+pub fn sync_at(pg List<int>, i int) int {
+    return pg.get(pg.get(o_sync()) + i)
+}
+
+/// ctx-name entry token id.
+pub fn ctx_token(pg List<int>, c int) int {
+    return pg.get(pg.get(o_ctx()) + c * ctx_stride() + 4)
+}
+
+pub fn ctx_spelling(pg List<int>, c int) Str {
+    let base = pg.get(o_ctx()) + c * ctx_stride()
+    return pool_str(pg, pg.get(base + 2), pg.get(base + 3))
+}
+
+pub fn ctx_role(pg List<int>, c int) Str {
+    let base = pg.get(o_ctx()) + c * ctx_stride()
+    return pool_str(pg, pg.get(base + 5), pg.get(base + 6))
+}
+
+pub fn rule_expect(pg List<int>, r int) Str {
+    let base = pg.get(o_expects()) + r * expect_stride()
+    if (pg.get(base) == 0) {
+        return ""
+    }
+    return pool_str(pg, pg.get(base + 1), pg.get(base + 2))
+}
+
+// Kind namespace (mirrors program.rs; the meta kinds use the lane's signed
+// encoding — Rust's u32::MAX-n sentinels map to -1..-4, and the conformance
+// oracle normalizes the Rust canonical form with the same mapping before the
+// byte-exact comparison).
+pub fn token_kind(t int) int {
+    return 1048576 + t
+}
+
+pub fn rule_kind(r int) int {
+    return 2097152 + r
+}
+
+pub fn kind_error() int { return -1 }
+pub fn kind_missing() int { return -2 }
+pub fn kind_call() int { return -3 }
+pub fn kind_postfix() int { return -4 }
+
+pub fn no_field() int { return -1 }
+
+/// Charset membership: byte -> in/out for the (tab_off, non_ascii) pair.
+pub fn cs_contains(pg List<int>, tab_off int, non_ascii int, c int) bool {
+    if (c >= 128) {
+        return non_ascii != 0
+    }
+    return pg.get(pg.get(o_cstab()) + tab_off + c) != 0
+}
+
+// ---------------------------------------------------------------------------
+// Reference validation (GrammarProgram::validate_references)
+// ---------------------------------------------------------------------------
+
+/// 0 = ok; e_bad_ref plus a slot naming is folded into e_bad_ref.
+pub fn validate_references(pg List<int>) int {
+    let nt = n_tokens(pg)
+    let nr = n_rules(pg)
+    let nm = n_modes(pg)
+    let np = n_pratt(pg)
+    var i = 0
+    for (i < n_scan(pg)) {
+        if (scan_token(pg, i) >= nt) {
+            return e_bad_ref()
+        }
+        if (scan_mode(pg, i) >= nm) {
+            return e_bad_ref()
+        }
+        if (scan_next_mode(pg, i) >= nm) {
+            return e_bad_ref()
+        }
+        i = i + 1
+    }
+    if (start_rule(pg) >= nr) {
+        return e_bad_ref()
+    }
+    if (pg.get(h_n_expects()) != 0) {
+        if (pg.get(h_n_expects()) != nr) {
+            return e_bad_ref()
+        }
+    }
+    i = 0
+    for (i < pg.get(h_n_ctx())) {
+        let base = pg.get(o_ctx()) + i * ctx_stride()
+        if (pg.get(base + 4) >= nt) {
+            return e_bad_ref()
+        }
+        if (pg.get(base + 1) == 0 || pg.get(base + 3) == 0 || pg.get(base + 6) == 0) {
+            return e_bad_ref()
+        }
+        i = i + 1
+    }
+    var r = 0
+    for (r < nr) {
+        var a = 0
+        let na = rule_alt_count(pg, r)
+        let astart = rule_alt_start(pg, r)
+        for (a < na) {
+            let ai = astart + a
+            var s = 0
+            let ns = alt_step_count(pg, ai)
+            let sstart = alt_step_start(pg, ai)
+            for (s < ns) {
+                let si = sstart + s
+                let mtag = step_atom_tag(pg, si)
+                let ref = step_atom_ref(pg, si)
+                if (mtag == 0) {
+                    if (ref >= nt) {
+                        return e_bad_ref()
+                    }
+                }
+                if (mtag == 1) {
+                    if (ref >= nr) {
+                        return e_bad_ref()
+                    }
+                }
+                if (mtag == 2) {
+                    if (ref >= np) {
+                        return e_bad_ref()
+                    }
+                }
+                if (mtag == 3) {
+                    if (ref >= pg.get(h_n_ctx())) {
+                        return e_bad_ref()
+                    }
+                }
+                let f = step_field_p1(pg, si)
+                if (f != 0) {
+                    if (f - 1 >= pg.get(h_n_fields())) {
+                        return e_bad_ref()
+                    }
+                }
+                s = s + 1
+            }
+            a = a + 1
+        }
+        r = r + 1
+    }
+    var t = 0
+    for (t < np) {
+        if (pratt_primary(pg, t) >= nr) {
+            return e_bad_ref()
+        }
+        var o = 0
+        let os = pratt_op_start(pg, t)
+        let oc = pratt_op_count(pg, t)
+        for (o < oc) {
+            if (pratt_op_token(pg, os + o) >= nt) {
+                return e_bad_ref()
+            }
+            o = o + 1
+        }
+        if (pratt_group_open(pg, t) >= nt) {
+            return e_bad_ref()
+        }
+        if (pratt_group_close(pg, t) >= nt) {
+            return e_bad_ref()
+        }
+        if (pratt_has_cp(pg, t)) {
+            if (pratt_cp_open(pg, t) >= nt) {
+                return e_bad_ref()
+            }
+            if (pratt_cp_close(pg, t) >= nt) {
+                return e_bad_ref()
+            }
+        }
+        if (pratt_call_args(pg, t) >= nr) {
+            return e_bad_ref()
+        }
+        if (pratt_postfix_tail(pg, t) >= nr) {
+            return e_bad_ref()
+        }
+        t = t + 1
+    }
+    i = 0
+    for (i < pg.get(h_n_stmt_end())) {
+        if (stmt_end_at(pg, i) >= nt) {
+            return e_bad_ref()
+        }
+        i = i + 1
+    }
+    i = 0
+    for (i < pg.get(h_n_sep())) {
+        if (sep_at(pg, i) >= nt) {
+            return e_bad_ref()
+        }
+        i = i + 1
+    }
+    i = 0
+    for (i < pg.get(h_n_sync())) {
+        if (sync_at(pg, i) >= nt) {
+            return e_bad_ref()
+        }
+        i = i + 1
+    }
+    return e_ok()
+}
