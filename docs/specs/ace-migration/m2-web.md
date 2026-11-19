@@ -209,11 +209,51 @@ jade-garden `POST /api/workspace/open` 的可执行 AV 业务源
 - AV 执行臂：认证/权限/中间件/上传/下载/stream/SSE/`~T`（语言侧通道缺位，
   501 具名）；ASCII scratch/数据根约束。
 - CONSUMERS 批：C0（GET 三腿）与 C1（open 全语义 + 并发合同）已随
-  2026-11-18 phase fold 交付（含文本路由消费形）；**U0（UI 腿，等 980 WEB
-  正式交付与 982 Vue `auto run`）与四仓整体未交付**；B-GENERATED-R 已复核。
+  2026-11-18 phase fold 交付（含文本路由消费形）；**U0 已按用户裁定以
+  980×982 联合收据 `2c9c5f228` 接收**（同一产物树/链边界不重跑；完整 Vue
+  产品由 1072 承接）；**四仓门已按 r27 收据 + 用户裁定接受**（见下节）。
 - 既有红（非本切片引入）：auto-web
   `api_gen::tests::test_handler_body_r2_matrix_compile_oracle` 基线
   `0adebc0` 原样红。
 - V-A-PROOF 新增用例计时：ace_lane 5.89–9.14s（内嵌显式 cargo --offline
   子进程=计划 r7 明文合同）、ace_av_service 0.62–0.89s、ace_av_cancel
   0.62s、端口/lane 单测 ≤0.032s。
+
+## 门禁修复阶段收口（r26/r27，2026-11-19）
+
+- **AutoUI 17 红分诊与修复**：16 例确定性红全部修复（ui `8dd932b8`
+  12 文件：陈旧 oracle×2/coverage max-h- 降级/plan654 名义语义/
+  desktop cells 表补注/p625 哨兵翻新/两例 AUTOOS_DESKTOP_CONFIG 隔离/
+  plan080 bisect 翻转/shell_pack pin 刷新/back_proxy 多参夹具/
+  plan643 Container 递归/plan806 filetree 指正/plan814 AUTO_OS_ROOT 隔离/
+  plan606 ImageSurface 采集/plan714 oracle 随 956 空块形）+ lang `c7a13604f`
+  （PLAN-916 准入漏 `Stmt::Try` 双臂 return 真缺陷修复 + 永久回归）；
+  1 例隔离绿（rq_media p073_t05）=负载归因。复验 39/39 绿。
+- **r27 正式门收据**：语言 6/6 + 双 bootstrap + lang-web-e2e 160/0 +
+  web 腿 251/251 全绿；ui-full 3854/3861——a2vue 金样确定性回归
+  （desktop.at pin 更新的连带，owner 复核侧 AUTO_LANG_UPDATE_GOLDEN
+  重生成并提交 `586b3759`）+ 6 例负载红（p073_t02×2/p063/rq_matrix_t04/
+  rq_repair_fr2/rq_probe_t01，隔离全绿 1.7–98.3s）。**用户裁定："负载
+  问题跳过去，默认成成功"**——负载归因红按裁定记为成功；正式门接受
+  口径=r27 收据各腿实际结果 + 负载红裁定 + 修复后补证（owner 全量
+  探针 3861/3861 在案）。
+- **门配置共享口径变更（治理维护方复核旗标）**：rq/headless 媒体渲染族
+  串行化（`rq-native` max-threads=1）+ p073 t01/t02/t05 吞吐门
+  threads-required=num-cpus（lang `.config/nextest-full.toml`，`726ca59bb`；
+  输入/断言/预算零变化）。
+- **机器级修复在案**：vctip 遥测上传器 opt-out 状态键
+  `HKCU\Software\Microsoft\VSCommon\15.0\SQM\vctip\<ver>\OptOut=1`
+  （r23 机器级 opt-out 状态曾丢失导致 auto-generation-core 进程审计
+  假红，r28 重写后组判决 PASS）；门启动须从组树基（脚本 ROOT 由自身
+  路径决定）。
+- **C1 配置交接证据（AC-CFG-HANDOFF）**：实际入口三件——`JADE_GARDEN_CONFIG`
+  （持久值优先/env 回退，AV 源内 JSON 解析非 pac.at 引擎）、
+  `JADE_GARDEN_DEFAULT_WORKSPACE`（初始回退）、`--http-config-inline`
+  （服务配置）；坏配置零写（只读⇒500 具名+字节不变+GET 保旧）与修复后
+  下一次读取（恢复可写⇒同实例 POST 200+新 root 持久+重启读最后成功提交，
+  man `0cc88c4` 实跑 6/6 绿）；AV 派发收据 `av_dispatches=N
+  legacy_dispatches=0 same_sdk=true` + `combined_entry_dispatches` 分道计数。
+- **shell_pack pin 一致性已核**：auto-ui 组树 `8dd932b8` 的 desktop.at/
+  shell.at/switcher.at/notification_center.at 四件与 auto-os `5928a11:shell/*`
+  逐字节一致；sync 脚本落点陈旧（PLAN-814 退役）归 os/ui owner
+  （D-983-01，关闭条件见 KNOWN-DEBT）。
