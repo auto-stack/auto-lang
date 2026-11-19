@@ -550,6 +550,25 @@ A/B 实测（同选择、同 oracle，只有 profile 不同）：
 
 **V-05 负控（本轮实做）**：把 `mir_verify/mod.rs` 的 `module_tables > MAX_TABLE_ENTRIES` 临时改成 `>=` 后重跑——**边界例立刻变红**（`a module exactly at the cap is legal: Resource … 65536 exceed 65536`），超预算例仍绿；随后立即还原（`git status` 干净）。证明邻例对门位真敏感，不是空断言。
 
+### 5.20 T-05：O 类探针全部转为独立 oracle（代码 `9d2f63a27`）
+
+| ID | 之前 | 现在（独立预期来源） |
+|---|---|---|
+| **O-01** `p946_empty_remove_contract_observed` | 两分支只 `println!` | 断言 `Err == "trap: av.trap.list-index"`（spec 的 trap kind `list-index`），**并加合法邻例**：非空 `remove(len-1)` 返回 7 |
+| **O-02** `probe972_t02_str_surface` | 六场景只 `eprintln!` | 每场景一个 oracle：值 `str_concat=4`、`char_codepoint_cmp=1`、`char_codepoint=97`、`str_char_at=20013`；两个该 profile 不接受的构型钉**诊断**——`str_eq` → `source.unsupported / "`fn` is not part of this source profile"`，`str_slice_len_bytes` → `verify.local-type / "…text-i32-draft profile"` |
+| **O-03** `probe972_p1b2_closure_param_frozen_rejection` | 只断言 `Err` + 打印 code | 钉**阶段+码+消息**：`source.syntax` / ``expected `,` or `)`, found `fn` `` |
+| **O-04** `probe972_p1c_suffix_list_public_frozen_rejection` | 同上 | 钉 `source.syntax` / ``expected `,` or `)`, found `<` `` |
+| **O-05** `p946_list_argument_moves_single_module` | 22 断言 + 一个**完全重复**的 `compile_and_execute_aggregates` 调用（结果只打印） | 保留 22 断言；删除重复块，并注明"cap 单轴隔离需要 raw assembly 路径，超出本 support fn，具名移 research" |
+
+**验证**：`p946_t01_probe::` + `probe972::` 全模块 **19/19 PASS，2.754s**（其中 `probe972_t02_str_surface` 2.752s）。
+
+**V-07 负控（本轮实做）**：把 O-02 的 `20013` 改成 `20014`、把 O-01 的期望码改成 `av.trap.list-index-x`，重跑 → **两例各自变红**（`right: 20014` / trap 码不匹配）；随即还原（`git diff` 只剩本轮预期改动）。
+
+**必须记入 SD-05 的两处 spec 与实现分歧**：
+
+1. **O-04**：`docs/specs/stdlib/design/ace-collections.md:33` 说 packages 面在 binder 层拒 List 参数（`source.module-symbol`），但 `asm_stdlib_aggregates_inputs` 这条**后缀装配 lane** 在**语法层**就拒了（`source.syntax`，泛型参数语法不在该 face）。本行按"实际可达的最早阶段"冻结，并把"是接受语法层拒绝、还是要求把语义码前移到该 lane"列为 SD-05 待决点。
+2. **O-03**：闭包类型参数同样停在语法层（`source.syntax`），无任何 spec 为其声明语义码。按 §5.11 的裁定：不把打印值当 oracle，先把**阶段+码+消息**冻结（放行或改码都会红），语义归属交 SD-05。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -735,6 +754,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 13，r1）：`stage: work`，T-04（§5.19，代码 `833f1dc3c`）。执行内容：①F-01 夹具改直建表——`mir_admission_module_tables_over_budget_is_resource` 由 **10.013s → 0.063s**（O(n²) 的 `intern_const` 循环改为 `consts.extend`，表内容不变），并新增边界邻例 `mir_admission_module_tables_boundary_is_exact`（65_536 合法 / 65_537 具名 Resource，0.035s）。②F-02 `ok()` 单 run 同判 exit+stdout，原双 run 确定性义务保留为具名用例 `sched_968_replay_is_deterministic`。③验证 `mir_tier:: + sched_m2_968::` **27/27 PASS 0.750s**；④V-05 负控实做：把门 `>` 临时改 `>=` 时边界例立即变红、超预算例仍绿，随即还原（工作树干净）。仍待：`ace-av` 全组 prepared 复跑与 47 行其余项（T-05/T-06）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: pass（T-04 完成：F-01 10.013s→0.063s 且有精确边界邻例与门位负控；F-02 单 run 多轴） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 833f1dc3c / 本轮 docs(plan1098) | next: work（T-05 O 类探针固化，或 T-06 显式 toolchain 组）`
+
+2026-11-19（goal round 14，r1）：`stage: work`，T-05（§5.20，代码 `9d2f63a27`）。执行内容：五个 O 类探针从"打印即绿"改为独立 oracle——O-01 断言空 `remove` 精确 trap `av.trap.list-index`（+非空邻例返回 7）；O-02 六场景各带值或诊断 oracle（4/1/97/20013 + 两处 profile 诊断）；O-03/O-04 钉 `source.syntax` 阶段与逐字消息；O-05 删掉与上一行完全重复、只打印的 caps 块（cap 单轴隔离具名移 research）。全探针模块 **19/19 PASS 2.754s**；V-07 负控实做：把 20013→20014、trap 码改成不存在值 → 两例各自变红，随即还原。**两处 spec 与实现分歧**（O-04 语义码 `source.module-symbol` 实际不可达于该 lane、O-03 无声明码）已记入 §5.20 交 SD-05 待决。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 14 | from: work | to: work | status: executing | outcome: pass（T-05 完成：O-01…O-05 全部有独立 oracle 且有变异负控） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 9d2f63a27 / 本轮 docs(plan1098) | next: work（T-06 显式 ace-toolchain 组，承接 47 行 C/Q/L 分流）`
 
 ## 10. 待澄清事项
 
