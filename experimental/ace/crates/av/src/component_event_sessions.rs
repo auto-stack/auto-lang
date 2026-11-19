@@ -436,8 +436,10 @@ impl ComponentEventSession {
         };
         if args.len() != h.payload.len() {
             self.audit.rejected += 1;
+            // 原场景车道的具名诊断（check_event_dispatch）同码同形——消费侧
+            // 错误合同（stage/type）保持。
             return Err(format!(
-                "source.age.arity: message `{msg}` declares {} payload slot(s), dispatch carried {}",
+                "source.age.component-event: message `{msg}` declares {} payload slot(s); the directed event carries {}                  value(s) — a payload event must not run with dropped, padded or swapped values",
                 h.payload.len(),
                 args.len()
             ));
@@ -445,8 +447,10 @@ impl ComponentEventSession {
         for (i, (v, spelling)) in args.iter().zip(h.payload.iter()).enumerate() {
             if !value_matches_spelling(v, spelling) {
                 self.audit.rejected += 1;
+                // 消费侧错误合同保持旧诊断码（`source.type-mismatch`——旧道
+                // 经 verify 的类型诊断；效果前拒同语义）。
                 return Err(format!(
-                    "source.age.component-payload-type: payload slot #{i} of `{msg}` declares `{spelling}`, which the value does not match"
+                    "source.type-mismatch: payload slot #{i} of `{msg}` declares `{spelling}`, which the value does not match"
                 ));
             }
         }
@@ -570,6 +574,16 @@ impl ComponentEventSession {
     /// 会话是否已关闭。
     pub fn is_closed(&self) -> bool {
         self.snap.is_none()
+    }
+
+    /// PLAN-1106 V-08 负控支持：handler 表（消息名 + 载荷拼写）——供宿主
+    /// 负控构造"读取意外触发业务派发"的真实实参。
+    #[doc(hidden)]
+    pub fn program_handlers_for_debug(&self) -> Vec<(String, Vec<String>)> {
+        self.handlers
+            .iter()
+            .map(|h| (h.msg.clone(), h.payload.clone()))
+            .collect()
     }
 }
 

@@ -135,11 +135,11 @@ fn v03_session_isolation_and_typed_support() {
     // 未知消息/错 arity/错载荷类型：具名拒 + 零入口增长。
     let before = t.audit().handler_entries;
     assert!(t.dispatch("Nope", &[]).unwrap_err().contains("component-event"));
-    assert!(t.dispatch("Bump", &[]).unwrap_err().contains("arity"));
+    assert!(t.dispatch("Bump", &[]).unwrap_err().contains("component-event"));
     assert!(t
         .dispatch("Bump", &[ComponentFieldValue::Str("x".to_string())])
         .unwrap_err()
-        .contains("payload-type"));
+        .contains("type-mismatch"));
     assert_eq!(t.audit().handler_entries, before);
     assert_eq!(t.audit().rejected, 3);
 }
