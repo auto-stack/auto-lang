@@ -7177,30 +7177,30 @@ impl<'a> Engine<'a> {
                 })
             }
             "age-on-if" => {
-                    let cond_node = self.cx.field_child(inner, "cond").expect("on if cond");
-                    let cond = self.project_expr_sync(cond_node);
-                    // PLAN-981（on-if 组件面刀）：分支体语句包装两面拼写
-                    //（age-on-stmt 裸名 / age-on-branch-stmt 并集——点前缀
-                    // 赋值经 helper 的 age-view-assign-stmt 臂）。
-                    let branch_kind = self.rule_kind_of("age-on-branch-stmt");
-                    let stmt_wrapper_kind = self.rule_kind_of("age-on-stmt");
-                    let is_branch = |k: u32| Some(k) == branch_kind || Some(k) == stmt_wrapper_kind;
-                    let then_nodes: Vec<u32> = self
+                let cond_node = self.cx.field_child(inner, "cond").expect("on if cond");
+                let cond = self.project_expr_sync(cond_node);
+                // PLAN-981（on-if 组件面刀）：分支体语句包装两面拼写
+                //（age-on-stmt 裸名 / age-on-branch-stmt 并集——点前缀
+                // 赋值经 helper 的 age-view-assign-stmt 臂）。
+                let branch_kind = self.rule_kind_of("age-on-branch-stmt");
+                let stmt_wrapper_kind = self.rule_kind_of("age-on-stmt");
+                let is_branch = |k: u32| Some(k) == branch_kind || Some(k) == stmt_wrapper_kind;
+                let then_nodes: Vec<u32> = self
+                    .cx
+                    .children(inner)
+                    .into_iter()
+                    .filter(|&c| is_branch(self.cx.tree.kind(c)))
+                    .collect();
+                let then = self.project_on_stmts(&then_nodes);
+                let els = self.cx.field_child(inner, "els").map(|e| {
+                    let else_nodes: Vec<u32> = self
                         .cx
-                        .children(inner)
+                        .children(e)
                         .into_iter()
                         .filter(|&c| is_branch(self.cx.tree.kind(c)))
                         .collect();
-                    let then = self.project_on_stmts(&then_nodes);
-                    let els = self.cx.field_child(inner, "els").map(|e| {
-                        let else_nodes: Vec<u32> = self
-                            .cx
-                            .children(e)
-                            .into_iter()
-                            .filter(|&c| is_branch(self.cx.tree.kind(c)))
-                            .collect();
-                        self.project_on_stmts(&else_nodes)
-                    });
+                    self.project_on_stmts(&else_nodes)
+                });
                 Some(ComponentStmt::If {
                     cond,
                     then,
