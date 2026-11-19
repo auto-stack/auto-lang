@@ -974,6 +974,22 @@ stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: review(needs_fix) |
 
 stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work（等 F-R21-2）| status: executing | outcome: pass（F-R21-3 四项全闭于分支 `cd0ee2789`）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | code_commit: cd0ee2789 | task_ids: 无专属 T 框 | evidence: 本记录内嵌（冲突解政策/设计缺口发现/复放计数/门禁汇总）| blockers: F-R21-2（外部 owner=980/UI）| next_responsible_role: 980/UI 侧（消费门）→ merge（fold：落 master + 收尾）
 
+### 2026-11-19 stage: work+review+merge（**r21 on-if 组件面刀增量同步＋独立复核＋phase fold 落主**；用户排程「981 在 cd0ee2789 上增量同步……重点复验 lambda-if/else-if 链/G2/grammar ID/配对 AutoUI 消费门……记录 982 已知两个 host_console 基线红，再完成独立复核和合入」；与 980 消费门验收并行）| plan_id: PLAN-981 | plan_revision: r21 | outcome: **pass（landed + canonical_verified；整包 executing 保持，worktree/分支保留供后续批——非归档合并）** | delivery: lang master **`33895d91c`**（ff-only，无 merge commit）| worktree: D:/autostack/.wt/lang-981/auto-lang @ plan-981-dev（clean）
+
+**增量同步链（cd0ee2789 → 33895d91c 两轮）**。①lambda-if（master `347540437`+`32e7db448`）：文本零冲突但**语义冲突收口**——其新投影调用我并集已删的单句版 `flatten_stmt_assigns`（删除时其唯一调用点=widget 循环；lambda-if 其后新增第二调用点）→ 等价改道切片版 `flat_handler_assigns`（逐句循环==整切片收平）＝`286ed0cb4`。②982 aggregates 文本入口刀（`8d3b70341`/`d2a74c9b5`）：project.rs 一处冲突=保 981 helper 并集结构+**适配 `classify_word` 新三参**（age-on-let 注解位 `param_pos=false`，与 982 主线同点位同值）＝`33895d91c`。
+
+**复验四重点（用户点名，冻结提交实测）**：lambda-if（core 5+av 4；`286ed0cb4` 轮 core 35/35+av 28/28、`33895d91c` 轮 core 26/26 复含）、else-if 链（`plan980_on_if` 4——chain 臂设计持续成立）、G2（g2 9 两面同开终版）、**grammar ID 保持 `61799f12/93cd6814`**（lambda-if/982 均零 AGE 文法，冻结测试全表断言过）。跨仓触面保险：982 `p982_sys_text_entry` 4/4（worktree 实跑 2.17s——`classify_word` 适配与其期望一致）。
+
+**配对 AutoUI 消费门（F-R21-2 闭，窗口全开）**：auto-ui master `7b8456e5`——`ace_package_sfc` 脚本重放落 **`handler_stmts` 消费门**（体含 if/let 具名拒 `source.age.sfc-handler-stmt`、不双支裸喷/部分复放；永久负例 `p980_package_sfc_if_handler_named_reject` 红相在案；package_sfc 7/7）+ lane 真复放（`56725cd5`）。窗口三条件齐：消费提交 SHA ✓ + 其门禁 ✓ + 本提交 grammar_scope 复跑绿 ✓。注记：其归档注「widget 形 let 文法层拒」在本合入后过时（981 已开 widget 形 let）——门的 Let 臂=合同防御，并集源走具名拒 fail-closed 保持，文档层注记归 980/UI 侧知会。
+
+**冻结组（delivery `33895d91c`，并发负载在案）**：**ace-source PASS**；**ace-av 1424/1428**——红四：`host_console::{entry_selection_cannot_bypass_main_policy, owned_front_door_enforces_console_entry_only}` =**982 已知基线红对**（console 谱系 owner，A/B stash 实证，按用户口径记录不充绿）；`kv_zip_1064::v03_kv_wire_oracle_and_reopen_av`/`stdlib_sys_973::v03_process_spawn_capture_timeout_exit` =**时敏族环境归因**（同提交隔离串行重放 2/2 绿@9.23s；spawn 族与 982 当日收据「spawn 抖动环境归因」同族；并集触面与其零交叠）。kv_zip 上轮 corrupt_bomb 红同法归因（隔离绿@3.19s）。
+
+**独立复核（同会话工件重构；限制=非独立上下文）**：交付链 `c80d39553→bcd7d2aad→cd0ee2789→286ed0cb4→d5f085aef→33895d91c` 逐环收据在案；每环语义冲突显式解（非静默取侧）；fmt 我区域 clean（project.rs 5 处漂移=982 主线预存同位同在，归其 owner）；孤儿 import 已清；复验/门禁/冒烟计数如上。
+
+**landed**：master `dc8d2d198`→**`33895d91c`**（`git merge --ff-only plan-981-dev`；ace/specs 落主路径 clean，他会话 docs WIP 原样保留）。**canonical_verified**：`docs/specs/ace-migration/m2-age.md` §4（on-if 组件面刀已验知识——三语句面/链臂+兜底臂并集/投影合同/双消费门 SHA/AV 真值/id 第三次重基线）随 `d5f085aef` 落主。主干冒烟 26/26 绿。
+
+stage: merge | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: executing（后续批）| outcome: pass（r21 刀 landed `33895d91c`+canonical_verified）| worktree: 保留（唯一树续后续批）| delivery_commit: 33895d91c | evidence: 本记录内嵌 | pending: 无（F-R21-1/2/3 全闭）| next: 981 后续批（§5/§8 契约）；010 另墙（`var faqs=[...]` 无类型列表字段=collections 域）不在本刀
+
 ### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
 
 **prepared**：复审 pass（reviewed_commit `ac1ae182c`）之上补 merge-owned 规范沉淀——`docs/specs/ace-migration/m2-age.md` **首个 phase 沉淀**（plan frontmatter 声明落点；两面文法臂+正式 grammar id `620a0f73…/`30834de6…`+age-h0 文法不可达根据、Cond 投影契约、两支平铺进 texts 绑定验证设计、`cond_spans` 描述事实、四观察入口 fail-closed+撤门条件、永久用例与变异判别力记录）——docs-only 后继（实现/依赖零改动，即 delivery 候选）`d91ac422d`。
