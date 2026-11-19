@@ -10,7 +10,7 @@ current_step: 4
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-979]
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components: [docs/specs/ace-migration/m2-autoui.md#14]
 touched_goals: [GOAL-002]
 ---
 
