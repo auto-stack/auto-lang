@@ -158,7 +158,10 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-1072 刀B（010 真语料）：age-view-for 循环项 + view-data
             // 惰性字面量文法（模型无类型 alt）+ age-entry-value if-expr 臂
             //（条件样式值）——c8a7479d…→42afe2cb…。
-            "42afe2cb5b8b73d919e71877262fcc246a8461e42cc5f4c11be4b9142ede8224",
+            // PLAN-1072 T-03（expose 点前缀对齐）：age-expose-item / tail 兼容
+            // `.name` 与裸名及可选逗号（两面同开）——42afe2cb…→fad57c5f…；
+            // 13 邻居逐字节不变。
+            "fad57c5f81b4ee3ca191a472b952778f4666692e3760ed186e3f137c6ba164a1",
         ),
         (
             SourceProfile::AgeH0,
@@ -250,6 +253,8 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 93cd6814…→c337685c…。
         // PLAN-1072 刀B（age-view-for/view-data/if-expr 臂两面同开）：
         // c337685c…→91c53cde…。
-        "91c53cdec0078db1cf67dfd028babda9425601eb4075ecdf3cc33a579f251a63"
+        // PLAN-1072 T-03（age-expose-item / tail 两面同开）：
+        // 91c53cde…→06809c84…。
+        "06809c843671b91fe57ad77ddb6126a5bd094efc263cf0fc4beda4cdfb87111c"
     );
 }

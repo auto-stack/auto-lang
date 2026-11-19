@@ -697,14 +697,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             r-use(field: "use") {}
             ident(field: "module")
         }
-        age-expose-member(profiles: [age-component, age-package], expect: "an `expose { name, … }` block") {
+        age-expose-member(profiles: [age-component, age-package], expect: "an `expose { [.name|name], … }` block") {
             name(of: "age-expose-head", field: "head") {}
             lbrace(same-line: true) {}
-            ident(field: "name") {} many { age-expose-name-tail() {} }
+            age-expose-item() {} many { age-expose-name-tail() {} }
             rbrace() {}
         }
+        age-expose-item(profiles: [age-component, age-package]) {
+            opt { dot() {} } ident(field: "name")
+        }
         age-expose-name-tail(profiles: [age-component, age-package]) {
-            comma() {} ident(field: "name") {}
+            opt { comma() {} } age-expose-item() {}
         }
         age-lifecycle-member(profiles: [age-component, age-package], expect: "a `lifecycle { method => { … } }` block") {
             name(of: "age-lifecycle-head", field: "head") {}

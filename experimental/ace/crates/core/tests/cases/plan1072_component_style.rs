@@ -361,3 +361,88 @@ fn p1072_untyped_scalar_field_stays_rejected() {
         err[0].message
     );
 }
+
+/// ⑯T-03 对齐（expose 点前缀）：`expose { .Inc, .count }` 与多行无逗号形
+/// `expose {\n .Inc\n .count\n}` 在组件面编译通过并投影为 `role == "expose"`
+/// 行；既有裸名形 `expose { alpha, beta }` 同律保留。
+#[test]
+fn p1072_expose_dot_prefixed_names_project_and_compile() {
+    let dot_comma = "widget App {
+    msg { Inc }
+    model {
+        var count int = 0
+    }
+    expose { .Inc, .count }
+    view {
+        col { text \"x\" {} }
+    }
+    on {
+        .Inc -> { .count += 1 }
+    }
+}
+";
+    let dot_multiline = "widget App {
+    msg { Inc }
+    model {
+        var count int = 0
+    }
+    expose {
+        .Inc
+        .count
+    }
+    view {
+        col { text \"x\" {} }
+    }
+    on {
+        .Inc -> { .count += 1 }
+    }
+}
+";
+    let bare = "widget App {
+    msg { Inc }
+    model {
+        var count int = 0
+    }
+    expose { alpha, beta }
+    view {
+        col { text \"x\" {} }
+    }
+    on {
+        .Inc -> { .count += 1 }
+    }
+}
+";
+    for (label, src, want) in [
+        ("dot-comma", dot_comma, vec!["Inc", "count"]),
+        ("dot-multiline", dot_multiline, vec!["Inc", "count"]),
+        ("bare", bare, vec!["alpha", "beta"]),
+    ] {
+        let nodes = ace_core::source::age_component::project_component_candidates(src)
+            .unwrap_or_else(|e| panic!("{label} project failed: {e:?}"));
+        let names: Vec<&str> = nodes[0]
+            .members
+            .iter()
+            .filter(|m| m.role == "expose")
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(names, want, "{label} expose member names");
+        let caps = vec!["ac.runtime.text.v1".to_string()];
+        ace_core::source::age_component::compile_component_scenario_states(
+            src,
+            "p1072-expose.at",
+            LegacyWidgetAlias::Accept,
+            &caps,
+            &ComponentScenario {
+                instances: 1,
+                ops: vec![ace_core::source::age_component::ScenarioOp::Send {
+                    instance: 0,
+                    msg: "Inc".to_string(),
+                }],
+            },
+            &ComponentInitials {
+                per_instance: vec![Vec::new()],
+            },
+        )
+        .unwrap_or_else(|e| panic!("{label} compile failed: {e:?}"));
+    }
+}
