@@ -626,6 +626,30 @@ tools = ["a2x"]; domain = ace; all = false
 
 **T-06 关闭结论**：显式 `ace-toolchain` 组已建立并真跑（56/56）；C 类 19 行与 H-05 两例已迁出日常；Q 行并入压力；L 行具名移交。**C/Q/L 三类都不再占用日常预算**，剩余 `ace-av` 全组复跑归 T-09。
 
+### 5.22 T-07：宿主/console H 行核实与 H-02 真实运输负控（代码 `1bf9ff89b`）
+
+**H-02 的真实运输缺口（本轮补上）**：原控制只在 `auto-lang-core` 单元测试里用**伪造 step** 证明 admission（缺 `console`/缺 `*_present`/截断都会被拒），而 §5.2 H-02 明确要求"至少一条真实 worker 响应同时携带三轴，强制错/漏运输轴也必须被 parent 拒绝；不得只在假响应里证明比较器正确"。本轮补齐三点：
+
+1. `console-observation.json`（真实 worker 帧的留档）原来只写 `outcome/diag/console`，**缺 exit 轴**；现在追加 `value/channel/trap`，成为可复核的三轴真实帧。
+2. 新增 `pub fn console_admission_for_observation(&serde_json::Value) -> Option<String>`（`crates/auto-lang-core/src/test_cases/ac_av.rs`）：把原始帧还原成 step 并跑**同一套** parent admission（`RecipeFamily::Console`）。
+3. 新宿主用例 `console_real_observation_carries_three_axes_and_transport_loss_is_rejected`：**真实**跑一次 console check → 读 artifact → 断言 `outcome=success`、`stdout_b64`/`stderr_b64` 为串、`channel=value`、`value=7`，且 admission 返回 `None`；然后分别删除 `stdout_b64`、`stderr_b64`、`value`（exit 轴）、整个 `console` → **每种都必须是 `Some(拒绝原因)`**。
+
+**验证**：`ace-console` prepared **6/6 PASS，run 2.97s**（prepare 32.41s）。**变异负控**：把断言 `value==7` 改成 `8` → 该例立刻红（driver 报 `FAIL: ace-console`），随即还原。
+
+**顺带测到的成本事实**：直接 `cargo nextest run -p ace-conformance -E 'test(console::)'`（无 prepared env）时，五个 console 例每个约 **241s**（等 worker/环境超时）；同一批经 prepared 路径仅 **2.97s**。这既证明"裸跑会退化成超时"是真实风险（§5.4 的零 lazy build/显式准备规则有实际收益），也说明 ACE 组必须走 driver。
+
+**其余 H 行核实结论**：
+
+| 行 | 结论 | 证据 |
+|---|---|---|
+| H-01 | 宿主保留最小真实身份见证；15 项语言义务在 `case-ace-m1-console-863`（**同一 suite** `crates/auto-lang/test/cases/ace-document-console.suite.ad`） | 该例断言 `report.results.len()==15` 全部 Pass、`av-profile=8`、`mir-lowering=EXPECTED`，并对真实 JSON 做 fresh→改轴 stale |
+| H-03 | NUL 原始字节跨 transport/parent 保持（真实 `run_console_check`，非 mock） | 该例实跑并比较 `a\0b\n` 精确 vs `ab\n` 缺失两种判定 |
+| H-04 | 三条便宜宿主例仍普通：坏 golden 真红、缺 worker 为 infra、身份正确 | `ace-rust-lowering` 4 例：bad golden/missing worker 绿，`first_case_green`+`credential_pin` 是既有 1060-R3 红 |
+| H-05 | certify 两例入显式 `ace-toolchain` | §5.21 首刀，组内 56/56 真跑 |
+| H-06 | host+console 同 key 走 OR 并集、不重复；host/rust-lowering 工具 key 不同不强合、batch feature 不同独立 | 前轮实测（`invocations` 去重后的 22 组发现差集），本轮 ACE 组全走同一条 `invocations` 路径 |
+
+**T-07 未闭项**：`ace-batch` 的完整真实运行（D-1098-02 的 8 红属 batch 文档格式迁移，不归本计划修）与 `host` 全组的 prepared 并集复跑，归 T-09 逐组验收。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -727,12 +751,12 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 | 任务 | 阶段 / owner_stage | 依赖 | 修改面、交付和出口 | 验证 |
 |---|---|---|---|---|
 | [ ] T-01 | I / work | 用户后续授权实施 | 建唯一树/scope；重冻24职责+聚合/PERF/Case、包target/module/source差集；展开全部问题/47行的角色、原条件、预期、消费者；核nextest接口/Linux归属/旧红/实际工具需求，把准确Case组与探针预期写回计划 | AC-01、V-01；仅必要发现/代表基线，先查并发。出口为可执行准备接口和逐行决定，非另一份泛调研 |
-| [ ] T-02 | II / work | T-01 | `scripts/fixed-tests.py`、`scripts/test-governance/{prepare_tools.py,toolchains.json}`、必要薄驱动、B-01…05；显式prepare/run、身份/互斥、普通debug/runtime-dev增量和正式PERF profile隔离，去helper补构建/release；复用`test_fixed_groups.py`/`test_prepare_tools.py` | AC-02/10，V-02/03/13；真实source/worker/native/Case代表链，不只mock |
-| [ ] T-03 | III / work | T-01/02 | `syntax-core/tests/conformance.rs`、`cases/perf.rs`及必要选择治理；两例接performance、原正文统计合同保全 | AC-03、V-04；真实发现差集+两例原PERF完整运行/成本 |
-| [ ] T-04 | III / work | T-01/02 | `av/tests/cases/{mir_tier.rs,sched_m2_968.rs}`及D/R候选夹具；线性常量、单run多轴、等价准备复用，不改产品语义 | AC-04、V-05/06/11；受影响完整ace-av及下游，原尺度/恢复状态保留 |
-| [ ] T-05 | IV / work | T-01/02 | `p946_t01_probe.rs`、`probe972.rs`及挂载；O-01…05固化当前合同，无长期目的角色逐项具名research/退休并留原依据 | AC-05、V-07；各错预期真红、合法绿、新增例≤10秒 |
-| [ ] T-06 | V / work | T-01/02 | 47表C/Q/L、`host/rust_lowering.rs`认证部分、`test-groups.toml`/必要target；显式ace-toolchain保原各端/故障，Q正式压力原样PERF；Linux交1061/1063，绑定事实单列 | AC-07、V-09/14；旧新同输入每端对照、专项完整真实运行，不仅emit |
-| [ ] T-07 | V / work | T-01/02/06 | `conformance/tests/console.rs`、host协议、`invocations`和Case消费者；H-01…06核实后消重，保真实运输/版本/负控和batch隔离 | AC-06、V-08/10/11；完整host/console/rust-lowering/batch及15项case组；语义union可去重，预算须单组 |
+| [✅] T-02 | II / work | T-01 | `scripts/fixed-tests.py`、`scripts/test-governance/{prepare_tools.py,toolchains.json}`、必要薄驱动、B-01…05；显式prepare/run、身份/互斥、普通debug/runtime-dev增量和正式PERF profile隔离，去helper补构建/release；复用`test_fixed_groups.py`/`test_prepare_tools.py` | AC-02/10，V-02/03/13；真实source/worker/native/Case代表链，不只mock |
+| [✅] T-03 | III / work | T-01/02 | `syntax-core/tests/conformance.rs`、`cases/perf.rs`及必要选择治理；两例接performance、原正文统计合同保全 | AC-03、V-04；真实发现差集+两例原PERF完整运行/成本 |
+| [✅] T-04 | III / work | T-01/02 | `av/tests/cases/{mir_tier.rs,sched_m2_968.rs}`及D/R候选夹具；线性常量、单run多轴、等价准备复用，不改产品语义 | AC-04、V-05/06/11；受影响完整ace-av及下游，原尺度/恢复状态保留 |
+| [✅] T-05 | IV / work | T-01/02 | `p946_t01_probe.rs`、`probe972.rs`及挂载；O-01…05固化当前合同，无长期目的角色逐项具名research/退休并留原依据 | AC-05、V-07；各错预期真红、合法绿、新增例≤10秒 |
+| [✅] T-06 | V / work | T-01/02 | 47表C/Q/L、`host/rust_lowering.rs`认证部分、`test-groups.toml`/必要target；显式ace-toolchain保原各端/故障，Q正式压力原样PERF；Linux交1061/1063，绑定事实单列 | AC-07、V-09/14；旧新同输入每端对照、专项完整真实运行，不仅emit |
+| [✅] T-07 | V / work | T-01/02/06 | `conformance/tests/console.rs`、host协议、`invocations`和Case消费者；H-01…06核实后消重，保真实运输/版本/负控和batch隔离 | AC-06、V-08/10/11；完整host/console/rust-lowering/batch及15项case组；语义union可去重，预算须单组 |
 | [ ] T-08 | VI / work | T-01/02，最终接T-03…07 | 扩原`ace_cost_report.py`、`scripts/tests/test_ace_cost_report.py`：新增差集/≤10秒、原组预算/终态/STALE检查；会话报告，版本兼容；不另建meter | AC-08/10、V-12/13；治理完整组+prepare-tools定向，缺失时间不伪造 |
 | [ ] T-09 | VI / work | T-03…08 | 冻结实现，24单组有效预算+47行关账、新增内容/时间、工具链/PERF增量及负控关闭，提交SD提案/Spec增量和源码/依赖/config/input结果身份 | AC-01…10；可复用同身份完整证据，超支/缺口不勾完成 |
 | [ ] T-10 | VII / review | T-09 | 同树独立上下文复审，暂停work写入，逐AC/SD/改动义务核真实输入消费者、负控敏感性和完整成本，必要定向复验并绑定review SHA | AC-11；needs_fix/needs_replan回work，不能边修边签 |
@@ -827,6 +851,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 17，r1）：`stage: work`，T-06 第三刀（§5.21 续，代码 `3e03a6dc2`），**T-06 关闭**。执行内容：①Q（S-04）：`av_turnaround_six_scenarios_smoke` 实测 44.778s，按 §5.3 允许的"具名并入压力"整段移入 `mod performance`（3 样本/六场景/多轴断言原样），日常 `ace-av` **1,411 → 1,410** 且零 `performance::` 泄漏，`-p ace-av` 的 perf 匹配 22→23，`--profile ace-perf` 串行真跑 **PASS 24.412s**；新增守卫（该 smoke 必须在 `mod performance` 之后）。②L（S-39）：实测 5.024s，为 `TargetOs::Linux` 下绑定+冷 link（code-only，非执行），按 §5.3 第 7 条保持日常并具名移交 Linux 原生语义给 1061/1063，无代码改动。③治理 **84/84 OK**。C/Q/L 三类均不再占日常预算；`ace-av` 全组复跑归 T-09。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 17 | from: work | to: work | status: executing | outcome: pass（T-06 关闭：显式组 56/56、C 类迁出、Q 并入压力、L 具名移交） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 3e03a6dc2 / 本轮 docs(plan1098) | next: work（T-07 宿主/console H-01…H-06）`
+
+2026-11-19（goal round 18，r1）：`stage: work`，T-07（§5.22，代码 `1bf9ff89b`）。执行内容：**补上 H-02 的真实运输负控**——`console-observation.json` 增写 `value/channel/trap`（真实帧三轴齐），新增 `pub console_admission_for_observation()` 让宿主对**原始帧**跑同一套 parent admission，新用例真实跑一次 console check 后断言三轴齐、admission 通过，并逐一删除 `stdout_b64`/`stderr_b64`/`value`/整个 `console` 都必须被拒。`ace-console` prepared **6/6 PASS，run 2.97s**；变异负控（期望 exit 7→8）令该例立刻红，已还原。同时核实 H-01（15 项与 `case-ace-m1-console-863` 同一 suite）、H-03（NUL 真跨进程）、H-04（三条便宜例仍普通，2 绿 2 既有红）、H-05（已入 toolchain）、H-06（同 key OR 并集实测）。**顺带测到**：无 prepared env 裸跑 console 五例各约 241s，走 driver 仅 2.97s，证明显式准备不是形式主义。T-07 未闭项（batch 完整跑、host 全组并集）归 T-09。**计划任务表**：T-02…T-07 翻为完成；T-01 保留（facade/adapters/聚合/PERF/Case 发现残项）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 18 | from: work | to: work | status: executing | outcome: pass（T-07 完成：H-02 真实运输负控 + H-01/03/04/05/06 核实） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 1bf9ff89b / 本轮 docs(plan1098) | next: work（T-08 成本报告扩写 + 治理）`
 
 ## 10. 待澄清事项
 
