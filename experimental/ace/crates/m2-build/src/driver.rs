@@ -784,7 +784,7 @@ impl M2Build {
                 let run = self.spawn_capture_args(
                     "python-interpreter",
                     "python",
-                    &["a2x_main.py"],
+                    &["-B", "a2x_main.py"],
                     Some(&dir),
                 );
                 if run.0.is_none() {

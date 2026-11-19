@@ -160,3 +160,91 @@ fn p1107_t05_ac_build_a2py_use_py_project_runs_native_python() {
         elapsed.as_millis()
     );
 }
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let src = entry.path();
+        let dst = to.join(entry.file_name());
+        if src.is_dir() {
+            copy_tree(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
+fn training_lines(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter(|l| !l.starts_with("value:"))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+fn assert_training(lines: &[String], label: &str) {
+    assert_eq!(
+        lines.len(),
+        62,
+        "{label}: 60 losses + shape + pred0, got {lines:?}"
+    );
+    let first: f32 = lines[0].parse().expect("first loss");
+    let last: f32 = lines[59].parse().expect("final loss");
+    assert!((first - 0.2370201051235199f32).abs() < 1e-6, "{label} first");
+    assert!(
+        (last - 0.1013089045882225f32).abs() < 1e-6,
+        "{label} final"
+    );
+    assert_eq!(lines[60], "torch.Size([4, 1])", "{label} shape");
+    let pred0: f32 = lines[61].parse().expect("pred0");
+    assert!((pred0 - 0.4728480279445648f32).abs() < 1e-5, "{label} pred0");
+}
+
+#[test]
+fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
+    let root = scratch("sdk");
+    let inputs = ProjectInputs {
+        name: "usepy1107sdk".to_string(),
+        entry: "main".to_string(),
+        caps: vec![
+            ace_foreign_contract::manual::SOURCE_CAP.to_string(),
+            ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
+        ],
+        sources: vec![("main.at".to_string(), SECTION_5_1.to_string())],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+    let sdk = root.join("sdk");
+    m2.build_sdk(&inputs, &[TargetKind::A2py], &sdk, vec![], "run:py")
+        .expect("the a2py SDK builds");
+
+    let run = m2
+        .run_sdk(&sdk, TargetKind::A2py, "run:py")
+        .unwrap_or_else(|e| panic!("SDK run: {e:?}"));
+    assert_eq!(run.exit_code, Some(0), "the entry returns 0: {}", run.stdout);
+    assert_training(&training_lines(&run.stdout), "SDK run");
+
+    // V-07: the SDK is relocatable — move it to another root with no dev
+    // cache around it and run again.
+    let moved = root.join("relocated");
+    copy_tree(&sdk, &moved);
+    let run2 = m2
+        .run_sdk(&moved, TargetKind::A2py, "run:py")
+        .unwrap_or_else(|e| panic!("relocated SDK run: {e:?}"));
+    assert_eq!(run2.exit_code, Some(0));
+    assert_training(&training_lines(&run2.stdout), "relocated SDK run");
+
+    // V-07 negative: a missing declared artifact is a NAMED failure, never a
+    // silent/partial run.
+    let broken = root.join("broken");
+    copy_tree(&sdk, &broken);
+    std::fs::remove_file(broken.join("targets").join("a2py").join("a2x_py_runtime.py")).unwrap();
+    let err = m2
+        .run_sdk(&broken, TargetKind::A2py, "run:py")
+        .expect_err("a missing helper must be refused");
+    assert!(
+        err.code.starts_with("m2build."),
+        "named engineering rejection: {:?}",
+        err
+    );
+}
