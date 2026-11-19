@@ -5,7 +5,7 @@ feature_name: Web服务嵌入与实际后端迁移
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 24
+plan_revision: 27
 current_step: 14
 total_steps: 20
 depends_on: [PLAN-967, PLAN-968, PLAN-969, PLAN-974, PLAN-975, PLAN-978, PLAN-980, PLAN-982]
@@ -17,6 +17,10 @@ touched_goals: [GOAL-002]
 # [PLAN-983] Web服务嵌入与实际后端迁移
 
 ## 0. 变更摘要
+
+2026-11-19 r27（AutoUI 门禁失败修复·分诊与修复落地）：r26 阶段执行——17 红按正式门同款配置（`nextest-full.toml`+`auto-ui-compiler/ui` feature 面+组树）定向隔离重放：**16 红确定性复现、1 红隔离绿**（rq_media desktop seek 5s=负载归因）。提前跑 man-t/tcore/tc/ti 四腿全绿、ui-ti 28/28 绿、ui-tu 唯二红=已知同两例 codegen oracle（即剩余红面就是 17 项本身）。16 例根因全部定性并修复：13 陈旧 oracle/测试（产品有意演进：PLAN-052/980/012/031/085/089/956 等）+2 环境泄漏（本机 desktop config `notes_enabled:false` 与 auto-os manifest 泄入未隔离会话）+1 跨仓漂移（os-053 `5928a11` desktop.at 未同步进 auto-ui pin；sync 脚本仍指 PLAN-814 退役落点，具名交 owner）+1 lang 语义缺口（PLAN-916 准入漏 `Stmt::Try` 双臂 return，真缺陷）。修复落位：auto-ui 组树 `8dd932b8`（12 文件，master 对齐+锁重导之上）、lang 组树 `3eb505cc5`（Try 臂+永久回归+发射注释 doc 修正）；复验 **39/39 绿**（19 目标批+back_proxy 全模块，EXIT=0）。静态核对：auto-ui master 前移（PLAN-058/980 共 42 文件）与 17 红触面零交集。待办：版本对齐后正式四仓门全重跑取完整收据（语言组+web+ui-full+man/ui 六腿），再核销 `B-CONSUMERS-I/V`。计划保持 executing、14/20。
+
+2026-11-19 r26（AutoUI 门禁失败修复）：在 `B-CONSUMERS-V` 下增设阶段，由 983 直接跟踪、复现并修复 r25 `ui-full` 的 17 个失败，AutoUI 各责任模块复核其修复。正式四仓门仍按原义务验收。阶段范围和退出条件见 §5，计划保持 executing、14/20。
 
 ### 2026-11-19 · 980/981 后继接口
 
@@ -142,7 +146,7 @@ CONSUMERS I/V/R负责每个真实配置入口/dep参数/env/锁、坏配置零�
 
 跨阶段同Plan按已有phase fold规约先独立复核并正式合入A切片，记录repo/SHA/接口与实际测试来源后供985/A消费；同一唯一tree保留/resync至B完成，不能用分支reviewed/WIP当D。公共文件单写；最终归档/清树仍按全包原门执行。本轮未做fold/merge或建树。
 
-### 四仓门禁修复（B-CONSUMERS-V 内置阶段，待执行）
+### 四仓门禁修复（B-CONSUMERS-V 内置阶段，r23–r25）
 
 以 §9 的 r22 阻塞收据为基线。四仓门禁在语言固定组阶段因 `plan988_byte_consumers` 达到 120 秒超时而中止，Web、UI、Man 外部腿尚未启动。隔离复跑的测试结果两次都是 46/46，进程审计仍因 `vctip.exe` 在工作负载退出时留存而失败。983 负责实施、取证和四仓复跑，测试治理维护方复核共享门禁或进程计量的改动。
 
@@ -153,6 +157,14 @@ CONSUMERS I/V/R负责每个真实配置入口/dep参数/env/锁、坏配置零�
 两项基础设施修复和四仓门禁均通过后，方可关闭本阶段并交 `B-CONSUMERS-R`。执行和复跑结果写入 §9，包含版本、场景对照、退出码、计时及进程审计。整包复审、合入和清理继续沿 T-05／06／07。
 
 **814 路径依赖身份（2026-11-19 r24，用户指令在 983 新开 phase 修复；985/982b 归对应会话）**：PLAN-1034 `7db528b93` 把 `auto-tool-execution` 加成 auto-lang-core 直接路径依赖（非 optional ⇒ 进 SDK 编译闭包），`build.rs` 的 `IDENTITY_SOURCE_CRATES` 漏项 ⇒ 814 依赖覆盖守卫红。修复=清单补入该 crate（lang master `45afda45d`）；复跑 `plan814_build_input_boundary` **3/3**（依赖覆盖+两个 SDK 边界负控）与 `stdlib_assembly::manifest` 全模 **7/7**，既有守卫零改动。修后 master 剩余红=985×5+982b（各线会话在途）。
+
+### AutoUI 门禁失败修复（B-CONSUMERS-V 内置阶段，r26）
+
+以 §9 r25 正式门收据 `f02b34b74` 为基线。语言固定组、双 bootstrap、`lang-web-e2e` 和 Web 腿已通过，`ui-full` 为 3844/3861，后续 Man 和 UI 腿未执行。983 负责把基线的 17 项逐例跟踪到回归验证，在现有 983 组树的 AutoUI 工作树提交所需修复，由对应 AutoUI 模块 owner 独立复核并按仓库流程合入。使用当前组树，先对账同文件在途改动。共享门禁口径、测试基线或纳入规则的变更由测试治理维护方复核。980 整包归档无需作为前置。
+
+1. **复现与归因。** 从 r25 的 `ui-full` 收据取完整失败 ID、组树各仓 SHA、锁文件身份、`run_command` 和运行日志。沿用正式门的 `{language}/.config/nextest-full.toml`、`auto-ui-compiler/ui` feature、packages、targets 和组内兄弟仓解析。按失败 ID 定向隔离重放，逐项记录首跑、重放、错误签名、根因和责任模块。隔离转绿时核对负载、进程与超时证据；证据不足的按未决继续重放。
+2. **修复与复验。** 对可复现缺陷做局部修复，验证原失败项及受影响的用例族，保留原断言、输入和覆盖。环境归因保留首轮失败、隔离重放及环境处置证据，正式门计入实际运行结果。发现超出本阶段的产品改动，记录准确的责任模块、所需交付物和复验条件。
+3. **退出。** 17 项均有可核查的处置结果，修复经复核和合入。使用版本对齐的干净组树复跑完整 `V-B-CONSUMERS`，确认 `ui-full`、`man-t`、`man-tcore`、`man-tc`、`man-ti`、`ui-tu`、`ui-ti` 以及前序各腿均实际执行并通过，原覆盖、进程审计和收据完整性通过。可在修复期间提早定向跑后续腿。完整收据入 §9 后，与真实消费者和适用配置交接证据对账，再核销 `B-CONSUMERS-I/V` 并交 `B-CONSUMERS-R`。
 
 语言/库相关case继承旧公开行为义务并补规范/组合/边界/负控，每条按当前规范与独立expected验证，M1有限豁免不自动继承；产品专有全量用例归B，未执行/缺环境不PASS。详见Design55 §16.5，TestCase/固定原生组沿用，不另建tm/全仓调度。AC自举独立后续、非本包或M2硬门。
 
@@ -475,7 +487,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
   [C0-B 正式跑 + C1 基线 2026-11-18] `01b` spec 在 AutoDown 主检出 Playwright/Vite 上 **1 passed**（6.2s/11.5s）：真实 `GET /api/workspace` → 200 + root/wiki_dir，主视图断言过；后端 `av_dispatches=2 legacy_dispatches=0`。C1 基线实测冻结（400 零副作用 / canonical `\\?\` / wiki+index+config / 幂等），实现待 982 组合入口。
 
 - [ ] **B-CONSUMERS-V｜M2-B｜owner_stage: work｜AC-B-CONSUMERS**：运行V-B-CONSUMERS及完整职责/必要集成；记录独立结果、源/目标身份、资源、子终态与条件排除。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
-  - 当前先执行 §5「四仓门禁修复」，取得语言固定组和进程审计通过的收据后复跑完整四仓门禁。
+  - 当前执行 §5「AutoUI 门禁失败修复」。r27：17 红分诊+修复已落地（16 例修复 ui `8dd932b8`/lang `3eb505cc5`、1 例隔离绿负载归因；复验 39/39 绿；man×4/ui-ti 提前腿全绿），见 §9 r27。剩：版本对齐后正式四仓门全重跑完整收据 + 修复合入 owner 复核。
 
 - [ ] **B-CONSUMERS-R｜M2-B｜owner_stage: review｜AC-04**：暂停写入，在同一树独立复核本批AC/diff/反例/跨仓来源；失败回I修复，pass只关闭本批，不冒全包交付。 CFG-HANDOFF：落实§5配置接收与V-CFG-HANDOFF/AC-CFG-HANDOFF，按真实所用接口分阶段接，不等待不相干整包。
 
@@ -498,6 +510,10 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-19 stage: work | PLAN-983 r27（**AutoUI 17 红分诊+修复落地：16 复现全修（ui `8dd932b8`/lang `3eb505cc5`）+1 隔离绿负载归因；复验 39/39 绿；后续腿 man×4/ui-ti 提前全绿——待正式门全重跑收据**）| 用户指令：先 AutoUI 分诊（门同款配置隔离重放、能复现按归属修、隔离绿留环境归因证据），同时提前跑 man-t*/ui-t* 腿；修复落地后正式门复跑取完整收据。| **复现**（组树 0f8fd948，门实参 `cargo nextest run -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --config-file {lang}/.config/nextest-full.toml --test design_tokens_recipe --features auto-ui-compiler/ui` + 17 失败 ID 过滤器）：17 例全跑，**1 过 16 红**（13.9s）——隔离绿=`rq_media::p073_t05`（门内 21s "desktop seek 目标 5s 未落地"，隔离 13.9s PASS ⇒ 负载归因；正式门计实际运行结果）；其余 16 全部确定性同形红。| **提前腿**（同组树+门 env，`plan-artifacts/plan-983/man-legs-early|ui-legs-early`）：man-t 293/293+4skip、man-tcore 26/26+1skip、man-tc 262/262+4skip、man-ti 43/43 全 EXIT=0；ui-ti 28/28 绿；ui-tu 890 过/2 红=已知同两例 codegen oracle/2 ignore——**门剩余红面即 17 项本身，无新红面**。| **静态对账**：auto-ui master 前移（PLAN-058 归档+PLAN-980 三提交，42 文件）与 17 红触面零交集（diff --name-only 交集空）。| **16 例根因与修复**（auto-ui 组树先 rebase master d2e7d7a4+锁重导 → `170a2828`，修复提交 **`8dd932b8`** 12 文件 +280/−81；lang 修复 **`3eb505cc5`**）：①codegen oracle×2=陈旧（PLAN-052 `c4b09ae2` typed-string `.as_str()` 规范化 / `8d90626d` badge→a2r kit `inline-flex`+`.to_string().as_str()`）——断言随现形更新；②`native_gate_views_of_six`=陈旧（plan084 `5cfc5a6b` 把 FileDialog 接进 041、其 `max-h-64` 越出 coverage 词表）——`native_queue_set` 增列 `max-h-`（同 min-h- 降级放行先例）；③`plan654_for_view`=陈旧（PLAN-980 `34bb4326` 起 subscribable 以 bridge 实例身份为准，手工 sink 前提失效；且 for-over-str 不展开）——HOST_FOR items 改 `[]str`、真视图装配断言 3 实例；④`desktop_surface_z_slot`=陈旧存量红（PLAN-012 W5 起 desktop.at 改 `__desktop_cells` 表）——补注 cells（DesktopCellEntry 形状）；⑤`p625`=陈旧（`min-h-0`→`Fixed(0)`→iced 0.14 布局树丢节点，原 0×0-可 find 双前提亡）——no-height 哨兵改 `find().is_err()`（P625-T04 债务注记保留）；⑥⑦`desktop_bus_inbox`/`workspace_v11`=环境泄漏（本机 `~/.config/autoos/apps/desktop/config.at` `notes_enabled:false` 泄入未隔离会话短路 push_notification/toast）——补 `t2_isolate_storage` 同款 `AUTOOS_DESKTOP_CONFIG` 隔离；⑧`plan080_uat`=陈旧（`76b0340c` 修 `MaxWidthPct::operate` 转发自身节点，text 候选已可见）——bisect 翻 true+模块头同步；⑨`shell_pack_hash_parity`=真实跨仓漂移（auto-os `5928a11`/os-053 新 desktop.at 从未同步进 auto-ui pin；根因=PLAN-814 迁仓后 `shell-pack-sync.py` 仍指已退役的 auto-lang 落点=同步链断裂）——按单向契约刷新 pin（`376b156d`）；**sync 脚本落点陈旧具名交 os/ui owner**；⑩`back_proxy_missing_param`=陈旧（`aea33365` 单 str 形参绑定完整 body 合同吸收单参 400 面）——夹具增两参端点按名绑定验缺参 400；⑪`with_charts`=陈旧（Plan 031 `1c66c24d` card→Container 臂）——采集器递归 `View::Container`；⑫`plan806`=陈旧（plan085 `a79fe604` 删 treeview.at）——改指 `filetree.at`（msg/model 已核在场）；⑬`plan814`=环境泄漏（`resolve_os_manifest_root` 硬编码兜底读本机 auto-os manifest：013-todo 声明 native+净树无产物⇒StrictMissing；CI 无该目录=绿）——`AUTO_OS_ROOT` 指空临时目录隔离（RAII 恢复+进程内串行）；⑭`029 viewer`=陈旧（PLAN-089 `69044a8b` 查看区迁官方 image-viewer 包：ImageViewport=子件、媒体面=ImageSurface）——`collect_image_surfaces`+PLAN-840 `drive_test_to_completion` 驱动子件 Init demand（旧 parked 泵单独不足；修复后 0.29s 绿）；⑮`plan714` **=lang 真缺陷**（PLAN-916 `9b2c763ef` 准入 `stmt_guarantees_return` 漏 `Stmt::Try`，双臂 return 合法 fn 被误拒）——lang 补 Try 臂+永久回归（正例=plan714 同源语料/反例=catch 穿透仍拒）+发射注释随 PLAN-956 `764f454d1` 空块形修正（doc-only）；⑯ui 侧 `plan714` None 尾臂断言随 956 空块形更新。| **验证**：lang `cargo nextest run -p auto-lang-core semantics`=**8/8 绿**；ui 侧三批（`plan-artifacts/plan-983/ui17-triage/replay-batch{1,2-postfix,3-final}.log`）——batch3 终局 **19 目标+back_proxy 全模块 39/39 绿（14.5s，EXIT=0）**；plan654 家族 23/23 绿；fmt 本批触点零漂移（`dynamic.rs:2666`=既有存量，非触点）；预提交门（>5MB/attachments 路径）通过。| **测试计时**：重放 batch1 13.9s/17 例、batch2 14.2s/19 例、batch3 14.5s/39 例、man 四腿串行合计 ~9s（热 target）、ui-tu 1.08s、ui-ti 0.30s；新增用例=lang 语义 1 例（<0.1s）。| **具名未决**：①rq_media 负载归因待正式门实际运行结果收口；②shell-pack-sync.py 落点修法归 os/ui owner；③修复合入=AutoUI 模块 owner 复核 `8dd932b8` 后按仓流程（阶段退出条件）；④lang 侧修复落 master 归 T-06 fold 序。| next: 版本对齐（lang 组树 rebase master 45 提交、man ff master、锁重导）→ 正式四仓门全重跑（语言组+bootstrap+lang-web-e2e+web+ui-full+man×4+ui-tu/ti 完整收据）→ B-CONSUMERS-I/V 核销对账 → B-CONSUMERS-R → T-05
+
+2026-11-19 stage: plan | PLAN-983 r26 | 在 `B-CONSUMERS-V` 登记 AutoUI 门禁失败修复阶段。基线为 r25 的 `ui-full` 17 红及正式门收据 `f02b34b74`。983 持有逐项处置与完整门复跑，AutoUI 模块 owner 复核实际修复，共享门禁改动按治理归属复核。本条记录阶段安排，测试与修复待执行。进度 14/20。
 
 2026-11-19 stage: work | PLAN-983 r25（**F-R5 修复落主 + 四仓门历史最深推进：语言+双 bootstrap+lang-web-e2e+web 腿全绿，ui-full 3844/3861 受阻于 auto-ui master 17 红（具名，非 983 触面）**）| 用户指令：F-R5 直接在 983 修。| **F-R5 修复（lang master `301b39b61`，+27/−10）**：根因=帧不变量缺失——①0 局部帧不发射 RESERVE_STACK（native 参数边界算式 `num_locals+1`/`bp+num_locals+2` 以 reserve 的 +1 惯例槽为前提；POOLLOG 实证 `sp=1 target=1 has_arg=false` 误判首个实参帧）②依赖模块顶层就地编译无包装帧头。修=恒发射 reserve（shift 恒 5）+ 依赖模块代码起点镜像 script wrapper 帧头（FN_PROLOG(0,16)+RESERVE(16)）。验证：8/8 探针变体（含无参负控）+ 三样例+b1 e2e 4/4 绿 + 九固定组回归 PASS（parser/vm/corpus/integration/api-gen/media/a2r-std/test-case/generation-core）；探针转持久回归（auto-web `plan983_module_init_frame.rs`）。具名边界（另记）：String.new shim 无条件弹 2 参且参数序怪癖（独立缺陷，样例不涉）。| **基线跟进（lang `77258547e`，共享门数据变更已旗标维护方复核）**：ui_original 基线跟上 auto-ui master 两个同文件语义改名（`outlet_multi_route_loud_reject`→`_selects_persistent_page`@`3237cd60`/PLAN-052；`route_live_input_routes_to_focus_and_hover`→`p060_..._injected_hover`@`5f2d55a7`/D1），listed/active/required_* 四集合同步；验证 missing=[]/suppressed=[]。| **门最终跑**（组树：lang=`301b39b61`+基线、web=`edeb8fc`+回归、down/man=master、ui=master+lock）：语言 6/6 + bootstrap×2 + lang-web-e2e + **web 腿（250/250：r2 ✓ + member_delivery 6/6 ✓ + 三样例+b1 ✓——r25 修复全部在门内兑现）** ⇒ **ui-full 3861 例 3844 过/17 红**（149.7s；17 红全在 auto-ui master 自身套件：2×ui_gen codegen、native_gate/plan654/iced 布局与渲染族、rq_media/headless、shell_pack/back_proxy/plan643/714/806/814/606——非 983 触面，983 对 auto-ui 零代码改动；隔离复现需门配置 nextest-full.toml+feature 面，归属 auto-ui/980 线分诊）。man-t* 腿未达。| 测试计时：ui-full 149.7s/3861 例；web 腿此前 581.8s/250 例。| **阶段判定**：r25 交付项（F-R5+基线）闭；四仓门阻塞点移交 auto-ui owner 线（17 红清单在案）。| next: auto-ui 线修红 → 门复跑（man 腿未达）→ B-CONSUMERS-I/V 核销 → B-CONSUMERS-R → T-05
 2026-11-19 stage: work | PLAN-983 r25（**web 腿修复轮：r2 oracle✓ + member_delivery 6/6✓ + 样例根✓；唯余 F-R5（lang 模块级泛型初始化静默空）挡三例；正式门复跑挂起待 F-R5**）| 用户指令：保持 executing/14/20，当前计划下开 auto-web 修复轮——先更正 §9 两处归因；分项修 3 样例+1 矩阵+5 delivery；定向全绿后冻结重跑正式门；U0 沿用 r22 收据。| 归因更正：已落（delivery=983 自身 `35b9e47` 起的 ace 生产依赖交付回归；样例=auto-web 消费路径滞后）。| **交付（auto-web plan-983-dev `edeb8fc`，+69/−12）**：①样例根解析 `test_examples_ui_root()`（`AUTO_UI_ROOT`→组内 sibling `auto-ui`→语言仓旧位；`start_example_api_server` 与 023 直读点都改；断言补诊断）；②r2 oracle 接受 `(repository.chars().count() as i64)` 拼法（F-742-R2-02 遮蔽语义/模块限定正控/负控/编译检查全保）；③member delivery 三件套——classify 增 ACE 真源子树前缀投影（`experimental/ace/crates/`，置于 vendor 检查后，**未知布局拒绝保持**；包名/目录名 `ace-` 前缀差异以子树规则吸收）、`rewrite_crate_manifest` 增三上 ACE 锚重写（`../../../auto-lang/experimental/ace/crates/`→`../../experimental/ace/crates/`；lang 仓 crates/ 的两上锚深度天然同形免改）、ROOT_INPUT_DIRS 增 `stdlib/ace`+`experimental/ace/grammars`（ace-core 编译期 include 的两个仓级输入）。| **定向验收**：r2 矩阵 **1/1 PASS**（2.67s）；member_delivery **6/6 PASS**（339s；`relocated_bundle_builds_locked_and_serves_persistent_state`=1006 验收本体：移根+生成根清洗+空 target `--locked` 构建（162.5s）+真 HTTP+持久化+独立读回；字节稳定 60.9s）；**web 腿全量（门实参：`--features auto-web/test-http-e2e --config-file .config/nextest.toml`）＝247/250**（581.8s；配置自带 900s×2 预算，门内无杀线风险）。| **F-R5（新发现，lang 前端/VM，具名待路由）**：三样例红的最小根因＝**模块级 `var x List<T> = List<T>.new([...])` 静默得空**——四变体定界（函数体内同初始化=2 ✓ / 模块级=0 ✗ / 模块级纯数组字面量=2 ✓ / 模块级普通函数调用=7 ✓ ⇒ 仅泛型静态调用初始化静默错值）；重现与表格存 `plan-artifacts/plan-983/lang-module-init-gap/repro.md`；样例根修复后服务正常起（GET 200），db.at 种子全空（逐字："015 seed missing Welcome: []"）。| **正式门复跑：挂起**（三例会红 web 腿；语言 6/6+双 bootstrap+lang-web-e2e 收据保留有效）。| 测试计时：本会话 r2 2.7s、member_delivery 六例 339s（移根 162.5/字节稳定 60.9/故障点 81.1）、web 腿全量 581.8s。| next: **F-R5 路由（lang）→ 修复后三样例复验 → 正式四仓门全重跑 → B-CONSUMERS-I/V 核销 → B-CONSUMERS-R → T-05**
