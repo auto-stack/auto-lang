@@ -1188,6 +1188,9 @@ fn read_back_components(
                                 ComponentViewItem::Cond(c) => {
                                     count_texts(&c.then_items) + count_texts(&c.else_items)
                                 }
+                                // PLAN-1072 刀B：循环体文本不入 texts（循环变量
+                                // 无绑定域）——计 0 与 collect 的丢弃 sink 一致。
+                                ComponentViewItem::For(_) => 0,
                                 ComponentViewItem::Entry(_) => 0,
                             })
                             .sum()
@@ -1202,6 +1205,8 @@ fn read_back_components(
                                 ComponentViewItem::Cond(c) => {
                                     1 + count_items(&c.then_items) + count_items(&c.else_items)
                                 }
+                                // PLAN-1072 刀B：循环项计 1+子树（结构面）。
+                                ComponentViewItem::For(f) => 1 + count_items(&f.items),
                                 ComponentViewItem::Entry(_) => 1,
                             })
                             .sum()
@@ -1663,6 +1668,10 @@ fn collect_view_event_bindings(
             ComponentViewItem::Text(_) => {}
             ComponentViewItem::Element(e) => {
                 collect_view_event_bindings(&e.items, msgs, out);
+            }
+            // PLAN-1072 刀B：事件绑定收集进循环子树（结构面）。
+            ComponentViewItem::For(f) => {
+                collect_view_event_bindings(&f.items, msgs, out);
             }
             // PLAN-980 view-if：事件绑定收集进条件双子树（结构面）。
             ComponentViewItem::Cond(c) => {

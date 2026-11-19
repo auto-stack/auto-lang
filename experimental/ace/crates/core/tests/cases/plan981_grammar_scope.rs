@@ -155,7 +155,10 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-1072 刀A 第二刀（005 真语料）：age-event-key 增 type-kw
             // 键臂（`type: "password"` input 属性——type 是全局 token，键位
             // 直收；两面同改）——4755265c…→c8a7479d…；13 邻居逐字节不变。
-            "c8a7479d95f64815ea7b344a71a2d80efa4de1c146d6a1213e0f051b4ba4c805",
+            // PLAN-1072 刀B（010 真语料）：age-view-for 循环项 + view-data
+            // 惰性字面量文法（模型无类型 alt）+ age-entry-value if-expr 臂
+            //（条件样式值）——c8a7479d…→42afe2cb…。
+            "42afe2cb5b8b73d919e71877262fcc246a8461e42cc5f4c11be4b9142ede8224",
         ),
         (
             SourceProfile::AgeH0,
@@ -245,6 +248,8 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 逐字节不变。
         // PLAN-1072 刀A 第二刀（age-event-key 增 type-kw 键臂，两面同改）：
         // 93cd6814…→c337685c…。
-        "c337685c5ac1b7061fe9dee142f77a5d7bb545fae47c2861044ccc3eb7863b71"
+        // PLAN-1072 刀B（age-view-for/view-data/if-expr 臂两面同开）：
+        // c337685c…→91c53cde…。
+        "91c53cdec0078db1cf67dfd028babda9425601eb4075ecdf3cc33a579f251a63"
     );
 }

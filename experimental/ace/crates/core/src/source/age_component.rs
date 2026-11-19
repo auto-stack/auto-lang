@@ -215,6 +215,26 @@ pub enum ComponentViewItem {
     /// 表达式+双子树+span；文本叶随 collect 平铺进 texts 供绑定验证）——
     /// 本投影不判真值；语义消费归各腿（渲染腿具名拒/模板腿 v-if）。
     Cond(ComponentViewCond),
+    /// PLAN-1072 刀B：view 级循环项（`for <i>, <v> in <iter> { … }`——010
+    /// faqs 族）。**结构承载、惰性语义**：子树文本叶**不**进 `texts`（循环
+    /// 变量不在受检单位绑定域——入 hidden fn 即 verify 红）；模板腿按方言
+    /// AST 的 v-for 承载渲染；渲染/观察腿未定循环语义=装载点具名拒
+    /// （[`view_contains_for`]），不静默单帧渲染。
+    For(ComponentViewFor),
+}
+
+/// view 级循环项的结构面（PLAN-1072 刀B）。
+#[derive(Clone, Debug)]
+pub struct ComponentViewFor {
+    /// 索引名（`for i, f in …` 的 `i`；010 形恒在——本刀只收双名形）。
+    pub index: String,
+    /// 值名（`f`）。
+    pub value: String,
+    /// 迭代式（` .faqs`——视图数据字段的点引用；惰性不求值）。
+    pub iter: Expr,
+    /// 循环体（view 项；文本叶不入 texts——见枚举注释）。
+    pub items: Vec<ComponentViewItem>,
+    pub span: Span,
 }
 
 /// view 级条件项的结构面（PLAN-980 view-if 刀）。
@@ -240,6 +260,38 @@ pub fn view_contains_cond(items: &[ComponentViewItem]) -> Option<Span> {
                     return Some(sp);
                 }
             }
+            // PLAN-1072 刀B：循环体内的条件项同样是条件（不因嵌套而漏判）。
+            ComponentViewItem::For(f) => {
+                if let Some(sp) = view_contains_cond(&f.items) {
+                    return Some(sp);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// PLAN-1072 刀B：view 树内是否含循环项（首个命中返 span）——渲染腿装载点
+/// 的具名拒判据（[`view_contains_cond`] 同分工：循环渲染语义未定的腿
+/// fail-closed，不静默单帧/丢项渲染）。
+pub fn view_contains_for(items: &[ComponentViewItem]) -> Option<Span> {
+    for it in items {
+        match it {
+            ComponentViewItem::For(f) => return Some(f.span),
+            ComponentViewItem::Element(e) => {
+                if let Some(sp) = view_contains_for(&e.items) {
+                    return Some(sp);
+                }
+            }
+            ComponentViewItem::Cond(c) => {
+                if let Some(sp) = view_contains_for(&c.then_items) {
+                    return Some(sp);
+                }
+                if let Some(sp) = view_contains_for(&c.else_items) {
+                    return Some(sp);
+                }
+            }
             _ => {}
         }
     }
@@ -261,6 +313,8 @@ pub fn collect_view_cond_spans(items: &[ComponentViewItem], out: &mut Vec<Span>)
                 collect_view_cond_spans(&c.else_items, out);
             }
             ComponentViewItem::Element(e) => collect_view_cond_spans(&e.items, out),
+            // PLAN-1072 刀B：循环子树的条件项同收（树序）。
+            ComponentViewItem::For(f) => collect_view_cond_spans(&f.items, out),
             ComponentViewItem::Text(_) | ComponentViewItem::Entry(_) => {}
         }
     }
@@ -315,6 +369,13 @@ pub enum ComponentEntryValue {
         stmts: Vec<ComponentStmt>,
         foreign: bool,
     },
+    /// PLAN-1072 刀B（010 真语料）：条件样式值 `style: if <cond> { <then> }
+    /// else { <else> }`——结构承载（design 三段同形；惰性不求值）。
+    If {
+        cond: Expr,
+        then_value: Expr,
+        else_value: Expr,
+    },
 }
 
 /// PLAN-980：其余成员槽位（bind/route/expose/lifecycle/computed/watch/
@@ -357,6 +418,21 @@ pub struct ComponentNode {
     pub message_set_name: Option<String>,
     pub design: Vec<ComponentDesignEntry>,
     pub members: Vec<ComponentMemberRow>,
+    /// PLAN-1072 刀B：**仅视图数据**字段（`var faqs = [ … ]` 无类型列表字面
+    /// 量——1071 边界裁定：只读展示数据源，非可变 state 通道）。不进状态函
+    /// 数/场景/scenario/AceStateValue；handler 写它=未声明字段具名拒（
+    /// `check_handler_bindings` 既有面）；列表语义/绑定归 collections owner。
+    pub view_data: Vec<ComponentViewDataField>,
+    pub span: Span,
+}
+
+/// PLAN-1072 刀B：仅视图数据字段（无类型列表字面量初值）。
+#[derive(Clone, Debug)]
+pub struct ComponentViewDataField {
+    pub name: String,
+    /// 列表字面量的**原始源文本**（age-view-data-lit 节点 span——惰性数据，
+    /// 不经表达式投影/verify；消费腿按各自方言重析或原样发射）。
+    pub literal: String,
     pub span: Span,
 }
 
@@ -1370,14 +1446,13 @@ fn compile_component_scenario_full(
     // 体）；单赋值形已验面，多语句体沿 handler 家族边界。
     let mut view_lambda_items: Vec<Item> = Vec::new();
     {
-        fn collect_lambdas<'a>(
-            items: &'a [ComponentViewItem],
-            out: &mut Vec<&'a [ComponentStmt]>,
-        ) {
+        fn collect_lambdas<'a>(items: &'a [ComponentViewItem], out: &mut Vec<&'a [ComponentStmt]>) {
             for it in items {
                 match it {
                     ComponentViewItem::Text(_) => {}
                     ComponentViewItem::Element(e) => collect_lambdas(&e.items, out),
+                    // PLAN-1072 刀B：循环子树照走（铸造序=源序）。
+                    ComponentViewItem::For(f) => collect_lambdas(&f.items, out),
                     // PLAN-980 view-if：条件子树照走（铸造序=源序——then 先于
                     // else，与方言 DFS 一致）。
                     ComponentViewItem::Cond(c) => {
@@ -1948,6 +2023,8 @@ fn validate_channel_value_use(node: &ComponentNode) -> Result<(), Vec<Diagnostic
             match it {
                 ComponentViewItem::Text(_) => {}
                 ComponentViewItem::Element(e) => walk_items(&e.items, f)?,
+                // PLAN-1072 刀B：循环子树照走（迭代式不属验证面——惰性）。
+                ComponentViewItem::For(fl) => walk_items(&fl.items, f)?,
                 // PLAN-980 view-if：结构遍历进双子树（条件表达式本身不属
                 // lambda RHS 验证面）。
                 ComponentViewItem::Cond(c) => {

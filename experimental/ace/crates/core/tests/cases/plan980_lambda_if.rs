@@ -56,6 +56,12 @@ fn first_lambda(
                         return Some((stmts, assigns, *foreign));
                     }
                 }
+                // PLAN-1072 刀B：循环子树照走（lambda 收集面）。
+                ComponentViewItem::For(f) => {
+                    if let Some(v) = walk(&f.items) {
+                        return Some(v);
+                    }
+                }
                 ComponentViewItem::Text(_) => {}
             }
         }
@@ -65,9 +71,7 @@ fn first_lambda(
 }
 
 /// 赋值 RHS 的整型字面量（本用例族的 RHS 全为 int 字面量）。
-fn rhs_int(
-    a: &ace_core::source::age_component::ComponentAssign,
-) -> i32 {
+fn rhs_int(a: &ace_core::source::age_component::ComponentAssign) -> i32 {
     match &a.rhs.kind {
         ace_core::source::ast::ExprKind::IntLit(v) => *v,
         other => panic!("expected int literal rhs, got {other:?}"),
@@ -93,7 +97,10 @@ fn p980_lambda_if_structured_projection() {
                 "else = one assign"
             );
             assert!(matches!(then[0], ComponentStmt::Assign(_)));
-            assert!(matches!(els.as_deref().unwrap()[0], ComponentStmt::Assign(_)));
+            assert!(matches!(
+                els.as_deref().unwrap()[0],
+                ComponentStmt::Assign(_)
+            ));
         }
         other => panic!("expected If, got {other:?}"),
     }

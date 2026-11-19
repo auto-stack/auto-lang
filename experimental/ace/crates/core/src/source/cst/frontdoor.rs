@@ -1176,7 +1176,10 @@ pub(crate) fn project_packages_front(
                     ) {
                         use crate::source::age_component::ComponentStmt;
                         for st in stmts {
-                            if let ComponentStmt::If { cond, then, els, .. } = st {
+                            if let ComponentStmt::If {
+                                cond, then, els, ..
+                            } = st
+                            {
                                 out.push(cond);
                                 push_stmt_conds(then, out);
                                 if let Some(e) = els {
@@ -1201,6 +1204,11 @@ pub(crate) fn project_packages_front(
                                     }
                                     collect_item_exprs(&e.items, msgs, out);
                                 }
+                                // PLAN-1072 刀B：迭代式不入绑定验证（视图数据
+                                // 字段无绑定域——惰性），子树照走。
+                                ComponentViewItem::For(f) => {
+                                    collect_item_exprs(&f.items, msgs, out);
+                                }
                                 // PLAN-980 view-if：条件表达式入绑定验证 +
                                 // 双子树照走。
                                 ComponentViewItem::Cond(c) => {
@@ -1220,6 +1228,9 @@ pub(crate) fn project_packages_front(
                                             }
                                             push_stmt_conds(stmts, out);
                                         }
+                                        // PLAN-1072 刀B：条件样式 cond 入绑定
+                                        // 验证（两臂为字面量/替换后字面量）。
+                                        ComponentEntryValue::If { cond, .. } => out.push(cond),
                                     }
                                 }
                             }
@@ -2983,6 +2994,10 @@ fn replace_style_in_items(
     use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
     for it in items.iter_mut() {
         match it {
+            // PLAN-1072 刀B：style 字面量替换进循环子树。
+            ComponentViewItem::For(f) => {
+                replace_style_in_items(&mut f.items, lits, imports, reject_unknown)?
+            }
             // PLAN-980 view-if：style 字面量替换进条件双子树。
             ComponentViewItem::Cond(c) => {
                 replace_style_in_items(&mut c.then_items, lits, imports, reject_unknown)?;
@@ -2992,6 +3007,22 @@ fn replace_style_in_items(
                 replace_style_in_items(&mut el.items, lits, imports, reject_unknown)?
             }
             ComponentViewItem::Entry(en) => {
+                if let ComponentEntryValue::If {
+                    then_value,
+                    else_value,
+                    ..
+                } = &mut en.value
+                {
+                    // PLAN-1072 刀B：条件样式两臂的字面量替换（与 Expr 值同
+                    // 规则——两臂均为值表达式）。
+                    for e in [then_value, else_value] {
+                        if let crate::source::ast::ExprKind::Var(id) = &e.kind {
+                            if let Some(lit) = lits.get(&id.name) {
+                                e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
+                            }
+                        }
+                    }
+                }
                 if let ComponentEntryValue::Expr(e) = &mut en.value {
                     match &e.kind {
                         crate::source::ast::ExprKind::Var(id) => {

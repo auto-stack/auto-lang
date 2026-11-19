@@ -373,6 +373,11 @@ fn walk_view_tree(
                 walk_view_tree(&c.then_items, vocab, out);
                 walk_view_tree(&c.else_items, vocab, out);
             }
+            // PLAN-1072 刀B：字段级出现进循环子树（manifest 无 view_for 槽，
+            // 具名边界——与 view_cond 同形）。
+            ComponentViewItem::For(f) => {
+                walk_view_tree(&f.items, vocab, out);
+            }
             ComponentViewItem::Entry(v) => {
                 if v.is_event {
                     out.push(FieldPresented {

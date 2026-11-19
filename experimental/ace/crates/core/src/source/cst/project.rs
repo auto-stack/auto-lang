@@ -5104,6 +5104,8 @@ impl<'a> Engine<'a> {
             .map(|(role, _)| role)
             .unwrap_or_else(|| "text".to_string());
         let mut fields = Vec::new();
+        // PLAN-1072 刀B：仅视图数据字段（无类型列表字面量——1071 边界）。
+        let mut view_data = Vec::new();
         let mut handlers = Vec::new();
         let mut texts = Vec::new();
         let mut node_refs = Vec::new();
@@ -5164,17 +5166,29 @@ impl<'a> Engine<'a> {
                             .cx
                             .field_child(field, "field")
                             .expect("model field name");
-                        let ty_node = self.cx.field_child(field, "ty").expect("model field type");
+                        let name_spelled = self.cx.spelling(name_leaf);
+                        let init_node = self
+                            .cx
+                            .field_child(field, "init")
+                            .expect("model field init");
+                        // PLAN-1072 刀B：无类型形（`var faqs = [ … ]`）——仅
+                        // 视图数据字段（1071 边界）。init=age-view-data-lit
+                        // 节点的**原始 span 文本**（惰性数据——不经表达式投
+                        // 影/verify；文法已限定列表字面量形）。
+                        let Some(ty_node) = self.cx.field_child(field, "ty") else {
+                            view_data.push(crate::source::age_component::ComponentViewDataField {
+                                name: name_spelled,
+                                literal: self.cx.spelling(init_node),
+                                span: self.cx.span_of(field),
+                            });
+                            continue;
+                        };
                         let ty_leaf = self
                             .cx
                             .children(ty_node)
                             .into_iter()
                             .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
                             .unwrap_or(ty_node);
-                        let init_node = self
-                            .cx
-                            .field_child(field, "init")
-                            .expect("model field init");
                         let init = self.project_expr_sync(init_node);
                         let mutable = self
                             .cx
@@ -5629,6 +5643,7 @@ impl<'a> Engine<'a> {
             message_set_name,
             design,
             members: member_rows,
+            view_data,
             span: self.cx.span_of(node),
         }
     }
@@ -5668,6 +5683,8 @@ impl<'a> Engine<'a> {
         let cond_kind = self.rule_kind_of("age-view-if");
         let cond_block_kind = self.rule_kind_of("age-view-if-then");
         let cond_else_kind = self.rule_kind_of("age-view-else");
+        // PLAN-1072 刀B：view 级循环项 kind。
+        let for_kind = self.rule_kind_of("age-view-for");
         let _ = (cond_block_kind, cond_else_kind);
         let mut out = Vec::new();
         for raw in self.cx.children(list_node) {
@@ -5677,7 +5694,8 @@ impl<'a> Engine<'a> {
                 || Some(raw_kind) == text_props
                 || Some(raw_kind) == entry_kind
                 || Some(raw_kind) == element_kind
-                || Some(raw_kind) == cond_kind;
+                || Some(raw_kind) == cond_kind
+                || Some(raw_kind) == for_kind;
             // PLAN-980 B-AV U01（#6m 投影缺口根因）：先按自身 kind 匹配
             // ——props 段条目（age-view-entry）是具体规则、不是 age-view-item
             // 包装，unwrap 会错误下钻到其首个孩子（age-event-key）后整条
@@ -5756,7 +5774,35 @@ impl<'a> Engine<'a> {
                 let inner_kind = self.cx.tree.kind(inner);
                 let lambda_kind = self.rule_kind_of("age-inline-lambda");
                 let event_binding_kind = self.rule_kind_of("age-event-binding");
-                let value = if Some(inner_kind) == lambda_kind {
+                let if_expr_kind = self.rule_kind_of("age-if-expr");
+                let if_else_kind = self.rule_kind_of("age-if-else");
+                let value = if Some(inner_kind) == if_expr_kind {
+                    // PLAN-1072 刀B：条件样式值（design 三段同形结构承载）。
+                    let cond = self
+                        .cx
+                        .field_child(inner, "cond")
+                        .map(|w| self.project_expr_sync(self.unwrap_child(w)))
+                        .expect("if-expr cond");
+                    let then_value = self
+                        .cx
+                        .field_child(inner, "then")
+                        .and_then(|w| self.cx.field_child(w, "value"))
+                        .map(|v| self.project_expr_sync(v))
+                        .expect("if-expr then");
+                    let else_value = self
+                        .cx
+                        .children(inner)
+                        .into_iter()
+                        .find(|&w| Some(self.cx.tree.kind(w)) == if_else_kind)
+                        .and_then(|w| self.cx.field_child(w, "value"))
+                        .map(|v| self.project_expr_sync(v))
+                        .expect("if-expr else");
+                    ComponentEntryValue::If {
+                        cond,
+                        then_value,
+                        else_value,
+                    }
+                } else if Some(inner_kind) == lambda_kind {
                     // PLAN-980 lambda-if 刀：体投影接共享结构化收集
                     //（project_view_stmt_children——if 形进
                     // ComponentStmt::If 序保持；调用形置 foreign fail-closed
@@ -5830,6 +5876,25 @@ impl<'a> Engine<'a> {
                     items,
                     span: self.cx.span_of(item),
                 }));
+            } else if Some(kind) == for_kind {
+                // PLAN-1072 刀B：view 级循环项（结构承载惰性语义）。体文本叶
+                // **不入 texts**——循环变量不在受检单位绑定域（入 hidden fn
+                // 即 verify 红）；丢弃 sink 只取结构。
+                let index_leaf = self.cx.field_child(item, "index").expect("for index");
+                let value_leaf = self.cx.field_child(item, "value").expect("for value");
+                let iter_node = self.cx.field_child(item, "iter").expect("for iter");
+                let iter = self.project_expr_sync(iter_node);
+                let mut sink = Vec::new();
+                let items = self.collect_view_items(item, &mut sink, text_role);
+                out.push(ComponentViewItem::For(
+                    crate::source::age_component::ComponentViewFor {
+                        index: self.cx.spelling(index_leaf),
+                        value: self.cx.spelling(value_leaf),
+                        iter,
+                        items,
+                        span: self.cx.span_of(item),
+                    },
+                ));
             } else if Some(kind) == cond_kind {
                 // PLAN-980 view-if 刀：view 级条件项（结构承载；文本叶随
                 // collect 平铺；else-if 链=else_items 内单一嵌套 Cond）。
@@ -6813,7 +6878,11 @@ impl<'a> Engine<'a> {
         let name_leaf = self.cx.field_child(node, "name").expect("require name");
         let name = ident_of(&mut self.cx, name_leaf);
         let params = self.project_params(self.cx.field_child(node, "params"));
-        let ret = self.classify_word(self.cx.field_child(node, "ty").expect("require ret"), true, false);
+        let ret = self.classify_word(
+            self.cx.field_child(node, "ty").expect("require ret"),
+            true,
+            false,
+        );
         self.drive();
         (name, params, ret)
     }
@@ -6926,12 +6995,11 @@ impl<'a> Engine<'a> {
                 }
                 _ => ParamMode::Default,
             };
-            let ty =
-                self.classify_word(
-                    self.cx.field_child(param_n, "ty").expect("param ty"),
-                    false,
-                    true,
-                );
+            let ty = self.classify_word(
+                self.cx.field_child(param_n, "ty").expect("param ty"),
+                false,
+                true,
+            );
             // PLAN-963（T-08，L-24）：`n int = 42` 的默认值。默认值在**调用位**
             // 按调用者作用域求值，缺席实参时每个调用只求值一次。
             let default = self
@@ -7082,9 +7150,7 @@ impl<'a> Engine<'a> {
                 // 面**函数参数位**的借用 `str`（受检文本入口专属面——
                 // `VT::Str` ⇒ MIR `StrView`）；字段/返回位与其余 collections
                 // 面维持具名拒绝，入口专属纪律由车道门把守。
-                "str" if param_pos && self.cx.profile.is_aggregates() => {
-                    return int(TypeWord::Str)
-                }
+                "str" if param_pos && self.cx.profile.is_aggregates() => return int(TypeWord::Str),
                 "Str" => return int(TypeWord::StrOwned),
                 "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
                 "str" | "char" => {
@@ -7529,7 +7595,11 @@ impl<'a> Engine<'a> {
                         )
                     });
                 }
-                let ty = self.classify_word(self.cx.field_child(c, "ty").expect("field ty"), false, false);
+                let ty = self.classify_word(
+                    self.cx.field_child(c, "ty").expect("field ty"),
+                    false,
+                    false,
+                );
                 let span = fname.span.join(ty.span);
                 if seen.contains(&fname.name) {
                     let (f, t) = (fname.name.clone(), name.name.clone());
@@ -7712,7 +7782,8 @@ impl<'a> Engine<'a> {
                     self.cx.reject(span, || self_param(span));
                 }
             }
-            let ret = self.classify_word(self.cx.field_child(c, "ty").expect("spec ret"), true, false);
+            let ret =
+                self.classify_word(self.cx.field_child(c, "ty").expect("spec ret"), true, false);
             // 默认体（`fn m(..) R { .. }`）按普通块投影；签名（无体）= 抽象方法。
             let body = match self.cx.field_child(c, "body") {
                 Some(b) => {
