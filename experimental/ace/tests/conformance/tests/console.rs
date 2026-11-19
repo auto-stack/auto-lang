@@ -194,6 +194,83 @@ fn console_nul_bytes_survive_worker_transport_and_parent_judgement() {
 }
 
 #[test]
+fn console_real_observation_carries_three_axes_and_transport_loss_is_rejected() {
+    // PLAN-1098 T-07 (H-02): start from a REAL worker response (all three axes
+    // transported together), then force loss of one transported axis and prove
+    // the PARENT rejects it — never only a fabricated-step comparator test.
+    let temp = tempfile::tempdir().unwrap();
+    let suite = fixture(temp.path(), SOURCE, GOOD);
+    let limits = Limits::defaults();
+    let loaded = load_suite(&suite, &limits).unwrap();
+    let case = &loaded.cases[0];
+    let resolved = resolve_case(
+        case.specs[0].clone(),
+        &case.doc,
+        &loaded.fixture_base,
+        &limits,
+    )
+    .unwrap();
+    let check = &resolved.spec.checks[0];
+    let oracle = resolve_oracle(&resolved.spec.id, check, &loaded.fixture_base, &limits).unwrap();
+    let project = temp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("main.at"), &resolved.files[0].bytes).unwrap();
+    let artifact = temp.path().join("art-real");
+    let verdict = ac_av::run_console_check(
+        &resolved,
+        check,
+        &oracle,
+        &project,
+        &artifact,
+        temp.path(),
+    )
+    .unwrap();
+    assert_eq!(
+        verdict.status,
+        Status::Pass,
+        "{:?} {:?}",
+        verdict.detail,
+        verdict.mismatches
+    );
+    let raw: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(artifact.join("console-observation.json")).unwrap(),
+    )
+    .unwrap();
+    // A real response transports stdout, stderr AND the exit value together.
+    assert_eq!(raw["outcome"], "success");
+    assert!(raw["console"]["stdout_b64"].is_string(), "{raw}");
+    assert!(raw["console"]["stderr_b64"].is_string(), "{raw}");
+    assert_eq!(raw["channel"], "value", "exit axis is transported: {raw}");
+    assert_eq!(raw["value"], 7, "exit value is transported: {raw}");
+    assert!(
+        ac_av::console_admission_for_observation(&raw).is_none(),
+        "a real three-axis observation must admit: {raw}"
+    );
+    for (field, path) in [
+        ("stdout_b64", "console"),
+        ("stderr_b64", "console"),
+        ("value", "exit"),
+    ] {
+        let mut broken = raw.clone();
+        if path == "console" {
+            broken["console"].as_object_mut().unwrap().remove(field);
+        } else {
+            broken.as_object_mut().unwrap().remove(field);
+        }
+        assert!(
+            ac_av::console_admission_for_observation(&broken).is_some(),
+            "a response missing the transported {field} axis must be rejected: {broken}"
+        );
+    }
+    let mut no_console = raw.clone();
+    no_console.as_object_mut().unwrap().remove("console");
+    assert!(
+        ac_av::console_admission_for_observation(&no_console).is_some(),
+        "a response with no console capture must be rejected"
+    );
+}
+
+#[test]
 fn console_resource_exhaustion_is_error_with_raw_prefix_evidence() {
     let temp = tempfile::tempdir().unwrap();
     let source = format!(
