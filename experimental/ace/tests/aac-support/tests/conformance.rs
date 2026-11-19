@@ -95,10 +95,11 @@ fn v01_digest_vectors() {
     }
 }
 
-/// The BLAKE3 tree path: a 1025-byte payload is two chunks, so the first chunk
-/// CV must feed a parent merge and the partial second chunk must produce the
-/// ROOT output. BLAKE3 in pure Auto costs ~1M AV steps per KiB, so this is its
-/// own case to keep every case's wall time bounded.
+/// The BLAKE3 tree path: a 2049-byte payload is THREE chunks, so the first
+/// chunk CV feeds a parent merge (`b3_merge`'s even-total branch really runs)
+/// and the partial last chunk must still produce the ROOT output. BLAKE3 in
+/// pure Auto costs ~1M AV steps per KiB, so this is its own case to keep every
+/// case's wall time bounded.
 #[test]
 fn v01_blake3_tree_vectors() {
     let payload = vec![b'a'; 2049];
@@ -294,8 +295,11 @@ fn v03_manifest_taxonomy() {
         "use app.driver.manifest_codes\nfn main() Str { return manifest_codes() }",
     );
     // duplicate-key 12 | non-canonical-order 13 | trailing 7 |
-    // unsupported-version 10 | unknown-schema 11 | non-ascii 14 | empty 15
-    let want: &[u8] = &[12, 13, 7, 10, 11, 14, 15];
+    // unsupported-version 10 | unknown-schema 11 | non-ascii 14 | empty 15 |
+    // F5b: encoder refuses an IDENTICAL pair with the decoder's own 12, and the
+    // same-key/different-value pair (a,1),(a,2) encodes (0) AND decodes (0) --
+    // the encoder can no longer emit bytes its own decoder rejects.
+    let want: &[u8] = &[12, 13, 7, 10, 11, 14, 15, 12, 0, 0];
     expect_codes("manifest taxonomy", &got, want);
 }
 

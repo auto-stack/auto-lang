@@ -30,6 +30,21 @@ mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
 ffi-dual = { max-threads = 1 }
+# PLAN-1056 N-4: every `ace-aac` case compiles the frozen Auto support package
+# through the Gen0 frontend and executes it on the AV executor, so a case's wall
+# time is dominated by an in-process compile. Run the whole pool at once
+# (max_parallel_tests_observed=20) and 20 of 23 cases blew the per-case 10 s
+# budget purely from sibling contention (serial -j1 is 2.1-9.3 s). Bound the
+# GROUP instead of passing `-j` (the fixed-group runner owns `-j`), following the
+# mem-xl/mem-lg/mem-md precedent; inputs, assertions and budgets are unchanged.
+# Bound = 4 (measured on this 14-core host): on an idle window the whole result
+# is 25/25 in 26.07 s with a per-case max of 8.05 s, while other plans' builds
+# (8-22 concurrent cargo/rustc/cl processes) inflate every case regardless of
+# this bound — 4 threads 12.9-15.2 s, 2 threads 17.4-20.3 s (and one 9.65 s
+# window) — so the smaller bound only costs wall time. The self-contention this
+# group removes is what pushed 20 of 23 cases past 10 s; the residual is
+# external load, not this package.
+ace-aac = { max-threads = 4 }
 # PLAN-983 r27：UI rq/headless 媒体渲染族（rq_wire/rq_probe/rq_matrix/
 # rq_repair/rq_media/rq_cells/rqhost）在 full 池并发下互相竞争崩溃/假红
 # （0xc0000005 ABORT 与吞吐断言红，失败集合逐轮漂移；族内 68 例单独并发
@@ -138,6 +153,14 @@ threads-required = "num-test-threads"
 filter = "test(abi_resource939_six_scenarios_30_samples)"
 threads-required = "num-test-threads"
 
+
+# PLAN-1056 N-4: bind the `ace-aac` fixed group's cases to the bounded group
+# declared above. The filter is the whole test PACKAGE (both test binaries), so
+# the fixed-group run, the explicit `--config-file` run and any ad-hoc
+# `cargo nextest run -p ace-aac-support-conformance` all get the same limit.
+[[profile.default.overrides]]
+filter = "package(ace-aac-support-conformance)"
+test-group = "ace-aac"
 
 # PLAN-1016: explicitly selected formal pressure suite prioritizes stable
 # measurements over throughput. Concurrency inside a test's own protocol

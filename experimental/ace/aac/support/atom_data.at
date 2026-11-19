@@ -86,11 +86,17 @@
 //   schema  the real-schema table is read out of the descriptor document: for
 //           every `node TAG` under `nodes`, the tag name is the node's first
 //           primary value, and its allowed field names are the item names of
-//           its `fields { ... }` body, the names in its `slots: [ ... ]` list
-//           and the field names of its `containers { name: [tags] }` block. A
-//           container name is ALSO a legal node tag — it is the group node that
-//           holds the container's children (`types { type … }`, `bodies { … }`)
-//           — and as a group it accepts no fields. `statements:`/`inline:` are
+//           its `fields { ... }` body, the field SPELLINGS its `slots: [ ... ]`
+//           list implies and the field names of its
+//           `containers { name: [tags] }` block. `slots:` entries are positional
+//           slot KINDS, and the real descriptor admits a named field for them
+//           only through its own mapping (`descriptor.rs:815-822`): the first
+//           `Id` slot is the field `id`, `TypeUse`/`TypeRef` are both the field
+//           `type`, and any other (enum) kind is the field `kind` — the label
+//           literals (`Id`, `TypeKind`) are NOT field names. A container name is
+//           ALSO a legal node tag — it is the group node that holds the
+//           container's children (`types { type … }`, `bodies { … }`) — and as
+//           a group it accepts no fields. `statements:`/`inline:` are
 //           child/inline TAG declarations in that dialect, not field names, so
 //           they are not admitted as fields. The schema document's own root
 //           must be `descriptor` (else 10). Field/child OWNERSHIP relations
@@ -99,15 +105,18 @@
 //           of the semantic binding.
 //
 //   admission: text longer than 262144 scalars is 6 BEFORE any lexing work;
-//           node/value nesting deeper than 64 is 6 (counted over tagged nodes,
-//           inline value nodes and list containers alike, so the recursion the
-//           walker needs is bounded). Both refusals happen before the work they
-//           bound. The 64 depth bound is the ADMISSION rule, not a performance
-//           promise: the canonical form of a depth-d document is O(d^2) bytes of
-//           indentation, so an executor whose step budget is small relative to
-//           that (this harness runs AV at 64M steps) can run out of budget
-//           before it reaches the admitted depth — the module's own cost is
-//           linear in the emitted bytes, not exponential in the nesting.
+//           nesting deeper than 64 is 6, where a tagged node's depth is the
+//           number of its ENCLOSING nodes (the document root is depth 0) and a
+//           value's depth is its owner node's depth + 1 (list elements and
+//           inline-node fields add one more level each). So a chain of 64
+//           nested nodes is admitted while 65 is refused, and the 64th node may
+//           not carry a field VALUE (that value sits at depth 65) — the value
+//           path is what refuses a 64-deep chain whose leaf has a field. Both
+//           refusals happen before the work they bound. The canonical form of a
+//           depth-d document is O(d^2) bytes of indentation, but the writer is
+//           linear in the emitted bytes and a depth-64 document is ~8 KiB, so
+//           the admitted boundary is reachable and measured
+//           (`atom_admission_depth`).
 //
 // Outcome byte first (the codec.at convention): `[0, ...canonical bytes]` or
 // `[code]`. Codes: 0 ok, 1 empty, 2 unexpected-char, 3 unterminated-string,
@@ -557,12 +566,14 @@ fn lex(bs List<int>, toks List<int>) int {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Parser (recursive over node nesting; nesting is capped at 64 by admission).
-// It never touches the text: it reads the token/arena handles only, so no frame
-// carries a `Str` (a `Str` argument would move at every call — a clone — and on
-// this face every call is also charged for the deep size of the list arguments
-// it receives, so the hot loops classify items inline instead of calling
-// per-item helpers).
+// Parser (recursive over node nesting; the admitted depth is measured by
+// `atom_admission_depth`: 64 nested nodes are legal, 65 are not, and a value
+// sits one level below its owner node, so a 64-deep chain whose leaf carries a
+// field value is refused at that value). It never touches the text: it reads the
+// token/arena handles only, so no frame carries a `Str` (a `Str` argument would
+// move at every call — a clone — and on this face every call is also charged
+// for the deep size of the list arguments it receives, so the hot loops
+// classify items inline instead of calling per-item helpers).
 // ---------------------------------------------------------------------------
 
 fn parse_value(
@@ -1102,10 +1113,10 @@ fn tag_add(meta List<int>, pool List<int>, bs List<int>, a int, b int) int {
     return meta.get(0) - 1
 }
 
-fn field_add(meta List<int>, fspan List<int>, pool List<int>, ti int, bs List<int>, a int, b int) int {
-    let off = pool_add(pool, bs, a, b)
+/// Register one allowed field name that is already in the pool.
+fn field_register(meta List<int>, fspan List<int>, ti int, off int, len int) int {
     fspan.push(off)
-    fspan.push(b - a)
+    fspan.push(len)
     meta.set(1, meta.get(1) + 1)
     let base = 2 + ti * 4
     if (meta.get(base + 3) == 0) {
@@ -1115,18 +1126,18 @@ fn field_add(meta List<int>, fspan List<int>, pool List<int>, ti int, bs List<in
     return 0
 }
 
-fn field_add_tok(
-    meta List<int>,
-    fspan List<int>,
-    pool List<int>,
-    ti int,
-    bs List<int>,
-    toks List<int>,
-    t int
-) int {
-    return field_add(
-        meta, fspan, pool, ti, bs, toks.get(t * 3 + 1), toks.get(t * 3 + 2)
-    )
+fn field_add(meta List<int>, fspan List<int>, pool List<int>, ti int, bs List<int>, a int, b int) int {
+    let off = pool_add(pool, bs, a, b)
+    return field_register(meta, fspan, ti, off, b - a)
+}
+
+/// Register a field name that is a FIXED spelling rather than source text (the
+/// slot→field mapping below). The literal is encoded once per tag.
+fn field_add_lit(meta List<int>, fspan List<int>, pool List<int>, ti int, lit Str) int {
+    let lb = text_bytes(lit)
+    let off = pool.len()
+    copy_ints(lb, pool)
+    return field_register(meta, fspan, ti, off, lb.len())
 }
 
 fn field_allowed(
@@ -1198,8 +1209,19 @@ fn add_group_fields(
     return 0
 }
 
-/// `slots: [Id, TypeKind]`: the positional slot names are allowed field names of
-/// the declaring tag (the document dialect spells a slot as a field).
+/// `slots: [Id, TypeKind]`: a slot entry names a POSITIONAL slot kind, not a
+/// field name. The real descriptor (`crates/core/src/descriptor.rs:815-822`)
+/// admits a NAMED field for a slot only through this mapping:
+///
+///   `Id` (first slot only)        → field `id`
+///   `TypeUse`, `TypeRef`          → field `type`
+///   any other (enum) kind         → field `kind`
+///
+/// so `type(id: "t", kind: i32)` is the named form of `type t i32`, while the
+/// label literals themselves (`Id`, `TypeKind`) are NOT field names (the real
+/// binder rejects `type(Id: "t")` as `bind.unknown-field`). Registering the raw
+/// labels would invert both directions: it would reject the declared-named
+/// spelling and admit an undeclared one.
 fn add_slot_fields(
     bs List<int>,
     toks List<int>,
@@ -1227,7 +1249,12 @@ fn add_slot_fields(
                 for (k < n) {
                     let e = seq.get(ss + k)
                     if (vals.get(e * 4) == 0) {
-                        field_add_tok(meta, fspan, pool, ti, bs, toks, vals.get(e * 4 + 1))
+                        let r = slot_field(
+                            bs, toks, meta, fspan, pool, ti, vals.get(e * 4 + 1), k
+                        )
+                        if (r != 0) {
+                            return r
+                        }
                     }
                     k = k + 1
                 }
@@ -1236,6 +1263,32 @@ fn add_slot_fields(
         i = i + 1
     }
     return 0
+}
+
+/// One slot label → its admitted field spelling (see `add_slot_fields`).
+fn slot_field(
+    bs List<int>,
+    toks List<int>,
+    meta List<int>,
+    fspan List<int>,
+    pool List<int>,
+    ti int,
+    tok int,
+    index int
+) int {
+    if (tok_is(bs, toks, tok, "Id")) {
+        if (index == 0) {
+            return field_add_lit(meta, fspan, pool, ti, "id")
+        }
+        return 0
+    }
+    if (tok_is(bs, toks, tok, "TypeUse")) {
+        return field_add_lit(meta, fspan, pool, ti, "type")
+    }
+    if (tok_is(bs, toks, tok, "TypeRef")) {
+        return field_add_lit(meta, fspan, pool, ti, "type")
+    }
+    return field_add_lit(meta, fspan, pool, ti, "kind")
 }
 
 /// One `node TAG { slots … fields … containers … }` declaration.
@@ -1785,6 +1838,17 @@ fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) Lis
         errs.set(0, vc)
         return List<int>.new()
     }
+    // A repeated field is 8 in BOTH modes, including inside an INLINE node
+    // (`{ k: 1, k: 2 }`). `schema_doc_check` walks tagged nodes only (an inline
+    // node is a field VALUE, never a child item), so the schema-free mode's
+    // whole-arena post-pass runs here too: same rule, same code, same
+    // precedence over the writer. Unknown field/tag codes keep precedence
+    // because the schema walk runs first.
+    let dc = dup_all(dbs, toks, nodes, flds)
+    if (dc != 0) {
+        errs.set(0, dc)
+        return List<int>.new()
+    }
     return emit_document(dbs, toks, vals, nodes, seq, flds, items, root)
 }
 
@@ -1824,8 +1888,9 @@ pub fn canonicalize_bytes(bs List<int>) List<int> {
 
 /// Validate against a REAL descriptor schema document, then emit with the same
 /// writer, outcome byte first: `[0, ...bytes]` or `[code]` (10 non-`hir` root
-/// or undeclared node, 9 undeclared field, 8 duplicate field, plus every
-/// structural code of `canonicalize`).
+/// or undeclared node, 9 undeclared field, 8 duplicate field — inside a tagged
+/// node OR an inline node, exactly the schema-free rule — plus every structural
+/// code of `canonicalize`).
 pub fn canonicalize_with_schema(schema_text Str, doc_text Str) List<int> {
     if (schema_text.len() > 262144) {
         return outcome(6)

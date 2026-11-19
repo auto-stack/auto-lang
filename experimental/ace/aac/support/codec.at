@@ -321,7 +321,10 @@ pub fn frame_decode(bytes List<int>, max_payload int) List<int> {
 
 /// Encode the manifest DTO from a flat [key, value, ...] pair list and a flat
 /// [id, refkind, ...] edge list. Both are sorted here, so caller order is
-/// irrelevant: the bytes are a pure function of the data.
+/// irrelevant: the bytes are a pure function of the data. An IDENTICAL pair
+/// (same key AND same value) is the decoder's duplicate rejection (12) and is
+/// refused HERE with the same code, so the encoder never emits bytes its own
+/// decoder rejects; a same-key pair with ascending values stays legal.
 pub fn manifest_encode(
     layer Str,
     anchor i64,
@@ -409,6 +412,19 @@ pub fn manifest_encode(
     }
     sort_pair_spans(blob, pspans)
     sort_pair_spans(eblob, espans)
+    // Encoder/decoder agreement (F5b): the encoder refuses exactly the pair
+    // orders its own decoder refuses, so it can never emit bytes that
+    // `manifest_decode` rejects. A sorted table puts identical pairs adjacent,
+    // so one adjacent scan covers both classes: an IDENTICAL (key, value) pair
+    // is 12, while a same-key/different-value pair stays legal canonical order.
+    let pdup = identical_pair(blob, pspans)
+    if (pdup != 0) {
+        return outcome(pdup)
+    }
+    let edup = identical_pair(eblob, espans)
+    if (edup != 0) {
+        return outcome(edup)
+    }
     var out = List<int>.new()
     out.push(0)
     out.push(1)
@@ -473,8 +489,36 @@ fn swap_int(xs List<int>, a int, b int) int {
     return 0
 }
 
+/// 12 when two IDENTICAL pairs (same key AND same value) sit adjacent in the
+/// sorted span table, else 0. This is the ENCODER half of the duplicate rule;
+/// `check_pair_order` is the decoder half, and both must name the same code so
+/// the encoder cannot produce bytes its own decoder refuses. A same-key pair
+/// with different values is legal canonical order (the sort orders by value).
+fn identical_pair(blob List<int>, spans List<int>) int {
+    let n = spans.len() / 4
+    var i = 1
+    for (i < n) {
+        let ka = spans.get(4 * i)
+        let la = spans.get(4 * i + 1)
+        let ka0 = spans.get(4 * (i - 1))
+        let la0 = spans.get(4 * (i - 1) + 1)
+        let va = spans.get(4 * i + 2)
+        let vla = spans.get(4 * i + 3)
+        let va0 = spans.get(4 * (i - 1) + 2)
+        let vla0 = spans.get(4 * (i - 1) + 3)
+        if (slice_cmp(blob, ka, la, ka0, la0) == 0) {
+            if (slice_cmp(blob, va, vla, va0, vla0) == 0) {
+                return 12
+            }
+        }
+        i = i + 1
+    }
+    return 0
+}
+
 /// Canonical ascending sort of pair spans (insertion sort; deterministic and
-/// stable for equal pairs, which the decoder then rejects as duplicates).
+/// stable for equal pairs, which the encoder and the decoder both reject as
+/// duplicates).
 fn sort_pair_spans(blob List<int>, spans List<int>) int {
     let n = spans.len() / 4
     var i = 1
@@ -642,8 +686,8 @@ pub fn manifest_decode(bytes List<int>, max_items int) List<int> {
 /// 0 = strictly ascending; 12 = duplicate pair; 13 = descending.
 /// Canonical order is ascending (key, value): equal keys are legal when the
 /// values ascend (the encoder sorts by the pair), and only an IDENTICAL pair is
-/// the duplicate rejection — so the encoder can never emit bytes the decoder
-/// refuses.
+/// the duplicate rejection. `manifest_encode` applies the SAME rule through
+/// `identical_pair`, so the encoder cannot emit bytes the decoder refuses.
 fn check_pair_order(blob List<int>, spans List<int>) int {
     let n = spans.len() / 4
     var i = 1

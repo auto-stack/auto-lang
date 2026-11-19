@@ -440,6 +440,27 @@ pub fn manifest_codes() Str {
     cs.push(status_of(manifest_decode(mutate(fixture, 27, 228), 65536)))
     // empty key: the first key length becomes zero
     cs.push(status_of(manifest_decode(zero_key_len(fixture), 65536)))
+    // F5b: encoder/decoder agreement. An IDENTICAL pair is refused by the
+    // ENCODER with the same 12 the decoder uses, so encode can never emit bytes
+    // its own decoder rejects...
+    var dups = List<Str>.new()
+    dups.push("a")
+    dups.push("1")
+    dups.push("a")
+    dups.push("1")
+    var dedges = List<Str>.new()
+    cs.push(status_of(manifest_encode("A", 0i64, dups, dedges, 65536)))
+    // ...while a same-key pair with ASCENDING values is legal canonical order:
+    // encode succeeds AND the encoded bytes decode back to 0.
+    var asc = List<Str>.new()
+    asc.push("a")
+    asc.push("2")
+    asc.push("a")
+    asc.push("1")
+    var aedges = List<Str>.new()
+    let abd = manifest_encode("A", 0i64, asc, aedges, 65536)
+    cs.push(status_of(abd))
+    cs.push(status_of(manifest_decode(payload_of(abd), 65536)))
     return codes(cs)
 }
 

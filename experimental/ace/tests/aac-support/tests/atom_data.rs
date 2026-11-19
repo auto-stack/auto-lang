@@ -313,41 +313,122 @@ fn atom_byte_list_shape_is_outcome_first() {
         "payload_of must drop exactly the outcome byte and keep the canonical UTF-8 bytes"
     );
 }
-/// The admission rules must reject BEFORE the parser/writer touches the data:
-/// an oversized document (262145 scalars) is refused with 6. Built at runtime by
-/// doubling so the test stays cheap.
+/// The length admission rule and its reachable legal neighbour (V-04 boundary).
+///
+/// The rule is `text.len() > 262144 -> 6` and it is checked BEFORE any lexing
+/// work, so 262145 scalars is refused with 6 — the refusal is a pure arithmetic
+/// admission, never an allocation of the announced size — while a 2048-scalar
+/// document is canonicalized (0).
+///
+/// The 262144-scalar NEIGHBOUR cannot be exercised on this executor, and that
+/// limit is measured rather than skipped (see `atom_admission_envelope` and
+/// SD-01 §8 "准入规则与本车道的可执行包络"):
+///
+///   * every entry point converts the text into ONE `List<int>` of its UTF-8
+///     bytes (`text_bytes`), and the frozen collections contract caps a single
+///     list at 65536 elements (`av-core::contract::MAX_LIST_ELEMS`), so the
+///     65537-scalar document is refused by the EXECUTOR with
+///     `av.resource.list-elems` — the codec's 262144 bound is wider than this
+///     lane's materializable envelope;
+///   * even below that cap the chunked conversion is O(n^2/512) (each 512-scalar
+///     chunk re-resolves the whole source buffer) and 65536 scalars also
+///     exhausts the slot budget, so the admitted neighbours this slice can
+///     actually canonicalize inside the per-case budget are a couple of KiB.
 #[test]
 fn atom_admission_rules() {
-    // 262145 scalars: one over the frozen 262144 admission limit.
-    let over = format!(
-        "use app.atom_data.canonicalize\nuse app.codec.status_of\nuse app.digest.hex_bytes\nfn main() Str {{\n    var xs = List<int>.new()\n    xs.push(status_of(canonicalize(rep(\"a\", 262145))))\n    return hex_bytes(xs)\n}}\nfn dup(s Str, k int) Str {{\n    if (k == 0) {{ return s.clone() }}\n    let doubled = s + s.clone()\n    return dup(doubled, k - 1)\n}}\nfn rep(s Str, n int) Str {{\n    let base = s.clone()\n    let half = dup(s, 18)\n    return half + base\n}}"
+    let statuses = "use app.atom_data.canonicalize\nuse app.codec.status_of\n\
+                    use app.digest.hex_bytes\nfn main() Str {\n    var xs = List<int>.new()\n\
+                    \x20   let base = \"descriptor()\"\n    let pad = dup(\" \", 11)\n\
+                    \x20   let fit = base + pad.slice(0, 2036).clone()\n\
+                    \x20   xs.push(status_of(canonicalize(fit)))\n\
+                    \x20   let big = dup(\" \", 18) + \" \"\n\
+                    \x20   xs.push(status_of(canonicalize(big)))\n\
+                    \x20   return hex_bytes(xs)\n}\n\
+                    fn dup(s Str, k int) Str {\n    if (k == 0) { return s.clone() }\n\
+                    \x20   let doubled = s + s.clone()\n    return dup(doubled, k - 1)\n}";
+    assert_eq!(
+        run_text("atom-admission-len", statuses),
+        "0006",
+        "2048 scalars accepted = 0, 262145 scalars refused by the admission rule = 6"
     );
-    assert_eq!(run_text("atom-admission-len", &over), "06", "length refusal");
 }
 
-/// The parser-depth admission: 65 levels are refused before any node is built.
-/// (The exact 64/65 acceptance boundary is not exercised: the writer is
-/// superlinear in depth, so a depth-64 document would dominate the case budget;
-/// a shallow document is accepted by every other case in this file.)
+/// The EXECUTOR envelope above the codec's admission rule: a 65537-scalar
+/// document passes the codec's 262144-scalar check and then hits the frozen
+/// single-list cap while its UTF-8 byte vector is materialized
+/// (`av-core::contract::MAX_LIST_ELEMS` = 65536, `av.resource.list-elems`).
+/// Its own case so each compile stays inside the per-case wall budget.
+#[test]
+fn atom_admission_envelope() {
+    let envelope = "use app.atom_data.canonicalize\nfn main() List<int> {\n\
+                    \x20   let base = \"descriptor()\"\n    let pad = dup(\" \", 16)\n\
+                    \x20   return canonicalize(base + pad.slice(0, 65525).clone())\n}\n\
+                    fn dup(s Str, k int) Str {\n    if (k == 0) { return s.clone() }\n\
+                    \x20   let doubled = s + s.clone()\n    return dup(doubled, k - 1)\n}";
+    let err = run_program("atom-admission-envelope", envelope)
+        .expect_err("a 65537-scalar document exceeds the executor's single-list cap");
+    assert!(
+        err.contains("ListElems"),
+        "the 65537-scalar refusal must be the frozen list-elems resource, got: {err}"
+    );
+}
+
+/// The parser-depth admission, measured at its REAL boundary rather than
+/// asserted from the comment. Depth is counted over ENCLOSING nodes (the root is
+/// depth 0) and a field VALUE sits one level below its owner, so the two path
+/// lengths differ by exactly the leaf's field:
+///
+///   * 63 nested nodes + leaf `id` -> 0   (that value is parse_value(depth 64))
+///   * 64 nested nodes + leaf `id` -> 6   (that value is parse_value(depth 65):
+///                                          the NODE count is still legal, the
+///                                          VALUE path is what refuses it)
+///   * 64 nested nodes, no leaf field -> 0 (64 nodes is the admitted node depth)
+///   * 65 nested nodes, no leaf field -> 6 (65 nodes is refused by parse_node)
+///
+/// So "depth 64" is the admitted NODE nesting and the effective document limit
+/// for a chain whose leaf carries a field is 63. The canonical output of the
+/// admitted cases is ~8 KiB, so nothing here is skipped for cost.
 #[test]
 fn atom_admission_depth() {
-    for (depth, want) in [(65usize, "06")] {
+    fn chain(n: usize, leaf_field: bool) -> String {
         let mut doc = String::from("descriptor(schema: \"s\", revision: 1, profile: \"p\") {\n");
-        for _ in 1..depth {
-            doc.push_str("module(id: \"x\") {\n");
+        for i in 0..n {
+            if i + 1 == n {
+                if leaf_field {
+                    doc.push_str("module(id: \"x\") {}\n");
+                } else {
+                    doc.push_str("module {}\n");
+                }
+            } else {
+                doc.push_str("module(id: \"x\") {\n");
+            }
         }
-        for _ in 0..depth {
+        for _ in 0..n {
             doc.push_str("}\n");
         }
-        let src = format!(
-            "use app.atom_data.canonicalize\nuse app.codec.status_of\nuse app.digest.hex_bytes\nfn main() Str {{\n    var xs = List<int>.new()\n    xs.push(status_of(canonicalize({})))\n    return hex_bytes(xs)\n}}",
-            auto_lit(&doc)
-        );
-        assert_eq!(
-            run_text(&format!("atom-depth-{depth}"), &src),
-            want,
-            "depth {depth}"
-        );
+        doc
+    }
+    let cases: Vec<(&str, String, &str)> = vec![
+        ("63 nodes, leaf field", chain(63, true), "00"),
+        ("64 nodes, leaf field", chain(64, true), "06"),
+        ("64 nodes, bodiless leaf", chain(64, false), "00"),
+        ("65 nodes, bodiless leaf", chain(65, false), "06"),
+    ];
+    let mut body = String::from("    var xs = List<int>.new()\n");
+    for (_, doc, _) in &cases {
+        body.push_str(&format!(
+            "    xs.push(status_of(canonicalize({})))\n",
+            auto_lit(doc)
+        ));
+    }
+    let src = format!(
+        "use app.atom_data.canonicalize\nuse app.codec.status_of\n\
+         use app.digest.hex_bytes\nfn main() Str {{\n{body}    return hex_bytes(xs)\n}}"
+    );
+    let got = run_text("atom-depth-boundary", &src);
+    assert_eq!(got.len(), 2 * cases.len(), "one outcome byte per case");
+    for (i, (name, _, want)) in cases.iter().enumerate() {
+        assert_eq!(&got[2 * i..2 * i + 2], *want, "depth case `{name}`");
     }
 }
 
@@ -586,29 +667,93 @@ fn atom_real_schema_drives_validation() {
     );
 }
 
-/// A repeated field is still 8 under the real schema (its own case: each
-/// real-schema call parses the whole descriptor, so the duplicate check gets a
-/// dedicated budget).
+/// A repeated field is still 8 under the real schema — including inside an
+/// INLINE node (`{ k: 1, k: 2 }`), which `schema_doc_check` never visits (an
+/// inline node is a field VALUE, not a child item), so the schema mode runs the
+/// schema-free mode's whole-arena duplicate pass as well. The same inline
+/// duplicate is 8 through `canonicalize` too: ONE rule, two modes.
 #[test]
 fn atom_real_schema_duplicate_field_is_8() {
     let schema = real_schema();
     let duplicate = "hir(schema: \"s\", schema: \"t\") {}\n";
     let legal = "hir(schema: \"s\") {}\n";
+    let inline_duplicate = "hir(schema: \"s\", requires: {k: 1, k: 2}) {}\n";
+    let src = format!(
+        "use app.atom_data.canonicalize\nuse app.atom_data.canonicalize_with_schema\n\
+         use app.atom_data.status_of\nuse app.digest.hex_bytes\nfn main() Str {{\n\
+         \x20   var cs = List<int>.new()\n    let s = {}\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s, {})))\n\
+         \x20   cs.push(status_of(canonicalize({})))\n\
+         \x20   return hex_bytes(cs)\n}}",
+        auto_lit(&schema),
+        auto_lit(duplicate),
+        auto_lit(legal),
+        auto_lit(inline_duplicate),
+        auto_lit(inline_duplicate)
+    );
+    assert_eq!(
+        run_text("atom-real-schema-dup", &src),
+        "08000808",
+        "tagged dup = 8, legal = 0, inline dup = 8 under the schema and 8 schema-free"
+    );
+}
+
+/// N-3: the schema table maps a node's `slots:` entries to the REAL field
+/// spellings (`crates/core/src/descriptor.rs:815-822`): the first `Id` slot is
+/// the field `id`, `TypeUse`/`TypeRef` are both the field `type`, and any other
+/// (enum) kind is the field `kind`. Registering the raw LABELS as field names
+/// inverted both directions — the declared named spelling was rejected (9) while
+/// `module(Id: …)` was admitted (0) where the real binder reports
+/// `bind.unknown-field`.
+#[test]
+fn atom_real_schema_slot_field_mapping() {
+    let schema = real_schema();
+    // `module` slots: [Id] -> field `id`; `path` is a declared named field.
+    let named = concat!(
+        "hir(schema: \"s\", revision: 1u32, profile: \"p\") {\n",
+        "    module(id: \"m\") {\n",
+        "        path: \"p\"\n",
+        "    }\n",
+        "}\n"
+    );
+    // The slot LABEL is not a field name.
+    let label = "hir(schema: \"s\") {\n    module(Id: \"m\") {}\n}\n";
+    // `type` slots: [Id, TypeKind] -> fields `id` + `kind`.
+    let enum_kind =
+        "hir(schema: \"s\") {\n    types {\n        type(id: \"t\", kind: i32) {}\n    }\n}\n";
+    // `local` slots: [Id, TypeUse] -> fields `id` + `type`.
+    let type_use = concat!(
+        "hir(schema: \"s\") {\n",
+        "    bodies {\n",
+        "        body(id: \"b\") {\n",
+        "            locals {\n",
+        "                local(id: \"l\", type: t_i32) {}\n",
+        "            }\n",
+        "        }\n",
+        "    }\n",
+        "}\n"
+    );
     let src = format!(
         "use app.atom_data.canonicalize_with_schema\nuse app.atom_data.status_of\n\
          use app.digest.hex_bytes\nfn main() Str {{\n    var cs = List<int>.new()\n\
          \x20   let s = {}\n\
          \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
          \x20   cs.push(status_of(canonicalize_with_schema(s, {})))\n\
          \x20   return hex_bytes(cs)\n}}",
         auto_lit(&schema),
-        auto_lit(duplicate),
-        auto_lit(legal)
+        auto_lit(named),
+        auto_lit(label),
+        auto_lit(enum_kind),
+        auto_lit(type_use)
     );
     assert_eq!(
-        run_text("atom-real-schema-dup", &src),
-        "0800",
-        "duplicate field = 8, and a document with only declared fields = 0"
+        run_text("atom-real-schema-slots", &src),
+        "00090000",
+        "named-slot document = 0, raw slot label = 9, Id+kind = 0, Id+type = 0"
     );
 }
 

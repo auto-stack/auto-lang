@@ -107,9 +107,10 @@ u32 edge_count | (str id, str refkind) * edge_count
 ```
 
 - **规范顺序**：pair 按 (key, value) 升序（key 相同则按 value，value 相同即同一 pair）；
-  edge 按 (id, refkind) 升序。编码器排序；解码器**拒绝**非规范顺序（13）与**完全相同的
-  重复 pair**（12）——同 key 不同 value 是合法规范序，因此编码器不可能产出自身解码器
-  拒绝的字节；排序不确定性不会以 last-writer-wins 方式隐藏；
+  edge 按 (id, refkind) 升序。编码器排序，并在排序后按**与解码器相同的规则**拒绝
+  **完全相同的重复 pair**（12）——编码器因此不可能产出自身解码器拒绝的字节；同 key
+  不同 value 是合法规范序（编码成功且解码回 0）。解码器独立拒绝非规范顺序（13）与
+  完全相同的重复 pair（12）；排序不确定性不会以 last-writer-wins 方式隐藏；
 - **wire 不携带可信 Checked 能力**：格式里根本没有信任字段，恢复出的 DTO 永远不能
   冒充已验证对象；语义准入仍由 1047/1053 的重验路径负责；
 - **预分配准入**：所有 count/长度在分配/迭代之前先按"实际剩余字节"校验
@@ -152,7 +153,9 @@ admission 上限：`default_max_payload() = 4 MiB`，`default_max_items() = 6553
    先把**真实 descriptor schema 文档**（同一 Atom 方言，
    `experimental/ace/crates/core/schema/core-i32.atom`）解析成 tag/字段表，再校验文档：
    根 tag 必须是 `hir`（否则 10）、每个节点 tag 必须是 schema 声明过的节点（10）、每个
-   字段名必须属于该 tag 的允许集合（9），同节点内重复字段仍是 8。
+   字段名必须属于该 tag 的允许集合（9），同节点内重复字段仍是 8——**内联节点**
+   （`{ k: 1, k: 2 }`）也一样，用与无 schema 模式完全相同的规则（`dup_all` 全 arena
+   后置检查；schema 遍历只看带 tag 的节点，内联节点是字段值而不入栈）。
 
 字节入口 `canonicalize_bytes(bs List<int>)` 与
 `canonicalize_bytes_with_schema(schema_text Str, doc_bs List<int>)` 是同一两个模式的
@@ -161,12 +164,37 @@ admission 上限：`default_max_payload() = 4 MiB`，`default_max_items() = 6553
 文档必然通过；结构检查完全相同）。
 
 schema 表的读取规则：`nodes { node TAG { … } }` 下每个 `node` 的第一个 primary 是 tag 名；
-允许字段名 = 其 `fields { … }` 体的条目名 + 其 `slots: [ … ]` 列出的名字 +
-其 `containers { name: [tags] }` 的字段名。**container 名本身也是合法节点 tag**（它就是
+允许字段名 = 其 `fields { … }` 体的条目名 + 其 `slots: [ … ]` 按真实 descriptor 映射得到的
+**字段拼写** + 其 `containers { name: [tags] }` 的字段名。`slots:` 的条目是**位序槽种类**，
+不是字段名；真实 descriptor（`crates/core/src/descriptor.rs:815-822`）只按下列规则为其
+接纳具名字段：
+
+| 槽条目（按位置） | 接纳的字段拼写 |
+|---|---|
+| 第一个 `Id` | `id`（`Id` 不在首位时无对应字段） |
+| `TypeUse`、`TypeRef` | `type` |
+| 其他（枚举种类，如 `TypeKind`/`ExprKind`/`PlaceKind`） | `kind` |
+
+因此 `type t_i32 i32` 的具名写法是 `type(id: "t", kind: i32)`；把标签字面量本身
+（`Id`/`TypeKind`）当字段名会**双向反向**：拒绝真实 binder 接受的具名写法，又接纳它
+以 `bind.unknown-field` 拒绝的 `type(Id: …)`。**container 名本身也是合法节点 tag**（它就是
 承载这些孩子的分组节点，如 `types { type … }`、`bodies { … }`），作为分组它不接受字段。
 `statements:`/`inline:` 在该方言里是**子/内联 tag 声明**而不是字段名，故不进入字段集合。
 字段/孩子的**归属关系**（`containers` 成员、`branches` require/forbid、内联 tag 位置）
 不在本层检查，归 1047/1053 与其余语义绑定。
+
+**准入规则与本车道的可执行包络（实测，非承诺）**：文本 >262144 标量 → 6（在词法之前），
+嵌套 >64 层 → 6；边界是"64 个嵌套节点合法、65 个拒绝"，而**字段值**位于其宿主节点深度 +1，
+所以叶子带字段值的 64 层链在被算作值路径深度 65 时拒绝（64 层节点本身仍合法）。这两个
+数字由固定组用例钉住（`atom_admission_rules` / `atom_admission_depth`）。同时，本 profile
+记录的准入上限**宽于本执行器可物化的包络**：
+- `text_bytes` 把整段文本转成**一个** `List<int>`，而冻结的 collections 合同把单表上限钉在
+  65536 元素（`av-core::contract::MAX_LIST_ELEMS`，`av.resource.list-elems`）——65537 标量
+  的文档由执行器以资源拒绝（不是 codec 结果码）；
+- 该转换按 512 标量分块、每块仍重解析整个源缓冲（O(n²/512)），故 65536 标量的文档还会
+  撞到槽预算，实际可在用例预算内规范化的文档约数 KiB（本切片用例最大 2048 标量合法近邻）。
+这两条是**执行器包络**，不是把 codec 的准入规则收窄；真正的支持上限由本 profile 的规则
+决定，包络补齐（分块词法/流式 writer）属后继增量。
 
 ### 8.1 writer 布局规则（冻结）
 
@@ -218,6 +246,18 @@ schema 表的读取规则：`nodes { node TAG { … } }` 下每个 `node` 的第
   1053/1054/1068。
 ## 10. 验证（本交付稿的真实命令与结果）
 
-固定组 `ace-aac`：`cargo nextest run -p ace-aac-support-conformance`。
-V-01/V-02/V-03/V-04 的观测值与计划 §7 证据一致；V-05 的"全部覆盖腿"义务**不触发**
-（未新增公共 std 操作，见 §2）。
+固定组 `ace-aac`（`experimental/ace` workspace，`-p ace-aac-support-conformance --lib --tests
+--config-file ../../.config/nextest-full.toml`）：**25 例**，`cargo t ace-aac` → `PASS: ace-aac`
+（`executed=25`、`gate_passed=true`、`max_parallel_tests_observed=4`）。
+
+- **组级限流**：用例都在 av-core 的 AV 执行器上编译并运行整包，无限制并行时单例墙钟被同族
+  争用推到 >10 s；`.config/nextest-full.toml` 的 `[test-groups] ace-aac = { max-threads = 4 }`
+  加 `package(ace-aac-support-conformance)` override 把**组**限在 4 路（不再用与 fixed-tests
+  冲突的 `-j` 参数）。组模式实测 25 例全部 ≤10 s：空闲窗口最大 8.05 s、总 26.07 s；串行
+  `-j 1` 口径 25 例全部 ≤10 s（最大 9.27 s，总 110.96 s），作例内成本说明。外部计划构建会把每例
+  墙钟整体抬高（同负载 A/B：4 路 max 12.9-15.2 s、2 路 max 17.4-20.3 s），那是主机争用而非本包
+  成本，故组限流只去掉本组自身争用、按总墙钟取 4 路。
+- V-01/V-02/V-03/V-04/V-06 的观测值与计划 §7 证据一致（本 profile §3/§6/§8 的每条规则都有
+  固定组用例：摘要向量、帧 55 组、manifest 12/13/7/10/11/14/15 + 编码器同键不同值 0、
+  atom 准入 6 与合法近邻、schema 槽位→字段映射、内联节点重复 8、真实 HIR 双模式定点）。
+- V-05 的"全部覆盖腿"义务**不触发**（未新增公共 std 操作，见 §2）。
