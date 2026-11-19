@@ -3921,6 +3921,32 @@ pub(crate) fn rename_expr_with_params(
         // PLAN-105 T-02：泛型类型接收位（`List<int>.new()` 的 `List<int>`）——
         // 类型不是值，原样透传（类型实参由共享 resolver 校验）。
         ExprKind::GenericType { .. } => expr.clone(),
+        // PLAN-105 T-02（U03 真语料 013/015）：下标 `base[index]`（`.todos[idx]`
+        // / `.grid[i].field` 链）——基与下标都递归重命名，读语义交共享 resolver。
+        ExprKind::Index { base, index } => Expr {
+            span: expr.span,
+            kind: ExprKind::Index {
+                base: Box::new(rename_expr_with_params(base, binding, fields, param_locals)?),
+                index: Box::new(rename_expr_with_params(index, binding, fields, param_locals)?),
+            },
+        },
+        // PLAN-105 T-02（U03 真语料 013）：记录/对象字面量 `Todo { id: 1, … }`
+        // ——字段值递归重命名（键原样）。
+        ExprKind::ObjectLit { fields: ofields } => Expr {
+            span: expr.span,
+            kind: ExprKind::ObjectLit {
+                fields: ofields
+                    .iter()
+                    .map(|f| {
+                        Ok(crate::source::ast::ObjectField {
+                            key: f.key.clone(),
+                            value: rename_expr_with_params(&f.value, binding, fields, param_locals)?,
+                            span: f.span,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+            },
+        },
         // PLAN-105 T-02（U03 真语料 012/016）：数组/List 字面量——元素递归
         // 重命名后原样交给共享 resolver（语句位 `let/var` 初值的 List 脱糖）。
         ExprKind::ArrayLit(elems) => Expr {
