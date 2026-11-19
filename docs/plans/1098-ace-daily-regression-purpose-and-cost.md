@@ -596,6 +596,25 @@ tools = ["a2x"]; domain = ace; all = false
 
 **T-06 未完成**：47 行里的 **C 类 19 行**（`bstr_1064`/`kv_zip_1064`/`stdlib_*`/`module_*`/`plan966_ct_product`/`console_coverage_1041` 等真 rustc/cl/py 腿）尚未迁入本组；它们目前仍在 `ace-av` 日常选择内。迁移需按 §5.7 的"助手 × 端"记账并做旧新同输入对照，留下一步。
 
+**T-06 第二刀（同日续，代码 `e169c7000`）：C 类 19 行迁入**
+
+- `crates/av/Cargo.toml` 增空 feature `test-toolchain`；给 19 个 C 行逐条加 `#[cfg(feature = "test-toolchain")]`（**只门测试体**，`run_rust_stdout`/`compile_c_fileset`/`native_exit` 等共享助手照常编译，避免像 a2x 那次整模块门控把日常编译打断）。
+- `ace-toolchain` 组 args 增 `-p ace-av --test conformance`（`--features test-toolchain` 已就位），expression 追加这 19 个逐名身份。
+
+**旧新身份对照（真实 `--discover-only` 差集，非口算）**：
+
+| 面 | 之前 | 之后 | 差集 |
+|---|---:|---:|---|
+| `ace-av`（日常） | 1,428 | **1,411** | −19（正是迁出的 19 行）+2（T-04/T-05 新增的边界邻例与确定性用例） |
+| `ace-toolchain`（显式） | 37 | **56** | +19，且其中 `ace-av::conformance` 行数实测 = 19 |
+| `ace-rust-lowering`（日常） | 6 | 4（第一刀） | 不变 |
+
+**真实运行**：`ace-toolchain` 准备 39.56s、运行 **PASS 56/56，wall 68.0s**；item 时间和 993s（并行 14×），最慢 `bstr_1064_v_d09_file_read_bytes_cross_end` 55.56s、`bstr_1064_v_codec_five_ends` 41.87s、`kv_zip_1064::v03_kv_a2r_roundtrip_and_budget_4096` 30.20s——**这些曾经的 10s 级违规现在整体离开日常组**，10s 预算不再被它们占用；`ace-toolchain` 自身属显式认证组（父截止 1800s），不适用日常 60/120 预算。
+
+**治理**：`ToolchainSplit` 扩到 4 例（组显式性、a2x 门控计数、AV 19 行"门控 + 组表达式逐名覆盖"、`ace-av` 必须声明该 feature），全套 **83/83 OK**。过程中一次补丁把类体写错缩进（`IndentationError`），用整段重写修复。
+
+**T-06 仍未闭**：①`Q` 类（S-04 `resources_tier` 六场景）处置；②`L` 类 S-39 交 1061/1063 的具名移交文本；③`ace-av` 全组（1,411）prepared 复跑属 T-09 逐组验收项，不在本刀重复。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -789,6 +808,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 15，r1）：`stage: work`，T-06 首刀（§5.21，代码 `125ab32f4`）。执行内容：新增显式 `ace-toolchain` 组（`all=false`，不被默认/`all`/`ace` 隐含选择）与空 feature `test-toolchain`；把 6 个认证模块的 **35 个测试** + H-05 两例逐条 `#[cfg(feature)]` 门控（**不门整模块**——首版整模块门控导致日常 `inventory_941` 引用其数据表编译失败 E0433×3，已修正）。发现差集：`ace-a2x` 328→**293**、`ace-rust-lowering` 6→**4**、`ace-toolchain` **37**；真实运行 `ace-toolchain` **PASS 37/37（95.59s，准备 62.74s）**，日常两组复跑只剩既有红（a2x 指纹 1 例、rust-lowering 1060-R3 两例），无新增。治理 `ToolchainSplit` 2 例 + 全套 81/81 OK。T-06 未完成：47 行 C 类 19 行仍在日常，待按"助手×端"迁入。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 15 | from: work | to: work | status: executing | outcome: pass（T-06 首刀：显式组+门控+37/37 真跑；C 类 19 行待迁） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 125ab32f4 / 本轮 docs(plan1098) | next: work（T-06 续：C 类 S 行迁入 + 旧新同输入对照）`
+
+2026-11-19（goal round 16，r1）：`stage: work`，T-06 第二刀（§5.21 续，代码 `e169c7000`）。执行内容：`ace-av` 增 `test-toolchain` feature，19 个 C 类（真 rustc/C/py 跨端腿）测试体逐条门控（只门测试体，共享助手不门）；`ace-toolchain` args/expression 扩到覆盖它们。真实发现差集：`ace-av` 1,428→**1,411**（−19 迁出 +2 新增）、`ace-toolchain` 37→**56**（实测 av 行=19）；`ace-toolchain` 真跑 **PASS 56/56 wall 68.0s**（item 和 993s，最慢 S-01 55.56s——这些 10s 违规已整体离开日常）。治理 `ToolchainSplit` 扩到 4 例，全套 **83/83 OK**。T-06 未闭：Q 类 S-04 处置、L 类 S-39 移交文本、`ace-av` 全组复跑（T-09）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 16 | from: work | to: work | status: executing | outcome: pass（T-06 第二刀：C 类 19 行迁入，56/56 真跑；Q/L 待处置） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: e169c7000 / 本轮 docs(plan1098) | next: work（T-06 收尾 Q/L 行；随后 T-07 宿主/console 行）`
 
 ## 10. 待澄清事项
 
