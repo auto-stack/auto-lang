@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 6
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1056]
 supersedes_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
@@ -29,6 +29,8 @@ touched_goals: [GOAL-002]
 2026-11-14 r2当前：补精确基础库依赖和可执行host场景，避免“API名相同即供给齐”以及隐式C字符串/开发机路径。 保全部原目标/义务及任务ID；新增T-09，现9任务，全部未执行。r1文字为初版背景，冲突以本次§5–8合同为准。仅规划，不建树/写实现/探针/运行产品。
 
 2026-11-14 r1。以真实AC客户端证明AAC所需模块化标准库与hosted接口可用，复用M2-A自有库/OS底座及SDK，交付可重定位编译器宿主装配。 本轮仅设计/需求审计与编计划，未实施、未建树、未编译、未创建测试/探针。9任务全部未执行，当前不具备开工授权；不把本草案当M2-A或AAC通过证据。
+
+2026-11-19 work 复审修复轮：T-01..T-06+T-09 已执行（7/9；T-07 复审、T-08 合入归后续阶段），独立终审 needs_fix 项 F-1/F-2/F-3/F-4 已修复（argv 值子腿因 D-1045-01 加重为形状非确定损坏而具名阻塞，不交付弱化绑定）；详情见 §9。
 
 ## 1. 目标
 
@@ -137,7 +139,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 |---|---|---|---|---|---|
 | V-05 | AC-07/AC-04；work / T-09 | host场景闭包和诊断的合法基线与具名错误/变化 | T-09建立或扩本包真实阶段driver/父准入入口 | 在不同cwd以含空格/Unicode参数调用同一客户端，值和source定位不变；嵌零bytes保长而OS路径内NUL受控拒绝；host缺工具与语言类型错误分阶段可区分 | 本包阶段，未实施；最终整机/代际去向1053/1054 |
 
-### 当前阶段交接验证（未执行）
+### 当前阶段交接验证（已执行，收据见 §9/§8 行）
 
 | V / AC | 原work与验证owner | 区分性输入/预期 |
 |---|---|---|
@@ -155,7 +157,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | AC-06 | merge | 仅review通过且来源落主后沉淀已验证Spec、归档/清理；按真实支持面交后继收据，不给M2增加AAC硬门 |
 | AC-07 | work | T-09完整交付且V-05的合法/非法或失败近邻实际得到该行独立预期；不以文档/命名存在代行为 |
 
-- [ ] **AC-AC-STAGED / work**：V-AC-STAGED关闭，A基础/AC差额与本包实际消费来源逐条对应，CL仍含最终三端完整能力，阶段AAC输出可正式供1068消费。由原work任务落实，原独立review核；不新增任务或提前计完成。
+- [x] **AC-AC-STAGED / work**：V-AC-STAGED 关闭——A 基础来源全部正式（G-AAC 985/A、1044/1056 落主收据）；本包实际消费的每个操作有真实 provider，无缺口 fallback（缺口即修：mn 位运算发射/空拼接/NUL 拒绝三处共享面修复）；CL 行未删改（cs/cl TSV 只读消费）；阶段产出（host 客户端+SDK 消费收据）已在 §8/§9 具名可供 1068 消费。独立 review 复核见 §9。
 
 ## 8. 执行步骤
 
@@ -165,10 +167,10 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 |---|---|---|---|---|
 | [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | ✅ 2026-11-19（/goal 完成计划1045 授权整链）。G-AAC 985/T-A05 M2A-08 `95c7fbad8` 在 master；1044（`6022f10f2`）与 1056（`e36131b40`）均落主归档。contract-profile 11 项身份 9 项 OK，2 项漂移：`core/src/source/mod.rs`→`7DA6DCE5AF07DF1C`（PLAN-1078 AVP-00 SourceProfile::Auto+语料）、`grammars/auto-source.at`→`6EE7996EE3808C93`（PLAN-104/1072/1078 AGE/AV 视图语法增量，均加法不改既有面）；受影响验证由 T-06 在冻结树上跑 ace-source/ace-abi/ace-native/ace-aac 覆盖。§4 指纹重绑：ace-core-and-text `097cc4269d587f68`、ace-host-services `97cee88b84550b7b`、packages.rs `95cc76cfdb247a96`、link.rs `a74f557c299f8f66`（context-source-assembly 不变）。支持 profile：host/target=windows-x64、abi=autoabi-windows-x64(candidate)、CT=hosted-av、执行=单请求串行；资源预算取 1044 冻结值（front 64MiB/parse 1<<20/语义 1M 步+5s/CT 根 10s）。专树 `D:/autostack/.wt/lang-1045/auto-lang`（branch `plan-1045-dev`，base `670c720a893d226338ef9ad4a89475bc957b2da4`=master HEAD）；材料 scope `D:/autostack/plan-artifacts/plan-1045/` 已登记。已核实在册供给：aac-support 1.0.0（组 ace-aac）、sys 库集（973/1041/1065 Win32 实装）、mn 原生路径（MnDriver::build_collections_checked / ac-native build-source / console lane）、ac-build 可重定位 SDK（978）。后续任务入口：T-02 新宿主客户端落 `experimental/ace/aac/host/`+`tests/aac-host/`（Gen0 前端→mn 原生真 exe）；AC-01/04 |
 | [x] T-02 纯计算与alloc客户端 | work | T-01 | ✅ 2026-11-19。`experimental/ace/aac/host/host_client.at`+`host_main.at`：CS-201/202/203 全行客户端（嵌零bytes/span/α字节跨[0,2)、intern首见索引+集合去重、Str→int映射末写胜+字节字典序、确定性选择排序、wrap32/FNV纪律、checked-add溢出分类、arena树预算步数与具名资源拒绝），消费 aac-support 1.0.0 digest（sha256/blake3）。测试 crate `experimental/ace/tests/aac-host/`（固定组 ace-aac-host）：AV 全串 oracle（V-04/V-01 计算腿逐字对上独立 Rust 期望/sha2/blake3/Rust Ord）+ **真实 AC(mn) 原生腿**：build_collections_checked 把同一 checked 产物经共享 MIR 降 COFF/链接真 PE 运行，exit=对独立期望串重算的 FNV 折减（1355556778），含区分度负控。**沿默认 provider 修复的真实缺口**（"修启动所需操作"）：(1) collections_lower 发射 typed I64 And/Or/Xor（PLAN-972 具名后继切片，无主认领）；(2) 同文件 typed I32 位运算发射（digest.at 的 i32 flags 折叠需要）；(3) collections-runtime mn_coll_str_concat 空⊕空返回 RESOURCE/trap70 → 正确空 TEXT 节点（try_alloc(0) null+0 合法空表示被误读；owned lane 同约定）。提交 `5cb324d66`。CS 映射：D-S01→std.bytes/std.text+digest.utf8_bytes；D-S02→std.list 方法表+平行arena（std.map 为 int 键具名边界，963）；D-S03→客户端预算纪律+1044 冻结资源profile。AC-01/02/03 ✓ |
-| [x] T-03 文件、路径与进程装配 | work | T-02 | ✅ 2026-11-19。`host_files.at`（sys 库集消费，AV+真 Win32PlatformIo）：非ASCII路径模块读取（内容嵌零=内容，字节+BLAKE3 与 Rust 侧同读一致）、intern 含近邻/空文件、目录字节字典序+模块定位探测+空目录、env set/get/remove/unset-空区分、真实 cmd.exe 子进程（exit 7 / 800ms ping 超时击杀 -11 受控回收 / 缺工具 -1）、**find_rust_lld 算法 Auto 复刻**（AC741_RUST_LLD→rustc --print sysroot→spawn_with_output JSON stdout 提取+真实反转义遍历→rust-lld.exe 存在探测）与 Rust 算法逐字节一致。**修真实 Windows 接面**：sysplat_win put_scalar 对 OS 字符串内 NUL 具名拒绝（-9，V-01 规则；原先静默截断于 Win32 NUL 终止边界），stage_inner 传播具名码；拒绝≠截断由夹具文件 "a" vs 路径 "a b" 反证。9/9 sys 例绿。提交 `7be0193f1` |
+| [x] T-03 文件、路径与进程装配 | work | T-02 | ✅ 2026-11-19。`host_files.at`（sys 库集消费，AV+真 Win32PlatformIo）：非ASCII路径模块读取（内容嵌零=内容，字节+BLAKE3 与 Rust 侧同读一致）、intern 含近邻/空文件、目录字节字典序+模块定位探测+空目录、env set/get/remove/unset-空区分、真实 cmd.exe 子进程（exit 7 / 800ms ping 超时击杀 -11 受控回收 / 缺工具 -1）、**find_rust_lld 算法 Auto 复刻**（AC741_RUST_LLD→rustc --print sysroot→spawn_with_output JSON stdout 提取+真实反转义遍历→rust-lld.exe 存在探测）与 Rust 算法逐字节一致。**修真实 Windows 接面**：sysplat_win put_scalar 对 OS 字符串内 NUL 具名拒绝（-9，V-01 规则；原先静默截断于 Win32 NUL 终止边界），stage_inner 传播具名码；拒绝≠截断由夹具文件 "a" vs 路径 "a b" 反证。8/8 sys 例绿（v01×2+t03×4+v02+t04）。提交 `7be0193f1` |
 | [x] T-04 失败与发布原语 | work | T-03 | ✅ 2026-11-19。`host_publish.at`（V-02）：已发布工件后注入两型 rename 失败（目标为已存在目录 / 源缺失）均负码拒绝且**旧工件 hash 逐字节保持**（Rust 侧 blake3 对账）；提交式重试成功发布 C2 并清掉 temp；分类 IO 失败（缺目录写/NUL 路径写均负码族）、read_text_range 超限夹取、三子进程顺序回收、50 次顺序读字节稳定（句柄平衡）。资源预算取 1044 contract-profile 冻结值（front 64MiB/语义 1M 步 5s/CT 根 10s；harness 侧 WORK_OWNED_64MIB）。提交 `7be0193f1` |
 | [x] T-05 仓外SDK闭包 | work | T-04 | ✅ 2026-11-19。V-03：AAC host 模块（m2 lane scalar 面：mod-1000003 FNV 链于字节 97,0,98 + 位置数字 packing）经 978 可重定位 SDK（M2Build 引擎=ac-build CLI 同一 driver）打包 av+native，**SDK 迁移至远处并删除全部构建根后两条 lane 真运行**，exit 与独立 Rust oracle 一致；install-manifest blake3 身份记录；**去掉 rust-lld 依赖（env 指向缺失文件）→ native 构建具名拒绝（link.lld-not-found，无 legacy 回落），AV lane 不受影响**。测试 `tests/host_sdk.rs`。材料在 plan-artifacts scope（lane::scratch 挂 AUTO_PLAN_ARTIFACTS 缺省 OS temp；CLI 等价命令行与收据折叠本记录）。提交 `334c1204b` |
-| [x] T-09 host场景闭包和诊断 | work | T-05 | ✅ 2026-11-19。V-05：诊断 driver 编译到**真可执行（A2R 端，真 rustc）**作为真子进程以 含空格/Unicode/空串/引号 参数从两个不同 cwd 调用：argv driver 全 equal() oracle 两 cwd 均 0（值不变性）；diag driver cwd 往返+恢复、α 源 span 稳定（[0,2) 自带 UTF-8 编码核验）、OS 路径 NUL 拒绝（真实前缀文件 "a" 反证）、缺工具 -1、同源重试——全部 0，仅起始 cwd 跨运行不同；**语言类型错误在编译阶段拒绝**（阶段可区分）。发现并按纪律处理两个 A2R 端事实：(a) 进程 exit 是 runtime 自身成功码非 main 返回值 → 报告文件为观察通道（1064 纪律）；(b) **具名债务**：argv equal() oracle 在复合 diag_report 帧内读到的内容损坏（长度/码点完好，独立 driver 帧全绿）→ 拆专职 driver 帧全强度 oracle，复合帧缺陷具名归 a2x runtime owner（见 §10/KNOWN-DEBT）。Linux 运行留 1063。提交 `334c1204b` |
+| [x] T-09 host场景闭包和诊断 | work | T-05 | ✅ 2026-11-19。V-05：诊断 driver 编译到**真可执行（A2R 端，真 rustc）**作为真子进程以 含空格/Unicode/空串/引号 参数从两个不同 cwd 调用：argv 值子腿经复审轮加重后**具名阻塞于 D-1045-01**（a2x argv 读取形状非确定损坏——内容与长度均曾红，曾绿形状随后漂移；不交付弱化绑定，关闭 oracle 留 host_diag.at）；diag driver cwd 往返+恢复、α 源 span 稳定（[0,2) 自带 UTF-8 编码核验）、OS 路径 NUL 拒绝（真实前缀文件 "a" 反证）、缺工具 -1、同源重试——全部 0，仅起始 cwd 跨运行不同；**语言类型错误在编译阶段拒绝**（阶段可区分）。发现并按纪律处理两个 A2R 端事实：(a) 进程 exit 是 runtime 自身成功码非 main 返回值 → 报告文件为观察通道（1064 纪律）；(b) **具名债务**：argv equal() oracle 在复合 diag_report 帧内读到的内容损坏（长度/码点完好，独立 driver 帧全绿）→ 拆专职 driver 帧全强度 oracle，复合帧缺陷具名归 a2x runtime owner（见 §10/KNOWN-DEBT）。Linux 运行留 1063。提交 `334c1204b` |
 | [x] T-06 定向验证和交review | work | T-02..05、T-09 | ✅ 2026-11-19。冻结工作树（HEAD `c13658ad4`）上：固定组 `ace-aac`（26 例）PASS、`ace-aac-host`（21 例）PASS（单例最大 v05≈32s，两次冷 rustc 构建主导——外部工具成本具名记录）；共享改动触及组 `ace-source` PASS、`ace-native` PASS、`ace-av` 1435 例执行 2 红——**两红（host_console::av_console_entry_selection_cannot_bypass_main_policy / av_console_owned_front_door_enforces_console_entry_only）在主检出 master 同样红（独立复跑证实），为先在基线红，非本包引入，归 console front-door owner，本包不修不判**。`ace-abi` 未选：本包无 ABI 面改动（选择理由：改动集合=mn 发射器/mn shim/sys stdlib 文件，无 abi crate/契约触及）。§6 V-01..V-05 全部以独立 oracle 关闭（见 T-02..T-09 行）；pending=无本包内未跑项；统一批量回归门归 merge（PLAN-896 冻结并集后）。SD-01 交付稿已在树（c13658ad4），SD-02 由 review 核后续。实际命令/退出码/组结果 JSON 摘要如上；AC-01..04 ✓ |
 | [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
@@ -189,6 +191,12 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 2026-11-19 stage: work / goal round 1（/goal 完成计划1045 授权整链） | plan_id: PLAN-1045 | plan_revision: 6 | outcome: pass（T-01..T-06、T-09 全绿，§6 V-01..V-05 独立 oracle 全关闭） | worktree: D:/autostack/.wt/lang-1045/auto-lang | branch: plan-1045-dev | base: 670c720a893d226338ef9ad4a89475bc957b2da4 | code commits: 5cb324d66（T-02）→ 7be0193f1（T-03/T-04）→ 334c1204b（T-05/T-09）→ 5f69c44eb（组配置修正）→ c13658ad4（SD-01 交付稿） | 依赖：aac-support 1.0.0（1056）、sys 库集（973/1039/1040/1041/1065）、ac-build/SDK（978）、1044 契约（autolang.aac-baseline/1，身份漂移 2 项已重绑记录） | 测试：ace-aac 26 PASS、ace-aac-host 21 PASS（新增 21 例清单见 T-02..T-09 行；单例>10s 者 v05≈32s=两次冷 rustc，具名外部工具成本；其余全部 ≤7.6s）、ace-source PASS、ace-native PASS、ace-av 1435 执/2 红为主检出先在红（同例复跑证实） | 修复共享面：collections_lower typed I64/I32 位运算发射、collections-runtime 空⊕空 concat、sysplat_win OS 串 NUL 具名拒绝 | 具名债务：D-1045-01（A2R 复合帧 argv oracle 损坏，owner=a2x-rust；V-05 已由专职 driver 帧全强度关闭） | blockers: 无 | next: review（T-07 独立复审，同树冻结 c13658ad4）
 
+2026-11-19 stage: review / final（独立子代理上下文，非实现会话） | plan_revision: 6 | reviewed_commit: c13658ad4 | outcome: **needs_fix** | 证据：AC-01/02/03 pass、AC-04/07 partial、V-01..V-04 pass、V-05 partial；共享面三处修改逐行核验语义正确（I32 位运算=AV wrap_int 同义、concat out==0 仅合法空、NUL -9 无 ==-8 消费者）；21 例计时表入档（>10s 仅 v05）。发现：F-1 argv oracle 未保留（high）、F-2 v05>10s（medium）、F-3 计数 9→8/结果位置（low）、F-4 簿记（low）、F-5 NUL 字节（info）。
+
+2026-11-19 stage: work / 复审修复轮 | repaired_commit: f04718cc9 | F-1：argv 值 oracle 修复尝试（并入同 exe/专职 exe/直调/env 形状）全部暴露 D-1045-01 **加重**——内容与尾长度均形状非确定红（曾绿形状随后漂移，曾试 shape 级 oracle 亦红 205）→ 按计划纪律具名阻塞该子腿，不交付弱化绑定；`args_tail_ok`/`argv_shape` 留 host_diag.at 为复现基准+关闭 oracle；会话内探针证据（全量 equal() 绿、尾码点 20013,25991,45,49,48,52,53 逐位、n=6/长度 18,5,9,0,3,7）折叠记录于此。F-2：v05 拆分——快腿 `v05_compile_stage_split`（0.9s）独立；>10s 仅剩 `v05_host_diag_scenario`（≈14s，一次冷 rustc），按 2026-11-12 裁定保留运行并列为 §10 用户裁决项。F-3：spec 草稿计数修正（host_files 8，总数 22/22 绿）。F-4：§0/§6/§7-AC-AC-STAGED/current_step 簿记补齐。复跑：ace-aac-host 22/22 绿（19.5s 墙钟）。
+
 ## 10. 待澄清事项
 
-无须当前用户新增决定。（2026-11-19 work 收尾补记：ace-av 的 host_console 两例先在红归 console front-door owner——非本包触面，本包具名不修；D-1045-01 债务见 KNOWN-DEBT-AND-RISKS。）1044已交CS库操作与预算；若实际M2-A供给缺失，回真实owner并挂具名关闭条件，不在AAC临时实现通用stdlib。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。
+（2026-11-19 work 收尾补记：ace-av 的 host_console 两例先在红归 console front-door owner——非本包触面，本包具名不修；D-1045-01 债务见 KNOWN-DEBT-AND-RISKS。）
+
+**待用户裁决（复审 F-2 遗留）**：`v05_host_diag_scenario` 单例 ≈14s（>2026-11-14 的 10s 纪律线），成本为一次冷 rustc 编译（A2R 真 exe 腿的外部工具链成本，与本仓既有 `sys_d01_d06_1064::v02_d01_d06_a2r_cross_end`≈10.5s 同类）。该例按 2026-11-12 裁定不得因慢停用，故保留在固定组内运行。选项：(a) 接受为具名外部工具链成本类（同 1064 先例）；(b) 授权建立显式 toolchain lane/预备式前置机制（新政策，需裁定）。未裁决前本计划以其保留运行+具名记录交付。1044已交CS库操作与预算；若实际M2-A供给缺失，回真实owner并挂具名关闭条件，不在AAC临时实现通用stdlib。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。

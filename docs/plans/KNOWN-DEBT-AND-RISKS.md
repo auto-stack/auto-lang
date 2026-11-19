@@ -4958,20 +4958,18 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
   修复后在 `ace-syntax` + `case-av-language-parity` 复跑稳定。
 - 状态：open（不阻塞 PLAN-1079；规范写法已覆盖，债务具名不静默）。
 
-## D-1045-01 — A2R 端 argv 内容 oracle 在复合大帧内读到损坏（2026-11-19 PLAN-1045 T-09 登记）
+## D-1045-01 — A2R 端 argv 读取经 host_diag 模块时形状非确定损坏；V-05 argv 子腿具名阻塞（2026-11-19 PLAN-1045 T-09 登记，复审轮加重）
 
-- 现象：同一 `args_tail_ok(args())`（List<Str> 尾部五元素 remove + `std.text.equal` 全量比对，
-  含空格/Unicode/空串/引号参数）在 main 直接调用或专职小帧（含带 Str 参数的 wrap 帧）内
-  **全绿**（码点探针证实尾参数码点逐位正确：20013,25991,45,49,48,52,53）；但在
-  `host_diag.at` 的复合大帧 `diag_report`（多腿长函数）内 `equal(t4, "中文-1045")` 恒假
-  （报 205），同一帧内其余腿（长度探针等）不受影响。
-- 归属：A2X-Rust 运行时/降层（`experimental/ace/crates/a2x-rust`）——argv 元素经帧传递后的
-  内容读取在大帧组合下损坏；PLAN-1064 的既有用例（短源、main 内直调）不触发。
-- 影响：仅影响"在单个复合帧内同时消费 argv 全量 equal 比对"的书写形；PLAN-1045 已把 argv
-  腿拆入专职 driver 帧（`argv_invariance`）以全强度 oracle 关闭 V-05，无 oracle 弱化。
-- owner：a2x-rust runtime/降层 owner（下一触及 a2x-rust 帧传递/字符串驻留的批次；或
-  Design59 具名实施任务指派）。
-- 关闭条件：复合帧内 `equal(args()[i], <同串>)` 与专职帧结果一致；以 PLAN-1045
-  `experimental/ace/aac/host/host_diag.at` 的 diag_report 原复合形（argv 腿并回）为复现
-  基准，`ace-aac-host` 全绿后并回专职帧拆分。
-- 状态：open（不阻塞 PLAN-1045——V-05 已由专职 driver 帧全强度验证关闭）。
+- 现象：argv 数据经含 `host_diag.at` 的程序读取时**内容与长度均会损坏，且随程序形状非确定漂移**：
+  复审轮内多个曾全绿的专职 exe 形状（main 直调 `args_tail_ok(args())`、env 读根、wrapper 帧）随后读到 201/205，
+  连尾部长度检查（`t4.len() != 7`）也红；而更早的会话内探针曾以完全相同形状记录全量 equal() 绿、
+  尾参码点逐位正确（20013,25991,45,49,48,52,53）与 n=6/长度向量 18,5,9,0,3,7 正确。
+  复现：`experimental/ace/aac/host/host_diag.at` 的 `args_tail_ok`/`argv_shape` + 专职 main
+  （参数 `["αrg 空 格","two words","","a\"b","中文-1045"]`），多形状下红绿漂移。
+- 影响：V-05 的"argv 值不变性"子腿**无稳定保留绑定**——按计划纪律（缺来源须具名阻塞该切片，不 fallback），
+  该子腿具名阻塞本债务关闭；PLAN-1045 不交付弱化版绿绑（曾试 shape 级 oracle 亦红）。
+  会话内探针证据（全绿等值 + 码点逐位）已折叠记录于 PLAN-1045 §9 复审轮收据。
+- owner：a2x-rust runtime/降层 owner（argv 区域/字符串驻留在多函数程序下的稳定性）。
+- 关闭条件：上述复现形状稳定全绿（内容 equal + 长度 + 码点）；由 owner 修复后把
+  `v05_argv_invariance` 用例按 PLAN-1045 §9 复审轮记录的形状接回 ace-aac-host 并复跑全绿。
+- 状态：open（阻塞 V-05 argv 子腿；其余 V-05 腿已保留全绿）。
