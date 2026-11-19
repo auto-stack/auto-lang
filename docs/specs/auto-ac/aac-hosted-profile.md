@@ -73,12 +73,12 @@ Design59 D-S01..D-S04/D-S07 给出 AAC 启动所需的库操作族；1044 冻结
 固定组 `ace-aac-host`：**22/22 绿**（conformance 10 + host_files 8 + host_sdk 2 +
 host_diag 2；单例最大 v05_host_diag_scenario≈14s，一次冷 rustc 构建主导——外部工具成本
 具名记录并列为用户裁决项，见 PLAN-1045 §10）。共享改动触及的完整
-组在同一冻结工作树复跑：`ace-aac`（26 例）、`ace-aac-host`（21）、`ace-source`、`ace-native`
-全绿（结果 JSON 在 plan-artifacts scope 摘要）。`ace-abi` 未选：本包无 ABI 面改动（选择理由
+组在同一冻结工作树复跑：`ace-aac`（26 例）、`ace-aac-host`（21，拆分前树 c13658ad4；拆分后
+f04718cc9 复跑 22/22）、`ace-source`、`ace-native` 全绿（计时/计数证据折叠于 PLAN-1045 §8/§9）。`ace-abi` 未选：本包无 ABI 面改动（选择理由
 入 PLAN-1045 §8 T-06 行，review 核）。
 
 ## 8. 与后继的交接
 
-- **1068**：本包 host 客户端/SDK 消费收据可作 AAC 实证输入；V-01..V-05 独立 oracle 全绿。
+- **1068**：本包 host 客户端/SDK 消费收据可作 AAC 实证输入；V-01..V-04 独立 oracle 全绿，V-05 除具名阻塞的 argv 值子腿（D-1045-01）外全绿。
 - **1046/1047**：CS-101..107 的语法/语义主体不在本包（本包仅库消费面）。
 - **1052**：工件/恢复消费 digest/codec 时沿 `aac-support` 单源（1056 §9 既有交接不变）。
