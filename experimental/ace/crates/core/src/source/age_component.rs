@@ -3402,8 +3402,19 @@ fn hook_stmts_lower(
 ) -> Result<(), Vec<Diagnostic>> {
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
     for st in body {
-        match st {
-            // PLAN-105 T-02：handler 级调用语句（store 方法在 store 内联时展开；
+        // PLAN-105 T-02（U03 真语料 012/016）：handler 局部列表字面量
+        // （`let xs = [...]` / `var rows = []`）——文法/投影已收，执行面（列表
+        // 值语义）未接线 → **具名拒**（不落内部适配错误）。
+        if let ComponentStmt::Let { value, span, .. } = st {
+            if matches!(value.kind, ExprKind::ArrayLit(_)) {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    "list/array literals in handler-local bindings are not wired yet (list value semantics is a named pending surface)",
+                    *span,
+                )]);
+            }
+        }
+        match st {            // PLAN-105 T-02：handler 级调用语句（store 方法在 store 内联时展开；
             // 其余调用不接线）——具名拒，不静默丢调用。
             ComponentStmt::Call { span, .. } => {
                 return Err(vec![text_diag(
@@ -3765,6 +3776,18 @@ pub(crate) fn rename_expr_with_params(
                     .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
             },
         },
+        // PLAN-105 T-02（U03 真语料 012/016）：数组/List 字面量——元素递归
+        // 重命名后原样交给共享 resolver（语句位 `let/var` 初值的 List 脱糖）。
+        ExprKind::ArrayLit(elems) => Expr {
+            span: expr.span,
+            kind: ExprKind::ArrayLit(
+                elems
+                    .iter()
+                    .map(|e| rename_expr_with_params(e, binding, fields, param_locals))
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+            ),
+        },
+
         _ => {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
