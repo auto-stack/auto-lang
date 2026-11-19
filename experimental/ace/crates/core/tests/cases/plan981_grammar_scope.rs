@@ -167,7 +167,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 逻辑绑定回落 pratt（此前被裸 `.a` 贪吃，U03 元素绑定整类回滚）。
             // 仅 age-component 漂移（age-package 的事件臂本就被 profile 门
             // 排除，有效 alt 序未变）；13 邻居逐字节不变。
-            "bf45f4d9b386f9484744a5e67f87acce4e7ee0b6cd6d14c7dc4525fdf687eabe",
+            "ed4058a92979ca573a9c6cecbf068683ac8fd190a8a996b88c0d308e24f39891",
         ),
         (
             SourceProfile::AgeH0,
