@@ -27,23 +27,6 @@ fn blake3_hex_reference(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
-/// Auto string literal for exact UTF-8 bytes.
-fn lit(bytes: &[u8]) -> String {
-    let text = std::str::from_utf8(bytes).expect("vector payloads are UTF-8 text");
-    let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\0' => out.push_str("\\0"),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
 
 fn run_hex(tag: &str, src: &str) -> String {
     let v = run_program(tag, src).unwrap_or_else(|e| panic!("{tag}: {e}"));
@@ -54,13 +37,6 @@ fn hex_of(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn digest_case(func: &str, payload: &[u8]) -> String {
-    let src = format!(
-        "use app.digest.{func}\nfn main() Str {{ return {func}({}) }}",
-        lit(payload)
-    );
-    run_hex(&format!("digest-{func}"), &src)
-}
 
 fn expect_codes(tag: &str, report_hex: &str, want: &[u8]) {
     let got: Vec<u8> = (0..report_hex.len() / 2)
@@ -125,7 +101,7 @@ fn v01_digest_vectors() {
 /// own case to keep every case's wall time bounded.
 #[test]
 fn v01_blake3_tree_vectors() {
-    let payload = vec![b'a'; 1025];
+    let payload = vec![b'a'; 2049];
     let got = run_hex(
         "v01-b3-tree",
         "use app.driver.blake3_tree_report\nfn main() Str { return blake3_tree_report() }",
@@ -336,6 +312,8 @@ fn v04_admission_before_allocation() {
     let want: &[u8] = &[5, 6, 0, 5, 9, 0];
     expect_codes("admission", &got, want);
 }
+
+
 
 
 

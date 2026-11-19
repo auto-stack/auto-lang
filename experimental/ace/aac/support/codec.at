@@ -640,20 +640,29 @@ pub fn manifest_decode(bytes List<int>, max_items int) List<int> {
 }
 
 /// 0 = strictly ascending; 12 = duplicate pair; 13 = descending.
+/// Canonical order is ascending (key, value): equal keys are legal when the
+/// values ascend (the encoder sorts by the pair), and only an IDENTICAL pair is
+/// the duplicate rejection — so the encoder can never emit bytes the decoder
+/// refuses.
 fn check_pair_order(blob List<int>, spans List<int>) int {
     let n = spans.len() / 4
     var i = 1
     for (i < n) {
-        let ka = spans.get(4 * i)
-        let la = spans.get(4 * i + 1)
-        let kb = spans.get(4 * (i - 1))
-        let lb = spans.get(4 * (i - 1) + 1)
-        let c = slice_cmp(blob, ka, la, kb, lb)
-        if (c < 0) {
+        if (pair_less(blob, spans, i, i - 1)) {
             return 13
         }
-        if (c == 0) {
-            return 12
+        let ka = spans.get(4 * i)
+        let la = spans.get(4 * i + 1)
+        let ka0 = spans.get(4 * (i - 1))
+        let la0 = spans.get(4 * (i - 1) + 1)
+        let va = spans.get(4 * i + 2)
+        let vla = spans.get(4 * i + 3)
+        let va0 = spans.get(4 * (i - 1) + 2)
+        let vla0 = spans.get(4 * (i - 1) + 3)
+        if (slice_cmp(blob, ka, la, ka0, la0) == 0) {
+            if (slice_cmp(blob, va, vla, va0, vla0) == 0) {
+                return 12
+            }
         }
         i = i + 1
     }
@@ -713,4 +722,5 @@ pub fn frame_build_raw(kind int, declared_len int, digest List<int>, payload Lis
     copy_bytes(payload, out)
     return out
 }
+
 

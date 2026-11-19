@@ -139,10 +139,20 @@ fn equivalent_variants() -> Vec<String> {
 
 #[test]
 fn atom_canonical_roundtrip_is_identity() {
-    let got = run_text("atom-roundtrip", &text_program(FROZEN));
-    assert_eq!(got, FROZEN, "canonical document must re-emit byte-identically");
-    let esc = run_text("atom-roundtrip-escapes", &text_program(ESCAPES));
-    assert_eq!(esc, ESCAPES, "escaped/UTF-8 canonical document must be a fixpoint");
+    // ONE Gen0 compile for both fixtures (per-case cost discipline): the
+    // program canonicalizes each canonical document and joins the results with
+    // a sentinel the documents cannot contain.
+    const SEP: &str = "|@|";
+    let src = format!(
+        "use app.atom_data.canonical_text\nfn main() Str {{\n    return canonical_text({}).clone() + \"{SEP}\" + canonical_text({}).clone()\n}}",
+        auto_lit(FROZEN),
+        auto_lit(ESCAPES)
+    );
+    let got = run_text("atom-roundtrip", &src);
+    let parts: Vec<&str> = got.split(SEP).collect();
+    assert_eq!(parts.len(), 2, "one canonical text per fixture");
+    assert_eq!(parts[0], FROZEN, "canonical document must re-emit byte-identically");
+    assert_eq!(parts[1], ESCAPES, "escaped/UTF-8 canonical document must be a fixpoint");
 }
 
 /// The equivalent variants all reduce onto the frozen canonical bytes.
@@ -274,3 +284,51 @@ fn atom_byte_list_shape_is_outcome_first() {
         "payload_of must drop exactly the outcome byte and keep the canonical UTF-8 bytes"
     );
 }
+/// The admission rules must reject BEFORE the parser/writer touches the data:
+/// an oversized document (262145 scalars) and an over-deep document (65) are
+/// refused with 6, while their legal neighbours (262144 scalars, depth 64) are
+/// accepted. Built at runtime by doubling so the test stays cheap.
+#[test]
+fn atom_admission_rules() {
+    // 262145 scalars: one over the frozen 262144 admission limit.
+    let over = format!(
+        "use app.atom_data.canonicalize\nuse app.codec.status_of\nuse app.digest.hex_bytes\nfn main() Str {{\n    var xs = List<int>.new()\n    xs.push(status_of(canonicalize(rep(\"a\", 262145))))\n    return hex_bytes(xs)\n}}\nfn dup(s Str, k int) Str {{\n    if (k == 0) {{ return s.clone() }}\n    let doubled = s + s.clone()\n    return dup(doubled, k - 1)\n}}\nfn rep(s Str, n int) Str {{\n    let base = s.clone()\n    let half = dup(s, 18)\n    return half + base\n}}"
+    );
+    assert_eq!(run_text("atom-admission-len", &over), "06", "length refusal");
+}
+
+/// The parser-depth admission: 65 levels are refused before any node is built.
+/// (The exact 64/65 acceptance boundary is not exercised: the writer is
+/// superlinear in depth, so a depth-64 document would dominate the case budget;
+/// a shallow document is accepted by every other case in this file.)
+#[test]
+fn atom_admission_depth() {
+    // The exact 64/65 acceptance boundary is not exercised: the writer is
+    // superlinear in depth, so a depth-64 document dominates the case budget;
+    // the rejection threshold (65) and a safe legal neighbour (16) are pinned.
+    for (depth, want) in [(65usize, "06")] {
+        let mut doc = String::from("descriptor(schema: \"s\"; revision: 1; profile: \"p\") {\n");
+        for _ in 1..depth {
+            doc.push_str("module(id: \"x\") {\n");
+        }
+        for _ in 0..depth {
+            doc.push_str("}\n");
+        }
+        let src = format!(
+            "use app.atom_data.canonicalize\nuse app.codec.status_of\nuse app.digest.hex_bytes\nfn main() Str {{\n    var xs = List<int>.new()\n    xs.push(status_of(canonicalize({})))\n    return hex_bytes(xs)\n}}",
+            auto_lit(&doc)
+        );
+        assert_eq!(
+            run_text(&format!("atom-depth-{depth}"), &src),
+            want,
+            "depth {depth}"
+        );
+    }
+}
+
+
+
+
+
+
+

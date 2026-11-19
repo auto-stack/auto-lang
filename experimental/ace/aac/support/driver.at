@@ -139,11 +139,11 @@ pub fn digest_report() Str {
     return acc
 }
 
-/// BLAKE3 tree path: 1025 bytes = two chunks, the first full (its CV feeds the
-/// parent merge) and the second partial (root output). Kept in its own case
-/// because pure-Auto BLAKE3 costs ~1M AV steps per KiB.
+/// BLAKE3 tree path: 2049 bytes = THREE chunks, so the binary-tree merge
+/// (`b3_merge`, total_chunks even) runs AND the root fold still completes.
+/// Kept in its own case because pure-Auto BLAKE3 costs ~1M AV steps per KiB.
 pub fn blake3_tree_report() Str {
-    return blake3_hex(rep("a", 1025))
+    return blake3_hex(rep("a", 2049))
 }
 
 /// One-shot SHA-256 then five boundary splits of the same payload.
@@ -426,8 +426,8 @@ fn i64_min() i64 {
 pub fn manifest_codes() Str {
     var cs = List<int>.new()
     let fixture = fixture_manifest()
-    // duplicate key: the second key's two bytes become the first key's
-    cs.push(status_of(manifest_decode(set_range(fixture, 39, "aa"), 65536)))
+    // identical pair (same key AND same value) = the duplicate rejection
+    cs.push(status_of(manifest_decode(set_range(set_range(fixture, 39, "aa"), 45, "11"), 65536)))
     // descending order: swap the two pair blocks
     cs.push(status_of(manifest_decode(swap_range(fixture, 23, 35, 12), 65536)))
     // trailing byte
@@ -552,6 +552,8 @@ fn append_byte_copy(bs List<int>, value int) List<int> {
     out.push(value)
     return out
 }
+
+
 
 
 
