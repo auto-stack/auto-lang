@@ -138,3 +138,7 @@ B 开工前须核 M2A-08 正式收据（本文件落盘 + 963 归档）；由 98
 - 管道三形 + 行首续行落地（紧结合边界为已批审计规范化）。
 - 可复现：`cargo t case-av-language-parity`；`cargo test -p ace-av
   --test conformance plan1080_calls_binding`。
+
+## PLAN-1081 增量（2026-11-20，函数类型面）
+
+Auto 面 `fn(T..)R` 类型位与函数值全链打通：形参 `f fn(int)int` 接收命名函数项或闭包值（interned `ClosureFnType` 按值等价判定）；签名不符 = `verify/source.type-mismatch` 具名拒（不静默默认）；`fn maker() fn(int)int { return twice }` 返回槽成立。事实与 oracles 见 `docs/specs/auto-av/language-parity.md` §6.5。

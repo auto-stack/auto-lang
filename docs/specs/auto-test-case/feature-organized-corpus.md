@@ -66,3 +66,7 @@
 `double`→`twice` 改名是唯一具名审计规范化（语义/oracle 不变）。旧
 `test/vm` 文件零改动（具名冻结历史）；legacy-map 本包行 owner=PLAN-1080。
 故意红元控制（oracle 三处变异各红、复原绿）实证语料判决器真实。
+
+## PLAN-1081 增量（2026-11-20，functions 家族）
+
+canonical 作者 `crates/auto-lang/test/cases/language/functions/references-closures.case.ad`（12 case：§6 合同 4 例 + 9 份旧文档迁移），`language.suite.ad` 追加 include。legacy-map.tsv 本包 9 行：mapped×7（27_function_reference 三例 `double`→`twice` 保留词规范化；007 untyped lambda 参数加 `int` 注解；d01b error-presence 精确化为 `bind/source.nested-fn-no-capture`），research-hold×2（010/013 `List.map` 算法归 stdlib/HOF owner——闭包+捕获语言面由 canonical `closure-hof-capture` 承接，oracle 3 不变）。`test/vm` 零改动（具名冻结历史）；AV-ONLY 阶段非 AV 检查 `#ignore`/NOT_RUN 不充 PASS。

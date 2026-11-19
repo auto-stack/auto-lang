@@ -193,3 +193,29 @@
 
 复跑入口：`cargo t case-av-language-parity`（30 例选中）与
 `cargo test -p ace-av --test conformance plan1080_calls_binding`（15 例）。
+
+
+### 6.5 AVP-03 — 命名函数值、闭包与嵌套 fn（PLAN-1081，2026-11-20）
+
+普通 Auto 面（`compile_language_source` / `ac-av/language-source-run-v1`）新增**已验证**能力：
+
+- **命名函数项作为值**：顶层自由函数名在值位 = 零捕获闭包（`CreateClosure{callee:该 fn, captures:[]}`；签名/ABI/目标身份取自其 params/result intern）。支持 let 绑定、`fn(int)int` 形参传递、返回槽、容器槽（`.clone()` 入 List + `.remove()` 出）与同 fn 多点引用；递归/互递归无捕获误绑。`main`（入口）与嵌套 fn 项不可作值（`bind/source.fn-as-value` 家族）；非函数调用保持 `bind/source.not-callable`；签名不符 = `verify/source.type-mismatch`。
+- **Auto 面 lambda**：`(a int, b int) => …`（表达式/块体、外层捕获、多次调用、跨返回）；borrow 捕获直调合法、作实参 = `bind/source.closure-borrow-escape`；owned env 退出后 arena live=0。
+- **嵌套 fn 项**（d01/d01b 债闭）：语句位 `fn`（CST `nested-fn-stmt`，auto 裁剪）提升为 `__nested_<owner>_<name>` mangled 单元；fn 级提升可见域；**不可捕获外层局部**（Rust 嵌套 fn 语义，`bind/source.nested-fn-no-capture` 具名拒，绝不静默 0）；同名不同 owner 各自 body 独立（含其内 lambda 以 mangled owner 命名）；参数必须注解（`bind/source.inference`），裸返回按体尾推导/无值尾=Unit；lambda 体内的嵌套 fn = `bind/source.unsupported` 具名拒（不收集不静默丢）。
+- **下游准入**：MIR 验证器对**空 env** callee 例外两条 lambda 不变量（单创建点/禁直接调用——其理由[每点 env 所有权/需 env 绑定]对空 env 不成立）；`MirType::Closure` 入 collections 家族元素域（Object 先例）；`check_push_value` 认闭包/克隆为新构造；Unit 结果普通调用的 dst 用 Unit 类型（修 D-04 后 void fn 被调从未走过的 `mir.call-result-type` 缺口）。
+
+| case | oracle | 结果 |
+|---|---|---|
+| `av.parity.1081.named-function-value` / `function-parameter` | exit 42（值位/实参位） | PASS |
+| `av.parity.1081.closure-block-local` | exit 42（块体+局部 let+外层捕获） | PASS |
+| `av.parity.1081.not-callable` | resolve/`source.not-callable` | PASS |
+| `av.parity.1081.basic-ref` / `pass-as-arg` / `call-unchanged` | stdout `10
+20` / `42` / `10
+14`（27_function_reference 三迁；`double`→`twice` 保留词规范化） | PASS |
+| `av.parity.1081.legacy-closure` / `legacy-closure-typed` | exit 3 / 7（007 加注解规范化/008 逐字节） | PASS |
+| `av.parity.1081.closure-hof-capture` | stdout `3`（010/013 闭包+捕获面承接；List.map 算法归 stdlib/HOF owner） | PASS |
+| `av.parity.1081.nested-fn-void` | stdout `hi from inner
+after`（d01 静默失效债闭） | PASS |
+| `av.parity.1081.nested-fn-capture` | resolve/`source.nested-fn-no-capture`（d01b error-presence 精确化） | PASS |
+
+冻结边界：嵌套 fn 项 call-only（无值通道）；lambda 体内嵌套 fn 具名拒；非 AV 检查 `#ignore`/NOT_RUN 不充 PASS。复跑入口：`cargo t case-av-language-parity`（42 AV 选中）与 `cargo test -p ace-av --test conformance plan1081_function_values`（21 例）。

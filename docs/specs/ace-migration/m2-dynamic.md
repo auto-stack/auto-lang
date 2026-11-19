@@ -26,7 +26,7 @@
 | 对象索引读写 | ✓ | `obj["y"]=200`/`obj[k]=300` 动态字符串键；缺键读运行期 trap `av.dyn.object-missing`（拒绝合同，非静默 nil）；upsert 旧值 drop 恰一次 |
 | 循环策略 | ✓ | 自插/可达同 cell 插入在 ObjectSet 以 `Rc::ptr_eq` 确定性拒（`av.dyn.object-cycle`），不建 GC；共享 cell 最后 owner 释放（Rc），无环即无泄漏 |
 | nil/null（L-21） | ✓ | `nil` 与 `null` 均为 Nil 字面量（PLAN-053 统一）；`Value::Nil`（零宽，与 Unit 区分）；`MirType::Nil`/`VT::Nil`/`DynType::Nil`；let 可绑定；对象 elem=Nil 可存读；`==`/`!=` 仅 Nil 对（恒真/恒假常数化）；其余算子 `source.nil-op` 具名拒 |
-| 可调用值（L-22/L-23） | ✓ | `DynType::Callable`：pack 收 `Value::Closure`（仅声明 Callable 时放宽白名单）；对象 elem=Closure 可持闭包，`obj["twice"](3)` = ObjectGet→闭包→CallClosure（callable/member/index 派发）；命名顶层函数非一值对象（`source.fn-as-value` 具名拒，延后续） |
+| 可调用值（L-22/L-23） | ✓ | `DynType::Callable`：pack 收 `Value::Closure`（仅声明 Callable 时放宽白名单）；对象 elem=Closure 可持闭包，`obj["twice"](3)` = ObjectGet→闭包→CallClosure（callable/member/index 派发）；命名顶层函数非一值对象（`source.fn-as-value` 具名拒，延后续；**PLAN-1081 起 Auto 面例外**——自由函数名值位=零捕获闭包，见文末 PLAN-1081 增量） |
 | 类型标签 vs 推导失败（V-01） | ✓ | DynType 标签 = 值实际类别（describe()）；错 tag take/is 为运行期 trap/Err 携 expected/actual 标签；源级推导失败 = 具名源诊断（`source.object-elem`/`source.nil-op`），两者不同态 |
 | 通用闭包捕获（source02） | ✓ | factor=3 捕获 + HOF，新例核 `[3,6,9]`（非只 len）；捕获对象 = Move（Rc 共享），两闭包共享更新可见；List `map` 不在 962 集合面——显式循环+闭包调用替代（具名裁定） |
 | FStr（L-22） | ✓ | 插值表达式源序求值恰一次；I32 显示归本包；文本部分认任意 Str/StrOwned；`f"…"` 内 `&&` 链 lowering 边见 D-964-C1 |
@@ -80,3 +80,7 @@ mn 车道 CRT stub 为净改善；ace-a2x meter infra flake）。
 - **具名边界**（同 `../auto-av/language-parity.md` §5.3）：`char.to(Str)` 装箱、
   计算借用视图局部量（`slice` 结果）与 `str` 形参收 owned 实参不在 aggregates
   面，owner PLAN-975/1086。
+
+## PLAN-1081 增量（2026-11-20，Auto 面函数值）
+
+普通 Auto 面命名自由函数项可作为受检值（零捕获 `CreateClosure`：let/实参/返回/容器槽、同 fn 多点引用、递归/互递归无捕获；入口 `main` 与嵌套项仍拒）；lambda 进入 Auto 面（块体/捕获/多次调用/borrow 直调-vs-逃逸拒/退出 live=0）；嵌套 fn 项 mangled 提升 + Rust no-capture 语义（`bind/source.nested-fn-no-capture`）。下游：空 env 例外两条 lambda MIR 不变量；`MirType::Closure` 入 collections 元素域；`check_push_value` 认闭包/克隆 rvalue；Unit 普通调用 dst=Unit（D-04 后 void-fn-被调缺口）。冻结窄面行为逐字节不变。规范事实详见 `docs/specs/auto-av/language-parity.md` §6.5。
