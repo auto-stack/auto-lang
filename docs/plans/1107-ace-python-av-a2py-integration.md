@@ -412,6 +412,20 @@ Round 12 增量（无实现提交；探针已删除，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
 
+2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
+
+**根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
+
+- 失败程序 `… var a1/a2/a3 = l.append(...) … print(l.count(22).to(int)) …` 的最后一条帧为
+  `"p967.frame/1\nr o 1\n10\np 0\nk 0\n"` —— 头部声明 payload 长度 **1**，实际 payload 是 `10`（**两位** token）。校验器按长度 1 取 `1`，下一字节应为 `\n` 却是 `0` → 具名拒绝。
+- 成因：`py_frame_val`/`py_recv_frame` 把同一操作数**写进帧两次**——`o <dlen(expr)>\n<expr>\n`。expr 是局部时两次求值同 token（正确）；expr 是**内联 py 调用**（如 `l.count(22)`）时两次调用各得新 token（第一次 9、第二次 10），于是 `dlen` 与实际 payload 位数不一致。
+- 同样形态在 token 仍为一位数时“看起来正常”，但**副作用被求值两次**（隐藏语义缺陷）；A2PY 不受影响是因为它按 `py_ops` 事实对每个操作数只 lowering 一次。
+- 排除项：受检 HIR 与 MIR 均含 1 条 console op；`host_imports` 正确；因此与 resolve 之后的 lowering/准入无关，缺陷就在共享前门的帧文本构造。
+
+**修复方向（下一 round 实施）**：让帧的每个动态操作数**只求值一次**——在共享前门注入 Auto 侧 chunk helper（`__py_chunk_i/__py_chunk_o/__py_chunk_b(n)`：由同一个入参生成 `tag <len>\n<digits>\n`），resolver 用一次 helper 调用替换现有的 `Disp(dlen)+Disp(value)` 两段；帧字节与 AV wire **保持逐字节不变**（同一输入生成同一文本），A2PY 事实不变。修复须带两类回归：①一位数 token 的重复求值（副作用一次）；②两位数及以上 token 的帧长度一致（本次失败用例）。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 12 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 077550aec | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
