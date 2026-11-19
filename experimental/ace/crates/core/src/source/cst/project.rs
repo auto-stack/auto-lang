@@ -5997,15 +5997,25 @@ impl<'a> Engine<'a> {
                 // PLAN-1072 刀B：view 级循环项（结构承载惰性语义）。体文本叶
                 // **不入 texts**——循环变量不在受检单位绑定域（入 hidden fn
                 // 即 verify 红）；丢弃 sink 只取结构。
-                let index_leaf = self.cx.field_child(item, "index").expect("for index");
-                let value_leaf = self.cx.field_child(item, "value").expect("for value");
-                let iter_node = self.cx.field_child(item, "iter").expect("for iter");
+                // PLAN-105 T-02：for 规则拆成 indexed/plain 两个子规则后，字段在
+                // 解包后的变体节点上（wrapper 本身无字段）。
+                let variant = self.unwrap_child(item);
+                let index = self
+                    .cx
+                    .field_child(variant, "index")
+                    .map(|n| self.cx.spelling(n))
+                    .unwrap_or_default();
+                let value_leaf = self
+                    .cx
+                    .field_child(variant, "value")
+                    .expect("for value");
+                let iter_node = self.cx.field_child(variant, "iter").expect("for iter");
                 let iter = self.project_expr_sync(iter_node);
                 let mut sink = Vec::new();
                 let items = self.collect_view_items(item, &mut sink, text_role);
                 out.push(ComponentViewItem::For(
                     crate::source::age_component::ComponentViewFor {
-                        index: self.cx.spelling(index_leaf),
+                        index,
                         value: self.cx.spelling(value_leaf),
                         iter,
                         items,

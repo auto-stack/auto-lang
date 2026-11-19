@@ -350,3 +350,53 @@ fn p105_props_element_compiles_in_package() {
     }\n";
     assert!(compiles(src), "props element is admitted by the package face");
 }
+
+/// 012 真语料形：view 级 `for` 的**单变量**形（`for r in .w_rows`）与双变量形
+/// 必须同时可用；单变量形的 index 为空串。
+#[test]
+fn p105_view_for_single_and_indexed_variables() {
+    let src = "widget App {\n\
+        model {\n\
+            var rows = [\"x\"]\n\
+        }\n\
+        view {\n\
+            col {\n\
+                for r in .rows {\n\
+                    text \"a\" {}\n\
+                }\n\
+                for i, r in .rows {\n\
+                    text \"b\" {}\n\
+                }\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("both for shapes project");
+    let mut fors: Vec<(String, String)> = Vec::new();
+    fn walk(
+        items: &[ace_core::source::age_component::ComponentViewItem],
+        out: &mut Vec<(String, String)>,
+    ) {
+        for it in items {
+            match it {
+                ace_core::source::age_component::ComponentViewItem::For(f) => {
+                    out.push((f.index.clone(), f.value.clone()));
+                    walk(&f.items, out);
+                }
+                ace_core::source::age_component::ComponentViewItem::Element(e) => {
+                    walk(&e.items, out)
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(&nodes[0].view.tree, &mut fors);
+    assert_eq!(
+        fors,
+        vec![
+            (String::new(), "r".to_string()),
+            ("i".to_string(), "r".to_string())
+        ]
+    );
+    assert!(compiles(src), "package face admits both for shapes");
+}

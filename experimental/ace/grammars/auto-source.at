@@ -710,9 +710,25 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-1072 刀B：view 级循环项。`for`/`in` 既有 token；双名形
         //（索引+值——010 `for i, f in .faqs`）；体=age-view-item many。
+        // PLAN-105 T-02（U03 真语料 012）：view 级 `for` 有**单变量**形
+        // （`for r in .w_rows { … }`）——与双变量形分开成规则（alt 不与步骤混排）；
+        // 投影在无 index 字段时把 index 置空。
         age-view-for(profiles: [age-component, age-package], expect: "a view-level `for <index>, <value> in <expr> { … }` loop") {
+            alt { age-view-for-indexed() {} }
+            alt { age-view-for-plain() {} }
+        }
+        age-view-for-indexed(profiles: [age-component, age-package]) {
             for(field: "kw")
             ident(field: "index") comma() {}
+            ident(field: "value")
+            in(field: "iter-kw")
+            pratt(of: "wide-ops", field: "iter")
+            lbrace(same-line: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-view-for-plain(profiles: [age-component, age-package]) {
+            for(field: "kw")
             ident(field: "value")
             in(field: "iter-kw")
             pratt(of: "wide-ops", field: "iter")
