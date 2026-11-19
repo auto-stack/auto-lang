@@ -171,13 +171,51 @@ fn retry_leg(root Str) int {
 /// generated main writes it to `<root>/report.txt` (the A2R process exit
 /// is the runtime's own success code, not main's value — the report file
 /// is the observable, the PLAN-1064 discipline).
-/// The argv leg runs in its OWN driver frame (argv_invariance): the
-/// composite diag_report frame hits a NAMED A2R-runtime defect (the
-/// args()/equal content read corrupts there — lengths and codepoints stay
-/// intact, see the plan's named-debt record; the dedicated driver frame
-/// verifies the full equal() oracle green).
-pub fn argv_invariance(root Str) int {
-    return args_tail_ok(args())
+/// NAMED BLOCKED SLICE (D-1045-01, a2x runtime): the argv read through
+/// this module is shape-nondeterministically corrupted — content equality
+/// AND tail lengths both observed wrong across dedicated-exe shapes that
+/// previously read green (in-session probes recorded the full equal()
+/// oracle green and the tail codepoints byte-exact 20013,25991,45,49,48,
+/// 52,53); the retained V-05 argv leg is therefore BLOCKED on the a2x
+/// owner closing D-1045-01 — no weakened fallback binding is shipped.
+/// These functions are the reproduction basis + the closing oracle.
+pub fn argv_shape(argv List<Str>) int {
+    let n = argv.len()
+    if (n < 6) {
+        return 200
+    }
+    let t4 = argv.remove(n - 1)
+    let t3 = argv.remove(n - 2)
+    let t2 = argv.remove(n - 3)
+    let t1 = argv.remove(n - 4)
+    let t0 = argv.remove(n - 5)
+    if (t0.len() != 7) {
+        return 201
+    }
+    if (t1.len() != 9) {
+        return 202
+    }
+    if (t2.len() != 0) {
+        return 203
+    }
+    if (t3.len() != 3) {
+        return 204
+    }
+    if (t4.len() != 7) {
+        return 205
+    }
+    // the last tail's codepoint sum pins "中文-1045" content at the
+    // scalar level (20013+25991+45+49+48+52+53)
+    var cps = 0
+    var i = 0
+    for (i < t4.len()) {
+        cps = cps + t4.char_at(i).to_codepoint()
+        i = i + 1
+    }
+    if (cps != 46251) {
+        return 206
+    }
+    return 0
 }
 
 pub fn diag_report(root Str) Str {

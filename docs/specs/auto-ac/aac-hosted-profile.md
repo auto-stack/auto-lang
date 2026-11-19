@@ -31,7 +31,7 @@ Design59 D-S01..D-S04/D-S07 给出 AAC 启动所需的库操作族；1044 冻结
 | CS-202 | `host_client.map_report/sort_report/int_report` | Str→int 映射末写胜+恰存项+字节字典序输出（V-04：a→1,b→2,a→3 ⇒ [(a,3),(b,2)]）；确定性选择排序（Rust `Ord` 同序）；wrap32/FNV 纪律；checked-add 溢出为独立分类 |
 | CS-203 | `host_client.budget_report` | arena 树遍历显式步数预算：预算内 ok / 超限具名资源拒绝（非部分静默结果） |
 | CS-204 | `host_files.*`；`host_publish.*` | 非ASCII路径模块读取（内容嵌零=内容，BLAKE3 对账）；目录/模块定位/空目录；env 往返+unset-空区分；真 cmd.exe 子进程（退出码/超时击杀 -11/缺工具 -1）；**rust-lld 发现算法 Auto 复刻与 Rust 算法逐字节一致**；发布=临时+原子替换，注入两型 rename 失败后**旧工件 hash 逐字节保持**，重试成功且 temp 清除 |
-| CS-207 | `host_diag.*` | 同一真可执行以含空格/Unicode/空串/引号 argv 从两个 cwd 调用：argv 值不变（专职 driver 帧全 equal() oracle）、α 源 span 稳定、cwd 往返+恢复、语言类型错误于编译阶段拒绝（阶段可区分） |
+| CS-207 | `host_diag.*` | 同一真可执行从两个 cwd 调用：α 源 span 稳定（[0,2) 字节级自核验）、cwd 往返+恢复、OS 路径 NUL 拒绝、缺工具、同源重试全部不变，仅起始 cwd 不同；语言类型错误于编译阶段拒绝（阶段可区分）。**argv 值子腿具名阻塞于 D-1045-01**（A2R argv 读取经本模块形状非确定损坏——内容与长度均曾红；会话内探针曾全量 equal() 绿+码点逐位正确，证据在 PLAN-1045 §9；关闭 oracle 即 `host_diag.at` 的 `args_tail_ok`/`argv_shape`） |
 | CS-205/209（消费） | `host_client.digest_report` | aac-support 的 sha256/blake3 于 AV 与 mn 原生两端逐字节对上 sha2/blake3 crate |
 
 ## 4. 执行端与观察通道（冻结事实）
@@ -63,14 +63,16 @@ Design59 D-S01..D-S04/D-S07 给出 AAC 启动所需的库操作族；1044 冻结
   int 键具名边界）。
 - mn console lane 的 sys 平台 op 实装归 PLAN-973/1065/1063 owner；本包未新增 packages-sys
   原生 lane。
-- A2R 复合大帧内 argv 内容 oracle 损坏：具名债务 D-1045-01（KNOWN-DEBT-AND-RISKS），
-  owner=a2x-rust runtime；V-05 已由专职 driver 帧全强度关闭。
+- A2R 端 argv 读取经本模块形状非确定损坏（内容与长度均曾红）：具名债务 D-1045-01
+  （KNOWN-DEBT-AND-RISKS），owner=a2x-rust runtime；V-05 argv 值子腿具名阻塞，
+  不交付弱化 fallback 绑定。
 - Linux host 运行留 PLAN-1063；`cargo t ace-perf` 不承载本包用例（无 `::performance::` 行）。
 
 ## 7. 验证（真实命令与结果）
 
-固定组 `ace-aac-host`：**21/21 绿**（conformance 10 + host_files 9 + host_sdk 2 + host_diag 1；
-单例最大 v05≈32s，两次冷 rustc 构建主导——外部工具成本，非包内逻辑）。共享改动触及的完整
+固定组 `ace-aac-host`：**22/22 绿**（conformance 10 + host_files 8 + host_sdk 2 +
+host_diag 2；单例最大 v05_host_diag_scenario≈14s，一次冷 rustc 构建主导——外部工具成本
+具名记录并列为用户裁决项，见 PLAN-1045 §10）。共享改动触及的完整
 组在同一冻结工作树复跑：`ace-aac`（26 例）、`ace-aac-host`（21）、`ace-source`、`ace-native`
 全绿（结果 JSON 在 plan-artifacts scope 摘要）。`ace-abi` 未选：本包无 ABI 面改动（选择理由
 入 PLAN-1045 §8 T-06 行，review 核）。
