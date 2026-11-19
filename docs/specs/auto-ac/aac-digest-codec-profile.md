@@ -140,9 +140,55 @@ admission 上限：`default_max_payload() = 4 MiB`，`default_max_items() = 6553
 
 ## 8. canonical Atom 数据 codec（`atom_data`）
 
-纯数据 reader/writer：接受合法文档、产出**规范字节**、按冻结 schema 拒绝结构化错误
-（重复字段/未知字段/未知节点/尾随/不平衡/转义/数字），并且**绝不**构造任何"已验证"
-对象——语义拒绝与效果保真明确留给 1047/1053。
+纯数据 reader/writer：接受合法文档、产出**规范字节**、按结构化规则拒绝错误，并且
+**绝不**构造任何"已验证"对象——语义拒绝与效果保真明确留给 1047/1053。两个接受模式
+共用同一个 writer：
+
+1. **无 schema 结构模式** `canonicalize(text Str) List<int>`：通用 Atom 数据，**没有**
+   tag/字段白名单。唯一的内容检查是重复字段（8），外加语法类拒绝：空（1）、非法字符
+   （2）、未闭合字符串（3）、非法转义（4）、非法数字（5）、不平衡/准入（6）、尾随
+   token（7）。
+2. **真实 schema 模式** `canonicalize_with_schema(schema_text Str, doc_text Str) List<int>`：
+   先把**真实 descriptor schema 文档**（同一 Atom 方言，
+   `experimental/ace/crates/core/schema/core-i32.atom`）解析成 tag/字段表，再校验文档：
+   根 tag 必须是 `hir`（否则 10）、每个节点 tag 必须是 schema 声明过的节点（10）、每个
+   字段名必须属于该 tag 的允许集合（9），同节点内重复字段仍是 8。
+
+字节入口 `canonicalize_bytes(bs List<int>)` 与
+`canonicalize_bytes_with_schema(schema_text Str, doc_bs List<int>)` 是同一两个模式的
+"已经编码的字节"入口，使 `canonicalize(canonicalize(x)) == canonicalize(x)` 可以在没有
+解码步骤的情况下表达（其长度准入按字节计为 1048576，四倍于标量上限，因此文本入口准入的
+文档必然通过；结构检查完全相同）。
+
+schema 表的读取规则：`nodes { node TAG { … } }` 下每个 `node` 的第一个 primary 是 tag 名；
+允许字段名 = 其 `fields { … }` 体的条目名 + 其 `slots: [ … ]` 列出的名字 +
+其 `containers { name: [tags] }` 的字段名。**container 名本身也是合法节点 tag**（它就是
+承载这些孩子的分组节点，如 `types { type … }`、`bodies { … }`），作为分组它不接受字段。
+`statements:`/`inline:` 在该方言里是**子/内联 tag 声明**而不是字段名，故不进入字段集合。
+字段/孩子的**归属关系**（`containers` 成员、`branches` require/forbid、内联 tag 位置）
+不在本层检查，归 1047/1053 与其余语义绑定。
+
+### 8.1 writer 布局规则（冻结）
+
+- 节点头 = `tag` + **唯一**一对括号组：`(primary, primary, name: value, name: value)`，
+  组内一律 `", "` 分隔，primary 在前——即真实 writer 的
+  `hir(schema: "…", revision: 1u32, profile: "…")` 形状；头与体之间恰好一个空格；
+- **字段永远写在组里**：源文档 `{ body }` 里的字段会被上提到组中，因此"只在字段书写
+  位置不同"的两份文档规范化结果完全相同——输出是**数据的函数**，不是输入布局的函数；
+- 体只放**子节点**，每行一个，缩进 4 空格/层，源顺序保持（不重排）；没有子节点的节点
+  一律 `tag(...) {}` 单行（源体里只有字段的节点同样如此）；
+- 收尾 `}` 单独一行、位于该节点深度；每个值/节点行、包括根收尾行都以 `\n` 结束；
+- 列表值 `[a, b, c]`、内联节点 `{ k: v, k: v }` 都在一行；字符串按同样四条转义重引号，
+  数字按书写逐字重发。
+
+### 8.2 规范性与幂等合同
+
+- 真实 HIR 夹具（`experimental/ace/crates/core/fixtures/native/add-2-3.atom`）在两个模式
+  下都必须被接受（状态 0）；
+- 两个模式对同一文档产出的字节相同，且把该字节再喂回对应模式（字节入口）得到**逐字节
+  相同**的输出：`canonicalize(canonicalize(x)) == canonicalize(x)`；
+- **不要求**输出等于参考 writer 的逐构造成字节布局——那是 1047/1053 的具名交接；
+- 反例纪律：不得用"接受一切"绕过重复字段检查，也不得让"规范形式"依赖输入布局。
 
 ## 9. 与后继 Plan 的交接
 
