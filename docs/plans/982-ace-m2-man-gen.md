@@ -143,7 +143,7 @@ CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要
 | B-CONFIG-I（配置引擎） | **已交付并 fold** | lang `0b6d3198d`、man `39bc016`；§9 round 12–17 |
 | B-CONFIG-V（九行 V-CFG） | **已交付并 fold** | §9 round 16（九行同 HEAD 实跑），round 46 语料级复核 |
 | B-CONFIG-R（独立复审 ×4） | **pass** | §9 round 12/14/15/16（含 needs_fix 修复与更正） |
-| 982/CONFIG 对象字段访问 | **部分交付并 fold** | `k["f"]`／链式 `k["a"]["b"]`／对象值保形；点形态 `k.x` 具名未支持，现状钉在 **bind 期** `source.undefined`（`p982_config_dot_form`；round 97 证明物化层加同义臂无效） |
+| 982/CONFIG 对象字段访问 | **dot 值位与索引形已交付并 fold**；表达式读取具名 | `k["f"]`／链式 `k["a"]["b"]`／对象值保形；**点形态 `k.x` 值位已支持**（round 110 起——值位 dot 与索引同义，`p982_config_dot_form` 正例钉住）；仍具名拒的是 **FStr 插值等表达式读取**（`"${obj.x}"` ⇒ `source.type-mismatch`——表达式走普通记录语义，看不到文档对象句柄，`p982_config_dot_form` 负例钉住）——仅当现行合同或真实工程要求时才列为阻塞 |
 | 982/CONFIG 空列表 `[]` | **已交付并 fold** | 配置面专用规则 `cfg-empty-array-lit`（共享 `array-lit` 未改）；投影空列表；`p982_config_empty_list` 由钉住拒绝转正例（lang `7f0ebe09c`，round 96） |
 | 982/EXEC | **已交付并闭环（round 199 默认切换收官）** | run 家族具名拒/零写/无 fallback（`da07c6b`）→ 脚本 stdin 文本入口（round 185；round 198 aggregates 文本入口刀 lang `8d3b70341`＋man `e0813ea`）→ `auto test`＋`--filter`（186/189）→ debug/req/serve（187，含 daemon 两处真 bug 修复；190 限额旗标）→ console 面（197）→ argv 两步（195 裁定 B 最小装配／196-197 bounded）→ wall/cancel＋same_sdk＋完整兼容门（198）→ **默认切换**（199，man `f5a427c`：Windows `auto <file.at>` 默认=sys 车道，legacy 字节对拍＋`AUTO_ACE_CANDIDATE=0` 回退钮＋命名边界）。余留具名：`03_image_scraper.at` 整支迁移（http/file 全 sys 装配 ⇒ A 产物前裁剪先行）、serve T-08 store（round 190 核定＝不必需）、run 面 vm/rust 腿具名拒（按设计） |
 | 982/RUST | **多面已交付并 fold**；多文件/点面具名 | `AUTO_ACE_RUST` 选择+回执、宿主驱动、`--merge` 独立可构建、scalar/records/collections 冷构建 `value:5/7/42`、scheduler 具名拒绝、差异清单（`da07c6b`） |
@@ -151,7 +151,7 @@ CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要
 | 982/PY | **语言侧已交付；产品面按 r7 范围裁定不适用（批次关闭）** | A2Py 宿主驱动 `p982_python_driver`（渲染＋确定性＋**python 真跑**）。产品侧无 py 目标（`Target.lang` 仅 rust/ts）——r7 范围裁定后产品面 N/A，不另开独立全语言 a2py 产品义务 |
 | 982/WEBTARGET | **部分交付并 fold** | A2JS 驱动（node 真跑 `5`）；`AUTO_ACE_TS` 引擎选择＋具名拒绝；TS 强类型通道渲染确定性；`AUTO_ACE_TS_PROOF` 回执（两腿对称＋真实计数）；独立进程"零 A2JS 派发"；**真 Pac/Target 工程级**构建用例。仍缺：多模块、`pac.build()`（ninja）链路、TS 通道接产品 |
 | 982/REVERSE | **部分交付并 fold** | r2a（Rust→Auto→**真跑**）与 s2s（Auto→Auto 保语义＋解析级负例）两组用例；仍缺 s2s 真实改写规则、独立核 producer/consumer |
-| 982/DEVSDK | **部分交付** | 安装事务 `pytest` 基线 9+3；watch 源码级护栏（不 spawn cargo/rustc）；默认构建修复（`E0433`）；仍缺候选 SDK 发现（需产品决策） |
+| 982/DEVSDK | **发现＋见证已交付（round 143 收尾）**；余留＝实际安装产物上的验收 | 安装事务 `pytest` 基线 9+3；watch 源码级护栏（不 spawn cargo/rustc）；默认构建修复（`E0433`）；**候选 SDK 发现与见证已交**（round 143：`sdk_discovery` 块——`rule="nearest-pac.at"`＋`found`/`config_engine`/`legacy_dispatch` 真实计数，`plan982_ace_candidate_config` 四断言可复跑）。**余留**：真实安装产物上的 watch／工具身份／回退验收（真实进程树——只改 Auto 时 `cargo/rustc=0`、改 Rust 时正确重建）＋双端实际产物身份对账 |
 | 982/C | **已验证本机 MSVC x64 可用，原工程验收待执行** | 普通 PowerShell 未加载 VS 环境。按下方交接加载后，`cl.exe` / `link.exe` 可用，独立 C 程序已编译、链接、运行通过；按 V-B-C 验证实际 A2C 生成物和标准库。 |
 | 982/EXPORT | **已验证 CMake/Ninja + MSVC Release，实际出口待验证** | CMake 默认探针用 `/Zi` 时遇到 PDB 错误 `C1902`；显式指定 Release 构建和 Release 探针后，最小 C 工程已配置、编译、链接、运行。round 184 另有实际 CMake 导出经 Ninja 构建运行的收据，使用旧 C 转译链。V-B-EXPORT 尚须核新版 A2C 的 CMake 导出与 Ninja 构建产物。 |
 
