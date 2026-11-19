@@ -12,14 +12,17 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-const WORKER: &str = "../../target/release/a2x-worker.exe";
 
 fn worker_path() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(WORKER);
-    if p.exists() {
-        return p;
+    // PLAN-1098 B-05: the worker is an explicitly prepared tool; no
+    // profile-specific `target/release` search and no in-test rebuild.
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/release/a2x-worker.exe")
 }
 
 fn suite_dir() -> PathBuf {

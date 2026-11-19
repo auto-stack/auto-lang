@@ -701,30 +701,16 @@ fn sampled_dynamic_request(
 /// with their own private-bytes counter, and end drained (live == 0).
 #[test]
 fn av_dynamic_resources_worker_memory_hard_gate_parent_sampled() {
-    let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .expect("ACE workspace root")
-        .to_path_buf();
-    let mut owned_compiler = std::process::Command::new(env!("CARGO"));
-    owned_compiler
-        .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
-        .current_dir(&ws)
-        .env_remove("CARGO_TARGET_DIR")
-        .arg("--target-dir")
-        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    let build = auto_tool_execution::run_command_output(owned_compiler).expect("build");
-    assert!(
-        build.status.success(),
-        "{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let worker = ws.join("target").join("release").join(if cfg!(windows) {
-        "av-worker.exe"
-    } else {
-        "av-worker"
-    });
+    // PLAN-1098 B-05: the AV worker is an explicitly prepared tool. Never
+    // build it (or pick a profile-specific path) inside a test body.
+    let worker = std::env::var_os("AC_AV_CASE_WORKER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            panic!(
+                "AC_AV_CASE_WORKER must be provided by explicit preparation \
+                 (python scripts/fixed-tests.py <group> --prepare-only)"
+            )
+        });
 
     let root = std::env::temp_dir().join(format!(
         "av824-memgate-{}-{}",

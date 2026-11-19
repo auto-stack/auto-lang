@@ -19,11 +19,15 @@ fn out_base() -> PathBuf {
 }
 
 fn worker_path() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/a2x-worker.exe");
-    if p.exists() {
-        return p;
+    // PLAN-1098 B-05: the worker is an explicitly prepared tool; no
+    // profile-specific `target/release` search and no in-test rebuild.
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     }
-    p.join("../../../target/release/a2x-worker.exe")
 }
 
 /// Drive the worker's certify-c op; returns (exit ok, parsed json or the
