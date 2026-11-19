@@ -598,6 +598,8 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
 
 fn inner_span(s: &Stmt) -> Span {
     match s {
+        // PLAN-1081：嵌套 fn 项（Auto 面；调度面不可达）。
+        Stmt::NestedFn { item } => item.span,
         Stmt::If { span, .. }
         | Stmt::While { span, .. }
         | Stmt::Loop { span, .. }

@@ -171,6 +171,21 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
         }
     }
 
+    // PLAN-1081 (T-03): snapshot the resolved module return types BEFORE
+    // the rewrite (the LAST ctx reads); the nested-item completion below
+    // runs on this OWNED map after the rewrite.
+    let mut owned_rets: BTreeMap<String, TypeRef> = BTreeMap::new();
+    for u in ctx.untyped.values() {
+        if let Ty::Concrete(tr) = &u.ret {
+            owned_rets.insert(u.name.clone(), tr.clone());
+        }
+    }
+    for (name, ty) in &ctx.typed_rets {
+        if let Ty::Concrete(tr) = ty {
+            owned_rets.entry(name.clone()).or_insert_with(|| tr.clone());
+        }
+    }
+
     // Rewrite annotations + reject unresolved/conflicting slots.
     for (idx, u) in &ctx.untyped {
         let Item::Fn(f) = &mut program.items[*idx] else {
@@ -227,6 +242,14 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
+
+    // PLAN-1081 (T-03): nested fn items complete in place (no ctx reads
+    // past this point). Params must be annotated — a named rejection,
+    // never a silent default. An Inferred ret derives from the body's
+    // value tails against the snapshot (console builtins are Unit
+    // intrinsics); a body with no value tail/return is Unit (the legacy
+    // d01 shape).
+    complete_nested_items(program, &owned_rets, &mut diags);
 
     if diags.is_empty() {
         Ok(())
@@ -343,7 +366,9 @@ fn merge_prototypes(program: &mut Program, diags: &mut Vec<Diagnostic>) {
             )),
         }
     }
-    program.items.retain(|i| !matches!(i, Item::Fn(f) if f.proto));
+    program
+        .items
+        .retain(|i| !matches!(i, Item::Fn(f) if f.proto));
 }
 
 /// One estimation environment: parameter/local name → Ty.
@@ -352,7 +377,12 @@ struct Env(BTreeMap<String, Ty>);
 
 /// Walk one block, keeping a sequential local env, recording call sites of
 /// untyped functions and estimating every subexpression once.
-fn walk_block(b: &Block, env: &Env, ctx: &mut Ctx, sites: &mut Vec<(String, Vec<(usize, Ty)>, Span)>) {
+fn walk_block(
+    b: &Block,
+    env: &Env,
+    ctx: &mut Ctx,
+    sites: &mut Vec<(String, Vec<(usize, Ty)>, Span)>,
+) {
     let mut env = env.clone();
     for s in &b.stmts {
         match s {
@@ -422,9 +452,7 @@ fn estimate(
         ExprKind::Unary { op, operand } => {
             let t = estimate(operand, env, ctx, sites);
             match op {
-                crate::source::ast::UnaryOp::Not => {
-                    Ty::Concrete(TypeRef::Builtin(TypeWord::Bool))
-                }
+                crate::source::ast::UnaryOp::Not => Ty::Concrete(TypeRef::Builtin(TypeWord::Bool)),
                 _ => t,
             }
         }
@@ -459,9 +487,7 @@ fn estimate(
                     .filter_map(|(i, a)| {
                         let pos = match a {
                             Arg::Pos(_) | Arg::MovePos(_) => Some(i),
-                            Arg::Named { name, .. } => {
-                                names.iter().position(|n| *n == name.name)
-                            }
+                            Arg::Named { name, .. } => names.iter().position(|n| *n == name.name),
                         }?;
                         let val = match a {
                             Arg::Pos(x) | Arg::MovePos(x) => x,
@@ -479,7 +505,10 @@ fn estimate(
                     .unwrap_or(Ty::Unknown);
                 return ret;
             }
-            ctx.typed_rets.get(&callee.name).cloned().unwrap_or(Ty::Unknown)
+            ctx.typed_rets
+                .get(&callee.name)
+                .cloned()
+                .unwrap_or(Ty::Unknown)
         }
         ExprKind::CtorNamed { ty, fields, .. } => {
             for f in fields {
@@ -538,7 +567,11 @@ fn estimate_arg(
 /// The FIRST concrete shape wins; a later DIVERGENT shape at another site
 /// is a named `bind/source.inference` rejection at that site (never a
 /// silent first-wins under conflicting evidence).
-fn feed_sites(ctx: &mut Ctx, sites: Vec<(String, Vec<(usize, Ty)>, Span)>, diags: &mut Vec<Diagnostic>) {
+fn feed_sites(
+    ctx: &mut Ctx,
+    sites: Vec<(String, Vec<(usize, Ty)>, Span)>,
+    diags: &mut Vec<Diagnostic>,
+) {
     for (callee, slots, span) in sites {
         let Some(&idx) = ctx.untyped_idx.get(&callee) else {
             continue;
@@ -658,6 +691,179 @@ fn collect_block_value(
             Stmt::Loop { body, .. } => collect_block_value(body, &env, ctx, sites, tails),
             Stmt::Assign { value, .. } => {
                 estimate(value, &env, ctx, sites);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// PLAN-1081 (T-03)：嵌套 fn 项的原位补全（auto 面）。只走语句块（lambda
+/// 内部不到达——resolve 侧具名拒），递归 if/while/loop/for/hold/try 体。
+fn complete_nested_items(
+    program: &mut Program,
+    owned_rets: &BTreeMap<String, TypeRef>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for item in program.items.iter_mut() {
+        if let Item::Fn(f) = item {
+            complete_nested_block(&mut f.body, owned_rets, diags);
+        }
+    }
+}
+
+/// 嵌套项体尾类型的最小估计器（本批冻结面）：控制台内建（print/eprint/say）
+/// = Unit；模块 fn 调用 = 其已解析返回；int/bool 字面量。其余形状不产出
+/// Concrete（落到显式返回要求）。
+fn nested_tail_ty(e: &Expr, owned_rets: &BTreeMap<String, TypeRef>) -> Option<TypeRef> {
+    match &e.kind {
+        ExprKind::Call { callee, .. } => {
+            if matches!(callee.name.as_str(), "print" | "eprint" | "say") {
+                Some(TypeRef::Builtin(TypeWord::Void))
+            } else {
+                owned_rets.get(&callee.name).cloned()
+            }
+        }
+        ExprKind::IntLit(_) => Some(TypeRef::Builtin(TypeWord::Int)),
+        ExprKind::BoolLit(_) => Some(TypeRef::Builtin(TypeWord::Bool)),
+        _ => None,
+    }
+}
+
+/// 收集嵌套项体的值尾（return/尾表达式/if 臂内的 return），返回
+/// （一致类型, 是否冲突）。
+fn nested_body_ret(b: &Block, owned_rets: &BTreeMap<String, TypeRef>) -> (Option<TypeRef>, bool) {
+    let mut agreed: Option<TypeRef> = None;
+    let mut conflict = false;
+    fn feed(
+        e: &Expr,
+        owned_rets: &BTreeMap<String, TypeRef>,
+        agreed: &mut Option<TypeRef>,
+        conflict: &mut bool,
+    ) {
+        if let Some(tr) = nested_tail_ty(e, owned_rets) {
+            match agreed {
+                None => *agreed = Some(tr),
+                Some(prev) if *prev == tr => {}
+                Some(_) => *conflict = true,
+            }
+        }
+    }
+    fn walk(
+        block: &Block,
+        owned_rets: &BTreeMap<String, TypeRef>,
+        agreed: &mut Option<TypeRef>,
+        conflict: &mut bool,
+    ) {
+        for st in &block.stmts {
+            match st {
+                Stmt::Return { value, .. } => feed(value, owned_rets, agreed, conflict),
+                Stmt::ExprStmt { value, .. } => feed(value, owned_rets, agreed, conflict),
+                Stmt::If { then, els, .. } => {
+                    for bl in std::iter::once(then).chain(els.iter()) {
+                        for st2 in &bl.stmts {
+                            if let Stmt::Return { value, .. } = st2 {
+                                feed(value, owned_rets, agreed, conflict);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    walk(b, owned_rets, &mut agreed, &mut conflict);
+    (agreed, conflict)
+}
+
+fn complete_nested_block(
+    b: &mut Block,
+    owned_rets: &BTreeMap<String, TypeRef>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for stmt in b.stmts.iter_mut() {
+        match stmt {
+            Stmt::NestedFn { item } => {
+                for p in item.params.iter() {
+                    if p.ty.kind == TypeRef::Inferred {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.inference",
+                            format!(
+                                "a nested fn item requires annotated parameters (`fn {}(n int) ...`)",
+                                item.name.name
+                            ),
+                            p.name.span,
+                        ));
+                    }
+                }
+                if item.ret.kind == TypeRef::Inferred {
+                    let (agreed, conflict) = nested_body_ret(&item.body, owned_rets);
+                    if conflict {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.inference",
+                            format!(
+                                "the body of `{}` produces conflicting return types",
+                                item.name.name
+                            ),
+                            item.name.span,
+                        ));
+                    } else {
+                        match agreed {
+                            Some(tr) => {
+                                item.ret = TypeAnn {
+                                    kind: tr,
+                                    span: item.ret.span,
+                                };
+                            }
+                            None => {
+                                if !returns_value(&item.body) {
+                                    item.ret = TypeAnn {
+                                        kind: TypeRef::Builtin(TypeWord::Void),
+                                        span: item.ret.span,
+                                    };
+                                } else {
+                                    diags.push(Diagnostic::new(
+                                        Stage::Bind,
+                                        "source.inference",
+                                        format!(
+                                            "the return type of `{}` cannot be inferred from its body (nested fn items need an explicit return type when they return a value)",
+                                            item.name.name
+                                        ),
+                                        item.name.span,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                complete_nested_block(&mut item.body, owned_rets, diags);
+            }
+            Stmt::If { then, els, .. } => {
+                complete_nested_block(then, owned_rets, diags);
+                if let Some(eb) = els {
+                    complete_nested_block(eb, owned_rets, diags);
+                }
+            }
+            Stmt::While { body, .. }
+            | Stmt::Loop { body, .. }
+            | Stmt::ForIn { body, .. }
+            | Stmt::Hold { body, .. } => {
+                complete_nested_block(body, owned_rets, diags);
+            }
+            Stmt::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
+                complete_nested_block(body, owned_rets, diags);
+                if let Some(cc) = catch {
+                    complete_nested_block(&mut cc.body, owned_rets, diags);
+                }
+                if let Some(fb) = finally {
+                    complete_nested_block(fb, owned_rets, diags);
+                }
             }
             _ => {}
         }

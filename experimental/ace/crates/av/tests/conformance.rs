@@ -185,6 +185,8 @@ mod plan1079_language_semantics;
 
 #[path = "cases/plan1080_calls_binding.rs"]
 mod plan1080_calls_binding;
+#[path = "cases/plan1081_function_values.rs"]
+mod plan1081_function_values;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]

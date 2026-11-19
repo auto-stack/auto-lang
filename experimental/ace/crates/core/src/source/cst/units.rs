@@ -511,6 +511,9 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                     crate::source::ast::Stmt::Hold { body, .. } => {
                         sub.extend(body.stmts.iter().map(WalkItem::Stmt));
                     }
+                    // PLAN-1081：嵌套 fn 项是独立函数单元，不作为本.walk 的
+                    // 表达式/语句单位入队（会话单发现仅针对 lambda）。
+                    crate::source::ast::Stmt::NestedFn { .. } => {}
                     crate::source::ast::Stmt::Let { ann: a, value, .. } => {
                         if let Some(ty) = a {
                             if ann(ty) {
@@ -709,6 +712,8 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                             work.push(WalkItem::Stmt(st));
                         }
                     }
+                    // PLAN-1081：嵌套 fn 项是独立函数单元，不入队。
+                    Stmt::NestedFn { .. } => {}
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }
@@ -2113,6 +2118,8 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                             work.push(WalkItem::Stmt(st));
                         }
                     }
+                    // PLAN-1081：嵌套 fn 项是独立函数单元，不入队。
+                    Stmt::NestedFn { .. } => {}
                     Stmt::Let { value, .. }
                     | Stmt::Assign { value, .. }
                     | Stmt::Return { value, .. }

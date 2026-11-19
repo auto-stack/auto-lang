@@ -238,6 +238,10 @@ pub(crate) fn analyze_capture_uses(
                 Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name)
                 }
+                // PLAN-1081: a nested fn item is a separate function (Rust
+                // nested-fn semantics) — its body is never walked for
+                // captures of THIS scope.
+                Stmt::NestedFn { .. } => {}
                 // PLAN-962: an index assign reads base/index/value.
                 Stmt::IndexAssign(ia) => {
                     visit_expr(&ia.index, outer_locals, scopes, uses, by_name);
@@ -598,6 +602,9 @@ pub(crate) fn scan_shared_capture_cells(
                 Stmt::ExprStmt { value, .. } | Stmt::Return { value, .. } => {
                     visit_expr(value, scopes, shared)
                 }
+                // PLAN-1081: a nested fn item owns no shared capture cells
+                // of this scope (separate function).
+                Stmt::NestedFn { .. } => {}
                 // PLAN-962: an index assign reads index/value.
                 Stmt::IndexAssign(ia) => {
                     visit_expr(&ia.index, scopes, shared);

@@ -627,12 +627,7 @@ fn lower_checked_collection_family(
             hir::DefKind::Method { ty, body, .. } if auto_language => {
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
-                fn_order.push((
-                    di as u32,
-                    *ty,
-                    *body,
-                    mir_name_of_def(module, di)?,
-                ));
+                fn_order.push((di as u32, *ty, *body, mir_name_of_def(module, di)?));
             }
             hir::DefKind::Method { .. } => {
                 return Err(AdapterError::uns(
@@ -5533,7 +5528,22 @@ k 0
                             return Ok(dst);
                         }
                     }
-                    let dst = self.temp_ty(ty)?;
+                    // PLAN-1081: a Unit-result call (the D-04 void-fn face —
+                    // a void helper CALLED from another fn; only the entry
+                    // was exercised before) must give its dst the Unit type:
+                    // the generic unit-expression i32 remap above predates
+                    // callable void fns and violates mir.call-result-type.
+                    let unit_call = matches!(callee_ref, CalleeRef::Func(_))
+                        && matches!(
+                            self.body.exprs[eid.0 as usize].ty,
+                            hir::TypeUse::Builtin(hir::BuiltinType::Unit)
+                        );
+                    let dst = if unit_call {
+                        let u = self.out.intern_type(MirType::Unit);
+                        self.temp_ty(u)?
+                    } else {
+                        self.temp_ty(ty)?
+                    };
                     self.emit(
                         MirInstr::Call {
                             callee: callee_ref,

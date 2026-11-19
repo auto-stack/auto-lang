@@ -480,6 +480,12 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => collect_hashes_expr(value, owner, out),
+        // PLAN-1081：嵌套 fn 项收集其体内哈希语句。
+        Stmt::NestedFn { item } => {
+            for st in &item.body.stmts {
+                collect_hashes_stmt(st, owner, out);
+            }
+        }
         // PLAN-962 (T-08)：hold。
         Stmt::Hold { body, .. } => {
             for st in &body.stmts {
@@ -661,6 +667,12 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => callees_expr(value, out),
+        // PLAN-1081：嵌套 fn 项收集其体内被调者。
+        Stmt::NestedFn { item } => {
+            for st in &item.body.stmts {
+                callees_stmt(st, out);
+            }
+        }
         // PLAN-962 (T-08)：hold。
         Stmt::Hold { body, .. } => {
             for st in &body.stmts {
@@ -972,6 +984,12 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => replace_at(value, served, site, site_expr),
+        // PLAN-1081：嵌套 fn 项替换体内语句。
+        Stmt::NestedFn { item } => {
+            for st in item.body.stmts.iter_mut() {
+                substitute_stmt(st, served, site, site_expr);
+            }
+        }
         // PLAN-962 (T-08)：hold。
         Stmt::Hold { body, .. } => {
             for st in body.stmts.iter_mut() {
@@ -1206,6 +1224,12 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => find_hash_expr(value, span, found),
+        // PLAN-1081：嵌套 fn 项查找其体内哈希。
+        Stmt::NestedFn { item } => {
+            for st in &item.body.stmts {
+                find_hash_stmt(st, span, found);
+            }
+        }
         // PLAN-962 (T-08)：hold。
         Stmt::Hold { body, .. } => {
             for st in &body.stmts {

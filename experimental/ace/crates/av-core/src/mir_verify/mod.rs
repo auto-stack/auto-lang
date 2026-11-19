@@ -165,7 +165,6 @@ fn validate_mir_with_analysis_reservation_and_deadline(
         is_owned: module.is_owned_profile() || module.is_host_console_profile(),
         is_collections: module.is_collections_profile(),
         is_closures: module.is_closures_profile(),
-        closure_bodies: std::collections::BTreeSet::new(),
         is_dynamic: module.is_dynamic_profile(),
         is_entry_unit: module.is_entry_unit_profile() || module.is_host_console_profile(),
     };
@@ -198,7 +197,6 @@ struct Verifier<'a, 'r> {
     is_closures: bool,
     /// PLAN-823 r8: the closure-body function indices (functions with a
     /// declared env layout), for the entry-body and direct-call gates.
-    closure_bodies: std::collections::BTreeSet<u32>,
     /// Whether the module declares the `av.dynamic/1` profile (PLAN-824):
     /// subsumes the collections surface and adds the checked-erasure Dyn
     /// surface.
@@ -1180,12 +1178,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
             } else {
                 None
             };
-            let mut bodies: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-            for (fi, f) in self.module.funcs.iter().enumerate() {
-                if f.env.is_some() {
-                    bodies.insert(fi as u32);
-                }
-            }
+            // PLAN-1081: the env-need test reads each callee's declared
+            // env directly; a precomputed body set is no longer kept.
             let mut sites: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
             for f in self.module.funcs.iter() {
                 for b in f.blocks.iter() {
@@ -1203,7 +1197,17 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                                 .to_string(),
                                         ));
                                     }
-                                    if !sites.insert(*idx) {
+                                    // PLAN-1081: the single-site (first-case)
+                                    // rule protects per-site ENV ownership;
+                                    // an EMPTY-env callee (a named fn item
+                                    // referenced as a value) has no per-site
+                                    // state, so multiple value references of
+                                    // the same item are legal.
+                                    let empty_env_callee =
+                                        self.module.funcs.get(*idx as usize).is_some_and(|t| {
+                                            t.env.as_ref().is_some_and(|e| e.is_empty())
+                                        });
+                                    if !empty_env_callee && !sites.insert(*idx) {
                                         return Err(MirVerifyError::inv(
                                             "mir.closure.site-duplicate",
                                             format!(
@@ -1296,7 +1300,6 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ),
                 ));
             }
-            self.closure_bodies = bodies;
         }
         // ---- per-function deep checks -----------------------------------
         for (fi, f) in self.module.funcs.iter().enumerate() {
@@ -1422,6 +1425,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
             // closures profile represents a shared object capture as a
             // List<Object> env cell).
             Some(MirType::Object { .. }) if self.collections_surface() => true,
+            // PLAN-1081: a CLOSURE element rides the collections family —
+            // a closure/fn value is an owned payload (its handle owns the
+            // env), exactly like a record; the value crosses container
+            // slots under the source move/clone discipline. `Fn` (the
+            // borrowed callable view) stays rejected.
+            Some(MirType::Closure(_)) if self.collections_surface() => true,
             _ => false,
         };
         if !ok {
@@ -2613,8 +2622,16 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         }
                         // PLAN-823: a closure body executes ONLY with
                         // an env binding — a direct call can never
-                        // provide one.
-                        if self.closure_bodies.contains(idx) {
+                        // provide one. PLAN-1081: an EMPTY-env body (a
+                        // named fn item also referenced as a value) needs
+                        // no binding, so direct calls stay legal — the
+                        // item is simultaneously callable and a value.
+                        let env_needs_binding = self
+                            .module
+                            .funcs
+                            .get(*idx as usize)
+                            .is_some_and(|t| t.env.as_ref().is_some_and(|e| !e.is_empty()));
+                        if env_needs_binding {
                             return Err(err(
                                 "mir.closure.body-direct-call",
                                 format!(

@@ -3693,6 +3693,11 @@ enum Frame {
         receiver: Receiver,
         owner: Option<Ident>,
     },
+    /// PLAN-1081 (T-03)：语句位嵌套 fn 项收尾——弹 Val::F 包装为
+    /// Stmt::NestedFn，并恢复外层类型变量域。
+    NestedFnFinish {
+        saved_ty_params: Vec<String>,
+    },
     ScriptFinish {
         start_span: Span,
     },
@@ -8706,6 +8711,55 @@ impl<'a> Engine<'a> {
             let value_n = self.cx.field_child(inner, "value").expect("reply value");
             self.stack.push(Frame::ReplyStmtFinish { kw });
             self.stack.push(Frame::ExprEnter(value_n));
+        } else if Some(kind) == self.cx.k.nested_fn_stmt {
+            // PLAN-1081 (T-03): statement-position `fn` item (auto face).
+            // Mirrors run_fn_item's pre-body half (no prototype arm here);
+            // the body rides the block machine and NestedFnFinish wraps
+            // the finished item. Bare ret = the D-04 inference marker.
+            let tail = self
+                .cx
+                .children(inner)
+                .into_iter()
+                .find(|&c| self.cx.tree.kind(c) == self.cx.k.fn_tail)
+                .expect("nested-fn-stmt carries fn-tail");
+            let name_leaf = self.cx.field_child(tail, "name").expect("fn name");
+            let name = ident_of(&mut self.cx, name_leaf);
+            let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
+            if !type_params.is_empty() {
+                let tp_span = type_params[0].name.span;
+                self.cx.reject(tp_span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "a nested fn item cannot be a template",
+                        tp_span,
+                    )
+                });
+            }
+            let saved_ty_params = std::mem::take(&mut self.cx.ty_params);
+            let params = self.project_params(self.cx.field_child(tail, "params"));
+            let ret = match self.cx.field_child(tail, "ty") {
+                Some(ty_n) => self.classify_word(ty_n, true, false),
+                None => {
+                    let span = name.span;
+                    TypeAnn {
+                        kind: TypeRef::Inferred,
+                        span,
+                    }
+                }
+            };
+            let body_n = self.cx.field_child(tail, "body").expect("fn body");
+            self.stack.push(Frame::NestedFnFinish { saved_ty_params });
+            self.stack.push(Frame::FnBodyFinish {
+                node: inner,
+                name,
+                type_params,
+                params,
+                ret,
+                receiver: Receiver::Free,
+                owner: None,
+            });
+            self.enter_block(body_n);
         } else if kind == self.cx.k.expr_stmt {
             let value_n = self
                 .cx
@@ -11347,6 +11401,35 @@ impl<'a> Engine<'a> {
                     proto: false,
                 }));
             }
+            Frame::NestedFnFinish { saved_ty_params } => {
+                // PLAN-1081 (T-03)：弹 Val::F 包装为 NestedFn，恢复类型变量域。
+                let item = match self.vals.pop() {
+                    Some(Val::F(f)) => f,
+                    _ => FnItem {
+                        name: Ident {
+                            name: String::new(),
+                            span: Span { start: 0, end: 0 },
+                        },
+                        type_params: Vec::new(),
+                        params: Vec::new(),
+                        ret: TypeAnn {
+                            kind: TypeRef::Builtin(TypeWord::Int),
+                            span: Span { start: 0, end: 0 },
+                        },
+                        body: Block {
+                            stmts: Vec::new(),
+                            span: Span { start: 0, end: 0 },
+                        },
+                        span: Span { start: 0, end: 0 },
+                        receiver: Receiver::Free,
+                        owner: None,
+                        script: false,
+                        proto: false,
+                    },
+                };
+                self.cx.ty_params = saved_ty_params;
+                self.vals.push(Val::S(Stmt::NestedFn { item }));
+            }
             Frame::ScriptFinish { start_span } => {
                 let mut body = self.pop_b();
                 let span = start_span.join(body.span);
@@ -12736,6 +12819,7 @@ impl GenericExpand {
                     self.resolve_typed_ctors_in_expr(&mut ia.index);
                     self.resolve_typed_ctors_in_expr(&mut ia.value);
                 }
+                Stmt::NestedFn { item } => self.resolve_typed_ctors_in_block(&mut item.body),
                 Stmt::Hold { body, .. } => self.resolve_typed_ctors_in_block(body),
                 Stmt::If {
                     cond, then, els, ..

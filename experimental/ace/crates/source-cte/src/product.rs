@@ -288,6 +288,12 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
             }
             // PLAN-962：tuple 解构替换值表达式。
             Stmt::LetDestruct { value, .. } => repl(value, served),
+            // PLAN-1081：嵌套 fn 项替换体内语句。
+            Stmt::NestedFn { item } => {
+                for st in item.body.stmts.iter_mut() {
+                    substitute_stmt_all(st, served);
+                }
+            }
             // PLAN-962 (T-08)：hold 替换体内表达式。
             Stmt::Hold { body, .. } => {
                 for st in body.stmts.iter_mut() {

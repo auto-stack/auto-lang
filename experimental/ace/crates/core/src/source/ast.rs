@@ -838,6 +838,13 @@ pub enum Stmt {
         arms: Vec<HashIsArm>,
         span: Span,
     },
+    /// PLAN-1081 (T-03): a nested `fn` ITEM declared inside a function
+    /// body (Auto face). Items are hoisted to the module function table
+    /// under an owner-mangled name; they are call-only (never values) and
+    /// follow Rust nested-fn semantics — no capture of enclosing locals.
+    NestedFn {
+        item: FnItem,
+    },
 }
 
 /// PLAN-966（T-02）：`#is` 一个臂；`pattern = None` 是 `else` 臂。

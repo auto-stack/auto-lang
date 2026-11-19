@@ -499,6 +499,12 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
         }
         // PLAN-962: tuple destructuring reads the value.
         Stmt::LetDestruct { value, .. } => walk_expr(value, out),
+        // PLAN-1081: a nested fn item walks its own body (separate unit).
+        Stmt::NestedFn { item } => {
+            for st in &item.body.stmts {
+                walk_stmt(st, out);
+            }
+        }
         // PLAN-962 (T-08): hold — body expression statements.
         Stmt::Hold { body, .. } => {
             for st in &body.stmts {

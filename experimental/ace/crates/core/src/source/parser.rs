@@ -2004,6 +2004,13 @@ impl<'s> Parser<'s> {
     /// there (`source.entry-top-return`) instead of being an early exit.
     fn parse_stmt_head(&mut self, stack: &mut Vec<OpenBlock>, top: bool) -> Result<(), Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
+            // PLAN-1081 (T-03): the Auto face admits nested `fn` items in
+            // function bodies (not at a script top level — there `fn` is a
+            // declaration item by the leading-declaration rule).
+            Some(Tok::Kw(Kw::Fn)) if !top && self.surface == SourceProfile::Auto => {
+                let f = self.fn_item(Receiver::Free)?;
+                self.push_stmt(stack, Stmt::NestedFn { item: f })
+            }
             Some(Tok::Kw(Kw::Let)) | Some(Tok::Kw(Kw::Var)) => {
                 let s = self.decl_stmt()?;
                 self.push_stmt(stack, s)

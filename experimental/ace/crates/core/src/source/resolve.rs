@@ -2388,6 +2388,37 @@ fn resolve_detailed(
             ast::Item::Task(_) => {}
         }
     }
+    // PLAN-1081 (T-03) Pass 1a: collect NESTED fn items declared inside
+    // free-function bodies (Auto face). Every item is hoisted into the flat
+    // table under an owner-mangled name (`__nested_<owner>_<name>`, one path
+    // segment per level); visibility is fn-level and hoisted (Rust item
+    // semantics), captured by `nested_children` below. Statement blocks are
+    // walked recursively; lambda interiors are NOT collected (a nested item
+    // reaching resolve uncollected is a named rejection — never silent).
+    let mut fn_nested: Vec<Option<NestedFnInfo>> = vec![None; flat.len()];
+    let mut nested_children: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut nested_decl_starts: BTreeSet<usize> = BTreeSet::new();
+    if surface == SourceProfile::Auto {
+        let mut cursor = 0usize;
+        while cursor < flat.len() {
+            let chain: Vec<String> = match fn_nested.get(cursor) {
+                Some(Some(info)) => info.chain.clone(),
+                _ => vec![flat[cursor].name.name.clone()],
+            };
+            collect_nested_fns(
+                &flat[cursor].body,
+                &chain,
+                &mut flat,
+                &mut fn_receiver,
+                &mut fn_owner,
+                &mut fn_nested,
+                &mut nested_children,
+                &mut nested_decl_starts,
+            );
+            cursor += 1;
+        }
+    }
+
     // Pass 1b (PLAN-965 M2-A): Pre-register synthesized generator iterator records
     // before function signatures resolve so `~Iter<T>` / `Iter<T>` map to `VT::Rec(ri)`.
     let mut agg_iter_reg = if surface.is_aggregates() {
@@ -2401,7 +2432,12 @@ fn resolve_detailed(
         let owner_ty = fn_owner[i]
             .map(|oi| records[oi].name.clone())
             .unwrap_or_default();
-        let sig_key = if fn_receiver[i] == ast::Receiver::Free {
+        let sig_key = if let Some(info) = fn_nested.get(i).and_then(|n| n.as_ref()) {
+            // PLAN-1081: a nested fn item registers under its mangled def
+            // name; its BARE name is only visible through the per-fn
+            // nested scope (call-only).
+            info.mangled.clone()
+        } else if fn_receiver[i] == ast::Receiver::Free {
             f.name.name.clone()
         } else {
             format!("{}::{}", owner_ty, f.name.name)
@@ -2595,6 +2631,10 @@ fn resolve_detailed(
     // zero `resolve` body-work for that owner.
     let mut fns = Vec::new();
     let mut closure_fns = Vec::new();
+    // PLAN-1081 (T-03): effective fn name -> its local NAMES (the no-capture
+    // universe for nested bodies; filled as each fn resolves — flat order
+    // keeps every ancestor ahead of its nested items).
+    let mut locals_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let synth_iter_count = agg_iter_reg.synth_fn_count();
     let closure_base = flat.len() + synth_iter_count;
 
@@ -2633,6 +2673,54 @@ fn resolve_detailed(
         let mut sites = Vec::new();
         let gen_meta = agg_iter_reg.gen_fns.get(&i).copied();
         let mut gen_try_finals = Vec::new();
+        // PLAN-1081 (T-03): this fn's nested-item context — visible nested
+        // fns (children of the enclosing chain, closer shadows farther)
+        // and the ancestors' local names a nested body may never capture.
+        let nested_ctx = if surface == SourceProfile::Auto {
+            let (chain, own_effective): (Vec<String>, String) =
+                match fn_nested.get(i).and_then(|n| n.as_ref()) {
+                    Some(info) => (info.chain.clone(), info.mangled.clone()),
+                    None => (vec![f.name.name.clone()], f.name.name.clone()),
+                };
+            let mut scope: BTreeMap<String, FnSig> = BTreeMap::new();
+            for anc in chain.iter() {
+                for (bare, mangled) in nested_children
+                    .get(anc)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[])
+                {
+                    if let Some(sig) = sigs.get(mangled) {
+                        scope.insert(bare.clone(), sig.clone());
+                    }
+                }
+            }
+            for (bare, mangled) in nested_children
+                .get(&own_effective)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+            {
+                if let Some(sig) = sigs.get(mangled) {
+                    scope.insert(bare.clone(), sig.clone());
+                }
+            }
+            let mut no_capture: BTreeSet<String> = BTreeSet::new();
+            for anc in chain.iter() {
+                if let Some(names) = locals_of.get(anc) {
+                    no_capture.extend(names.iter().cloned());
+                }
+            }
+            NestedCtx {
+                scope,
+                no_capture,
+                decl_starts: nested_decl_starts.clone(),
+                sig_key: match fn_nested.get(i).and_then(|n| n.as_ref()) {
+                    Some(info) => Some(info.mangled.clone()),
+                    None => None,
+                },
+            }
+        } else {
+            NestedCtx::default()
+        };
         let mut resolved = resolve_fn_agg(
             f,
             &sigs,
@@ -2659,6 +2747,7 @@ fn resolve_detailed(
                 None
             },
             sched,
+            nested_ctx,
         );
         // PLAN-965 (V-03, M2-A): a generator body is lowered to a state
         // record that stores every live parameter BY VALUE and runs in
@@ -2705,7 +2794,27 @@ fn resolve_detailed(
                 &mut coll,
             );
         }
+        // PLAN-1081 (T-03): a nested item's RESOLVED name is its mangled
+        // def name — the atom ids (t_f_/d_/b_) stay unique when different
+        // owners declare same-name nested items.
+        let mut resolved = resolved;
+        if let Some(info) = fn_nested.get(i).and_then(|n| n.as_ref()) {
+            resolved.name = info.mangled.clone();
+        }
         fns.push(resolved);
+        // PLAN-1081 (T-03): publish this fn's local names for its nested
+        // items' no-capture discipline.
+        {
+            let effective = match fn_nested.get(i).and_then(|n| n.as_ref()) {
+                Some(info) => info.mangled.clone(),
+                None => f.name.name.clone(),
+            };
+            let last = fns.last().expect("just pushed");
+            locals_of.insert(
+                effective,
+                last.locals.iter().map(|l| l.name.clone()).collect(),
+            );
+        }
         if let (Some(w), Some(fp)) = (warm.as_mut(), text_fp) {
             let lambdas: Vec<ResolvedFn> = closure_fns[lambdas_before..].to_vec();
             let resolved = fns.last().expect("just pushed").clone();
@@ -4224,6 +4333,7 @@ pub(crate) fn resolve_lambda_in_context(
             sched: None,
             profile: SourceProfile::Closures,
             asm_lane: false,
+            nested: NestedCtx::default(),
             // callback-by-name is a text-record-only surface; the closures
             // face never reads the boundary.
             source_fn_count: 0,
@@ -4461,6 +4571,7 @@ pub(crate) fn resolve_owner_in_env(
         &EMPTY_ITER_INFO,
         None,
         None,
+        NestedCtx::default(),
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -4766,6 +4877,176 @@ fn fn_sig_of(
 
 /// PLAN-864: signature construction with the collections type tables;
 /// `is_coll` selects the table-aware annotation grammar.
+/// PLAN-1081 (T-03): the flatten-table sidecar of one nested fn item.
+#[derive(Clone)]
+pub(crate) struct NestedFnInfo {
+    /// The bare source name (`inner`).
+    pub bare: String,
+    /// The owner-mangled def name (`__nested_main_inner`).
+    pub mangled: String,
+    /// Enclosing fn effective names, OUTERMOST first, ending with the
+    /// direct enclosing fn (`["main"]`, `["main", "__nested_main_inner"]`).
+    pub chain: Vec<String>,
+}
+
+/// PLAN-1081 (T-03): the per-fn nested-item context the body resolver
+/// carries (Auto face): the visible nested fns by bare name (call-only),
+/// the enclosing locals a nested body may NEVER capture, and the collected
+/// declaration spans (an uncollected item is a named rejection).
+pub(crate) struct NestedCtx {
+    pub scope: BTreeMap<String, FnSig>,
+    pub no_capture: BTreeSet<String>,
+    pub decl_starts: BTreeSet<usize>,
+    /// The nested item's MANGLED sig key (None for ordinary fns) — the
+    /// ResolvedFn construction reads its signature through this key.
+    pub sig_key: Option<String>,
+}
+
+impl Default for NestedCtx {
+    fn default() -> Self {
+        NestedCtx {
+            scope: BTreeMap::new(),
+            no_capture: BTreeSet::new(),
+            decl_starts: BTreeSet::new(),
+            sig_key: None,
+        }
+    }
+}
+
+/// PLAN-1081 (T-03): depth-first pre-order collection of nested fn items
+/// from a function body's statement blocks (expression/lambda interiors
+/// are not collected — an uncollected item reaching resolve is a named
+/// rejection, never a silent drop). Each item is appended to the flat
+/// table with a `__nested_`-prefixed mangled name and a Free receiver.
+fn collect_nested_fns<'a>(
+    block: &'a ast::Block,
+    chain: &[String],
+    flat: &mut Vec<&'a ast::FnItem>,
+    fn_receiver: &mut Vec<ast::Receiver>,
+    fn_owner: &mut Vec<Option<usize>>,
+    fn_nested: &mut Vec<Option<NestedFnInfo>>,
+    nested_children: &mut BTreeMap<String, Vec<(String, String)>>,
+    nested_decl_starts: &mut BTreeSet<usize>,
+) {
+    for stmt in &block.stmts {
+        match stmt {
+            ast::Stmt::NestedFn { item } => {
+                let bare = item.name.name.clone();
+                let mangled = format!("__nested_{}_{}", chain.join("_"), bare);
+                let owner_key = chain.last().expect("non-empty chain").clone();
+                nested_children
+                    .entry(owner_key)
+                    .or_default()
+                    .push((bare.clone(), mangled.clone()));
+                nested_decl_starts.insert(item.span.start);
+                fn_nested.push(Some(NestedFnInfo {
+                    bare,
+                    mangled,
+                    chain: chain.to_vec(),
+                }));
+                fn_receiver.push(ast::Receiver::Free);
+                fn_owner.push(None);
+                flat.push(item);
+                // Recurse into the nested item's own body with the grown
+                // chain (its children key on this item's mangled name).
+                let mut child_chain = chain.to_vec();
+                child_chain.push(item.name.name.clone());
+                collect_nested_fns(
+                    &item.body,
+                    &child_chain,
+                    flat,
+                    fn_receiver,
+                    fn_owner,
+                    fn_nested,
+                    nested_children,
+                    nested_decl_starts,
+                );
+            }
+            ast::Stmt::If { then, els, .. } => {
+                collect_nested_fns(
+                    then,
+                    chain,
+                    flat,
+                    fn_receiver,
+                    fn_owner,
+                    fn_nested,
+                    nested_children,
+                    nested_decl_starts,
+                );
+                if let Some(eb) = els {
+                    collect_nested_fns(
+                        eb,
+                        chain,
+                        flat,
+                        fn_receiver,
+                        fn_owner,
+                        fn_nested,
+                        nested_children,
+                        nested_decl_starts,
+                    );
+                }
+            }
+            ast::Stmt::While { body, .. }
+            | ast::Stmt::Loop { body, .. }
+            | ast::Stmt::ForIn { body, .. }
+            | ast::Stmt::Hold { body, .. } => {
+                collect_nested_fns(
+                    body,
+                    chain,
+                    flat,
+                    fn_receiver,
+                    fn_owner,
+                    fn_nested,
+                    nested_children,
+                    nested_decl_starts,
+                );
+            }
+            ast::Stmt::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
+                collect_nested_fns(
+                    body,
+                    chain,
+                    flat,
+                    fn_receiver,
+                    fn_owner,
+                    fn_nested,
+                    nested_children,
+                    nested_decl_starts,
+                );
+                if let Some(cc) = catch {
+                    collect_nested_fns(
+                        &cc.body,
+                        chain,
+                        flat,
+                        fn_receiver,
+                        fn_owner,
+                        fn_nested,
+                        nested_children,
+                        nested_decl_starts,
+                    );
+                }
+                if let Some(fb) = finally {
+                    collect_nested_fns(
+                        fb,
+                        chain,
+                        flat,
+                        fn_receiver,
+                        fn_owner,
+                        fn_nested,
+                        nested_children,
+                        nested_decl_starts,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn fn_sig_of_coll(
     f: &ast::FnItem,
     recv: ast::Receiver,
@@ -4976,14 +5257,12 @@ fn vt_of_ann_coll(
     };
     match &ann.kind {
         // PLAN-1080（D-04）：同上——补全遍后仍 Inferred = 具名拒。
-        ast::TypeRef::Inferred => {
-            reject(
-                diags,
-                VT::I32,
-                "an omitted type annotation could not be inferred here".to_string(),
-                ann.span,
-            )
-        }
+        ast::TypeRef::Inferred => reject(
+            diags,
+            VT::I32,
+            "an omitted type annotation could not be inferred here".to_string(),
+            ann.span,
+        ),
         // PLAN-962 (L-15): tuple type `(T1, T2, ...)`. Structural VT;
         // aggregates surface only (the grammar crops tuple-ty to it).
         ast::TypeRef::Tuple(args) if coll.aggregates_admission => {
@@ -5433,6 +5712,8 @@ struct FnResolver<'a, 's> {
     /// `av.aggregates/1` 准入 + `ac.source.cte.in/v1`）——闭包字面量按 972
     /// 域放行；其余面保持 `resolve_closure` 的 PLAN-964 具名拒绝。
     asm_lane: bool,
+    /// PLAN-1081 (T-03): nested fn item context (Auto face).
+    nested: NestedCtx,
     diags: &'a mut Vec<Diagnostic>,
     locals: Vec<LocalDecl>,
     scopes: Vec<Scope>,
@@ -5564,6 +5845,7 @@ fn resolve_fn_agg(
     iter_info: &BTreeMap<usize, (VT, VT, usize, usize)>,
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&super::sched_desugar::SchedSurface>,
+    nested: NestedCtx,
 ) -> ResolvedFn {
     resolve_fn_reuse(
         f,
@@ -5588,6 +5870,7 @@ fn resolve_fn_agg(
         iter_info,
         gen_try_finals,
         sched,
+        nested,
     )
 }
 
@@ -5633,6 +5916,7 @@ fn resolve_fn(
         &EMPTY_ITER_INFO,
         None,
         None,
+        NestedCtx::default(),
     )
 }
 
@@ -5663,6 +5947,7 @@ fn resolve_fn_reuse<'a, 's>(
     iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize)>,
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&'a super::sched_desugar::SchedSurface>,
+    nested: NestedCtx,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     let fn_result = if is_coll {
@@ -5678,6 +5963,7 @@ fn resolve_fn_reuse<'a, 's>(
         ct_depth: 0,
         profile: surface,
         asm_lane,
+        nested,
         diags,
         locals: Vec::new(),
         scopes: vec![Scope {
@@ -5822,7 +6108,12 @@ fn resolve_fn_reuse<'a, 's>(
             f.name.name
         )
     };
-    let sig = sigs.get(&sig_key);
+    // PLAN-1081: a nested fn item's signature lives under its MANGLED
+    // key — the bare name would miss and silently default the result.
+    let sig = match r.nested.sig_key.as_deref() {
+        Some(mangled) => sigs.get(mangled),
+        None => sigs.get(&sig_key),
+    };
     ResolvedFn {
         name: f.name.name.clone(),
         name_span: f.name.span,
@@ -6423,6 +6714,8 @@ F:{d}
             for stmt in &block.stmts {
                 match stmt {
                     Stmt::Return { value, .. } => return self.infer_closure_expr(value, &visible),
+                    // PLAN-1081: a nested fn item binds no value here.
+                    Stmt::NestedFn { .. } => {}
                     // PLAN-962: an index assign is an effect statement.
                     Stmt::IndexAssign(_) => {}
                     // PLAN-962 (T-08): hold — alias names the held local
@@ -6556,10 +6849,13 @@ F:{d}
         body_ast: &ast::ClosureBody,
         span: Span,
     ) -> ResolvedExpr {
-        if self.profile != SourceProfile::Closures && !self.asm_lane {
+        if self.profile != SourceProfile::Closures
+            && self.profile != SourceProfile::Auto
+            && !self.asm_lane
+        {
             self.bind_err(
                 "source.unsupported",
-                "lambda expressions are available only in the closures source profile",
+                "lambda expressions are available only in the closures and auto source profiles",
                 span,
             );
             return ResolvedExpr {
@@ -9799,6 +10095,17 @@ F:{d}
                 // a fresh rvalue transfers at commit
                 value.vt = *elem;
             }
+            // PLAN-1081: a closure/fn-value rvalue is a FRESH construction
+            // — a lambda's env is created at this site, and a named fn
+            // item's zero-env value (or its explicit `.clone()`) is a new
+            // owned handle. It transfers at commit like any fresh rvalue.
+            RExprKind::CreateClosure { .. }
+            | RExprKind::Method {
+                method: BuiltinMethod::ClosureClone,
+                ..
+            } => {
+                value.vt = *elem;
+            }
             RExprKind::ReadLocal(_) => {
                 self.bind_err(
                     "source.move-required",
@@ -10059,6 +10366,22 @@ F:{d}
                             .to_string(),
                         *span,
                     );
+                }
+                // PLAN-1081 (T-03): a collected nested fn item resolves as
+                // its own flat unit (Pass 1a) — no statement here. An
+                // UNcollected item (inside a lambda body) is a named
+                // rejection: the legacy silent-drop bug must not return.
+                Stmt::NestedFn { item } => {
+                    if self.nested.decl_starts.contains(&item.span.start) {
+                        // collected elsewhere — nothing to lower here
+                    } else {
+                        self.bind_err(
+                            "source.unsupported",
+                            "nested fn items inside lambda bodies are not admitted in this profile"
+                                .to_string(),
+                            item.span,
+                        );
+                    }
                 }
                 // PLAN-962 (T-08, L-07): `let hold x as v { }` — the
                 // whole-local hold. v is a NAME ALIAS of the held local
@@ -12356,15 +12679,65 @@ F:{d}
                     {
                         return self.resolve_bare_ctor("None", None, None, e.span);
                     }
-                    if self.sigs.contains_key(&id.name) {
+                    if self.nested.scope.contains_key(&id.name) {
+                        // PLAN-1081 (T-03): nested fn items are call-only
+                        // this batch (no value lane, frozen rule).
                         self.bind_err(
                             "source.fn-as-value",
                             format!(
-                                "function `{}` cannot be used as a value in this profile",
+                                "nested fn `{}` cannot be used as a value in this profile",
                                 id.name
                             ),
                             id.span,
                         );
+                    } else if let Some(sig) = self.sigs.get(&id.name).cloned() {
+                        // PLAN-1081 (T-02): on the Auto face a FREE source
+                        // fn item in value position is a checked FUNCTION
+                        // VALUE — a zero-capture closure whose callee is the
+                        // named item itself. Signature/ABI/target identity
+                        // come from the item's own params/result (interned
+                        // as its ClosureFnType); no capture analysis runs,
+                        // so recursion and mutual recursion carry no
+                        // locals. Bare-name sigs are free items (methods
+                        // key as `Type::method`); `index < source_fn_count`
+                        // excludes foreign/py slots and global pseudo
+                        // entries. Old narrow profiles keep the frozen
+                        // `source.fn-as-value` rejection below.
+                        if self.profile == SourceProfile::Auto
+                            && sig.index < self.source_fn_count
+                            && id.name != "main"
+                        {
+                            let type_index = self.coll.intern_function(ClosureFnType {
+                                params: sig.params.clone(),
+                                result: sig.result,
+                            });
+                            return ResolvedExpr {
+                                span: e.span,
+                                vt: self.node_ty(e.span, VT::Function(type_index)),
+                                kind: RExprKind::CreateClosure {
+                                    callee: id.name.clone(),
+                                    captures: Vec::new(),
+                                },
+                            };
+                        }
+                        if id.name == "main" {
+                            // PLAN-1081: the entry owns the module's root
+                            // frame; it is callable as the entry only.
+                            self.bind_err(
+                                "source.fn-as-value",
+                                "the entry function `main` cannot be used as a value",
+                                id.span,
+                            );
+                        } else {
+                            self.bind_err(
+                                "source.fn-as-value",
+                                format!(
+                                    "function `{}` cannot be used as a value in this profile",
+                                    id.name
+                                ),
+                                id.span,
+                            );
+                        }
                     } else if let Some(vb) = self.lookup_view(&id.name) {
                         // PLAN-962: reading a for-in element VIEW binding
                         // yields the whole-element view (borrow) — legal as
@@ -12389,6 +12762,19 @@ F:{d}
                                 path: Vec::new(),
                             },
                         };
+                    } else if self.nested.no_capture.contains(&id.name) {
+                        // PLAN-1081 (T-03): a nested fn body referencing an
+                        // ENCLOSING local — Rust nested-fn semantics: the
+                        // item is not a closure; the name cannot be
+                        // captured. Named rejection, never a silent 0.
+                        self.bind_err(
+                            "source.nested-fn-no-capture",
+                            format!(
+                                "nested fn `{}` cannot capture outer local `{}`; nested fn items are not closures",
+                                self.owner_name, id.name
+                            ),
+                            id.span,
+                        );
                     } else if self.declared_names.contains(&id.name) {
                         // Declared in a scope that ended before this use
                         // (N09/C10): point at the name itself — the token
@@ -15676,7 +16062,15 @@ F:{d}
             };
         }
 
-        if let Some(sig) = self.sigs.get(&callee.name).cloned() {
+        // PLAN-1081 (T-03): a nested fn item's BARE name resolves through
+        // the per-fn nested scope first (call-only); module sigs follow.
+        let callee_sig = self
+            .nested
+            .scope
+            .get(&callee.name)
+            .cloned()
+            .or_else(|| self.sigs.get(&callee.name).cloned());
+        if let Some(sig) = callee_sig {
             // PLAN-963（T-08，L-24）：缺席实参在调用者作用域补默认值（每调用一次）。
             self.fill_default_args(
                 &sig.param_names,

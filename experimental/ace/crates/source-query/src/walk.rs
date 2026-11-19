@@ -273,6 +273,14 @@ fn walk_stmt<'a>(
                 span: *span,
             });
         }
+        // PLAN-1081: a nested fn item is its own function unit — named
+        // unsupported on this query walk (never a silent drop).
+        Stmt::NestedFn { item } => {
+            return Err(WalkError::Unsupported {
+                what: "nested-fn-statement",
+                span: item.span,
+            });
+        }
         Stmt::Let {
             name,
             ann,

@@ -1,0 +1,482 @@
+# PLAN-1081 — AV 命名函数值与闭包（语言共享语料 functions 面）
+
+The canonical author of the named-function-value / closure language
+family. Every case carries ONE Auto source; the `av` check runs the
+ordinary AV language chain (`ac-av/language-source-run-v1`); the legacy
+`VM result` checks keep their original oracles and owners with the
+AV-phase `#ignore` marker (AV-ONLY-1078-1096) — not executed in this
+phase, never blocking the AV gate; their backend tasks remove the marker
+when they land.
+
+Auditable normalizations (recorded in `language/migration/legacy-map.tsv`,
+same policy as PLAN-1080's `double`→`twice`):
+- `double` is a reserved numeric type word in the current language — the
+  canonical spelling is `twice` (legacy.27_function_reference ×3 and the
+  §6 drafts).
+- legacy.09_functions.007's untyped lambda params `(a, b) =>` have no
+  parameter-inference mechanism on this face — the canonical spelling
+  adds `int` annotations (semantics and oracle unchanged).
+- legacy.09_functions.010/013's `List.map` HOF algorithm belongs to the
+  stdlib/HOF owner (research-hold row); this file carries the
+  closure+capture language face through an explicit per-element HOF.
+
+## Case: named-function-value
+id: "av.parity.1081.named-function-value"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice(x int) int { return x * 2 }
+fn main() int { let f = twice; return f(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+§6 contract case: a named fn ITEM binds as a checked function value
+(zero-capture closure — signature/ABI/target identity from the item
+itself) and calls indirectly.
+
+## Case: function-parameter
+id: "av.parity.1081.function-parameter"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice(x int) int { return x * 2 }
+fn apply(f fn(int)int, x int) int { return f(x) }
+fn main() int { return apply(twice, 21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+§6 contract case: a fn value crosses an ARGUMENT slot with the declared
+`fn(int)int` formal type and is called inside the callee
+(legacy.27_function_reference.002 lane).
+
+## Case: closure-block-local
+id: "av.parity.1081.closure-block-local"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let base = 19
+ let f = (x int) => { let twice = x * 2; return twice + base }
+ return f(11) + 1
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case: a block-body closure with a local `let` inside and an
+outer capture; the value frees at exit (live=0 pinned by the Rust-lane
+`closure_owned_capture_released_live_zero`).
+
+## Case: not-callable
+id: "av.parity.1081.not-callable"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let f = 42; return f(1) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.not-callable"
+
+### Notes
+
+§6 negative: calling a non-function local keeps the frozen
+`bind/source.not-callable` family — never a silent default value.
+
+## Case: basic-ref
+id: "av.parity.1081.basic-ref"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081", "PLAN-383"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 383: 命名函数引用作为值 — 最小用例。
+// `let f = twice` 把命名函数作为值（函数引用），`f(5)` 通过引用调用。
+fn twice(x int) int { return x * 2 }
+fn main() {
+    let f = twice
+    print(f(5))
+    print(f(10))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+10
+20
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+10
+20
+```
+
+### Notes
+
+legacy.27_function_reference.001_basic_ref (source SHA16 f3f6b0b4ae6be783):
+one `let f = twice` binding, TWO indirect calls through it. The legacy
+fn name `double` is a reserved numeric type word — normalized `twice`.
+
+## Case: pass-as-arg
+id: "av.parity.1081.pass-as-arg"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081", "PLAN-383"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 383: 函数引用作为实参传递 + 在被调用方内部调用。
+fn twice(x int) int { return x * 2 }
+fn apply(f fn(int)int, x int) int { return f(x) }
+fn main() {
+    print(apply(twice, 21))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+42
+```
+
+### Notes
+
+legacy.27_function_reference.002_pass_as_arg (6341c92bbec349a4).
+
+## Case: call-unchanged
+id: "av.parity.1081.call-unchanged"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081", "PLAN-383"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 383 回归守护：命名函数的直接调用行为完全不变。
+// twice(5) 是调用，不是函数引用（值位置）。
+fn twice(x int) int { return x * 2 }
+fn main() {
+    print(twice(5))
+    print(twice(7))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+10
+14
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+10
+14
+```
+
+### Notes
+
+legacy.27_function_reference.004_call_unchanged (3961b546a90d0541): direct
+calls coexist with the value lane (the same item is callable AND a value
+— the empty-env MIR admission of PLAN-1081).
+
+## Case: legacy-closure
+id: "av.parity.1081.legacy-closure"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var add = (a int, b int) => a + b
+add(1, 2)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 3
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```
+
+### Notes
+
+legacy.09_functions.007_closure (726d3505317d6ac6): the top-level script
+tail is the program value. ONE auditable normalization: the legacy
+untyped lambda params `(a, b) =>` become `(a int, b int) =>` — no lambda
+parameter inference exists on this face; semantics and oracle unchanged.
+
+## Case: legacy-closure-typed
+id: "av.parity.1081.legacy-closure-typed"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+let sub = (a int, b int) => a - b
+sub(12, 5)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 7
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+7
+```
+
+### Notes
+
+legacy.09_functions.008_closure_typed (440651b9337e80d3), byte-faithful.
+
+## Case: closure-hof-capture
+id: "av.parity.1081.closure-hof-capture"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn each_count(f fn(int)int, xs List<int>) int {
+    var n = 0
+    for x in xs {
+        let y = f(x)
+        n = n + 1
+    }
+    return n
+}
+fn main() {
+    let factor = 3
+    let nums = [1, 2, 3]
+    print(each_count((x int) => x * factor, nums))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+```
+
+### Notes
+
+legacy.09_functions.010_closure_hof_map (789d2b50777321ee) and
+.013_closure_capture_hof (782d9cc0967a650c): the closure+capture
+language face (a capturing closure passed as a HOF argument and applied
+per element; the count oracle '3' matches both legacy documents).
+`List.map` itself is a stdlib/HOF algorithm — research-hold rows point
+at that owner; this case keeps the closure obligation on the ordinary
+chain.
+
+## Case: nested-fn-void
+id: "av.parity.1081.nested-fn-void"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081", "PLAN-514"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 514 W1-2 探针 d01：447-① 债复现件——嵌套 void fn 静默失效
+// 正确语义：inner() 输出 "hi from inner"。
+fn main() {
+    fn inner() {
+        print("hi from inner")
+    }
+    inner()
+    print("after")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+hi from inner
+after
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+hi from inner
+after
+```
+
+### Notes
+
+legacy.99_idiom2.d01_nested_fn_void (24d7495ae2723410): the nested fn
+ITEM is hoisted under an owner-mangled name and RUNS when called — the
+legacy silent-drop bug (inner() 静默无输出) is closed on the ordinary AV
+chain.
+
+## Case: nested-fn-capture
+id: "av.parity.1081.nested-fn-capture"
+tags: ["av-language-parity", "plan-1081", "functions"]
+links: ["PLAN-1081", "PLAN-514"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Plan 514 W1-2 探针 d01b：嵌套 fn 引用外层局部变量
+// 正确语义：明确报错（具名 fn 非闭包，按 Rust 嵌套 fn 语义外层名不可捕获）。
+fn main() {
+    let base = 10
+    fn grab(n int) int { return base + n }
+    print(grab(5))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.nested-fn-no-capture"
+
+### Notes
+
+legacy.99_idiom2.d01b_nested_fn_capture (4f0a9f0abc20f45f; legacy
+vm-error/error-presence oracle): the named rejection a nested fn item
+cannot capture outer locals — the exact AV face of the legacy
+error-presence lane, never a silent 0.

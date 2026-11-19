@@ -104,3 +104,21 @@ crates/auto-lang/test/vm/99_idiom2/m10_pipe/pipe.case.ad	legacy.99_idiom2.m10_pi
 18
 18
  reproduced on the ordinary AV chain	PLAN-1080	mapped
+
+# PLAN-1081 rows (2026-11-20 T-01/T-05): the 9 legacy VM documents the route map assigns to AVP-03.
+# Canonical author: language/functions/references-closures.case.ad.
+# Status vocabulary: mapped / research-hold / no-such-shape / parser-only-hold.
+crates/auto-lang/test/vm/09_functions/007_closure/closure.case.ad	legacy.09_functions.007_closure	vm-result	run	726d3505317d6ac6	文本 '3'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.legacy-closure	av	mapped: typed-annotation normalization of the untyped lambda params (no lambda param inference on this face); oracle 3 unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/09_functions/008_closure_typed/closure_typed.case.ad	legacy.09_functions.008_closure_typed	vm-result	run	440651b9337e80d3	文本 '7'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.legacy-closure-typed	av	mapped: byte-faithful typed closure in a local let; oracle 7 unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/09_functions/010_closure_hof_map/closure_hof_map.case.ad	legacy.09_functions.010_closure_hof_map	vm-stdout	run	789d2b50777321ee	文本 '3'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.closure-hof-capture	av	research-hold: List.map algorithm is the stdlib/HOF owner's obligation; the closure+capture language face is asserted by the canonical HOF case (oracle 3 unchanged)	PLAN-972 (stdlib HOF) / PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/09_functions/013_closure_capture_hof/closure_capture_hof.case.ad	legacy.09_functions.013_closure_capture_hof	vm-stdout	run	782d9cc0967a650c	文本 '3'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.closure-hof-capture	av	research-hold: same as 010 — capture-through-HOF face asserted canonically; List.map algorithm belongs to the stdlib/HOF owner	PLAN-972 (stdlib HOF) / PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/27_function_reference/001_basic_ref/basic_ref.case.ad	legacy.27_function_reference.001_basic_ref	vm-stdout	run	f3f6b0b4ae6be783	文本 '10
+20'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.basic-ref	av	mapped: fn-item-as-value binding + two indirect calls; `double` reserved word normalized `twice` (PLAN-1080 policy); oracle 10
+20 unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/27_function_reference/002_pass_as_arg/pass_as_arg.case.ad	legacy.27_function_reference.002_pass_as_arg	vm-stdout	run	6341c92bbec349a4	文本 '42'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.pass-as-arg	av	mapped: fn value as a fn(int)int argument; `double`→`twice` normalization; oracle 42 unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/27_function_reference/004_call_unchanged/call_unchanged.case.ad	legacy.27_function_reference.004_call_unchanged	vm-stdout	run	3961b546a90d0541	文本 '10
+14'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.call-unchanged	av	mapped: direct-call regression guard (a call is never a value use); `double`→`twice` normalization; oracle 10
+14 unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/99_idiom2/d01_nested_fn_void/nested_fn_void.case.ad	legacy.99_idiom2.d01_nested_fn_void	vm-stdout	run	24d7495ae2723410	文本 'hi from inner
+after'	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.nested-fn-void	av	mapped: nested fn items hoist owner-mangled and RUN when called — the 447-① silent-drop debt closes on the ordinary AV chain; oracle unchanged	PLAN-1081	T-01/T-05
+crates/auto-lang/test/vm/99_idiom2/d01b_nested_fn_capture/nested_fn_capture.case.ad	legacy.99_idiom2.d01b_nested_fn_capture	vm-error	run	4f0a9f0abc20f45f	诊断 legacy.error-presence	legacy VM document (entry-mode per original); oracle from the original document	av.parity.1081.nested-fn-capture	av	mapped: the legacy error-presence lane refines to the exact bind/source.nested-fn-no-capture on the AV face (Rust nested-fn semantics; never a silent 0)	PLAN-1081	T-01/T-05

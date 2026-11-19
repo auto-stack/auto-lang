@@ -70,6 +70,8 @@ pub struct SourceKinds {
     /// PLAN-966（T-02）：语句级编译期构造（仅 packages-ct 裁剪存在）与共享 CT
     /// 谓词规则（in-ct-expr/ns-ref）。
     pub hash_if_stmt: Option<u32>,
+    /// PLAN-1081 (T-03): statement-position nested `fn` item (auto face).
+    pub nested_fn_stmt: Option<u32>,
     pub hash_for_stmt: Option<u32>,
     pub hash_is_stmt: Option<u32>,
     pub hash_is_arm: Option<u32>,
@@ -445,6 +447,7 @@ impl SourceKinds {
             loop_stmt: rk("loop-stmt"),
             expr_stmt: rk("expr-stmt"),
             hash_if_stmt: rk_opt(p, "hash-if-stmt"),
+            nested_fn_stmt: rk_opt(p, "nested-fn-stmt"),
             hash_for_stmt: rk_opt(p, "hash-for-stmt"),
             hash_is_stmt: rk_opt(p, "hash-is-stmt"),
             hash_is_arm: rk_opt(p, "hash-is-arm"),

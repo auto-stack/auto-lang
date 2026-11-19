@@ -1767,6 +1767,14 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(&mut ia.value, offset);
             sh(&mut ia.span, offset);
         }
+        // PLAN-1081：嵌套 fn 项平移（名/体内语句/span）。
+        Stmt::NestedFn { item } => {
+            sh(&mut item.name.span, offset);
+            for st in item.body.stmts.iter_mut() {
+                shift_stmt(st, offset);
+            }
+            sh(&mut item.span, offset);
+        }
         // PLAN-962：tuple 解构平移。
         Stmt::LetDestruct { names, value, span } => {
             for n in names {
@@ -2384,6 +2392,9 @@ impl<'a> Walker<'a> {
                     self.walk_expr(&mut ia.index, &locals)?;
                     self.walk_expr(&mut ia.value, &locals)?;
                 }
+                // PLAN-1081：嵌套 fn 项是独立函数单元（Auto 面专用；包
+                // 面不可达），本包走读不进入其内部。
+                Stmt::NestedFn { .. } => {}
                 // PLAN-962：tuple 解构走读（新绑定名入后续局部集）。
                 Stmt::LetDestruct { names, value, .. } => {
                     self.walk_expr(value, &locals)?;
@@ -3094,6 +3105,8 @@ impl<'a> Walker<'a> {
 
 fn stmt_span(s: &Stmt) -> Span {
     match s {
+        // PLAN-1081：嵌套 fn 项。
+        Stmt::NestedFn { item } => item.span,
         // PLAN-962 (T-08)：hold。
         Stmt::Hold { span, .. } => *span,
         Stmt::ExprStmt { span, .. }

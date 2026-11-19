@@ -588,6 +588,11 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
             let _ = span;
             return Err("aggregates control/generator statement is outside this adapter's inference surface".into());
         }
+        // PLAN-1081：嵌套 fn 项（Auto 面）是独立函数单元，不在本受限
+        // 推断面内——受控拒，不静默丢。
+        core_ast::Stmt::NestedFn { .. } => {
+            return Err("nested fn item is outside this adapter's inference surface".into());
+        }
         // PLAN-966（T-02）：语句级 CT 必须在装配期折叠；到达语义适配即受控
         // 拒绝（不静默当普通语句）。
         core_ast::Stmt::HashIf { span, .. }

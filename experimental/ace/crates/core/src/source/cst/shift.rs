@@ -394,6 +394,15 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(value, delta);
             shift_span(span, delta);
         }
+        // PLAN-1081（T-03）：嵌套 fn 项平移（名/参/体内语句/span 递归）。
+        Stmt::NestedFn { item } => {
+            shift_ident(&mut item.name, delta);
+            for prm in item.params.iter_mut() {
+                shift_ident(&mut prm.name, delta);
+            }
+            shift_block(&mut item.body, delta);
+            shift_span(&mut item.span, delta);
+        }
         // PLAN-966（T-02）：语句级 CT 平移（谓词表达式与体内语句/span）。
         Stmt::HashIf {
             cond,

@@ -2318,6 +2318,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 同样接受（共享对象单元格 `cell[k] = v` 动态键写）。
             alt(profiles: [aggregates, auto, closures, scheduler]) { index-assign-stmt() {} }
             alt { return-stmt() {} }
+            // PLAN-1081 (T-03)：嵌套 fn 项（auto 面）——语句位 `fn name(..) [ret] { body }`，
+            // 投影为 Stmt::NestedFn（提升为模块函数表的 mangled 单元）。
+            alt(profiles: [auto]) { nested-fn-stmt() {} }
             alt { if-stmt() {} }
             // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct；`#` 引入，
             // 与项位 #in 同域同求值器；未选分支只 Text 阶段检查）。
@@ -2356,6 +2359,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { ann-ty(field: "ann") }
             assign() {}
             expr(field: "value")
+        }
+        // PLAN-1081 (T-03)：嵌套 fn 项（auto 面）。`fn-tail` 复用项位机器
+        //（含 D-04 裸返回 = 推导标记）。
+        nested-fn-stmt(profiles: [auto]) {
+            fn(field: "kw")
+            fn-tail(field: "item")
         }
         // PLAN-962（T-08，L-07）：`let hold x as v { }`（别名绑定，块末
         // 失效；≥旧引擎 MVP 等义——L-07 自注"无借用纪律"）。
