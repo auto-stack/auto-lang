@@ -290,6 +290,20 @@ Round 3 增量（冻结提交 `6f307e2b9`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 3 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 6f307e2b9 | next: work`
 
+2026-11-20 · stage: work（round 4）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `7c10af9b4` | task_ids: T-03 主体（未关闭）| outcome: pass（round 级）| next_responsible_role: work（T-03 收尾：aggregates 族 console print lowering）
+
+Round 4 增量（冻结提交 `7c10af9b4`，树内 clean）：
+- **事实承载字面量**：`PyOperand.literal: Option<PyLiteral>`（Int/Bool/Text/Float）由 resolve 在记录点从已编码字面量取值——A2PY 不再需要从帧文本猜字面量；`PyOpFact/PyOpPlan` 相应去掉 `Eq`（f64）。
+- **A2PY 原生 lowering**：`a2x-python/lower.rs` 新增 `try_lower_py_op`——按 `py_ops` 事实（kind+span）在表达式入口拦截：import/call（含 kwargs 与源序位置槽）/getattr/getitem/binop/to-float（F32 cast 与 F64 intrinsic 两种外层形态统一）/to-int/to-bool/to-text；操作数取事实字面量或该 span 的受检值表达式（嵌套 py 操作递归同一路径）；帧构造节点（display/concat/borrow、`__py_dlen`、AV 编码 intrinsic）被明确跳过，**不解码也不发射帧文本**。
+- **运行时**：`a2x_py_import/getattr/call/getitem/binop/to_f64/to_i32/to_bool/to_str` 仅在 `view.py_ops()` 在场时追加进 `a2x_py_runtime.py`（非 Python 模块运行时字节/身份不变）。
+- **provider 边界**：`validate_view` 对 `provider=="py"` 的声明要求 plan 在场并跳过 ctypes 形状检查；`foreign_bridge::bridge_source` 不再为 py 声明生成 ctypes wrapper（也就不会加载 `f0_text_provider.dll`）。
+
+证据：`cargo test -p ace-a2x-python` 5/5 PASS（含中立在准入与 §5.1 A2PY 侧编译/视图）；`cargo build/build -p ace-a2x-python` ok；`cargo t ace-python` PASS 10/10；`cargo t ace-a2x` 仅两红：预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71）与本轮并行组下偶发 `ace-a2x-worker p yready_03`（**隔离重跑绿**，0.39s，记为并发/临时目录环境归因，不作代码失败）。
+
+未决（下一 round）：`p1107_t03_section51_runs_as_native_python` 现为 `#[ignore]`——aggregates 族的 console print intrinsic（`auto.console.print.{f32,f64,i32,bool,str,char}.v1`）在 A2PY 尚无关卡映射（`resolve_stdlib_port_id` 只认 external 源名），故 §5.1 的 `print(...)` 走到 "call target def #21 is not an admitted Python function"。T-03 关闭需：给 A2PY 接通 console print 家族（按 port 目录或 runtime helper），然后解除 ignore 并断言 62 行/首终 loss/shape/pred0。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 4 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 7c10af9b4 | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
