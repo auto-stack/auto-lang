@@ -490,11 +490,13 @@ fn main() int {{
     assert_eq!(std::fs::read(&db_p).unwrap(), want, "{tag} final disk bytes");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v03_kv_a2r_roundtrip_and_budget_4096() {
     run_kv_cross_backend_leg("kv-a2r", true);
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v03_kv_a2py_roundtrip_and_budget_4096() {
     run_kv_cross_backend_leg("kv-a2py", false);
@@ -862,11 +864,13 @@ fn main() int {{
     assert_eq!(std::fs::read(&out_logo).unwrap(), plan897_logo_bytes());
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v03_zip_a2r_roundtrip_and_budget() {
     run_zip_cross_backend_leg("zip-a2r", true);
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v03_zip_a2py_roundtrip_and_budget() {
     run_zip_cross_backend_leg("zip-a2py", false);

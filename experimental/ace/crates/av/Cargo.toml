@@ -10,6 +10,8 @@ publish = false
 default = []
 # Explicit test tooling; absent from ordinary worker builds.
 test-case-batch = []
+# PLAN-1098 T-06: explicit toolchain-certification cases (real rustc/cl/py legs).
+test-toolchain = []
 
 [dependencies]
 # PLAN-936（T-11）：CT 需求的产品接线（av → source-cte 单向；服务永不反依

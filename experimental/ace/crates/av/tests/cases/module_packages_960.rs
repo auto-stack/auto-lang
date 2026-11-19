@@ -141,6 +141,7 @@ fn native_value(product: &PackageProduct, dir: &Path, expected: i32) {
     assert_eq!(status.code(), Some(expected), "mn exit code");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn packages_960_four_ends_run_public_str_and_recover() {
     let inputs = four_end_inputs();

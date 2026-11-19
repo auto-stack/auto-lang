@@ -284,6 +284,7 @@ fn main() int {
 }
 "#;
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn stdlib_asm_972_cross_end_gaps_and_a2r_math() {
     use ace_a2x_rust::RustTargetProvider;

@@ -1244,5 +1244,40 @@ class ToolchainSplit(unittest.TestCase):
             self.assertIn('#[cfg(feature = "test-toolchain")]\n#[test]\nfn ' + case, host)
 
 
+    AV_TOOLCHAIN_CASES = {
+        'bstr_1064': ['bstr_1064_v_d09_file_read_bytes_cross_end', 'bstr_1064_v_codec_five_ends'],
+        'stdlib_asm_972': ['stdlib_asm_972_cross_end_gaps_and_a2r_math'],
+        'kv_zip_1064': ['v03_kv_a2r_roundtrip_and_budget_4096', 'v03_zip_a2r_roundtrip_and_budget',
+                        'v03_zip_a2py_roundtrip_and_budget', 'v03_kv_a2py_roundtrip_and_budget_4096'],
+        'stdlib_sys_973': ['sys973_a2r_real_rustc_leg', 'sys973_a2py_real_python_leg'],
+        'sys_d01_d06_1064': ['v02_d01_d06_a2r_cross_end', 'v02_d01_d06_a2py_cross_end'],
+        'v08_surface_972': ['v08_surface_manifest_and_five_end_exercise'],
+        'json_975': ['json975_char_to_str_a2x_ends'],
+        'module_packages_960': ['packages_960_four_ends_run_public_str_and_recover'],
+        'stdlib_core_945': ['stdlib_core_945_four_ends_run_math_and_text_slices'],
+        'plan966_ct_product': ['p966_ct_generated_declarations_change_end_results',
+                               'p966_ct_statements_and_macro_run_on_av_native_rust_c_py'],
+        'stdlib_assembly_1043': ['stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c'],
+        'console_coverage_1041': ['vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity'],
+    }
+
+    def test_av_toolchain_cases_are_gated_and_named_in_the_group(self):
+        value, groups = fixed.configuration()
+        expression = groups['ace-toolchain']['expression']
+        self.assertIn('ace-av', groups['ace-toolchain']['args'])
+        for module, cases in self.AV_TOOLCHAIN_CASES.items():
+            source = (ROOT / ('experimental/ace/crates/av/tests/cases/%s.rs' % module)).read_text(encoding='utf-8')
+            for case in cases:
+                with self.subTest(case=case):
+                    self.assertIn('#[cfg(feature = "test-toolchain")]\n#[test]\nfn ' + case + '(', source)
+                    self.assertIn('test(%s::%s)' % (module, case), expression)
+        # Daily ace-av never selects them: gated tests do not exist without the
+        # feature (discovery: 1428 -> 1411, the 19 rows above minus 2 added).
+
+    def test_ace_av_declares_the_toolchain_feature(self):
+        manifest = (ROOT / 'experimental/ace/crates/av/Cargo.toml').read_text(encoding='utf-8')
+        self.assertIn('test-toolchain = []', manifest)
+
+
 if __name__ == '__main__':
     unittest.main()
