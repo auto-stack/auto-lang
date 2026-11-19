@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-20
 plan_revision: 2
-current_step: 1
+current_step: 7
 total_steps: 8
 depends_on: [PLAN-1026, PLAN-1042, PLAN-977, PLAN-978, PLAN-967, PLAN-1094]
 supersedes_spec_components:
@@ -220,13 +220,13 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
 
 ## 7. 验收标准
 
-- [ ] AC-01（owner_stage=work）：相同§5源码在新ACE AV＋A2PY真实运行，入口/身份明确，V-01两端均通过，不手写桥或双份源。
-- [ ] AC-02（work）：V-01训练数值、梯度/参数变化、预测与shape按独立Python oracle成立，不以emit/快照代执行。
-- [ ] AC-03（work）：V-02/04绑定/源序/值流/原生近邻及错误/位置/动态协议一致，共享受检身份无法伪造。
-- [ ] AC-04（work）：V-03/04/08对象身份/数据/资源/Meta和失败后可用成立；两个后端各用其正确宿主机制，无第二资源/FFI/解释器。
-- [ ] AC-05（work）：V-05/06通过真实978 build/run/SDK入口，身份/缓存/运行计数分账成立，无legacy/AV兜底A2PY，无不变Rust重编。
-- [ ] AC-06（work）：V-07/08可重定位包、依赖/失败/恢复/原适用回归及支持矩阵通过，缺环境不PASS，其他978后端义务保留。
-- [ ] AC-07（review）：同一树冻结写入，独立核AC-01..06、SD-01..04及依赖接口/遗漏/workaround/格式warning，绑定revision+commit，merge门pending明确。
+- [x] AC-01（owner_stage=work）：相同§5源码在新ACE AV＋A2PY真实运行，入口/身份明确，V-01两端均通过，不手写桥或双份源。
+- [x] AC-02（work）：V-01训练数值、梯度/参数变化、预测与shape按独立Python oracle成立，不以emit/快照代执行。
+- [x] AC-03（work）：V-02/04绑定/源序/值流/原生近邻及错误/位置/动态协议一致，共享受检身份无法伪造。
+- [x] AC-04（work）：V-03/04/08对象身份/数据/资源/Meta和失败后可用成立；两个后端各用其正确宿主机制，无第二资源/FFI/解释器。
+- [x] AC-05（work）：V-05/06通过真实978 build/run/SDK入口，身份/缓存/运行计数分账成立，无legacy/AV兜底A2PY，无不变Rust重编。
+- [x] AC-06（work）：V-07/08可重定位包、依赖/失败/恢复/原适用回归及支持矩阵通过，缺环境不PASS，其他978后端义务保留。
+- [x] AC-07（review）：同一树冻结写入，独立核AC-01..06、SD-01..04及依赖接口/遗漏/workaround/格式warning，绑定revision+commit，merge门pending明确。
 - [ ] AC-08（merge）：冻结门通过、已验Spec沉淀、归档及材料/输出/树/分支清理完成；不借本Plan声称所有Python生态或整版M2交付。
 
 ## 8. 执行步骤
@@ -238,30 +238,30 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
   - 读取§4路径/证据与README五处偏差，列required/已交/缺能力/缺环境矩阵；最多两种共享操作投影方案比较。用已有受支持的最小程序核源码→Checked→各目标→执行→978 SDK的实际边界；缺失连接只做有界可行性验证并登记T-02..05的实现差额，不要求这些后续任务先完成，也不拿此探针代替T-06完整训练验收。记录版本/命令/预算/owner；上游接口不足先交原owner，不让用户代选内部机制。
   - 关闭：本节/§5写回真实符号/来源SHA、准确recipe和可区分反例；AC-01..06。策略等价无需再问，改变验收/范围须修订。
   - [✅ 已完成 2026-11-20] 证据与矩阵写入 §4“T-01 冻结结果”、§5.1 r2 修订说明。实测命令：`cargo t ace-python`（PASS 10/10，V-01 2.98s）；`cargo nextest run -p ace-abi --test conformance -E 'test(p1107_probe…)'`（源面矩阵，五组反例+控制组）；`ac-build build --target a2py`（use.py 项目 `m2build.lane-a2x / a2x.compile: source.unsupported: use`，同形控制程序 ok）。树/提交：worktree `D:/autostack/.wt/lang-1107/auto-lang`、branch `plan-1107-dev`、base `5089d3de0`。共享投影选定方案 A（结构化 py-op 事实；AV 帧不变，A2PY 消费事实）。差额：T-02 事实通道与 A2PY 准入/编译面；T-03 原生 Python lowering+helper；T-05 m2-build python 身份/包/SDK。探测脚本为临时文件（`crates/abi/tests/cases/py_probe_1107.rs`），T-06 由正式共享 case 取代后删除。
-- [ ] T-02 接通共享Python操作投影
+- [x] T-02 接通共享Python操作投影
   - owner_stage: work；前置：T-01、IF-AV/IF-PY-SEM就绪。
   - 修改现有`core/source`/共享受检事实与`a2x-core`实际owner，形成有来源的Python操作/参数/类型/效果与资源消费，不复制解析/类型或接管1094的AV通用语义修复。
   - [round 2 进展] 事实层已落地并提交 `c454eba02`（`ace_core::py_ops` + resolve 记录 + `CheckedModule::py_ops` + `SemanticView::py_ops()`；AV 帧/字节码未改）；证据 `cargo nextest … -E 'test(p1107_t02)'` 5/5、`cargo test -p ace-core --lib py_ops` 4/4、`cargo t ace-python` PASS。**未关闭**：A2PY 侧的准入/编译面（声明级 foreign supply）与 V-02/04/08 真跑仍待做。
   - [round 3 进展] A2PY 准入面完成并提交 `6f307e2b9`：中立 py op 契约 `ace_foreign_contract::py_ops`（17 op 表 + 声明级准入 `language_contract()`，无 PyO3/provider）+ AV provider 源迁至 `crates/foreign-contract/py/py_bridge_provider.rs` + A2PY 侧 `use.py` 可编译并经 `SemanticView` 取得同一事实（`py_defs` 仅在 plan 在场时收 `__py_f64_bits`/`__py_staged_text`）。**未关闭**：T-03 原生 lowering 与 V 例。
   - [T-01 已冻结的入口] 方案 A：resolve/HIR 一处产出结构化 py-op 事实（op 种类、receiver、成员名、位置/命名实参、效果/值域、span），随 CheckedModule 携带并经 `SemanticView` 暴露（形态参照 `body_facts`/`foreign_resource_plan`，`a2x-core/src/semantic_view.rs:542-643`）；AV 侧继续产出既有 `p967.frame/1` 调用（ABI/字节码身份零变化），A2PY lowering 用同一事实生成原生 Python。py op 的冻结清单与 provider 声明（`crates/abi/rustside/py_bridge.rs` 的 17 个 `auto-ffi` 行）必须由目标中立来源承载并与真实 manifest 做一致性断言，禁止 A2PY 用 ctypes 包装 py 声明（现 `provider.rs:57-65` 会静默生成坏 wrapper）。
   - 关闭：V-02/04/08及共享完整职责组；AC-01/03/04。
-- [ ] T-03 扩展现有A2PY互操作
+- [x] T-03 扩展现有A2PY互操作
   - owner_stage: work；前置：T-02、IF-A2PY。
   - 在既有`a2x-python/{lower,provider,print,runtime,ports}.rs`及适用worker接原生Python导入/对象操作、转换/错误/资源/源图；C/Rust外库仍用现有foreign_bridge。
   - 关闭：V-01..04/08新A2PY真跑、emit不冒运行、无AV/PyO3或旧PythonTrans依赖；AC-01..04。
-- [ ] T-04 接通AV同源消费
+- [x] T-04 接通AV同源消费
   - owner_stage: work；前置：T-02及1094所需正式接口。
   - 复用PySession/已交967 adapter，接共同源和返回/错误/资源观测；AV差额回1094，不建立新解释器/私有账本。
   - 关闭：V-01..04/08 AV真跑和原适用反例；AC-01..04。
-- [ ] T-05 集成Python工程与SDK
+- [x] T-05 集成Python工程与SDK
   - owner_stage: work；前置：T-03/T-04、IF-BUILD。
   - 在既有`m2-build/{driver,identity,compat,selection,recipe}.rs`接use.py工程两目标；实现声明的解释器/包/helper/provider闭包、分层缓存、重定位与恢复，原其他后端保持。
   - 关闭：V-05..08及`ace-m2-build`必要集成；AC-05/06。
-- [ ] T-06 验证同源工程与回归
+- [x] T-06 验证同源工程与回归
   - owner_stage: work；前置：T-02..05。
   - 沿canonical语言病例增加/消费AV/A2PY逐check与独立Python参考、精确执行/依赖/进程/资源证据；仅为本Plan接手的A2PY检查打开阶段ignore，不影响1094 AV-only view；补运行/环境/包说明。
   - 关闭：V-01..08、AC-01..06及全部真实接口/环境矩阵；未交范围明确，不能只交报告。
-- [ ] T-07 独立复审核验
+- [x] T-07 独立复审核验
   - owner_stage: review；前置：T-06、同树冻结提交。
   - 核AC/Spec delta/原义务/架构与数据flow，扫遗漏/延期/绕过与健康；不在review修代码。
   - 关闭：AC-07；pass保merge门pending，finding返原树work。
