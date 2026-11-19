@@ -1202,6 +1202,16 @@ class PerformanceSelection(unittest.TestCase):
         self.assertIn('mod performance {', source)
         self.assertNotIn('mod perf {', source)
 
+    def test_six_scenario_bench_smoke_stays_under_performance(self):
+        # PLAN-1098 T-06 (Q row): the bench smoke is one multi-axis run with the
+        # original 3 samples; it lives under performance:: so the daily group
+        # never pays its wall time.
+        source = (ROOT / 'experimental/ace/crates/av/tests/cases/resources_tier.rs').read_text(encoding='utf-8')
+        module = source.find('mod performance {')
+        case = source.find('fn av_turnaround_six_scenarios_smoke(')
+        self.assertGreater(module, 0)
+        self.assertGreater(case, module, 'the bench smoke must sit inside mod performance')
+
     def test_ace_perf_is_the_only_positive_performance_selector(self):
         value, groups = fixed.configuration()
         positive = [g['name'] for g in groups.values()

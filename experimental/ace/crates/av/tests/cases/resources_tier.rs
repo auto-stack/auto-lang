@@ -798,6 +798,10 @@ fn av_turnaround_two_line_memory_gate() {
     );
 }
 
+// Explicit formal benchmark or sustained scale/stress contract.
+mod performance {
+    use super::*;
+
 /// V-11 smoke: the six-scenario bench runs end-to-end on a scaled load
 /// (3 samples) with correct results, real hit/miss counters and diagnosed
 /// signature conflicts. The 30-sample release-grade run with the P90 hard
@@ -869,10 +873,6 @@ fn av_turnaround_six_scenarios_smoke() {
     assert!(failures.is_empty(), "validation failures: {failures:?}");
     let _ = std::fs::remove_dir_all(&root);
 }
-
-// Explicit formal benchmark or sustained scale/stress contract.
-mod performance {
-    use super::*;
 
     /// V-09: cold-product scale — ≥32 MiB of REAL MIR/ABC product units in the
     /// managed store (streamed as ≥1 MiB modules under the 4 MiB input cap),
