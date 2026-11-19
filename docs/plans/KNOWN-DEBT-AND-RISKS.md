@@ -9,13 +9,19 @@
 - **关闭条件**：① archive 准备使 nextest-full override 与所选组包图一致（或把该 override 移入 ace-aac 组专属 config）；② meter 测试期望对齐 prepared 制度；③ 门测试用独立 root/租约隔离。三者修复后 `cargo t all` 单实例复跑全绿。
 - **当前处置**：不回滚任何已合入计划；修复走 1098 线 fix-forward（小修可 L0 fix-* worktree）。
 
-## D-ASE-1023-REPLAY — 内部历史重放与验收盲区（OPEN，2026-11-19）
+## D-ASE-1023-REPLAY — 内部历史重放与验收盲区（**CLOSED**，2026-11-20，[PLAN-1106](archive/1106-ase-incremental-event-sessions-and-replay-audit-repair.md)）
 
-- **owner/后继**：[PLAN-1106](1106-ase-incremental-event-sessions-and-replay-audit-repair.md)，ACE组件编译/AV事件会话＋auto-ui公共状态桥及ASE消费；r1草案，0/10，尚未实施。
-- **事实**：`AceStateEngine::dispatch_impl`追加ops后`refresh`汇总历史并调用场景观察链重新编译/执行；1023对象常驻、外层loads/dispatch_log与最终3/7结果不能证明内部只执行新事件。旧负控主要覆盖外部重装，漏掉同owner内重放；本次为静态核查，新增运行反例尚未执行。
-- **影响**：保留已验原型/行为/隔离/车道关闭证据，撤回1023 AC-01/02、V-07/08及AC-R/AC-D关于无重放/严格M0完整成立的解释。1023仍archived/r2/10-of-10，原收据留历史；M0-SESSION增量与相关状态根释放子门恢复pending，不将整个可视原型判为不存在。
-- **关闭条件**：普通Node沿唯一verify/ACE执行，固定源下保留程序和独立运行模型；每新事件handler实执行一次，读/切换不重编/初始化/旧业务，失败不发布半态、旧事件先拒、关闭释放最后owner。执行层原红＋同owner隐蔽重放/重建负控敏感，原3/7/同app/归零/限额/迟到/20轮及真实窗口不减；独立review、正式来源/Spec与M0修复收据齐才closed。
-- **当前处置**：本轮仅计划/路线/验收事实更正，未改代码/运行/复测，不重开1020–1023或归档引擎Plan；不得用1106创建或文档检查当能力已修复。
+- **关闭证据**：`AceStateEngine` 重接 AV 增量事件会话（`ace_av::component_event_sessions`
+  ＋core `compile_component_event_program`）——固定源一次编译、每实例独立全局 cell
+  状态根、每个被接纳事件恰一次目标 handler 真实派发（`SessionAudit.entry_seqs`＝
+  执行器进程序号）、读取/切换零派发、失败零半态（编译期统一提交＋会话层备份回滚）、
+  序号水位去重、卸载释放状态根。原3/7/同app/归零/限额/迟到/20轮及真实窗口
+  e2e 不减（ase_m0_sessions 9/9）。执行层负控：同owner隐蔽重放/每事件重建/
+  getter派发经真实producer注入道判红（component_event_sessions_1106 UI 4/4＋av 6/6）。
+  独立复审三轮 pass（F-1..F-6 全闭）；规范沉淀
+  `docs/specs/ace-migration/component-event-sessions.md`（SD-01..04）；M0-SESSION/
+  M0-CLOSE 子门按 roadmap 恢复。1023 仍 archived，原收据保留。
+- **历史事实（2026-11-19 登记，保留）**：`AceStateEngine::dispatch_impl`追加ops后`refresh`汇总历史并调用场景观察链重新编译/执行；1023对象常驻、外层loads/dispatch_log与最终3/7结果不能证明内部只执行新事件。旧负控主要覆盖外部重装，漏掉同owner内重放。
 
 ## GAP-982-CONFIG-ACE — B已明确承接，能力尚未实现（2026-11-17）
 

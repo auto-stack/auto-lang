@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1106
-status: reviewed
+status: archived
 feature_name: ASE组件事件增量会话与历史重放验收修复
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 8
+current_step: 10
 total_steps: 10
 depends_on: [PLAN-1023, PLAN-980, PLAN-981]
 supersedes_spec_components: [docs/specs/ase/m0-interactive-sessions.md]
@@ -18,7 +18,7 @@ touched_goals: [GOAL-002, GOAL-007, GOAL-010]
 
 ## 0. 变更摘要
 
-r1，drafting，0/10，**只制定后续修复合同，先不启动实现**。承接1023归档后的源码核查发现：对象与最终状态保留并不代表业务增量执行，`AceStateEngine::dispatch_impl→refresh`仍重编/重跑累计历史场景，外层`loads/dispatch_log`漏计内部执行。新计划实现真实程序/模型持有与新事件单次执行，在同一真实路径用执行层oracle修复原验收盲区。
+**已交付（2026-11-20）**：r1 全 10 任务完成（work 8 + review 1 + merge 1）；独立复审三轮 pass；两仓 ff-only 落地；D-ASE-1023-REPLAY closed。承接1023归档后的源码核查发现：对象与最终状态保留并不代表业务增量执行，`AceStateEngine::dispatch_impl→refresh`仍重编/重跑累计历史场景，外层`loads/dispatch_log`漏计内部执行。新计划实现真实程序/模型持有与新事件单次执行，在同一真实路径用执行层oracle修复原验收盲区。
 
 [ASE路线](../design/strategy/ase-m0-delivery-roadmap.md)当前把M0-SESSION的无重放子门恢复为pending（债`D-ASE-1023-REPLAY`）；保留1023 archived、原revision/勾选和历史收据，仅追加可见更正。可视交互原型及3/7行为证据继续有效，不宣称本修复已实现。
 
@@ -304,14 +304,31 @@ T-01冻结完整受影响公共方法/字段类型/props/同定义实例、无�
     执行/释放证据）；SD-04 修改 roadmap + KNOWN-DEBT
     （D-ASE-1023-REPLAY OPEN→closed 条件核对）。**正式落稿归 merge（T-10）**，
     本任务不写 canonical、不改 1023 旧收据/终态。
-- [ ] T-09 独立复审增量会话
+- [x] T-09 独立复审增量会话
   - owner_stage: review；依赖T-08。独立上下文、同一树核源码/实际执行而非数字，重建所需支持表和原始反例/真实负控/失败资源，检查所有AC及未授权延后；AC-R。
   - 失败返work定向修复，不以原1023 review PASS免审；本任务未闭不阻work交review。
-- [ ] T-10 落地规范并关闭修复债
+  - **[✅ 2026-11-19/20 已完成（三轮）]** 独立上下文 agent（同权威树）全审：
+    AC-01..AC-07 全 pass、生产路径无重放残留、负控全走真实 producer；needs_fix
+    ×2（F-1 五个新告警→修复关闭；F-2 折入账未落地→循环 2 补全关闭，含
+    v02_bridge 关开全程不变量永久闭合与 v07 oracle 对齐计划定义）；最终
+    **pass**（@ lang 404745197 / ui 471013b1）。复审报告与关闭表折 §9。
+- [x] T-10 落地规范并关闭修复债
   - owner_stage: merge；依赖独审pass。冻结受影响完整组/必要消费者并集，正式合入并核SD与运行来源，关闭D-ASE-1023-REPLAY并按实际证据恢复M0相关门；AC-D。
   - 1023仍archived且原收据保留。命令/退出码/关键计数/hash折本Plan，逐项对账所有输出目录后删scope，无具名hold；各树pwsh guard clean后移除，刷新retention登记，不运行无关性能/GUI全套。
+  - **[✅ 2026-11-20 已完成]** SD-01..04 落地（worktree 内规范提交后随分支合入）；
+    冻结组门（merge 所有，最终基线）：`cargo t ace-source` 全组 PASS、
+    `cargo t ace-av` 1441 例 1439 过/2 预存红（host_console 对，主检出同红留痕）、
+    23 skipped；UI 主检出落地检查 4/4＋9/9＋10/10。**rebase 适配**：master 并行
+    前移（PLAN-1080 给 `ast::FnItem` 加 `proto`）→ 事件程序三处构造/探针补
+    `proto:false`（098b8533d），range-diff 全等价后落地；另修并行落地的
+    `auto-lang-ace-host::render_type` 非穷尽（`TypeRef::Inferred => "_"`，
+    fix worktree 64e518f52——非本计划 diff 面，L0 规程独立合入）。
+    D-ASE-1023-REPLAY **closed**；roadmap M0-SESSION/M0-CLOSE 恢复；
+    KNOWN-DEBT 更新。1023 保持 archived/原收据。
 
 ## 9. 复审记录
+
+stage: merge | plan_id: PLAN-1106:r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1106/{auto-lang,auto-ui}（+auto-web/auto-down detached 兄弟）| delivery_commit: lang 64e518f52（= 1106 分支 098b8533d 落地后含并行缺口 L0 修复；1106 自身交付线：72ab54c7a→…rebase 映射→7ae978347→098b8533d，range-diff 全等价）/ ui 70f06862 | checkpoints: prepared=复审 pass 基线+冻结 Spec 差异；landed=两仓 --ff-only（rebase 后），主检出 tip=交付线；canonical_verified=SD-01 新增 docs/specs/ace-migration/component-event-sessions.md、SD-02 docs/specs/ase/m0-interactive-sessions.md、SD-04a docs/design/strategy/ase-m0-delivery-roadmap.md（lang 7ae978347）、SD-03 auto-ui docs/specs/runtime/ase-m0-frame-consumption.md（70f06862；起草更正 WIP 由分支版本收编）；archived=git mv 至 archive/＋status 翻转＋本收据（docs 提交）；cleaned=wt-guard clean 后移除两 plan worktree/分支/组目录（web/down 兄弟 detached 同组移除）、plan-artifacts/plan-1106 整目录删除、retention 登记刷新 | merge门: 冻结组 ace-source 全组 PASS／ace-av 1439/1441（2 预存 host_console 红，主检出同现留痕）／UI 主检出 4/4+9/9+10/10；批回归未到期（收据 2026-11-20、1106%5=1） | 环境修复（非本计划 diff 面）: auto-lang-ace-host render_type 补 Inferred 臂（fix worktree 64e518f52，PLAN-1080 并行落地整合缺口） | evidence: 见 §8 各任务行与 §9 测试账目；原始日志已折摘要，scope 删除
 
 stage: work | plan_id: PLAN-1106 | plan_revision: r1 | round: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1106/auto-lang（+ 组内 auto-ui/auto-web/auto-down 兄弟 detached 树）| branch: plan-1106-dev | base_commit: lang 20231c041 / ui 481a3cb5 | code_commit: lang 929a6c743（72ab54c7a→0d0f530d2→929a6c743）/ ui 1e2af0f5（bbffc0ad→1e2af0f5）| dependency_revisions: auto-web@26d085f, auto-down@72b0970（detached）| task_ids: T-01..T-08（work 阶段全部 8/8）| evidence: 见 §8 各任务 [✅] 行与下方测试账目 | blockers: 无 | next_responsible_role: review（T-09 独立复审）
 
