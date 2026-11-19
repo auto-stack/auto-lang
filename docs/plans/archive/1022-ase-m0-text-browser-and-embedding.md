@@ -182,7 +182,9 @@ stage: merge | plan_id: PLAN-1022 | plan_revision: r2 | outcome: pass | 2026-11-
 - landed: 两仓 `--ff-only`，无 merge commit。lang master=9334397f7（rebase 旧→新 02adfe896→cfd4cbc30、d7a8d352d→9334397f7，`git range-diff master..d7a8d352d master..HEAD` 2/2 `=` 相等）；ui master=b1364eed（base 未动免 rebase）。
 - canonical_verified: 主检出 `docs/specs/ase/m0-text-browser.md` sha256 `6a55881996a24907015f079de31c5ab95f4acd3a03b2be6ffeee0957203f4b44` == 交付提交同文件；auto-ui `docs/specs/runtime/ase-m0-frame-consumption.md` sha256 `3fab60da295a9e9c081694eed9b6107962651217a48cc5ef1c4c2650e6cf3db6` == 交付提交同文件；fixtures text-a/b 在 master。
 - archived: `git mv docs/plans/1022-…md docs/plans/archive/`，status: archived，current_step 9/9，本提交入库。
-- cleaned: 见下方追记。
+- cleaned: 四树 `wt-guard.ps1` 全 clean（lang/ui/web/down）→ worktree remove×4 + 分支 `codex/plan-1022-dev`×2 删除 + 组目录 `D:/autostack/.wt/lang-1022/` 移除；`plan-artifacts/plan-1022/` 整目录删除（证据已折§9；登记表刷新为 deleted-at-merge，无具名持有；人工 resize/焦点走查档=显式 pending 人工门记于计划，F-1 转 1023）。收尾路径对账：本计划全部输出仅在 plan-artifacts/plan-1022（已删）与两 worktree target（随树删）；无其他盘符/外部目录输出。
+- 部署观察：无生产面工件受影响（ASE 窗口为实验 example，非发行面）；无需重建/重启。
+- merge outcome: pass（delivery lang 9334397f7 / ui b1364eed；archive ecac94555）。
 
 ## 10. 待澄清事项
 
