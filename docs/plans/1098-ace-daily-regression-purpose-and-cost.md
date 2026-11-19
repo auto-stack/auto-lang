@@ -569,6 +569,33 @@ A/B 实测（同选择、同 oracle，只有 profile 不同）：
 1. **O-04**：`docs/specs/stdlib/design/ace-collections.md:33` 说 packages 面在 binder 层拒 List 参数（`source.module-symbol`），但 `asm_stdlib_aggregates_inputs` 这条**后缀装配 lane** 在**语法层**就拒了（`source.syntax`，泛型参数语法不在该 face）。本行按"实际可达的最早阶段"冻结，并把"是接受语法层拒绝、还是要求把语义码前移到该 lane"列为 SD-05 待决点。
 2. **O-03**：闭包类型参数同样停在语法层（`source.syntax`），无任何 spec 为其声明语义码。按 §5.11 的裁定：不把打印值当 oracle，先把**阶段+码+消息**冻结（放行或改码都会红），语义归属交 SD-05。
 
+### 5.21 T-06 首刀：显式 `ace-toolchain` 组（代码 `125ab32f4`）
+
+**新增组**（`scripts/test-groups.toml`）：
+
+```
+name = "ace-toolchain"; runner = nextest; workspace = experimental/ace
+args = [-p ace-a2x-worker, -p ace-conformance, --tests, --config-file ../../.config/nextest-full.toml, --features test-toolchain]
+expression = (test(a2c_cert::) + test(a2c_coll_cert::) + test(a2c_rt_cert::) + test(cert_coll_904::)
+              + test(cert_rt_902::) + test(worker_ct_frontdoor_958::) + test(tests::rust_lowering::a2r_hir_certify))
+             and not test(/(^|::)performance::/)
+tools = ["a2x"]; domain = ace; all = false
+```
+
+**feature 门控（不是整模块）**：新增空 feature `test-toolchain`（`ace-a2x-worker`、`ace-conformance` 各一处），给 6 个认证模块里的 **35 个 `#[test]`** 与 H-05 的 **2 个** 逐条加 `#[cfg(feature = "test-toolchain")]`。**为什么不能整模块门控**：`inventory_941.rs`（日常测试）消费 `a2c_rt_cert::{mode_contracts_941, trap_contracts_941}` 与 `a2c_coll_cert::CASES`——第一版按整模块门控后日常组直接 **E0433 cannot find a2c_rt_cert/a2c_coll_cert in super**（3 处），已改为只门测试体、数据表照常编译。
+
+**发现差集与真实运行**：
+
+| 组 | 之前 | 之后 | 说明 |
+|---|---:|---:|---|
+| `ace-a2x`（日常） | 328 | **293** | 35 个认证例移出；复跑 293 例，**仅 1 个既有红**（`ace_a2x_ts::ports::canonical_fingerprint_is_stable_and_binds_runtime_sha`，本包前几轮 debug/release 两 profile 下都红） |
+| `ace-rust-lowering`（日常） | 6 | **4** | 移出 H-05 两例；复跑 4 例，红的是既有 **1060-R3** 的两条 |
+| `ace-toolchain`（新） | — | **37** | 首次真实运行：准备 62.74s（冷建 feature 版 archive），运行 **PASS 37/37，95.59s**（≤120s 验收线；含真 cl/rustc 编译腿） |
+
+**治理**：新增 `ToolchainSplit` 2 例——①`ace-toolchain` 必须 `all=false` 且不被默认/`all`/`ace` set 选择；②每个认证模块里 `#[cfg(feature = "test-toolchain")]` 计数必须等于 `#[test]` 计数（防止有人只门一部分），H-05 两例必须带门。全套 `test_fixed_groups` **81/81 OK**。首次写的守卫用 `assertNotIn('#[test]\nfn ')` 是错的（它是门控串的子串），已改为计数相等。
+
+**T-06 未完成**：47 行里的 **C 类 19 行**（`bstr_1064`/`kv_zip_1064`/`stdlib_*`/`module_*`/`plan966_ct_product`/`console_coverage_1041` 等真 rustc/cl/py 腿）尚未迁入本组；它们目前仍在 `ace-av` 日常选择内。迁移需按 §5.7 的"助手 × 端"记账并做旧新同输入对照，留下一步。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -758,6 +785,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 14，r1）：`stage: work`，T-05（§5.20，代码 `9d2f63a27`）。执行内容：五个 O 类探针从"打印即绿"改为独立 oracle——O-01 断言空 `remove` 精确 trap `av.trap.list-index`（+非空邻例返回 7）；O-02 六场景各带值或诊断 oracle（4/1/97/20013 + 两处 profile 诊断）；O-03/O-04 钉 `source.syntax` 阶段与逐字消息；O-05 删掉与上一行完全重复、只打印的 caps 块（cap 单轴隔离具名移 research）。全探针模块 **19/19 PASS 2.754s**；V-07 负控实做：把 20013→20014、trap 码改成不存在值 → 两例各自变红，随即还原。**两处 spec 与实现分歧**（O-04 语义码 `source.module-symbol` 实际不可达于该 lane、O-03 无声明码）已记入 §5.20 交 SD-05 待决。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 14 | from: work | to: work | status: executing | outcome: pass（T-05 完成：O-01…O-05 全部有独立 oracle 且有变异负控） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 9d2f63a27 / 本轮 docs(plan1098) | next: work（T-06 显式 ace-toolchain 组，承接 47 行 C/Q/L 分流）`
+
+2026-11-19（goal round 15，r1）：`stage: work`，T-06 首刀（§5.21，代码 `125ab32f4`）。执行内容：新增显式 `ace-toolchain` 组（`all=false`，不被默认/`all`/`ace` 隐含选择）与空 feature `test-toolchain`；把 6 个认证模块的 **35 个测试** + H-05 两例逐条 `#[cfg(feature)]` 门控（**不门整模块**——首版整模块门控导致日常 `inventory_941` 引用其数据表编译失败 E0433×3，已修正）。发现差集：`ace-a2x` 328→**293**、`ace-rust-lowering` 6→**4**、`ace-toolchain` **37**；真实运行 `ace-toolchain` **PASS 37/37（95.59s，准备 62.74s）**，日常两组复跑只剩既有红（a2x 指纹 1 例、rust-lowering 1060-R3 两例），无新增。治理 `ToolchainSplit` 2 例 + 全套 81/81 OK。T-06 未完成：47 行 C 类 19 行仍在日常，待按"助手×端"迁入。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 15 | from: work | to: work | status: executing | outcome: pass（T-06 首刀：显式组+门控+37/37 真跑；C 类 19 行待迁） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 125ab32f4 / 本轮 docs(plan1098) | next: work（T-06 续：C 类 S 行迁入 + 旧新同输入对照）`
 
 ## 10. 待澄清事项
 
