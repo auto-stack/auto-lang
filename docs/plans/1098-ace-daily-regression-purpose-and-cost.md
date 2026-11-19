@@ -458,6 +458,8 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 - **成本注记**：把 `native-runtimes` 加入 10 个工具多数组的 `tools` 后，任一组 prepare 都会预热 native runtimes（共享 target/收据，第二次起约 0.3s）；这是为"所有可能触及 native runtime 的组"提供同一保证，不是重复构建。
 - **未决**：`ace-native` 组 T_warm 62.5s 已接近目标 60s（仍在 120s 上限内，登记为观察项，等 profile 翻到 debug 后再测）。
 
+- **材料卫生**：验证期把 3 份 `archive-0.tar.zst`（各 63.2MB）与 probe archive 落在 plan scope，达到 265.6MB。按 2026-10-31 裁定"证据=摘要、构建产物随树删除"，已删除全部 archive 与旧 prepare 目录，scope 回到 **4.0MB**（只留 manifest/results/log 摘要）；archive 属可重建准备产物，日常/准备位在 worktree `target/test-groups/prepared/<state>/`，不再入 scope。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
