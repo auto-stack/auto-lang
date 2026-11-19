@@ -3169,6 +3169,13 @@ fn walk_type_word(
         *i += 1;
         return None;
     }
+    // PLAN-982（aggregates 文本入口裁定，2026-11-19）：aggregates 面**函数
+    // 参数位**的借用 `str` 放行推进（本函数唯一调用点＝参数位）；拼写分类
+    // 与入口专属纪律由投影层/车道门持有。
+    if g == k.tok_ident && cx.profile.is_aggregates() && text == "str" {
+        *i += 1;
+        return None;
+    }
     if g == k.tok_ident && !cx.profile.is_text() && matches!(text, "str" | "Str" | "char") {
         return Some(Diagnostic::new(
             Stage::Text,
@@ -6641,7 +6648,7 @@ impl<'a> Engine<'a> {
         }
         match ty {
             Some(ty_n) => {
-                let ann = self.classify_word(ty_n, false);
+                let ann = self.classify_word(ty_n, false, false);
                 TaskPattern::Bind {
                     name: bind,
                     ty: ann,
@@ -6727,7 +6734,7 @@ impl<'a> Engine<'a> {
         // required-ret contract (the N42 `source.unsupported` rejection,
         // byte-identical with the pre-968 parse-failure mapping).
         let ret = match self.cx.field_child(tail, "ty") {
-            Some(ty_n) => self.classify_word(ty_n, true),
+            Some(ty_n) => self.classify_word(ty_n, true, false),
             None => {
                 let span = name.span.join(fn_tail_rparen_span(&self.cx, tail));
                 if self.cx.profile.is_scheduler() {
@@ -6805,7 +6812,7 @@ impl<'a> Engine<'a> {
         let name_leaf = self.cx.field_child(node, "name").expect("require name");
         let name = ident_of(&mut self.cx, name_leaf);
         let params = self.project_params(self.cx.field_child(node, "params"));
-        let ret = self.classify_word(self.cx.field_child(node, "ty").expect("require ret"), true);
+        let ret = self.classify_word(self.cx.field_child(node, "ty").expect("require ret"), true, false);
         self.drive();
         (name, params, ret)
     }
@@ -6919,7 +6926,11 @@ impl<'a> Engine<'a> {
                 _ => ParamMode::Default,
             };
             let ty =
-                self.classify_word(self.cx.field_child(param_n, "ty").expect("param ty"), false);
+                self.classify_word(
+                    self.cx.field_child(param_n, "ty").expect("param ty"),
+                    false,
+                    true,
+                );
             // PLAN-963（T-08，L-24）：`n int = 42` 的默认值。默认值在**调用位**
             // 按调用者作用域求值，缺席实参时每个调用只求值一次。
             let default = self
@@ -6945,7 +6956,7 @@ impl<'a> Engine<'a> {
     /// ret-ty/ann-ty → TypeAnn（词法分类 + profile 拒绝；非递归）。
     /// `pos`：Ret 位在 record 面收**任意** ident（含 str/Str/char——旧
     /// fn_item_tail 的名义分支）；param/field/let 注解位先做文本词拒绝。
-    fn classify_word(&mut self, node: u32, ret_pos: bool) -> TypeAnn {
+    fn classify_word(&mut self, node: u32, ret_pos: bool, param_pos: bool) -> TypeAnn {
         // PLAN-962（L-15）：tuple 类型（ann 位的 tuple-ty 子节点承载）。
         if let Some(tt) = self.cx.field_child(node, "tuple") {
             let span = self.cx.span_of(tt);
@@ -6955,7 +6966,7 @@ impl<'a> Engine<'a> {
                     .cx
                     .child_of_kind(head, self.cx.k.ann_ty)
                     .unwrap_or(head);
-                args.push(self.classify_word(hw, false));
+                args.push(self.classify_word(hw, false, false));
             }
             // tail ann-ty children of tuple-ty-tail nodes, absolute order
             let tail_kind = self.cx.k.tuple_ty_tail.unwrap_or(u32::MAX);
@@ -6973,7 +6984,7 @@ impl<'a> Engine<'a> {
                     .into_iter()
                     .find(|&c| self.cx.tree.kind(c) == self.cx.k.ann_ty)
                 {
-                    args.push(self.classify_word(a, false));
+                    args.push(self.classify_word(a, false, false));
                 }
             }
             let _ = ret_pos;
@@ -7066,6 +7077,13 @@ impl<'a> Engine<'a> {
         // `str`/`char` 具名拒绝。text 面维持 str/Str/char 三词。
         if self.cx.profile.is_collections() {
             match word.as_str() {
+                // PLAN-982（aggregates 文本入口裁定，2026-11-19）：aggregates
+                // 面**函数参数位**的借用 `str`（受检文本入口专属面——
+                // `VT::Str` ⇒ MIR `StrView`）；字段/返回位与其余 collections
+                // 面维持具名拒绝，入口专属纪律由车道门把守。
+                "str" if param_pos && self.cx.profile.is_aggregates() => {
+                    return int(TypeWord::Str)
+                }
                 "Str" => return int(TypeWord::StrOwned),
                 "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
                 "str" | "char" => {
@@ -7244,7 +7262,10 @@ impl<'a> Engine<'a> {
                 let ann = self
                     .cx
                     .field_child(inner, "ann")
-                    .map(|a| self.classify_word(a, false));
+                    // 增量同步适配（982 aggregates 文本入口刀）：classify_word
+                    // 增第三参 param_pos——hook-local let 注解位非入口参数位，
+                    // 恒 false（982 主线同点位同值）。
+                    .map(|a| self.classify_word(a, false, false));
                 let value_node = self.cx.field_child(inner, "value").expect("on let value");
                 Some(ComponentStmt::Let {
                     name: ident_of(&mut self.cx, name_leaf),
@@ -7318,7 +7339,7 @@ impl<'a> Engine<'a> {
             let payload = self
                 .cx
                 .field_child(a, "payload")
-                .map(|t| self.classify_word(t, false));
+                .map(|t| self.classify_word(t, false, false));
             let span = match &payload {
                 Some(t) => aname.span.join(t.span),
                 None => aname.span,
@@ -7364,7 +7385,7 @@ impl<'a> Engine<'a> {
     fn project_optional_ty(&mut self, node: u32) -> TypeAnn {
         let inner = match self.cx.field_child(node, "inner") {
             Some(i) => self.classify_ty_arg(i),
-            None => self.classify_word(node, false),
+            None => self.classify_word(node, false, false),
         };
         TypeAnn {
             span: self.cx.span_of(node),
@@ -7391,8 +7412,8 @@ impl<'a> Engine<'a> {
     /// PLAN-965 (M2-A): `!T` error type sugar -> `TypeRef::ResultBang`.
     fn project_err_ty(&mut self, node: u32) -> TypeAnn {
         let inner = match self.cx.field_child(node, "inner") {
-            Some(i) => self.classify_word(i, false),
-            None => self.classify_word(node, false),
+            Some(i) => self.classify_word(i, false, false),
+            None => self.classify_word(node, false, false),
         };
         TypeAnn {
             span: self.cx.span_of(node),
@@ -7408,7 +7429,7 @@ impl<'a> Engine<'a> {
         if let Some(o) = self.cx.field_child(n, "optional") {
             return self.project_optional_ty(o);
         }
-        self.classify_word(n, false)
+        self.classify_word(n, false, false)
     }
 
     /// PLAN-928：函数类型 `fn(T0, ...) [->] R`（嵌套允许；`->` 缺席 = K 语料
@@ -7424,14 +7445,14 @@ impl<'a> Engine<'a> {
                 "fn-type-param-tail",
             );
             for p in plist {
-                params.push(self.classify_word(p, false));
+                params.push(self.classify_word(p, false, false));
             }
         }
         // 结果：fn-type-result 节点（词或嵌套 fn 型——classify_word 的 fn
         // 分支处理嵌套；词分支按拼写+profile 分类）。
         let result = match self.cx.field_child(node, "result") {
-            Some(res) => self.classify_word(res, true),
-            None => self.classify_word(node, true),
+            Some(res) => self.classify_word(res, true, false),
+            None => self.classify_word(node, true, false),
         };
         TypeAnn {
             span,
@@ -7450,7 +7471,7 @@ impl<'a> Engine<'a> {
         let ann = self
             .cx
             .field_child(node, "ty")
-            .map(|n| self.classify_word(n, false))
+            .map(|n| self.classify_word(n, false, false))
             .expect("global items carry a required type annotation");
         let value_n = self.cx.field_child(node, "value").expect("global value");
         self.stack.push(Frame::GlobalItemFinish {
@@ -7507,7 +7528,7 @@ impl<'a> Engine<'a> {
                         )
                     });
                 }
-                let ty = self.classify_word(self.cx.field_child(c, "ty").expect("field ty"), false);
+                let ty = self.classify_word(self.cx.field_child(c, "ty").expect("field ty"), false, false);
                 let span = fname.span.join(ty.span);
                 if seen.contains(&fname.name) {
                     let (f, t) = (fname.name.clone(), name.name.clone());
@@ -7575,7 +7596,7 @@ impl<'a> Engine<'a> {
             .field_child(node, "tail")
             .and_then(|t| self.cx.field_child(t, "alias"))
             .expect("alias target");
-        let target = self.classify_word(target_node, false);
+        let target = self.classify_word(target_node, false, false);
         TypeAliasDecl { name, target }
     }
 
@@ -7690,7 +7711,7 @@ impl<'a> Engine<'a> {
                     self.cx.reject(span, || self_param(span));
                 }
             }
-            let ret = self.classify_word(self.cx.field_child(c, "ty").expect("spec ret"), true);
+            let ret = self.classify_word(self.cx.field_child(c, "ty").expect("spec ret"), true, false);
             // 默认体（`fn m(..) R { .. }`）按普通块投影；签名（无体）= 抽象方法。
             let body = match self.cx.field_child(c, "body") {
                 Some(b) => {
@@ -8111,7 +8132,7 @@ impl<'a> Engine<'a> {
             let ann = self
                 .cx
                 .field_child(inner, "ann")
-                .map(|n| self.classify_word(n, false));
+                .map(|n| self.classify_word(n, false, false));
             let mutable = kind == self.cx.k.var_stmt;
             let value_n = self.cx.field_child(inner, "value").expect("let value");
             self.stack.push(Frame::LetFinish {
@@ -9493,7 +9514,7 @@ impl<'a> Engine<'a> {
                 let ty = self
                     .cx
                     .field_child(p, "ty")
-                    .map(|t| self.classify_word(t, false))
+                    .map(|t| self.classify_word(t, false, false))
                     .unwrap_or(TypeAnn {
                         kind: TypeRef::Builtin(TypeWord::Int),
                         span: name.span,

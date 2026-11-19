@@ -930,6 +930,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // checked at the run-time ledger).
                         | crate::host::STDOUT
                         | crate::host::STDERR
+                        // PLAN-982（aggregates 文本入口裁定，2026-11-19）：
+                        // 受检文本入口能力（车道门在入口带借用 `str` 形参时
+                        // 写入受检产物；运行端从入口所属单元核对能力与
+                        // `StrView` 签名——`execute_program_text_platform`）。
+                        | crate::contract::TEXT_RUNTIME_CAPABILITY
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM

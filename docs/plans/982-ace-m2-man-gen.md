@@ -4,8 +4,8 @@ status: executing
 feature_name: AutoMan配置任务模板与生成器迁移
 author: [Codex]
 created_at: 2026-11-06
-updated_at: 2026-11-17
-plan_revision: 8
+updated_at: 2026-11-19
+plan_revision: 9
 current_step: 1
 total_steps: 37
 depends_on: [PLAN-960, PLAN-964, PLAN-966, PLAN-969, PLAN-970, PLAN-971, PLAN-973, PLAN-976, PLAN-977, PLAN-978, PLAN-967, PLAN-979]
@@ -18,9 +18,21 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+### 2026-11-19 · 用户裁定：AutoMan v0.6 UI 双端与 C 导出
+
+本轮核心是从真实 UI 工程入口跑通 `auto gen`、`auto build`、`auto run`。UI 目标为 **Web（A2Vue＋实际 A2TS/JS 闭包）**和 **桌面 Iced（A2R＋Iced 宿主）**。配置、模板、脚本/服务与非 UI 能力继续按各自合同验收；产品优先队列以这两端为先。
+
+- **移动端**：A2Ark/A2Jet 既有成果按 Demo 记。真正产品支持候选归 v0.7 或 v0.8，具体版本与适配方案届时重新定。两项从当前 M2 的 AutoMan UI CLI、构建、安装默认及退役验收中移出。
+- **C 导出**：M2 范围为 CMake 工程导出和 Ninja 构建产物。IAR/GHS 当前延期，恢复时重评适配需求与产物合同；已有适配、夹具与历史收据保留。C 工程与导出仍按实际新版 A2C 路径验收。
+- **Tauri**：作为 [1073](1073-autoui-tauri.md) 的独立产品义务，按其自己的工程与宿主接口验收；它不进入本计划这两端的必验集合。
+
+### 2026-11-19 · 980/981 后继接口
+
+Vue U0 联合收据 `2c9c5f228` 按原身份复用。§8 的 VM/Rust 工程 run 差额分别由 [1071](1071-autoui-w1-av.md) 交 VM/AV 宿主，[1074](1074-autoui-w3-a2r.md) 交 Rust 工程实际入口。982 按两项接口验真 CLI/SDK，脚本 stdin＋argv 和其他批次可独立推进。
+
 2026-11-17 r8规划：GAP-982-CONFIG-ACE明确由本包现B-CONFIG-I/V/R端到端承接auto-lang＋auto-man，详§5/6/7和共同设计；原37任务/进度/A route C与M2A-08证据保持。本轮不实施、不建树、不改已验Spec，不再等待无owner的上游配置能力。
 
-2026-11-16 r7（当前范围权威）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
+2026-11-16 r7（Godot/TS 范围历史）：依用户本轮裁定及[Design55 §5.1](../design/55-ace-m2-complete-language-and-product-replacement.md#51-m2目标范围裁定godot后置ts按生产消费闭包2026-11-16当前优先)，本包撤出GODOT三个未实施任务及AC/V/DEVSDK依赖，总数40→37、0完成保持；CONFIG/PROOF/PY/REVERSE及其他产品能力保留。WEBTARGET仅验实际生产TS/JS工程消费和入口闭包，不自动附加独立全语言a2ts产品义务。 本次只修订规划，未实施/测试/合入或恢复目标；新增验收尚未执行。
 
 2026-11-12 r6：按用户要求以963同等标准补本包具体输入/独立预期、类型与代码职责、旧AutoVM/A2R及真实消费者到ACE验证映射；原任务/AC/V/依赖/预算/阶段与进度保留。本轮只修订规划，不实施/建树/生成fixture/运行产品；旧历史记录不作当前完成证明。
 
@@ -141,7 +153,7 @@ CONFIG服务在工具宿主明确用AV，可供AC/A2R构建消费数据；不要
 | 982/REVERSE | **部分交付并 fold** | r2a（Rust→Auto→**真跑**）与 s2s（Auto→Auto 保语义＋解析级负例）两组用例；仍缺 s2s 真实改写规则、独立核 producer/consumer |
 | 982/DEVSDK | **部分交付** | 安装事务 `pytest` 基线 9+3；watch 源码级护栏（不 spawn cargo/rustc）；默认构建修复（`E0433`）；仍缺候选 SDK 发现（需产品决策） |
 | 982/C | **已验证本机 MSVC x64 可用，原工程验收待执行** | 普通 PowerShell 未加载 VS 环境。按下方交接加载后，`cl.exe` / `link.exe` 可用，独立 C 程序已编译、链接、运行通过；按 V-B-C 验证实际 A2C 生成物和标准库。 |
-| 982/EXPORT | **已验证 CMake/Ninja + MSVC Release，实际出口待验证** | CMake 默认探针用 `/Zi` 时遇到 PDB 错误 `C1902`；显式指定 Release 构建和 Release 探针后，最小 C 工程已配置、编译、链接、运行。按 V-B-EXPORT 逐目标验证；IAR/GHS 所需工具链另行核验。 |
+| 982/EXPORT | **已验证 CMake/Ninja + MSVC Release，实际出口待验证** | CMake 默认探针用 `/Zi` 时遇到 PDB 错误 `C1902`；显式指定 Release 构建和 Release 探针后，最小 C 工程已配置、编译、链接、运行。round 184 另有实际 CMake 导出经 Ninja 构建运行的收据，使用旧 C 转译链。V-B-EXPORT 尚须核新版 A2C 的 CMake 导出与 Ninja 构建产物。 |
 
 #### Windows x64 MSVC 启动与验证（2026-11-18）
 
@@ -207,7 +219,7 @@ SDK 半边已交（合同／显式 ACE 路径＋精确投影／`ConfigDocumentBu
 | 982/WEBTARGET | 生产TS/JS工程与CLI消费闭包 | 982/CONFIG; L976/L978 | auto-man |
 | 982/PY | Python转译 | 982/CONFIG; 977/PY; L978 | auto-man |
 | 982/REVERSE | 逆向与源到源命令 | 982/CONFIG; 977/REVERSE | auto-man |
-| 982/EXPORT | 现用发行工程格式 | 982/C; 982/RUST; L978 | auto-man |
+| 982/EXPORT | CMake 工程导出与 Ninja 构建产物 | 982/C; 982/RUST; L978 | auto-man |
 | 982/DEVSDK | watch快路径与SDK发现 | 982/EXEC; 982/TEMPLATE; 982/RUST; 982/C; 982/WEBTARGET; 982/PY; 982/REVERSE; 982/EXPORT; L978 | auto-man |
 | 982/PROOF | RG-A01真实配置与最小CLI | L982/CONFIG, L969, L970, L978 | 原owner；RG-A具名真实验证 |
 
@@ -231,7 +243,7 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 
 ### 982/RUST：Rust转译与构建
 改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
-I实现：原多模块工程使用新A2R，保CLI stdout/文件/成功信封和错误JSON/exit。
+I实现：原多模块工程使用新 A2R，保留 CLI 的 stdout、文件、成功信封和错误 JSON/exit。桌面 Iced 取 1074 的实际生成及宿主接面，验 `auto gen`、`auto build`、`auto run` 的生产路径。
 V验收：未修改生成Rust冷构建运行，与源expected一致，旧RustTrans实际dispatch零。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
@@ -243,7 +255,7 @@ R关闭：独立核真实输入→新producer→consumer及正反例/来源/资�
 
 ### 982/WEBTARGET：TS/JS转译
 改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
-I实现：真实生产工程/CLI调用976新TS/JS provider，保模块/依赖/source map；按976冻结的完整生产闭包消费，不自动增加独立全语言通用a2ts/a2js产品门，实际产品使用的CLI功能仍须支持。
+I实现：和 1072 对接真实 A2Vue 工程，`auto gen`、`auto build`、`auto run` 按现有模式/配置入口调用生成工具，使用 976 的新 TS/JS provider，保模块、依赖、source map 及运行时闭包。独立通用 A2TS/A2JS 能力仅按实际生产消费要求纳入。
 V验收：实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
@@ -259,10 +271,10 @@ I实现：保r2a与s2s/emit已有公开命令，消费其独立工具接口。
 V验收：原支持Rust输入→Auto真实运行，非法近邻错误/exit；不要求任意互逆。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
-### 982/EXPORT：现用发行工程格式
+### 982/EXPORT：CMake 工程与 Ninja 构建产物
 改面（核存在）：`D:/autostack/auto-man/crates/auto/src/cmd_trans.rs`；`D:/autostack/auto-man/crates/auto-man-runtime/src/target.rs`；`D:/autostack/auto-man/crates/auto-man-core/src/target.rs`。
-I实现：逐CMake/IAR/GHS等现用export目标写配置和库闭包，逐子格实际工具链身份。
-V验收：各原支持输出实际构建/链接/可执行或原目标验收，未知工具环境不改NA。
+I实现：用新版 A2C 生成包级源与头文件。现有 CMake exporter 输出 CMakeLists.txt 及源闭包，可用 CMake 的 Ninja generator 冷构建。现有 Ninja builder 输出 build.ninja，按其真实构建入口复用。记录依赖、配置和工具链身份。
+V验收：真实新版 A2C 产物分别验 CMake 导出和 AutoMan 自有 Ninja 构建产物。仓外从空构建根编译、链接、运行，多模块源/头文件/库闭包齐，旧 C 转译派发为零。
 R关闭：独立核真实输入→新producer→consumer及正反例/来源/资源/退出；新fixture由I接真实target，缺工具/环境保未执行。
 
 ### 982/DEVSDK：watch快路径与SDK发现
@@ -435,6 +447,15 @@ struct GeneratedProject { manifest: ProjectManifest, artifacts: ArtifactSet, dep
 
 ## 6. 测试设计
 
+### 真实 UI 工程 CLI 验收
+
+| Case | 入口与输入 | 冷验收与判据 |
+|---|---|---|
+| V-UI-CLI-WEB | 1072 正式 Vue 工程，原样 `pac.at` 和组件/模块；用现有项目配置及目标选择调用 `auto gen`、`auto build`、`auto run` | 生成真实 Vue/TS 与运行时文件，干净目录构建，真实浏览器启动并对照事件/状态、诊断及关停。U0 作为既有 Run 子面按身份复用，Gen/Build 和其余真实语料另取实际结果。 |
+| V-UI-CLI-ICED | 1074 正式 Iced 工程及同版 A2R/宿主，原样项目配置调用相同三个命令 | 生成 Rust 支持文件，干净目录实际编译链接，真实 Iced 窗口启动并验证交互、状态和关闭。1071 的 AV 工程 Run 收据按已验宿主范围使用。 |
+
+两端分别核实际命令派发、配置/SDK/provider 身份、退出与诊断、坏源保旧和零旧路径静默回退。CLI 选项按现有公开入口确认；只有正式的源、业务结果与调用证据齐才计通过。WEBTARGET/RUST 承接产品子面，EXEC 验真实启动与回收，DEVSDK 验重定位及工具发现。
+
 ### V-CFG完整验证合同（本轮拟议，原V/AC全部保留）
 
 B-CONFIG-I建立语言桥`tests/p982_config_document.rs`、ACE原source测试里的config面和Man `tests/plan982_ace_config_b.rs`（拟新路径）后，V按[设计§6](../design/ace-config-document-evaluation.md#6-验证合同与旧用例映射)的九个V-CFG-*逐行实跑。它们分别约束SYNTAX/FLOW/CONTEXT/VALUE/FAIL/LIMIT/IDENTITY/PRODUCT/RETIRE，原旧AutoVM用例与780输入映射已列，不能以parser绿、新旧相等或same_sdk替独立业务值/真实AV。
@@ -464,7 +485,7 @@ B-CONFIG-I建立语言桥`tests/p982_config_document.rs`、ACE原source测试里
 | V-B-WEBTARGET | AC-B-WEBTARGET | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。 |
 | V-B-PY | AC-B-PY | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 真实Python原工程运行、错误JSON/exit正确，错误解释器身份不静默回落。 |
 | V-B-REVERSE | AC-B-REVERSE | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 原支持Rust输入→Auto真实运行，非法近邻错误/exit；不要求任意互逆。 |
-| V-B-EXPORT | AC-B-EXPORT | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 各原支持输出实际构建/链接/可执行或原目标验收，未知工具环境不改NA。 |
+| V-B-EXPORT | AC-B-EXPORT | man: cargo tc；lang: cargo t ace-a2x generated-delivery-controls；本目标复用provider已验fixture再经真实CLI，I固定原工具命令 | 真实新版 A2C 产物分别验 CMake 导出和 AutoMan 自有 Ninja 构建产物。仓外从空构建根编译、链接、运行，多模块源/头文件/库闭包齐，旧 C 转译派发为零。 |
 | V-B-DEVSDK | AC-B-DEVSDK | man: python scripts/test_install_transaction.py；python scripts/test-man-install-compat.py；真实watch采样接978，安装终验归986/987 | 真实process树cargo/rustc0，Rust输入变化仍正确重建；旧cache/binary不被发现；候选安装失败回退保用户数据。 |
 
 受影响共享IR/语义加完整职责与必要下游；T-05核全批/组合/原资源门，身份不变证据复用，不反复全仓。局部review不代全包final；未闭in-scope阻execution_done。
@@ -495,6 +516,8 @@ B-CONFIG-I建立语言桥`tests/p982_config_document.rs`、ACE原source测试里
 
 ## 7. 验收标准
 
+**AC-UI-CLI 双端**。V-UI-CLI-WEB、V-UI-CLI-ICED 的 Gen/Build/Run 均由实际 CLI 完整执行，落盘产物可冷构建，浏览器/Iced 的独立行为、错误、关闭和恢复结果齐。该项由 B-WEBTARGET、B-RUST、B-EXEC、B-DEVSDK 的适用部分和 T-05 核销。
+
 | ID | owner_stage | 完成谓词/实际验证 |
 |---|---|---|
 | AC-CFG-SEM | work | V-CFG-SYNTAX/FLOW/CONTEXT：原配置控制流/根与嵌套/参数覆盖/Node值/完整动态输入经真实AV，原独立expected守恒；I/V生产、R核 |
@@ -518,12 +541,14 @@ B-CONFIG-I建立语言桥`tests/p982_config_document.rs`、ACE原source测试里
 | AC-B-WEBTARGET | work | 实际JS运行与TS编译后运行，类型/运行时错误有原span，不能只打印代码。 | B-WEBTARGET-V/R |
 | AC-B-PY | work | 真实Python原工程运行、错误JSON/exit正确，错误解释器身份不静默回落。 | B-PY-V/R |
 | AC-B-REVERSE | work | 原支持Rust输入→Auto真实运行，非法近邻错误/exit；不要求任意互逆。 | B-REVERSE-V/R |
-| AC-B-EXPORT | work | 各原支持输出实际构建/链接/可执行或原目标验收，未知工具环境不改NA。 | B-EXPORT-V/R |
+| AC-B-EXPORT | work | 真实新版 A2C 产物分别验 CMake 导出和 AutoMan 自有 Ninja 构建产物。仓外从空构建根编译、链接、运行，多模块源/头文件/库闭包齐，旧 C 转译派发为零。 | B-EXPORT-V/R |
 | AC-B-DEVSDK | work | 真实process树cargo/rustc0，Rust输入变化仍正确重建；旧cache/binary不被发现；候选安装失败回退保用户数据。 | B-DEVSDK-V/R |
 | AC-A-PROOF | work | 双配置/作用域隔离，真实值/stdout/exit正确；坏配置不写state/lock，缺ACE身份拒绝无fallback；取消子任务回收。 | B-PROOF-I/V及V-A-PROOF；R独立复核 |
 | AC-PHASE | work | §5任务阶段/实际前置及原义务→新检查/独立oracle映射齐；对应阶段required闭合，B开工已核A正式收据，无scope缩减 | V-PHASE、各批V/I与原最终work验证；原独立review复核 |
 
 ## 8. 执行步骤
+
+**B 阶段优先顺序**。完成 CONFIG/当前 EXEC 承诺，WEBTARGET 与 RUST 按实际接口并行，把两端 Gen/Build/Run 各自跑通。先交已验产品子面，CMake/Ninja 的 C 导出可并行，DevSDK 随两端实际产物核验。
 
 当前共37任务，0完成（原GODOT三任务由用户后置，非完成）。下面是唯一当前执行清单；原ID/AC保留。任务按A/B分组，组内按§5实际前置选择就绪任务，不把行号当依赖。完整Plan只有原终态归档，A部分完成不清唯一树。
 
@@ -550,7 +575,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 所有本组实现任务先核M2A-08已合入收据，再核本批§5前置；只读准备不充B执行结果。A接口变化须回能力owner修复并定向更新A收据，不静默沿用旧证据。
 
 - [x] **B-EXEC-I｜M2-B｜owner_stage: work｜AC-B-EXEC/AC-02/03/06**：逐CLI dispatch接ACE run/session/tool协议，保stdin/捕获/退出/超时；不等待模板或全部目标生成。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
-  [✅ 2026-11-19 rounds 185–190 落主]：裸脚本＋stdin 文本入口（185）；`auto test` 无过滤/`--filter`（186/189，执行前筛选＋legacy 语义）；`auto debug` 非交互调试门（187，具名失败码）；`req`/`serve` 会话 daemon（187，跨进程持久变量）＋限额旗标 1:1（190）；serve 静默落旧 daemon 的 round-20 漏列已收。**具名差额**：argv＝必需但阻塞生产者面入口裁定（§10 移交）；工程 run（vm/rust 目标）＝980 后真链，Vue 工程 run 已由 U0 真链闭（round 188）。
+  [✅ 2026-11-19 rounds 185–190 落主]：裸脚本＋stdin 文本入口（185）；`auto test` 无过滤/`--filter`（186/189，执行前筛选＋legacy 语义）；`auto debug` 非交互调试门（187，具名失败码）；`req`/`serve` 会话 daemon（187，跨进程持久变量）＋限额旗标 1:1（190）；serve 静默落旧 daemon 的 round-20 漏列已收。**具名差额**：argv＝必需但阻塞生产者面入口裁定（§10 移交）；工程 run（vm/rust 目标）＝1071/1074 按实际接口交真链，Vue 工程 run 已由 U0 真链闭（round 188）。
 
 - [x] **B-EXEC-V｜M2-B｜owner_stage: work｜AC-B-EXEC**：运行V-B-EXEC完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
   [✅ 2026-11-19 round 191 V 批（master 冻结单实例；lang 腿在组树 `1fbc9b29e`＝master tip 树内容，983 批占用主检出 target）]：§460 两命名命令＝`plan816_cli_driver` **7/7**（含三条 te-child 超时回收腿＋legacy argv 透传腿；首跑 3 红＝te-child.exe 缺失，组树构建＋`AUTO_TE_CHILD_BIN` 后全绿——prepare 具名）＋`plan816_t03_non_ui_service` 2/2；EXEC 汇总批 **17/17**（candidate_config 5〔含 wall/cancel 超时回收〕／exec_b 3／config_slice 1／debug 1／req 4／stdin 2／test 1）；服务腿＝av_http_service **17/17**（含 runaway-handler 超时）＋`plan983_c0_cli` 1/1；Vue 工程＝U0 真链 3/3（82.59s）；lang 腿＝daemon 8/8＋p971_tool_face 2/2＋p982_test_filter 1/1＋t970 3/3；`cargo tc` 262/4。
@@ -594,7 +619,7 @@ A交接：本组work/原正反例齐→独立复核相应A切片→按owner流�
 
 - [ ] **B-REVERSE-R｜M2-B｜owner_stage: review｜AC-04**：停写后独立核本批AC/反例/差额/跨仓来源，缺陷回I；不冒整包交付。
 
-- [ ] **B-EXPORT-I｜M2-B｜owner_stage: work｜AC-B-EXPORT/AC-02/03/06**：逐CMake/IAR/GHS等现用export目标写配置和库闭包，逐子格实际工具链身份。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
+- [ ] **B-EXPORT-I｜M2-B｜owner_stage: work｜AC-B-EXPORT/AC-02/03/06**：用新版 A2C 生成包级源与头文件，接 CMake 工程导出与现有 Ninja 构建入口，记录依赖、配置和工具链身份。 按§5真实改面补永久fixture并固定§6命令。 CONFIG-ACE-B：本批新配置消费须IF-982-CONFIG-ACE正式来源；原其它最小前置仍按批次，不等983/984/985 B最终。
 
 - [ ] **B-EXPORT-V｜M2-B｜owner_stage: work｜AC-B-EXPORT**：运行V-B-EXPORT完整职责与真实consumer，独立expected/源/工具/资源/子终态齐。
 
@@ -632,6 +657,8 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 
 ## 9. 复审记录
+
+2026-11-19 stage: revision。用户裁定 AutoMan v0.6 UI 优先交 Vue Web 与 A2R/Iced 的 Gen/Build/Run，暂停 A2Ark/A2Jet 产品化，C 目标集中 CMake/Ninja。原 IAR/GHS 待核与旧 C 证据保留作历史；M2 验收按 r9 范围。此次只更新合同，任务勾选和阶段收据保留。
 
 ### 2026-11-17 CONFIG-ACE-B规划交接（r8；非实施验收）
 
@@ -947,6 +974,8 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 2026-11-19 stage: work+merge / **argv 第一步交付（裁定 B：最小 argv 装配＋按声明导入逐项授权＋两种参数源各归各入口）——真 CLI 验收全绿并落主**（objective 用户裁定 B 三条，round 195）| 树: lang **`6cc0a1b9c`**（merge `a8f1110a8` 落主；吸收 round-194 WIP 后重组单提交）、man **`8c79efe`**（ff 落主）| **按裁定 B 重构**：①**新冻结窄面** `stdlib/ace/sys-argv/process.at`——`args()` 只读 `proc_run_argv_w16`（mem op 直调＋复用 `std.syscommon.parse_win32_cmdline`/ticks 与 `std.bytes.decode_utf8`；UTF-16 解码按 sysplat_win 同款逐字改写）；**不拉 sysplat/process.at**（spawn 族结构性不在闭包）；按冻结身份规则注册（`SYS_PROCESS_ARGV` 常量＋`is_frozen_std_sys_module` 的 `process` 双面臂＋getter；不在 `stdlib_sys_files` 清单⇒不随其它 sys 装配漂移）；②host 门＝**最小装配** `[app + 窄 process + syscommon + bytes]`（`assemble_package_inputs`＋手推三窄输入）＋**超限前置拒**（argv 行 >32768 UTF-16 单位 ⇒ `ace.sys/argv-overlimit`，不截断不回退）＋授权＝**最终导入表为准**：`platform.mem`＋`platform.process.argv` 两键（前门逐项核对通过＝结构性证明无 spawn 导入）；③stdlib `pf_args` 修复＝**仅 -10（ERR_UNSUPPORTED＝未设）回退**进程命令行（超限/OS 失败不再伪装未设——裁定 B 第 2 条）；④子涵改**双向**：三个 argv 读符号（cmdline×2＋run_argv）接受两键任一（宽键⊇argv 读；窄键**永不**满足 spawn——1064 全量授权形状因此不需要 platform.process.argv）；⑤a2x 三后端 standalone 垫（rust `-10` 直返；python 四点接线＋lower 映射；ts ports 同 parity）| **实测（真 CLI）**：`plan982_exec_argv_cli` **1/1**（5.4s：无参 ⇒ argv[0] 在＋checker 0；六形〔空串/`b c`/`say "hi"`/`你好-λ`/`--flag=ón`/`--`〕逐项内嵌断言全过；两次执行〔alpha→beta+γ〕无串漏；sys 车道标记＝零回退面；spawn 负控：`use std.process.spawn_with_output` ⇒ 具名绑定拒非零——窄面不可名 spawn）；**1064 回归全 5/5**（AV env/process/spawn/file＋a2r/a2py 跨端——standalone `-10` 回退真跑通；曾现 1 次并发资源抖动，隔离复跑两连绿）；core stdlib 2/2；`cargo tc` **262/4**；两侧 rustfmt 净；**主检出复核**：man argv 1/1＋lang conformance 5/5 | **口径**：03 兼容＝调用与索引式已覆盖（checker 的 remove/len 即 03 取值形状）；整支爬虫迁移另算（http/file 模块不在最小装配——第二步装配扩展再收）；`read_line()` 单列未动 | **D-982-ARGV 更新**：narrowed（第一步闭；剩余＝第二步：`run_platform_value` 接 wall/cancel/输出宿主＋EXEC 兼容门〔stdout/退出码/stdin 同用/same_sdk〕→ 统一切默认）| next: 第二步兼容门（A 裁定项随第二步单独评估——生成产物前裁剪＋产物导入严格验权）
 2026-11-19 stage: work+merge / **argv 第二步（bounded 部分交付＋console 面墙图＋A 评估）**（objective 用户第二步指令，round 196）| 树: lang **`6b8122d6c`**（merge `7043394c8` 落主）、man **`dd0d2f1`**（ff 落主）；console 面链 WIP **`e9a07fa9e`**（组树，未落主）| **已落（bounded）**：①av `PackageAvTarget::run_platform_value_with(limits, cancel, console, grants, backend)` 产品入口形（`run_platform_value` 委托默认值）；②sys 门＝wall/cancel 预算归属门侧（`limits_from`/`cancel_flag`）＋console 捕获宿主接入（request.console ⇒ `ConsoleCapture`＋`console.stdout/stderr` 授权＋回 `AceConsoleReport`）；③man sys 腿请求 console 面并按 A 片纪律再发捕获流（面落地前 inert）| **墙（stdout/stderr 项）**：sys 车道**没有 console 面**——裸 `print` 在包车道是 unknown function。console 面链已连跨 **5 道生产者门**（WIP 在案：①binding 拼写透传〔同 1041 平台保留名纪律〕②resolver Aggregates 准入〔968/1026 同族〕③verify packages-domain 准入④lowering collections 族 intrinsic 准入〔sched/py 门拆除〕⑤Unit 结果类型准入〔console 调用返回 unit〕），**卡第 6 道**：collections 族调用点解析（"callee def N out of range"——plain app 模块的 console 宿主调用发射分支缺失；后续或还有 MIR-verify 族准入）。**判读：console 面＝独立生产者切片**（镜像 owned/968 路径把调用点发射与验证接完），非本步接线能闭合；WIP 链已证零回归（1064 5/5＋config/corpus/t08 绿）| **stdin＋argv 同用**：包车道入口实参通道＝同族缺口（`run_platform_value*` 走零参入口；文本形参入口〔`execute_entry_text`〕是 console 专属）——与 console 面同为切换默认前的具名前置 | **same_sdk**：man 侧见证机件复用设计在案（sys 门返回同形 `AceRunReport`——A 片 config/见证/再发周边可直接套），待面前置解除后接线 | **退出码**：已在第一步绿（值 oracle＋失败码族）| **A 评估（按指令单独给出）**：产物前裁剪＝装配→程序快照前剪除未达单元（含未选平台兄弟），产物余留导入逐项严格验权——**统一默认若需全 sys 线**（03 族消费者要 http/file），round-194 墙重现，A 即解锁机制；代价＝准入纪律从"装配集声明导入"收为"裁剪后产物声明导入"（冻结面变更需核）。982 建议：**A 作独立生产者切片**，与 console 面并案排程；在此之前最小装配模式按面扩容（每面成本如 console 链所示）| next: console 面生产者切片（WIP 链续）→ stdin 实参通道 → 兼容门 → 默认切换
 2026-11-19 stage: work+merge / **argv 第二步续：console 面九门全穿并落主；stdin 实参通道核定为切换阻塞项**（objective 用户下一步指令，round 197）| 树: lang **`878efef11`**（merge `51f8606f9` 落主，吸收 WIP `e9a07fa9e` 重组单提交）、man **`30584f9`**（ff 落主）| **九门链**（每门皆实测过墙）：⑥调用点 host-import 路径补 `console_callee`（closures 适配器 Call 臂）→⑦av-core `host::validate` 新增 sys-lane 模块类（platform∪console 导入集）→⑧`mir_verify` 能力表补 `console.stdout/stderr` →⑨**HostCall 执行改按单元解析**（`host_import_at(cur_func, …)`——PLAN-973 给 PlatformCall 的同一纪律，HostCall 此前用模块级默认表在 split-unit 链上恒空；这是链尾真 bug，console 宿主调用在包车道此前从未跑过）| **实测（真 CLI）**：`print(42)`＋`eprint("bad")`＋值 7＋退出 0——捕获再发、两流、值序全对；验收用例加 console 腿（1/1，4.5s）| **回归**：1064 5/5、host 2/2、config_engine/corpus/t08/tool_face 1+1+3+2、man argv/stdin/candidate_config 1+2+5、`cargo tc` 262/4、两树 fmt 净；**主检出复核**全绿 | **stdin 实参通道核定（探针）**：`fn main(input str)` 在 aggregates 面 ⇒ `type str is not part of this source profile`——文本形参入口是 console 专属面；**stdin＋argv 同用＝默认切换的具名阻塞项**（需 aggregates 面的文本入口裁定——同 `ac.runtime.text.v1` 谱系的生产者刀）| **仍开**：same_sdk 见证接线（man 侧机件复用在案）；EXEC 兼容门（stdin 套件结构性不可过——阻塞同上）；默认切换（等 stdin 面）；A 评估维持 round 196 结论 | next: aggregates 文本入口面裁定（用户/生产者）→ same_sdk＋兼容门（除 stdin 腿）→ 切换
+2026-11-19 stage: work+merge / **aggregates 文本入口刀（裁定落地下）：sys 包车道受检文本入口全链＋sys 腿三接线＋真 CLI 兼容门——完整收据（含 stdin 腿）**（objective 用户裁定四条〔§10 Q-982-2 aggregates 段〕，round 198）| 树: lang **`8d3b70341`**（merge `d2a74c9b5` 落主）、man **`e0813ea`**（ff 落主）| **生产者刀（九门）**：①旧 parser `param_type` 前置臂（aggregates 参数位借用 `str`）；②CST 前门 `walk_type_word` 参数位放行（唯一调用点＝参数位）；③投影 `classify_word` 增 `param_pos` 形参（aggregates＋参数位 ⇒ `TypeWord::Str`；字段/返回位与其余 collections 面维持具名拒——冻结面不放宽）；④verify `check_params` 收 closures 域 Param 位 `ValueType::Str`（镜像既有 Capture-Str 例外）；⑤车道门（source-query `compile_bound_packages_aggregates`）＝**入口专属纪律**（非入口 fn 带 `str` 形参 ⇒ `source.text-entry-param` 具名拒；绑定层把非入口 fn 改名 `p3_*`、入口保持裸名——入口身份的结构判据）＋**能力写入受检产物**（新 `CheckedModule::require_capability`；`split_units` 逐单元携带——裁定②「包编译端将能力写入受检产物」落点）；⑥mir_verify 能力白名单知会 `ac.runtime.text.v1`；⑦新执行变体 `execute_program_text_platform`（逐单元导入前门抽 `authorize_program_imports` 与 `execute_program_platform` 共用＋**入口单元核对**〔能力＋全 `StrView` 签名，`host.text-entry` 具名拒——裁定②「运行端从入口所属单元核对」〕＋文本 arena 分配〔`StrViewSrc::Share`、非法 UTF-8 分配前拒〕＋init 链零参/初始化顺序不变＋实参释放后 **arena 归零**核对＋ledger cleanup/summary）；⑧`UnitView::has_text_entry_capability` 按**入口所属单元**回答（此前吃 trait 默认 false——实参准入墙的真因）；⑨`PackageAvTarget::run_platform_text_value_with` 产品入口形＋宿主门 `run_sys_script` 接 `request.input`（`None` 保持零参路径、`fn main()` ABI 不变）| **man 侧三接线（裁定④补现场）**：wall/cancel（`AUTO_ACE_WALL_MS`/`AUTO_ACE_CANCEL_AFTER_MS` watchdog，与 console 腿同款——此前 sys 腿请求恒 `wall: None`/`cancel: None`）；管道 stdin 按**受检入口签名**预读（`main_takes_single_str_param` 机械扫描提升为两腿共用；**运行端为权威**）；same_sdk 见证收据（配置腿/执行腿/实际服务引擎同一 SDK＋`legacy_dispatch=0`＋`lane=sys`＋stdin/argv 字节入账；坏配置执行前拒）| **实测**：lang `p982_sys_text_entry` **4/4**（stdin 内容分流〔`input == "hello"` 相等性在 aggregates 面实跑〕＋print 捕获；双通道同执行〔stdin+argv 两路独立变化 31/32/1/2 四组合〕；非入口 `str` 形参具名拒；零参入口携带文本 ⇒ `host.text-entry` 具名拒）；man `plan982_exec_stdin_argv_cli` **4/4**（9.5s：双通道对拍〔同脚本两路输入独立变化×返回值/stdout/stderr/退出码〕；回归族＝零参脚本不受影响〔CLI 按签名不读 stdin〕＋六形实参〔空串/空格/引号/Unicode/`--`〕×stdin 同跑＋逐次隔离＋spawn 不可名负控；取消 ⇒ `ace.sys/cancelled` 具名非零；收据核对 same_sdk/engine 身份/`legacy_dispatch=0`）| **门禁**：ace-source PASS、ace-lowering PASS、ace-av **1413/1421**（1 红＝`v02_d06_spawn_with_output_av` 隔离复跑两连绿——round-195 已记录的并发资源抖动，环境归因不判红）、ace-semantics 295 例 1 红＝`sema_boundary_case_files_executed_status_honest`（**主检出同红＝存量**，T-06 台账缺口，具名移交）、host 全套 69 过＋`p984_embed` 1 红（主检出同红＝存量测试隔离缺陷，具名移交）、man `cargo tc` **262/4**、argv/exec_b/debug/req/test 五套件复跑全绿、两树 rustfmt 净（man 的 `cmd_ui.rs`/`plan983_c1_cli.rs` 等为存量漂移未动）| **钉面更新**：`stdlib_list_946_text_modules_not_in_aggregates_lane`——std.text 的车道**边界不变**（具名拒、绝不静默），拒因由 parse `source.unsupported` 前移为车道门 `source.text-entry-param`（更精确：借用 `str` 形参是文本入口专属面）| **主检出复核**：lang 新测 4/4＋man 4/4＋argv 1/1 全绿 | **裁定对照**：①双通道独立、零参照常 ✅；②`ac.runtime.text.v1` 谱系＋能力入产物＋单元级 StrView 核对＋实参释放/arena 归零＋逐单元授权与初始化顺序保持 ✅；③授权粒度不变（argv=`platform.process.argv`、spawn 拒绝负控在套件、stdin 无新宿主 I/O 授权）✅；④wall/cancel 补现场＋same_sdk 收据核对＋**完整收据（stdin+argv 同脚本）在手** ✅；A 维持 round 196 独立排程（真实消费者需 `http`/`file` 全 sys 装配时先落产物前裁剪再切默认）| next: 默认切换收尾刀（Windows `auto <file.at>` 切 sys 车道；切前可再核 legacy 对拍面）或其余 M2-B 批次
+2026-11-19 stage: goal | plan_id: PLAN-982 | plan_revision: r8 | round: 198（本会话）| from: work | to: work | status: executing | outcome: pass（aggregates 文本入口裁定落档＋九门生产者刀＋sys 腿三接线＋完整兼容门收据；双树落主＋主检出复核绿）| worktrees: lang `8d3b70341`（master merge `d2a74c9b5`）、man `e0813ea`（master ff）| evidence: lang `p982_sys_text_entry` 4/4＋man `plan982_exec_stdin_argv_cli` 4/4（双通道/回归/取消/收据）＋ace-source/ace-lowering PASS＋ace-av 1413/1421（抖动隔离绿）＋tc 262/4＋六套件复跑 | blockers: 无（ace-semantics `sema_boundary` 与 host `p984_embed` 为主检出同红存量，具名移交）| next: 默认切换收尾刀或其余 M2-B 批次
 ## 10. 待澄清事项
 
 **Q-982-2（2026-11-19，argv 入口面裁定——B-EXEC 移交项，round 190 核定）**。ACE 车道接通脚本 argv 需先裁定**源面形状**（生产者侧刀）：legacy 契约＝`auto <file> [args...]` → `process.args()` 返回 List＝[程序路径]+透传（Plan 524 三态、空格原样、a2r 同形）；真实消费者＝`examples/a2rs/03_image_scraper.at`。ACE 侧现状：`AceRequest.args` 具名拒 `ace.args/unsupported`（零丢弃零回退）；AV 有 `execute_entry(args)` 机制但**入口合同不收 List 形参**（`owned_entry_ok` 仅 scalars/Char/StrView）且无 argv native。候选形二选一（或另提）：①**list 形参入口车道**——`fn main(args …)` ＋owning-handle 纪律＋能力键（镜像 round-185 文本车道 `ac.runtime.text.v1` 纪律）；②**argv native**（`process.args()` 同名面，host 提供表）。裁定后 CLI 侧即通（`script_args` 已送至拒绝点）；验收口径已定＝参数顺序、空串、Unicode。read_line（round 52 ISA）同谱系可并案。

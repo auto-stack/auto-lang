@@ -259,6 +259,10 @@ fn main() int {
 /// Lane boundary (pinned): TextRecord-domain stdlib modules (std.text's
 /// `str` family) are NOT part of the aggregates packages lane — the mixed
 /// graph rejects with the named diagnostic, never silently.
+/// PLAN-982（aggregates 文本入口裁定，round 198）：aggregates 面**参数位**
+/// 开始收借用 `str`（受检文本入口专属），std.text 的拒因由 parse 的
+/// `source.unsupported` 前移为车道门的 `source.text-entry-param`（非入口
+/// fn 不得带 `str` 形参）——边界不变（具名拒、绝不静默），拒因更精确。
 #[test]
 fn stdlib_list_946_text_modules_not_in_aggregates_lane() {
     let mut inputs = stdlib_inputs();
@@ -277,7 +281,10 @@ fn stdlib_list_946_text_modules_not_in_aggregates_lane() {
     assert!(
         err.iter().any(|d| {
             d.module.contains("text")
-                && d.diagnostic.code == "source.unsupported"
+                && matches!(
+                    d.diagnostic.code.as_str(),
+                    "source.unsupported" | "source.text-entry-param"
+                )
                 && d.diagnostic.message.contains("str")
         }),
         "expected the named str reject on std::text, got: {:?}",

@@ -704,6 +704,18 @@ pub struct UnitView<'a> {
 }
 
 impl crate::av::ModuleView for UnitView<'_> {
+    /// PLAN-982（aggregates 文本入口裁定，2026-11-19）：入口实参准入按**入口
+    /// 所属单元**的声明回答——车道门在入口带借用 `str` 形参时把
+    /// `ac.runtime.text.v1` 写入受检产物（`split_units` 逐单元携带），
+    /// `execute_program_text_platform` 的入口单元核对同源。
+    fn has_text_entry_capability(&self) -> bool {
+        self.snap
+            .code
+            .get(self.entry() as usize)
+            .map(|c| c.unit().module().has_text_entry_capability())
+            .unwrap_or(false)
+    }
+
     /// PLAN-973: host imports resolve against the OWNING unit's module
     /// (indices are unit-local on the split-unit link path).
     fn host_import_at(&self, func: u32, idx: u32) -> Option<crate::mir::MirHostImport> {

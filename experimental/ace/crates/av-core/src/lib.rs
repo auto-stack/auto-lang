@@ -51,7 +51,8 @@ pub use abc_verify::{
 pub use av::{
     execute, execute_entry, execute_entry_reference, execute_platform, execute_program,
     execute_program_platform, execute_program_reference, execute_program_steps,
-    execute_program_steps_after_init, execute_reference, resume_program, CancelCheck, CancelFlag,
+    execute_program_steps_after_init, execute_program_text_platform, execute_reference,
+    resume_program, CancelCheck, CancelFlag,
     DebugFrame, DebugLocal, DebugPosition, DebugSnapshot, ExecLimits, ExecTrace, PausedRun,
     PlatformSessionSummary, SteppedOutcome,
 };

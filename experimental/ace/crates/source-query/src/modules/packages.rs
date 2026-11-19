@@ -104,6 +104,39 @@ pub fn compile_bound_packages_aggregates(
 ) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
     let resolved = resolve_with(&bound.program, caps, SourceProfile::Aggregates)
         .map_err(|ds| locate_all(&bound, ds))?;
+    // PLAN-982（aggregates 文本入口裁定，2026-11-19）：**入口专属纪律＋受检
+    // 产物能力写入**。借用 `str` 形参只属于入口 `fn main(input str)`（受检
+    // 文本入口，`ac.runtime.text.v1` 谱系）；非入口 fn 带 `str` 形参 ⇒ 具名
+    // 拒绝。入口带借用 `str` 形参 ⇒ 能力写入受检产物（运行端从入口所属单
+    // 元核对能力与 `StrView` 签名——`execute_program_text_platform` 前门）。
+    // 绑定层把非入口 fn 改名（`p3_<mod>_<name>`），入口保持裸名——这是车道
+    // 内入口身份的结构性判据。
+    let mut entry_takes_text = false;
+    for f in &resolved.fns {
+        if !f
+            .params
+            .iter()
+            .any(|p| matches!(p, ace_core::source::resolve::VT::Str))
+        {
+            continue;
+        }
+        if f.name == "main" {
+            entry_takes_text = true;
+        } else {
+            return Err(locate_all(
+                &bound,
+                vec![Diagnostic::new(
+                    ace_core::atom_text::Stage::Text,
+                    "source.text-entry-param",
+                    format!(
+                        "borrowed `str` parameters are the text entry's own face                          (`fn main(input str)`); `{}` is not the entry",
+                        f.name
+                    ),
+                    f.name_span,
+                )],
+            ));
+        }
+    }
     typecheck_with(&resolved, SourceProfile::Aggregates).map_err(|ds| locate_all(&bound, ds))?;
     let parts = emit_resolved_packages_parts_profile(
         &resolved,
@@ -112,8 +145,11 @@ pub fn compile_bound_packages_aggregates(
         SourceProfile::Aggregates,
     )
     .map_err(|ds| locate_all(&bound, ds))?;
-    let checked =
+    let mut checked =
         ace_core::verify::verify_closures(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
+    if entry_takes_text {
+        checked.require_capability(ace_core::text_resources::RUNTIME_TEXT_CAPABILITY);
+    }
     Ok(PackageProduct {
         compiled: CompiledSource {
             profile: parts.profile,
