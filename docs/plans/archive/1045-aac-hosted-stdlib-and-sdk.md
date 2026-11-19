@@ -4,9 +4,9 @@ status: archived
 feature_name: AAC hosted标准库需求落地与原生SDK消费
 author: [Codex]
 created_at: 2026-11-14
-updated_at: 2026-11-19
+updated_at: 2026-11-20
 plan_revision: 6
-current_step: 7
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1056]
 supersedes_spec_components: [docs/specs/stdlib/design/ace-host-services.md]
