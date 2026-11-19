@@ -1175,10 +1175,13 @@ fn value_token(vals List<int>, v int) int {
     return -1
 }
 
-/// `fields { a: T; b: U }` or `containers { name: [tags] }`: every item name is
-/// a field name of the declaring tag. For `containers`, the name is ALSO
-/// registered as a node tag (the group node that holds those children), with no
-/// fields of its own.
+/// `fields { a: T; b: U }`: every item name is a named field of the declaring
+/// tag. `containers { name: [tags] }`: the name is a CHILD TAG only (the group
+/// node that holds those children), with no fields of its own — the real
+/// descriptor keeps container names in `spec.containers`
+/// (`crates/core/src/descriptor.rs:446-449`) and admits a named field only from
+/// `spec.fields` plus the slot mapping (`:815-833`), so `module(types: …)` is
+/// `bind.unknown-field`, while `module { types { … } }` is the legal spelling.
 fn add_group_fields(
     bs List<int>,
     toks List<int>,
@@ -1189,7 +1192,7 @@ fn add_group_fields(
     fspan List<int>,
     pool List<int>,
     ti int,
-    as_tags int
+    tags_only int
 ) int {
     let fs = nodes.get(group * 8 + 3)
     let fc = nodes.get(group * 8 + 4)
@@ -1198,11 +1201,12 @@ fn add_group_fields(
         let t = flds.get((fs + i) * 2)
         let a = toks.get(t * 3 + 1)
         let b = toks.get(t * 3 + 2)
-        field_add(meta, fspan, pool, ti, bs, a, b)
-        if (as_tags == 1) {
+        if (tags_only == 1) {
             if (tag_index(meta, pool, bs, a, b) < 0) {
                 tag_add(meta, pool, bs, a, b)
             }
+        } else {
+            field_add(meta, fspan, pool, ti, bs, a, b)
         }
         i = i + 1
     }

@@ -757,6 +757,55 @@ fn atom_real_schema_slot_field_mapping() {
     );
 }
 
+/// N-7: a `containers { name: [tags] }` entry is a CHILD TAG, never a named
+/// field of its parent. The real binder keeps container names in
+/// `spec.containers` (`crates/core/src/descriptor.rs:446-449`) and admits a
+/// named field only from `spec.fields` plus the slot mapping (`:815-833`), so
+/// `module(types: …)` / `module(bodies: …)` are `bind.unknown-field` (9) while
+/// `module { types { … } }` is the legal spelling (0). The two field controls
+/// (`path` = declared field, `bogus` = undeclared) pin that the whitelist still
+/// works in both directions after the change.
+#[test]
+fn atom_real_schema_container_names_are_tags_not_fields() {
+    let schema = real_schema();
+    let container_as_field = "hir(schema: \"s\") {\n    module(types: 1) {}\n}\n";
+    let container_as_field2 = "hir(schema: \"s\") {\n    module(bodies: 1) {}\n}\n";
+    let declared_field = "hir(schema: \"s\") {\n    module(path: \"p\") {}\n}\n";
+    let undeclared_field = "hir(schema: \"s\") {\n    module(bogus: 1) {}\n}\n";
+    let container_as_child = concat!(
+        "hir(schema: \"s\") {\n",
+        "    module {\n",
+        "        types {\n",
+        "            type(id: \"t\", kind: i32) {}\n",
+        "        }\n",
+        "    }\n",
+        "}\n"
+    );
+    let src = format!(
+        "use app.atom_data.canonicalize_with_schema\nuse app.atom_data.status_of\n\
+         use app.digest.hex_bytes\nfn main() Str {{\n    var cs = List<int>.new()\n\
+         \x20   let s = {}\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s.clone(), {})))\n\
+         \x20   cs.push(status_of(canonicalize_with_schema(s, {})))\n\
+         \x20   return hex_bytes(cs)\n}}",
+        auto_lit(&schema),
+        auto_lit(container_as_field),
+        auto_lit(container_as_field2),
+        auto_lit(declared_field),
+        auto_lit(undeclared_field),
+        auto_lit(container_as_child)
+    );
+    assert_eq!(
+        run_text("atom-real-schema-containers", &src),
+        "0909000900",
+        "container-as-field = 9, second container-as-field = 9, declared field = 0, \
+         undeclared field = 9, container-as-child-node = 0"
+    );
+}
+
 /// The real-schema mode emits the SAME canonical layout as the schema-free mode
 /// (one writer): a small legal HIR document canonicalized under
 /// `core-i32.atom` must equal the bytes written from the writer rules — the

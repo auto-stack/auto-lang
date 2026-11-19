@@ -155,9 +155,13 @@ threads-required = "num-test-threads"
 
 
 # PLAN-1056 N-4: bind the `ace-aac` fixed group's cases to the bounded group
-# declared above. The filter is the whole test PACKAGE (both test binaries), so
-# the fixed-group run, the explicit `--config-file` run and any ad-hoc
-# `cargo nextest run -p ace-aac-support-conformance` all get the same limit.
+# declared above. The filter is the whole test PACKAGE (both test binaries), and
+# the bound applies only when THIS config file is loaded — the fixed-group run
+# (`cargo t ace-aac`) and an explicit
+# `cargo nextest run -p ace-aac-support-conformance --config-file ../../.config/nextest-full.toml`.
+# An ad-hoc `cargo nextest run -p ace-aac-support-conformance` WITHOUT
+# `--config-file` uses the default discovery (no `[test-groups]` section at
+# all), so it is NOT group-limited (PLAN-1056 N-8).
 [[profile.default.overrides]]
 filter = "package(ace-aac-support-conformance)"
 test-group = "ace-aac"

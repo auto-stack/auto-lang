@@ -165,7 +165,8 @@ admission 上限：`default_max_payload() = 4 MiB`，`default_max_items() = 6553
 
 schema 表的读取规则：`nodes { node TAG { … } }` 下每个 `node` 的第一个 primary 是 tag 名；
 允许字段名 = 其 `fields { … }` 体的条目名 + 其 `slots: [ … ]` 按真实 descriptor 映射得到的
-**字段拼写** + 其 `containers { name: [tags] }` 的字段名。`slots:` 的条目是**位序槽种类**，
+**字段拼写**；`containers { name: [tags] }` 的条目名**只注册为节点 tag**（分组子节点），
+**不**成为父节点的允许字段。`slots:` 的条目是**位序槽种类**，
 不是字段名；真实 descriptor（`crates/core/src/descriptor.rs:815-822`）只按下列规则为其
 接纳具名字段：
 
@@ -177,8 +178,11 @@ schema 表的读取规则：`nodes { node TAG { … } }` 下每个 `node` 的第
 
 因此 `type t_i32 i32` 的具名写法是 `type(id: "t", kind: i32)`；把标签字面量本身
 （`Id`/`TypeKind`）当字段名会**双向反向**：拒绝真实 binder 接受的具名写法，又接纳它
-以 `bind.unknown-field` 拒绝的 `type(Id: …)`。**container 名本身也是合法节点 tag**（它就是
-承载这些孩子的分组节点，如 `types { type … }`、`bodies { … }`），作为分组它不接受字段。
+以 `bind.unknown-field` 拒绝的 `type(Id: …)`。**container 名本身是合法节点 tag**（它就是
+承载这些孩子的分组节点，如 `types { type … }`、`bodies { … }`），但**不是**父节点的字段：
+真实 descriptor 把 container 放在 `spec.containers`（`crates/core/src/descriptor.rs:446-449`），
+具名字段只对 `spec.fields` + 槽映射校验（`:815-833`），故 `module(types: …)` 是
+`bind.unknown-field`（9），而 `module { types { … } }` 合法（0）。
 `statements:`/`inline:` 在该方言里是**子/内联 tag 声明**而不是字段名，故不进入字段集合。
 字段/孩子的**归属关系**（`containers` 成员、`branches` require/forbid、内联 tag 位置）
 不在本层检查，归 1047/1053 与其余语义绑定。
