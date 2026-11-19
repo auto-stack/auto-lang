@@ -106,6 +106,16 @@ next_responsible_role: work（T-02 刀A 起）
 
 **残余（T-02 记账项）。** quick_switcher/AutoNotes app.at 整源按既名墙保留（981 合同 use 块/`use { package }` 域决策）；n_assigns census 漂移记账、AC-LIF-07 记账、owned-wrap 统一决策、#6p 分支内调用形谱系归档——随 T-03/收尾轮落档。
 
+2026-11-19 stage: work（刀C：str 边界统一——原 980 §10-1 owned-wrap 统一决策**收口** + T-03 浏览器档）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass | worktree: lang-1072 双仓 | task_ids: T-02（owned-wrap 决策）/T-03（浏览器档）。
+
+**裁定（§10-1 收口，证据驱动）。** 宿主（Vue ref/SFC 形参）以**普通 JS 字符串**承载 str 状态与形参；rt 文本值（Uint8Array/A2xOwnedStr）只存在于表达式求值内部。宿主映射层 `marshal_str_boundary`：读=`a2x_str_lit` 包裹、写=解码 `a2x_str_utf8`+释放 owned 副本、owned-swap 快照行与旧值释放块删（宿主 GC 拥有字符串）。红相（005 产品浏览器档实证）：`a2x_str_ne(email.value,…)` trap "text value is not UTF-8 bytes"、`a2x_str_free(旧串)` trap "cannot free a non-text value"——lang 侧 rt 语义发射对 rt 世界正确，差异只在宿主边界（本层承载）。与 handler 面的差异归档：状态函数道/检查函数道/λ 道三道统一经本层（此前 981 检查函数道在宿主的 str 形参同样未执行实证——005 首次真执行）。
+
+**T-03 浏览器档（V-B-WEB 真浏览器/事件/绑定 vs 源 expected）。** 新 rig `test_005_login.mjs`（七判据：初始无错/空提交双必填/输入 email 清一错/输入密码全清/主题三按钮/已填提交零错/零 page error）+ 005/010 产品浏览器档 driver（lane 产物原样落盘零注入）：**005 七判据全绿、010 同 legacy 行为 oracle（三字段输入绑定+提交回执+零 page error）在受检 lane 产物全绿**。五处既有断言具名修订（marshal 包裹形：param_environment/on_if/wiring×3）。
+
+**门禁。** plan1072 **5/5**（含浏览器档）、ace_ts_provider 串行 **27/27**、package_sfc **8/8**、U0 002 **2/2**、notes fp **1/1**、tool wiring **1/1**、010 form **1/1**。
+
+next_responsible_role: work（T-03 剩余：setup/watch/expose 核对与错误恢复面、旧新映射表落档、残余记账；随后 T-04 review）
+
 ## 10. 待澄清事项
 
 T-01 已核（§9 收据）：原用例位置/依赖接口/生产入口冻结完毕；005/010 墙与路由已勘定。遗留观察项：①auto-ui master 未提交 WIP（examples/stylekit、packages/themes `.at` 删除族）owner 未明——merge 落地前需路由，非本计划阻塞；②owned-wrap 统一（原 980 §10-1 谱系）与 #6p 分支内调用形承载随 T-02 残余记账按证据决策。
