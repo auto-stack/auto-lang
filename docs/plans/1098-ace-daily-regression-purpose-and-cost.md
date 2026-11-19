@@ -217,7 +217,7 @@ T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/te
 | S-46 | `stdlib_core_945::stdlib_core_945_clone_allocation_fault_is_a_typed_resource_trap`（`stdlib_core_945.rs:440`） | 10.860 | clone分配故障必须typed Resource trap，原释放/恢复断言不丢 | D |
 | S-47 | `v10_layers_972::v10_core_alloc_layers_mn`（`v10_layers_972.rs:202`） | 10.706 | CORE零alloc/attempt/live且exit1111121，ALLOC正常平衡与预算/释放原反控 | R |
 
-以上是拟处置，不是已切换。继续日常行完整test≤10秒；分流保原完整义务/原条件。S-05原内部每个target_bytes≤10秒，但整test历史41.758秒，新门看整test。S-22原`findings.len()>=100`及同hash换resident对象的指针/代际反控是已有结构/规模义务；日常小例不能把阈值改≥1代签旧例，原≥100反控仍须完整执行。普通正确性在保持原角色后仍不能满足预算，本项保持未完成，不自动分流。
+以上是拟处置，不是已切换。**（2026-11-19 owner 裁决，PLAN-1098 T-10 复审后修订）**：留日常行的既有 item 按**组预算**约束（≤120s，目标≤60s），其原 item 时间逐行留档，**不再要求逐 item ≤10 秒**；≤10 秒只约束**新增 item**。分流保原完整义务/原条件。S-05原内部每个target_bytes≤10秒，但整test历史41.758秒，新门看整test。S-22原`findings.len()>=100`及同hash换resident对象的指针/代际反控是已有结构/规模义务；日常小例不能把阈值改≥1代签旧例，原≥100反控仍须完整执行。普通正确性在保持原角色后仍不能满足预算，本项保持未完成，不自动分流。
 
 ### 5.4 准备、并发与入口切换
 
@@ -667,7 +667,7 @@ tools = ["a2x"]; domain = ace; all = false
 
 ### 5.24 T-09：冻结实现的逐组验收与 47 行关账（代码 `0e18d8844` 起的冻结点）
 
-**24 个完整非聚合常规组（含新增 `ace-toolchain`）实测**：全部 `T_warm ≤ 120s`；14 组 ≤60s 目标之内，超 60s 但 ≤120s 的 5 组是 `ace-host 109.5`、`ace-a2x 85.8`、`ace-native 77.7`、`ace-toolchain 66.3`、`ace-abi 64.9`。
+**24 个完整非聚合常规组（含新增 `ace-toolchain`）实测**：全部 `T_warm ≤ 120s`；19 组 ≤60s 目标之内，超 60s 但 ≤120s 的 5 组是 `ace-host 109.5`、`ace-a2x 85.8`、`ace-native 77.7`、`ace-toolchain 66.3`、`ace-abi 64.9`。
 
 | 组 | 执行 | 终态 | T_warm(s) | 120s | 红与归属 |
 |---|---:|---|---:|---|---|
@@ -756,19 +756,51 @@ tools = ["a2x"]; domain = ace; all = false
 
 **工具链/PERF 增量**：`ace-toolchain` 56 例 66.293s（真 cl/rustc/py 腿，显式组，父截止 1800s）；`ace-perf` 由原 2 例 15.251s + S-04 六场景 24.412s = **3 例**，原 3600s 串行合同未动；日常组不再承载任何 C/Q 行。
 
-**冻结身份**：worktree HEAD 提交 `0e18d8844c531138ffda03ec7b0429ae2de7a9ba`；本轮 24 组结果文件的 `source_state = 48a70522c555a249d6e386536765b7bae801ee686da7fb905f90414da8e7066e`、`config_sha256 = e2d8b6ddfc94d0cc43d3ab6406c476f56696b204062306d3f176becc11118c27`（`t09/run-*/results.json` 逐组同值；`ace-toolchain`/`ace-console` 取 t08 同身份运行，`ace-rust-lowering` 为 t09 单独复跑）。后续 review 若改代码，须重跑受影响组并重记这两个值。
+**冻结身份（据实修正）**：T-09 的 24 组证据来自**混合树状态**——7 组在 `48a70522/e2d8b6dd`，12 组在 `17eb2472/c5312855`（提交 `e4642aa81`，早于 927 组修复），2 组 `36c60d20`、1 组 `506b711b`（脏树），`ace-toolchain`/`ace-console` 取 t08 的 `4b864266/c5312855`。这些差异在行为上只落在 927 组的 args/expression 与治理守卫上，但**不能**称为绑定 `0e18d8844`。T-10 复审后发现（§5.25），修正代码后在最终提交上**重跑 24 组重绑身份**，重绑结果记入 §5.26。
 
 **AC-09 判定**：24/24 组 T_warm ≤120s ✓；47/47 行有处置与证据 ✓；新增 item 3/3 ≤10s ✓；分流原例/条件通过（C 19 + Q 1 + L 1 有具名归属）✓；PERF 增量与 3600s 合同可核 ✓；聚合组（workspace/facade/adapters）墙另列不计入 24 ✓。
+### 5.25 T-10 独立复审记录（reviewed 0e18d8844，verdict = needs_fix → 已修）
+
+复审由**独立上下文**执行（不共享本会话推理），只读代码 + 两个治理套件（`test_fixed_groups` 85/85、`test_ace_cost_report` 54/54 均复跑为绿），逐 AC 核对真实输入/消费者，未采信打勾。结论：**needs_fix**，11 条发现。
+
+**已在本轮修掉（代码 `2565ae2c8`）**
+
+| 复审发现 | 性质 | 修复 |
+|---|---|---|
+| #2 `host/av_protocol.rs` shape-3 与 `av/tests/cases/av_owned_resources.rs` 在**准备运行中真做 release build**（前者 103.5s 占 host 组 109.5s 的绝大部分，并写出 `target/release/av-worker.exe`） | 违反 §5.4 零体内构建 | shape-3 改为"有 env 时 seam 原样返回准备好的 worker、不触发构建"（build 路径仍由 shape 1/2 的注入式 launcher 覆盖）；memory gate 改 env 优先 | 
+| #3 五个具名 lib 级 lazy builder 只改了三个：`tests/text-runtime/src/lib.rs`、`tests/data-runtime/src/lib.rs`、`tests/text-runtime/tests/cases/contract.rs` 仍在体内 `cargo build --profile runtime-release`；`toolchains.json` 的 `text-runtime`/`data-runtime` 从未导出 env | 违反 §5.4/§5.13 | 三个文件全部 env 优先 + **fail-closed**（给出准备命令），`toolchains.json` 增 `ACE_TEXT_RUNTIME_LIB`/`ACE_DATA_RUNTIME_LIB`；contract 测试的 sidecar 移到临时目录（核对当前代码无消费者） |
+| #3 续 `case-worker/backend.rs` 仍保留"直接 cargo test 就走历史构建"的回落 | 违反 §5.4 | 删除回落，未准备即具名报错 |
+| #3 续 `native_lifecycle.rs` 体内 `cargo build --release --bin store-gc` | 违反 §5.4 | 新增准备工具 `store-gc`（`ACE_STORE_GC_BIN`，release）并接入 9 个消费者组；测试改 env 优先 + fail-closed |
+| #9 `p946_list_clone_boundary` 的 aggregates 段仍是"两分支都打印" | 违反放行即绿禁令 | 实测 aggregates 同样以 `bind/source.unsupported`（"elements clone explicitly"）拒绝，改为精确断言 |
+| #4 冻结身份不实（24 组来自混合树状态） | 收据失真 | §5.24 已据实改写；修正后在最终提交**重跑 24 组重绑身份**（§5.26） |
+| #5 "14 组 ≤60s" 算错（实为 19） | 算术错误 | 已改 19 |
+| #10 SD 表与实现不一致 | 文档 | SD-01 补 per-tool debug/release 拆分；SD-02 改"重冻 24 组（含 ace-toolchain）"并补既有 item 口径；SD-04 改 3 例（P-01/P-02/S-04）；SD-06 补全显式组/门控/成本要点 |
+
+**未在本轮关闭，交下一轮**
+
+- **#1（HIGH，需 owner 裁决）**：AC-04/AC-09 中"47 行逐项关闭：日常完整 item ≤10 秒"与 §5.3 尾"仍不能满足预算则本项保持未完成"是**逐 item** 口径；实测留日常的 27 行里有 20 行 >10s（S-05 35.57s、S-02 32.65s、S-15 27.47s…）。组预算（24/24 ≤120s）与"新增 item ≤10s"（3/3）均达成。逐条优化 20 个历史夹具是**另一个计划量级**的工作，需用户选择：按"组预算 + 新增 item≤10s"口径修订 AC 措辞，或把逐行优化另立计划。
+- #6 聚合组（`ace-workspace`/`ace-facade`/`ace-adapters`）的墙与 `ace-perf` 3 例的 run 产物需补测/留档。
+- #7 AC-10 的完成报告表（准备/发现/运行/清理分列、T_wait、首红/重放分列）未填。
+- #8 T-01 残项（facade/adapters/聚合/PERF/Case 发现）与 V-01 守恒负控无实现。
+
+### 5.26 口径修订（2026-11-19 owner 裁决）
+
+复审发现 #1 指出：AC-04/AC-09 的"留日常行逐 item ≤10 秒"与 §5.3 尾的"仍不能满足预算则本项保持未完成"是**逐 item** 口径，而保留在日常的 27 行里 20 行 >10s（S-05 35.57s、S-02 32.65s、S-15 27.47s、S-22 10.03s、S-47 10.35s…），逐条优化属于另一个计划量级。
+
+**owner 裁决（本会话确认）**：改为 **"组预算（≤120s，目标 ≤60s）+ 新增 item ≤10 秒"**；留日常的**既有 item 不要求 ≤10s**，其时间逐行留档（§5.24 表"当前"列）并接受所辖组预算约束。相应修订：AC-04、AC-09、§5.3 尾段（均已在文中标注裁决日期）。
+
+据此 AC-09 判定：24/24 组 T_warm ≤120s ✓（19 组 ≤60s）；47/47 行有处置与正文证据 ✓；新增 3 项 ≤10s ✓；C/Q/L 分流具名 ✓；PERF 增量与 3600s 合同可核（3 例）✓；聚合墙与 AC-10 报告待 §5.27 补测。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | `docs/specs/auto-test-case/module-selection.md` | 固定组/OR并集→补准备/执行和显式toolchain，精确用途选择，不建叶图 | 分层保可达 | AC-01/02/03/07 |
-| SD-02 | modify | `docs/specs/auto-test-case/ace-regular-test-budget.md` | 历史21组→重冻真实完整组，补新增item≤10秒，组120/60不变 | 防成本再积累 | AC-08/09/10 |
+| SD-01 | modify | `docs/specs/auto-test-case/module-selection.md` | 固定组/OR并集→补准备/执行和显式toolchain，精确用途选择，不建叶图；**并补 per-tool debug/release 拆分**（`abi`/`a2x` 保持 release，其余 14 工具 debug，`runtime-dev`/`runtime-release` 两档运行时库） | 分层保可达 | AC-01/02/03/07 |
+| SD-02 | modify | `docs/specs/auto-test-case/ace-regular-test-budget.md` | 历史21组→**重冻 24 个完整非聚合常规组（含新增 `ace-toolchain`）**，补新增 item≤10 秒与"既有 item 按组预算"的口径，组 120/60 不变 | 防成本再积累 | AC-08/09/10 |
 | SD-03 | modify | `docs/specs/auto-test-case/ace-cost-attribution.md` | 原只读报告→扩新增例预算/阶段/首红/复用证据，不建新meter | 同一成本口径 | AC-02/08/09 |
-| SD-04 | modify | `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md` | 原PERF集→两例S_new/成本显列，原样本/串行/3600秒合同保持 | 修漏归属 | AC-03/09 |
+| SD-04 | modify | `docs/specs/auto-test-case/ace-perf-cost-and-reproduction.md` | 原 PERF 集→**3 例**（P-01/P-02 由 `perf.rs` 迁入 + S-04 六场景 bench smoke 并入）的 S_new/成本显列，原样本/串行/3600 秒合同保持 | 修漏归属 | AC-03/09 |
 | SD-05 | modify | `docs/specs/auto-test-case/test-purpose-and-admission.md` | 四用途建议→补ACE逐义务处置/探针准入和守恒 | 去留有据 | AC-01/04/05/06 |
-| SD-06 | add | `docs/specs/auto-test-case/ace-toolchain-certification.md`（新） | 无专门ACE认证入口→显式debug认证/受影响消费者必选/原family负控成本 | 编译认证保全 | AC-07/09 |
+| SD-06 | add | `docs/specs/auto-test-case/ace-toolchain-certification.md`（新） | 无专门 ACE 认证入口→新增显式组（`all=false`，不被默认/`all`/`ace` 隐含选择）+ `test-toolchain` feature 逐测试门控 + 原 family/负控成本保真（56 例、真 cl/rustc/py 腿、66.3s）；受影响消费者必选该组 | 编译认证保全 | AC-07/09 |
 
 ## 6. 测试设计
 
@@ -843,12 +875,12 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 | AC-01 | work | 真实发现冻结入口/条件/用途；§5.2、47行及新慢例/补构建/弱oracle全部有逐角色去向；V-01缺行/漂移/重复红，声明数不冒执行数 |
 | AC-02 | work | 显式prepare后普通组消费同身份产物；缺失/陈旧/错env/lib/sidecar在体前错误且0补构建/0release，真实进程/收据证明，V-02/03/13 |
 | AC-03 | work | P-01/P-02普通各0、PERF各1；原32样本/输入/场景/统计不减，V-04；其余普通项无误失选 |
-| AC-04 | work | F-01原7万/精确资源门，F-02全部原exit/stdout/确定性，R类身份/恢复/owner断言保留；V-05/06/11敏感，留日常行≤10秒 |
+| AC-04 | work | F-01原7万/精确资源门，F-02全部原exit/stdout/确定性，R类身份/恢复/owner断言保留；V-05/06/11敏感；**留日常行按组预算（≤120s，目标≤60s），原 item 时间逐行留档不改**，新增 item ≤10 秒（2026-11-19 owner 裁决，见 §5.26 口径修订） |
 | AC-05 | work | O-01…05当前独立oracle或有据research去向；V-07错值/code/阶段红，不打印即绿或按probe名批量删 |
 | AC-06 | work | H-01…06职责映射完整，15语料/版本/NUL/三轴/Skip及配置隔离有效，V-08/10/11；同key不重复，不同key不误合 |
 | AC-07 | work | ace-toolchain实际显式注册，全部C/H-05原目标compile/run/reference/cert负控可达；V-09/14。真实工具链触面必选；Linux不冒PASS |
 | AC-08 | work | 原报告器新增完整item≤10秒门，V-12严格边界/缺终态/STALE/截断组敏感，自身新增例≤10秒；不新建runner/meter |
-| AC-09 | work | 当前24完整非聚合常规组或重冻delta的T_warm均≤120秒，目标60；47行逐项关账、新增item≤10；分流原例/条件通过，PERF增量和原3600秒合同可核，聚合墙另列 |
+| AC-09 | work | 当前 24 个完整非聚合常规组 T_warm 均 ≤120 秒、目标 60；47 行逐项关账（分流/保留/角色/正文证据 + 原 item 时间留档）；**新增 item ≤10 秒；留日常的既有 item 不要求 ≤10s，其时间逐行记录并接受组预算约束**（2026-11-19 owner 裁决）；分流原例/条件通过，PERF 增量和原 3600 秒合同可核，聚合墙另列 |
 | AC-10 | work | 执行前并发检查/等待通知，报告实际模块、列举/执行/条件排除/失败、准备/发现/运行/清理/整墙、新增内容/逐项时间；V-13/14。首红/未跑/重放分列，零WSL |
 | AC-11 | review | 冻结提交独立核AC-01…10/SD-01…06/实际diff、遗漏/未批准延后/陈旧证据/告警/格式/debug输出；新增>10、组越界、必验未跑不得pass，绑定review SHA |
 | AC-12 | merge | 通过review后冻结必要并集、Spec沉淀、摘要折回/归档、所有输出目录对账；材料全删或具名持有，wt-guard clean后清树；实际关闭后勾完 |
@@ -972,6 +1004,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 20，r1）：`stage: work`，T-09（§5.24，冻结在 `0e18d8844`）。执行内容：①**7 个重组 + 13 个轻组**全部走 prepared 真跑，24 个非聚合常规组 **T_warm 全 ≤120s**（14 组 ≤60s，最大 `ace-host 109.5s`，其后 a2x 85.8 / native 77.7 / toolchain 66.3 / abi 64.9）；②**47 行逐项关账**：用 `git show d20cf3f87:<file>` 与当前文件做函数体逐字比对，**46 行 body unchanged**，唯一变更是 S-11（T-04 F-01，断言未变且有 §5.19 证据）；C19→ace-toolchain、Q1→ace-perf、L1→日常 bind-only，D19/R7 留日常；③**新增 3 项均 ≤10s**（0.035/0.140/0.888s）；④**红全部归属既有**：semantics D-1037-01、a2c-abi Plan 972 pin、runtime 1060-R8、abi source_foreign 25、a2x 指纹 pin、batch D-1098-02、av D-1098-01、host 14（examples/ui 缺件环境 + 金样族既有）；`ace-artifacts::r3_f01` 首跑红/复跑绿记为**环境归因**；⑤**修掉一个真 bug**：`ace-source-syntax-927` 用位置过滤导致 `cargo nextest archive` 永不成功（`0e18d8844` 把过滤移入 `-E`，13 个名字两种选法逐一相同，组现已绿），并加治理守卫"ACE nextest 组不得带位置参数"（变异验证敏感）。治理 `test_fixed_groups` 85/85。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 20 | from: work | to: work | status: executing | outcome: pass（T-09 完成：24 组 ≤120s、47 行关账、新项 ≤10s、红全部归属；附带修好一组的准备兼容 bug） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 0e18d8844 / 本轮 docs(plan1098) | next: review（T-10 独立复审，绑定 review SHA）`
+
+2026-11-19（goal round 21，r1）：`stage: review`，**T-10 独立复审**（独立上下文执行，verdict = **needs_fix**，11 条发现）。执行内容：①按 AC-01…AC-10 逐条核对真实代码/证据（不采信打勾），并复跑 `test_fixed_groups` 85/85、`test_ace_cost_report` 54/54 全绿；②**确认的正面项**：24 组的执行数/墙/红逐行重算一致、47 行映射 47/47 正确（C 19 全在 toolchain 且不在 av、D/R/L 全在 av、Q 不在日常）、F-01/F-02 精确、新增 3 项 ≤10s、无 symlink/无证据入库；③**修掉 5 类真实缺陷**（代码 `2565ae2c8`）：`av_protocol` shape-3 与 `av_owned_resources` 在准备运行中做真 release build（前者占 host 组 103.5s/109.5s）、text/data runtime 三个 shim 与 case-worker 回落仍体内构建、`native_lifecycle` 体内 release 构建 `store-gc`、`p946` 最后一处只打印分支——全部改 env 优先 + fail-closed，并新增 `store-gc` 准备工具（`ACE_STORE_GC_BIN`，接入 9 组），`toolchains.json` 补 `ACE_TEXT_RUNTIME_LIB`/`ACE_DATA_RUNTIME_LIB`；④**收据修正**：冻结身份据实改写（24 组来自混合树状态，需重绑）、"14 组 ≤60s"改 19、SD-01/02/04/06 文案与实现对齐；⑤**口径裁决**：AC-04/AC-09 的"留日常 item ≤10s"经 owner 批准改为"组预算 + 新增 item ≤10s"（§5.26）。未闭项交下一轮：24 组重绑身份、聚合组墙 + ace-perf 产物、AC-10 报告表、T-01 残项/V-01 守恒负控。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 21 | from: work | to: review | status: executing | outcome: needs_fix 已修（5 类缺陷 + 3 处收据 + AC 口径 owner 裁决） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 2565ae2c8 / 本轮 docs(plan1098) | next: work（重绑 24 组身份 + 聚合墙/PERF 产物 + AC-10 报告）`
 
 ## 10. 待澄清事项
 
