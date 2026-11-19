@@ -286,6 +286,15 @@ fn substitute_all(p: &mut Program, served: &ServedRoot) {
                 repl(&mut ia.index, served);
                 repl(&mut ia.value, served);
             }
+            // PLAN-1082：place 链赋值替换内部表达式。
+            Stmt::PlaceAssign(pa) => {
+                for st in &mut pa.steps {
+                    if let ace_core::source::ast::PlaceStep::Index(ix) = st {
+                        repl(ix, served);
+                    }
+                }
+                repl(&mut pa.value, served);
+            }
             // PLAN-962：tuple 解构替换值表达式。
             Stmt::LetDestruct { value, .. } => repl(value, served),
             // PLAN-1081：嵌套 fn 项替换体内语句。

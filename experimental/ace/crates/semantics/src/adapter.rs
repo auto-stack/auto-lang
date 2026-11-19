@@ -529,6 +529,9 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         // PLAN-962: an index assign is an aggregates-surface effect —
         // named-unsupported on the query surface.
         core_ast::Stmt::IndexAssign(_) => return Err("index-assign statement".to_string()),
+        // PLAN-1082: a place-chain assign is an aggregates-surface effect —
+        // named-unsupported on the query surface.
+        core_ast::Stmt::PlaceAssign(_) => return Err("place-assign statement".to_string()),
         // PLAN-962: tuple destructuring likewise.
         core_ast::Stmt::LetDestruct { .. } => return Err("let-destructure statement".to_string()),
         // PLAN-962 (T-08): hold — aggregates-surface form.

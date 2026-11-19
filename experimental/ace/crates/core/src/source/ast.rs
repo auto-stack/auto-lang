@@ -707,6 +707,36 @@ pub struct IndexAssign {
     pub span: Span,
 }
 
+/// PLAN-1082: one step of a place chain — a record field or an index.
+#[derive(Clone, Debug)]
+pub enum PlaceStep {
+    Field(Ident),
+    Index(Expr),
+}
+
+/// PLAN-1082: the assignment operator of a place-chain statement; the
+/// compound spellings are the two-token `+ =`-style sequences.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PlaceOp {
+    Set,
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+/// PLAN-1082 (L-19/L-48): `base (.f | [e])* (op)= v` — the unified
+/// place-chain write. The grammar orders this after path/index assign so
+/// it only captures shapes those frozen rules do not match.
+#[derive(Clone, Debug)]
+pub struct PlaceAssign {
+    pub base: Ident,
+    pub steps: Vec<PlaceStep>,
+    pub op: PlaceOp,
+    pub value: Expr,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug)]
 pub enum Stmt {
     /// PLAN-862: an expression evaluated for its value only where the
@@ -735,6 +765,11 @@ pub enum Stmt {
     },
     /// PLAN-962 (L-48): `xs[i] = v`.
     IndexAssign(IndexAssign),
+    /// PLAN-1082 (L-19/L-48): `base (.f | [e])* (op)= v` — the unified
+    /// place-chain assignment/compound-assignment statement (mixed
+    /// field×index chains, chained indices, and compound `+= -= *= /=`).
+    PlaceAssign(PlaceAssign),
+
     /// PLAN-962 (L-15): `let (a, b, ...) = expr` — flat tuple
     /// destructuring (binding names map positionally to 0..n-1).
     LetDestruct {

@@ -1767,6 +1767,18 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             shift_expr(&mut ia.value, offset);
             sh(&mut ia.span, offset);
         }
+        // PLAN-1082：place 链赋值平移。
+        Stmt::PlaceAssign(pa) => {
+            sh(&mut pa.base.span, offset);
+            for st in &mut pa.steps {
+                match st {
+                    PlaceStep::Field(f) => sh(&mut f.span, offset),
+                    PlaceStep::Index(ix) => shift_expr(ix, offset),
+                }
+            }
+            shift_expr(&mut pa.value, offset);
+            sh(&mut pa.span, offset);
+        }
         // PLAN-1081：嵌套 fn 项平移（名/体内语句/span）。
         Stmt::NestedFn { item } => {
             sh(&mut item.name.span, offset);
@@ -2391,6 +2403,15 @@ impl<'a> Walker<'a> {
                 Stmt::IndexAssign(ia) => {
                     self.walk_expr(&mut ia.index, &locals)?;
                     self.walk_expr(&mut ia.value, &locals)?;
+                }
+                // PLAN-1082：place 链赋值走读（base 是既有局部）。
+                Stmt::PlaceAssign(pa) => {
+                    for st in &mut pa.steps {
+                        if let PlaceStep::Index(ix) = st {
+                            self.walk_expr(ix, &locals)?;
+                        }
+                    }
+                    self.walk_expr(&mut pa.value, &locals)?;
                 }
                 // PLAN-1081：嵌套 fn 项是独立函数单元（Auto 面专用；包
                 // 面不可达），本包走读不进入其内部。
@@ -3125,6 +3146,8 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::Yield { span, .. } => *span,
         // PLAN-966（T-02）：语句级 CT 的语句 span。
         Stmt::HashIf { span, .. } | Stmt::HashFor { span, .. } | Stmt::HashIs { span, .. } => *span,
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => pa.span,
         // PLAN-962：索引赋值。
         Stmt::IndexAssign(ia) => ia.span,
         // PLAN-962：tuple 解构。

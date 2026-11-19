@@ -281,6 +281,14 @@ fn walk_stmt<'a>(
                 span: item.span,
             });
         }
+        // PLAN-1082: a place-chain assign — named-unsupported on this
+        // query walk (never a silent drop).
+        Stmt::PlaceAssign(pa) => {
+            return Err(WalkError::Unsupported {
+                what: "place-assign-statement",
+                span: pa.span,
+            });
+        }
         Stmt::Let {
             name,
             ann,

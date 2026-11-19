@@ -271,6 +271,18 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             shift_expr(&mut ia.value, delta);
             shift_span(&mut ia.span, delta);
         }
+        // PLAN-1082：place 链赋值平移。
+        Stmt::PlaceAssign(pa) => {
+            shift_ident(&mut pa.base, delta);
+            for st in &mut pa.steps {
+                match st {
+                    PlaceStep::Field(f) => shift_ident(f, delta),
+                    PlaceStep::Index(ix) => shift_expr(ix, delta),
+                }
+            }
+            shift_expr(&mut pa.value, delta);
+            shift_span(&mut pa.span, delta);
+        }
         // PLAN-962：tuple 解构平移。
         Stmt::LetDestruct { names, value, span } => {
             for n in names {

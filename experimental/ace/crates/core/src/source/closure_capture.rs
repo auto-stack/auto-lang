@@ -247,6 +247,15 @@ pub(crate) fn analyze_capture_uses(
                     visit_expr(&ia.index, outer_locals, scopes, uses, by_name);
                     visit_expr(&ia.value, outer_locals, scopes, uses, by_name);
                 }
+                // PLAN-1082: a place assign reads its index/value exprs.
+                Stmt::PlaceAssign(pa) => {
+                    for st in &pa.steps {
+                        if let ast::PlaceStep::Index(ix) = st {
+                            visit_expr(ix, outer_locals, scopes, uses, by_name);
+                        }
+                    }
+                    visit_expr(&pa.value, outer_locals, scopes, uses, by_name);
+                }
                 // PLAN-962: tuple destructuring reads the value.
                 Stmt::LetDestruct { value, .. } => {
                     visit_expr(value, outer_locals, scopes, uses, by_name);
@@ -609,6 +618,15 @@ pub(crate) fn scan_shared_capture_cells(
                 Stmt::IndexAssign(ia) => {
                     visit_expr(&ia.index, scopes, shared);
                     visit_expr(&ia.value, scopes, shared);
+                }
+                // PLAN-1082: a place assign reads its index/value exprs.
+                Stmt::PlaceAssign(pa) => {
+                    for st in &pa.steps {
+                        if let ast::PlaceStep::Index(ix) = st {
+                            visit_expr(ix, scopes, shared);
+                        }
+                    }
+                    visit_expr(&pa.value, scopes, shared);
                 }
                 // PLAN-962: tuple destructuring reads the value.
                 Stmt::LetDestruct { value, .. } => visit_expr(value, scopes, shared),

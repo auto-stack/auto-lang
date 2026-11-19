@@ -616,6 +616,8 @@ fn inner_span(s: &Stmt) -> Span {
         | Stmt::HashIf { span, .. }
         | Stmt::HashFor { span, .. }
         | Stmt::HashIs { span, .. } => *span,
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => pa.span,
         Stmt::Break { span } | Stmt::Continue { span } | Stmt::Yield { span, .. } => *span,
         Stmt::IndexAssign(ia) => ia.span,
     }

@@ -32,7 +32,7 @@ use crate::identity::{CtValue, ExpectTy};
 use crate::service::{CtRequest, CtService};
 use crate::store::CtEnvelopeSink;
 use ace_core::atom_text::Span;
-use ace_core::source::ast::{Arg, Block, Expr, ExprKind, Item, Program, Stmt};
+use ace_core::source::ast::{Arg, Block, Expr, ExprKind, Item, PlaceStep, Program, Stmt};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -478,6 +478,15 @@ fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
             collect_hashes_expr(&ia.index, owner, out);
             collect_hashes_expr(&ia.value, owner, out);
         }
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => {
+            for st in &pa.steps {
+                if let PlaceStep::Index(ix) = st {
+                    collect_hashes_expr(ix, owner, out);
+                }
+            }
+            collect_hashes_expr(&pa.value, owner, out);
+        }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => collect_hashes_expr(value, owner, out),
         // PLAN-1081：嵌套 fn 项收集其体内哈希语句。
@@ -664,6 +673,15 @@ fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
         Stmt::IndexAssign(ia) => {
             callees_expr(&ia.index, out);
             callees_expr(&ia.value, out);
+        }
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => {
+            for st in &pa.steps {
+                if let PlaceStep::Index(ix) = st {
+                    callees_expr(ix, out);
+                }
+            }
+            callees_expr(&pa.value, out);
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => callees_expr(value, out),
@@ -982,6 +1000,15 @@ fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Ex
             replace_at(&mut ia.index, served, site, site_expr);
             replace_at(&mut ia.value, served, site, site_expr);
         }
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => {
+            for st in &mut pa.steps {
+                if let PlaceStep::Index(ix) = st {
+                    replace_at(ix, served, site, site_expr);
+                }
+            }
+            replace_at(&mut pa.value, served, site, site_expr);
+        }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => replace_at(value, served, site, site_expr),
         // PLAN-1081：嵌套 fn 项替换体内语句。
@@ -1221,6 +1248,15 @@ fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
         Stmt::IndexAssign(ia) => {
             find_hash_expr(&ia.index, span, found);
             find_hash_expr(&ia.value, span, found);
+        }
+        // PLAN-1082：place 链赋值。
+        Stmt::PlaceAssign(pa) => {
+            for st in &pa.steps {
+                if let PlaceStep::Index(ix) = st {
+                    find_hash_expr(ix, span, found);
+                }
+            }
+            find_hash_expr(&pa.value, span, found);
         }
         // PLAN-962：tuple 解构。
         Stmt::LetDestruct { value, .. } => find_hash_expr(value, span, found),

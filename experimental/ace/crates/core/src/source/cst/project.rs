@@ -3724,6 +3724,14 @@ enum Frame {
         name: Ident,
         span: Span,
     },
+    /// PLAN-1082：place 链 `base (.f | [e])* (op)= v` 收尾帧（vals 栈自底
+    /// 向上：idx1..idxn（源序）、value）。步骤里的占位 Expr 按弹出序回填。
+    PlaceAssignFinish {
+        name: Ident,
+        steps: Vec<PlaceStep>,
+        op: PlaceOp,
+        span: Span,
+    },
     /// PLAN-962（L-15）：`let (a, b, ...) = e` 收尾帧。
     LetDestructFinish {
         names: Vec<Ident>,
@@ -8380,6 +8388,88 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::IndexAssignFinish { name, span });
             self.stack.push(Frame::ExprEnter(value_n));
             self.stack.push(Frame::ExprEnter(index_n));
+        } else if kind == self.cx.k.place_assign_stmt.unwrap_or(u32::MAX) {
+            // PLAN-1082（T-02）：place 链 `base (.f | [e])* (op)= v`——步骤
+            // 节点按绝对区间排序；field 步直接取 ident，index 步的子表达式
+            // 压栈（vals 栈自底向上：idx1..idxn、value，源序求值）。
+            let name_leaf = self
+                .cx
+                .field_child(inner, "name")
+                .expect("place assign name");
+            let name = ident_of(&mut self.cx, name_leaf);
+            let step_kind = self.cx.k.place_step.unwrap_or(u32::MAX);
+            let mut step_nodes: Vec<u32> = self
+                .cx
+                .children(inner)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == step_kind)
+                .collect();
+            step_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            let k = &self.cx.k;
+            // the compound operators live under the `place-assign-op`
+            // rule child (plain `=` renders as the bare assign token).
+            let op_node = self
+                .cx
+                .child_of_kind(inner, k.place_assign_op.unwrap_or(u32::MAX));
+            let op = op_node
+                .and_then(|on| {
+                    if self
+                        .cx
+                        .child_of_kind(on, k.plus_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Add)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.minus_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Sub)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.star_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Mul)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.slash_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Div)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(PlaceOp::Set);
+            let mut steps: Vec<PlaceStep> = Vec::new();
+            let mut index_nodes: Vec<u32> = Vec::new();
+            for &sn in &step_nodes {
+                if let Some(f) = self.cx.field_child(sn, "field") {
+                    steps.push(PlaceStep::Field(ident_of(&mut self.cx, f)));
+                } else if let Some(ix) = self.cx.field_child(sn, "index") {
+                    index_nodes.push(ix);
+                    steps.push(PlaceStep::Index(Expr {
+                        span: self.cx.span_of(ix),
+                        kind: ExprKind::IntLit(0),
+                    }));
+                }
+            }
+            let value_n = self
+                .cx
+                .field_child(inner, "value")
+                .expect("place assign value");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::PlaceAssignFinish {
+                name,
+                steps,
+                op,
+                span,
+            });
+            self.stack.push(Frame::ExprEnter(value_n));
+            for &ix in index_nodes.iter().rev() {
+                self.stack.push(Frame::ExprEnter(ix));
+            }
         } else if kind == self.cx.k.return_stmt {
             let kw = self
                 .cx
@@ -9186,6 +9276,16 @@ impl<'a> Engine<'a> {
             // PLAN-982（CONFIG）：配置文档的空列表 `[]` ⇒ 空 `ArrayLit`。独立规则
             // 让共享的 `array-lit`（aggregates/scheduler）保持"至少一个元素"。
             if ck == self.cx.k.cfg_empty_array_lit.unwrap_or(u32::MAX) {
+                self.vals.push(Val::E(Expr {
+                    span: self.cx.span_of(c),
+                    kind: ExprKind::ArrayLit(Vec::new()),
+                }));
+                return;
+            }
+            // PLAN-1082（D-1082-04）：aggregates/auto/scheduler 的空 `[]`
+            // 同样投影为空 ArrayLit——resolve 以 `source.array-lit-empty`
+            // 具名拒（不引入空表元素类型推导）。
+            if ck == self.cx.k.empty_array_lit.unwrap_or(u32::MAX) {
                 self.vals.push(Val::E(Expr {
                     span: self.cx.span_of(c),
                     kind: ExprKind::ArrayLit(Vec::new()),
@@ -10915,6 +11015,36 @@ impl<'a> Engine<'a> {
                 self.vals.push(Val::S(Stmt::IndexAssign(IndexAssign {
                     base: name,
                     index,
+                    value,
+                    span,
+                })));
+            }
+            Frame::PlaceAssignFinish {
+                name,
+                mut steps,
+                op,
+                span,
+            } => {
+                // vals 栈自底向上：idx1..idxn（源序）、value —— 弹出 value 后
+                // 逐个弹出 index，按声明序回填进步骤占位。
+                let value = self.pop_e();
+                let n_idx = steps
+                    .iter()
+                    .filter(|st| matches!(st, PlaceStep::Index(_)))
+                    .count();
+                let mut pending = Vec::new();
+                for _ in 0..n_idx {
+                    pending.push(self.pop_e());
+                }
+                for st in steps.iter_mut() {
+                    if let PlaceStep::Index(slot) = st {
+                        *slot = pending.pop().expect("place index expr");
+                    }
+                }
+                self.vals.push(Val::S(Stmt::PlaceAssign(PlaceAssign {
+                    base: name,
+                    steps,
+                    op,
                     value,
                     span,
                 })));
@@ -12818,6 +12948,14 @@ impl GenericExpand {
                 Stmt::IndexAssign(ia) => {
                     self.resolve_typed_ctors_in_expr(&mut ia.index);
                     self.resolve_typed_ctors_in_expr(&mut ia.value);
+                }
+                Stmt::PlaceAssign(pa) => {
+                    for st in &mut pa.steps {
+                        if let PlaceStep::Index(ix) = st {
+                            self.resolve_typed_ctors_in_expr(ix);
+                        }
+                    }
+                    self.resolve_typed_ctors_in_expr(&mut pa.value);
                 }
                 Stmt::NestedFn { item } => self.resolve_typed_ctors_in_block(&mut item.body),
                 Stmt::Hold { body, .. } => self.resolve_typed_ctors_in_block(body),

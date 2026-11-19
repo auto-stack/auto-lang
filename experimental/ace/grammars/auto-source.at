@@ -2317,6 +2317,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-962（L-48）：索引赋值 `xs[i] = v`。PLAN-964：closures 面
             // 同样接受（共享对象单元格 `cell[k] = v` 动态键写）。
             alt(profiles: [aggregates, auto, closures, scheduler]) { index-assign-stmt() {} }
+            // PLAN-1082（T-02，L-19/L-48）：place 链赋值/复合赋值——置于
+            // path-assign/index-assign 之后，仅承接旧规则不匹配之形（字段×
+            // 索引混合链、多级索引链、任意复合 op，含裸名 `a += 1`）。
+            // closures 面不裁（共享单元格 `cell[k]=v` 旧形字节不动）。
+            alt(profiles: [auto]) { place-assign-stmt() {} }
             alt { return-stmt() {} }
             // PLAN-1081 (T-03)：嵌套 fn 项（auto 面）——语句位 `fn name(..) [ret] { body }`，
             // 投影为 Stmt::NestedFn（提升为模块函数表的 mangled 单元）。
@@ -2424,6 +2429,32 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             assign() {}
             expr(field: "value")
         }
+        // PLAN-1082（T-02）：place 链 `ident (.f | [e])* (op)= e`——统一
+        // 字段/索引混合链写回与复合赋值（`+= -= *= /=`，两 token 序列，
+        // 与 1072 刀B `+ =` 同形）。按声明序置于 path-assign/index-assign
+        // 之后：纯字段链 `=` 与单索引 `=` 仍由旧规则先配（冻结面字节不
+        // 变），本规则承接混合链/多级索引/复合 op。
+        place-assign-stmt(profiles: [auto]) {
+            ident(field: "name")
+            many { place-step() {} }
+            place-assign-op() {}
+            expr(field: "value")
+        }
+        place-step(profiles: [auto]) {
+            alt { dot(same-line: true) ident(field: "field") }
+            alt { lbracket(same-line: true) expr(field: "index") rbracket() {} }
+        }
+        place-assign-op(profiles: [auto]) {
+            alt { assign() {} }
+            alt { plus-assign() {} }
+            alt { minus-assign() {} }
+            alt { star-assign() {} }
+            alt { slash-assign() {} }
+        }
+        plus-assign(profiles: [auto]) { plus() {} assign() {} }
+        minus-assign(profiles: [auto]) { minus() {} assign() {} }
+        star-assign(profiles: [auto]) { star() {} assign() {} }
+        slash-assign(profiles: [auto]) { slash() {} assign() {} }
         return-stmt {
             return(field: "kw")
             expr(field: "value")
@@ -2705,6 +2736,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, auto, scheduler]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
+            // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
+            alt(profiles: [auto]) { empty-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document]) { array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler]) { is-expr() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
@@ -2740,6 +2773,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, auto, scheduler]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
+            // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
+            alt(profiles: [auto]) { empty-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document]) { array-lit() {} }
             // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
@@ -2823,6 +2858,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-982（CONFIG）：配置文档面的**空列表** `[]`（独立规则：共享的
         // `array-lit` 仍要求至少一个元素，其它面的语义不变）。
         cfg-empty-array-lit(profiles: [config-document]) {
+            lbracket() {}
+            rbracket() {}
+        }
+        // PLAN-1082（D-1082-04）：aggregates/auto/scheduler 面的空 `[]`——
+        // 语法收录、resolve 具名拒 `source.array-lit-empty`（元素类型不可
+        // 推导；显式 `List<T>.new()` 承载空表），不再是无辨识度语法错。
+        empty-array-lit(profiles: [auto]) {
             lbracket() {}
             rbracket() {}
         }        array-elems(profiles: [aggregates, auto, scheduler, config-document]) {

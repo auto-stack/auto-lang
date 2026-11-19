@@ -17,7 +17,7 @@
 //! 证明机制（whole-path 探针的载体，也是后续正式目录的基座）。
 
 use crate::atom_text::Span;
-use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, ParamMode, Program, Stmt};
+use crate::source::ast::{ClosureBody, Expr, ExprKind, FnItem, Item, ParamMode, PlaceStep, Program, Stmt};
 use crate::source::SourceProfile;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -503,6 +503,15 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                         sub.push(WalkItem::Expr(&ia.index));
                         sub.push(WalkItem::Expr(&ia.value));
                     }
+                    // PLAN-1082：place 链赋值——index/value 入队。
+                    crate::source::ast::Stmt::PlaceAssign(pa) => {
+                        for st in &pa.steps {
+                            if let crate::source::ast::PlaceStep::Index(ix) = st {
+                                sub.push(WalkItem::Expr(ix));
+                            }
+                        }
+                        sub.push(WalkItem::Expr(&pa.value));
+                    }
                     // PLAN-962：tuple 解构——value 入队。
                     crate::source::ast::Stmt::LetDestruct { value, .. } => {
                         sub.push(WalkItem::Expr(value));
@@ -701,6 +710,15 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                     Stmt::IndexAssign(ia) => {
                         work.push(WalkItem::Expr(&ia.index));
                         work.push(WalkItem::Expr(&ia.value));
+                    }
+                    // PLAN-1082：place 链赋值——index/value 入队。
+                    Stmt::PlaceAssign(pa) => {
+                        for st in &pa.steps {
+                            if let PlaceStep::Index(ix) = st {
+                                work.push(WalkItem::Expr(ix));
+                            }
+                        }
+                        work.push(WalkItem::Expr(&pa.value));
                     }
                     // PLAN-962：tuple 解构——value 入队。
                     Stmt::LetDestruct { value, .. } => {
@@ -2107,6 +2125,15 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                     Stmt::IndexAssign(ia) => {
                         work.push(WalkItem::Expr(&ia.index));
                         work.push(WalkItem::Expr(&ia.value));
+                    }
+                    // PLAN-1082：place 链赋值——index/value 入队。
+                    Stmt::PlaceAssign(pa) => {
+                        for st in &pa.steps {
+                            if let PlaceStep::Index(ix) = st {
+                                work.push(WalkItem::Expr(ix));
+                            }
+                        }
+                        work.push(WalkItem::Expr(&pa.value));
                     }
                     // PLAN-962：tuple 解构——value 入队。
                     Stmt::LetDestruct { value, .. } => {

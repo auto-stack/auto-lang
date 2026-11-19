@@ -130,6 +130,18 @@ pub struct SourceKinds {
     pub cfg_empty_array_lit: Option<u32>,
     pub array_elems: Option<u32>,
     pub index_assign_stmt: Option<u32>,
+    /// PLAN-1082: the unified place-chain assignment/compound-assign
+    /// statement plus its step/op sub-rules.
+    pub place_assign_stmt: Option<u32>,
+    pub place_step: Option<u32>,
+    pub place_assign_op: Option<u32>,
+    /// PLAN-1082: the empty `[]` literal on aggregates/auto/scheduler
+    /// (named bind rejection `source.array-lit-empty`).
+    pub empty_array_lit: Option<u32>,
+    pub plus_assign: Option<u32>,
+    pub minus_assign: Option<u32>,
+    pub star_assign: Option<u32>,
+    pub slash_assign: Option<u32>,
     pub tuple_ty: Option<u32>,
     pub tuple_ty_tail: Option<u32>,
     pub tuple_lit_rule: Option<u32>,
@@ -498,6 +510,14 @@ impl SourceKinds {
             tok_r_nil: token_kind(p, "r-nil"),
             tok_r_null: token_kind(p, "r-null"),
             index_assign_stmt: rk_opt(p, "index-assign-stmt"),
+            place_assign_stmt: rk_opt(p, "place-assign-stmt"),
+            place_step: rk_opt(p, "place-step"),
+            place_assign_op: rk_opt(p, "place-assign-op"),
+            empty_array_lit: rk_opt(p, "empty-array-lit"),
+            plus_assign: rk_opt(p, "plus-assign"),
+            minus_assign: rk_opt(p, "minus-assign"),
+            star_assign: rk_opt(p, "star-assign"),
+            slash_assign: rk_opt(p, "slash-assign"),
             tuple_ty: rk_opt(p, "tuple-ty"),
             tuple_ty_tail: rk_opt(p, "tuple-ty-tail"),
             tuple_lit_rule: rk_opt(p, "tuple-lit"),

@@ -2050,6 +2050,47 @@ fn ann_mentions_age_port(ann: &ast::TypeAnn) -> bool {
     }
 }
 
+/// PLAN-1082: rebuild the READ-side AST of a place prefix (`base` plus the
+/// first `n` steps) so the ordinary expression resolver produces the chain
+/// (field reads / nested index reads) with all of its existing rules.
+fn place_read_ast(base: &ast::Ident, steps: &[ast::PlaceStep]) -> Expr {
+    let span = base.span;
+    let mut e = Expr {
+        span,
+        kind: ExprKind::Var(base.clone()),
+    };
+    for step in steps {
+        e = match step {
+            ast::PlaceStep::Field(name) => Expr {
+                span: name.span,
+                kind: ExprKind::Field {
+                    base: Box::new(e),
+                    name: name.clone(),
+                },
+            },
+            ast::PlaceStep::Index(idx) => Expr {
+                span: idx.span,
+                kind: ExprKind::Index {
+                    base: Box::new(e),
+                    index: Box::new(idx.clone()),
+                },
+            },
+        };
+    }
+    e
+}
+
+/// PLAN-1082: the arithmetic of a compound place assignment.
+fn place_bin_op(op: ast::PlaceOp) -> BinOp {
+    match op {
+        ast::PlaceOp::Add => BinOp::Add,
+        ast::PlaceOp::Sub => BinOp::Sub,
+        ast::PlaceOp::Mul => BinOp::Mul,
+        ast::PlaceOp::Div => BinOp::Div,
+        ast::PlaceOp::Set => unreachable!("Set is not a compound operator"),
+    }
+}
+
 fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
@@ -6832,6 +6873,8 @@ F:{d}
                     Stmt::NestedFn { .. } => {}
                     // PLAN-962: an index assign is an effect statement.
                     Stmt::IndexAssign(_) => {}
+                    // PLAN-1082: a place assign is an effect statement.
+                    Stmt::PlaceAssign(_) => {}
                     // PLAN-962 (T-08): hold — alias names the held local
                     // inside the body scope only.
                     Stmt::Hold {
@@ -8111,6 +8154,339 @@ F:{d}
                 }
             }
             _ => None,
+        }
+    }
+
+    /// PLAN-1082 (L-19/L-48): resolve the unified place-chain assignment
+    /// `base (.f | [e])* (op)= v`. The grammar orders this rule after
+    /// path-assign/index-assign, so the shapes arriving here are mixed
+    /// field×index chains, chained indices, and every compound
+    /// `+= -= *= /=` form (including the bare-name compound). Every
+    /// source subexpression (base prefix chain, index, rhs) hoists into a
+    /// synthetic temp exactly once in source order through the statement
+    /// sink (the pending_splice protocol keeps them ahead of the write);
+    /// the write itself rides the existing ListSet / field-path assign
+    /// machinery (no new HIR/MIR nodes).
+    fn resolve_place_assign(&mut self, pa: &ast::PlaceAssign) {
+        let span = pa.span;
+        let Some(xl) = self.lookup(&pa.base.name) else {
+            self.bind_err(
+                "source.undefined",
+                format!("no local named `{}` in scope", pa.base.name),
+                pa.base.span,
+            );
+            let _ = self.expr_iterative(&pa.value);
+            return;
+        };
+        let base_vt = self.locals[xl.0].vt;
+        let last_idx = pa
+            .steps
+            .iter()
+            .rposition(|s| matches!(s, ast::PlaceStep::Index(_)));
+
+        let Some(li) = last_idx else {
+            // ---- field-only chain (all compound field forms; a plain `=`
+            // field chain normally matched path-assign first) ----
+            let mut path: Vec<(usize, usize)> = Vec::new();
+            let mut cur = base_vt;
+            for step in &pa.steps {
+                let ast::PlaceStep::Field(seg) = step else {
+                    unreachable!("rposition guarantees fields only");
+                };
+                let VT::Rec(ri) = cur else {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "`{}` has type `{}`; place paths continue through records only",
+                            pa.base.name,
+                            cur.as_str()
+                        ),
+                        seg.span,
+                    );
+                    return;
+                };
+                match self.records[ri].fields.iter().position(|fl| fl.name == seg.name) {
+                    Some(fi) => {
+                        cur = self.records[ri].fields[fi].vt;
+                        path.push((ri, fi));
+                    }
+                    None => {
+                        self.bind_err(
+                            "source.undefined",
+                            format!(
+                                "record `{}` has no field named `{}`",
+                                self.records[ri].name, seg.name
+                            ),
+                            seg.span,
+                        );
+                        return;
+                    }
+                }
+            }
+            let mut value = self.expr_with_expect(&pa.value, Some(cur));
+            self.reject_elem_view_use(&value, "the assigned value");
+            match pa.op {
+                ast::PlaceOp::Set => {
+                    if cur == VT::StrOwned && matches!(value.kind, RExprKind::StrLit(_)) {
+                        value.vt = VT::StrOwned;
+                    }
+                    self.emit_stmt(RStmt::Assign {
+                        local: xl,
+                        path,
+                        value,
+                        span,
+                    });
+                }
+                op => {
+                    if cur != VT::I32 {
+                        self.bind_err(
+                            "source.compound-elem-type",
+                            "compound assignment on this place requires an i32 field in this profile"
+                                .to_string(),
+                            span,
+                        );
+                    }
+                    // rhs hoists FIRST (source order: rhs is the only
+                    // side-effecting subexpression on a field chain).
+                    let vl = self.agg_temp("pl_v", value.vt, false, span);
+                    self.emit_stmt(RStmt::Let {
+                        local: vl,
+                        value,
+                        span,
+                    });
+                    let read_ast = place_read_ast(&pa.base, &pa.steps);
+                    let read = self.expr_iterative(&read_ast);
+                    self.emit_stmt(RStmt::Assign {
+                        local: xl,
+                        path,
+                        value: ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::Binary {
+                                op: place_bin_op(op),
+                                lhs: Box::new(read),
+                                rhs: Box::new(ResolvedExpr {
+                                    span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::ReadLocal(vl),
+                                }),
+                            },
+                        },
+                        span,
+                    });
+                }
+            }
+            return;
+        };
+
+        // ---- index place: `.. prefix .. [index]` (+ rejected field tail) ----
+        if pa.steps[li + 1..]
+            .iter()
+            .any(|s| matches!(s, ast::PlaceStep::Index(_)))
+        {
+            unreachable!("rposition guarantees no index after the last");
+        }
+        if !pa.steps[li + 1..].is_empty() {
+            // `xs[i].f = v` — element FIELD writes ride LIST_FIELD_SET,
+            // whose source seam is not on this face yet (PLAN-1082 T-01
+            // decision D-1082-10: the records batch owns that seam).
+            self.bind_err(
+                "source.place-elem-field",
+                "writing a field of an indexed element (`xs[i].f = v`) is not part of this profile yet; replace the element (`xs[i] = v`) or project the field on the records face"
+                    .to_string(),
+                span,
+            );
+            let _ = self.expr_iterative(&pa.value);
+            return;
+        }
+
+        // base prefix: resolve the read chain (fields and/or earlier
+        // indices) and hoist once when it has any real subexpression.
+        let prefix = &pa.steps[..li];
+        let base_read = if prefix.is_empty() {
+            ResolvedExpr {
+                span: pa.base.span,
+                vt: base_vt,
+                kind: RExprKind::ReadLocal(xl),
+            }
+        } else {
+            let prefix_ast = place_read_ast(&pa.base, prefix);
+            let b = self.expr_iterative(&prefix_ast);
+            let b_vt = b.vt;
+            let bl = self.agg_temp("pl_b", b_vt, false, span);
+            self.emit_stmt(RStmt::Let {
+                local: bl,
+                value: b,
+                span,
+            });
+            ResolvedExpr {
+                span,
+                vt: b_vt,
+                kind: RExprKind::ReadLocal(bl),
+            }
+        };
+        let VT::List(lix) = base_read.vt else {
+            self.bind_err(
+                "source.index-base",
+                format!(
+                    "index assignment requires a List place, found `{}`",
+                    base_read.vt.as_str()
+                ),
+                pa.base.span,
+            );
+            let _ = self.expr_iterative(&pa.value);
+            return;
+        };
+        let elem = self.coll.lists[lix];
+
+        // index (hoisted once, in source order after the base chain)
+        let ast::PlaceStep::Index(idx_ast) = &pa.steps[li] else {
+            unreachable!("rposition guarantees an index here");
+        };
+        let index = self.expr_iterative(idx_ast);
+        if index.vt != VT::I32 {
+            self.bind_err(
+                "source.index-type",
+                "an index must be i32 in this profile".to_string(),
+                idx_ast.span,
+            );
+        }
+        let il = self.agg_temp("pl_i", VT::I32, false, span);
+        self.emit_stmt(RStmt::Let {
+            local: il,
+            value: index,
+            span,
+        });
+
+        // structural-modification-during-iteration guard (same contract as
+        // `xs[i] = v` / `.set`): keyed on the ROOT local of the chain.
+        if let Some(hit) = self
+            .iterate_targets
+            .iter()
+            .find(|(t, _, _)| *t == xl)
+            .map(|(_, _, sp)| *sp)
+        {
+            self.bind_err(
+                "source.iterate-mutate",
+                "`xs[i] = v` structurally modifies the list being iterated (legal: element field writes)"
+                    .to_string(),
+                span.join(hit),
+            );
+        }
+
+        let read_local = |l| ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::ReadLocal(l),
+        };
+        match pa.op {
+            ast::PlaceOp::Set => {
+                let mut value = self.expr_with_expect(&pa.value, Some(elem));
+                self.reject_elem_view_use(&value, "the stored value");
+                if value.vt != elem {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "element type `{}` expected, found `{}`",
+                            elem.as_str(),
+                            value.vt.as_str()
+                        ),
+                        pa.value.span,
+                    );
+                }
+                // an owned element keeps the direct expression (move-source
+                // admission); value elements hoist once for uniformity.
+                let value_expr = if self.vt_is_coll_owned(elem) {
+                    self.check_push_value(&elem, &mut value, pa.base.span);
+                    value
+                } else {
+                    let vl = self.agg_temp("pl_v", value.vt, false, span);
+                    self.emit_stmt(RStmt::Let {
+                        local: vl,
+                        value,
+                        span,
+                    });
+                    ResolvedExpr {
+                        span,
+                        vt: elem,
+                        kind: RExprKind::ReadLocal(vl),
+                    }
+                };
+                self.emit_stmt(RStmt::ExprStmt {
+                    value: ResolvedExpr {
+                        span,
+                        vt: VT::Unit,
+                        kind: RExprKind::ListSet {
+                            list: Box::new(base_read),
+                            index: Box::new(read_local(il)),
+                            value: Box::new(value_expr),
+                        },
+                    },
+                    span,
+                });
+            }
+            op => {
+                if elem != VT::I32 {
+                    self.bind_err(
+                        "source.compound-elem-type",
+                        "compound assignment through an index place requires i32 elements in this profile"
+                            .to_string(),
+                        span,
+                    );
+                }
+                let mut value = self.expr_with_expect(&pa.value, Some(VT::I32));
+                if value.vt != VT::I32 {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "i32 expected for compound assignment, found `{}`",
+                            value.vt.as_str()
+                        ),
+                        pa.value.span,
+                    );
+                }
+                let vl = self.agg_temp("pl_v", value.vt, false, span);
+                self.emit_stmt(RStmt::Let {
+                    local: vl,
+                    value,
+                    span,
+                });
+                let current = ResolvedExpr {
+                    span,
+                    vt: elem,
+                    kind: RExprKind::ListGet {
+                        list: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::List(lix),
+                            kind: RExprKind::ReadLocal(match base_read.kind {
+                                RExprKind::ReadLocal(l) => l,
+                                _ => unreachable!("hoisted base is a temp read"),
+                            }),
+                        }),
+                        index: Box::new(read_local(il)),
+                    },
+                };
+                self.emit_stmt(RStmt::ExprStmt {
+                    value: ResolvedExpr {
+                        span,
+                        vt: VT::Unit,
+                        kind: RExprKind::ListSet {
+                            list: Box::new(base_read),
+                            index: Box::new(read_local(il)),
+                            value: Box::new(ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::Binary {
+                                    op: place_bin_op(op),
+                                    lhs: Box::new(current),
+                                    rhs: Box::new(read_local(vl)),
+                                },
+                            }),
+                        },
+                    },
+                    span,
+                });
+            }
         }
     }
 
@@ -10782,6 +11158,16 @@ F:{d}
                             span: ia.span,
                         });
                 }
+                // PLAN-1082 (L-19/L-48): `base (.f | [e])* (op)= v` — the
+                // unified place-chain write. Ordered after path/index assign
+                // in the grammar, so the shapes arriving here are mixed
+                // field×index chains, chained indices, and every compound
+                // `+= -= *= /=` (including the bare-name compound form).
+                // Source order base→index→rhs holds by hoisting each into a
+                // temp exactly once (PLACE-SIDE-EFFECT contract).
+                Stmt::PlaceAssign(pa) => {
+                    self.resolve_place_assign(pa);
+                }
                 Stmt::Let {
                     name,
                     ann,
@@ -11122,6 +11508,29 @@ F:{d}
                             });
                         for (e, ast_e) in elems.into_iter().zip(elems_ast.iter()) {
                             let mut e = e;
+                            // PLAN-1082: a nested array-literal element rides
+                            // an explicit `Move` of its synthetic fresh temp
+                            // (same rule as the rvalue expansion above).
+                            if self.profile.is_auto_language()
+                                && matches!(ast_e.kind, ast::ExprKind::ArrayLit(_))
+                                && matches!(e.kind, RExprKind::ReadLocal(_))
+                                && self.vt_is_coll_owned(e.vt)
+                            {
+                                let inner_vt = e.vt;
+                                let span0 = e.span;
+                                let taken = std::mem::replace(&mut e.kind, RExprKind::IntLit(0));
+                                e = ResolvedExpr {
+                                    span: span0,
+                                    vt: inner_vt,
+                                    kind: RExprKind::Move {
+                                        inner: Box::new(ResolvedExpr {
+                                            span: span0,
+                                            vt: inner_vt,
+                                            kind: taken,
+                                        }),
+                                    },
+                                };
+                            }
                             self.check_push_value(&elem_vt, &mut e, ast_e.span);
                             let push = ResolvedExpr {
                                 span: ast_e.span,
@@ -12409,21 +12818,119 @@ F:{d}
                     kind: RExprKind::IntLit(0),
                 }
             }
-            // PLAN-962 (L-16): array literals desugar ONLY in the
-            // let/var initializer position (the Let arm intercepts);
-            // every other expression position is a named rejection.
+            // PLAN-962 (L-16) → PLAN-1082 (D-1082-04): array literals are
+            // admitted in ANY rvalue position — the ListNew+push chain
+            // hoists into the statement sink (pending_splice keeps source
+            // order) and the value is the temp read. The let/var initializer
+            // fast path (the Let arm intercepts first) is unchanged. An
+            // EMPTY literal keeps its named rejection: no element type is
+            // inferable on this face (write `List<T>.new()`).
             ExprKind::ArrayLit(elems) => {
-                let _ = elems;
-                self.bind_err(
-                    "source.array-lit-position",
-                    "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
-                        .to_string(),
-                    e.span,
-                );
+                // PLAN-1082: rvalue admission is the ORDINARY (auto) face
+                // only; the frozen narrow profiles keep the 962 init-only
+                // contract (`source.array-lit-position`).
+                if !self.profile.is_auto_language() {
+                    self.bind_err(
+                        "source.array-lit-position",
+                        "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
+                            .to_string(),
+                        e.span,
+                    );
+                    return ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    };
+                }
+                if elems.is_empty() {
+                    self.bind_err(
+                        "source.array-lit-empty",
+                        "an empty array literal has no element type; write List<T>.new() instead"
+                            .to_string(),
+                        e.span,
+                    );
+                    return ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    };
+                }
+                let mut rs = Vec::with_capacity(elems.len());
+                for el in elems {
+                    rs.push(self.expr_iterative(el));
+                }
+                let elem_vt = rs[0].vt;
+                for (r, ast_el) in rs.iter().zip(elems.iter()) {
+                    if r.vt != elem_vt {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "array literal elements must share one type; first is `{}`, found `{}`",
+                                elem_vt.as_str(),
+                                r.vt.as_str()
+                            ),
+                            ast_el.span,
+                        );
+                    }
+                    self.reject_elem_view_use(r, "the literal element");
+                }
+                let li = self.coll.intern_list(elem_vt);
+                let temp = self.agg_temp("arr_lit", VT::List(li), false, e.span);
+                self.emit_stmt(RStmt::Let {
+                    local: temp,
+                    value: ResolvedExpr {
+                        span: e.span,
+                        vt: VT::List(li),
+                        kind: RExprKind::ListNew { list: li },
+                    },
+                    span: e.span,
+                });
+                for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
+                    // PLAN-1082: a NESTED array-literal element resolves to a
+                    // synthetic temp read; wrapping it in `Move` spells the
+                    // whole-fresh-rvalue transfer the push admission wants
+                    // (user-local reads keep the implicit-move rejection).
+                    if self.profile.is_auto_language()
+                        && matches!(ast_el.kind, ExprKind::ArrayLit(_))
+                        && matches!(r.kind, RExprKind::ReadLocal(_))
+                        && self.vt_is_coll_owned(r.vt)
+                    {
+                        let inner_vt = r.vt;
+                        let span0 = r.span;
+                        let taken = std::mem::replace(&mut r.kind, RExprKind::IntLit(0));
+                        r = ResolvedExpr {
+                            span: span0,
+                            vt: inner_vt,
+                            kind: RExprKind::Move {
+                                inner: Box::new(ResolvedExpr {
+                                    span: span0,
+                                    vt: inner_vt,
+                                    kind: taken,
+                                }),
+                            },
+                        };
+                    }
+                    self.check_push_value(&elem_vt, &mut r, ast_el.span);
+                    self.emit_stmt(RStmt::ExprStmt {
+                        value: ResolvedExpr {
+                            span: ast_el.span,
+                            vt: VT::Unit,
+                            kind: RExprKind::ListPush {
+                                list: Box::new(ResolvedExpr {
+                                    span: ast_el.span,
+                                    vt: VT::List(li),
+                                    kind: RExprKind::ReadLocal(temp),
+                                }),
+                                value: Box::new(r),
+                            },
+                        },
+                        span: ast_el.span,
+                    });
+                }
                 ResolvedExpr {
                     span: e.span,
-                    vt: VT::I32,
-                    kind: RExprKind::IntLit(0),
+                    vt: VT::List(li),
+                    kind: RExprKind::ReadLocal(temp),
                 }
             }
             // PLAN-963（T-04）：`rep<2>(21)` 必经实例层重绑成具体实例的普通

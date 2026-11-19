@@ -25,7 +25,7 @@
 //! producer ‖ domain ‖ parts, so an `ac936/*` id can never collide with
 //! an `ac817/*` or `ac934/*` id even for identical parts.
 
-use ace_core::source::ast::{Block, Expr, ExprKind, Item, Program, Stmt};
+use ace_core::source::ast::{Block, Expr, ExprKind, Item, PlaceStep, Program, Stmt};
 use ace_semantics_contract::ContentVersion;
 use ace_source_query::ident::{owner_logical, signature_version};
 use ace_source_query::walk_body;
@@ -496,6 +496,15 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
         Stmt::IndexAssign(ia) => {
             walk_expr(&ia.index, out);
             walk_expr(&ia.value, out);
+        }
+        // PLAN-1082: place assign reads its index/value expressions.
+        Stmt::PlaceAssign(pa) => {
+            for st in &pa.steps {
+                if let PlaceStep::Index(ix) = st {
+                    walk_expr(ix, out);
+                }
+            }
+            walk_expr(&pa.value, out);
         }
         // PLAN-962: tuple destructuring reads the value.
         Stmt::LetDestruct { value, .. } => walk_expr(value, out),
