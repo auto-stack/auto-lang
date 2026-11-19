@@ -4857,3 +4857,20 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - owner：PLAN-982 线（入口面裁定方）或用户裁定；PLAN-1098 仅登记与保留，不单方面改预期。
 - 关闭条件：二选一并留证——(a) 按 982 合同把两例改写为独立 oracle（具名入口可降级 + \erify\ 拒非法入口形状/签名，含一条真实错形状负控），不再是"不 panic/不打印即绿"；(b) 若 982 裁定回退为"只许 main"，则恢复产品侧 \lower.entry\ 并保持两例原断言。两种都要在两次独立整组运行中稳定。
 - 状态：open（不阻塞 PLAN-1098 T-01；批量回归继续具名记录）。
+
+## D-1098-02 — \atch::batch\ 组仍按旧 fence 解析已迁移为 document 格式的 case（2026-11-19 PLAN-1098 实测登记，非本包代码）
+
+- 现象：\cargo t ace-batch\（prepared run，基面 \d20cf3f87\ + 本包 T-02 改动）12 例中 **8 红**，全部约 0.04–0.06s 即失败，首条为 \atch::batch_real_15_matches_independent_with_k1_k3_k10_and_tail\ panic：\	ests/conformance/tests/batch.rs:171 called Result::unwrap() on an Err value: "case fence missing"\。
+- 根因（实证）：\crates/auto-lang/test/cases/ace-m1/closures-source-865.suite.ad\ 在 PLAN-1062（ad3df3e9\ "CF-06/07 full step+oracle authoring; migrate P4 corpus"）后 include 的是 **\closures-source-865.document.case.ad\（document 格式）**，而 \atch.rs\ 仍用 \c_av::test_batch::pilot::load\ 走旧 **fence** 解析 → 读不到围栏即报 "case fence missing"。不是产品行为失败、也不是本包改动引起（本包只改了 worker 定位方式；同组另外 4 例绿）。
+- 影响：\ce-batch\ 在任何门禁/预算测量中都带这 8 红；不得 ignore、不得改断言充绿；本包按"外部既有红具名保留"处理，T-09 预算仍可按组测量但不得报该组 PASS。
+- owner：PLAN-1062 线（P4 corpus document 迁移）或 \uto-lang-core::test_cases::ac_av::test_batch\ 解析面维护者。
+- 关闭条件：\	est_batch::pilot\ 能按 suite 的 include 解析 **document 格式** case（与 un_suite\ 同一格式面），或该 suite 回退到 fence 且 document 迁移记录同步；两种都要在两次独立整组运行中稳定绿，且 15 例 batch 原义务不减。
+- 状态：open（不阻塞 PLAN-1098 T-02；批量回归继续具名记录）。
+
+## D-1044-01 — AAC 新增资源未覆盖项（输出字节/整请求期限）未实测（2026-11-19 PLAN-1044 复审登记）
+
+- 现象：T-03 要求"新增未覆盖项用有界代表输入测量后记录批准支持profile，禁止无界默认"；本包冻结了 M2-A 已有五维（front 64MiB/深度 1<<20、semantics 1M 步/5s、CT root 10s）并对 AAC 新增输出字节/整请求期限给出有界约束（源 ≤64MiB 前门、语义 ≤1M 步/5s、CT ≤10s 根预算），但未做实际测量登记。
+- 结论：合同冻结不受阻（无界默认已禁止、拒绝分类已冻结于 SD-01 §5）；实际测量与批准 profile 登记由后继包首用前完成。
+- owner：1045（host 客户端实测）与 1051/1052（backend/驱动实测），SD-01 §5 已指向。
+- 关闭条件：以真实 AAC 有界代表输入（1045/1051 实际模块）测量单编译请求输出字节与整请求期限，记录批准支持 profile（不超已冻结有界约束；超界须回具名需求决策），更新 contract-profile.tsv resource 行与 SD-01 §5。
+- 状态：open（不阻塞 PLAN-1044 交付；1051/1052 具名携带）。

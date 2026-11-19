@@ -497,6 +497,26 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 **治理**：`test_fixed_groups` + `test_prepare_tools` **85/85 OK**。
 
+### 5.17 T-02 第六刀：B-05 收尾——profile 按"是否被认证/摘要固定"分流（代码 `a8a9350b2` → `940030bed`）
+
+改动（`toolchains.json`）：`av/batch-av/av-regular/ac/mn/mn-collections/cte/sema` → **debug**；`abi`、`a2x` 保持 **release**；runtime 库保持现状（`text/data`=`runtime-release`、`trace`=`runtime-dev`）。
+
+A/B 实测（同选择、同 oracle，只有 profile 不同）：
+
+| 组 | release | debug | 判定 |
+|---|---|---|---|
+| `ace-native` 329 | PASS，墙 64.9s，item 和 1108.7s，>10s 项 28 | PASS，墙 60.9s，item 和 981.8s，>10s 项 19 | debug 不劣 → 保留 |
+| `ace-native-worker` 43 | — | PASS 43/43 | 保留 |
+| `ace-comptime` 136 | — | PASS 136/136 | 保留 |
+| `ace-semantics` 295 | — | 1 红（0.29s） | 该红 = KNOWN-DEBT **D-1037-01**（`sema_boundary_case_files_executed_status_honest`），既有 |
+| `ace-abi` 314 | **26 红** | **25 红**（同一集合，差 1 例方向相反） | 既有红族 `foreign.authority.runtime-or-emitter`（PLAN-1026 记录"预存基线红…与本计划无关"、PLAN-973 记 `ace-abi 293/294` 同码）；与 profile 无关，但 `abi` 仍回 release 保守 |
+| `ace-a2x` 328 | **1 红** | **3 红** | debug 使 `worker_ct_frontdoor_958_c_certifies_seven_independent_oracles`、`…_c_rejects_wrong_oracle_and_reference` **新增失败** → `a2x` 必须 release |
+| `ace-batch` 12 | 8 红 | 未复测 | 8 红 = **D-1098-02**（旧 fence 解析 vs document 迁移），既有；与 profile 无关 |
+
+**结论（必须写入 SD-01）**：**"普通准备一律 debug" 不成立**——带认证/固定摘要的 worker（`a2x`、`abi`）必须在 release 下运行，否则破坏证书/摘要面；可 debug 的是纯执行类 worker（av/ac/mn/mn-collections/cte/sema）。runtime 库 profile **不得**顺手改：`ace-abi` 的 `source_foreign_runtime_policy_pin_matches_current_sdk_material` 把 runtime 摘要 pin 成常量，改 profile 等于改产品材料，需 owner 决策——本轮不动，交 SD-01 记明。
+
+**环境归因（不判红）**：`ace-a2x` 两次 run 都被 meter 记为 `[process-tree infrastructure] … live_after_exit: vctip.exe … cleanup_complete: true`（VS 遥测进程在主进程退出后仍在），属环境观察，已按 §6.2 分列，不计入测试失败。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -670,6 +690,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 10，r1）：`stage: work`，T-02 第五刀（§5.16，代码 `00f57a8b8`）。执行内容：B-01（`native/tests/common` 的 trace 支持库改 env 优先，缺失即具名 infra）、B-01′（未列入计划的第 4 份拷贝 `native/tests/cases/first_case.rs` 同改）、B-02（case-worker 同型体内构建同改）、B-03（删除 `rust_lowering.rs` 的 55 行 maintenance release 构建与 `target/release` 回落，`worker_exe` 只读 env）、B-04（删除 `core/tests/common` 的 4 个死 helper，350→290 行）；`toolchains.json` 给 `trace-runtime` 发布 `ACE_TRACE_RUNTIME_LIB`。实测 prepared run：`ace-native` **329/329 PASS**、`ace-native-worker` **43/43 PASS**、`ace-source` **904/904 PASS（11.26s）**、`ace-rust-lowering` 4/6（2 红为 KNOWN-DEBT **1060-R3** 既有 golden 漂移/凭据 pin，fail shape 逐字一致，非本包引入）。治理 85/85 OK。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 10 | from: work | to: work | status: executing | outcome: pass（B-01…B-04 落地并真实验证；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 00f57a8b8 / 本轮 docs(plan1098) | next: work（T-02 续：cert_rt_902、lib builder env 化、profile 翻转）`
+
+2026-11-19（goal round 11，r1）：`stage: work`，T-02 第六刀（§5.17）。执行内容：①`cert_rt_902` 的目录遍历+release 回落改为只读 `AC_A2X_HIR_WORKER`（缺失即具名 infra，不再静默 SKIP，代码 `b47e6f069`）。②`toolchains.json` 普通工具 profile 翻 debug（`a8a9350b2`），随后按 A/B 证据收敛为 **debug=av/batch-av/av-regular/ac/mn/mn-collections/cte/sema、release=abi/a2x**（`940030bed`）。③A/B 实测：`ace-native` release 64.9s/28 项>10s vs debug 60.9s/19 项>10s（同 329/329 PASS）；`ace-native-worker` 43/43、`ace-comptime` 136/136 PASS；`ace-semantics` 1 红=D-1037-01；`ace-abi` 26 红(release)/25 红(debug) 同族既有；`ace-a2x` debug **新增 2 红**→必须 release；`ace-batch` 8 红=D-1098-02（fence vs document 迁移，已登记 KNOWN-DEBT）。**结论**："一律 debug" 不成立，per-tool 分流写入 SD-01。过程中修掉一次 KNOWN-DEBT 追加导致的换行符全文件改写（已 `git checkout` 还原后以 LF 追加）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 11 | from: work | to: work | status: executing | outcome: pass（B-05 profile 分流落地并有 A/B 证据；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 940030bed / 本轮 docs(plan1098) | next: work（T-02 收尾：lib builder env 化或转 T-03）`
 
 ## 10. 待澄清事项
 
