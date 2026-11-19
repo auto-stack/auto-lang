@@ -1,17 +1,17 @@
 {
   "last_covered_plan_id": 1098,
-  "timestamp": "2026-11-19T15:12:46Z",
-  "covered_commit": "bcf0ddb88 (HEAD at run start; run dir target/test-groups/run-amzo64ib; first cargo t all under the PLAN-1098 prepare/run handshake)",
+  "timestamp": "2026-11-20T00:00:00Z",
+  "covered_commit": "949fdc5e1 (HEAD at run start; run dir target/test-groups/run-753_hof3; cargo t all single instance on main, no competing cargo/nextest at start)",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
   "new_reds": [
-    "prepare-archive: aavm/auto-lang/auto-lang-core/auto-playground 'selected Cargo target discovery/build failed' — .config/nextest-full.toml override package(ace-aac-support-conformance) (PLAN-1056) matches no package in the prepared archive graph for that group set; deterministic via `python scripts/fixed-tests.py all --prepare-only`. Attribution: PLAN-1098 prepare handshake x 1056-era override (test governance).",
-    "infra-meter: test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path, actual prepared path (1098 prepared-tool regime; test expectation lag). Attribution: PLAN-1098.",
-    "infra-fixed: test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED, hit 'execution lease held by live pid 25200' (gate test isolation vs concurrent slot lease). Attribution: PLAN-1098 gate-test isolation."
+    "prepare-archive: aavm/auto-lang/auto-lang-core/auto-playground 'selected Cargo target discovery/build failed' — .config/nextest-full.toml overrides at index 14 (package(ace-aac-support-conformance), PLAN-1056) AND index 15 (package(ace-aac-host-conformance), PLAN-1045) match no package in those groups' prepared archive graphs; deterministic. Attribution: same family as prior receipt's DEBT-1098-BATCH-PREPARE (prepare handshake x per-package overrides); the index-15 instance is PLAN-1045's addition — fix-forward stays with the 1098 governance line (override scoping), not a language-code regression.",
+    "infra-meter: test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path, actual prepared path. Attribution: PLAN-1098 (unchanged from prior receipt).",
+    "infra-fixed: test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED, hit 'execution lease held by live pid 87552' (gate test isolation vs concurrent slot lease). Attribution: PLAN-1098 gate-test isolation (unchanged from prior receipt)."
   ],
   "known_reds_seen": [],
   "verdict": "new-reds-attributed",
-  "notes": "Due trigger: PLAN-1080 (%5=0) archived; prior receipt 1064/2026-11-16 (>48h with merges). 36 groups = 28 PASS, 2 NOT_APPLICABLE (a2r-actor-tests/auto-vm, same conditional shape as prior), 6 FAIL (all three families above — infra, zero language-code regressions). PLAN-1080's own affected groups (ace-source/ace-syntax/ace-semantics/ace-av/case-av-language-parity) all PASS in this batch. Prior receipt's infra-fixed known red (ace set expectation) now PASS — 1098 renamed the sets. Recorded DEBT-1098-BATCH-PREPARE in KNOWN-DEBT-AND-RISKS.md; fix-forward to the 1098 governance line; nothing unmerged. wall 439s; single instance on main; no competing cargo/nextest at start (tasklist clean)."
+  "notes": "Due trigger: PLAN-1045 (%5=0) archived after prior receipt. This batch's 36 selected groups are the root-workspace domain (auto-*/infra/controls); the experimental/ace domain groups (ace-source/ace-av/ace-aac/ace-aac-host etc.) were not in this selection — same `all=false` scoping as the ace-aac/1056 precedent, and PLAN-1045's affected ace groups carry their own merge-gate receipts (ace-aac-host PASS on delivery tree cc8053e32, run-_y6jh8df; ace-aac/ace-source/ace-native PASS at 44a8cdb56-era, reuse-justified in PLAN-1045 §9; ace-av 2 host_console pre-existing reds attributed to the console front-door owner). 28 PASS, 2 NOT_APPLICABLE (a2r-actor-tests/auto-vm, same conditional shape), 6 FAIL (three infra/governance families above — zero language-code regressions). wall 179s."
 }
