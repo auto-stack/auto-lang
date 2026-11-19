@@ -1747,7 +1747,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-aac-host-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["mn"]
+tools = []
 domain = "ace"
 all = false
 [[group]]
