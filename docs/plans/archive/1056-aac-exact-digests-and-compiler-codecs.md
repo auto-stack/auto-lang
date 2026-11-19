@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1044]
 supersedes_spec_components: [docs/specs/stdlib/design/ace-core-and-text.md]
@@ -147,7 +147,7 @@ exit 0）；AC-05（独立
 | [x] T-05 真实消费与ABI边界交接 | work | T-04 | Gen0编译Auto阶段driver，核与现工件逻辑身份的兼容范围、domain/分段防混淆、整数/UTF编码及独立invalid拒绝；向1045/1051/1052交digest与codec版本。必要标准库公共操作按Design56覆盖合同真跑，原Rust宿主工具依赖如实列出。 | 正式可消费支撑包和CS证据；新增义务只归AAC，不反加为985/A新门；对应V行和AC-01..04实际核验（复审 F1 后重确认可消费面） |
 | [x] T-06 定向验证与交review | work | T-02..05 | 实际运行全部V行、本包Auto阶段driver及受影响完整固定组/必要consumer，核输入/工具/产物身份、真实父子终态、资源和清理，准备Spec delta | 逐项证据摘要，AC-01..04；execution_done交review，不预勾T-07/08（复审 F2/F3/F4/F6/F7/F8 需在T-06重做证据与规范文本） |
 | [x] T-07 独立复审 | review | T-06 | 同一树冻结revision，逐AC/完整数据流独立核验；搜漏项/延期/workaround，具名债务登记并核warning/format/Spec-impact | review结论及修复条件；AC-05 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、沉淀已验Spec并归档；所有输出路径对账，证据折入计划后清scope，wt-guard clean再移树/分支 | 独立交付/后继版本与清理摘要；AC-06 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、沉淀已验Spec并归档；所有输出路径对账，证据折入计划后清scope，wt-guard clean再移树/分支 | 独立交付/后继版本与清理摘要；AC-06 |
 
 ## 9. 复审记录
 
@@ -668,10 +668,44 @@ pending_closeout_gates: AC-06（merge：沉淀 SD-01/SD-02、落主身份核准�
 | `canonical_verified` | 主检出 @`e36131b40`（git blob 口径）：SD-01 `docs/specs/auto-ac/aac-digest-codec-profile.md` `7259caf1e31a54c2`/18619 **= §9 复审记录值**；`experimental/ace/aac/support/atom_data.at` `f86c444309282fce`/64755、`codec.at` `b942bf46f7f94618`/22873 **= §9 复审记录值**；SD-02 目标 `ace-core-and-text.md` `097cc4269d587f68`/7801（新增 §5）。SD-02 为 docs-only 后继（+24 行，§1–§4 945 历史原样），实现/依赖零改动 → `e36131b40` 成为 delivery commit |
 | `post-landing gate` | 主检出 `cargo t ace-aac`（无 `CARGO_TARGET_DIR`）：**`PASS: ace-aac` exit 0**，整命令 **54.86 s**，`target/test-groups/run-oytahxk_/results.json`：executed=**26**、gate_passed=true、max_parallel_tests_observed=**4**、wall_seconds=54.09、source_state=e7d4f146…；逐例最大 **8.15 s**（`atom_real_schema_container_names_are_tags_not_fields`），26/26 ≤10 s。主检出未提交改动（其它会话的 docs/design、packages/blueprints 等）与本包路径无交集 |
 | `archived` | `git mv docs/plans/1056-aac-exact-digests-and-compiler-codecs.md docs/plans/archive/` → `docs/plans/archive/1056-aac-exact-digests-and-compiler-codecs.md`，frontmatter `status: archived`；随簿记提交入库（tracked，非未跟踪）；`git status` 对 plan/spec 目标路径为空 |
-| `cleaned` | 见下节（guard / worktree / branch / 组目录 / plan-artifacts / 登记表） |
+| `cleaned` | wt-guard clean -> worktree/branch removed -> group dir removed -> plan-artifacts/plan-1056 deleted whole -> registry refreshed (see the cleaned section at EOF) |
 
 **计划副本对账（本任务强制项）**：主检出未跟踪副本 `docs/plans/1056-…`（`EA23BBCBBA4858F9…`，90106 B，含 `reviewer-1056c` 的 53 行 §9 记录，而分支副本当时缺这 53 行）在合并前已并入分支副本（本文件 = 该副本内容 + 本轮 §9 复审记录 + §7/任务表/源身份订正）；逐行包含性核对：主副本 588 行中仅 6 行在分支副本中"不存在"，全部是本轮**有意取代**的行（`current_step: 3`、§7 的 25 例计数句、T-04..T-07 四条未勾任务行）。核对通过后删除该未跟踪副本（sha256 已记于此），`git merge --ff-only` 因此不被 "untracked working tree file would be overwritten" 阻断；落主副本同时含 `reviewer-1056`/`reviewer-1056b`/`reviewer-1056c`/`finish-1056` 四份 §9 收据（行内计数 4/2/2/1，无收据丢失）。
 
 **merge 阶段耗时（本会话，空闲窗口）**：`git rebase master`（10 提交，无冲突，未单独计时）→ range-diff 即时；主检出 `cargo t ace-aac` 整命令 **54.86 s**（含 main 侧 ace target 增量构建）；`wt-guard` <1 s clean；归档/清理命令均即时。
 
 **证据（orig scratch，merge 后删除）**：`D:/autostack/plan-artifacts/plan-1056/verify/{p1-nextest-group.log,p1-cargo-t-ace-aac.log,p1-n8-showconfig.log,p2-check-warnings.log,p2-driver-all.log,p3-cargo-t-ace-aac-main.log}`；`target/test-groups/run-mwp8u33q/results.json`（worktree，executed=26）、`target/test-groups/run-oytahxk_/results.json`（主检出，executed=26）。关键数字已折入本文件，scratch 随 scope 删除。未写 `.autoos/specs.json` 等 legacy ledger；未做 release/部署构建。
+
+### cleaned 收尾（2026-11-19，已核验）
+
+- **guard**：`pwsh -NoProfile -File D:/autostack/wt-guard.ps1 D:/autostack/.wt/lang-1056/auto-lang`
+  → `wt-guard: clean — D:\autostack\.wt\lang-1056\auto-lang 下无任何 reparse point`
+  （exit 0；移树前共两轮，均 clean）。
+- **worktree / branch**：`git worktree remove D:/autostack/.wt/lang-1056/auto-lang` exit 0；
+  `git branch -d plan-1056-dev` → `Deleted branch plan-1056-dev (was e36131b40)`；
+  `git branch --list 'plan-1056*'` 为空；`git worktree list` 不再含该树。
+- **组目录**：`D:/autostack/.wt/lang-1056` 已删（删除前其下仅剩已移除 worktree 的目录项）。
+- **plan-artifacts**：`D:/autostack/plan-artifacts/plan-1056` **整删**——
+  **1,157,633 文件 / 10,510.59 MB**（`target-ace` 9112.39 MB、`tmp` 1398.12 MB〔1555 个
+  `aac1056-*` scratch 目录〕、`verify` 0.06 MB、`review3` 0.03 MB），耗时 336.6 s；
+  删除前关键数字/命令摘要已折入上文 §9 复审记录与本 merge 收据。
+- **登记表**：`D:/autostack/plan-artifacts/.retention/policy.json` 追加
+  `auto-lang/PLAN-1056`（status `deleted-at-merge (no holds)`，含交付 commit、归档路径、
+  scope 删除量、具名边界）；条目数 129→130。
+- **其它输出路径对账**：仓内仅 `target/test-groups/run-*`（gitignored 的固定组常规输出，
+  非计划证据，随日常缓存保留）；无 `docs/plans/attachments/`、无 `.wt/<group>/evidence/`、
+  无第二个 target 根、无 `D:/autostack-build` 或散落 `plan1056-*` 目录、无未登记 scope。
+  两处 worktree 内 target（`experimental/ace/target`、仓根 `target`）随 worktree 删除，
+  未回收到 plan-artifacts。
+- **验收关闭**：**AC-06 closed**（review pass + 落主身份核准 + SD-01/SD-02 沉淀 + 归档 +
+  材料清理 + guard clean）；T-08 `[x]`，`current_step: 8/8`，`status: archived`。
+  本 Plan 不签 M2、不签完整 AAC。
+- **部署面**：本包只新增语言侧支撑包与固定组，不产生发布二进制/web bundle；无 release
+  构建或服务重启义务（landing ≠ deployment）。
+- **批次回归到期判定（handoff，不属本 Plan 门）**：`docs/plans/.last-batch-regression.json`
+  为 `last_covered_plan_id: 1064` / `2026-11-16T10:04:09Z`，距今 >48h 且其后有多次 merge
+  → **due**；按 PLAN-898/auto-plan-regress 在主检出以单实例执行 `cargo t all`，本会话
+  未运行（不属本任务授权范围），登记为交接项。
+
+stage: merge | plan_id: PLAN-1056 | plan_revision: 6 | outcome: **pass** |
+delivery_commit: `e36131b403a711bfa342b833716266f38564890b` | archive: `docs/plans/archive/1056-aac-exact-digests-and-compiler-codecs.md`（`655f0187b`，本条 cleaned 收据随其后提交） | cleanup: worktree/branch/组目录/plan-artifacts scope 全删、登记表已刷新 | next: 批次回归 due（主检出单实例，交接）
