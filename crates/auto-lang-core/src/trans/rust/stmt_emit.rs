@@ -811,8 +811,9 @@ impl RustTrans {
                 // r3 R3-T3: 闭包内 return 传播形——fn 非 unit 且体含 return
                 // 时，闭包标注 `-> Option<T>`、体 Return 包 Some、Ok(Some(v))
                 // => return v 传播（VM return-in-try=从 fn 返回同源）；Ok(None)
-                // => return Default::default()（体必 return 的 corpus 形下不可
-                // 达；条件 return 形=242 边界注记）。体预变换：借位迭代变量
+                // => `{}` 空块（956/764f454d1 起——Option 传播形分流
+                // enclosing_option；体必 return 的 corpus 形下不可达，条件
+                // return 形=242 边界注记）。体预变换：借位迭代变量
                 // 的 Ident 绑定/赋值改 .clone()（E0308 &String→String 株）。
                 let ret_nonunit = !matches!(
                     self.current_fn_ret_type.as_ref(),

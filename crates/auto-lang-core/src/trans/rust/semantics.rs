@@ -166,6 +166,11 @@ fn stmt_guarantees_return(stmt: &Stmt) -> bool {
                     .as_ref()
                     .is_some_and(|body| body_guarantees_return(body))
         }
+        // try 双臂 return 形（PLAN-710 r3 R3-T3）：VM 语义 return-in-try =
+        // 从 fn 返回同源；try 体与 catch 体都保证 return 时，异常/正常两
+        // 路径均返回。finally 只做清理不改返回性；catch 体未保证 return
+        // 时保守判否（错误路径可能穿透）。
+        Stmt::Try(t) => body_guarantees_return(&t.body) && body_guarantees_return(&t.catch_body),
         _ => false,
     }
 }
@@ -273,6 +278,37 @@ fn main() int {
             transpile_rust("semantic_admission", source)
                 .unwrap_or_else(|error| panic!("legal source rejected: {}\n{}", error, source));
         }
+    }
+
+    #[test]
+    fn try_both_arms_return_is_admitted_and_catch_fallthrough_rejected() {
+        // PLAN-710 r3 R3-T3（auto-ui plan714_back_try_arm_return_propagation
+        // 永久例同源）：try 体与 catch 体都 return ⇒ 正常/异常两路径均返回
+        // ——VM return-in-try 从 fn 返回同源，语义准入不得误拒。
+        let both_arms = r#"pub fn probe() bool {
+    try {
+        let d = File.read_text("x")
+        return true
+    } catch {
+        return false
+    }
+}
+"#;
+        transpile_rust("semantic_admission", both_arms).unwrap();
+        // 反例：catch 体可穿透（未保证 return）⇒ 错误路径无返回值，仍拒。
+        let catch_falls_through = r#"pub fn probe() bool {
+    try {
+        return true
+    } catch {
+    }
+}
+"#;
+        let error = rejects(catch_falls_through);
+        assert!(
+            matches!(error, AutoError::Type(_)),
+            "catch fallthrough must stay a typed rejection: {:?}",
+            error
+        );
     }
 
     #[test]
