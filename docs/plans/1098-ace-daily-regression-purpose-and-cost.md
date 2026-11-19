@@ -509,11 +509,11 @@ A/B 实测（同选择、同 oracle，只有 profile 不同）：
 | `ace-native-worker` 43 | — | PASS 43/43 | 保留 |
 | `ace-comptime` 136 | — | PASS 136/136 | 保留 |
 | `ace-semantics` 295 | — | 1 红（0.29s） | 该红 = KNOWN-DEBT **D-1037-01**（`sema_boundary_case_files_executed_status_honest`），既有 |
-| `ace-abi` 314 | **26 红** | **25 红**（同一集合，差 1 例方向相反） | 既有红族 `foreign.authority.runtime-or-emitter`（PLAN-1026 记录"预存基线红…与本计划无关"、PLAN-973 记 `ace-abi 293/294` 同码）；与 profile 无关，但 `abi` 仍回 release 保守 |
-| `ace-a2x` 328 | **1 红** | **3 红** | debug 使 `worker_ct_frontdoor_958_c_certifies_seven_independent_oracles`、`…_c_rejects_wrong_oracle_and_reference` **新增失败** → `a2x` 必须 release |
+| `ace-abi` 314 | **26 红** | **25 红**（同一集合，差 1 例方向相反） | 既有红族 `foreign.authority.runtime-or-emitter`（PLAN-1026 记录"预存基线红…与本计划无关"、PLAN-973 记 `ace-abi 293/294` 同码）；**两种 profile 下都存在**，故不可能由 profile 引入；`abi` 暂留 release 属保守选择，非本 A/B 证实的必要条件 |
+| `ace-a2x` 328 | **1 红** | **3 红** | debug 使两个认证例新增失败，实测报错 `c-tool infra: CToolError("cl -? spawn: Deadline")`（`worker_ct_frontdoor_958.rs:251`）→ **debug worker 太慢，撞到内部 `cl -?` 探测截止**，属**时限**而非语义/证书规则 |
 | `ace-batch` 12 | 8 红 | 未复测 | 8 红 = **D-1098-02**（旧 fence 解析 vs document 迁移），既有；与 profile 无关 |
 
-**结论（必须写入 SD-01）**：**"普通准备一律 debug" 不成立**——带认证/固定摘要的 worker（`a2x`、`abi`）必须在 release 下运行，否则破坏证书/摘要面；可 debug 的是纯执行类 worker（av/ac/mn/mn-collections/cte/sema）。runtime 库 profile **不得**顺手改：`ace-abi` 的 `source_foreign_runtime_policy_pin_matches_current_sdk_material` 把 runtime 摘要 pin 成常量，改 profile 等于改产品材料，需 owner 决策——本轮不动，交 SD-01 记明。
+**结论（必须写入 SD-01）**：**"普通准备一律 debug" 不成立**，但原因要写准：`a2x` 必须 release 是**时限**约束（debug worker 令内部 `cl -?` 探测超时），不是认证语义；`abi` 本轮 A/B 未证明 profile 敏感（既有红在两种 profile 下同集合），暂按保守留 release 并在 SD-01 标注"未证实必要性"。可 debug 的是纯执行类 worker（av/ac/mn/mn-collections/cte/sema）。runtime 库 profile **不得**顺手改：`ace-abi` 的 `source_foreign_runtime_policy_pin_matches_current_sdk_material` 把 runtime 摘要 pin 成常量（两种 profile 都红，说明该 pin 与本树材料已漂移，属既有红），改 profile 等于改产品材料，需 owner 决策——本轮不动。
 
 **环境归因（不判红）**：`ace-a2x` 两次 run 都被 meter 记为 `[process-tree infrastructure] … live_after_exit: vctip.exe … cleanup_complete: true`（VS 遥测进程在主进程退出后仍在），属环境观察，已按 §6.2 分列，不计入测试失败。
 
