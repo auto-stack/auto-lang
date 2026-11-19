@@ -463,6 +463,26 @@ def _reclaim_dead_lease(active):
 
 
 PREPARED_SCHEMA = 'fixed-test-prepared/1'
+PREPARED_ROOT = ROOT / 'target/test-groups/prepared'
+
+
+def find_matching_manifest(names):
+    """Newest verified in-tree preparation that covers every requested ACE group."""
+    if not PREPARED_ROOT.is_dir():
+        return None
+    wanted = set(names)
+    candidates = sorted(PREPARED_ROOT.glob('*/prepared.json'),
+                        key=lambda path: path.stat().st_mtime, reverse=True)
+    for path in candidates:
+        try:
+            manifest = json.loads(path.read_text(encoding='utf-8'))
+            verify_prepared(manifest)
+        except (ValueError, OSError):
+            continue
+        covered = {name for entry in manifest.get('invocations', []) for name in entry.get('groups', [])}
+        if wanted <= covered:
+            return path
+    return None
 
 
 def archive_args(group):
@@ -601,10 +621,10 @@ def main(argv=None):
     if args.prepare_only and args.run_prepared:
         ap.error('--prepare-only and --run-prepared are mutually exclusive')
     if args.prepare_only or args.run_prepared:
-        if not args.out:
-            ap.error('--prepare-only/--run-prepared require --out')
         if args.select_only or args.discover_only:
             ap.error('--prepare-only/--run-prepared cannot be combined with --select-only/--discover-only')
+        if args.run_prepared and not args.out:
+            ap.error('--run-prepared requires --out')
     value, groups = configuration()
     if args.list:
         if args.groups:
@@ -638,22 +658,56 @@ def main(argv=None):
             write(output / 'selection.json', summary)
         return 0
     (ROOT / 'target/test-groups').mkdir(parents=True, exist_ok=True)
-    output = admit_output(args.out) if args.out else Path(tempfile.mkdtemp(prefix='run-', dir=ROOT / 'target/test-groups'))
+    if args.prepare_only and not args.out:
+        # Canonical per-tree preparation home, so the ordinary entry can find it.
+        prepared_home = PREPARED_ROOT / checkout_state()[:16]
+        prepared_home.mkdir(parents=True, exist_ok=True)
+        output = prepared_home
+    else:
+        output = admit_output(args.out) if args.out else Path(tempfile.mkdtemp(prefix='run-', dir=ROOT / 'target/test-groups'))
     with execution_lease():
         if args.prepare_only:
             return prepare_plan(plan, output, summary, args)
         prepared_by_index = None
-        if args.run_prepared:
-            if not args.run_prepared.is_file():
-                raise ValueError('PREPARATION_REQUIRED: prepared manifest not found: ' + str(args.run_prepared))
-            manifest = json.loads(args.run_prepared.read_text(encoding='utf-8'))
+        manifest_path = args.run_prepared
+        manifest = None
+        if manifest_path is not None:
+            if not manifest_path.is_file():
+                raise ValueError('PREPARATION_REQUIRED: prepared manifest not found: ' + str(manifest_path))
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             verify_prepared(manifest)
             plan = plan_from_manifest(manifest)
             prepared_by_index = {entry['index']: entry for entry in manifest['invocations']}
-            summary['selected_groups'] = [name for entry in manifest['invocations'] for name in entry['groups']]
             summary['invocations'] = plan
-            summary['prepared_from'] = str(args.run_prepared)
+        else:
+            # Ordinary ACE entry: only a verified in-tree preparation may build-free run.
+            ace_names = [name for group in plan for name in group['groups']
+                         if group['domain'] == 'ace']
+            if ace_names and not args.discover_only:
+                manifest_path = find_matching_manifest(ace_names)
+                if manifest_path is None:
+                    raise ValueError(
+                        'PREPARATION_REQUIRED: no verified prepared manifest covers ' +
+                        ', '.join(ace_names) + '; run: python scripts/fixed-tests.py ' +
+                        ' '.join(ace_names) + ' --prepare-only')
+                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+                verify_prepared(manifest)
+                by_groups = {tuple(entry['groups']): entry for entry in manifest['invocations']}
+                prepared_by_index = {}
+                missing = []
+                for index, group in enumerate(plan):
+                    entry = by_groups.get(tuple(group['groups']))
+                    if entry is not None:
+                        prepared_by_index[index] = entry
+                    elif group['domain'] == 'ace':
+                        missing.append(group['groups'])
+                if missing:
+                    raise ValueError('PREPARATION_REQUIRED: prepared manifest lacks ' +
+                                     ', '.join(','.join(names) for names in missing))
+        if manifest is not None:
+            summary['prepared_from'] = str(manifest_path)
             summary['prepared_source_state'] = manifest['source_state']
+            summary['selected_groups'] = [name for entry in manifest['invocations'] for name in entry['groups']]
         return execute_plan(plan, output, summary, args, prepared_by_index)
 
 

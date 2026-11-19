@@ -1,5 +1,6 @@
 """Controls for fixed native scope, truthful results, and owned cache cleanup."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -1112,6 +1113,86 @@ class ActiveDocumentCaseEntries(unittest.TestCase):
         missing = self.scan.scan(self.mirror('missing', document, 'absent.case.ad'))
         self.assertEqual(missing['offenders'], [])
         self.assertEqual([row['reason'] for row in missing['missing']], ['include missing'])
+
+
+class PreparedRunGate(unittest.TestCase):
+    """PLAN-1098 T-02: ordinary ACE entries consume only a verified preparation."""
+
+    PAYLOAD = b'prepared-archive-placeholder'
+
+    def _manifest(self, temp, **overrides):
+        from prepare_tools import toolchain_marker
+        archive = Path(temp) / 'archive-0.tar.zst'
+        archive.write_bytes(self.PAYLOAD)
+        manifest = {
+            'schema': fixed.PREPARED_SCHEMA,
+            'driver': 'scripts/fixed-tests.py',
+            'config_sha256': fixed.configuration()[0]['_sha256'],
+            'source_state': fixed.checkout_state(),
+            'toolchain': toolchain_marker(),
+            'invocations': [{
+                'index': 0, 'groups': ['ace-lowering'], 'runner': 'nextest',
+                'workspace': 'experimental/ace', 'domain': 'ace',
+                'expression': 'all()', 'expressions': ['all()'],
+                'tools': [], 'tool_env': {}, 'receipts': [],
+                'archive': {'path': str(archive),
+                            'sha256': hashlib.sha256(self.PAYLOAD).hexdigest(),
+                            'bytes': len(self.PAYLOAD)},
+            }],
+        }
+        manifest.update(overrides)
+        return manifest
+
+    def test_verified_manifest_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixed.verify_prepared(self._manifest(temp))
+
+    def test_config_source_and_toolchain_drift_are_named_failures(self):
+        from prepare_tools import toolchain_marker
+        with tempfile.TemporaryDirectory() as temp:
+            for overrides in ({'config_sha256': '0' * 64},
+                              {'source_state': '0' * 64},
+                              {'toolchain': 'not-' + toolchain_marker()}):
+                with self.subTest(overrides=list(overrides)):
+                    manifest = self._manifest(temp, **overrides)
+                    with self.assertRaises(ValueError) as caught:
+                        fixed.verify_prepared(manifest)
+                    self.assertIn('PREPARATION_REQUIRED', str(caught.exception))
+
+    def test_archive_tamper_and_missing_are_named_failures(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = self._manifest(temp)
+            row = manifest['invocations'][0]['archive']
+            Path(row['path']).write_bytes(b'tampered')
+            with self.assertRaises(ValueError) as caught:
+                fixed.verify_prepared(manifest)
+            self.assertIn('archive changed since preparation', str(caught.exception))
+            Path(row['path']).unlink()
+            with self.assertRaises(ValueError) as caught:
+                fixed.verify_prepared(manifest)
+            self.assertIn('archive missing', str(caught.exception))
+
+    def test_find_matching_manifest_skips_invalid_and_requires_full_cover(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            stale = home / 'stale'; stale.mkdir()
+            (stale / 'prepared.json').write_text(
+                json.dumps(self._manifest(temp, config_sha256='0' * 64)), encoding='utf-8')
+            good = home / 'good'; good.mkdir()
+            (good / 'prepared.json').write_text(json.dumps(self._manifest(temp)), encoding='utf-8')
+            with mock.patch.object(fixed, 'PREPARED_ROOT', home):
+                self.assertEqual(fixed.find_matching_manifest(['ace-lowering']),
+                                 good / 'prepared.json')
+                self.assertIsNone(fixed.find_matching_manifest(['ace-lowering', 'ace-source']))
+
+    def test_ordinary_ace_entry_requires_preparation_before_any_run(self):
+        with mock.patch.object(fixed, 'find_matching_manifest', return_value=None), \
+                mock.patch.object(fixed, 'execute_plan') as execute:
+            with self.assertRaises(ValueError) as caught:
+                fixed.main(['ace-lowering'])
+            self.assertIn('PREPARATION_REQUIRED', str(caught.exception))
+            self.assertIn('--prepare-only', str(caught.exception))
+            execute.assert_not_called()
 
 
 if __name__ == '__main__':
