@@ -355,6 +355,19 @@ Round 8 增量（树内 clean；提交 `db8446bde` 与随后 `missing-package` �
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 8 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: db8446bde | next: work`
 
+2026-11-20 · stage: work（round 9 · **单一同源语料 + AV 端 V-01 永久用例**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `cb3fee558` | task_ids: T-06 主体（共享病例层）| outcome: pass（round 级）| next_responsible_role: work（T-05 身份轴 / T-06 余量）
+
+Round 9 增量（冻结提交 `cb3fee558`，树内 clean）：
+- **单一语料**：新增 `crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as`（§5.1 r2 原文）+ `README.md`（三条腿运行配方、两处语言拼写修正与三处不再需要的 1026 调整、独立 oracle、环境、已知观测）。AV/A2PY/978 工程三条腿的测试**都改为读同一文件**，不再各自内联手写副本。
+- **AV 端永久用例**：`crates/abi/tests/cases/py_session_1107.rs` —— `p1107_v01_corpus_identity_is_pinned`（sha256 `0d5dc850…`、无 `while`、保留 `SGD(model.parameters(), lr: 0.1)`、`for step < 60`）与 `p1107_v01_section51_training_via_av_session`（真实 PySession 运行：62 行、首/终 loss、shape、pred0，1.74s）。
+- 观测：AV 与 A2PY 对 `float(requires_grad tensor)` 触发**同一条** torch UserWarning（stderr），确认是共享协议行为而非 A2PY 特有。
+
+证据：`cargo nextest -p ace-abi --test conformance -E 'test(p1107_v01)'` 2/2 PASS（1.9s）；`cargo nextest -p ace-a2x-python -E 'test(a2py_)+test(p1107_t03)'` 4/4 PASS；`cargo nextest -p ace-m2-build -E 'test(p1107_t05)'` 3/3 PASS；组级 `cargo t ace-python` PASS、`cargo t ace-m2-build` PASS、`cargo t ace-a2x` 仍仅预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，master 同红）与 `pyready_03` 并行偶发（隔离绿）。
+
+未决：T-05 余量（解释器/包身份轴、暖编辑精确失效、CLI 级 `run --sdk` 用例）；T-06 余量（V-02 绑定/kwargs/源序、V-04 错误/位置、V-08 回归控制、固定组选择理由写回）；支持矩阵与 Specs 沉淀留待 review/merge。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 9 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: cb3fee558 | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
