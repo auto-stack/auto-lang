@@ -433,3 +433,80 @@ fn p1107_v07_missing_interpreter_is_named_not_a_pass() {
         "named interpreter failure: {err:?}"
     );
 }
+#[test]
+fn p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated() {
+    // AC-05/V-06: reuse is real (counters, not flags): an unchanged py project
+    // re-assembles from the store without spawning any tool, a body edit
+    // invalidates exactly the changed fragment, and the identity tracks the
+    // source.
+    let root = scratch("warm");
+    let src = corpus_file("protocol_1107.at");
+    let inputs = |body: &str| ProjectInputs {
+        name: "usepy1107warm".to_string(),
+        entry: "main".to_string(),
+        caps: vec![],
+        sources: vec![("main.at".to_string(), body.to_string())],
+        stdlib: Vec::new(),
+    };
+    let mut m2 = M2Build::new(&root.join("store"));
+
+    let cold = m2
+        .build(TargetKind::A2py, &inputs(&src))
+        .expect("cold build");
+    assert!(cold.rebuilt, "the first build produces");
+    assert!(
+        cold.counts.fragments_produced > 0,
+        "cold build produced fragments: {:?}",
+        cold.counts
+    );
+    assert!(
+        cold.counts.tool_spawns.is_empty(),
+        "emit never spawns toolchain/interpreter processes: {:?}",
+        cold.counts.tool_spawns
+    );
+
+    let warm = m2
+        .build(TargetKind::A2py, &inputs(&src))
+        .expect("warm build");
+    assert!(
+        !warm.rebuilt,
+        "an unchanged project is served from the store (no rebuild)"
+    );
+    assert!(
+        warm.counts.lane == "cache-hit"
+            || warm.counts.store_hit_fragment + warm.counts.store_hit_semantic > 0,
+        "warm reuse is a counted cache hit (whole-project or per-fragment): {:?}",
+        warm.counts
+    );
+    assert!(
+        warm.counts.tool_spawns.is_empty(),
+        "warm reuse spawns nothing: {:?}",
+        warm.counts.tool_spawns
+    );
+    assert_eq!(
+        cold.identity, warm.identity,
+        "identical inputs keep the build identity"
+    );
+
+    // Body edit: one changed statement inside the same program.
+    let edited = src.replace("var total = 0", "var total = 1");
+    assert_ne!(edited, src, "the edit must change the source");
+    let after = m2
+        .build(TargetKind::A2py, &inputs(&edited))
+        .expect("edited build");
+    assert!(after.rebuilt, "a body edit invalidates the program fragment");
+    assert!(
+        after.counts.fragments_produced > 0,
+        "the edited fragment is re-produced: {:?}",
+        after.counts
+    );
+    assert_ne!(
+        cold.identity, after.identity,
+        "a body edit changes the build identity"
+    );
+    assert!(
+        after.counts.tool_spawns.is_empty(),
+        "an edit never spawns a toolchain: {:?}",
+        after.counts.tool_spawns
+    );
+}
