@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1072
-status: drafting
+status: executing
 feature_name: AutoUI Vue 与生产 TS/JS 接管
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-976, PLAN-978]
 supersedes_spec_components: []
@@ -64,7 +64,7 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 ## 8. 执行步骤
 
-- [ ] **T-01｜work｜冻结语料**。复用 `auto-ui/crates/auto-ui-runtime/tests/ace_ts_provider.rs` 与 980 真实语料 census，定位旧源及独立期望。
+- [x] **T-01｜work｜冻结语料**。复用 `auto-ui/crates/auto-ui-runtime/tests/ace_ts_provider.rs` 与 980 真实语料 census，定位旧源及独立期望。
 
 - [ ] **T-02｜work｜完成受检生成**。在既有 `ace_ts_provider.rs`、SFC 和 tools 产品入口补完 005、010 及分母内的缺口，复用 980 的生产 SFC 与 `a2x_rt.mjs`。
 
@@ -78,6 +78,20 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 2026-11-19 stage: new，规划与交接基面 78b375bf4，实施与复审待执行。
 
+2026-11-19 stage: goal（/goal 完成计划1072；授权链=work→review→bounded repair→merge 全链，§4 首记）| plan_id: PLAN-1072 | plan_revision: r1 | round: 1 | 建组：`D:/autostack/.wt/lang-1072/{auto-lang,auto-ui}` 双 `plan-1072-dev`（基面 lang `e81c27e9f` / ui `d2e7d7a4`，均=各仓 master）；`plan-artifacts/plan-1072/` 已建。主检出预检：**auto-ui master 带未提交 WIP**（docs/design 修改 + examples/ui/stylekit、packages/themes `.at` 删除，与 auto-lang 主检出 packages/blueprints 删除同型——疑似某迁移会话遗留）；不阻塞 worktree 实施，merge 落地前需 owner 路由，已面呈用户。
+
+2026-11-19 stage: work（T-01 冻结语料）| plan_id: PLAN-1072 | plan_revision: r1 | outcome: pass | worktree: lang-1072 双仓 | task_ids: T-01 | evidence: 静态勘定（探针零运行），收据如下。
+
+**分母与输入身份（冻结）**。①永久用例面：`auto-ui/crates/auto-ui-runtime/tests/ace_ts_provider.rs` 27 例（census v2 冻结表 9 行 + 全量双轨普查 83 语料聚合 (75,8,8,22) + param/channel/lambda-if/browser 档）；产品接线面 `auto-ui-tools/tests/plan980_ace_vue_tool_wiring.rs`、010 档 `plan980_010_form_short.rs`（现状=0/6 具名拒）、jg `plan980_bweb_jg_watch.rs`（use 块 7/7 缺席=981 合同）、notes `plan980_notes_fp_editor.rs`、包面 `plan980_package_sfc.rs` 8/8。②真实语料：`examples/ui/005-login/src/front/app.at`（980 census sha `446da5dc1bb68b6a`·134 行）与 `010-contact-form/src/front/app.at`（`15a632b4cda27cd2`·177 行）；AutoNotes 跨文件件=`auto-notes/src/front/components/{fp_editor.at(106 行),package.at(fpack),pac.at(notesfp)}`+宿主 `app.at:84 use { package: official }`；quick_switcher=`auto-notes/vendor/auto-down/jade-garden/front/auto/src/front/quick_switcher.at`（219 行，`use {` TS-ext 组合式块=981 合同锁组件面具名拒）。③规范：`docs/specs/ace-migration/m2-autoui.md` §13.12/13.13（缺席 taxonomy ①-⑦）/13.15。
+
+**005/010 墙勘定（对照 002 实证隔离）**。002-counter（同含 `use themes.themes:` 点分 use + design if-else）整源过 lane=U0 收据实证 ⇒ 该两形态**非墙**（980 lambda-if 收据"005 仍压 use/style/design 三墙"的 use/design 归因据此订正）。005 实墙=**文件级 `style` 声明 ×3（全字面量）+view 内 `style:` ident 引用 ×6**；010 实墙=**①文件级 `style field_col`（字面量）②`var faqs = [{q,a}×4]` 无类型列表字段（组件面 model 文法+field_type 域双拒）③view `for i, f in .faqs`（age-view-item 无 for 规则）**；010 handler 面（Submit if-else/SetTheme if 体/SetAccent）on-if 刀已就绪。1071 T-02 已交 010 边界裁定：**列表字段=仅视图数据源（v-for 渲染、非可变 state 通道、不进 AceStateValue）**，AGE 列表语义归 collections owner。
+
+**路由决策（依 981 r18 会签原文，非新裁定）**。981 会签将组件面 style 锁在 const 路径三条件后（组件面无 const-item/resolve 拒裸 const/无 ModuleGlobalsPlan），但**同会签 (c)3 已裁定投影期字面量替换为两面通用语义**（"改为投影期把 style 名替换为字符串字面量"）且明示"若能端到端再单提一步开 age-component"。1072 取**替换路径而非 const 路径**：组件面 style-item=惰性视图数据（不产 Item::Const/Fn、不进 resolve/全局计划——三条件不触发、无"能解析跑不了"半面）；参数化/默认值/跨模块/带参调用沿包面同名拒（style-defaults/style-call）。grammar-id 重基线=age-component 一值（style-item 规则 profile 增 age-component；包面规则集不变）；13 邻居逐字节保持，冻结面同提交更新注明前值（沿 #6m/#6o/view-if/on-if 先例）。UI 侧 `generate_sfcs_with_lane_product` 现以裸 VueGenerator 丢文件级 style（`style:` ident 落 `:style="field_label"`=运行时 undefined）——修法=生成前经 `design_tokens::recipe` 公共 API 注册本文件配方（auto-ui-runtime 已依赖 auto-ui-compiler；产品道四调用点现为线程局部余温隐式生效，独立入口（auto run CLI）为空注册表），与旧管线同源展开。
+
+**T-02 执行序**：刀A=组件面 style（lang grammar/投影惰性表+替换/UI 配方注册显式化+005 产品翻转+浏览器档）；刀B=010（lang view-for 结构承载+无类型列表字段视图数据面/UI v-for 对账+010 产品翻转）；残余记账（n_assigns census、AC-LIF-07、owned-wrap 决策、#6p 分支内调用形谱系归档）。quick_switcher/AutoNotes app.at 整源/`use { package }` 按既名墙保留（981 合同/域决策），旧新映射表随 T-02 收据落档。
+
+next_responsible_role: work（T-02 刀A 起）
+
 ## 10. 待澄清事项
 
-由 T-01 核实原用例位置、实际依赖接口与待冻结的生产入口。
+T-01 已核（§9 收据）：原用例位置/依赖接口/生产入口冻结完毕；005/010 墙与路由已勘定。遗留观察项：①auto-ui master 未提交 WIP（examples/stylekit、packages/themes `.at` 删除族）owner 未明——merge 落地前需路由，非本计划阻塞；②owned-wrap 统一（原 980 §10-1 谱系）与 #6p 分支内调用形承载随 T-02 残余记账按证据决策。
