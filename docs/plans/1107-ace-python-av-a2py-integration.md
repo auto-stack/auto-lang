@@ -314,6 +314,20 @@ Round 5 增量（冻结提交 `1045a8f91`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 5 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 1045a8f91 | next: work`
 
+2026-11-20 · stage: work（round 6 · **V-01 A2PY 真跑通过**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `4c01fb05d` | task_ids: T-03 核心达成（V-01 双端），T-03 仍未关闭（V-02/04/08 待做）| outcome: pass（round 级）| next_responsible_role: work（T-03 余量 / T-06 病例）
+
+Round 6 增量（冻结提交 `4c01fb05d`，树内 clean）：
+- **打印的文本抽取记为单一事实**：`print(<py object>)` 的 staged 读回链在 resolve 打印点记录一条 `ToText` 事实（receiver=被打印对象），A2PY 直接发射 `a2x_str_from_lit(a2x_py_to_str(recv))`，整条 `py_stage_str`→`__py_staged_text`→word 读回链不再逐 lane 降级。
+- **精确 span 事实定位**：新增 `PyOpPlan::find_exact(kind, span)`；链式操作共享起点（`a.b(c) + d`）时外层用精确 span 命中，修掉“binop 取到内层 receiver 事实”的错配（该 bug 曾把 `x` 算成未 reshape/未除的值，torch 报 1x8 vs 2x1）。
+- **结果**：`p1107_t03_section51_runs_as_native_python` **解除 ignore 并 PASS**——同一 §5.1 源经共享前门编译、A2PY 原生 Python 生成、声明解释器（CPython 3.14 + torch 2.14.0+cpu）真跑：62 行（60 loss + shape + pred0），first `0.2370201`、final `0.101308905`、`torch.Size([4, 1])`、pred0 `0.47284803`，2.25s；生成物无 ctypes wrapper、无 `f0_text_provider.dll`、无 PyO3/AV 会话。
+- 观测记录：该运行另有 （a）运行时 `a2x_run_main` 的 `value:0` 运行观测行（测试按运行通道剔除后断言 62 行语言输出）；（b）torch 自身对 `float(requires_grad tensor)` 的 UserWarning 落 stderr（与 AV `py_to_f64` 同一协议行为，不影响 stdout oracle），后续 V-03/V-04 若要求静默需在共享语义层统一处置，不在运行时按 torch 名特判。
+
+证据：`cargo nextest -p ace-a2x-python -E 'test(p1107_t03)'` PASS（2.31s，含上面 62 行断言）；`cargo t ace-python` PASS 10/10；`cargo t ace-a2x` 仅预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，master 同红）与 `pyready_03` 并行偶发（隔离绿）。
+
+下一步：T-03 余量（V-02 绑定/kwargs/源序、V-04 错误映射、V-08 回归）→ 之后 T-05 工程/SDK 接通（`ac-build --target a2py` 走 Aggregates+py 契约），T-06 共享病例与固定组并集。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 6 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: 4c01fb05d | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
