@@ -406,6 +406,12 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
   距今 >48h 且其后有多次合并 → **DUE**。PLAN-1022 的收口已把该 DUE 移交 `auto-plan-regress`，
   本合并不另起竞争实例，记 `batch_gate: pending(owner=auto-plan-regress, single-instance on main)`。
 
+  **cleaned 验证（执行后实测，2026-11-19 20:3x）**：`wt-guard.ps1` 对 `auto-lang` 与 `auto-down` 两棵工作组树均输出
+  `clean`；`git worktree remove` exit 0（两棵）；`git branch -d plan-1079-dev` → "Deleted branch … (was bedad3cff)"；
+  组目录 `D:/autostack/.wt/lang-1079` 删除后 `Test-Path=False`；`plan-artifacts/plan-1079` 删除 **1.13 MB / 144 文件**后
+  `Test-Path=False`；`.retention/policy.json` 刷新为 129 条（新增本计划 `deleted-at-merge (no artifact holds)`）；
+  `git worktree list` 与 `git branch --list 'plan-1079*'` 均无残留；主检出本包路径 `git status` 为空（归档文件已跟踪）。
+  最终 master 尖端 `a925dda9d`（簿记）→ 交付提交 `bedad3cff`。
   **具名 hold**：本计划 §4/§5 引用的三份 AV 系列设计文档（`docs/design/strategy/av-autovm-language-parity.md`、
   `docs/design/strategy/av-autovm-legacy-case-map.md`、`docs/design/testing/ace-feature-organized-autodown-corpus.md`）
   在主检出仍为**未跟踪 WIP**（与 1078 归档时同状）。属 AV 系列规划会话的在途文档（1079–1096 共用），
