@@ -75,20 +75,20 @@ fn expect_stride() int { return 3 }
 fn outline_stride() int { return 7 }
 
 // Matcher tags (wire order).
-fn mtag_lit() int { return 0 }
-fn mtag_charset() int { return 1 }
-fn mtag_line() int { return 2 }
-fn mtag_block() int { return 3 }
-fn mtag_strlit() int { return 4 }
+pub fn mtag_lit() int { return 0 }
+pub fn mtag_charset() int { return 1 }
+pub fn mtag_line() int { return 2 }
+pub fn mtag_block() int { return 3 }
+pub fn mtag_strlit() int { return 4 }
 
 // Error codes (decode/validate refusals; 0 = ok).
-fn e_ok() int { return 0 }
-fn e_version() int { return 1 }
-fn e_truncated() int { return 2 }
-fn e_bad_tag() int { return 3 }
-fn e_count() int { return 4 }
-fn e_bad_ref() int { return 5 }
-fn e_trailing() int { return 6 }
+pub fn e_ok() int { return 0 }
+pub fn e_version() int { return 1 }
+pub fn e_truncated() int { return 2 }
+pub fn e_bad_tag() int { return 3 }
+pub fn e_count() int { return 4 }
+pub fn e_bad_ref() int { return 5 }
+pub fn e_trailing() int { return 6 }
 
 // ---------------------------------------------------------------------------
 // Small helpers

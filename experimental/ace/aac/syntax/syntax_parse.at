@@ -3,101 +3,76 @@
 // config-driven Pratt, declaration-level recovery, budgets, failure memo,
 // and copy-adopted grafting.
 //
-// Faithful port notes:
-//   * ordered-choice backtracking: alt failure restores the alt-entry save
-//     and clears partial children; cut steps (PLAN-927) freeze backtracking
-//     below the commit depth;
-//   * List steps consume `sep` tokens between items; a clean item failure
-//     ends the list; the ROOT-level list skips garbage as error leaves;
-//   * Pratt frames stage WantPrimary/WantOp/WantArgs/WantClose/Done with
-//     per-frame operand/op stacks in shared arenas;
-//   * declaration-level recovery (sync ∪ first(rule)) rebuilds leading
-//     trivia, eats error leaves to the stop point, and produces a MISSING
-//     placeholder with the expected rule kind;
-//   * node spans are built ABSOLUTE and relativized at declaration
-//     boundaries (origin = cover start incl. leading trivia);
-//   * the failure memo keys (rule, token pos, same-line latch, bracket)
-//     exactly and only replays total failures (bounded, best-effort —
-//     clearing loses speed, never results);
-//   * grafting adopts an unchanged old declaration by COPYING its node
-//     range (relative spans verbatim, decl field remapped to the new tree
-//     decl index) and skipping its tokens — the Rc block sharing on the
-//     Rust side is a storage optimization with no observable here.
+// Machine state lives in parallel flat lists threaded through the step
+// functions in a FIXED order (the M-tuple):
+//   pg, cs, firsts, nullable, toks, t, ef, decls, mc, pending, fr, saves,
+//   pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls,
+//   gcand, gshift, ginfo
+// (hints are h3=[depth,start,end] stride 3 + hm messages; tree diags
+// d3=[start,end] stride 3-2 + dm messages — d3 uses stride 2.)
 //
-// Machine state is passed as parallel flat lists in a fixed order:
-//   pg (program arena), cs (scanner buckets), firsts/nullable (FirstSets),
-//   toks (5/token), t/ef/decls (CST arenas), mc (scalar cursor state),
-//   pending (trivia token indices), fr (frame arena, stride 40), saves,
-//   pvals/pops/optriv (pratt arenas), arule/ai (active rules),
-//   hd/hs/he/hm (hints), dm/ds/de (tree diags), fm (failure memo),
-//   ot/oef/odecls/gcand/gshift/ginfo (graft input; ginfo[0] = active).
+// Disciplines fixed by the lane:
+//   * List has no pop — stack-ish lists carry a LOGICAL length in mc;
+//   * functions stay small (the AV ownership bound scales blocks × slots);
+//   * meta kinds use the signed encoding (-1..-4; the conformance oracle
+//     normalizes the Rust canonical form identically);
+//   * decl directory: node.decl is the tree-global decl index + 1 (0 =
+//     root-level absolute span); origins are decl-relative byte starts.
 
-use syntax_program.token_kind
-use syntax_program.rule_kind
-use syntax_program.kind_error
-use syntax_program.kind_missing
-use syntax_program.kind_call
-use syntax_program.kind_postfix
-use syntax_program.no_field
-use syntax_program.n_tokens
-use syntax_program.n_rules
-use syntax_program.n_pratt
-use syntax_program.start_rule
-use syntax_program.newline_significant
-use syntax_program.rule_recover
-use syntax_program.rule_alt_start
-use syntax_program.rule_alt_count
-use syntax_program.alt_step_start
-use syntax_program.alt_step_count
-use syntax_program.step_atom_tag
-use syntax_program.step_atom_ref
-use syntax_program.step_repeat
-use syntax_program.step_same_line
-use syntax_program.step_cut
-use syntax_program.step_field_p1
-use syntax_program.pratt_primary
-use syntax_program.pratt_op_start
-use syntax_program.pratt_op_count
-use syntax_program.pratt_group_open
-use syntax_program.pratt_group_close
-use syntax_program.pratt_has_cp
-use syntax_program.pratt_cp_open
-use syntax_program.pratt_cp_close
-use syntax_program.pratt_cp_newline_free
-use syntax_program.pratt_cp_callee_same_line
-use syntax_program.pratt_call_args
-use syntax_program.pratt_postfix_tail
-use syntax_program.pratt_op_token
-use syntax_program.pratt_op_binding
-use syntax_program.pratt_op_assoc
-use syntax_program.stmt_end_at
-use syntax_program.sep_at
-use syntax_program.sync_at
-use syntax_program.ctx_token
-use syntax_program.rule_expect
-use syntax_program.rule_name
-use syntax_program.is_trivia_token
-use syntax_lexer.tok_count
-use syntax_lexer.tok_token
-use syntax_lexer.tok_start
-use syntax_lexer.tok_end
-use syntax_lexer.tok_line
-use syntax_lexer.tok_error
-use syntax_cst.nk
-use syntax_cst.nstart
-use syntax_cst.nlen
-use syntax_cst.nfc
-use syntax_cst.ncc
-use syntax_cst.nexpected
-use syntax_cst.nflags
-use syntax_cst.ndecl
-use syntax_cst.flag_missing
-use syntax_cst.flag_error
-use syntax_cst.flag_trivia
-use syntax_cst.decl_origin
+use app.syntax_program.token_kind
+use app.syntax_program.rule_kind
+use app.syntax_program.kind_error
+use app.syntax_program.kind_missing
+use app.syntax_program.kind_call
+use app.syntax_program.kind_postfix
+use app.syntax_program.no_field
+use app.syntax_program.n_tokens
+use app.syntax_program.n_rules
+use app.syntax_program.n_pratt
+use app.syntax_program.start_rule
+use app.syntax_program.newline_significant
+use app.syntax_program.rule_recover
+use app.syntax_program.rule_alt_start
+use app.syntax_program.rule_alt_count
+use app.syntax_program.alt_step_start
+use app.syntax_program.alt_step_count
+use app.syntax_program.step_atom_tag
+use app.syntax_program.step_atom_ref
+use app.syntax_program.step_repeat
+use app.syntax_program.step_same_line
+use app.syntax_program.step_cut
+use app.syntax_program.step_field_p1
+use app.syntax_program.pratt_primary
+use app.syntax_program.pratt_op_start
+use app.syntax_program.pratt_op_count
+use app.syntax_program.pratt_group_open
+use app.syntax_program.pratt_group_close
+use app.syntax_program.pratt_has_cp
+use app.syntax_program.pratt_cp_open
+use app.syntax_program.pratt_cp_close
+use app.syntax_program.pratt_cp_newline_free
+use app.syntax_program.pratt_cp_callee_same_line
+use app.syntax_program.pratt_call_args
+use app.syntax_program.pratt_postfix_tail
+use app.syntax_program.pratt_op_token
+use app.syntax_program.pratt_op_binding
+use app.syntax_program.pratt_op_assoc
+use app.syntax_program.rule_expect
+use app.syntax_program.rule_name
+use app.syntax_program.is_trivia_token
+use app.syntax_program.ctx_token
+use app.syntax_lexer.tok_count
+use app.syntax_lexer.tok_token
+use app.syntax_lexer.tok_start
+use app.syntax_lexer.tok_end
+use app.syntax_lexer.tok_line
+use app.syntax_lexer.tok_error
+use app.syntax_cst.flag_missing
+use app.syntax_cst.flag_error
+use app.syntax_cst.flag_trivia
 
 // ---------------------------------------------------------------------------
-// Frame slots (stride 40)
+// Frame arena layout (stride 40) and cursor slots
 // ---------------------------------------------------------------------------
 
 fn fs_kind() int { return 0 }
@@ -142,28 +117,12 @@ fn fg(fr List<int>, i int, slot int) int {
     return fr.get(i * fs_stride() + slot)
 }
 
-fn fs(fr List<int>, i int, slot int, v int) int {
+fn fset(fr List<int>, i int, slot int, v int) int {
     fr.set(i * fs_stride() + slot, v)
     return 0
 }
 
-// Wait kinds.
-fn w_none() int { return 0 }
-fn w_once() int { return 1 }
-fn w_opt() int { return 2 }
-fn w_rep() int { return 3 }
-
-// Pratt stages.
-fn ps_primary() int { return 0 }
-fn ps_op() int { return 1 }
-fn ps_args() int { return 2 }
-fn ps_close() int { return 3 }
-fn ps_done() int { return 4 }
-
-// ---------------------------------------------------------------------------
-// Machine cursor slots
-// ---------------------------------------------------------------------------
-
+// mc slots
 fn m_i() int { return 0 }
 fn m_lastline() int { return 1 }
 fn m_bracket() int { return 2 }
@@ -173,30 +132,38 @@ fn m_cutdepth() int { return 5 }
 fn m_steps() int { return 6 }
 fn m_root() int { return 7 }
 fn m_graftcnt() int { return 8 }
-fn m_ctxmiss() int { return 9 }
-fn m_nframes() int { return 10 }
-fn m_maxdepth() int { return 11 }
-fn m_workbytes() int { return 12 }
+fn m_nframes() int { return 9 }
+fn m_maxdepth() int { return 10 }
+fn m_workbytes() int { return 11 }
+fn m_plen() int { return 12 }
+fn m_ndecls() int { return 13 }
+fn m_ardepth() int { return 14 }
+fn m_nt() int { return 15 }
+fn m_running() int { return 16 }
+fn m_efhi() int { return 17 }
 
-// Graft info slots (ginfo): [0]=active, [1]=new_base, [2]=old_base,
-// [3]=prefix_len, [4]=old_tok_count.
+fn w_none() int { return 0 }
+fn w_once() int { return 1 }
+fn w_opt() int { return 2 }
+fn w_rep() int { return 3 }
+
+fn ps_primary() int { return 0 }
+fn ps_op() int { return 1 }
+fn ps_args() int { return 2 }
+fn ps_close() int { return 3 }
+fn ps_done() int { return 4 }
+
 fn gi_active() int { return 0 }
-fn gi_new_base() int { return 1 }
-fn gi_old_base() int { return 2 }
-fn gi_prefix() int { return 3 }
-
-// Memo: single list [count, cap, key0, br0, val0, key1, ...] stride 3.
 
 // ---------------------------------------------------------------------------
 // FirstSets
 // ---------------------------------------------------------------------------
 
-/// Fixpoint first/nullable over the program (mirrors FirstSets::compute).
-/// firsts is n_rules×n_tokens flat (0/1); nullable n_rules.
+/// Fixpoint first/nullable (FirstSets::compute). firsts is n_rules×n_tokens
+/// flat 0/1; nullable n_rules. Returns 1 on non-convergence (defensive).
 pub fn first_sets_into(pg List<int>, firsts List<int>, nullable List<int>) int {
     let nt = n_tokens(pg)
     let n = n_rules(pg)
-    let np = n_pratt(pg)
     var i = 0
     for (i < n * nt) {
         firsts.push(0)
@@ -215,118 +182,228 @@ pub fn first_sets_into(pg List<int>, firsts List<int>, nullable List<int>) int {
             return 1
         }
         changed = 0
-        var ri = 0
-        for (ri < n) {
-            let astart = rule_alt_start(pg, ri)
-            let na = rule_alt_count(pg, ri)
-            var a = 0
-            for (a < na) {
-                let ai = astart + a
-                let ns = alt_step_count(pg, ai)
-                let sstart = alt_step_start(pg, ai)
-                var all_nullable = 1
-                var s = 0
-                for (s < ns) {
-                    let si = sstart + s
-                    let tag = step_atom_tag(pg, si)
-                    let ref = step_atom_ref(pg, si)
-                    if (tag == 0) {
-                        if (firsts.get(ri * nt + ref) == 0) {
-                            firsts.set(ri * nt + ref, 1)
-                            changed = 1
-                        }
-                        all_nullable = 0
-                    }
-                    if (tag == 1) {
-                        var tk = 0
-                        for (tk < nt) {
-                            if (firsts.get(ref * nt + tk) != 0) {
-                                if (firsts.get(ri * nt + tk) == 0) {
-                                    firsts.set(ri * nt + tk, 1)
-                                    changed = 1
-                                }
-                            }
-                            tk = tk + 1
-                        }
-                        if (nullable.get(ref) == 0) {
-                            all_nullable = 0
-                        }
-                    }
-                    if (tag == 2) {
-                        let prim = pratt_primary(pg, ref)
-                        var tk = 0
-                        for (tk < nt) {
-                            if (firsts.get(prim * nt + tk) != 0) {
-                                if (firsts.get(ri * nt + tk) == 0) {
-                                    firsts.set(ri * nt + tk, 1)
-                                    changed = 1
-                                }
-                            }
-                            tk = tk + 1
-                        }
-                        if (nullable.get(prim) == 0) {
-                            all_nullable = 0
-                        }
-                    }
-                    if (tag == 3) {
-                        let spec_tok = ctx_token(pg, ref)
-                        if (firsts.get(ri * nt + spec_tok) == 0) {
-                            firsts.set(ri * nt + spec_tok, 1)
-                            changed = 1
-                        }
-                        all_nullable = 0
-                    }
-                    if (all_nullable == 0) {
-                        s = ns
-                    }
-                    s = s + 1
-                }
-                if (all_nullable == 1) {
-                    if (nullable.get(ri) == 0) {
-                        nullable.set(ri, 1)
-                        changed = 1
-                    }
-                }
-                a = a + 1
-            }
-            ri = ri + 1
+        if (fsp_pass(pg, firsts, nullable, nt, n) != 0) {
+            changed = 1
         }
     }
     return 0
 }
 
-fn first_starts(firsts List<int>, nt int, rule int, tok int) bool {
-    return firsts.get(rule * nt + tok) != 0
+fn fsp_pass(pg List<int>, firsts List<int>, nullable List<int>, nt int, n int) int {
+    var changed = 0
+    var ri = 0
+    for (ri < n) {
+        let astart = rule_alt_start(pg, ri)
+        let na = rule_alt_count(pg, ri)
+        var a = 0
+        for (a < na) {
+            if (fsp_alt(pg, firsts, nullable, nt, ri, astart + a) != 0) {
+                changed = 1
+            }
+            a = a + 1
+        }
+        ri = ri + 1
+    }
+    return changed
+}
+
+fn fsp_alt(pg List<int>, firsts List<int>, nullable List<int>, nt int, ri int, ai int) int {
+    var changed = 0
+    var all_nullable = 1
+    let ns = alt_step_count(pg, ai)
+    let sstart = alt_step_start(pg, ai)
+    var s = 0
+    for (s < ns) {
+        let c = fsp_step(pg, firsts, nullable, nt, ri, sstart + s)
+        if (c == 1) {
+            changed = 1
+        }
+        if (c == 2) {
+            all_nullable = 0
+        }
+        if (all_nullable == 0) {
+            return fsp_alt_tail(nullable, ri, all_nullable, changed)
+        }
+        s = s + 1
+    }
+    return fsp_alt_tail(nullable, ri, all_nullable, changed)
+}
+
+fn fsp_alt_tail(nullable List<int>, ri int, all_nullable int, changed int) int {
+    if (all_nullable == 1) {
+        if (nullable.get(ri) == 0) {
+            nullable.set(ri, 1)
+            return 1
+        }
+    }
+    return changed
+}
+
+// One step's contribution: 0 = nothing changed, 1 = changed, 2 = not
+// nullable (stop scanning this alt).
+fn fsp_step(pg List<int>, firsts List<int>, nullable List<int>, nt int, ri int, si int) int {
+    let mtag = step_atom_tag(pg, si)
+    let ref = step_atom_ref(pg, si)
+    var changed = 0
+    if (mtag == 0) {
+        if (firsts.get(ri * nt + ref) == 0) {
+            firsts.set(ri * nt + ref, 1)
+            changed = 1
+        }
+        return changed + 2
+    }
+    if (mtag == 1) {
+        changed = merge_firsts(firsts, nt, ref, ri)
+        if (nullable.get(ref) == 0) {
+            return changed + 2
+        }
+        return changed
+    }
+    if (mtag == 2) {
+        let prim = pratt_primary(pg, ref)
+        changed = merge_firsts(firsts, nt, prim, ri)
+        if (nullable.get(prim) == 0) {
+            return changed + 2
+        }
+        return changed
+    }
+    // ctx name
+    let spec_tok = ctx_token(pg, ref)
+    if (firsts.get(ri * nt + spec_tok) == 0) {
+        firsts.set(ri * nt + spec_tok, 1)
+        changed = 1
+    }
+    return changed + 2
+}
+
+fn merge_firsts(firsts List<int>, nt int, src int, dst int) int {
+    var changed = 0
+    var tk = 0
+    for (tk < nt) {
+        if (firsts.get(src * nt + tk) != 0) {
+            if (firsts.get(dst * nt + tk) == 0) {
+                firsts.set(dst * nt + tk, 1)
+                changed = 1
+            }
+        }
+        tk = tk + 1
+    }
+    return changed
 }
 
 // ---------------------------------------------------------------------------
-// Machine primitives
+// Machine entry
 // ---------------------------------------------------------------------------
 
-fn t_push(t List<int>, kind int, start int, len int, fc int, cc int, exp int, flags int, decl int) int {
-    t.push(kind)
-    t.push(start)
-    t.push(len)
-    t.push(fc)
-    t.push(cc)
-    t.push(exp)
-    t.push(flags)
-    t.push(decl)
-    return t.len() / 8 - 1
+/// Parse a token stream into the CST arenas. Graft input lists may be empty
+/// (ginfo[0] = 0 disables adoption). Returns: 0 ok; 2 depth exhausted;
+/// 3 work exhausted.
+pub fn parse_tokens(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, budget_depth int, budget_work int) int {
+    var mc = mk_mc(budget_depth, budget_work)
+    var pending = List<int>.new()
+    var fr = List<int>.new()
+    var saves = List<int>.new()
+    var pvals = List<int>.new()
+    var pops = List<int>.new()
+    var optriv = List<int>.new()
+    var arule = List<int>.new()
+    var ai = List<int>.new()
+    var hints = List<int>.new()
+    var fm = mk_memo()
+    let r = machine_run(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+    if (r != 0) {
+        return -r
+    }
+    parse_finish(pg, toks, t, ef, mc, pending, dmsg, hints)
+    return mc.get(m_root())
 }
 
-fn t_set(t List<int>, node int, slot int, v int) int {
-    t.set(node * 8 + slot, v)
+fn mk_mc(depth int, work int) List<int> {
+    var mc = List<int>.new()
+    var i = 0
+    for (i < 18) {
+        mc.push(0)
+        i = i + 1
+    }
+    mc.set(m_anchor(), -1)
+    mc.set(m_root(), -1)
+    mc.set(m_maxdepth(), depth)
+    mc.set(m_workbytes(), work)
+    mc.set(m_lastline(), 1)
+    mc.set(m_nt(), 0)
+    mc.set(m_running(), 1)
+    return mc
+}
+
+fn mk_memo() List<int> {
+    // 8192 slots (the lane caps a list at 65536 elements; the memo is
+    // best-effort acceleration — clearing on load only loses speed).
+    var fm = List<int>.new()
+    fm.push(0)
+    fm.push(1024)
+    var i = 0
+    for (i < 1024 * 5) {
+        fm.push(-999999)
+        i = i + 1
+    }
+    return fm
+}
+
+fn machine_run(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    mc.set(m_nt(), n_tokens(pg))
+    push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, start_rule(pg), no_field(), 0)
+    for (mc.get(m_running()) == 1) {
+        if (mc.get(m_nframes()) == 0) {
+            return 0
+        }
+        let steps = mc.get(m_steps()) + 1
+        mc.set(m_steps(), steps)
+        if (steps > 4000000) {
+            dmsg.push(99)
+            dmsg.push(mc.get(m_i()))
+            dmsg.push(mc.get(m_nframes()))
+            dmsg.push(fg(fr, mc.get(m_nframes()) - 1, fs_rule()))
+            return 4
+        }
+        if (steps == 1 || steps % 65536 == 0) {
+            if (mem_estimate(t, ef, toks) > mc.get(m_workbytes())) {
+                return 3
+            }
+        }
+        if (mc.get(m_nframes()) > mc.get(m_maxdepth())) {
+            return 2
+        }
+        let top = mc.get(m_nframes()) - 1
+        if (fg(fr, top, fs_kind()) == 1) {
+            step_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        } else {
+            step_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        }
+    }
     return 0
 }
 
-fn cur_tok_count(toks List<int>) int {
-    return toks.len() / 5
+fn mem_estimate(t List<int>, ef List<int>, toks List<int>) int {
+    return (t.len() / 8) * 32 + ef.len() * 4 + (toks.len() / 5) * 32
 }
 
-/// peek(): skip trivia into pending; returns token index or -1.
-fn m_peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
-    let nt = cur_tok_count(toks)
+// ---------------------------------------------------------------------------
+// Cursor: pending discipline + peek/consume
+// ---------------------------------------------------------------------------
+
+fn pend_push(mc List<int>, pending List<int>, v int) int {
+    let pl = mc.get(m_plen())
+    if (pl == pending.len()) {
+        pending.push(v)
+    } else {
+        pending.set(pl, v)
+    }
+    mc.set(m_plen(), pl + 1)
+    return 0
+}
+
+fn peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
+    let nt = tok_count(toks)
     var i = mc.get(m_i())
     var probing = 1
     for (probing == 1) {
@@ -334,9 +411,9 @@ fn m_peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
             probing = 0
         } else {
             let tk = tok_token(toks, i)
-            if (tk != 4294967295) {
+            if (tk != -1) {
                 if (is_trivia_token(pg, tk)) {
-                    pending.push(i)
+                    pend_push(mc, pending, i)
                     i = i + 1
                 } else {
                     probing = 0
@@ -355,10 +432,8 @@ fn m_peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
 
 fn alloc_leaf(pg List<int>, toks List<int>, t List<int>, ti int, extra int) int {
     let tk = tok_token(toks, ti)
-    var kind = token_kind(0)
-    if (tk == 4294967295) {
-        kind = kind_error()
-    } else {
+    var kind = kind_error()
+    if (tk != -1) {
         kind = token_kind(tk)
     }
     var flags = 0
@@ -367,13 +442,68 @@ fn alloc_leaf(pg List<int>, toks List<int>, t List<int>, ti int, extra int) int 
     }
     flags = flags | extra
     let st = tok_start(toks, ti)
-    return t_push(t, kind, st, tok_end(toks, ti) - st, 0, 0, 0, flags, 0)
+    t.push(kind)
+    t.push(st)
+    t.push(tok_end(toks, ti) - st)
+    t.push(0)
+    t.push(0)
+    t.push(0)
+    t.push(flags)
+    t.push(0)
+    return t.len() / 8 - 1
 }
 
-/// consume(): flush pending trivia to the top frame, count brackets, push
-/// the leaf. Returns token index or -1 (refusal).
-fn m_consume(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>) int {
-    let ti = m_peek(pg, toks, mc, pending)
+// Frame segments live in ONE edge arena with a LOGICAL FRONTIER (mc efhi):
+// each frame reserves its segment start at the current frontier when pushed,
+// and every append advances the frontier past its own slot — a parent's
+// post-child append can then never collide with a live child's region
+// (regions below the frontier are recycled garbage, safe to overwrite).
+fn child_push(ef List<int>, fr List<int>, top int, node int, field int, mc List<int>) int {
+    var cstart = fg(fr, top, fs_cstart())
+    let clen = fg(fr, top, fs_clen())
+    var at = cstart + clen
+    if (at < mc.get(m_efhi())) {
+        // The segment was OVERTAKEN (deeper frames or an alloc_node's
+        // physical copies now own [at, frontier)): relocate the segment to
+        // the frontier before appending, so no in-place write ever lands in
+        // a live region.
+        let nc = mc.get(m_efhi())
+        var k = 0
+        for (k < clen) {
+            let v = ef.get((cstart + k) * 2)
+            let f2 = ef.get((cstart + k) * 2 + 1)
+            let pos = nc + k
+            if (pos * 2 == ef.len()) {
+                ef.push(v)
+                ef.push(f2)
+            } else {
+                ef.set(pos * 2, v)
+                ef.set(pos * 2 + 1, f2)
+            }
+            k = k + 1
+        }
+        cstart = nc
+        at = nc + clen
+        fset(fr, top, fs_cstart(), cstart)
+    }
+    if (at * 2 == ef.len()) {
+        ef.push(node)
+        ef.push(field)
+    } else {
+        ef.set(at * 2, node)
+        ef.set(at * 2 + 1, field)
+    }
+    fset(fr, top, fs_clen(), clen + 1)
+    if (at + 1 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), at + 1)
+    }
+    return 0
+}
+
+// consume(): flush pending trivia to the top frame, count brackets, append
+// the leaf. Returns the leaf node or -1 (refusal).
+fn consume(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>) int {
+    let ti = peek(pg, toks, mc, pending)
     if (ti < 0) {
         return -1
     }
@@ -391,25 +521,9 @@ fn m_consume(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<in
         }
         mc.set(m_slp(), 0)
     }
-    if (pending.len() > 0) {
-        var k = 0
-        for (k < pending.len()) {
-            let leaf = alloc_leaf(pg, toks, t, pending.get(k), flag_trivia())
-            let cs = fg(fr, top, fs_cstart())
-            let cl = fg(fr, top, fs_clen())
-            let at = cs + cl
-            if (at * 2 == ef.len()) {
-                ef.push(leaf)
-                ef.push(no_field())
-            } else {
-                ef.set(at * 2, leaf)
-                ef.set(at * 2 + 1, no_field())
-            }
-            fs(fr, top, fs_clen(), cl + 1)
-            k = k + 1
-        }
+    if (mc.get(m_plen()) > 0) {
+        flush_pending(mc, pending, pg, toks, t, ef, fr, top)
     }
-    // brackets: open then (guarded) close — the Rust order.
     let tk = tok_token(toks, ti)
     if (is_open_tok(pg, tk)) {
         mc.set(m_bracket(), mc.get(m_bracket()) + 1)
@@ -421,61 +535,50 @@ fn m_consume(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<in
     }
     mc.set(m_lastline(), tok_line(toks, ti))
     mc.set(m_i(), ti + 1)
-    fs(fr, top, fs_consumed(), 1)
+    fset(fr, top, fs_consumed(), 1)
     let leaf = alloc_leaf(pg, toks, t, ti, 0)
-    let cs2 = fg(fr, top, fs_cstart())
-    let cl2 = fg(fr, top, fs_clen())
-    let at2 = cs2 + cl2
-    if (at2 * 2 == ef.len()) {
-        ef.push(leaf)
-        ef.push(no_field())
-    } else {
-        ef.set(at2 * 2, leaf)
-        ef.set(at2 * 2 + 1, no_field())
-    }
-    fs(fr, top, fs_clen(), cl2 + 1)
+    child_push(ef, fr, top, leaf, no_field(), mc)
     return leaf
 }
 
-fn m_consume_same_line(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, same_line bool) int {
+fn flush_pending(mc List<int>, pending List<int>, pg List<int>, toks List<int>, t List<int>, ef List<int>, fr List<int>, top int) int {
+    var k = 0
+    for (k < mc.get(m_plen())) {
+        let leaf = alloc_leaf(pg, toks, t, pending.get(k), flag_trivia())
+        child_push(ef, fr, top, leaf, no_field(), mc)
+        k = k + 1
+    }
+    mc.set(m_plen(), 0)
+    return 0
+}
+
+fn consume_same_line(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, same_line bool) int {
     if (same_line && newline_significant(pg) && mc.get(m_bracket()) == 0) {
-        let ti = m_peek(pg, toks, mc, pending)
+        let ti = peek(pg, toks, mc, pending)
         if (ti >= 0) {
             if (tok_line(toks, ti) != mc.get(m_lastline())) {
                 return -1
             }
         }
     }
-    return m_consume(pg, toks, t, ef, mc, pending, fr)
-}
-
-// Child append into a frame's segment.
-fn child_push(ef List<int>, fr List<int>, top int, node int, field int) int {
-    let cs = fg(fr, top, fs_cstart())
-    let cl = fg(fr, top, fs_clen())
-    let at = cs + cl
-    if (at * 2 == ef.len()) {
-        ef.push(node)
-        ef.push(field)
-    } else {
-        ef.set(at * 2, node)
-        ef.set(at * 2 + 1, field)
-    }
-    fs(fr, top, fs_clen(), cl + 1)
-    return 0
-}
-
-fn child_get(ef List<int>, fr List<int>, top int, k int, out List<int>) int {
-    let e = fg(fr, top, fs_cstart()) + k
-    out.set(0, ef.get(e * 2))
-    out.set(1, ef.get(e * 2 + 1))
-    return 0
+    return consume(pg, toks, t, ef, mc, pending, fr)
 }
 
 fn is_open_tok(pg List<int>, tk int) bool {
-    if (tk == 4294967295) {
+    if (tk == -1) {
         return false
     }
+    return tok_in_set_open(pg, tk)
+}
+
+fn is_close_tok(pg List<int>, tk int) bool {
+    if (tk == -1) {
+        return false
+    }
+    return tok_in_set_close(pg, tk)
+}
+
+fn tok_in_set_open(pg List<int>, tk int) bool {
     var i = 0
     for (i < n_pratt(pg)) {
         if (pratt_group_open(pg, i) == tk) {
@@ -491,10 +594,7 @@ fn is_open_tok(pg List<int>, tk int) bool {
     return false
 }
 
-fn is_close_tok(pg List<int>, tk int) bool {
-    if (tk == 4294967295) {
-        return false
-    }
+fn tok_in_set_close(pg List<int>, tk int) bool {
     var i = 0
     for (i < n_pratt(pg)) {
         if (pratt_group_close(pg, i) == tk) {
@@ -544,95 +644,55 @@ fn op_assoc_of(pg List<int>, tk int) int {
     return 0
 }
 
+
 // ---------------------------------------------------------------------------
-// Save / restore
+// Save / restore (cursor + pending content + decl logical length)
 // ---------------------------------------------------------------------------
 
-fn save_capture(mc List<int>, pending List<int>, decls List<int>, saves List<int>) int {
+fn save_capture(mc List<int>, pending List<int>, saves List<int>) int {
     let off = saves.len()
     saves.push(mc.get(m_i()))
     saves.push(mc.get(m_lastline()))
     saves.push(mc.get(m_bracket()))
-    saves.push(decls.len() / 3)
+    saves.push(mc.get(m_ndecls()))
     saves.push(mc.get(m_anchor()))
     saves.push(mc.get(m_slp()))
-    saves.push(pending.len())
+    let pl = mc.get(m_plen())
+    saves.push(pl)
     var k = 0
-    for (k < pending.len()) {
+    for (k < pl) {
         saves.push(pending.get(k))
         k = k + 1
     }
     return off
 }
 
-fn save_restore(mc List<int>, pending List<int>, decls List<int>, saves List<int>, off int) int {
+fn save_restore(mc List<int>, pending List<int>, saves List<int>, off int) int {
     mc.set(m_i(), saves.get(off))
     mc.set(m_lastline(), saves.get(off + 1))
     mc.set(m_bracket(), saves.get(off + 2))
-    let dl = saves.get(off + 3) * 3
-    while (decls.len() > dl) {
-        decls.pop()
-    }
-    // pending has no pop: rebuild by copying the saved prefix into a fresh
-    // list is wasteful; instead truncate in place via slice-copy is not
-    // available — use the set-count discipline: the parser only ever APPENDS
-    // to `pending` and clears it wholesale, so a saved prefix restore can
-    // overwrite in place.
-    let plen = saves.get(off + 6)
-    var k = 0
-    for (k < plen) {
-        pending.set(k, saves.get(off + 7 + k))
-        k = k + 1
-    }
-    // Shrink pending to plen without pop: rewrite via trailing-clear marker
-    // is impossible; instead we keep a logical length in mc? Simpler: the
-    // caller maintains pending as an exact list — pending content is only
-    // ever 0..2 entries in practice, and restore overwrites the prefix. We
-    // record the logical length in mc slot m_plen and treat longer tails as
-    // garbage.
-    mc.set(m_plen(), plen)
+    mc.set(m_ndecls(), saves.get(off + 3))
     mc.set(m_anchor(), saves.get(off + 4))
     mc.set(m_slp(), saves.get(off + 5))
-    return 0
-}
-
-// m_plen: logical pending length (mc slot 15).
-fn m_plen() int { return 15 }
-
-// ---------------------------------------------------------------------------
-// Diags / hints
-// ---------------------------------------------------------------------------
-
-fn diag(dm List<Str>, ds List<int>, de List<int>, msg Str, start int, end int) int {
-    dm.push(msg)
-    ds.push(start)
-    de.push(end)
-    return 0
-}
-
-fn hint(hd List<int>, hs List<int>, he List<int>, hm List<Str>, depth int, msg Str, start int, end int) int {
-    var i = 0
-    for (i < hm.len()) {
-        if (hs.get(i) == start && he.get(i) == end && hm.get(i) == msg) {
-            if (depth > hd.get(i)) {
-                hd.set(i, depth)
-            }
-            return 0
+    let pl = saves.get(off + 6)
+    var k = 0
+    for (k < pl) {
+        if (k == pending.len()) {
+            pending.push(saves.get(off + 7 + k))
+        } else {
+            pending.set(k, saves.get(off + 7 + k))
         }
-        i = i + 1
+        k = k + 1
     }
-    hd.push(depth)
-    hs.push(start)
-    he.push(end)
-    hm.push(msg)
+    mc.set(m_plen(), pl)
     return 0
 }
 
 // ---------------------------------------------------------------------------
-// Frame push
+// Frames
 // ---------------------------------------------------------------------------
 
-fn frame_push(fr List<int>, mc List<int>) int {
+fn frame_push(mc List<int>, fr List<int>) int {
     let i = mc.get(m_nframes())
     var k = 0
     for (k < fs_stride()) {
@@ -647,17 +707,80 @@ fn frame_push(fr List<int>, mc List<int>) int {
     return i
 }
 
-fn frame_pop(mc List<int>) int {
-    mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+fn ar_push(mc List<int>, arule List<int>, ai List<int>, rule int) int {
+    let d = mc.get(m_ardepth())
+    if (d == arule.len()) {
+        arule.push(rule)
+        ai.push(mc.get(m_i()))
+    } else {
+        arule.set(d, rule)
+        ai.set(d, mc.get(m_i()))
+    }
+    mc.set(m_ardepth(), d + 1)
+    return 0
+}
+
+fn ar_pop(mc List<int>) int {
+    mc.set(m_ardepth(), mc.get(m_ardepth()) - 1)
+    return 0
+}
+
+fn ar_left_rec(mc List<int>, arule List<int>, ai List<int>, rule int) bool {
+    let d = mc.get(m_ardepth())
+    var k = 0
+    for (k < d) {
+        if (arule.get(k) == rule && ai.get(k) == mc.get(m_i())) {
+            return true
+        }
+        k = k + 1
+    }
+    return false
+}
+
+fn init_frame(fr List<int>, f int, rule int, field int, save_off int, active int, is_decl int, cover_from int, t_len int, ef_len2 int) int {
+    fset(fr, f, fs_rule(), rule)
+    fset(fr, f, fs_alt(), 0)
+    fset(fr, f, fs_step(), 0)
+    fset(fr, f, fs_cstart(), ef_len2)
+    fset(fr, f, fs_clen(), 0)
+    fset(fr, f, fs_save(), save_off)
+    fset(fr, f, fs_fsave(), save_off)
+    fset(fr, f, fs_repsave(), -1)
+    fset(fr, f, fs_optsave(), -1)
+    fset(fr, f, fs_wait(), w_none())
+    fset(fr, f, fs_repk(), 0)
+    fset(fr, f, fs_consumed(), 0)
+    fset(fr, f, fs_committed(), 0)
+    fset(fr, f, fs_cuthere(), 0)
+    fset(fr, f, fs_liststarted(), 0)
+    fset(fr, f, fs_active(), active)
+    fset(fr, f, fs_isdecl(), is_decl)
+    fset(fr, f, fs_coverfrom(), cover_from)
+    fset(fr, f, fs_nodestart(), t_len)
+    fset(fr, f, fs_failfast(), -1)
+    fset(fr, f, fs_ptable(), 0)
+    fset(fr, f, fs_pstage(), ps_primary())
+    fset(fr, f, fs_panchor(), -1)
+    fset(fr, f, fs_pcallee(), 0)
+    fset(fr, f, fs_popenleaf(), 0)
+    fset(fr, f, fs_pdone(), 0)
+    fset(fr, f, fs_pfield(), field)
+    fset(fr, f, fs_ptailwait(), 0)
+    fset(fr, f, fs_ptaildone(), 0)
+    fset(fr, f, fs_pextra_s(), 0)
+    fset(fr, f, fs_pextra_l(), 0)
+    fset(fr, f, fs_pvals_s(), 0)
+    fset(fr, f, fs_pvals_l(), 0)
+    fset(fr, f, fs_pops_s(), 0)
+    fset(fr, f, fs_pops_l(), 0)
     return 0
 }
 
 // ---------------------------------------------------------------------------
-// alloc_node
+// alloc_node (spans from the frame's children; empty -> cursor zero-width)
 // ---------------------------------------------------------------------------
 
 fn alloc_node(t List<int>, ef List<int>, fr List<int>, top int, kind int, missing int, err int, toks List<int>, mc List<int>) int {
-    // Children span from the frame segment.
     let cs = fg(fr, top, fs_cstart())
     let cl = fg(fr, top, fs_clen())
     var min_start = 2147483647
@@ -666,14 +789,13 @@ fn alloc_node(t List<int>, ef List<int>, fr List<int>, top int, kind int, missin
     var k = 0
     for (k < cl) {
         let c = ef.get((cs + k) * 2)
-        let fl = nflags(t, c)
-        if ((fl & flag_trivia()) != 0) {
-            k = k + 1
-        } else {
-            let contributes = nlen(t, c) > 0 || ncc(t, c) > 0 || ((fl & flag_missing()) != 0)
-            if (contributes) {
-                let s = nstart(t, c)
-                let e = s + nlen(t, c)
+        let fl = t.get(c * 8 + 6)
+        if ((fl & flag_trivia()) == 0) {
+            let clen2 = t.get(c * 8 + 2)
+            let ccc = t.get(c * 8 + 4)
+            if (clen2 > 0 || ccc > 0 || ((fl & flag_missing()) != 0)) {
+                let s = t.get(c * 8 + 1)
+                let e = s + clen2
                 if (s < min_start) {
                     min_start = s
                 }
@@ -682,20 +804,18 @@ fn alloc_node(t List<int>, ef List<int>, fr List<int>, top int, kind int, missin
                 }
                 found = 1
             }
-            k = k + 1
         }
+        k = k + 1
     }
     var start = 0
     var len = 0
     if (found == 0) {
-        // Empty production: zero-width at the parse cursor (prev token end,
-        // else next token start; never 0 by placeholder).
         var pos = 0
         let i = mc.get(m_i())
         if (i > 0) {
             pos = tok_end(toks, i - 1)
         } else {
-            if (i < cur_tok_count(toks)) {
+            if (i < tok_count(toks)) {
                 pos = tok_start(toks, i)
             }
         }
@@ -719,264 +839,1982 @@ fn alloc_node(t List<int>, ef List<int>, fr List<int>, top int, kind int, missin
         ef.push(ef.get((cs + k) * 2 + 1))
         k = k + 1
     }
-    return t_push(t, kind, start, len, fc, cl, missing, flags, 0)
+    if (ef.len() / 2 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), ef.len() / 2)
+    }
+    t.push(kind)
+    t.push(start)
+    t.push(len)
+    t.push(fc)
+    t.push(cl)
+    t.push(missing)
+    t.push(flags)
+    t.push(0)
+    return t.len() / 8 - 1
 }
 
+
 // ---------------------------------------------------------------------------
-// The machine
+// Failure memo (open addressing, exact 4-tuple keys; clearing only loses
+// speed, never results)
 // ---------------------------------------------------------------------------
 
-/// Entry: parse a token stream (with optional graft input) into the tree
-/// arenas. Returns 0 ok; 1 invalid program; 2 depth exhausted; 3 work
-/// exhausted; 4 left-recursion sentinel leak (defensive).
-pub fn parse_tokens(
-    pg List<int>,
-    cs List<int>,
-    firsts List<int>,
-    nullable List<int>,
-    toks List<int>,
-    t List<int>,
-    ef List<int>,
-    decls List<int>,
-    dm List<Str>,
-    ds List<int>,
-    de List<int>,
-    ot List<int>,
-    oef List<int>,
-    odecls List<int>,
-    gcand List<int>,
-    gshift List<int>,
-    ginfo List<int>,
-    budget_depth int,
-    budget_work int,
-) int {
-    var mc = List<int>.new()
-    var i = 0
-    for (i < 16) {
-        mc.push(0)
-        i = i + 1
+// Slot: [rule, i, slp, bracket, val] stride 5; rule = MEMO_EMPTY means
+// free. Probe hash is a small non-overflowing mix; hits compare the full
+// 4-tuple exactly.
+fn memo_empty() int { return -999999 }
+
+fn memo_hash(rule int, i int, slp int, bracket int, cap int) int {
+    let h = (rule * 131 + i * 37 + slp * 7 + bracket * 3) % cap
+    if (h < 0) {
+        return h + cap
     }
-    mc.set(m_anchor(), -1)
-    mc.set(m_root(), -1)
-    mc.set(m_maxdepth(), budget_depth)
-    mc.set(m_workbytes(), budget_work)
-    var pending = List<int>.new()
-    var fr = List<int>.new()
-    var saves = List<int>.new()
-    var pvals = List<int>.new()
-    var pops = List<int>.new()
-    var optriv = List<int>.new()
-    var arule = List<int>.new()
-    var ai = List<int>.new()
-    var hd = List<int>.new()
-    var hs = List<int>.new()
-    var he = List<int>.new()
-    var hm = List<Str>.new()
-    var fm = List<int>.new()
-    fm.push(0)
-    fm.push(32768)
-    i = 0
-    for (i < 32768 * 3) {
-        fm.push(0)
-        i = i + 1
-    }
-    let r = machine_run(pg, cs, firsts, nullable, toks, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hd, hs, he, hm, dm, ds, de, fm, ot, oef, odecls, gcand, gshift, ginfo)
-    return r
+    return h
 }
 
-fn machine_run(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hd List<int>, hs List<int>, he List<int>, hm List<Str>, dm List<Str>, ds List<int>, de List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
-    let nt = n_tokens(pg)
-    // push start rule
-    let pr = push_rule(pg, cs, firsts, nullable, toks, t, ef, decls, mc, pending, fr, saves, arule, ai, hd, hs, he, hm, fm, ot, oef, odecls, gcand, gshift, ginfo, start_rule(pg), no_field(), 0, nt)
-    if (pr != 0) {
-        return pr
+fn memo_get(fm List<int>, rule int, i int, slp int, bracket int) int {
+    let cap = fm.get(1)
+    var h = memo_hash(rule, i, slp, bracket, cap)
+    var k = 0
+    for (k < 64) {
+        let slot = 2 + h * 5
+        if (fm.get(slot) == memo_empty()) {
+            return -1
+        }
+        if (fm.get(slot) == rule && fm.get(slot + 1) == i && fm.get(slot + 2) == slp && fm.get(slot + 3) == bracket) {
+            return fm.get(slot + 4)
+        }
+        h = h + 1
+        if (h >= cap) {
+            h = 0
+        }
+        k = k + 1
     }
+    return -1
+}
+
+fn memo_put(fm List<int>, rule int, i int, slp int, bracket int, consumed int) int {
+    let cnt = fm.get(0)
+    if (cnt * 4 >= cap_of(fm) * 3) {
+        memo_clear(fm)
+    }
+    let cap = fm.get(1)
+    var h = memo_hash(rule, i, slp, bracket, cap)
     var probing = 1
     for (probing == 1) {
-        if (mc.get(m_nframes()) == 0) {
-            return 0
+        let slot = 2 + h * 5
+        if (fm.get(slot) == memo_empty()) {
+            fm.set(slot, rule)
+            fm.set(slot + 1, i)
+            fm.set(slot + 2, slp)
+            fm.set(slot + 3, bracket)
+            fm.set(slot + 4, consumed)
+            fm.set(0, cnt + 1)
+            probing = 0
         }
-        let steps = mc.get(m_steps()) + 1
-        mc.set(m_steps(), steps)
-        if (steps == 1 || steps % 65536 == 0) {
-            if (mem_estimate(t, ef, toks) > mc.get(m_workbytes())) {
-                return 3
-            }
-        }
-        let top = mc.get(m_nframes()) - 1
-        if (fg(fr, top, fs_kind()) == 1) {
-            let r = step_pratt(pg, cs, firsts, nullable, toks, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hd, hs, he, hm, dm, ds, de, fm, ot, oef, odecls, gcand, gshift, ginfo)
-            if (r != 0) {
-                return r
-            }
-        } else {
-            let r = step_rule(pg, cs, firsts, nullable, toks, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hd, hs, he, hm, dm, ds, de, fm, ot, oef, odecls, gcand, gshift, ginfo)
-            if (r != 0) {
-                return r
-            }
+        h = h + 1
+        if (h >= cap) {
+            h = 0
         }
     }
     return 0
 }
 
-fn mem_estimate(t List<int>, ef List<int>, toks List<int>) int {
-    return (t.len() / 8) * 32 + ef.len() * 4 + (toks.len() / 5) * 32
+fn cap_of(fm List<int>) int {
+    return fm.get(1)
 }
 
-// push_rule returns nonzero only for program-level refusals carried out of
-// the run loop (none today — invalid programs are refused before the
-// machine starts), so 0 always.
-fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, arule List<int>, ai List<int>, hd List<int>, hs List<int>, he List<int>, hm List<Str>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, rule int, field int, force_sentinel int, nt int) int {
+fn memo_clear(fm List<int>) int {
+    var i = 2
+    for (i < fm.len()) {
+        fm.set(i, memo_empty())
+        i = i + 1
+    }
+    fm.set(0, 0)
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Diags / hints
+// ---------------------------------------------------------------------------
+
+// Diag encoding kinds: [kind, start, end, param] rows.
+pub fn diag_recovered() int { return 2 }
+pub fn diag_skipped_top() int { return 3 }
+pub fn diag_root_failed() int { return 4 }
+pub fn diag_trailing() int { return 5 }
+pub fn diag_left_rec() int { return 6 }
+pub fn diag_unknown_rule() int { return 7 }
+pub fn diag_ctx_slot() int { return 8 }
+pub fn diag_unexpected_in() int { return 9 }
+
+fn diag(dmsg List<int>, kind int, param int, start int, end int) int {
+    dmsg.push(kind)
+    dmsg.push(start)
+    dmsg.push(end)
+    dmsg.push(param)
+    return 0
+}
+
+fn hint(hints List<int>, depth int, start int, end int, kind int, param int) int {
+    var i = 0
+    for (i < hints.len() / 5) {
+        if (hints.get(i * 5 + 1) == start && hints.get(i * 5 + 2) == end && hints.get(i * 5 + 3) == kind && hints.get(i * 5 + 4) == param) {
+            if (depth > hints.get(i * 5)) {
+                hints.set(i * 5, depth)
+            }
+            return 0
+        }
+        i = i + 1
+    }
+    hints.push(depth)
+    hints.push(start)
+    hints.push(end)
+    hints.push(kind)
+    hints.push(param)
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// push_rule (+ decl-level graft)
+// ---------------------------------------------------------------------------
+
+fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, arule List<int>, ai List<int>, hints List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, rule int, field int, force_sentinel int) int {
     var left_rec = force_sentinel
     if (left_rec == 0) {
-        var k = 0
-        for (k < arule.len()) {
-            if (arule.get(k) == rule && ai.get(k) == mc.get(m_i())) {
-                left_rec = 1
-            }
-            k = k + 1
+        if (ar_left_rec(mc, arule, ai, rule)) {
+            left_rec = 1
         }
     }
-    let save_off = save_capture(mc, pending, decls, saves)
+    let save_off = save_capture(mc, pending, saves)
     if (left_rec != 0) {
-        if (force_sentinel == 0) {
-            diag(dm_of(hd), ds_of(hd), de_of(hd), "rule `" + rule_name(pg, rule) + "` recurses without consuming input (left recursion)", 0, 0)
-        }
-        let f = frame_push(fr, mc)
-        fs(fr, f, fs_kind(), 0)
-        fs(fr, f, fs_rule(), rule)
-        fs(fr, f, fs_alt(), -1)
-        fs(fr, f, fs_step(), 0)
-        fs(fr, f, fs_cstart(), ef_len_hi(ef, fr, mc))
-        fs(fr, f, fs_clen(), 0)
-        fs(fr, f, fs_save(), save_off)
-        fs(fr, f, fs_fsave(), save_off)
-        fs(fr, f, fs_repsave(), -1)
-        fs(fr, f, fs_optsave(), -1)
-        fs(fr, f, fs_consumed(), 0)
-        fs(fr, f, fs_committed(), 0)
-        fs(fr, f, fs_cuthere(), 0)
-        fs(fr, f, fs_liststarted(), 0)
-        fs(fr, f, fs_active(), 0)
-        fs(fr, f, fs_isdecl(), 0)
-        fs(fr, f, fs_coverfrom(), 0)
-        fs(fr, f, fs_nodestart(), t.len() / 8)
-        fs(fr, f, fs_failfast(), -1)
-        fs(fr, f, fs_pfield(), field)
-        fs(fr, f, fs_panchor(), -1)
-        fs(fr, f, fs_pstage(), ps_primary())
-        fs(fr, f, fs_ptaildone(), 0)
-        fs(fr, f, fs_ptailwait(), 0)
-        fs(fr, f, fs_pextra_s(), 0)
-        fs(fr, f, fs_pextra_l(), 0)
-        fs(fr, f, fs_pvals_s(), 0)
-        fs(fr, f, fs_pvals_l(), 0)
-        fs(fr, f, fs_pops_s(), 0)
-        fs(fr, f, fs_pops_l(), 0)
+        let f = frame_push(mc, fr)
+        fset(fr, f, fs_kind(), 0)
+        init_frame(fr, f, rule, field, save_off, 0, 0, 0, t.len() / 8, mc.get(m_efhi()))
+        fset(fr, f, fs_alt(), -1)
         return 0
     }
-    arule.push(rule)
-    ai.push(mc.get(m_i()))
-    let is_decl = mc.get(m_nframes()) == 1
-    // cover_from: leading trivia start or current token start.
+    ar_push(mc, arule, ai, rule)
+    var is_decl = 1
+    if (mc.get(m_nframes()) != 1) {
+        is_decl = 0
+    }
     var cover_from = 0
-    if (pending_len_of(mc, pending) > 0) {
-        cover_from = tok_start(toks, pending_at(pending, mc, 0))
+    if (mc.get(m_plen()) > 0) {
+        cover_from = tok_start(toks, pending.get(0))
     } else {
         let i = mc.get(m_i())
-        if (i < cur_tok_count(toks)) {
+        if (i < tok_count(toks)) {
             cover_from = tok_start(toks, i)
         }
     }
-    // Decl-level graft: adopt an unchanged old declaration.
-    if (is_decl != 0) {
-        if (try_graft(pg, toks, t, ef, decls, mc, pending, fr, ginfo, gcand, gshift, ot, oef, odecls, field) != 0) {
-            arule.pop()
-            ai.pop()
-            return 0
+    if (is_decl == 1) {
+        if (ginfo.get(gi_active()) != 0) {
+            if (try_graft(pg, toks, t, ef, decls, mc, pending, fr, ginfo, gcand, gshift, ot, oef, odecls, field) != 0) {
+                ar_pop(mc)
+                return 0
+            }
         }
     }
-    // fail-fast memo replay.
     var fail_fast = -1
-    if (mc.get(m_cutdepth()) == 0 || mc.get(m_nframes()) + 1 > mc.get(m_cutdepth())) {
+    var frozen = 0
+    if (mc.get(m_cutdepth()) > 0) {
+        if (mc.get(m_nframes()) <= mc.get(m_cutdepth())) {
+            frozen = 1
+        }
+    }
+    if (frozen == 0) {
         let hit = memo_get(fm, rule, mc.get(m_i()), mc.get(m_slp()), mc.get(m_bracket()))
         if (hit >= 0) {
             fail_fast = hit
         }
     }
-    let f = frame_push(fr, mc)
-    fs(fr, f, fs_kind(), 0)
-    fs(fr, f, fs_rule(), rule)
-    fs(fr, f, fs_alt(), 0)
-    fs(fr, f, fs_step(), 0)
-    fs(fr, f, fs_cstart(), ef_len_hi(ef, fr, mc))
-    fs(fr, f, fs_clen(), 0)
-    fs(fr, f, fs_save(), save_off)
-    fs(fr, f, fs_fsave(), save_off)
-    fs(fr, f, fs_repsave(), -1)
-    fs(fr, f, fs_optsave(), -1)
-    fs(fr, f, fs_wait(), w_none())
-    fs(fr, f, fs_repk(), 0)
-    fs(fr, f, fs_consumed(), 0)
-    fs(fr, f, fs_committed(), 0)
-    fs(fr, f, fs_cuthere(), 0)
-    fs(fr, f, fs_liststarted(), 0)
-    fs(fr, f, fs_active(), 1)
-    fs(fr, f, fs_isdecl(), is_decl)
-    fs(fr, f, fs_coverfrom(), cover_from)
-    fs(fr, f, fs_nodestart(), t.len() / 8)
-    fs(fr, f, fs_failfast(), fail_fast)
-    fs(fr, f, fs_pfield(), field)
-    fs(fr, f, fs_panchor(), -1)
-    fs(fr, f, fs_pstage(), ps_primary())
-    fs(fr, f, fs_ptaildone(), 0)
-    fs(fr, f, fs_ptailwait(), 0)
-    fs(fr, f, fs_pextra_s(), 0)
-    fs(fr, f, fs_pextra_l(), 0)
-    fs(fr, f, fs_pvals_s(), 0)
-    fs(fr, f, fs_pvals_l(), 0)
-    fs(fr, f, fs_pops_s(), 0)
-    fs(fr, f, fs_pops_l(), 0)
+    let f = frame_push(mc, fr)
+    fset(fr, f, fs_kind(), 0)
+    init_frame(fr, f, rule, field, save_off, 1, is_decl, cover_from, t.len() / 8, mc.get(m_efhi()))
+    fset(fr, f, fs_failfast(), fail_fast)
     return 0
 }
 
-// Pending discipline: `pending` is append-only; its logical length lives in
-// mc[m_plen] (garbage may sit beyond). m_peek appends and bumps m_plen.
-fn pending_len_of(mc List<int>, pending List<int>) int {
-    let pl = mc.get(m_plen())
-    if (pl > pending.len()) {
-        return pending.len()
+fn push_pratt(mc List<int>, fr List<int>, saves List<int>, pending List<int>, table int, field int) int {
+    let save_off = save_capture(mc, pending, saves)
+    let f = frame_push(mc, fr)
+    fset(fr, f, fs_kind(), 1)
+    init_frame(fr, f, 0, field, save_off, 0, 0, 0, 0, mc.get(m_efhi()))
+    fset(fr, f, fs_ptable(), table)
+    fset(fr, f, fs_pstage(), ps_primary())
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// step_rule dispatch
+// ---------------------------------------------------------------------------
+
+fn step_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    let ff = fg(fr, top, fs_failfast())
+    if (ff >= 0) {
+        fset(fr, top, fs_consumed(), ff)
+        fset(fr, top, fs_failfast(), -1)
+        handle_frame_failure(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
     }
-    return pl
-}
-
-fn pending_at(pending List<int>, mc List<int>, k int) int {
-    return pending.get(k)
-}
-
-fn pending_clear(mc List<int>) int {
-    mc.set(m_plen(), 0)
+    if (fg(fr, top, fs_alt()) == -1) {
+        handle_frame_failure(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let rule = fg(fr, top, fs_rule())
+    let astart = rule_alt_start(pg, rule)
+    let alt = astart + fg(fr, top, fs_alt())
+    let step_len = alt_step_count(pg, alt)
+    let step_idx = fg(fr, top, fs_step())
+    if (step_idx >= step_len) {
+        handle_frame_success(pg, toks, t, ef, decls, mc, fr, saves)
+        return 0
+    }
+    let si = alt_step_start(pg, alt) + step_idx
+    let field = step_field_p1(pg, si) - 1
+    let rep = step_repeat(pg, si)
+    if (rep == 0) {
+        rule_once(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, si, field)
+        return 0
+    }
+    if (rep == 1) {
+        rule_optional(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, si, field)
+        return 0
+    }
+    rule_list(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, si, field, rule, step_idx)
     return 0
 }
 
-// The dm/ds/de access inside push_rule's sentinel diag uses a helper bound
-// before the loop — but .at has no closures; the diag lists are threaded
-// through run instead. The sentinel frame path re-uses the outer dm via the
-// machine_run parameters; to keep push_rule's signature manageable the
-// sentinel diag is emitted by step_rule on the first visit of a -1 alt.
-fn dm_of(hd List<int>) List<Str> {
-    // placeholder never called
-    return List<Str>.new()
+// Repeat::Once
+fn rule_once(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, si int, field int) int {
+    let mtag = step_atom_tag(pg, si)
+    let ref = step_atom_ref(pg, si)
+    if (mtag == 0) {
+        let ti = peek(pg, toks, mc, pending)
+        var m = 0
+        if (ti >= 0) {
+            if (tok_token(toks, ti) == ref) {
+                m = 1
+            }
+        }
+        if (m == 0) {
+            fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+        if (consume_marked(pg, toks, t, ef, mc, pending, fr, si, field) < 0) {
+            fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        }
+        return 0
+    }
+    if (mtag == 3) {
+        if (!ctx_matches(pg, toks, srcb, mc, pending, ref)) {
+            fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+        if (consume_marked(pg, toks, t, ef, mc, pending, fr, si, field) < 0) {
+            fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        }
+        return 0
+    }
+    if (mtag == 1) {
+        if (step_same_line(pg, si)) {
+            mc.set(m_slp(), 1)
+        }
+        let top = mc.get(m_nframes()) - 1
+        fset(fr, top, fs_wait(), w_once())
+        push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, ref, field, 0)
+        return 0
+    }
+    // pratt
+    if (ref >= n_pratt(pg)) {
+        fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    push_pratt(mc, fr, saves, pending, ref, field)
+    return 0
 }
 
-fn ds_of(hd List<int>) List<int> {
+// Shared tail of the Tok/CtxName Once paths after the peek match: consume,
+// re-field the pushed leaf, apply cut bookkeeping.
+fn consume_marked(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, si int, field int) int {
+    let top = mc.get(m_nframes()) - 1
+    let leaf = consume_same_line(pg, toks, t, ef, mc, pending, fr, step_same_line(pg, si))
+    if (leaf < 0) {
+        mark_consumed_fail(fr, top)
+        return -1
+    }
+    let cl = fg(fr, top, fs_clen())
+    let at = fg(fr, top, fs_cstart()) + cl - 1
+    ef.set(at * 2 + 1, field)
+    if (step_cut(pg, si)) {
+        fset(fr, top, fs_committed(), 1)
+        fset(fr, top, fs_cuthere(), 1)
+    }
+    fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
+    if (step_cut(pg, si)) {
+        mc.set(m_cutdepth(), mc.get(m_nframes()))
+    }
+    return 0
+}
+
+// consume refused: mirror Rust's `Err(()) => self.fail_alt()` for the two
+// call sites that already matched the peek (the caller dispatches the full
+// failure path on the -1 return; the simple mark keeps consumed_any set —
+// matching the Rust consume-refusal which leaves consumed_any untouched
+// because consume never ran).
+fn mark_consumed_fail(fr List<int>, top int) int {
+    return 0
+}
+
+
+// Repeat::Optional
+fn rule_optional(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, si int, field int) int {
+    let top = mc.get(m_nframes()) - 1
+    let mtag = step_atom_tag(pg, si)
+    let ref = step_atom_ref(pg, si)
+    if (mtag == 1 || mtag == 2) {
+        let save_off = save_capture(mc, pending, saves)
+        fset(fr, top, fs_wait(), w_opt())
+        fset(fr, top, fs_optsave(), save_off)
+        if (mtag == 1) {
+            push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, ref, field, 0)
+        } else {
+            push_pratt(mc, fr, saves, pending, ref, field)
+        }
+        return 0
+    }
+    // Tok / CtxName
+    var m = 0
+    if (mtag == 0) {
+        let ti = peek(pg, toks, mc, pending)
+        if (ti >= 0) {
+            if (tok_token(toks, ti) == ref) {
+                m = 1
+            }
+        }
+    } else {
+        if (ctx_matches(pg, toks, srcb, mc, pending, ref)) {
+            m = 1
+        }
+    }
+    if (m == 0) {
+        fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
+        return 0
+    }
+    if (consume_marked_opt(pg, toks, t, ef, mc, pending, fr, si, field) < 0) {
+        fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+    }
+    return 0
+}
+
+fn consume_marked_opt(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, si int, field int) int {
+    let top = mc.get(m_nframes()) - 1
+    let leaf = consume_same_line(pg, toks, t, ef, mc, pending, fr, step_same_line(pg, si))
+    if (leaf < 0) {
+        return -1
+    }
+    let cl = fg(fr, top, fs_clen())
+    let at = fg(fr, top, fs_cstart()) + cl - 1
+    ef.set(at * 2 + 1, field)
+    fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
+    return 0
+}
+
+// Repeat::ZeroOrMore / ListPlain / ListNewline
+fn rule_list(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, si int, field int, rule int, step_idx int) int {
+    let top = mc.get(m_nframes()) - 1
+    let kind = step_repeat(pg, si) - 2
+    if (kind >= 1) {
+        if (list_sep_and_gate(pg, toks, t, ef, mc, pending, fr, kind, top) < 0) {
+            fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+    }
+    // Root-level garbage skip.
+    if (mc.get(m_nframes()) == 1) {
+        if (root_garbage_skip(pg, cs, firsts, nullable, toks, srcb, t, ef, mc, pending, fr, si, rule, step_idx, dmsg) != 0) {
+            return 0
+        }
+    }
+    list_item(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, si, field, kind)
+    return 0
+}
+
+// sep consumption + ListNewline second-item gate; -1 = hard failure.
+fn list_sep_and_gate(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, kind int, top int) int {
+    var consumed_sep = 0
+    var probing = 1
+    for (probing == 1) {
+        let ti = peek(pg, toks, mc, pending)
+        if (ti < 0) {
+            probing = 0
+        } else {
+            if (in_sep_consume(pg, tok_token(toks, ti))) {
+                if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
+                    return -1
+                }
+                consumed_sep = 1
+            } else {
+                probing = 0
+            }
+        }
+    }
+    if (kind == 2) {
+        if (fg(fr, top, fs_liststarted()) != 0) {
+            if (newline_significant(pg) && mc.get(m_bracket()) == 0 && consumed_sep == 0) {
+                let ti = peek(pg, toks, mc, pending)
+                if (ti >= 0) {
+                    var ok = 0
+                    if (in_stmt_end(pg, tok_token(toks, ti))) {
+                        ok = 1
+                    }
+                    if (tok_line(toks, ti) > mc.get(m_lastline())) {
+                        ok = 1
+                    }
+                    if (ok == 0) {
+                        end_list_step(pg, toks, t, ef, mc, pending, fr, top)
+                        return 1
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+// Try an item (or end the list).
+fn list_item(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, si int, field int, kind int) int {
+    let top = mc.get(m_nframes()) - 1
+    let mtag = step_atom_tag(pg, si)
+    let ref = step_atom_ref(pg, si)
+    if (mtag == 1 || mtag == 2) {
+        let save_off = save_capture(mc, pending, saves)
+        fset(fr, top, fs_wait(), w_rep())
+        fset(fr, top, fs_repk(), kind)
+        fset(fr, top, fs_repsave(), save_off)
+        if (mtag == 1) {
+            push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, ref, field, 0)
+        } else {
+            push_pratt(mc, fr, saves, pending, ref, field)
+        }
+        return 0
+    }
+    var m = 0
+    if (mtag == 0) {
+        let ti = peek(pg, toks, mc, pending)
+        if (ti >= 0) {
+            if (tok_token(toks, ti) == ref) {
+                m = 1
+            }
+        }
+    } else {
+        if (ctx_matches(pg, toks, srcb, mc, pending, ref)) {
+            m = 1
+        }
+    }
+    if (m == 0) {
+        end_list_step(pg, toks, t, ef, mc, pending, fr, top)
+        return 0
+    }
+    if (consume_marked_item(pg, toks, t, ef, mc, pending, fr, si, field) < 0) {
+        fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+    }
+    return 0
+}
+
+fn consume_marked_item(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, si int, field int) int {
+    let top = mc.get(m_nframes()) - 1
+    let leaf = consume_same_line(pg, toks, t, ef, mc, pending, fr, step_same_line(pg, si))
+    if (leaf < 0) {
+        return -1
+    }
+    let cl = fg(fr, top, fs_clen())
+    let at = fg(fr, top, fs_cstart()) + cl - 1
+    ef.set(at * 2 + 1, field)
+    fset(fr, top, fs_liststarted(), 1)
+    return 0
+}
+
+fn end_list_step(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, top int) int {
+    let ti = peek(pg, toks, mc, pending)
+    if (ti < 0) {
+        if (mc.get(m_plen()) > 0) {
+            flush_pending(mc, pending, pg, toks, t, ef, fr, top)
+        }
+    }
+    fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
+    return 0
+}
+
+// Root-level garbage skip: 1 = handled (return), 0 = fall through.
+fn root_garbage_skip(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, si int, rule int, step_idx int, dmsg List<int>) int {
+    let ti = peek(pg, toks, mc, pending)
+    if (ti < 0) {
+        return 0
+    }
+    let tk = tok_token(toks, ti)
+    if (atom_starts(pg, firsts, si, tk, mc.get(m_nt()))) {
+        return 0
+    }
+    if (continuation_can_start(pg, firsts, nullable, rule, fg(fr, mc.get(m_nframes()) - 1, fs_alt()), step_idx, tk, mc.get(m_nt()))) {
+        return 0
+    }
+    let top = mc.get(m_nframes()) - 1
+    var ate = 0
+    var probing = 1
+    for (probing == 1) {
+        let ti2 = peek(pg, toks, mc, pending)
+        if (ti2 < 0) {
+            probing = 0
+        } else {
+            let tk2 = tok_token(toks, ti2)
+            if (atom_starts(pg, firsts, si, tk2, mc.get(m_nt()))) {
+                probing = 0
+            } else {
+                if (continuation_can_start(pg, firsts, nullable, rule, fg(fr, mc.get(m_nframes()) - 1, fs_alt()), step_idx, tk2, mc.get(m_nt()))) {
+                    probing = 0
+                } else {
+                    let leaf = consume(pg, toks, t, ef, mc, pending, fr)
+                    if (leaf < 0) {
+                        probing = 0
+                    } else {
+                        // wrap the consumed leaf in an error node
+                        let cl = fg(fr, top, fs_clen())
+                        let at = fg(fr, top, fs_cstart()) + cl - 1
+                        let ls = tok_start(toks, ti2)
+                        let kids = List<int>.new()
+                        kids.push(ef.get(at * 2))
+                        let node = wrap_error(t, ef, kids, ls, tok_end(toks, ti2), mc)
+                        ef.set(at * 2, node)
+                        diag(dmsg, diag_skipped_top(), 0, ls, tok_end(toks, ti2))
+                        ate = ate + 1
+                    }
+                }
+            }
+        }
+    }
+    if (ate > 0) {
+        fset(fr, top, fs_liststarted(), 1)
+        return 1
+    }
+    end_list_step(pg, toks, t, ef, mc, pending, fr, top)
+    return 1
+}
+
+fn wrap_error(t List<int>, ef List<int>, kids List<int>, ls int, le int, mc List<int>) int {
+    let fc = ef.len() / 2
+    var k = 0
+    for (k < kids.len()) {
+        ef.push(kids.get(k))
+        ef.push(no_field())
+        k = k + 1
+    }
+    if (ef.len() / 2 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), ef.len() / 2)
+    }
+    t.push(kind_error())
+    t.push(ls)
+    t.push(le - ls)
+    t.push(fc)
+    t.push(kids.len())
+    t.push(0)
+    t.push(flag_error())
+    t.push(0)
+    return t.len() / 8 - 1
+}
+
+fn dummy_t() List<int> {
     return List<int>.new()
 }
 
-fn de_of(hd List<int>) List<int> {
+fn dummy_ef() List<int> {
     return List<int>.new()
 }
 
-fn ef_len_hi(ef List<int>, fr List<int>, mc List<int>) int {
-    return ef.len() / 2
+
+// ---------------------------------------------------------------------------
+// Token-set helpers + atom_starts + continuation + ctx matching
+// ---------------------------------------------------------------------------
+
+fn in_sep_consume(pg List<int>, tk int) bool {
+    var i = 0
+    for (i < pg.get(13)) {
+        if (pg.get(pg.get(29) + i) == tk) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn in_stmt_end(pg List<int>, tk int) bool {
+    var i = 0
+    for (i < pg.get(12)) {
+        if (pg.get(pg.get(28) + i) == tk) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn in_sync(pg List<int>, tk int) bool {
+    var i = 0
+    for (i < pg.get(14)) {
+        if (pg.get(pg.get(30) + i) == tk) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+/// Ctx-name slot match: token id equal AND the token's source bytes equal
+/// the declared spelling byte-for-byte (the lexical face never changes —
+/// `view` stays an `ident`; only the slot interpretation is structural).
+fn ctx_matches(pg List<int>, toks List<int>, srcb List<int>, mc List<int>, pending List<int>, c int) bool {
+    let ti = peek(pg, toks, mc, pending)
+    if (ti < 0) {
+        return false
+    }
+    if (tok_token(toks, ti) != ctx_token(pg, c)) {
+        return false
+    }
+    let base = pg.get(26) + c * 8
+    let off = pg.get(base + 2)
+    let len = pg.get(base + 3)
+    let s = tok_start(toks, ti)
+    var k = 0
+    for (k < len) {
+        if (srcb.get(s + k) != pool_b(pg, off + k)) {
+            return false
+        }
+        k = k + 1
+    }
+    return true
+}
+
+fn pool_b(pg List<int>, off int) int {
+    return pg.get(pg.get(32) + off)
+}
+
+fn atom_starts(pg List<int>, firsts List<int>, si int, tk int, nt int) bool {
+    if (tk < 0) {
+        return false
+    }
+    let mtag = step_atom_tag(pg, si)
+    let ref = step_atom_ref(pg, si)
+    if (mtag == 0) {
+        return ref == tk
+    }
+    if (mtag == 1) {
+        return firsts.get(ref * nt + tk) != 0
+    }
+    if (mtag == 2) {
+        let prim = pratt_primary(pg, ref)
+        return firsts.get(prim * nt + tk) != 0
+    }
+    return ctx_token(pg, ref) == tk
+}
+
+/// Can any step AFTER the list step (in this frame's current alt) start
+/// with `tok` (nullable steps pass through)?
+fn continuation_can_start(pg List<int>, firsts List<int>, nullable List<int>, rule int, alt_no int, from_step int, tok int, nt int) bool {
+    let alt = rule_alt_start(pg, rule) + alt_no
+    let ns = alt_step_count(pg, alt)
+    var si = from_step + 1
+    for (si < ns) {
+        let s = alt_step_start(pg, alt) + si
+        if (atom_starts(pg, firsts, s, tok, nt)) {
+            return true
+        }
+        let mtag = step_atom_tag(pg, s)
+        var pass_through = 0
+        if (mtag == 1) {
+            if (nullable.get(step_atom_ref(pg, s)) != 0) {
+                pass_through = 1
+            }
+        }
+        let rep = step_repeat(pg, s)
+        if (pass_through == 0) {
+            if (rep != 1 && rep != 2 && rep != 3 && rep != 4) {
+                return false
+            }
+        }
+        si = si + 1
+    }
+    return false
+}
+
+
+// ---------------------------------------------------------------------------
+// Backtracking / failure dispatch / recovery / success
+// ---------------------------------------------------------------------------
+
+fn fail_alt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    let rule = fg(fr, top, fs_rule())
+    var has_next = 0
+    if (fg(fr, top, fs_alt()) + 1 < rule_alt_count(pg, rule)) {
+        has_next = 1
+    }
+    let committed = fg(fr, top, fs_committed())
+    var frozen = 0
+    if (mc.get(m_cutdepth()) > 0) {
+        if (mc.get(m_nframes()) <= mc.get(m_cutdepth())) {
+            frozen = 1
+        }
+    }
+    if (has_next == 1 && committed == 0 && frozen == 0) {
+        advance_alt(mc, pending, fr, saves)
+        return 0
+    }
+    handle_frame_failure(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+    return 0
+}
+
+fn advance_alt(mc List<int>, pending List<int>, fr List<int>, saves List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    save_restore(mc, pending, saves, fg(fr, top, fs_save()))
+    fset(fr, top, fs_clen(), 0)
+    fset(fr, top, fs_alt(), fg(fr, top, fs_alt()) + 1)
+    fset(fr, top, fs_step(), 0)
+    fset(fr, top, fs_save(), save_capture(mc, pending, saves))
+    return 0
+}
+
+// dispatch_child_failure: true = the frame also failed (unwind).
+fn dispatch_child_failure(pg List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, child_consumed int, hints List<int>, dmsg List<int>) bool {
+    let top = mc.get(m_nframes()) - 1
+    record_expect_hint(pg, toks, srcb, mc, pending, fr, top, saves, hints, dmsg)
+    if (child_consumed != 0) {
+        fset(fr, top, fs_consumed(), 1)
+    }
+    let w = fg(fr, top, fs_wait())
+    fset(fr, top, fs_wait(), w_none())
+    if (w == w_none() || w == w_once()) {
+        var has_next = 0
+        if (fg(fr, top, fs_alt()) + 1 < rule_alt_count(pg, fg(fr, top, fs_rule()))) {
+            has_next = 1
+        }
+        if (has_next == 1) {
+            advance_alt(mc, pending, fr, saves)
+            return false
+        }
+        return true
+    }
+    if (w == w_opt()) {
+        let off = fg(fr, top, fs_optsave())
+        if (off < 0) {
+            save_restore(mc, pending, saves, fg(fr, top, fs_save()))
+        } else {
+            save_restore(mc, pending, saves, off)
+        }
+        fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
+        return false
+    }
+    // rep item: rollback to the ITERATION start, then end the list.
+    let off = fg(fr, top, fs_repsave())
+    if (off < 0) {
+        save_restore(mc, pending, saves, fg(fr, top, fs_save()))
+    } else {
+        save_restore(mc, pending, saves, off)
+    }
+    end_list_step(pg, toks, t, ef, mc, pending, fr, top)
+    return false
+}
+
+// record_expect_hint: constructor-level diagnostic candidates (kept only if
+// the whole parse fails; depth-ordered, innermost wins).
+fn record_expect_hint(pg List<int>, toks List<int>, srcb List<int>, mc List<int>, pending List<int>, fr List<int>, top int, saves List<int>, hints List<int>, dmsg List<int>) int {
+    if (fg(fr, top, fs_kind()) == 1) {
+        return 0
+    }
+    let rule = fg(fr, top, fs_rule())
+    let alt_no = fg(fr, top, fs_alt())
+    let step_idx = fg(fr, top, fs_step())
+    var started = 0
+    if (mc.get(m_i()) > saves.get(fg(fr, top, fs_save()))) {
+        started = 1
+    }
+    if (step_idx == 0) {
+        if (first_step_is_ctx(pg, rule, alt_no) && started == 0) {
+            return 0
+        }
+    }
+    if (started == 0) {
+        if (anc_consumed(mc, fr, saves, top)) {
+            started = 1
+        }
+    }
+    if (started == 0) {
+        return 0
+    }
+    if (step_idx > 0) {
+        if (delim_after_empty_list(pg, rule, alt_no, step_idx, fr, top)) {
+            return 0
+        }
+    }
+    if (rule_expect(pg, rule) == "") {
+        return 0
+    }
+    var s = 0
+    var e = 0
+    let ti = peek(pg, toks, mc, pending)
+    if (ti >= 0) {
+        s = tok_start(toks, ti)
+        e = tok_end(toks, ti)
+    } else {
+        e = 0
+        if (tok_count(toks) > 0) {
+            e = tok_end(toks, tok_count(toks) - 1)
+        }
+        s = e
+    }
+    hint(hints, mc.get(m_nframes()), s, e, diag_unexpected_in(), rule)
+    return 0
+}
+
+fn anc_consumed(mc List<int>, fr List<int>, saves List<int>, top int) bool {
+    var k = 0
+    for (k < mc.get(m_nframes())) {
+        if (k != top) {
+            if (fg(fr, k, fs_kind()) == 0) {
+                if (mc.get(m_i()) > saves.get(fg(fr, k, fs_save()))) {
+                    return true
+                }
+            }
+        }
+        k = k + 1
+    }
+    return false
+}
+
+fn first_step_is_ctx(pg List<int>, rule int, alt_no int) bool {
+    let alt = rule_alt_start(pg, rule) + alt_no
+    if (alt_step_count(pg, alt) == 0) {
+        return false
+    }
+    let si = alt_step_start(pg, alt)
+    return step_atom_tag(pg, si) == 3
+}
+
+fn delim_after_empty_list(pg List<int>, rule int, alt_no int, step_idx int, fr List<int>, top int) bool {
+    let alt = rule_alt_start(pg, rule) + alt_no
+    if (step_idx >= alt_step_count(pg, alt)) {
+        return false
+    }
+    let si = alt_step_start(pg, alt) + step_idx
+    if (step_atom_tag(pg, si) != 0) {
+        return false
+    }
+    if (step_idx == 0) {
+        return false
+    }
+    let prev = alt_step_start(pg, alt) + step_idx - 1
+    let rep = step_repeat(pg, prev)
+    if (rep != 3 && rep != 4) {
+        return false
+    }
+    return fg(fr, top, fs_liststarted()) == 0
+}
+
+
+// ---------------------------------------------------------------------------
+// handle_frame_failure (recovery + iterative unwind) / success
+// ---------------------------------------------------------------------------
+
+fn handle_frame_failure(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    var probing = 1
+    for (probing == 1) {
+        let top = mc.get(m_nframes()) - 1
+        record_expect_hint(pg, toks, srcb, mc, pending, fr, top, saves, hints, dmsg)
+        let rule = fg(fr, top, fs_rule())
+        let frame_save = fg(fr, top, fs_fsave())
+        let consumed = fg(fr, top, fs_consumed())
+        var recover = 0
+        if (fg(fr, top, fs_kind()) == 0) {
+            if (rule_recover(pg, rule)) {
+                recover = 1
+            }
+        }
+        let field = fg(fr, top, fs_pfield())
+        let pushed_active = fg(fr, top, fs_active())
+        save_restore(mc, pending, saves, frame_save)
+        if (recover != 0 && consumed != 0) {
+            recover_decl(pg, cs, firsts, nullable, toks, srcb, t, ef, mc, pending, fr, saves, rule, field, dmsg)
+            return 0
+        }
+        // failure memo: only total failures with no recovery nodes.
+        if (pushed_active != 0) {
+            var frozen = 0
+            if (mc.get(m_cutdepth()) > 0) {
+                if (mc.get(m_nframes()) <= mc.get(m_cutdepth())) {
+                    frozen = 1
+                }
+            }
+            if (frozen == 0) {
+                memo_put(fm, rule, mc.get(m_i()), mc.get(m_slp()), mc.get(m_bracket()), consumed)
+            }
+        }
+        if (pushed_active != 0) {
+            ar_pop(mc)
+        }
+        mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+        if (mc.get(m_nframes()) == 0) {
+            root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
+            return 0
+        }
+        let top2 = mc.get(m_nframes()) - 1
+        if (dispatch_child_failure(pg, toks, srcb, t, ef, mc, pending, fr, saves, consumed, hints, dmsg)) {
+            // parent also failed: pop it and continue the unwind
+        } else {
+            probing = 0
+        }
+    }
+    return 0
+}
+
+// Declaration-level recovery: rebuild leading trivia, eat error leaves to
+// the stop point (sync ∪ first(rule) after ≥1 consumed), MISSING placeholder.
+fn recover_decl(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, rule int, field int, dmsg List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    let base_i = mc.get(m_i())
+    mc.set(m_plen(), 0)
+    // rebuild leading trivia leaves from the token stream before base_i
+    var lead = List<int>.new()
+    var k = base_i - 1
+    var probing = 1
+    for (probing == 1) {
+        if (k < 0) {
+            probing = 0
+        } else {
+            let tk = tok_token(toks, k)
+            if (tk != -1) {
+                if (is_trivia_token(pg, tk)) {
+                    lead.push(k)
+                    k = k - 1
+                } else {
+                    probing = 0
+                }
+            } else {
+                probing = 0
+            }
+        }
+    }
+    var kids = List<int>.new()
+    var bi = lead.len() - 1
+    for (bi >= 0) {
+        kids.push(alloc_leaf(pg, toks, t, lead.get(bi), flag_trivia()))
+        bi = bi - 1
+    }
+    // eat tokens until the stop point; every consumed child (including the
+    // trivia flushed by consume) is DRAINED from the frame's segment, then
+    // the segment length is rolled back (Rust drains children[before..]).
+    var ate = 0
+    var probing2 = 1
+    for (probing2 == 1) {
+        let ti = peek(pg, toks, mc, pending)
+        if (ti < 0) {
+            probing2 = 0
+        } else {
+            let tk = tok_token(toks, ti)
+            var stop = 0
+            if (ti < 0) {
+                stop = 1
+            }
+            if (tk != -1) {
+                if (in_sync(pg, tk)) {
+                    stop = 1
+                } else {
+                    if (ate > 0) {
+                        if (firsts.get(rule * mc.get(m_nt()) + tk) != 0) {
+                            stop = 1
+                        }
+                    }
+                }
+            }
+            if (stop != 0) {
+                probing2 = 0
+            } else {
+                let clen_before = fg(fr, top, fs_clen())
+                let leaf = consume(pg, toks, t, ef, mc, pending, fr)
+                if (leaf < 0) {
+                    probing2 = 0
+                } else {
+                    let clen_after = fg(fr, top, fs_clen())
+                    let cstart_after = fg(fr, top, fs_cstart())
+                    var k = clen_before
+                    for (k < clen_after) {
+                        kids.push(ef.get((cstart_after + k) * 2))
+                        k = k + 1
+                    }
+                    fset(fr, top, fs_clen(), clen_before)
+                    ate = ate + 1
+                }
+            }
+        }
+    }
+    var s0 = 0
+    var e0 = 0
+    if (kids.len() == 0) {
+        let ti = peek(pg, toks, mc, pending)
+        if (ti >= 0) {
+            s0 = tok_start(toks, ti)
+        }
+        e0 = s0
+    } else {
+        s0 = t.get(kids.get(0) * 8 + 1)
+        let lastn = kids.get(kids.len() - 1)
+        e0 = t.get(lastn * 8 + 1) + t.get(lastn * 8 + 2)
+    }
+    // MISSING placeholder first, then the error leaves
+    let miss = push_missing(t, s0, rule_kind_of(rule))
+    var kids2 = List<int>.new()
+    kids2.push(miss)
+    var j = 0
+    for (j < kids.len()) {
+        kids2.push(kids.get(j))
+        j = j + 1
+    }
+    let fc = ef.len() / 2
+    var j2 = 0
+    for (j2 < kids2.len()) {
+        ef.push(kids2.get(j2))
+        ef.push(no_field())
+        j2 = j2 + 1
+    }
+    if (ef.len() / 2 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), ef.len() / 2)
+    }
+    t.push(rule_kind_of(rule))
+    t.push(s0)
+    t.push(e0 - s0)
+    t.push(fc)
+    t.push(kids2.len())
+    t.push(0)
+    t.push(flag_error())
+    t.push(0)
+    let node = t.len() / 8 - 1
+    diag(dmsg, diag_recovered(), rule, s0, e0)
+    complete_frame_success(ef, saves, mc, fr, node, field)
+    return 0
+}
+
+fn rule_kind_of(rule int) int {
+    return 2097152 + rule
+}
+
+fn push_missing(t List<int>, start int, expected int) int {
+    t.push(-2)
+    t.push(start)
+    t.push(0)
+    t.push(0)
+    t.push(0)
+    t.push(expected)
+    t.push(flag_missing())
+    t.push(0)
+    return t.len() / 8 - 1
+}
+
+fn handle_frame_success(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, fr List<int>, saves List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    let rule = fg(fr, top, fs_rule())
+    let field = fg(fr, top, fs_pfield())
+    let node_start = fg(fr, top, fs_nodestart())
+    let is_decl = fg(fr, top, fs_isdecl())
+    let cut_here = fg(fr, top, fs_cuthere())
+    if (cut_here != 0) {
+        mc.set(m_cutdepth(), 0)
+    }
+    let node = alloc_node(t, ef, fr, top, rule_kind_of(rule), 0, 0, toks, mc)
+    if (is_decl != 0) {
+        mc.set(m_cutdepth(), 0)
+        decl_relativize(t, mc, node_start, fg(fr, top, fs_coverfrom()), decls, node)
+    }
+    complete_frame_success(ef, saves, mc, fr, node, field)
+    return 0
+}
+
+// Relativize the decl subtree's spans against the cover origin and register
+// the decl unit (tree-global ordinal = decls logical length + 1).
+fn decl_relativize(t List<int>, mc List<int>, node_start int, origin int, decls List<int>, node int) int {
+    var n = node_start
+    let total = t.len() / 8
+    let ordinal = mc.get(m_ndecls()) + 1
+    for (n < total) {
+        let s = t.get(n * 8 + 1)
+        if (s >= origin) {
+            t.set(n * 8 + 1, s - origin)
+        } else {
+            t.set(n * 8 + 1, 0)
+        }
+        t.set(n * 8 + 7, ordinal)
+        n = n + 1
+    }
+    let d = mc.get(m_ndecls())
+    if (d * 3 == decls.len()) {
+        decls.push(origin)
+        decls.push(node)
+        decls.push(node_start)
+    } else {
+        decls.set(d * 3, origin)
+        decls.set(d * 3 + 1, node)
+        decls.set(d * 3 + 2, node_start)
+    }
+    mc.set(m_ndecls(), d + 1)
+    return 0
+}
+
+fn complete_frame_success(ef List<int>, saves List<int>, mc List<int>, fr List<int>, node int, field int) int {
+    let top = mc.get(m_nframes()) - 1
+    let pushed_active = fg(fr, top, fs_active())
+    if (pushed_active != 0) {
+        ar_pop(mc)
+    }
+    mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+    if (mc.get(m_nframes()) == 0) {
+        mc.set(m_root(), node)
+        return 0
+    }
+    let parent = mc.get(m_nframes()) - 1
+    child_push(ef, fr, parent, node, field, mc)
+    let w = fg(fr, parent, fs_wait())
+    fset(fr, parent, fs_wait(), w_none())
+    if (w == w_none() || w == w_once() || w == w_opt()) {
+        fset(fr, parent, fs_step(), fg(fr, parent, fs_step()) + 1)
+        return 0
+    }
+    // rep: zero progress ends the list
+    let mark = fg(fr, parent, fs_repsave())
+    var no_progress = 1
+    if (mark >= 0) {
+        if (saves.get(mark) != mc.get(m_i())) {
+            no_progress = 0
+        }
+    }
+    if (no_progress == 1) {
+        fset(fr, parent, fs_step(), fg(fr, parent, fs_step()) + 1)
+        return 0
+    }
+    fset(fr, parent, fs_liststarted(), 1)
+    return 0
+}
+
+
+// ---------------------------------------------------------------------------
+// Pratt engine
+// ---------------------------------------------------------------------------
+
+fn step_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    let stage = fg(fr, top, fs_pstage())
+    if (stage == ps_primary()) {
+        pratt_want_primary(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    if (stage == ps_op()) {
+        pratt_want_op(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    if (stage == ps_args()) {
+        let callee = fg(fr, top, fs_pcallee())
+        let open_leaf = fg(fr, top, fs_popenleaf())
+        let cl = fg(fr, top, fs_clen())
+        var args_node = -1
+        if (cl > 0) {
+            let at = fg(fr, top, fs_cstart()) + cl - 1
+            args_node = ef.get(at * 2)
+        }
+        close_call(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, callee, open_leaf, args_node)
+        return 0
+    }
+    if (stage == ps_close()) {
+        let callee = fg(fr, top, fs_pcallee())
+        let open_leaf = fg(fr, top, fs_popenleaf())
+        close_call(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, callee, open_leaf, -1)
+        return 0
+    }
+    // Done
+    let node = fg(fr, top, fs_pdone())
+    let field = fg(fr, top, fs_pfield())
+    complete_frame_success(ef, saves, mc, fr, node, field)
+    return 0
+}
+
+fn pratt_want_primary(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, arule List<int>, ai List<int>, hints List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    var anchor = fg(fr, top, fs_panchor())
+    if (mc.get(m_bracket()) != 0) {
+        anchor = -1
+    }
+    if (!newline_significant(pg)) {
+        anchor = -1
+    }
+    mc.set(m_anchor(), anchor)
+    fset(fr, top, fs_wait(), w_once())
+    fset(fr, top, fs_pstage(), ps_op())
+    fset(fr, top, fs_ptaildone(), 0)
+    let prim = pratt_primary(pg, fg(fr, top, fs_ptable()))
+    push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, prim, no_field(), 0)
+    return 0
+}
+
+fn pratt_want_op(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    if (fg(fr, top, fs_ptailwait()) != 0) {
+        pratt_tail_deliver(t, ef, fr, pvals, top, mc)
+    }
+    pratt_bootstrap(ef, fr, top, pvals)
+    let ti = peek(pg, toks, mc, pending)
+    if (ti < 0) {
+        finish_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let table = fg(fr, top, fs_ptable())
+    let tk = tok_token(toks, ti)
+    // call suffix
+    if (pratt_has_cp(pg, table)) {
+        if (tk == pratt_cp_open(pg, table)) {
+            var ok_line = 1
+            if (pratt_cp_callee_same_line(pg, table)) {
+                if (mc.get(m_bracket()) == 0) {
+                    if (tok_line(toks, ti) != mc.get(m_lastline())) {
+                        ok_line = 0
+                    }
+                }
+            }
+            if (ok_line == 1) {
+                pratt_call_open(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo, table)
+                return 0
+            }
+            finish_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+    }
+    // postfix tail
+    let tail = pratt_postfix_tail(pg, table)
+    if (tail >= 0) {
+        if (fg(fr, top, fs_ptaildone()) == 0) {
+            if (firsts.get(tail * mc.get(m_nt()) + tk) != 0) {
+                if (tk >= 0) {
+                    fset(fr, top, fs_ptailwait(), 1)
+                    fset(fr, top, fs_wait(), w_once())
+                    push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, tail, no_field(), 0)
+                    return 0
+                }
+            }
+        }
+    }
+    // operator
+    var b = op_binding_of(pg, tk)
+    if (tk < 0) {
+        b = -1
+    }
+    if (b < 0) {
+        finish_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    if (newline_significant(pg) && mc.get(m_bracket()) == 0) {
+        if (tok_line(toks, ti) > mc.get(m_lastline())) {
+            finish_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+    }
+    pratt_reduce_loop(fr, pvals, pops, t, ef, optriv, top, b, mc)
+    if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    // children: last = op leaf; the rest = leading trivia (into op trivia)
+    let cl = fg(fr, top, fs_clen())
+    let cs2 = fg(fr, top, fs_cstart())
+    let op_leaf = ef.get((cs2 + cl - 1) * 2)
+    var triv_start = optriv.len()
+    var k = 0
+    for (k < cl - 1) {
+        optriv.push(ef.get((cs2 + k) * 2))
+        k = k + 1
+    }
+    fset(fr, top, fs_clen(), 0)
+    let os = fg(fr, top, fs_pops_s())
+    let ol = fg(fr, top, fs_pops_l())
+    pops_push(pops, os + ol, b, op_assoc_of(pg, tk), op_leaf, tk, triv_start, cl - 1)
+    fset(fr, top, fs_pops_l(), ol + 1)
+    fset(fr, top, fs_pstage(), ps_primary())
+    fset(fr, top, fs_panchor(), mc.get(m_lastline()))
+    return 0
+}
+
+fn pops_push(pops List<int>, at int, binding int, assoc int, leaf int, tk int, ts int, tl int) int {
+    if (at * 6 == pops.len()) {
+        pops.push(binding)
+        pops.push(assoc)
+        pops.push(leaf)
+        pops.push(tk)
+        pops.push(ts)
+        pops.push(tl)
+    } else {
+        pops.set(at * 6, binding)
+        pops.set(at * 6 + 1, assoc)
+        pops.set(at * 6 + 2, leaf)
+        pops.set(at * 6 + 3, tk)
+        pops.set(at * 6 + 4, ts)
+        pops.set(at * 6 + 5, tl)
+    }
+    return 0
+}
+
+// bootstrap: children -> vals
+fn pratt_bootstrap(ef List<int>, fr List<int>, top int, pvals List<int>) int {
+    let cl = fg(fr, top, fs_clen())
+    let cs2 = fg(fr, top, fs_cstart())
+    var vs = fg(fr, top, fs_pvals_s())
+    var vl = fg(fr, top, fs_pvals_l())
+    var k = 0
+    for (k < cl) {
+        let v = ef.get((cs2 + k) * 2)
+        if ((vs + vl) == pvals.len()) {
+            pvals.push(v)
+        } else {
+            pvals.set(vs + vl, v)
+        }
+        vl = vl + 1
+        k = k + 1
+    }
+    fset(fr, top, fs_pvals_s(), vs)
+    fset(fr, top, fs_pvals_l(), vl)
+    fset(fr, top, fs_clen(), 0)
+    return 0
+}
+
+// postfix-tail delivery
+fn pratt_tail_deliver(t List<int>, ef List<int>, fr List<int>, pvals List<int>, top int, mc List<int>) int {
+    fset(fr, top, fs_ptailwait(), 0)
+    let cl = fg(fr, top, fs_clen())
+    let cs2 = fg(fr, top, fs_cstart())
+    var tail = -1
+    if (cl > 0) {
+        tail = ef.get((cs2 + cl - 1) * 2)
+    }
+    fset(fr, top, fs_clen(), 0)
+    let vs = fg(fr, top, fs_pvals_s())
+    let vl = fg(fr, top, fs_pvals_l())
+    var op = -1
+    if (vl > 0) {
+        op = pvals.get(vs + vl - 1)
+    }
+    if (tail >= 0 && op >= 0) {
+        let has_steps = t.get(tail * 8 + 4) > 0
+        if (has_steps) {
+            let kids = List<int>.new()
+            kids.push(op)
+            kids.push(tail)
+            let node = alloc_kids(t, ef, kids, kind_postfix(), 0, mc)
+            pvals.set(vs + vl - 1, node)
+        } else {
+            fset(fr, top, fs_ptaildone(), 1)
+        }
+    } else {
+        if (op >= 0) {
+            fset(fr, top, fs_ptaildone(), 1)
+        }
+    }
+    return 0
+}
+
+// alloc from an explicit kids list (node ids, NO_FIELD)
+fn alloc_kids(t List<int>, ef List<int>, kids List<int>, kind int, flags_extra int, mc List<int>) int {
+    var min_start = 2147483647
+    var max_end = 0
+    var found = 0
+    var k = 0
+    for (k < kids.len()) {
+        let c = kids.get(k)
+        let fl = t.get(c * 8 + 6)
+        if ((fl & flag_trivia()) == 0) {
+            let clen2 = t.get(c * 8 + 2)
+            let ccc = t.get(c * 8 + 4)
+            if (clen2 > 0 || ccc > 0 || ((fl & flag_missing()) != 0)) {
+                let s = t.get(c * 8 + 1)
+                let e = s + clen2
+                if (s < min_start) {
+                    min_start = s
+                }
+                if (e > max_end) {
+                    max_end = e
+                }
+                found = 1
+            }
+        }
+        k = k + 1
+    }
+    var start = 0
+    var len = 0
+    if (found == 0) {
+        start = 0
+        len = 0
+    } else {
+        start = min_start
+        len = max_end - min_start
+    }
+    let fc = ef.len() / 2
+    k = 0
+    for (k < kids.len()) {
+        ef.push(kids.get(k))
+        ef.push(no_field())
+        k = k + 1
+    }
+    if (ef.len() / 2 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), ef.len() / 2)
+    }
+    t.push(kind)
+    t.push(start)
+    t.push(len)
+    t.push(fc)
+    t.push(kids.len())
+    t.push(0)
+    t.push(flags_extra)
+    t.push(0)
+    return t.len() / 8 - 1
+}
+
+
+// call open: consume the open paren, stash its leading trivia, then push
+// the args rule (WantArgs) or go straight to WantClose.
+fn pratt_call_open(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, table int) int {
+    let top = mc.get(m_nframes()) - 1
+    let vs = fg(fr, top, fs_pvals_s())
+    let vl = fg(fr, top, fs_pvals_l())
+    if (vl == 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let callee = pvals.get(vs + vl - 1)
+    if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let cl = fg(fr, top, fs_clen())
+    let cs2 = fg(fr, top, fs_cstart())
+    let open_leaf = ef.get((cs2 + cl - 1) * 2)
+    let ts = optriv.len()
+    var k = 0
+    for (k < cl - 1) {
+        optriv.push(ef.get((cs2 + k) * 2))
+        k = k + 1
+    }
+    fset(fr, top, fs_clen(), 0)
+    fset(fr, top, fs_pcallee(), callee)
+    fset(fr, top, fs_popenleaf(), open_leaf)
+    fset(fr, top, fs_pextra_s(), ts)
+    fset(fr, top, fs_pextra_l(), cl - 1)
+    let args_rule = pratt_call_args(pg, table)
+    if (args_rule >= 0) {
+        fset(fr, top, fs_pstage(), ps_args())
+        fset(fr, top, fs_wait(), w_once())
+        push_rule(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, arule, ai, hints, fm, ot, oef, odecls, gcand, gshift, ginfo, args_rule, no_field(), 0)
+    } else {
+        fset(fr, top, fs_pstage(), ps_close())
+    }
+    return 0
+}
+
+fn close_call(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, callee int, open_leaf int, args_node int) int {
+    let top = mc.get(m_nframes()) - 1
+    let table = fg(fr, top, fs_ptable())
+    let close_tok = pratt_cp_close(pg, table)
+    var close_ok = 0
+    let ti = peek(pg, toks, mc, pending)
+    if (ti >= 0) {
+        if (tok_token(toks, ti) == close_tok) {
+            close_ok = 1
+        }
+    }
+    if (close_ok == 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let cl = fg(fr, top, fs_clen())
+    let cs2 = fg(fr, top, fs_cstart())
+    let close_leaf = ef.get((cs2 + cl - 1) * 2)
+    var close_trivia = List<int>.new()
+    var k = 0
+    for (k < cl - 1) {
+        let n = ef.get((cs2 + k) * 2)
+        if (args_node >= 0) {
+            if (n != args_node) {
+                close_trivia.push(n)
+            }
+        } else {
+            close_trivia.push(n)
+        }
+        k = k + 1
+    }
+    fset(fr, top, fs_clen(), 0)
+    var kids = List<int>.new()
+    kids.push(callee)
+    k = 0
+    for (k < fg(fr, top, fs_pextra_l())) {
+        kids.push(optriv.get(fg(fr, top, fs_pextra_s()) + k))
+        k = k + 1
+    }
+    kids.push(open_leaf)
+    if (args_node >= 0) {
+        kids.push(args_node)
+    }
+    k = 0
+    for (k < close_trivia.len()) {
+        kids.push(close_trivia.get(k))
+        k = k + 1
+    }
+    kids.push(close_leaf)
+    let node = alloc_kids(t, ef, kids, kind_call(), 0, mc)
+    fset(fr, top, fs_ptaildone(), 0)
+    let vs = fg(fr, top, fs_pvals_s())
+    let vl = fg(fr, top, fs_pvals_l())
+    pvals.set(vs + vl - 1, node)
+    fset(fr, top, fs_pstage(), ps_op())
+    return 0
+}
+
+fn pratt_reduce_loop(fr List<int>, pvals List<int>, pops List<int>, t List<int>, ef List<int>, optriv List<int>, top int, b int, mc List<int>) int {
+    var probing = 1
+    for (probing == 1) {
+        let ol = fg(fr, top, fs_pops_l())
+        if (ol == 0) {
+            probing = 0
+        } else {
+            let os = fg(fr, top, fs_pops_s())
+            let tb = pops.get((os + ol - 1) * 6)
+            let tassoc = pops.get((os + ol - 1) * 6 + 1)
+            var reduce = 0
+            if (tassoc == 0) {
+                if (tb >= b) {
+                    reduce = 1
+                }
+            } else {
+                if (tb > b) {
+                    reduce = 1
+                }
+            }
+            if (reduce == 1) {
+                reduce_one(fr, pvals, pops, t, ef, optriv, top, mc)
+            } else {
+                probing = 0
+            }
+        }
+    }
+    return 0
+}
+
+fn reduce_one(fr List<int>, pvals List<int>, pops List<int>, t List<int>, ef List<int>, optriv List<int>, top int, mc List<int>) int {
+    let os = fg(fr, top, fs_pops_s())
+    let ol = fg(fr, top, fs_pops_l())
+    fset(fr, top, fs_pops_l(), ol - 1)
+    let op_leaf = pops.get((os + ol - 1) * 6 + 2)
+    let op_tok = pops.get((os + ol - 1) * 6 + 3)
+    let ts = pops.get((os + ol - 1) * 6 + 4)
+    let tl = pops.get((os + ol - 1) * 6 + 5)
+    let vs = fg(fr, top, fs_pvals_s())
+    let vl = fg(fr, top, fs_pvals_l())
+    var rhs = -1
+    var lhs = -1
+    if (vl >= 2) {
+        rhs = pvals.get(vs + vl - 1)
+        lhs = pvals.get(vs + vl - 2)
+        fset(fr, top, fs_pvals_l(), vl - 2)
+    } else {
+        if (vl == 1) {
+            lhs = pvals.get(vs + vl - 1)
+            fset(fr, top, fs_pvals_l(), 0)
+        }
+    }
+    // lazy missing operands at the op leaf's start (expected = op token)
+    let op_start = t.get(op_leaf * 8 + 1)
+    if (lhs < 0) {
+        t.push(-2)
+        t.push(op_start)
+        t.push(0)
+        t.push(0)
+        t.push(0)
+        t.push(token_kind(op_tok))
+        t.push(flag_missing())
+        t.push(0)
+        lhs = t.len() / 8 - 1
+    }
+    if (rhs < 0) {
+        t.push(-2)
+        t.push(op_start)
+        t.push(0)
+        t.push(0)
+        t.push(0)
+        t.push(token_kind(op_tok))
+        t.push(flag_missing())
+        t.push(0)
+        rhs = t.len() / 8 - 1
+    }
+    var kids = List<int>.new()
+    kids.push(lhs)
+    var k = 0
+    for (k < tl) {
+        kids.push(optriv.get(ts + k))
+        k = k + 1
+    }
+    kids.push(op_leaf)
+    kids.push(rhs)
+    let node = alloc_kids(t, ef, kids, token_kind(op_tok), 0, mc)
+    let vs2 = fg(fr, top, fs_pvals_s())
+    let vl2 = fg(fr, top, fs_pvals_l())
+    if (vs2 + vl2 == pvals.len()) {
+        pvals.push(node)
+    } else {
+        pvals.set(vs2 + vl2, node)
+    }
+    fset(fr, top, fs_pvals_l(), vl2 + 1)
+    return 0
+}
+
+fn finish_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    var probing = 1
+    for (probing == 1) {
+        let ol = fg(fr, top, fs_pops_l())
+        let vl = fg(fr, top, fs_pvals_l())
+        if (ol == 0 || vl < 2) {
+            probing = 0
+        } else {
+            reduce_one(fr, pvals, pops, t, ef, optriv, top, mc)
+        }
+    }
+    let vl = fg(fr, top, fs_pvals_l())
+    if (vl == 0) {
+        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        return 0
+    }
+    let node = pvals.get(fg(fr, top, fs_pvals_s()) + vl - 1)
+    fset(fr, top, fs_pstage(), ps_done())
+    fset(fr, top, fs_pdone(), node)
+    return 0
+}
+
+fn fail_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    var probing = 1
+    for (probing == 1) {
+        if (mc.get(m_nframes()) == 0) {
+            root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
+            return 0
+        }
+        let top = mc.get(m_nframes()) - 1
+        let consumed = 1
+        if (dispatch_child_failure(pg, toks, srcb, t, ef, mc, pending, fr, saves, consumed, hints, dmsg)) {
+            let pushed_active = fg(fr, top, fs_active())
+            let fs2 = fg(fr, top, fs_fsave())
+            save_restore(mc, pending, saves, fs2)
+            if (pushed_active != 0) {
+                ar_pop(mc)
+            }
+            mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+        } else {
+            probing = 0
+        }
+    }
+    return 0
+}
+
+fn root_failure_wrap(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, dmsg List<int>) int {
+    let top = mc.get(m_nframes()) - 1
+    var kids = List<int>.new()
+    var k = 0
+    for (k < mc.get(m_plen())) {
+        kids.push(alloc_leaf(pg, toks, t, pending.get(k), flag_trivia()))
+        k = k + 1
+    }
+    mc.set(m_plen(), 0)
+    var i = mc.get(m_i())
+    for (i < tok_count(toks)) {
+        let tk = tok_token(toks, i)
+        var extra = 0
+        if (tk != -1) {
+            if (is_trivia_token(pg, tk)) {
+                extra = flag_trivia()
+            }
+        }
+        kids.push(alloc_leaf(pg, toks, t, i, extra))
+        i = i + 1
+    }
+    mc.set(m_i(), tok_count(toks))
+    var end = 0
+    if (tok_count(toks) > 0) {
+        end = tok_end(toks, tok_count(toks) - 1)
+    }
+    let start_rule_id = start_rule(pg)
+    let node = alloc_kids(t, ef, kids, 2097152 + start_rule_id, flag_error(), mc)
+    diag(dmsg, diag_root_failed(), 0, 0, end)
+    mc.set(m_nframes(), 0)
+    mc.set(m_root(), node)
+    return 0
+}
+
+
+// ---------------------------------------------------------------------------
+// finish: tail edges, hints merge, root assembly
+// ---------------------------------------------------------------------------
+
+pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, dmsg List<int>, hints List<int>) int {
+    if (mc.get(m_root()) < 0) {
+        root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
+    }
+    let root = mc.get(m_root())
+    if (mc.get(m_i()) < tok_count(toks)) {
+        var tail_error = 0
+        var kids = List<int>.new()
+        var i = mc.get(m_i())
+        for (i < tok_count(toks)) {
+            let tk = tok_token(toks, i)
+            var extra = flag_error()
+            if (tk != -1) {
+                if (is_trivia_token(pg, tk)) {
+                    extra = flag_trivia()
+                } else {
+                    tail_error = 1
+                }
+            } else {
+                tail_error = 1
+            }
+            kids.push(alloc_leaf(pg, toks, t, i, extra))
+            i = i + 1
+        }
+        if (kids.len() > 0) {
+            diag(dmsg, diag_trailing(), 0, 0, 0)
+        }
+        mc.set(m_i(), tok_count(toks))
+        var failed = 0
+        if (tail_error != 0) {
+            failed = 1
+        }
+        if (dmsg.len() > 0) {
+            failed = 1
+        }
+        if (failed != 0) {
+            merge_hints(hints, dmsg)
+        }
+        // extend the root's child list (the root's edges are the LAST
+        // contiguous segment in ef)
+        var k = 0
+        for (k < kids.len()) {
+            ef.push(kids.get(k))
+            ef.push(no_field())
+            t.set(root * 8 + 4, t.get(root * 8 + 4) + 1)
+            k = k + 1
+        }
+    }
+    t.set(root * 8 + 7, 0)
+    return root
+}
+
+// hints merge: depth-desc stable (insertion order kept for equal depth),
+// dedupe against existing diags by span+kind+param.
+fn merge_hints(hints List<int>, dmsg List<int>) int {
+    let n = hints.len() / 5
+    var idx = List<int>.new()
+    var i = 0
+    for (i < n) {
+        idx.push(i)
+        i = i + 1
+    }
+    var k = 1
+    for (k < n) {
+        let cur = idx.get(k)
+        let cd = hints.get(cur * 5)
+        var j = k - 1
+        var done = 0
+        for (j >= 0 && done == 0) {
+            if (hints.get(idx.get(j) * 5) < cd) {
+                idx.set(j + 1, idx.get(j))
+                j = j - 1
+            } else {
+                done = 1
+            }
+        }
+        idx.set(j + 1, cur)
+        k = k + 1
+    }
+    var m = 0
+    for (m < n) {
+        let hi = idx.get(m)
+        let s = hints.get(hi * 5 + 1)
+        let e = hints.get(hi * 5 + 2)
+        let kind = hints.get(hi * 5 + 3)
+        let param = hints.get(hi * 5 + 4)
+        var dup = 0
+        var q = 0
+        for (q < dmsg.len() / 4) {
+            if (dmsg.get(q * 4 + 1) == s && dmsg.get(q * 4 + 2) == e && dmsg.get(q * 4) == kind && dmsg.get(q * 4 + 3) == param) {
+                dup = 1
+            }
+            q = q + 1
+        }
+        if (dup == 0) {
+            dmsg.push(kind)
+            dmsg.push(s)
+            dmsg.push(e)
+            dmsg.push(param)
+        }
+        m = m + 1
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Graft: copy-adopt an unchanged old declaration and skip its tokens
+// ---------------------------------------------------------------------------
+
+// ginfo: [0]=active,[1]=new_base,[2]=old_base,[3]=prefix_len
+// gcand: flat [old_tok_idx, decl_idx, tok_lo, tok_hi] stride 4, sorted by
+//        old_tok_idx (built by the incremental module)
+// gshift: flat [end, delta] stride 2
+
+fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, ginfo List<int>, gcand List<int>, gshift List<int>, ot List<int>, oef List<int>, odecls List<int>, field int) int {
+    var cur_new = mc.get(m_i())
+    if (mc.get(m_plen()) > 0) {
+        cur_new = pending.get(0)
+    }
+    let old_idx = graft_old_index(ginfo, cur_new)
+    if (old_idx < 0) {
+        return 0
+    }
+    var lo = 0
+    var hi = gcand.len() / 4
+    var found = -1
+    var probing = 1
+    for (probing == 1) {
+        if (lo >= hi) {
+            probing = 0
+        } else {
+            let mid = (lo + hi) / 2
+            let key = gcand.get(mid * 4)
+            if (key == old_idx) {
+                found = mid
+                probing = 0
+            } else {
+                if (key < old_idx) {
+                    lo = mid + 1
+                } else {
+                    hi = mid
+                }
+            }
+        }
+    }
+    if (found < 0) {
+        return 0
+    }
+    let decl_idx = gcand.get(found * 4 + 1)
+    let tok_lo = gcand.get(found * 4 + 2)
+    let tok_hi = gcand.get(found * 4 + 3)
+    // copy the old subtree range [node_lo..node]
+    let onode = odecls.get(decl_idx * 3 + 1)
+    let olo = odecls.get(decl_idx * 3 + 2)
+    let delta = (t.len() / 8) - olo
+    var n = olo
+    for (n <= onode) {
+        var k = 0
+        for (k < 8) {
+            if (k == 3 || k == 4) {
+                // fc/cc remapped below
+                if (k == 3) {
+                    t.push(0)
+                } else {
+                    t.push(0)
+                }
+            } else {
+                t.push(ot.get(n * 8 + k))
+            }
+        }
+        n = n + 1
+    }
+    // remap edges and decl ordinal inside the copied range
+    n = olo
+    for (n <= onode) {
+        let nn = delta + n
+        let ofc = ot.get(n * 8 + 3)
+        let occ = ot.get(n * 8 + 4)
+        t.set(nn * 8 + 3, ef.len() / 2)
+        var k = 0
+        for (k < occ) {
+            ef.push(ofc + k + delta)
+            ef.push(oef.get((ofc + k) * 2 + 1))
+            k = k + 1
+        }
+        n = n + 1
+    }
+    if (ef.len() / 2 > mc.get(m_efhi())) {
+        mc.set(m_efhi(), ef.len() / 2)
+    }
+    // register the new decl unit first (ordinal), then stamp the copied nodes
+    let oorigin = odecls.get(decl_idx * 3)
+    let shift = graft_shift_for(gshift, oorigin)
+    let new_origin = oorigin + shift
+    let d = mc.get(m_ndecls())
+    let ordinal = d + 1
+    if (d * 3 == decls.len()) {
+        decls.push(new_origin)
+        decls.push(delta + onode)
+        decls.push(delta + olo)
+    } else {
+        decls.set(d * 3, new_origin)
+        decls.set(d * 3 + 1, delta + onode)
+        decls.set(d * 3 + 2, delta + olo)
+    }
+    mc.set(m_ndecls(), d + 1)
+    n = olo
+    for (n <= onode) {
+        t.set((delta + n) * 8 + 7, ordinal)
+        n = n + 1
+    }
+    // skip the unit's tokens
+    let skip = tok_hi - tok_lo
+    var ni = cur_new + skip
+    if (ni > tok_count(toks)) {
+        ni = tok_count(toks)
+    }
+    mc.set(m_i(), ni)
+    mc.set(m_plen(), 0)
+    if (ni > 0) {
+        mc.set(m_lastline(), tok_line(toks, ni - 1))
+    }
+    let top = mc.get(m_nframes()) - 1
+    child_push(ef, fr, top, delta + onode, field, mc)
+    fset(fr, top, fs_liststarted(), 1)
+    fset(fr, top, fs_consumed(), 1)
+    mc.set(m_graftcnt(), mc.get(m_graftcnt()) + 1)
+    return 1
+}
+
+fn graft_old_index(ginfo List<int>, cur_new int) int {
+    if (cur_new >= ginfo.get(1)) {
+        return ginfo.get(2) + (cur_new - ginfo.get(1))
+    }
+    if (cur_new < ginfo.get(3)) {
+        return cur_new
+    }
+    return -1
+}
+
+fn graft_shift_for(gshift List<int>, origin int) int {
+    var total = 0
+    var i = 0
+    for (i < gshift.len() / 2) {
+        if (origin >= gshift.get(i * 2)) {
+            total = total + gshift.get(i * 2 + 1)
+        }
+        i = i + 1
+    }
+    return total
 }

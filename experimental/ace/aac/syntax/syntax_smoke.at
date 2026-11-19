@@ -23,6 +23,18 @@ use app.syntax_grammar_data.text_record_instances_parts
 use app.syntax_grammar_data.scalar_parts
 use app.syntax_program.hex_to_bytes
 use app.syntax_program.hex_to_bytes_parts
+use app.syntax_program.rule_name
+use app.syntax_program.rule_expect
+use app.syntax_program.ctx_spelling
+use app.syntax_program.ctx_role
+use std.bytes.utf8_len
+use std.bytes.byte_of
+use app.syntax_lexer.compile_scanner
+use app.syntax_lexer.use_count_pass
+use app.syntax_lexer.lex_all
+use app.syntax_parse.first_sets_into
+use app.syntax_parse.parse_tokens
+use app.syntax_cst.canonical
 
 fn itoa(v int) Str {
     if (v == 0) {
@@ -121,4 +133,242 @@ pub fn byte_len_case(name Str) Str {
 pub fn hex_roundtrip_case(name Str) Str {
     let b = hex_to_bytes_parts(fetch_parts(name))
     return "bytes=" + itoa(b.len())
+}
+
+// ---------------------------------------------------------------------------
+// T-02 parse smoke: lex + parse a frozen sample, render the canonical CST
+// and the diag list (byte-exact vs the Rust runtime oracle).
+// ---------------------------------------------------------------------------
+
+
+
+pub fn str_to_bytes(s Str) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < s.len()) {
+        let c = s.char_at(i).to_codepoint()
+        let n = utf8_len(c)
+        var k = 0
+        for (k < n) {
+            out.push(byte_of(c, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn render_diag(pg List<int>, dmsg List<int>) Str {
+    var out = ""
+    var i = 0
+    for (i < dmsg.len() / 4) {
+        let kind = dmsg.get(i * 4)
+        let st = dmsg.get(i * 4 + 1)
+        let en = dmsg.get(i * 4 + 2)
+        let param = dmsg.get(i * 4 + 3)
+        out = out + itoa(st) + ".." + itoa(en) + " "
+        if (kind == 2) {
+            out = out + "recovered at malformed `" + rule_name(pg, param) + "`"
+        }
+        if (kind == 3) {
+            out = out + "skipped unexpected token at top level"
+        }
+        if (kind == 4) {
+            out = out + "root parse failed; partial error tree"
+        }
+        if (kind == 5) {
+            out = out + "trailing unparsed tokens"
+        }
+        if (kind == 6) {
+            out = out + "rule `" + rule_name(pg, param) + "` recurses without consuming input (left recursion)"
+        }
+        if (kind == 7) {
+            out = out + "unknown rule #" + itoa(param)
+        }
+        if (kind == 8) {
+            out = out + "expected `" + ctx_spelling(pg, param) + "` at the declared `" + ctx_role(pg, param) + "` slot"
+        }
+        if (kind == 9) {
+            out = out + "unexpected token in " + rule_expect(pg, param)
+        }
+        if (kind == 99) {
+            out = out + "STEP_CAP i=" + itoa(st) + " frames=" + itoa(en) + " rule=" + itoa(param)
+        }
+        out = out + "\n"
+        i = i + 1
+    }
+    return out
+}
+
+/// Stage probe: scanner compile only — total bucket entries + first bucket.
+pub fn scan_case(profile Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let cs = compile_scanner(pg)
+    let total = cs.get(256) - 257
+    return "entries=" + itoa(total) + " b0=" + itoa(cs.get(1) - cs.get(0))
+}
+
+/// Stage probe: raw accessors — n_scan + first scan rule fields + pool byte.
+pub fn raw_case(profile Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let ns = n_scan(pg)
+    var out = "nscan=" + itoa(ns)
+    if (ns > 0) {
+        var off = pg.get(32)
+        out = out + " pool=" + itoa(off) + " poollen=" + itoa(pg.len() - off)
+        out = out + " mtag0=" + itoa(pg.get(pg.get(18) + 0))
+        out = out + " a0=" + itoa(pg.get(pg.get(18) + 1))
+        let b0 = pg.get(pg.get(32) + pg.get(pg.get(18) + 1))
+        out = out + " firstbyte=" + itoa(b0)
+    }
+    return out
+}
+
+/// Stage probe: bucket COUNT pass only.
+pub fn bucket_count_case(profile Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    use_count_pass(pg)
+    return "counts-ok"
+}
+
+/// Stage probe: lex only — token count + first few token ids/starts.
+pub fn lex_case(profile Str, sample Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let cs = compile_scanner(pg)
+    let srcb = str_to_bytes(sample)
+    var toks = List<int>.new()
+    var lexd = List<int>.new()
+    lex_all(pg, cs, srcb, -1, toks, lexd)
+    var out = "ntok=" + itoa(toks.len() / 5) + " nlexd=" + itoa(lexd.len() / 2) + " head="
+    var i = 0
+    for (i < 12) {
+        if (i * 5 < toks.len()) {
+            out = out + itoa(toks.get(i * 5)) + "," + itoa(toks.get(i * 5 + 1)) + "," + itoa(toks.get(i * 5 + 3)) + " "
+        }
+        i = i + 1
+    }
+    return out
+}
+
+/// Stage probe: first sets — the start rule's first-token count.
+pub fn firstsets_case(profile Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    var firsts = List<int>.new()
+    var nullable = List<int>.new()
+    let r = first_sets_into(pg, firsts, nullable)
+    if (r != 0) {
+        return "FIRSTSETS_ERR"
+    }
+    var n = 0
+    var tk = 0
+    for (tk < n_tokens(pg)) {
+        if (firsts.get(tk) != 0) {
+            n = n + 1
+        }
+        tk = tk + 1
+    }
+    var nn = 0
+    var ri = 0
+    for (ri < n_rules(pg)) {
+        if (nullable.get(ri) != 0) {
+            nn = nn + 1
+        }
+        ri = ri + 1
+    }
+    return "startfirst=" + itoa(n) + " nullable=" + itoa(nn)
+}
+
+pub fn dump_case(profile Str, sample Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let cs2 = compile_scanner(pg)
+    let srcb = str_to_bytes(sample)
+    var toks = List<int>.new()
+    var lexd = List<int>.new()
+    lex_all(pg, cs2, srcb, -1, toks, lexd)
+    var firsts = List<int>.new()
+    var nullable = List<int>.new()
+    let fsr = first_sets_into(pg, firsts, nullable)
+    if (fsr != 0) {
+        return "FIRSTSETS_ERR"
+    }
+    var t = List<int>.new()
+    var ef = List<int>.new()
+    var decls = List<int>.new()
+    var dmsg = List<int>.new()
+    var ot = List<int>.new()
+    var oef = List<int>.new()
+    var odecls = List<int>.new()
+    var gcand = List<int>.new()
+    var gshift = List<int>.new()
+    var ginfo = List<int>.new()
+    ginfo.push(0)
+    let root = parse_tokens(pg, cs2, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, 1048576, 67108864)
+    if (root < 0) {
+        return "PARSE_ERR"
+    }
+    var out = "root=" + itoa(root) + " nodes=" + itoa(t.len() / 8) + " edges=" + itoa(ef.len() / 2) + "|"
+    var n = 0
+    for (n < t.len() / 8) {
+        out = out + itoa(n) + ":k" + itoa(t.get(n * 8)) + "s" + itoa(t.get(n * 8 + 1)) + "l" + itoa(t.get(n * 8 + 2)) + "f" + itoa(t.get(n * 8 + 3)) + "c" + itoa(t.get(n * 8 + 4)) + "d" + itoa(t.get(n * 8 + 7)) + "|"
+        n = n + 1
+    }
+    var e = 0
+    for (e < ef.len() / 2) {
+        out = out + "e" + itoa(e) + "=" + itoa(ef.get(e * 2)) + "/" + itoa(ef.get(e * 2 + 1)) + " "
+        e = e + 1
+    }
+    return out
+}
+/// Lex + parse `sample` under `profile`; return "CANON\n<canonical>\nDIAGS\n<diags>"
+/// or a controlled refusal code.
+pub fn parse_case(profile Str, sample Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR " + itoa(pg_err(pg))
+    }
+    let cs = compile_scanner(pg)
+    let srcb = str_to_bytes(sample)
+    var toks = List<int>.new()
+    var lexd = List<int>.new()
+    lex_all(pg, cs, srcb, -1, toks, lexd)
+    var firsts = List<int>.new()
+    var nullable = List<int>.new()
+    let fsr = first_sets_into(pg, firsts, nullable)
+    if (fsr != 0) {
+        return "FIRSTSETS_ERR"
+    }
+    var t = List<int>.new()
+    var ef = List<int>.new()
+    var decls = List<int>.new()
+    var dmsg = List<int>.new()
+    var ot = List<int>.new()
+    var oef = List<int>.new()
+    var odecls = List<int>.new()
+    var gcand = List<int>.new()
+    var gshift = List<int>.new()
+    var ginfo = List<int>.new()
+    ginfo.push(0)
+    let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, 1048576, 67108864)
+    if (root < 0) {
+        return "PARSE_ERR " + itoa(-root)
+    }
+    return "CANON\n" + canonical(t, ef, decls, root) + "DIAGS\n" + render_diag(pg, dmsg)
 }

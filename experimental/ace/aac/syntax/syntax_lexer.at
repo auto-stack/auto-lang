@@ -48,6 +48,54 @@ fn lit_len_of(pg List<int>, ri int) int {
     return 0
 }
 
+pub fn use_count_pass(pg List<int>) int {
+    var counts = List<int>.new()
+    var i = 0
+    for (i < 256) {
+        counts.push(0)
+        i = i + 1
+    }
+    var ri = 0
+    for (ri < n_scan(pg)) {
+        let mtag = scan_mtag(pg, ri)
+        if (mtag == mtag_lit()) {
+            let b0 = pool_byte(pg, scan_a(pg, ri))
+            counts.set(b0, counts.get(b0) + 1)
+        }
+        if (mtag == mtag_line()) {
+            let b0 = pool_byte(pg, scan_a(pg, ri))
+            counts.set(b0, counts.get(b0) + 1)
+        }
+        if (mtag == mtag_block()) {
+            let b0 = pool_byte(pg, scan_a(pg, ri))
+            counts.set(b0, counts.get(b0) + 1)
+        }
+        if (mtag == mtag_charset()) {
+            let tab = scan_a(pg, ri)
+            let na = scan_b(pg, ri)
+            var c = 0
+            for (c < 128) {
+                if (cs_contains(pg, tab, na, c)) {
+                    counts.set(c, counts.get(c) + 1)
+                }
+                c = c + 1
+            }
+        }
+        if (mtag == mtag_strlit()) {
+            let q = scan_a(pg, ri)
+            counts.set(q, counts.get(q) + 1)
+        }
+        ri = ri + 1
+    }
+    var total = 0
+    i = 0
+    for (i < 256) {
+        total = total + counts.get(i)
+        i = i + 1
+    }
+    return total
+}
+
 /// Compile the CSR bucket index: [257 bucket offsets][rule ids]. Rules with
 /// empty literal/comment starts cannot occur (the Rust compiler rejects
 /// them); non-ASCII charsets are refused (ASCII-only language surface).
@@ -111,7 +159,7 @@ pub fn compile_scanner(pg List<int>) List<int> {
     }
     var ids = List<int>.new()
     i = 0
-    for (i < acc - 257) {
+    for (i < acc) {
         ids.push(0)
         i = i + 1
     }
@@ -172,10 +220,14 @@ pub fn compile_scanner(pg List<int>) List<int> {
         out.push(cs.get(i))
         i = i + 1
     }
-    i = 0
-    for (i < ids.len()) {
-        out.push(ids.get(i))
-        i = i + 1
+    var b = 0
+    for (b < 256) {
+        var k = cs.get(b)
+        for (k < cs.get(b + 1)) {
+            out.push(ids.get(k))
+            k = k + 1
+        }
+        b = b + 1
     }
     return out
 }

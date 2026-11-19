@@ -117,3 +117,188 @@ fn extract_profile_chunks(src: &str, profile: &str) -> Vec<String> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// T-02 parse parity: the Auto machine vs the Rust runtime over the same
+// frozen grammar + sample (byte-exact canonical CST + diags).
+// ---------------------------------------------------------------------------
+
+/// Normalize the Rust canonical form's meta kinds onto the Auto signed
+/// encoding (KIND_ERROR/-1, MISSING/-2, CALL/-3, POSTFIX/-4).
+fn normalize_canonical(canon: &str) -> String {
+    let mut out = String::new();
+    for line in canon.lines() {
+        if let Some(rest) = line.strip_prefix('n') {
+            // kind number runs to the first marker or ':'
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            let kind: u32 = rest[..end].parse().unwrap();
+            let mapped = match kind {
+                4294967294 => "-1",
+                4294967293 => "-2",
+                4294967292 => "-3",
+                4294967291 => "-4",
+                k => {
+                    out.push('n');
+                    out.push_str(&k.to_string());
+                    out.push_str(&rest[end..]);
+                    out.push('\n');
+                    continue;
+                }
+            };
+            out.push('n');
+            out.push_str(mapped);
+            out.push_str(&rest[end..]);
+            out.push('\n');
+        } else {
+            // root lines start with "n..." only at depth 0; indent lines have
+            // spaces then 'n'
+            if let Some(pos) = line.rfind('n') {
+                if line[..pos].trim().is_empty() {
+                    let rest = &line[pos + 1..];
+                    let end = rest
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(rest.len());
+                    let kind: u32 = rest[..end].parse().unwrap();
+                    let mapped = match kind {
+                        4294967294 => "-1",
+                        4294967293 => "-2",
+                        4294967292 => "-3",
+                        4294967291 => "-4",
+                        k => {
+                            out.push_str(&line[..pos + 1]);
+                            out.push_str(&k.to_string());
+                            out.push_str(&rest[end..]);
+                            out.push('\n');
+                            continue;
+                        }
+                    };
+                    out.push_str(&line[..pos + 1]);
+                    out.push_str(mapped);
+                    out.push_str(&rest[end..]);
+                    out.push('\n');
+                    continue;
+                }
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Map Rust NO_FIELD (u32::MAX) onto the Auto -1 encoding inside the
+/// f=[...] field lists (kinds are mapped by normalize_canonical).
+fn normalize_fields(canon: &str) -> String {
+    // Map NO_FIELD (u32::MAX) inside each f=[...] list; a plain string
+    // replace would miss consecutive ",MAX,MAX," (overlap), so rewrite the
+    // bracketed segment as a whole.
+    let mut out = String::new();
+    for line in canon.lines() {
+        if let Some(pos) = line.find("f=[") {
+            let close = line[pos..].find(']').map(|c| pos + c);
+            if let Some(end) = close {
+                let inner = &line[pos + 3..end];
+                let mapped = inner.replace("4294967295", "-1");
+                out.push_str(&line[..pos + 3]);
+                out.push_str(&mapped);
+                out.push_str(&line[end..]);
+                out.push('\n');
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+fn rust_oracle(profile: &str, sample: &str) -> String {
+    let src = include_str!("../../../grammars/auto-source.at");
+    let p = ace_syntax_grammar::compile_profile(src, profile).unwrap();
+    let cs = ace_syntax_runtime::lexer::CompiledScanner::compile(&p).unwrap();
+    let pages = std::rc::Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
+    let snap = ace_syntax_runtime::snapshot::Snapshot::from_text(&pages, sample);
+    let out = ace_syntax_runtime::parse::parse_snapshot(
+        &p,
+        &cs,
+        &snap,
+        &ace_syntax_runtime::program::Budget::default(),
+    )
+    .unwrap();
+    let mut expect = String::from("CANON\n");
+    expect.push_str(&normalize_fields(&normalize_canonical(&out.tree.canonical())));
+    expect.push_str("DIAGS\n");
+    for d in &out.tree.diags {
+        expect.push_str(&format!("{}..{} {}\n", d.start, d.end, d.message));
+    }
+    expect
+}
+
+#[test]
+fn aac1046_parse_parity_scalar() {
+    let sample = "fn main() int { return 1 }";
+    let out = obs("parse", "parse_case", &format!("parse_case(\"scalar\", \"{sample}\")"));
+    let expect = rust_oracle("scalar", sample);
+    assert_eq!(out, expect);
+}
+
+#[test]
+fn aac1046_stage_probes() {
+    let sample = "fn main() int { return 1 }";
+    let lex = obs("lex", "lex_case", &format!("lex_case(\"scalar\", \"{sample}\")"));
+    println!("LEX: {lex}");
+    assert!(lex.starts_with("ntok="), "{lex}");
+    let fs = obs("fs", "firstsets_case", "firstsets_case(\"scalar\")");
+    println!("FS: {fs}");
+    assert!(fs.starts_with("startfirst="), "{fs}");
+}
+
+#[test]
+fn aac1046_scan_probe() {
+    let out = obs("scan", "scan_case", "scan_case(\"scalar\")");
+    println!("SCAN: {out}");
+    assert!(out.starts_with("entries="), "{out}");
+}
+
+#[test]
+fn aac1046_raw_probe() {
+    let out = obs("raw", "raw_case", "raw_case(\"scalar\")");
+    println!("RAW: {out}");
+    assert!(out.starts_with("nscan="), "{out}");
+}
+
+#[test]
+fn aac1046_bucket_probe() {
+    let out = obs("bkt", "bucket_count_case", "bucket_count_case(\"scalar\")");
+    println!("BUCKET: {out}");
+    assert_eq!(out, "counts-ok");
+}
+
+
+#[test]
+fn aac1046_parse_parity_battery() {
+    // Same-source battery: expressions (pratt/calls), recovery, trivia,
+    // nested blocks, strings; each byte-exact vs the Rust runtime.
+    let cases: &[(&str, &str)] = &[
+        ("scalar", "fn f(a int) int { return a }"),
+        ("scalar", "fn f() int { if (1 < 2) { return 1 } else { return 2 } }"),
+        ("scalar", "fn broken( -> int { return 1 }\nfn ok(x int) int { return x }"),
+        ("scalar", "fn g() int { var x = 1\n x = x + 1\n while-form-loop\n return ((x)) }"),
+        ("scalar", "// leading comment\nfn h() int {\n    // inner\n    return 7\n}\n"),
+        ("scalar", "fn s() int { return 1 + 2 * 3 - 4 / 2 }"),
+    ];
+    for (i, (profile, sample)) in cases.iter().enumerate() {
+        let out = obs(
+            &format!("pb{i}"),
+            "parse_case",
+            &format!("parse_case(\"{profile}\", \"{sample}\")"),
+        );
+        let expect = rust_oracle(profile, sample);
+        assert_eq!(out, expect, "case {i}: {profile} / {sample}");
+    }
+}
+
+
+

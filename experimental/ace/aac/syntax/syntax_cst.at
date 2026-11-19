@@ -206,9 +206,12 @@ pub fn assert_lossless(t List<int>, ef List<int>, decls List<int>, root int, tot
 // ---------------------------------------------------------------------------
 
 fn dig(v int) Str {
-    // Decimal render, non-negative only (kinds/spans/expected are unsigned).
+    // Decimal render (negative for the signed meta kinds and NO_FIELD).
     if (v == 0) {
         return "0"
+    }
+    if (v < 0) {
+        return "-" + dig(-v)
     }
     var digits = List<int>.new()
     var x = v

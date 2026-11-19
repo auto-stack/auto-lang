@@ -36,6 +36,9 @@ pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
 // the stage driver; permanent cases consolidate into `syntax_driver.at` as
 // their tasks land.
 pub const PROGRAM_SOURCE: &str = include_str!("../../../aac/syntax/syntax_program.at");
+pub const LEXER_SOURCE: &str = include_str!("../../../aac/syntax/syntax_lexer.at");
+pub const CST_SOURCE: &str = include_str!("../../../aac/syntax/syntax_cst.at");
+pub const PARSE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_parse.at");
 pub const GRAMMAR_DATA_SOURCE: &str = include_str!("../../../aac/syntax/syntax_grammar_data.at");
 pub const SMOKE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_smoke.at");
 
@@ -43,6 +46,9 @@ pub const SMOKE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_smoke.at
 pub fn syntax_av_modules() -> Vec<(String, String)> {
     vec![
         ("syntax_program.at".to_string(), PROGRAM_SOURCE.to_string()),
+        ("syntax_lexer.at".to_string(), LEXER_SOURCE.to_string()),
+        ("syntax_cst.at".to_string(), CST_SOURCE.to_string()),
+        ("syntax_parse.at".to_string(), PARSE_SOURCE.to_string()),
         (
             "syntax_grammar_data.at".to_string(),
             GRAMMAR_DATA_SOURCE.to_string(),
