@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 1
+current_step: 2
 total_steps: 5
 depends_on: [PLAN-980, PLAN-981, PLAN-979]
 supersedes_spec_components: []
@@ -62,7 +62,7 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 - [x] **T-01｜work｜冻结输入**。对照 980 §9 的 U01–U06 和 981 分组交接，建立原源、Widgets canonical 路径、GUI oracle 与旧检测对应表。对应表与生产入口见 §9（2026-11-19 T-01 收据）。
 
-- [ ] **T-02｜work｜接 AV 组件与状态**。复用 `auto-ui/crates/auto-ui-runtime/src/ui/ace_node_desktop.rs` 与现有组件/Store/事件入口；共享列表语义按现有 AGE/collections owner 单写。
+- [x] **T-02｜work｜接 AV 组件与状态**。复用 `auto-ui/crates/auto-ui-runtime/src/ui/ace_node_desktop.rs` 与现有组件/Store/事件入口；共享列表语义按现有 AGE/collections owner 单写。复用点与 010 边界确认见 §9（2026-11-19 T-02 收据）。
 
 - [ ] **T-03｜work｜实跑完整 AV**。沿原 V-UI-W1 真窗、`ace_node_desktop` 和 `authoring_session` 等生产测试入口逐组关闭，提供可独立验收的 VM 工程运行收据。
 
@@ -72,7 +72,13 @@ auto-ui 主责，auto-lang 维护共享语义，auto-os 提供 Widgets 真实源
 
 ## 9. 复审记录
 
-### 2026-11-19 stage: work（T-01 输入冻结）| PLAN-1071 r1 | outcome: pass | worktree: `D:/autostack/.wt/lang-1071/{auto-lang,auto-down,auto-ui}` | branch: plan-1071-dev×2 + auto-down detached | base: lang `f02b34b74` / ui `d2e7d7a4` / down `72b09700`
+### 2026-11-19 stage: work（T-02 接 AV 组件与状态）| PLAN-1071 r1 | outcome: pass | 复用确认与 010 边界
+
+**复用入口（实读 `auto-ui/crates/auto-ui-runtime/src/ui/ace_node_desktop.rs`，1720 行）**：`BridgeEngine` 枚举=Component(`AceStateEngine`)/Package(`PackageStateEngine`) 双引擎，公开 `mount(identity, initials)`/`read_all(identity)`/`dispatch(identity, msg)`/`dispatch_with_args(identity, msg, args)`——普通 Node 源→AGE Schema/CST/verify→AV 求值→ui980 provider FFI（ui_open/apply_text/apply_int/apply_bool/poll_event/close）→typed 事件队列→Iced 投影，与 980 NATIVE r13 交付（`403c936d`/`34bb4326`）一致。现有组件/Store/事件入口全部在位（tests/：`plan041_instance_ownership`、`plan033_b1_scope_isolation`、`component_registry_test`、`theme_scope_isolation`、`gallery_golden`、`desktop_behavior`、`image_surface_contract`、`ace_ui_hello`、`ace_node_desktop`、`vue_capabilities`；driver：`authoring_session`、`mixed_regions_lifecycle_flow`）。
+
+**010 列表字段边界（牵头确定，交 1072 共享接口）**：`010-contact-form` model 的 `var faqs = [ {q,a} ×4 ]`（Plan 448 F list-of-structs + for）经视图 `for i, f in .faqs` 只读消费，**无任何事件写**（仅 Submit/SetTheme/SetAccent）⇒ 边界定为**仅视图数据（read-only view source）**：列表字段作展示数据源渲染，不参与组件 state 变更轨迹/事件 diff/Store 写通道。共享接口=列表字段在生成面按只读数据源处理（Vue v-for/等价模板），不作为可变 state 通道；AGE 列表语义/绑定归现有 collections owner 单写（1071 不动共享语义）。
+
+2026-11-19 stage: work（T-01 输入冻结）| PLAN-1071 r1 | outcome: pass | worktree: `D:/autostack/.wt/lang-1071/{auto-lang,auto-down,auto-ui}` | branch: plan-1071-dev×2 + auto-down detached | base: lang `f02b34b74` / ui `d2e7d7a4` / down `72b09700`
 
 **U01–U06 原源分母（`auto-ui/examples/ui/` 36 目录实测定案）**
 
