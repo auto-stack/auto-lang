@@ -367,7 +367,36 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 | `ace-a2c-abi` | 9 / 0 | 1（`ace-a2x-c` lib 单测；确认"只有 lib"但有 9 例） |
 | **小计** | **1,687 / 0** | — |
 
-已发现合计（5 批）：`ace-av` 1,428 + 4 组 347 + conformance 4 组 189 + 本批 1,687 = **3,651 例**；尚未发现：`ace-native`、`ace-native-worker`、`ace-a2x`、`ace-m2-build`（8 target）、`ace-facade`/`ace-adapters`（根 workspace）、聚合 `ace-workspace`、`ace-perf`（串行 PERF 窗口）。
+已发现合计（5 批）：`ace-av` 1,428 + 4 组 347 + conformance 4 组 189 + 本批 1,687 = **3,651 例**。
+
+**第四批（重内存 4 组，`discover-heavy4/`，整批墙 39.55s）**：
+
+| 组 | 选择/排除 | 说明 |
+|---|---:|---|
+| `ace-native` | **329 / 0** | conformance 258 / sched_m2_1067 28 / typed_entry_tier 18 / lib 16 / bin mn-collections-worker 5 / typed_entry_incremental 4 |
+| `ace-a2x` | **328 / 0** | a2x-worker::conformance 272 / a2x-ts 20 / bin a2x-worker 8 / 其余多目标 |
+| `ace-native-worker` | 43 / 0 | conformance 39 / bin 4 |
+| `ace-m2-build` | 30 / 0 | 7 个 test target（sdk_pack 8 / load_selection 6 / compat 5 / identity 4 / b0 3 / coverage 2 / restore 2） |
+| **小计** | **730 / 0** | — |
+
+**累计已发现 4,381 例 / 22 个非聚合组**；余 `ace-facade`、`ace-adapters` 两个根 workspace 组，聚合 `ace-workspace` 与 `ace-perf` 另窗。
+
+### 5.13 T-02 前置核查：B-05 的**真实消费面**（比计划原假设大得多）
+
+对 `experimental/ace` 全量 Rust 源码静态扫描（`target/release|runtime-release`）：
+
+- **37 处硬编码引用，分布在 20 个文件**；其中 **11 处会实际触发构建**（字面量 `"runtime-release"`）：`tests/text-runtime/src/lib.rs`、`tests/data-runtime/src/lib.rs`、`crates/native/src/{collections_runtime,sched_runtime,typed_runtime}.rs`、`crates/native/tests/cases/collections_resources_tier.rs`、`crates/native/tests/common/collections.rs`、`crates/core/tests/common/mod.rs`、`crates/av/src/text_runtime.rs`、`crates/abi/src/source_foreign.rs`。
+- **5 处是"lib 级 lazy builder"**（不是测试体）：`crates/av/src/text_runtime.rs:13 text_runtime_lib()`、`crates/abi/src/source_foreign.rs:~1475`、`crates/native/src/collections_runtime.rs:233`、`crates/native/src/sched_runtime.rs:292`、`crates/native/src/typed_runtime.rs:228`。它们被产品路径调用（`native/{console,driver,worker}.rs` 等），在测试里表现为**运行期 cargo build**。
+- **`collections`/`sched`/`typed` 三个 runtime 在 `toolchains.json` 里没有任何条目** → 今天即使 `--prepare-only` 也无法预建，"零编译运行"在这些组上不可能成立。计划原文只列了 B-01/B-02/B-04 三处测试体补构建，**低估了 5 处 lib 级构建 + 3 个缺失工具条目**。
+
+**B-05 的可行改法（T-02 分步，不改产品语义）**：
+
+1. `toolchains.json` 新增 `collections-runtime`/`sched-runtime`/`typed-runtime` 条目（profile 按 §3 的 no_std 裁定先维持现状并在 SD-01 记录），`text/data` 由 `runtime-release` 改 `runtime-dev`（与 `trace-runtime` 一致）。
+2. 5 个 lib builder 改为 **env 优先**：测试准备注入（如 `ACE_TEXT_RUNTIME_LIB` 族）时读取并校验存在性/哈希，**缺失即具名 infra 失败、不回落构建**；env 未设（产品/开发直用）保持现有 lazy build——"日常零编译"由 env 保证，产品行为不变。
+3. 硬编码 `target/release/<worker>` 的测试（`a2x-worker/tests/cases/{a2c_cert,a2c_coll_cert,a2c_rt_cert,cert_coll_904,cert_rt_902}.rs`、`av/tests/cases/{av_collections_resources,av_dynamic_resources}.rs`）改 **env 优先 + 明确失败**，禁止回落 release 路径。
+4. 最后才翻 `av/batch-av/av-regular/ac/mn/mn-collections/cte/abi/sema/a2x` 的 profile 为 debug，并用真实组验证（`ace-abi`/`ace-batch`/`ace-native` 各一次 prepare→run，比较 debug worker 的 item 时间是否仍满足 ≤10s）。
+
+**已排除的误判**：`av_collections_resources.rs:814` / `av_dynamic_resources.rs:723` 的 `target/release` 不是工具准备问题而是**测试自己找 worker**，归第 3 步一并处理。
 
 ### 5.11 T-01 第五段：O 类探针的独立预期（按 Spec 钉住，不录当前输出）
 
@@ -567,6 +596,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 6，r1）：`stage: work`，T-02 第二刀（§5.12 续）。执行内容：①普通 ACE 入口切换——`--prepare-only` 无 `--out` 落规范位 `target/test-groups/prepared/<source_state[:16]>/`；默认 `cargo t <ACE组>` 先找**校验通过且全覆盖**的 manifest，缺失即 `PREPARATION_REQUIRED`（exit 2、零构建），实测 0.11s 拒绝 / 有准备时 `PASS 9/9` 整命令 1.6s 零构建。②治理负控 `PreparedRunGate` 5 例（config/source/toolchain 漂移、archive 篡改/缺失、find 跳过无效且要求全覆盖、无准备不调 execute_plan）；`test_fixed_groups.py` **77/77 OK**、`test_prepare_tools.py` 8/8 OK。③修正 master 既有红：`ace-python` expression 缺 performance 排除（已在 master 复现确认非本包引入），去重复 `-E` 并补排除，重发现仍选 10 例。代码提交 `946c38909`。T-02 剩余：B-05 工具 profile（debug/runtime-dev）、B-01…B-04 去体内补构建、工具链认证组（T-06）。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 6 | from: work | to: work | status: executing | outcome: pass（入口切换+治理负控落地；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 946c38909 / 本轮 docs(plan1098) | next: work（T-02 续：B-05/B-01…04）`
+
+2026-11-19（goal round 7，r1）：`stage: work`。执行内容：①第四批重内存组真实发现（§5.10，`discover-heavy4/`，整批 39.55s）：`ace-native` 329、`ace-a2x` 328、`ace-native-worker` 43、`ace-m2-build` 30，小计 730；**累计 4,381 例 / 22 个非聚合组**（余 facade/adapters 两个根 workspace 组 + 聚合/PERF）。②**B-05 真实消费面核查**（§5.13）：全量扫描得 37 处 `target/release|runtime-release` 引用 / 20 文件，其中 11 处会触发构建，**5 处是 lib 级 lazy builder**（`av/text_runtime`、`abi/source_foreign`、`native/{collections,sched,typed}_runtime`），且 `collections/sched/typed` 三个 runtime **无 toolchains 条目**（今天无法预建）——计划原假设的"测试体补构建 3 处"明显低估。据此给出 B-05 四步改法（补工具条目 → lib builder env 优先且缺省回落仅限非测试 → hardcode 测试改 env → 最后翻 profile 并真实验证）。本轮未改实现代码。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 7 | from: work | to: work | status: executing | outcome: pass（T-01 分母 22/24 组、B-05 消费面核查完成；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) | next: work（T-02 B-05 第 1/2 步：补工具条目 + lib builder env 优先）`
 
 ## 10. 待澄清事项
 
