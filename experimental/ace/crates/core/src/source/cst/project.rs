@@ -5483,6 +5483,7 @@ impl<'a> Engine<'a> {
                         .filter(|&c| self.rule_name_of(c) == "age-on-stmt")
                         .collect();
                     let stmts = self.project_on_stmts(&body_children);
+                    let body_foreign = Self::stmts_have_foreign_call(&stmts);
                     // 兼容面：赋值子集=**全深度**收平（含 if/else 分支里的赋值，
                     // 源序）——"写了哪些字段"不因藏在分支里而消失；**执行语义**
                     // （条件/顺序）以 `stmts` 为准，assign-only 消费者见 Let/If
@@ -5494,7 +5495,7 @@ impl<'a> Engine<'a> {
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
                         params: Vec::new(),
                         from_widget: false,
-                        body_foreign: false,
+                        body_foreign,
                         // 979 形态无 widget 头参数——无通道面。
                         channel_calls: Vec::new(),
                         stmts,
@@ -6287,6 +6288,9 @@ impl<'a> Engine<'a> {
                 }
                 crate::source::age_component::ComponentStmt::Let { .. } => {}
                 crate::source::age_component::ComponentStmt::Call { .. } => {}
+                crate::source::age_component::ComponentStmt::While { body, .. } => {
+                    Self::flat_handler_assigns(body, out);
+                }
                 // PLAN-105 T-02：循环体里的赋值同样进平铺流（执行语义按 stmts）。
                 crate::source::age_component::ComponentStmt::For { body, .. } => {
                     Self::flat_handler_assigns(body, out)
@@ -6521,6 +6525,35 @@ impl<'a> Engine<'a> {
         out
     }
 
+    /// PLAN-105 T-02：语句面里是否有**非列表方法**的调用语句（→ 域外体）。
+    fn stmts_have_foreign_call(
+        stmts: &[crate::source::age_component::ComponentStmt],
+    ) -> bool {
+        fn list_method(call: &crate::source::ast::Expr) -> bool {
+            match &call.kind {
+                crate::source::ast::ExprKind::MethodCall { name, .. } => matches!(
+                    name.name.as_str(),
+                    "push" | "get" | "len" | "pop" | "clear" | "set"
+                ),
+                _ => false,
+            }
+        }
+        fn walk(stmts: &[crate::source::age_component::ComponentStmt]) -> bool {
+            stmts.iter().any(|st| match st {
+                crate::source::age_component::ComponentStmt::Call { call, .. } => {
+                    !list_method(call)
+                }
+                crate::source::age_component::ComponentStmt::If { then, els, .. } => {
+                    walk(then) || els.as_ref().is_some_and(|e| walk(e))
+                }
+                crate::source::age_component::ComponentStmt::For { body, .. }
+                | crate::source::age_component::ComponentStmt::While { body, .. } => walk(body),
+                _ => false,
+            })
+        }
+        walk(stmts)
+    }
+
     fn collect_widget_handlers(
         &mut self,
         member: u32,
@@ -6605,6 +6638,9 @@ impl<'a> Engine<'a> {
             // 为准；980 view-if 兜底臂的 If 同经此收平）。
             let mut assigns = Vec::new();
             Self::flat_handler_assigns(&stmts, &mut assigns);
+            // PLAN-105 T-02：分支/循环体里出现的**非列表方法**调用仍然是域外
+            // 体（980 on-if 合同的负控：`side_effect()` 让 handler 落 foreign）。
+            let body_foreign = body_foreign || Self::stmts_have_foreign_call(&stmts);
             handlers.push(ComponentHandler {
                 msg: self.cx.spelling(msg),
                 params: self.handler_params(c),
@@ -7767,6 +7803,23 @@ impl<'a> Engine<'a> {
                 let mut tmp = Vec::new();
                 self.collect_view_stmt(inner, &mut tmp);
                 tmp.pop().map(ComponentStmt::Assign)
+            }
+            // PLAN-105 T-02（U03 真语料 013）：C 风格条件循环 `for <cond> { … }`。
+            "age-on-for-cond" => {
+                let cond_node = self.cx.field_child(inner, "cond")?;
+                let cond = self.project_expr_sync(cond_node);
+                let body_children: Vec<u32> = self
+                    .cx
+                    .children(inner)
+                    .into_iter()
+                    .filter(|&c| self.rule_name_of(c) == "age-on-branch-stmt")
+                    .collect();
+                let body = self.project_on_stmts(&body_children);
+                Some(ComponentStmt::While {
+                    cond,
+                    body,
+                    span: self.cx.span_of(inner),
+                })
             }
             // PLAN-105 T-02：调用语句（`store.M(args)` 等）结构入候选；
             // store 方法在 store 内联时展开，其余调用维持 body_foreign 合同。

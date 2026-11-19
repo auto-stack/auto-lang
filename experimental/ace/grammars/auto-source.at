@@ -685,6 +685,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `for c in .cities { … }`）——结构进 `ComponentStmt::For`，
             // 语义（列表迭代）在铸语句处**具名**拒（不静默丢循环体）。
             alt { age-on-for() {} }
+            alt { age-on-for-cond() {} }
             // F-R21-3 并集兜底臂：age-view-if-stmt（980 view 方言 if——分支内
             // 调用形/链式作者面）。PEG 序后置——仅 age-on-if 整体失败时命中
             //（如分支体含调用：age-on-branch-stmt 无调用臂→age-on-if 拒→
@@ -1068,6 +1069,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 按 981 语义 reconcile（见 plan981_g2_hooks）。
             alt { age-on-let() {} }
             alt { age-on-if() {} }
+            alt { age-on-for-cond() {} }
         }
         // PLAN-105 T-02（U03 真语料 012）：裸名赋值也支持**复合算子**
         // （`civil_y += 1`——日历换算段），与 `.field +=` 同形脱糖为二元。
@@ -1129,12 +1131,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //（`mode = 1`）与 widget 形点前缀赋值（`.mode = 1`，006 真语料形）
         // 都接受，外加 hook-local let 与嵌套 if。分支归属哪种外层形式由作者
         // 决定，两拼写不互斥（同一体内混用也解析——字段语义同一条检查链）。
-        age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / hook-local `let` / nested `if` / `for`)") {
+        age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / a call / hook-local `let` / nested `if` / `for`)") {
             alt { age-on-assign() {} }
             alt { age-view-assign-stmt() {} }
+            // PLAN-105 T-02（U03 真语料 013）：分支/循环体里的调用语句
+            // （`update_todo(…)` / `.Recompute()`）——与 handler 顶层同一条
+            // 调用语句规则（PEG 序在赋值后，避免 `a.b(…)` 被误读为赋值）。
+            alt { age-view-call-stmt() {} }
             alt { age-on-let() {} }
             alt { age-on-if() {} }
             alt { age-on-for() {} }
+            alt { age-on-for-cond() {} }
         }
         // PLAN-105 T-02（U03 真语料 012）：handler 级 `for <value> in <expr> { … }`。
         age-on-for(profiles: [age-component, age-package], expect: "a handler-level `for <value> in <expr> { … }` loop") {
@@ -1142,6 +1149,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "value") {}
             in(field: "iter-kw") {}
             pratt(of: "wide-ops", field: "iter") {}
+            lbrace(same-line: true) {}
+            list-nl { age-on-branch-stmt() {} }
+            rbrace() {}
+        }
+        // PLAN-105 T-02（U03 真语料 013）：C 风格条件循环
+        // `for <cond> { … }`（`for idx < .todos.len() { … }`）——源码形态与
+        // `for <x> in <expr>` 由第二个 token 区分（ident `in` vs 表达式）。
+        age-on-for-cond(profiles: [age-component, age-package], expect: "a handler-level `for <condition> { … }` loop") {
+            for(field: "kw") {}
+            pratt(of: "wide-ops", field: "cond") {}
             lbrace(same-line: true) {}
             list-nl { age-on-branch-stmt() {} }
             rbrace() {}

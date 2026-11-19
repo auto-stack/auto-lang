@@ -81,6 +81,13 @@ pub enum ComponentStmt {
         call: Expr,
         span: Span,
     },
+    /// PLAN-105 T-02（U03 真语料 013）：handler 级 **C 风格条件循环**
+    /// `for <cond> { … }` —— 结构入候选；执行面映射 `Stmt::While`。
+    While {
+        cond: Expr,
+        body: Vec<ComponentStmt>,
+        span: Span,
+    },
     /// PLAN-105 T-02（U03 真语料 012）：handler 级 `for <value> in <expr> { … }`
     /// ——结构先入候选；列表迭代语义在铸语句处**具名**拒（component-unsupported），
     /// 不静默丢循环体。
@@ -808,6 +815,10 @@ fn rewrite_store_stmts(
                     rewrite_store_stmts(e, map)?;
                 }
             }
+            ComponentStmt::While { cond, body, .. } => {
+                rewrite_store_expr(cond, map)?;
+                rewrite_store_stmts(body, map)?;
+            }
             ComponentStmt::For { iter, body, .. } => {
                 rewrite_store_expr(iter, map)?;
                 rewrite_store_stmts(body, map)?;
@@ -899,6 +910,10 @@ fn subst_params_stmts(stmts: &mut [ComponentStmt], subs: &[(String, Expr)]) {
                 if let Some(e) = els {
                     subst_params_stmts(e, subs);
                 }
+            }
+            ComponentStmt::While { cond, body, .. } => {
+                subst_params_expr(cond, subs);
+                subst_params_stmts(body, subs);
             }
             ComponentStmt::For { iter, body, .. } => {
                 subst_params_expr(iter, subs);
@@ -1034,6 +1049,10 @@ fn inline_computed_stmts(
                 if let Some(e) = els {
                     inline_computed_stmts(e, computed)?;
                 }
+            }
+            ComponentStmt::While { cond, body, .. } => {
+                inline_computed_expr(cond, computed, 0)?;
+                inline_computed_stmts(body, computed)?;
             }
             ComponentStmt::For { iter, body, .. } => {
                 inline_computed_expr(iter, computed, 0)?;
@@ -1265,7 +1284,7 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
                             flat(e, out);
                         }
                     }
-                    ComponentStmt::For { body, .. } => flat(body, out),
+                    ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => flat(body, out),
                     _ => {}
                 }
             }
@@ -1321,6 +1340,7 @@ fn needs_collections_face(node: &ComponentNode) -> bool {
                 expr_needs(cond) || then.iter().any(stmt_needs) || els.as_ref().is_some_and(|e| e.iter().any(stmt_needs))
             }
             ComponentStmt::For { iter, body, .. } => expr_needs(iter) || body.iter().any(stmt_needs),
+            ComponentStmt::While { cond, body, .. } => expr_needs(cond) || body.iter().any(stmt_needs),
         }
     }
     node.handlers.iter().any(|h| h.stmts.iter().any(stmt_needs))
@@ -1465,6 +1485,14 @@ fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
                     if let Some(s) = stmt_refs_store(e) {
                         return Some(s);
                     }
+                }
+            }
+            ComponentStmt::While { cond, body, span } => {
+                if expr_refs_store(cond) {
+                    return Some(*span);
+                }
+                if let Some(s) = stmt_refs_store(body) {
+                    return Some(s);
                 }
             }
             ComponentStmt::For { iter, body, span, .. } => {
@@ -2799,7 +2827,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                             collect_assign_targets(e, out);
                         }
                     }
-                    ComponentStmt::For { body, .. } => collect_assign_targets(body, out),
+                    ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => collect_assign_targets(body, out),
                     ComponentStmt::Call { .. } => {}
                     ComponentStmt::Let { .. } => {}
                 }
@@ -2823,7 +2851,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                     }
                     ComponentStmt::Assign(_) => {}
                     ComponentStmt::Call { .. } => {}
-                    ComponentStmt::For { body, .. } => collect_local_names(body, out),
+                    ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => collect_local_names(body, out),
                 }
             }
         }
@@ -2918,6 +2946,12 @@ fn walk_stmt_exprs(
                 if let Some(ds) = f(value) {
                     return Err(ds);
                 }
+            }
+            ComponentStmt::While { cond, body, .. } => {
+                if let Some(ds) = f(cond) {
+                    return Err(ds);
+                }
+                walk_stmt_exprs(body, f)?;
             }
             ComponentStmt::For { iter, body, .. } => {
                 if let Some(ds) = f(iter) {
@@ -3267,8 +3301,15 @@ pub(crate) fn lambda_value_fn(
                         *span,
                     )]))
                 }
-                // PLAN-105 T-02：view inline lambda 的 `for` 结构已入候选，
-                // 语义未接——具名拒（不静默丢循环体）。
+                // PLAN-105 T-02：view inline lambda 的 `for`/`for-cond` 结构已入
+                // 候选，语义未接——具名拒（不静默丢循环体）。
+                ComponentStmt::While { span, .. } => {
+                    return Some(Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        "view inline lambda `for` loops are not wired yet",
+                        *span,
+                    )]))
+                }
                 ComponentStmt::For { span, .. } => {
                     return Some(Err(vec![text_diag(
                         "source.age.component-unsupported",
@@ -3371,6 +3412,7 @@ pub(crate) fn lambda_value_fn(
             ComponentStmt::Call { span, .. }
             | ComponentStmt::Let { span, .. }
             | ComponentStmt::If { span, .. }
+            | ComponentStmt::While { span, .. }
             | ComponentStmt::For { span, .. } => *span,
         })
         .unwrap_or(first_field.span);
@@ -3423,6 +3465,9 @@ fn collect_assign_target_names(stmts: &[Stmt], out: &mut Vec<String>) {
     for st in stmts {
         match st {
             Stmt::Assign { target, .. } => out.push(target.base.name.clone()),
+            Stmt::While { body, .. } => {
+                collect_assign_target_names(&body.stmts, out);
+            }
             Stmt::If { then, els, .. } => {
                 collect_assign_target_names(&then.stmts, out);
                 if let Some(e) = els {
@@ -3507,6 +3552,17 @@ fn hook_stmts_lower(
             }
             // PLAN-105 T-02（U03 真语料 012）：handler 级 `for` 结构已入候选，
             // 列表迭代语义未接——具名拒（不静默丢循环体）。
+            ComponentStmt::While { cond, body, span } => {
+                let bound_cond = rename_expr_with_params(cond, FieldBinding::Local(inst), &node.fields, &scope)?;
+                let mut body_out = Vec::new();
+                hook_stmts_lower(inst, seq, node, body, &scope, &mut body_out, counter)?;
+                out.push(Stmt::While {
+                    cond: bound_cond,
+                    body: Block { stmts: body_out, span: *span },
+                    span: *span,
+                });
+                continue;
+            }
             ComponentStmt::For { span, .. } => {
                 return Err(vec![text_diag(
                     "source.age.component-unsupported",
@@ -4107,6 +4163,13 @@ pub(crate) fn instance_stmts(
             &mut stmts,
             &mut 0,
         )?;
+    }
+    // 场景重放同样需要把**再有赋值**的 hook 局部翻成可变（与检查函数同律：
+    // 共享 verify 的 `verify.immutable-write` 拒绝 `let` 再赋值）。
+    {
+        let mut targets = Vec::new();
+        collect_assign_target_names(&stmts, &mut targets);
+        mark_lets_mutable(&mut stmts, &targets);
     }
     Ok(stmts)
 }
