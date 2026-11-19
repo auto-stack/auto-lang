@@ -468,6 +468,21 @@ Round 16 增量：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
+2026-11-20 · stage: work（round 17 · **V-06 身份轴与 provider 参与**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 关闭（工程/SDK 侧）| outcome: pass（round 级）| next_responsible_role: work（支持矩阵 + SD-* 沉淀）→ review/merge
+
+Round 17 增量：
+- `p1107_v06_identity_axes_and_provider_participation`（真实 978 入口）：
+  - **项目名轴**：改名后 `identity.project` 不同；
+  - **caps 轴**：声明 caps 变化后 `identity.caps` 不同；
+  - **provider 参与**：无 provider 时 `identity.provider_build = None`；带 `ProviderArtifactInput` 的 `build_sdk` 把工件确实打进 SDK recipe（`p1107_fake_provider.dll` 在 artifacts 中）；随后普通构建的 `provider_build` 仍为 `None` —— provider 只在参与的构建节点被 as-is 消费，不静默改写其他身份。
+- 与 round 16 的冷/暖/编辑计数合起来，V-06 在工程与 SDK 侧（`ace-m2-build`）成立；解释器身份（RuntimeCompatibility 的 interpreter 轴）在 978 侧以 `run_deps`/`build_inputs` 具名记录（AV: `av-host abc/<ver>`；A2PY: `interpreter python3 (declared A2PY runtime interpreter)`，缺解释器/缺包已由 V-07 具名失败承接）。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v06)'`（两条）PASS；组级 `cargo t ace-m2-build` PASS（exit 0）。
+
+余量：AC-06 支持矩阵（平台/解释器/torch/包集合×AV/A2PY/978）、SD-01..04 Specs 沉淀、T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
 2026-11-20 · stage: work（round 12 追加 · **V-02 AV 缺陷已定位到根因，用户裁定在 1107 内修复**）| plan_id: PLAN-1107 | plan_revision: r2 | 用户裁定：`在 1107 内修复该 AV 执行缺陷`（限定修缺陷，不扩 AV 语言面）
 
 **根因（实测帧转储，非推测）**：AV 端 `foreign.frame … payload not LF-terminated` 不是执行/准入问题，而是**共享前门的帧构造对“内联 py 操作做 receiver/操作数”重复求值**：
@@ -537,6 +552,21 @@ Round 16 增量：
 余量：解释器/包身份轴（RuntimeCompatibility 侧）、helper/包/provider 兼容换包的失效矩阵（V-06 剩余）、AC-06 支持矩阵、SD-01..04 Specs、T-07 复审、T-08 合入。
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 16 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
+
+2026-11-20 · stage: work（round 17 · **V-06 身份轴与 provider 参与**）| plan_id: PLAN-1107 | plan_revision: r2 | code_commit: `<本轮>` | task_ids: V-06 关闭（工程/SDK 侧）| outcome: pass（round 级）| next_responsible_role: work（支持矩阵 + SD-* 沉淀）→ review/merge
+
+Round 17 增量：
+- `p1107_v06_identity_axes_and_provider_participation`（真实 978 入口）：
+  - **项目名轴**：改名后 `identity.project` 不同；
+  - **caps 轴**：声明 caps 变化后 `identity.caps` 不同；
+  - **provider 参与**：无 provider 时 `identity.provider_build = None`；带 `ProviderArtifactInput` 的 `build_sdk` 把工件确实打进 SDK recipe（`p1107_fake_provider.dll` 在 artifacts 中）；随后普通构建的 `provider_build` 仍为 `None` —— provider 只在参与的构建节点被 as-is 消费，不静默改写其他身份。
+- 与 round 16 的冷/暖/编辑计数合起来，V-06 在工程与 SDK 侧（`ace-m2-build`）成立；解释器身份（RuntimeCompatibility 的 interpreter 轴）在 978 侧以 `run_deps`/`build_inputs` 具名记录（AV: `av-host abc/<ver>`；A2PY: `interpreter python3 (declared A2PY runtime interpreter)`，缺解释器/缺包已由 V-07 具名失败承接）。
+
+证据：`cargo nextest -p ace-m2-build -E 'test(p1107_v06)'`（两条）PASS；组级 `cargo t ace-m2-build` PASS（exit 0）。
+
+余量：AC-06 支持矩阵（平台/解释器/torch/包集合×AV/A2PY/978）、SD-01..04 Specs 沉淀、T-07 复审、T-08 合入。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 17 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: <本轮> | next: work`
 
 ## 10. 待澄清事项
 
