@@ -80,3 +80,22 @@ owner=PLAN-1063；Windows 原 required 门不减；交叉编译成功或 Windows
 `ace-m2-build`（nextest `-p ace-m2-build --lib --tests`，
 `scripts/test-groups.toml` 注册）；p978 永久用例分布于
 `crates/m2-build/tests/{b0_closure,identity_cache,compat_selection,sdk_pack,restore_recovery,coverage_lanes,load_selection}.rs`。
+
+## 附：PLAN-1107 追加（use.py 工程的 AV/A2PY 构建、缓存与分发）
+
+> 本节追加到 `docs/specs/ace-migration/m2-build.md`，其他五目标的既有义务保持。
+
+1. **车道选择**：项目源含 `use.py` 时，A2py 车道用 `cold_assemble_py`（Aggregates 单元 +
+   中立 py 声明契约，自动补齐 `foreign.scalar`/`foreign.resource`，不留 retained env）；
+   不含 `use.py` 的普通工程仍走冻结 Scalar cold 路径（无 py helper、无 ctypes provider）。
+2. **构建计数（真实，非自报）**：冷构建 `rebuilt=true` 且 `fragments_produced>0`；
+   同输入暖构建 `rebuilt=false`、`lane="cache-hit"`、零 `tool_spawns`；改 body 使
+   `BuildIdentity` 变更并重产片段。
+3. **身份轴**：`ProjectBuildIdentity` 覆盖 project 名、code caps、源/标准库内容、grammar
+   identity、tool axes 与 participating provider artifact；provider 工件只在参与节点
+   as-is 消费，不静默改写其他身份。
+4. **运行与分发**：`build_sdk` 打包可重定位 SDK，`run_sdk` 用声明的 `python3 -B` 执行
+   `a2x_main.py`；缺解释器 → `m2build.run.interpreter-failed`，缺声明包 →
+   `m2build.run.runtime-dependency`（具名，不把 traceback 计为运行）；emit 从不执行程序。
+5. **非 Python 回归**：既有五目标行为不变；A2py 的非 Python 工程不受 py 车道影响
+   （`p1107_v08_…`）。证据：`crates/m2-build/tests/py_project_1107.rs`。

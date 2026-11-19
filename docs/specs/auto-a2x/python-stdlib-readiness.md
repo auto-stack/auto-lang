@@ -52,3 +52,22 @@
   验证，未改变本文件的准入、句柄/`finally` 显式清理与 `A2xOwnedStr`/
   `A2xResourceHandle` 契约，也未引入 GC/`__del__` 兜底或复制 ownership 分析。
 - 证据锚：`ace-a2x` 固定组（含 `ace-a2x-python`）在 PLAN-1035 冻结提交上的全绿结果。
+
+## 附：PLAN-1107 追加（受检 Python 互操作与原生运行）
+
+> 本节追加到 `docs/specs/auto-a2x/python-stdlib-readiness.md`，不复制 A2PY 的语义。
+
+1. **与 ctypes 后端的区别**：A2PY 是**语言级**生成目标——`use.py` 的 py 操作按共享
+   `py_ops` 事实 lower 成原生 `import`/调用/属性/索引/运算/转换，生成物不含 `ctypes`、
+   不含 PyO3、不引用旧 AutoVM/PythonTrans；运行时文件集只有 `generated.py`、
+   `a2x_py_runtime.py`、`a2x_main.py` 与 manifest。`?` 控制的后端仍是 ctypes 桥（供
+   foreign 声明），二者不互相替代。
+2. **受检**：同一 `use.py` 源必须先在 `use.py` 前门通过受检（同一类型/所有权/控制流规则），
+   py 操作事实由该次受检记录；未知成员/未声明模块在前门具名拒绝
+   （`a2py_contract_rejects_unrelated_sources_through_the_same_front_door`）。
+3. **运行**：生成的 runner 由声明的 OS 解释器执行（`-B`），观测通道为 `value:<i32>`
+   运行标记（不属于程序 stdout）；未捕获 Python 异常 = 非零退出 + 异常类，绝不充 PASS。
+4. **不参与 AV 帧**：`__py_dlen`/`__py_chunk_*` 是 AV 帧文本 helper，A2PY 不发射
+   （`ace_a2x_python::provider::is_py_lane_helper`），因此目标侧不存在帧构造节点。
+5. **证据**：`py_lane_1107`（编译/视图）、`py_native_run_1107`（原生运行 + 独立 Python
+   oracle）、`py_project_1107`（978 工程/SDK/失败面）、`py_ops_1107`（17 操作/声明一致性）。

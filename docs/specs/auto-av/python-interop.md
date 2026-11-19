@@ -123,3 +123,25 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
   调用旧引擎）；AV 切片不等于 967 四端或 M2 退役全量通过。
 
 来源：[PLAN-1026](../../plans/archive/1026-python-interop-standard-auto-syntax.md)。
+
+## 附：PLAN-1107 追加（同源双后端与操作数单次求值）
+
+> 本节追加到 `docs/specs/auto-av/python-interop.md`，不改写 1026 的 v1 冻结事实。
+
+1. **同源**：`use.py` 前门同时服务 AV 切片与 A2PY 目标；py 操作在**操作发生处**记录为
+   结构化事实（种类/成员/操作数角色/span），AV 用帧文本、A2PY 按事实 lowering，二者
+   不各自重解析。声明单一来源是 `ace-foreign-contract::py_ops`（`p1107/py-language-contract/1`），
+   abi 一致性测试把 AV provider 声明与中立契约钉住。
+2. **操作数单次求值（实现约束）**：帧里的动态操作数经 `__py_chunk_i/_o/_b(n)` 一次求值
+   生成 `"tag <len>\n<value>\n"`。旧实现把同一操作数写两次（`dlen(expr)` + `expr`），
+   内联 py 调用因此被求值两次：token ≥ 10 时声明长度与 payload 不符（`payload not
+   LF-terminated` / `expected the positional count line`），token < 10 时静默重复副作用。
+   `p1107_v02_av_frame_operand_is_evaluated_once` 与 `..._inline_side_effect_is_evaluated_once`
+   是该约束的回归。
+3. **失败面**：未捕获 Python 异常 = `Trap{ForeignStatus}`，span 覆盖失败调用；运行不返回
+   Success，stdout 不发布部分输出（`p1107_v04_…`）。
+4. **本轮实际消费的源面**：`use.py` 多成员、`l.append/count/pop` 绑定方法、嵌套调用、
+   关键字实参（如 `round(2.5, ndigits: 0)`）、循环/分支内的 py 值流与 `.to(int/bool/float/str)`。
+   仍未交：容器/记录跨边界、动态浮点实参、属性派生值。
+5. **AV 帧 helper 不再被源生成目标发射**：`__py_dlen`/`__py_chunk_*` 只服务 AV 帧文本，
+   A2PY 与 978 组装按 `is_py_lane_helper` 过滤，避免为生成目标引入不可 lower 的帧构造。
