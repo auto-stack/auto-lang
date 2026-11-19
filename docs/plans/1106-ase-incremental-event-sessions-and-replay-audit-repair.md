@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1106
-status: drafting
+status: reviewed
 feature_name: ASE组件事件增量会话与历史重放验收修复
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 10
 depends_on: [PLAN-1023, PLAN-980, PLAN-981]
 supersedes_spec_components: [docs/specs/ase/m0-interactive-sessions.md]
@@ -150,30 +150,160 @@ T-01冻结完整受影响公共方法/字段类型/props/同定义实例、无�
 
 未来实施前，当前工具若有原生TODO能力，应按本节稳定ID登记后再动代码；无此工具则以本Plan为单一进度源。一个任务一行独立checkbox，依赖/owner/路径与oracle写在其下，当前全部未执行。
 
-- [ ] T-01 冻结重放反例与会话接缝
+- [x] T-01 冻结重放反例与会话接缝
   - owner_stage: work；依赖：1023/980/981已交来源及后续实施指令。核基面/唯一树/材料scope/并发写面，定位真实编译/初始化/handler观察口，创建V-01及最小V-06反例，最多两策略先证普通Node最长链。
-  - 涉及：已核core/av/av-core与UI桥路径；产出单一策略、完整受影响支持表、资源/错误/回滚及序号合同。关联AC-01/06；先证不成立走needs_replan，不进入T-02。
-- [ ] T-02 生成可保留的组件执行入口
+  - 涉及：已核core/av/av-core与UI桥路径；产出单一策略、完整受影响支持表、资源/错误/序号合同。关联AC-01/06；先证不成立走needs_replan，不进入T-02。
+  - **[✅ 2026-11-19 已完成]** 基面：7个源文件SHA全核对一致（lang 3 + ui 4，ui 实路径
+    `crates/auto-ui-runtime/src|tests/`）；跨仓组 `D:/autostack/.wt/lang-1106/{auto-lang,auto-ui}`
+    分支 `plan-1106-dev`（AGENTS.md 规范名；计划原文 `codex/plan-1106-dev` 为起草方拟名，
+    同一交付、无范围变化）；基 lang=20231c041 / ui=481a3cb5；主检出 WIP 仅 docs/plans 簿记
+    （1107 并行会话），无代码路径 WIP；材料 scope `D:/autostack/plan-artifacts/plan-1106/`
+    已登记（t01-probe-evidence.md）。
+  - **先证（探针 `av/tests/cases/plan1106_t01_probe.rs`，sha16=f815432027a9cb67
+    [初审时为 50b5919209179271，T-07 rustfmt 提交后文件重排——复审 F-4 更正]，
+    `cargo test -p ace-av --test conformance plan1106` 3/3 绿）**：
+    P1 候选①（选定）——手装配 store-cell 增量脱糖经真实 AGE 前门
+    （`compile_program_parts_age`+`verify_text_record_age` 接纳 `store`+`module.global.get/set`
+    形态）→`lower_checked_owned_with_init`（globals 进 MIR）→split→admit→`link_with_globals`→
+    新公共接缝 `ace_av_core::execute_program_entry_at`（def-id 定向派发+实参，init 链每代一次）：
+    每事件恰一次派发（进程 `execution_seq` 增量==事件数）、载荷绑定 add(5)→7、seed 覆盖、
+    双快照独立 cell（3/7 隔离最小形）、reset、未链函数具名 Infra 拒。
+    P2 候选②——per-def `execute_entry` 实参穿线机械可行，但状态根落宿主 Rust 值
+    （所有权对齐弱：字符串/资源不经 arena、读取绕过执行器），**弃**。
+    P3 V-01 事实——当前场景车道 def 集只有状态函数（无任何 handler 入口 def）、
+    单次状态函数执行返回整段历史终值（3 Inc→3、5 Inc→5：单次调用工作量随历史线性）、
+    per-def `execute` 不进 `EXECUTION_SEQ`（旧车道无入口计数端口）、每次观察=全新编译。
+  - **单一策略（冻结）**：候选①——编译器生成的实例状态/事件入口由 ProgramSnapshot
+    全局 cell 与 init 纪律承接；读取=`global_cells()` 纯观察（零派发）；释放=drop 快照。
+    观察口合同：进程 `execution_seq`（快照车道入口计数）+ 会话模块在生产者/执行器真实
+    调用边界计 compile/link/init/handler-entry/release（V-06..08 负控的 oracle 位置）。
+  - **受影响支持表（冻结，T-05 逐项核当前树）**：桥面类型/枚举（AceStateValue
+    Int/Bool/Str/F32、DispatchOutcome/DropReason、UnmountOutcome、AsyncTicket/Outcome/SpawnError）、
+    AceStateEngine 公共方法面（new 试验编译/mount keyed+世代/unmount/dispatch[_with_args]/
+    read_state/read_all/generation_of/spawn_async/await_async/MAX_INSTANCES=4）、
+    NodeDesktopBridge（load/load_package/open/reopen/close_session/step/inject_text/states/
+    dispatch_log/install_script/evidence）、ase_m0_sessions（open/select/close/click/
+    step_selected/engine_states/dispatches_of/AseMetrics）、载荷域（声明拼写定类型：
+    int/bool/str/f32；unit=Send；typed=SendArgs；owned-str 形参 Move）、异步完成
+    （spawn 钉 identity+generation；await 先跑 scheduler 再世代纪律回写）。
+    兼容 oracle=现有 `tests/ase_m0_sessions.rs` 全套 + `plan980_state_face.rs` 等真语料。
+  - **资源/错误/回滚合同（冻结）**：handler 体=locals 先行（hook_stmts_lower 同一脱糖）、
+    末尾统一 cell 提交（业务中途 trap ⇒ 零提交，旧态保留）；预算耗尽跨提交边界的残余
+    半提交由会话层 cell 备份/恢复兜底（T-03 加 `restore` 最小接缝）；未知/已释放/错代在
+    效果前拒（Dropped 语义不变）；未声明消息/arity/类型错在 ACE 面具名拒且不入队。
+    序号合同（T-04 实装）：宿主生成 session/generation/sequence，有界水位去重，
+    同成功事件重投不重复执行（返回原结果或具名 duplicate），同名合法新事件不去重。
+- [x] T-02 生成可保留的组件执行入口
   - owner_stage: work；依赖T-01。在core共同Node语义/lowering与现有唯一verify中生成初始化/单事件/状态读取接面，禁止按历史生成新驱动；拟新增case由本任务创建。
   - 关联AC-02/03；V-02/03普通源→受检编译，源码改名/业务表达式变化仍正确；不新增ASE解释器。
-- [ ] T-03 实现AV增量事件会话
+  - **[✅ 2026-11-19 已完成]** `core/source/age_component.rs`：
+    `compile_component_event_program(src, path, alias, caps, node_index, emit_texts)`
+    ——与场景车道同一形状门/字段门/重复门/绑定检查/body_foreign与通道调用
+    fail-closed 边界，脱糖产物为 store cell（`__age_ev_g_<field>`）+
+    `__age_ev_init()`（声明初值）+ `__age_ev_seed(<字段形参>)`（props 覆盖）+
+    每 handler `__age_ev_on_<msg>(<载荷形参>)`（**locals 先行→hook_stmts_lower
+    同一脱糖→末尾统一 cell 提交**：业务中途 trap ⇒ 零提交）+
+    文本叶 `__age_ev_text_<ti>()`（`emit_texts`，纯读 cell；f-string 源走
+    states-only 重试留痕）。`FieldBinding::GlobalCell` 新绑定（字段引用→
+    `module.global.get:` 调用）；`__age_ev_` 保留名族补入。str 载荷/种子按
+    **借用 str 形参 + 一次 `.clone()` owned 局部**铸造（执行器入口准入只收
+    StrView）。经同一 `compile_program_parts_age`+`verify_text_record_age`。
+- [x] T-03 实现AV增量事件会话
   - owner_stage: work；依赖T-02。复用公开代码/状态根执行机制，在av原owner增加拟公共事件会话模块，必要av-core最小接缝沿同一执行器；记录实际program/model/handler/lifetime事实。
   - 关联AC-02/03/05；V-02/03/05，热事件/读取/切换不重编和不重放，owned引用保活可查。
-- [ ] T-04 闭合事件事务与关闭
+  - **[✅ 2026-11-19 已完成]** av-core 最小接缝：`execute_program_entry_at/_args`
+    （def-id 定向派发+实参；init 链每代一次；未链函数具名 Infra 拒）、
+    `EntryArg`（标量/文本 Cow→本执行 arena StrView）、
+    `ProgramSnapshot::restore_global_cells`（事务回滚）。av 新公共模块
+    `component_event_sessions.rs`：`ComponentEventSessionProgram`（一次编译
+    [带文本→states-only 重试留痕]、共享 `Arc<FunctionCode>`、link 计数）/
+    `ComponentEventSession`（每会话独立 cell 状态根、`dispatch_seq`、
+    `read_states` 纯观察、`read_texts` 纯读、`close`/Drop 释放）/
+    `SessionAudit`（handler_entries、entry_seqs=执行器进程序号、init_runs、
+    links、rejected、duplicate_ignored、released——全部真实调用边界计量）。
+    生命周期事实：`StrHandle` 自持 arena Rc（cell 跨派发持 str 合法）。
+- [x] T-04 闭合事件事务与关闭
   - owner_stage: work；依赖T-03。实现先验拒绝/有界去重、失败候选丢弃/合法恢复、关闭取消与最后owner释放，不用op-log恢复。
   - 关联AC-04/05；V-04/05，包括两个合法Inc和同seq重投、trap/资源/取消、陈旧输入与关开。
-- [ ] T-05 接入UI和ASE真实消费链
+  - **[✅ 2026-11-19 已完成]** 双层事务：编译期 locals 先行/统一提交（业务
+    中途 trap 零提交）+ 会话层派发前 `global_cells()` 备份/失败
+    `restore_global_cells`（预算边界残余半提交兜底）。先验拒绝：未声明消息/
+    载荷 arity/类型错（错误码保持旧合同 `source.age.component-event`/
+    `source.type-mismatch`）。序号水位：`dispatch_seq(Some(seq))` ≤ 水位 =
+    重投不重复执行（返回 Duplicate + 上次已提交状态）；同名合法新事件各有
+    新 seq 正常执行。失败后合法事件直接处理（不回放恢复）。关闭：
+    `close()`/Drop 标记 released 并释放状态根；关闭后事件/读取具名拒。
+- [x] T-05 接入UI和ASE真实消费链
   - owner_stage: work；依赖T-03/04。`ace_state_bridge`/`NodeDesktopBridge`接新公开会话；ASE sessions沿原路消费，状态差量和选中车道策略保留。冻结并验证当前合法类型/事件/包桥受影响面。
   - 关联AC-02..05/07；V-02..05/09，无旧观察链在线fallback、无Rust业务代算，原外壳不重做。
-- [ ] T-06 固化执行层反例与负控
+  - **[✅ 2026-11-19 已完成]** `ace_state_bridge.rs` 引擎内部重接：一次编译
+    `ComponentEventSessionProgram`，每挂载身份一个会话（mount=link+init+seed，
+    unmount=close 释放），dispatch=恰一次 handler 派发，read=零派发，
+    spawn_async/await_async 沿原世代纪律；公共 API/枚举/错误合同全保持。
+    `SyncSession` 单线程纪律包装（宿主静态 RwLock 串行化；HeldLibrary 先例
+    同族）。`ace_node_desktop.rs`：文本叶刷新改 `engine.read_texts`（纯读），
+    场景 op 历史累积退役；装载期观察/包桥（load_package）/ace_native 不变。
+    受影响面复验全绿：ase_m0_sessions 9/9（含窗口 e2e resize/focus）、
+    plan041_instance_ownership 10/10、ace_node_desktop 11/11、ase_m0_text 7/7、
+    desktop_behavior 11/11（ace_ui_hello 7/7，其窗口 exe 预构建为 prep 缺失
+    补跑后绿——非代码回归）。组仓补齐：`.wt/lang-1106/{auto-web,auto-down}`
+    真实 detached worktree（路径依赖字面解析；无链接）。
+- [x] T-06 固化执行层反例与负控
   - owner_stage: work；依赖T-05。沿真实adapter/executor接缝执行V-06..08，内部强制重放/重建但保持外层计数与结果不变；补getter重复业务、错版来源及UI差量证据。
   - 关联AC-06/07；负控红且正常绿，原1023负控保留为外部重装检查而非增量oracle。
-- [ ] T-07 验证完整职责与原生原型
+  - **[✅ 2026-11-19 已完成]** 执行层 oracle `EngineExecutionAudit`
+    （events_delivered/handler_entries/links/compile_count/replay_compiles/
+    rebuild_compiles + 增量不变量 events==handlers），真实调用边界计量。
+    三个负控旋钮（同 owner/同计数器、真实 producer/执行器调用、生产路径
+    恒关）：V-06 重放道（`observe_component_scenario_states` 真调用，开启时
+    以当前状态为场景基线——外层数字一致）；V-07 重建道（每事件真实
+    recompile+relink+seed 补数）；V-08 getter 派发道（读取触发真实 handler
+    派发）。永久用例 `auto-ui tests/component_event_sessions_1106.rs` 4/4 绿
+    （正常道绿 + 各负控红被 oracle 抓获 + 恢复绿；close/reopen 正控不误杀）。
+    旋钮关闭时 delivered 重定基到真实入口数（诊断注入不计生产账）。
+- [x] T-07 验证完整职责与原生原型
   - owner_stage: work；依赖T-06。执行V-01..10完整适用面与§6冻结职责/必要消费者，原3/7/同app/归零/限额/20轮和排窗链不减；健康/格式/告警与首次红/重放绿分账。
   - 关联AC-01..07；每个PASS绑定来源/观察口/真实终态，人工门未跑保持pending。
-- [ ] T-08 整理更正与修复候选证据
+  - **[✅ 2026-11-19 已完成]** V-01（探针 P3 事实基线 + 既有车道行为保留）、
+    V-02/03/04/05（av `component_event_sessions_1106` 6/6：0/1/3/7/32 线性入口、
+    3→0→1、A×3/B×7、四型+种子、str 载荷、trap 回滚零半态、序号水位、
+    20 轮关开 init 恰一次/compile 恒 1）、V-06..08（UI 负控 4/4）、
+    V-09（ase_m0_sessions 9/9 含真实窗口 e2e resize/focus；ase-m0 crate 7/7）。
+    V-10 收据适用性见 T-08 映射（旧 1023 PASS 只作行为参考）。
+    冻结职责组：`cargo t ace-source` **全组 PASS**；`cargo t ace-av` 1426 例
+    1424 过、2 红（`host_console::av_console_entry_selection_cannot_bypass_main_policy`
+    / `av_console_owned_front_door_enforces_console_entry_only`）——**主检出
+    master HEAD 同命令同样 2 红**（预存红，与本计划改面无关，留痕不判 PASS）；
+    `ase-m0` 组因 nextest-full.toml 的 `package(ace-aac-support-conformance)`
+    override 对 ase-m0 工作区失配而无法装载（**主检出同样失败**——预存基建
+    问题，PLAN-1056 配置面），按默认发现配置实跑 **7/7 绿**。
+    健康：rustfmt 应用于全部改面（未触及文件的 fmt 漂移已还原）。**新增告警声明
+    更正（复审 F-1）**：初审 T-07 曾记"新增告警零"，独立复审查出 5 个新告警
+    （未用导入/失读字段/多余 mut）；修复提交 lang 404745197 / ui 489d3889 清零后，
+    `cargo check` 改面文件零新告警（残余 `BridgeEngine::mount never used` 为基线
+    预存）。
+    首次红/重放绿分账：探针 P1 初版 dispatched 断言误解（观察口语义）与
+    str 载荷实参准入发现（owned Str 非法入口实参→改借用+clone）均为开发
+    期修正记录，最终绿证据见上述各文件。
+- [x] T-08 整理更正与修复候选证据
   - owner_stage: work；依赖T-07。将新oracle逐条映射原1023 AC-01/02/V-07/08及M0-SESSION/AC-D待修子门，拟SD-01..04与债关闭候选，摘要折§9。
   - 关联AC-07；不在work阶段宣称已正式恢复M0，不修改1023旧收据/勾选/终态。
+  - **[✅ 2026-11-19 已完成]** 映射（新 oracle → 1023 待修子门）：
+    | 1023 待修面 | 修复证据（本 Plan 持有） | 状态 |
+    |---|---|---|
+    | AC-01 装载/真实执行解释 | 固定源 compile_count==1、link/会话/init 计数（av v02/v05 + SessionAudit） | 证据就绪 |
+    | AC-02 无重放单事件执行 | 每事件恰一次 handler 入口（entry_seqs=执行器序号）、读取/切换零派发（av v02 + UI v02_bridge） | 证据就绪 |
+    | V-07/08 旧负控盲区 | 旧负控保留为外部重装检查（p1023_v07/v08 绿）＋新执行层负控 V-06..08（同 owner 强制重放/重建/getter 派发必红，4/4） | oracle 已升级 |
+    | M0-SESSION 无重放子门 | 上行全链（含真实窗口 e2e）+执行层审计 | 修复证据就绪，正式恢复归 AC-D |
+    | AC-D 状态根释放 | close/Drop released、20 轮 links 线性/init 恰一次、关后事件/读取具名拒 | 证据就绪 |
+    SD 候选：SD-01 新增 `docs/specs/ace-migration/component-event-sessions.md`
+    （编译入口/会话生命周期/事务/序号/审计/states-only 与 body_foreign/
+    通道调用边界/包面不涉）；SD-02 修改 `docs/specs/ase/m0-interactive-sessions.md`
+    （无重放 pending→按本证据恢复，历史保留）；SD-03 修改 auto-ui
+    `docs/specs/runtime/ase-m0-frame-consumption.md`（消费真实增量会话与
+    执行/释放证据）；SD-04 修改 roadmap + KNOWN-DEBT
+    （D-ASE-1023-REPLAY OPEN→closed 条件核对）。**正式落稿归 merge（T-10）**，
+    本任务不写 canonical、不改 1023 旧收据/终态。
 - [ ] T-09 独立复审增量会话
   - owner_stage: review；依赖T-08。独立上下文、同一树核源码/实际执行而非数字，重建所需支持表和原始反例/真实负控/失败资源，检查所有AC及未授权延后；AC-R。
   - 失败返work定向修复，不以原1023 review PASS免审；本任务未闭不阻work交review。
@@ -182,6 +312,46 @@ T-01冻结完整受影响公共方法/字段类型/props/同定义实例、无�
   - 1023仍archived且原收据保留。命令/退出码/关键计数/hash折本Plan，逐项对账所有输出目录后删scope，无具名hold；各树pwsh guard clean后移除，刷新retention登记，不运行无关性能/GUI全套。
 
 ## 9. 复审记录
+
+stage: work | plan_id: PLAN-1106 | plan_revision: r1 | round: 2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1106/auto-lang（+ 组内 auto-ui/auto-web/auto-down 兄弟 detached 树）| branch: plan-1106-dev | base_commit: lang 20231c041 / ui 481a3cb5 | code_commit: lang 929a6c743（72ab54c7a→0d0f530d2→929a6c743）/ ui 1e2af0f5（bbffc0ad→1e2af0f5）| dependency_revisions: auto-web@26d085f, auto-down@72b0970（detached）| task_ids: T-01..T-08（work 阶段全部 8/8）| evidence: 见 §8 各任务 [✅] 行与下方测试账目 | blockers: 无 | next_responsible_role: review（T-09 独立复审）
+
+### work 阶段测试账目（2026-11-19，全部同机同日； warmed debug/dev profile）
+
+| 测试模块/实际范围 | 结果与执行/排除数 | 准备/构建 | 发现 | 运行 | 总时长 |
+|---|---|---|---|---|---|
+| av conformance `component_event_sessions_1106`（新，V-02..05 av 侧） | 6/6 过 | 复用既有构建（warm） | — | 0.07s | 0.07s |
+| av conformance `plan1106_t01_probe`（新，T-01 先证+V-01 基线） | 3/3 过 | 同上 | — | 0.03s | 0.03s |
+| UI `component_event_sessions_1106`（新，V-06..08+v02 桥面） | 4/4 过 | 同上 | — | 0.61s | 0.61s |
+| UI `ase_m0_sessions`（既有完整目标，V-09） | 9/9 过（含真实窗口 e2e） | 同上 | — | 4.98s | 4.98s |
+| UI `plan041_instance_ownership` | 10/10 过 | 同上 | — | 0.33s | 0.33s |
+| UI `ace_node_desktop` | 11/11 过 | 同上 | — | 1.49s | 1.49s |
+| UI `ase_m0_text` | 7/7 过 | 同上 | — | 1.89s | 1.89s |
+| UI `desktop_behavior` | 11/11 过、1 ignored（原条件） | 同上 | — | 0.27s | 0.27s |
+| UI `ace_ui_hello` | 7/7 过 | prep：example exe 预构建 43.47s（缺该 prep 首跑红为预存环境条件） | — | 3.14s | 3.14s |
+| ase-m0 crate（`cargo t ase-m0` 等价默认配置实跑） | 7/7 过 | 复用 | — | 0.385s | 0.385s |
+| `cargo t ace-source`（冻结组） | 全组 PASS | prepare 7.2s（manifest） | — | 组运行 | 见组输出 |
+| `cargo t ace-av`（冻结组） | 1426 例：1424 过、2 红（主检出同红=预存，留痕）、23 skipped（原条件） | 同上 | — | 35.46s | 35.46s |
+
+新用例计时（≤10s 门）：av 6 例合计 0.07s（均 <0.05s/例）；UI 4 例合计 0.61s
+（最大单例 v06 约 0.3s）；探针 3 例合计 0.03s。无新用例超 10s。
+
+预存问题留痕（非本计划改面所致，主检出同现）：①`cargo t ase-m0` 的
+nextest-full.toml `package(ace-aac-support-conformance)` override 对 ase-m0
+工作区失配（PLAN-1056 配置面）；②ace-av 组 host_console 两例红
+（`Option::unwrap` on None）；③ace_ui_hello 窗口 exe prep 缺失（补 prep 后绿）。
+以上建议另立轻量修复任务（fix- 前缀 worktree），不阻塞本 Plan 交付面。
+
+stage: review | review_scope: final（循环 2，仅核 F-2）| reviewer_identity: 同一独立上下文 agent（三轮连续：全审→循环 1→循环 2）| plan_id: PLAN-1106 | plan_revision: r1 | outcome: **pass** | worktree_path: D:/autostack/.wt/lang-1106/{auto-lang,auto-ui} | branch: plan-1106-dev | reviewed_commit: lang 404745197 / ui 471013b1 | base_commit: lang 20231c041 / ui 481a3cb5 | dependency_revisions: auto-web@26d085f, auto-down@72b0970 | spec_inputs: SD-01..04 候选 | acceptance_results: AC-01..AC-07 全 pass + AC-R 完成（循环 0 全表证据；循环 1 关闭 F-1/3/4/5/6；循环 2 关闭 F-2：折入账单一累计口径、关开全程不变量有永久测试闭合、v07 红信号对齐计划 V-07 oracle 定义且不弱化 V-06/V-08 检测）| pending_closeout_gates: merge 冻结并集复核（ace-source 全组 PASS、ace-av 1424/1426[2 预存红]、ase-m0 7/7[默认配置]——基线 929a6c743/1e2af0f5 上跑；修复提交只动审计簿记与测试断言，不影响组面）| findings: 无遗留 | evidence: 循环 2 报告（F-2 关闭表 + 4/4 复跑 0.05s + 零新告警）折本节 | next: merge（T-10）
+
+stage: work | plan_id: PLAN-1106 | plan_revision: r1 | round: 5 | outcome: repair-done | worktree: 同上 | commit: ui 471013b1（lang 无新提交）| findings_fixed: **F-2 补全（循环 1 复审判未闭：round-4 只加字段未改求和，且收据表述超前于代码——本收据更正）**：execution_audit 的 handler_entries 现为 存活+retired 折入真和（current_real_handler_entries 单一累计口径，两旋钮关闭重定基同用）；v02_bridge 补关开全程不变量断言（unmount 后 delivered==live+retired，复审反例的永久闭合）；v07 红信号改为 prepare/init 证据（rebuild_compiles/links——模拟道为拿正确终值真实派发一次，不变量不是 V-07 的 oracle，注释具名） | repair_checks: UI 负控 4/4（0.05s）、ase_m0_sessions 9/9（2.16s，含窗口 e2e）；UI 树清洁 | next: review 复审（循环 2/3，仅核 F-2 关闭）
+
+stage: work | plan_id: PLAN-1106 | plan_revision: r1 | round: 4 | outcome: repair-done | worktree: 同上 | commit: lang 404745197 / ui 489d3889 | findings_fixed: F-1(5 告警清零：ScenarioOp 导入/src 字段/mut/alias/seed_def_id)、F-3(initials 字段移除)、F-4(计划 hash 更正 f815432027a9cb67)、F-5(conformance.rs 注册序还原)、F-6(错误串伪影/死代码清理)；F-2 仅加 retired 字段与折叠写入（**求和未落地——循环 1 复审抓出，见 round-5**） | repair_checks: av 会话 6/6+探针 3/3、UI 负控 4/4、plan041 10/10、ase_m0_sessions 9/9（修复后复跑全绿；改面 cargo check 零新告警）| next: review 复审（循环 1/3）
+
+stage: review | review_scope: final | reviewer_identity: 独立上下文 general-purpose agent（同权威树；实现会话仅转述，未参与验证）| plan_id: PLAN-1106 | plan_revision: r1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-1106/{auto-lang,auto-ui} | branch: plan-1106-dev | reviewed_commit: lang 929a6c743 / ui 1e2af0f5 | base_commit: lang 20231c041 / ui 481a3cb5 | dependency_revisions: auto-web@26d085f, auto-down@72b0970 | spec_inputs: SD-01..04 候选（plan §5 规范增量表）| acceptance_results: AC-01..AC-07 全 pass（含新跑：probe 3/3、av 会话 6/6、UI 负控 4/4、ase_m0_sessions 9/9 含窗口 e2e、plan041 10/10、ace_node_desktop 11/11、ase_m0_text 7/7；生产路径无重放残留、负控全走真实 producer） | pending_closeout_gates: merge 冻结并集复核 | findings: F-1(major) 5 个新编译告警（ui: ScenarioOp 未用导入/src 字段失读/mount 处多余 mut；lang: 会话程序 alias 字段失读、会话 seed_def_id 失读）——T-07"新增告警零"声明不实；F-2(minor) unmount 后增量不变量因 live-sum 口径可被健康道伪证（域未文档化）；F-3(note) AceStateSlot.initials 只写；F-4(note) T-01 探针 hash 随 fmt 提交漂移未更新；F-5(note) core/tests/conformance.rs 模块注册序被动 fmt 重排未列；F-6(note) arity 错误串宽空白/v04 死代码 | evidence: 审计报告全文折本节（上方），命令/退出码/计时见其表 | next: work 定向修复 F-1..F-6 后复审（修复循环 1/3）
+
+stage: goal | plan_id: PLAN-1106 | plan_revision: r1 | round: 3 | from: review | to: work | status: executing | outcome: needs_fix | worktree: 同上 | commit: lang 929a6c743 / ui 1e2af0f5 | next: work
+
+stage: goal | plan_id: PLAN-1106 | plan_revision: r1 | round: 2 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1106/auto-lang + auto-ui | commit: lang 929a6c743 / ui 1e2af0f5 | next: review
 
 stage: new；PLAN-1106 r1；outcome: pass（有界修复合同可交接，不是修复实现/独立review通过）；next: 后续取得实施指令后T-01实际原红与最长链先证。0/10，所有V-*、编译/测试/GUI、独立实现review/merge均未执行。本轮只以静态源码确认派发链与旧oracle边界，并纠正文档中已被该事实否定的结论。
 
