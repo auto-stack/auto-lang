@@ -49,14 +49,17 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 ### 规范增量
 
 - **规范目标**：`docs/specs/ace-migration/m2-autoui.md`
-  - 更新顶部 `> Status:` 摘要，记录 PLAN-1072 完成 Vue 与生产 TS/JS 接管交付。
-  - 新增 `## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）`：沉淀组件面 `style` 惰性替换路径、`.name`/裸名并容的 `expose` 语法对齐、`view-for` + 仅视图数据字段（`ComponentViewDataField`）+ 条件样式值、`marshal_str_boundary`（含引号字面量保护）统一 str 边界、冷生成 `write_ace_vue_rt` 修复、`setup/watch/expose/ext_imports/unmount` 与错误保旧恢复边界、旧新映射表及残余记账。
+  - 更新顶部 `> Status:` 摘要，记录 PLAN-1072 完成 Vue 与生产 TS/JS 接管交付（明确 `--features ace-vue` + `AUTO_UI_ACE_VUE=1` 开关作用域及双轨边界）。
+  - 新增 `## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）`：沉淀组件面 `style` 惰性替换路径、`.name`/裸名并容的 `expose` 语法对齐、`view-for` + 仅视图数据字段（`ComponentViewDataField`）+ 条件样式值（与 `Expr` 共享 `replace_style_in_entry_expr` 对导入/未声明/调用形的 fail-closed 检查）、`marshal_str_boundary`（含引号字面量保护）统一 str 边界、冷生成 `write_ace_vue_rt` 修复、`setup/watch/expose/ext_imports/unmount` 与错误保旧恢复边界、旧新映射表及残余记账；并明确以下**实现边界**（不超宣称）：
+    1. **开关与路径边界**：仅在 `auto-ui-tools --features ace-vue` + `AUTO_UI_ACE_VUE=1` 下对 `app.at`（`vue.rs:4173, 7684`）与 `components/*.at`（`vue.rs:4495`）启用 ACE lane 产物替换；默认构建、`front_dir` 兄弟文件（`vue.rs:7398`）、`pages/`（`vue.rs:4350`）、`widgets/`（`vue.rs:7757`）与 `stores/` 仍走旧 `VueGenerator` / `ts_adapter::TypeScriptTrans`。
+    2. **双轨拼接边界**：`generate_widget_with_lane`（`ace_vue_script.rs:796-884`）以 `VueGenerator::new().generate_sfc(&widget)` 为底稿，仅将受检 `on` / `__evt_*` handler 体拼接替换；`computed`、`watch`、`setup`、`ext_imports`、`.Init`/`.Destroy` 与 `absent` 回退处理器仍由 `VueGenerator` 发射（如 `Widget B` 含 `setup`+`use{}` 双轨 fail-closed 保留 `absent=[".Bump"]`）。
+    3. **产品验证夹具边界**：1072 实证入口为 Rust 库 `gen_vue_project` / `incremental_compile_changed` + `@vue/compiler-sfc` + `esbuild`（`plan1072_vue_error_recovery.rs`）与本地 Node `http` Playwright（`test_005_login.mjs`、`test_010_form.mjs` 带 `@/components/ui/*` stub、`test_p1072_lifecycle_watch_expose.mjs` 带 `BOOT_EXT_STUB`）；`plan980_010_form_short.rs` 浏览器腿仍挂旧 `App.vue`，而 `plan1072_vue_web.rs::p1072_010_product_browser_mount` 挂 lane `App.sfc` 实测三字段 `v-model` + `Submit`（`SetTheme`/`SetAccent` 在 lane 单测及 `test_p1072` 之外未另做 010 页面点击）；公开 CLI `auto gen`/`auto build`/`auto run` 派发及完整 `pnpm`/Vite 打包运行归 **PLAN-982** 联合门。
 - **债务账本目标**：`docs/plans/KNOWN-DEBT-AND-RISKS.md`
-  - 追加 `#6p` 分支内调用形（具名缺席）与 `ace_package_sfc` 多分支控制流重放边界的残余债务条（由后续包级控制流计划接手）。
+  - 追加两项残余债务：(a) `#6p` 分支内调用形（具名缺席 `.__evt_onclick_1`）与 `ace_package_sfc` 多分支控制流重放边界（`sfc-handler-stmt`、`sfc-view-for`）；(b) 1072 移交的残余 `V-TS-CONSUMER-UI` / `B-WEB` / 982 联合义务（`pages/`/`widgets/`/`stores/` lane 接管、`watch`/`computed`/`setup` 去 `TypeScriptTrans` 下沉、`--features ace-vue` + `AUTO_UI_ACE_VUE=1` 默认开启切换、完整 `pnpm`/Vite/`auto run` CLI 闭环）。
 
 ## 6. 测试设计
 
-与 982 联合验一个原样 Vue UI 工程的 `auto gen`（Vue/TS 与运行时输出）、`auto build`（实际构建）、`auto run`（真实浏览器、事件与状态）。1072 交生成/运行时及行为依据，982 验公开 CLI 与工具派发。U0 只作为既有 Run 子面按原身份复用。
+与 982 联合验一个原样 Vue UI 工程的 `auto gen`（Vue/TS 与运行时输出）、`auto build`（实际构建）、`auto run`（真实浏览器、事件与状态）。**分工边界**：1072 交 Rust 库入口（`gen_vue_project` / `incremental_compile_changed` / `generate_sfcs_with_lane_product`）、官方 `a2x_rt.mjs` 运行时、`@vue/compiler-sfc` + `esbuild` 产物编译与 Playwright Node `http` 浏览器行为依据；982 验公开 CLI（`auto run --render vue` / `auto build`）与完整 `pnpm`/Vite 构建运行闭环。U0 只作为既有 Run 子面按原身份复用。
 
 原 V-B-WEB、V-EVT-WEB-CONSUME、V-TS-CONSUMER-UI Vue 格、AC/V-LIF 全部及正式语料 census。核实际 watch/setup/expose/ext_imports/style、绑定、更新/卸载、错误保旧、a2x_rt/TS 与真浏览器结果。旧发射或只观测生成文本不计通过。
 
@@ -76,7 +79,7 @@ auto-ui 主责，auto-lang 与 AutoMan 按接口供受检语义、provider 和�
 
 - [x] **T-02｜work｜完成受检生成**。在既有 `ace_ts_provider.rs`、SFC 和 tools 产品入口补完 005、010 及分母内的缺口，复用 980 的生产 SFC 与 `a2x_rt.mjs`。
 
-- [x] **T-03｜work｜验收 Vue 产品链**。跑原 V-B-WEB 及适用产品用例，从 `auto run --render vue` 到 pnpm/Vite/真实浏览器，对照页面事件、退出与清理。
+- [x] **T-03｜work｜验收 Vue 产品链**。验收 V-B-WEB 及适用产品生成入口（`gen_vue_project` / `incremental_compile_changed` + `@vue/compiler-sfc` / `esbuild` + Playwright Node `http` 浏览器实操事件、状态、watch/expose/setup/unmount、错误保旧恢复）；完整 `auto run --render vue` CLI + `pnpm`/Vite 打包循环按 §6 与 PLAN-982 联验交付。
 
 - [ ] **T-04｜review｜独立复审**。逐项核 AC-01..03、原任务和实际反例，修复发现后复验。
 
