@@ -534,6 +534,22 @@ A/B 实测（同选择、同 oracle，只有 profile 不同）：
 
 **边界**：`ace-facade`/`ace-adapters`（根 workspace，`all()`）不在该排除断言内——它们不持有正式性能例，已在测试注释里写明理由。
 
+### 5.19 T-04：F-01 夹具 O(n²) 与 F-02 单 run 多轴（代码 `833f1dc3c`）
+
+**F-01**（`av/tests/cases/mir_tier.rs`）：原夹具 `for i in 0..70_000 { m.intern_const(I32(i)) }`——`intern_const` 是**整表线性扫描**，故 O(n²)。改为直接 `m.consts.extend((0..70_000).map(MirConst::I32))`（表内容完全相同），并抽 `module_with_const_count(n)` 复用。
+
+| 指标 | 前 | 后 |
+|---|---:|---:|
+| `mir_admission_module_tables_over_budget_is_resource` | **10.013s** | **0.063s** |
+| 断言 | 精确 `Resource(TableEntries)`，7 万不同 I32 | 不变 |
+| 新增邻例 `mir_admission_module_tables_boundary_is_exact` | — | 0.035s：**总数恰为 65_536 合法**、多 1 条即 `Resource(TableEntries)` |
+
+**F-02**（`av/tests/cases/sched_m2_968.rs`）：`ok()` 原来对每个调度样例跑**两次**（第一次判 exit、第二次判 stdout）。现在**一次 run 同时判 exit+stdout**；原先的"双 run 确定性"义务保留为**一个具名用例** `sched_968_replay_is_deterministic`（同一程序跑两次，outcome 与 stdout 必须一致）。
+
+**验证**：`-E 'test(mir_tier::) + test(sched_m2_968::)'` → **27/27 PASS，0.750s**（整命令含构建 5.7s）。
+
+**V-05 负控（本轮实做）**：把 `mir_verify/mod.rs` 的 `module_tables > MAX_TABLE_ENTRIES` 临时改成 `>=` 后重跑——**边界例立刻变红**（`a module exactly at the cap is legal: Resource … 65536 exceed 65536`），超预算例仍绿；随后立即还原（`git status` 干净）。证明邻例对门位真敏感，不是空断言。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -715,6 +731,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 12，r1）：`stage: work`，T-03（§5.18，代码 `514a9459c`）。执行内容：把 `syntax-core/tests/cases/perf.rs` 包进 `mod performance`，使 P-01/P-02 的完整身份成为 `perf::performance::*` 而不再被普通组选中；两例正文/样本/统计一字未动。实测发现差集：`ace-syntax` 159→**157**（perf 相关 0），`performance::` 过滤由 0→**2**；`--profile ace-perf` 串行正式运行 **2/2 PASS**（11.450s + 3.799s = 15.251s）。新增 `PerformanceSelection` 治理控制 2 例（源码包装守卫 + "ace-perf 是唯一正向选择者/普通组必须排除"），全套 79/79 OK。另记录：当前 PERF 口径仍是 test(debug) 构建，是否改 release 口径属 SD-04 决策，本轮不动。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 12 | from: work | to: work | status: executing | outcome: pass（T-03 完成：P-01/P-02 唯一归 ace-perf 且正式运行通过） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 514a9459c / 本轮 docs(plan1098) | next: work（T-04 F-01/F-02 夹具与单 run 多轴）`
+
+2026-11-19（goal round 13，r1）：`stage: work`，T-04（§5.19，代码 `833f1dc3c`）。执行内容：①F-01 夹具改直建表——`mir_admission_module_tables_over_budget_is_resource` 由 **10.013s → 0.063s**（O(n²) 的 `intern_const` 循环改为 `consts.extend`，表内容不变），并新增边界邻例 `mir_admission_module_tables_boundary_is_exact`（65_536 合法 / 65_537 具名 Resource，0.035s）。②F-02 `ok()` 单 run 同判 exit+stdout，原双 run 确定性义务保留为具名用例 `sched_968_replay_is_deterministic`。③验证 `mir_tier:: + sched_m2_968::` **27/27 PASS 0.750s**；④V-05 负控实做：把门 `>` 临时改 `>=` 时边界例立即变红、超预算例仍绿，随即还原（工作树干净）。仍待：`ace-av` 全组 prepared 复跑与 47 行其余项（T-05/T-06）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 13 | from: work | to: work | status: executing | outcome: pass（T-04 完成：F-01 10.013s→0.063s 且有精确边界邻例与门位负控；F-02 单 run 多轴） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 833f1dc3c / 本轮 docs(plan1098) | next: work（T-05 O 类探针固化，或 T-06 显式 toolchain 组）`
 
 ## 10. 待澄清事项
 
