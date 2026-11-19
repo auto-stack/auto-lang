@@ -451,38 +451,29 @@ pub struct ProbeOutcome {
     pub stderr: String,
 }
 
-/// Path to the built shim staticlib; builds it once per test process via a
-/// contained cargo invocation (60s deadline, --locked per plan §6 evidence
-/// contract — review r1 P774-R1-06).
+/// Path to the prepared shim staticlib.
+///
+/// PLAN-1098 T-02/T-10: prepared tool `data-runtime` exports
+/// `ACE_DATA_RUNTIME_LIB`; a missing env is a named preparation error, never an
+/// in-body cargo build or a `target/runtime-release` path guess.
 fn shim_lib() -> Result<PathBuf, String> {
     static CACHE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
     CACHE
         .get_or_init(|| {
-            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let mut cmd = Command::new("cargo");
-            cmd.args([
-                "build",
-                "-p",
-                "ace-data-runtime",
-                "--profile",
-                "runtime-release",
-                "--locked",
-            ])
-            .current_dir(&root);
-            let (code, out, err) =
-                ace_core::link::run_deadlined_split(&mut cmd, Duration::from_secs(60))
-                    .map_err(|e| format!("cargo build shim: {e:?}"))?;
-            if code != Some(0) {
-                return Err(format!(
-                    "cargo build shim exit {code:?}: {out}{}{err}",
-                    if out.is_empty() { "" } else { "\n" }
-                ));
-            }
-            let lib = root.join("../../target/runtime-release/ace_data_runtime.lib");
+            let path = std::env::var_os("ACE_DATA_RUNTIME_LIB").ok_or_else(|| {
+                "ACE_DATA_RUNTIME_LIB is not set: prepare the `data-runtime` tool \
+                 (python scripts/fixed-tests.py <group> --prepare-only); the shim is \
+                 never built inside the test"
+                    .to_string()
+            })?;
+            let lib = PathBuf::from(path);
             if lib.is_file() {
                 Ok(lib)
             } else {
-                Err(format!("shim staticlib missing at {}", lib.display()))
+                Err(format!(
+                    "ACE_DATA_RUNTIME_LIB points at a missing file: {}",
+                    lib.display()
+                ))
             }
         })
         .clone()

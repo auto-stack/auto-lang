@@ -237,10 +237,20 @@ fn main() int {
         "expected source.unsupported for clone, got: {:?}",
         err.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
     );
-    match compile_and_execute_aggregates(src, "main") {
-        Ok(out) => println!("clone(aggregates): executes value={}", out.value),
-        Err(e) => println!("clone(aggregates): rejected: {e}"),
-    }
+    // PLAN-1098 T-07/T-10: the aggregates superset keeps the SAME frozen
+    // rejection (bind/source.unsupported "elements clone explicitly"); the old
+    // print-either-branch leg could never fail.
+    let aggregates = match compile_and_execute_aggregates(src, "main") {
+        Ok(out) => panic!(
+            "aggregates profile must also reject list clone, got value={}",
+            out.value
+        ),
+        Err(error) => error,
+    };
+    assert!(
+        aggregates.contains("source.unsupported") && aggregates.contains("elements clone explicitly"),
+        "aggregates clone rejection: {aggregates}"
+    );
 }
 
 /// Frozen negative (PLAN-822/962): nested `List<List<int>>` stays

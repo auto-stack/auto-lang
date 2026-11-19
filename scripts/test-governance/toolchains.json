@@ -130,7 +130,8 @@
     "ac_text_runtime.lib"
    ],
    "profile": "runtime-release",
-   "target": "experimental/ace/target"
+   "target": "experimental/ace/target",
+ "env": "ACE_TEXT_RUNTIME_LIB"
   },
   "data-runtime": {
    "workspace": "experimental/ace",
@@ -140,7 +141,8 @@
     "ace_data_runtime.lib"
    ],
    "profile": "runtime-release",
-   "target": "experimental/ace/target"
+   "target": "experimental/ace/target",
+ "env": "ACE_DATA_RUNTIME_LIB"
   },
   "execution-fixture": {
    "workspace": ".",
@@ -153,7 +155,17 @@
    "target": "target",
    "env": "AUTO_TOOL_EXECUTION_FIXTURE"
   },
-  "native-runtimes": {
+  "store-gc": {
+  "workspace": "experimental/ace",
+  "package": "ace-artifacts",
+  "binaries": [
+   "store-gc"
+  ],
+  "profile": "release",
+  "target": "experimental/ace/target",
+  "env": "ACE_STORE_GC_BIN"
+ },
+ "native-runtimes": {
    "workspace": "experimental/ace",
    "package": "ace-native",
    "binaries": [

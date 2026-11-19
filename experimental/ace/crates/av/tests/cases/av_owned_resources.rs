@@ -938,31 +938,22 @@ fn real_budgets() -> OwnedMemoryBudgets {
 
 #[test]
 fn av_owned_r1_worker_memory_hard_gate_parent_sampled() {
-    // Locate/build the release worker (same discipline as the corpus).
-    let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .expect("ACE workspace root")
-        .to_path_buf();
-    let mut owned_compiler = std::process::Command::new(env!("CARGO"));
-    owned_compiler
-        .args(["build", "--release", "-p", "ace-av", "--bin", "av-worker"])
-        .current_dir(&ws)
-        .env_remove("CARGO_TARGET_DIR")
-        .arg("--target-dir")
-        .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-    let build = auto_tool_execution::run_command_output(owned_compiler).expect("build");
+    // PLAN-1098 T-02/T-10: the worker is an explicitly PREPARED tool. No
+    // in-body release build and no `target/release` path guess; a missing env
+    // is a named preparation error.
+    let worker = match std::env::var_os("AC_AV_CASE_WORKER") {
+        Some(path) => std::path::PathBuf::from(path),
+        None => panic!(
+            "AC_AV_CASE_WORKER is not set: prepare the `av` tool \
+             (python scripts/fixed-tests.py <group> --prepare-only); the worker is \
+             never built inside the test"
+        ),
+    };
     assert!(
-        build.status.success(),
-        "{}",
-        String::from_utf8_lossy(&build.stderr)
+        worker.is_file(),
+        "prepared av-worker missing: {}",
+        worker.display()
     );
-    let worker = ws.join("target").join("release").join(if cfg!(windows) {
-        "av-worker.exe"
-    } else {
-        "av-worker"
-    });
 
     // A REAL sustained owned load: 8 fresh children over 8 revisions of
     // the frozen source family (record + Str fields + clone + concat),
