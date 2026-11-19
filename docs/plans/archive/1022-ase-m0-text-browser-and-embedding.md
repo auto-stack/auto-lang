@@ -189,3 +189,6 @@ stage: merge | plan_id: PLAN-1022 | plan_revision: r2 | outcome: pass | 2026-11-
 ## 10. 待澄清事项
 
 剩余问题为当前ACE对1021兼容、公共frame/单例bridge所有权及关闭可行性；T-01用已有接口最多两机制先证，明确go/no-go与责任后才进入后续实现。不再将已交F0/H0/E0/B0/HELLO列为待实施；不等待980完整B波/AGE增强。若确需新增语义由原owner先定修订，不另写旧引擎版。
+
+stage: goal | PLAN-1022 | r2 | round 2 | from: review | to: merge | status: reviewed | outcome: pass | commit: lang 02adfe896 / ui 248b2bf4 | next: merge
+stage: goal | PLAN-1022 | r2 | round 3 | from: merge | to: done | status: archived | outcome: pass | delivery: lang 9334397f7 / ui b1364eed | archive: ecac94555+48857e997 | cleanup: 四树guard clean后移除+分支删+scope删+登记刷新 | pending: 批量回归DUE(1064→今>48h含多merge)移交/auto-plan-regress；人工resize/焦点走查档pending | next: done
