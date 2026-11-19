@@ -288,6 +288,20 @@ T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/te
 
 **T-01 未闭项（本轮推进但未完成）**：24 组真实发现分母与 >10s 项（本轮机器被并发会话占用，见 §9）；`ace-toolchain` 目标清单（静态已定：`-p ace-av --test conformance` 承载 S 行，`-p ace-conformance --test conformance` 承载 H-05/host 行）；Case 消费者四套件静态存在（`ace-document-console.suite.ad`、`ace-document-base.suite.ad`、`ace-m1/ace-m1-tr-native.suite.ad`、`ace-m1/typed-native-891/typed-native-891.suite.ad`），未做 inventory 计数。
 
+### 5.8 T-01 第四段：24 组包/target/feature 差集静态冻结（只读）
+
+按 `scripts/test-groups.toml`（`090c0e71…`）与 `experimental/ace/Cargo.toml` 成员清单逐组解析（脚本 `extract_groups.py`，产物 `t01-24-groups-targets.md`）。24 个非聚合 ACE nextest 组的真实形状：
+
+| 形状 | 组 | 说明 |
+|---|---|---|
+| 单 test 二进制 `-p X --test conformance`（无 `--lib`） | `ace-source-syntax-927`(core)、`ace-python`(abi)、`ace-host`/`ace-console`/`ace-batch`/`ace-rust-lowering`(conformance)、`ace-stdlib`(stdlib-conformance) | 7 组只跑一个 test target；`ace-python` 另有 `-E test(p1026)` |
+| `--lib --tests` 多包 | `ace-source`、`ace-syntax`(4 包)、`ace-semantics`(4 包)、`ace-artifacts`、`ace-av`(2 包)、`ace-native-worker`、`ace-native`、`ace-abi`、`ace-comptime`(4 包)、`ace-lowering`、`ace-foreign-contract`、`ace-a2x`(6 包)、`ace-runtime`(2 包) | 13 组含 lib 单测 + 全部 test target |
+| `--lib --tests` 多 test target | `ace-m2-build` | 8 个 test target（b0_closure/compat_selection/coverage_lanes/identity_cache/load_selection/restore_recovery/sdk_pack/…），组名易被误读为单例 |
+| 无 test target（仅 lib） | `ace-a2c-abi`（`ace-a2x-c`）、`ace-adapters`（`auto-lang-core --features code-editor`）、`ace-facade`（`auto-lang-ace-host`） | 后两者跑**根 workspace**，不是 `experimental/ace`；`ace-a2x-c` 无 tests 目录 |
+| 共享同一 test 二进制 `-p ace-conformance --test conformance` | `ace-host`、`ace-console`、`ace-batch`、`ace-rust-lowering` | 只靠 `--features`/`tools`/`expression` 区分 |
+
+**H-06（同 key OR 并集）静态实证**：`ace-host` 与 `ace-console` 的 9 元 key（runner/workspace/args/domain/tools/file/suite/respect_default_filter/timeout）**完全相同**（tools 同为 12 项、args 同），只有 expression 不同（host=`all()`，console=`^console::`）→ `invocations()` 必须合并为一次调用（现有实现如此，实测配置可证）。`ace-batch` 多 `--features test-case-batch`、`ace-rust-lowering` tools 仅 `a2x` → 两者 key 不同，**不得**强合。这三条与 §5.2 H-06/§6.1 V-10 一致，且可纯静态复核。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -427,6 +441,8 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 3，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：47 行结构化展开（§5.7）——花括号感知取体（内嵌 Auto 源码不再截断）、oracle 机制/本地助手链/端助手/时间门逐行提取，产物 `t01-47-rows-expanded.md`（`a9250286…`）+ 脚本 `extract_rows.py`（`d986d9e7…`）；四条结构性结论（47 行多为外壳、助手跨行共享、端助手集中、raw `Command` 不被命名覆盖）与既有时间门实证。**未跑任何组**：开工时另一会话 `python D:\autostack\.wt\lang-1078\auto-lang\scripts\fixed-tests.py case-av-language-parity` 正在 `cargo build -p ace-av --release`（14:50 起），按 §5.4-4 等待、未并发启动准备/运行；Case 四套件仅做存在性静态核对（未 inventory）。未闭：24 组真实发现分母与 >10s 项、toolchain 目标清单确认、Case inventory。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass（进行中：47 行结构化展开落地并留局限；T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见本次 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：等机器空闲后取真实发现分母）`
+
+同日续（round 3 末段）：24 组包/target/feature 差集静态冻结（§5.8，脚本 `extract_groups.py`，产物 `t01-24-groups-targets.md`）；静态实证 H-06——`ace-host`/`ace-console` 的 9 元 key 完全相同必须合并一次调用，`ace-batch`（features）与 `ace-rust-lowering`（tools）key 不同不得强合；另发现 `ace-m2-build` 实为 8 个 test target、`ace-a2c-abi` 只有 lib、`ace-facade`/`ace-adapters` 跑根 workspace（易被误读为 ACE workspace 单例）。仍未跑组。
 
 ## 10. 待澄清事项
 
