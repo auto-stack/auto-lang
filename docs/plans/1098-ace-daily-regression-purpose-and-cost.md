@@ -274,6 +274,20 @@ T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/te
 
 **T-01 仍未闭**：47 行逐项展开（角色/预期/条件/消费者）、24 组真实发现分母与 >10s 项、`ace-toolchain` 的目标清单与 Case 消费者核对、两个旧红的 owner 答复（D-1098-01）。
 
+### 5.7 T-01 第三轮：47 行结构化展开（只读，未跑组）
+
+**方法**：对 §5.3 全部 47 行按完整原生身份定位 `#[test]` 函数体，用**跳过字符串/raw-string/注释的花括号匹配**取体（内嵌 Auto 源码自身含 `fn`，简单按 `\nfn ` 截断会把体算成 3–15 行），再提取 oracle 机制（`expect_i32`/`assert*`/`unwrap_err`）、本地助手链（深度≤3）、端助手（`run_py_fileset`/`resolve_python`/`run_rust_stdout`/`run_c_stdout`/`compile_c_fileset`/`run_a2r`/`run_a2py`/`native_exit`/`native_value`/`c_stdout`/`rust_stdout`/`run_av`/`mn_run`/`run_case`）与时间门。产物：`D:/autostack/plan-artifacts/plan-1098/t01-47-rows-expanded.md`（SHA256 `a9250286…`）+ 抽取脚本 `extract_rows.py`（`d986d9e7…`）。
+
+**结构性结论（供 T-03…T-07 记账，不是处置结论）**：
+
+1. **47 行不是 47 段独立逻辑**：多数是 3–15 行 `#[test]` 外壳，真实多端逻辑在同文件本地助手里；且**一个助手服务多行**（`kv_zip_1064::run_kv_cross_backend_leg(…)` 同时服务 S-07 kv-a2r 与 S-10 kv-a2py；`run_zip_cross_backend_leg` 同时服务 S-08/S-09）。分流必须按"助手 × 端参数"记账，否则同一义务会被记两次或整段漏掉。
+2. **oracle 不是"打印即绿"**：D/R 类普遍用 `expect_i32(out, N, tag)` 精确值（S-33 期望 11、S-27 期望 42、S-28/S-36/S-38/S-40 同型）或 `assert_eq!`；至今唯一确认的"双分支打印即绿"仍是 §5.2 O-01。据此，S 行不得以"探针"名义批量退役。
+3. **端助手高度集中**：`run_py_fileset`/`resolve_python`、`run_rust_stdout`、`compile_c_fileset`、`native_exit`、`c_stdout`/`rust_stdout`——这些正是 `ace-toolchain` 的接缝；T-06 应按"助手×端"切，而不是按测试名。
+4. **抽表局限（须人工确认）**：直接 `Command::new(RUSTC|cl|python)` 的行不被"端助手"列捕获（实证：S-12 `stdlib_sys_973.rs:666,681` 直接起 rustc；S-01 的 A2R 端同理），所以"端助手列为空"**不等于**无外部链。
+5. **既有时间门**：仅 S-02/S-25 带 `Duration::from_secs(8)` 的 AV wall 预算（`kv_zip_1064.rs:99`），历史慢点在准备/IO 而非断言；`resources_tier`（S-04）另有 `from_secs(5)`/`120ms` 观测门。
+
+**T-01 未闭项（本轮推进但未完成）**：24 组真实发现分母与 >10s 项（本轮机器被并发会话占用，见 §9）；`ace-toolchain` 目标清单（静态已定：`-p ace-av --test conformance` 承载 S 行，`-p ace-conformance --test conformance` 承载 H-05/host 行）；Case 消费者四套件静态存在（`ace-document-console.suite.ad`、`ace-document-base.suite.ad`、`ace-m1/ace-m1-tr-native.suite.ad`、`ace-m1/typed-native-891/typed-native-891.suite.ad`），未做 inventory 计数。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -409,6 +423,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 2，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①真实重放 `ace-av` 的 `host_console::` 21 例（冷 debug，准备 61s / 执行 0.280s / 整命令 62.7s / exit=100，19 绿 2 红），两个旧红**首红复现**并定位为 982 具名入口裁定后的**陈旧 oracle**（非产品回归），具名移交 D-1098-01；②逐行静态核查补齐 B-01/B-02/B-04（含"同一缺库补构建反模式 4 处"、B-04 死 helper 无消费者）、C 类真 rustc/真 C 编译 helper 实证、P-01/P-02 原参数、H-04/H-05 预算与负控；③47 行候选分档落材料 scope（`t01-47-rows-static-triage.md`，sha256 `314539e1…0f68`）。机器无并发构建（开工前后均已核对）。仍未闭：47 行逐项展开、24 组真实发现分母与 >10s 项、toolchain 目标清单/Case 消费者核对。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass（进行中：重放与静态核查落地，T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见下一条 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续）`
+
+2026-11-19（goal round 3，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：47 行结构化展开（§5.7）——花括号感知取体（内嵌 Auto 源码不再截断）、oracle 机制/本地助手链/端助手/时间门逐行提取，产物 `t01-47-rows-expanded.md`（`a9250286…`）+ 脚本 `extract_rows.py`（`d986d9e7…`）；四条结构性结论（47 行多为外壳、助手跨行共享、端助手集中、raw `Command` 不被命名覆盖）与既有时间门实证。**未跑任何组**：开工时另一会话 `python D:\autostack\.wt\lang-1078\auto-lang\scripts\fixed-tests.py case-av-language-parity` 正在 `cargo build -p ace-av --release`（14:50 起），按 §5.4-4 等待、未并发启动准备/运行；Case 四套件仅做存在性静态核对（未 inventory）。未闭：24 组真实发现分母与 >10s 项、toolchain 目标清单确认、Case inventory。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 3 | from: work | to: work | status: executing | outcome: pass（进行中：47 行结构化展开落地并留局限；T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见本次 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：等机器空闲后取真实发现分母）`
 
 ## 10. 待澄清事项
 
