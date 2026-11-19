@@ -30,6 +30,17 @@ mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
 ffi-dual = { max-threads = 1 }
+# PLAN-983 r27：UI rq/headless 媒体渲染族（rq_wire/rq_probe/rq_matrix/
+# rq_repair/rq_media/rq_cells/rqhost）在 full 池并发下互相竞争崩溃/假红
+# （0xc0000005 ABORT 与吞吐断言红，失败集合逐轮漂移；族内 68 例单独并发
+# 即复现 3 红——非全池独有）。plan498 图表交互族同证（池内 2/2 红：
+# BarChart.Hover VM IndexError 时敏假红；单测 3/3 绿——VM 分片调度在
+# 负载下交错暴露，底层交错竞态具名为 charts owner 债务候选）。同
+# PLAN-1067 sched-native 先例：仅串行本族，输入/断言/预算零变化。UI 仓
+# 日常档（auto-ui .config/nextest.toml）对 rq 媒体族已有同等纪律；本条
+# 把该纪律带进 full 档（四仓门 ui-full 腿用本配置）。
+# 共享门禁口径变更——测试治理维护方复核（r26 阶段条款）。
+rq-native = { max-threads = 1 }
 
 # ACE formal measurements run without overlapping other tests in this invocation.
 # https://nexte.st/docs/configuration/threads-required/
@@ -67,6 +78,21 @@ test-group = "ffi-dual"
 [[profile.default.overrides]]
 filter = "test(/^scheduler_/) or test(/^av_leg::av_lane/)"
 test-group = "sched-native"
+
+# PLAN-983 r27：rq/headless 媒体渲染族 + plan498 图表交互族入串行组
+# （证据与归属见上 rq-native 注释；filter 匹配 rqhost::tests 与
+# headless::rq_* 各模块及 plan498_chart_interaction_tests）。
+[[profile.default.overrides]]
+filter = "test(/(^|::)rq/) or test(/^ui_tests::plan498_chart_interaction_tests/)"
+test-group = "rq-native"
+
+# PLAN-983 r27：p073 1080p 连续媒体流吞吐门（t01 容量/t02 豁免正控/t05
+# 两 Host 语义）——镜像 UI 仓日常档 PLAN-073 T-02/T-05 纪律：吞吐/帧率门
+# 只在隔离窗有效（并行重负载下 1080p debug 记录成本倍增，吞吐门必假红），
+# 独占整机槽位预算。t01 为 r27 门内实测同族假红增补（原日常档仅列 t02/t05）。
+[[profile.default.overrides]]
+filter = 'test(p073_t01) or test(p073_t02) or test(p073_t05)'
+threads-required = "num-cpus"
 
 # PLAN-896: preserve HTTP family serial access across fixed groups.
 [[profile.default.overrides]]
