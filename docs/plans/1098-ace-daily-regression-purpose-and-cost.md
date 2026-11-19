@@ -402,6 +402,13 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 源码漂移负控是**真实发生**的：实现该接口时改了 driver 本身，`checkout_state()` 覆盖 `scripts/`，于是旧 manifest 立即失效——即 `--run-prepared` 绑定的正是本树源码身份，不是"exe 存在即用"。T-02 剩余：`cargo t` 默认入口在缺 manifest 时返回 `PREPARATION_REQUIRED`（§2 的入口切换）、工具 profile 改 debug/runtime-dev（B-05）、B-01…B-04 去测试体补构建、`test_fixed_groups.py`/`test_prepare_tools.py` 增治理负控。
 
+**T-02 第二刀（同日续，代码 `946c38909`）：普通入口切换 + 治理负控**
+
+- **规范位置**：`--prepare-only` 无 `--out` 时落到规范位 `target/test-groups/prepared/<checkout_state[:16]>/`；普通 `cargo t <ACE组>`（非 select-only/discover-only）现在先 `find_matching_manifest()`：在规范位按 mtime 倒序找**校验通过**且**覆盖全部所请求 ACE 组**的 manifest；找不到 → `PREPARATION_REQUIRED: no verified prepared manifest covers …; run: python scripts/fixed-tests.py … --prepare-only`，**exit 2、零构建零执行**；找到 → 以该 manifest 的 archive 运行（混合调用只对 ACE 组走准备件，非 ACE 组行为不变）。
+- **实测**：无准备时 `python scripts/fixed-tests.py ace-lowering` → 0.11s 内 `PREPARATION_REQUIRED`（附可直接复制的准备命令）；`--prepare-only` → 1.19s 写到规范位；再有准备时直接跑 → `PASS 9/9`，整命令 1.6s，零构建。
+- **治理负控（`scripts/tests/test_fixed_groups.py::PreparedRunGate`，5 例新增）**：合法 manifest 通过；config/source/toolchain 三类漂移各自具名失败；archive 篡改/缺失具名失败；`find_matching_manifest` 跳过无效 manifest 且要求"全覆盖"（只覆盖部分组时返回 None）；普通 ACE 入口在无准备时**不调用 `execute_plan`** 即抛 `PREPARATION_REQUIRED` 且消息含 `--prepare-only`。全套 `test_fixed_groups.py` **77/77 OK**（7.46s），`test_prepare_tools.py` 8/8 OK。
+- **顺带修正既有红**：`ace-python` 的 `expression` 原本只是 `test(p1026)`（缺 performance 排除，`test_ace_module_groups_exclude_formal_performance` 在 master 上就是红的——已单独在 master 复现确认非本包引入）；现在去掉 args 里重复的 `-E test(p1026)`，expression 改为 `(test(p1026)) and not test(/(^|::)performance::/)`。**重发现验证选择面不变（仍 10 例）**，非放宽或掩红。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -555,6 +562,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 同日续（round 5 末段）：T-02 **首刀实现**（§5.12，代码提交 `197ac9e5d`）——`--prepare-only`/`--run-prepared` archive 握手落地并实测：准备 1.19s → 只运行 PASS 9/9 wall 0.721s 零构建；三条负控（源码漂移/archive 篡改/archive 缺失）全部具名 `PREPARATION_REQUIRED` exit 2、零执行。其中"源码漂移"负控是真实事件：改 driver 自身后旧 manifest 立即失效。T-02 未完成项照旧：默认入口切换、B-05 profile、B-01…B-04、治理负控。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-02 首刀落地并有负控；T-01/T-02 均未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划 197ac9e5d（T-02 代码）/ 本轮 docs(plan1098) | next: work（T-02 续 + T-01 收口）`
+
+2026-11-19（goal round 6，r1）：`stage: work`，T-02 第二刀（§5.12 续）。执行内容：①普通 ACE 入口切换——`--prepare-only` 无 `--out` 落规范位 `target/test-groups/prepared/<source_state[:16]>/`；默认 `cargo t <ACE组>` 先找**校验通过且全覆盖**的 manifest，缺失即 `PREPARATION_REQUIRED`（exit 2、零构建），实测 0.11s 拒绝 / 有准备时 `PASS 9/9` 整命令 1.6s 零构建。②治理负控 `PreparedRunGate` 5 例（config/source/toolchain 漂移、archive 篡改/缺失、find 跳过无效且要求全覆盖、无准备不调 execute_plan）；`test_fixed_groups.py` **77/77 OK**、`test_prepare_tools.py` 8/8 OK。③修正 master 既有红：`ace-python` expression 缺 performance 排除（已在 master 复现确认非本包引入），去重复 `-E` 并补排除，重发现仍选 10 例。代码提交 `946c38909`。T-02 剩余：B-05 工具 profile（debug/runtime-dev）、B-01…B-04 去体内补构建、工具链认证组（T-06）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 6 | from: work | to: work | status: executing | outcome: pass（入口切换+治理负控落地；T-02 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 946c38909 / 本轮 docs(plan1098) | next: work（T-02 续：B-05/B-01…04）`
 
 ## 10. 待澄清事项
 
