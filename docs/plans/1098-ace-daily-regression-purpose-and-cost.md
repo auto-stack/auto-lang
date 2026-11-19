@@ -791,6 +791,17 @@ tools = ["a2x"]; domain = ace; all = false
 
 据此 AC-09 判定：24/24 组 T_warm ≤120s ✓（19 组 ≤60s）；47/47 行有处置与正文证据 ✓；新增 3 项 ≤10s ✓；C/Q/L 分流具名 ✓；PERF 增量与 3600s 合同可核（3 例）✓；聚合墙与 AC-10 报告待 §5.27 补测。
 
+### 5.27 T-10 复审后的第二轮修复与重测（代码 `6e5d8fc72`、`13efa873b`、`23a32750a`）
+
+| 修复 | 触发 | 结果 |
+|---|---|---|
+| **`ace-host` 拆分**：4 类"原始套件重放"（`tests::language_conformance::` 23 例 + `governance::reuse_obligations_run_green_via_original_suites` + `governance::v07_emit_not_run`）移入新的显式组 **`ace-host-suites`**（`all=false`），`ace-host` 只留快速宿主例 | 重绑实测 `ace-host` **129.6s > 120s**（组内 4 个 93–113s 的套件重放） | `ace-host` **45.1s**、`ace-host-suites` **57.3s**，两组均 ≤120s |
+| **MSVC 发现探针 deadline 10s → 30s**（`abi/src/ctool.rs`） | `ace-toolchain` 在 ~20 个并发 `cl` 探针下出现 `CToolError("cl -? spawn: Deadline")` 的伪失败（同一病因也是 B-05 里 a2x 必须 release 的理由） | `ace-toolchain` 重跑 **PASS 56/56，64.2s**（此前 t08 66.3s、t13 曾 155.3s 带 2 红） |
+| **perf/formal 报告不再写进仓库**：新增 `MN_T07_REPORT_DIR` 解析（env > NEXTEST 下的临时目录 > 仅裸跑保留旧 `docs/reports/plan818`） | `ace-perf` 每跑一次都会改写 3 个 tracked JSON，导致树脏、身份无法重绑 | 跑完 `git status` 干净，身份可重绑 |
+| **`av::text_runtime_lib` 与 `abi::text_runtime_support_lib` 改为 env 优先**（`ACE_TEXT_RUNTIME_LIB`），产品自建只作未准备环境的回落 | `ace-perf` 一次运行里出现数十个 cargo 子进程争锁（13 分钟仍未完），来自这两处体内构建 | perf 组不再争锁（本批次未再出现 cargo 风暴）；`ace-native` 的 4 个 closures 用例在 t13 因共享 `target/debug` 构件被后续 prepare 重建而报 `collections runtime: 找不到文件`，改为**两阶段批次**（先全准备、后全运行）复测 |
+
+**方法论修正（T-02 的现实约束）**：`prepare_tools` 的收据绑定 `target/<profile>/<artifact>` 的哈希；同一 source_state 下若再有别的 prepare 重建同名构件（例如改动了 `av` crate 就会重建 `av-worker`），先前收据即失效——单阶段批量会在"准备→运行"之间被后续 prepare 打断。因此最终测量改为**两阶段**：先对全部组 `--prepare-only`，再统一 `--run-prepared`（§5.28 的数字即两阶段结果）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -1008,6 +1019,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 21，r1）：`stage: review`，**T-10 独立复审**（独立上下文执行，verdict = **needs_fix**，11 条发现）。执行内容：①按 AC-01…AC-10 逐条核对真实代码/证据（不采信打勾），并复跑 `test_fixed_groups` 85/85、`test_ace_cost_report` 54/54 全绿；②**确认的正面项**：24 组的执行数/墙/红逐行重算一致、47 行映射 47/47 正确（C 19 全在 toolchain 且不在 av、D/R/L 全在 av、Q 不在日常）、F-01/F-02 精确、新增 3 项 ≤10s、无 symlink/无证据入库；③**修掉 5 类真实缺陷**（代码 `2565ae2c8`）：`av_protocol` shape-3 与 `av_owned_resources` 在准备运行中做真 release build（前者占 host 组 103.5s/109.5s）、text/data runtime 三个 shim 与 case-worker 回落仍体内构建、`native_lifecycle` 体内 release 构建 `store-gc`、`p946` 最后一处只打印分支——全部改 env 优先 + fail-closed，并新增 `store-gc` 准备工具（`ACE_STORE_GC_BIN`，接入 9 组），`toolchains.json` 补 `ACE_TEXT_RUNTIME_LIB`/`ACE_DATA_RUNTIME_LIB`；④**收据修正**：冻结身份据实改写（24 组来自混合树状态，需重绑）、"14 组 ≤60s"改 19、SD-01/02/04/06 文案与实现对齐；⑤**口径裁决**：AC-04/AC-09 的"留日常 item ≤10s"经 owner 批准改为"组预算 + 新增 item ≤10s"（§5.26）。未闭项交下一轮：24 组重绑身份、聚合组墙 + ace-perf 产物、AC-10 报告表、T-01 残项/V-01 守恒负控。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 21 | from: work | to: review | status: executing | outcome: needs_fix 已修（5 类缺陷 + 3 处收据 + AC 口径 owner 裁决） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 2565ae2c8 / 本轮 docs(plan1098) | next: work（重绑 24 组身份 + 聚合墙/PERF 产物 + AC-10 报告）`
+
+2026-11-19（goal round 22，r1）：`stage: work`，T-10 复审后续修复 + 重绑（§5.27，代码 `6e5d8fc72`/`13efa873b`/`23a32750a`）。执行内容：①`ace-host` 拆分——重绑实测 129.6s 超 120s，把 4 类原始套件重放移入新显式组 `ace-host-suites`（`all=false`），拆分后 **ace-host 45.1s / host-suites 57.3s**；②MSVC 发现探针 deadline 10s→30s，`ace-toolchain` 由"155.3s + 2 红（cl -? Deadline）"变为 **PASS 56/56 64.2s**；③perf/formal 报告改走 `MN_T07_REPORT_DIR`（env > NEXTEST 临时目录 > 裸跑旧路径），跑完树保持干净；④`av::text_runtime_lib` 与 `abi::text_runtime_support_lib` 改 env 优先，消除 perf 组数十个 cargo 争锁；⑤发现并修正测量方法论：`prepare_tools` 收据绑定 `target/<profile>/<artifact>`，单阶段批量会在组间被后续 prepare 重建打断（`ace-native` 4 例 `collections runtime 找不到文件`），最终测量改为**两阶段**（先全准备、再全运行）。t13 全量重绑数据：24 日常组墙 3.1–119.3s（最大 `ace-abi` 119.3s）、聚合 `ace-workspace` 360.8s / `ace-facade` 22.0s / `ace-adapters` 15.3s、`ace-perf` 765.5s（<3600s 合同）。两阶段复测进行中（下一轮出最终表）。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 22 | from: review | to: work | status: executing | outcome: pass（第二轮修复：host 拆分/探针 deadline/报告出仓/产品路径 env 优先 + 两阶段测量；最终表待复测） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 23a32750a / 本轮 docs(plan1098) | next: work（两阶段复测收尾 → §5.28 最终表 + AC-10 报告）`
 
 ## 10. 待澄清事项
 
