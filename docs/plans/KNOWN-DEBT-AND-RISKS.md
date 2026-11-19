@@ -4487,7 +4487,7 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 
 ### PLAN-962 复审登记的候选债（2026-11-12；962 交付内具名未闭项，非静默延后）
 
-- **D-962-C1 — 位置式索引读 `xs[i]`（表达式位）**：CST stmt/postfix 列表分派按 FIRST 集提交备选，新头 token 的备选提交机制未定（裸 `hold` 同根因）。读面由 `.get(i)` 全覆盖（具名裁定）；写位 `xs[i] = v` 已交付。owner：后续 ACE 语法机制计划。关闭：FIRST 提交机制定位后补裸拼写（hold/索引读同修）。
+- **D-962-C1 — 位置式索引读 `xs[i]`（表达式位）**：~~CST stmt/postfix 列表分派按 FIRST 集提交备选，新头 token 的备选提交机制未定（裸 `hold` 同根因）。读面由 `.get(i)` 全覆盖（具名裁定）；写位 `xs[i] = v` 已交付。~~ **已关闭（PLAN-1082 T-01 复核，2026-11-20）**：裸读 `xs[i]`/链式 `m[0][1]` 经 964 postfix 索引步 + PLAN-1082 place/rvalue 面在普通 AV 链真实交付（canonical `av.parity.1082.bracket-read-write`/`nested-index-place` 绿；观察矩阵 O3/O16 实证）。原 FIRST 集机制担忧仅剩裸 `hold` 拼写一条，改为 D-962-C1a（owner 不变：后续 ACE 语法机制计划）。
 - **D-962-C2 — 递归 Box 的 collections-unit 车道**：环类型表无法经 unit-split 不动点局部化（`unresolved type closure`）；AV 端执行 ✓、lowering（名称规范化+不透明门控两阶段）✓；native collections 发射车道需环形单元表示。owner：ACE native collections 单元分裂。关闭：unit-local 环表示（或按类型表整体驻留）落地并 emit 验证。
 - **D-962-C3 — C provider 的 tuple 调用实参**：cl C2440（record ABI 传 const-rec 指针；ctor 临时需取址）。Rust provider 已过（单元⑥）。owner：a2x-c lower 临时物化。关闭：`sum((20,22))` 形经 cl 执行 42。
 - **D-962-C4 — List 局部 use-after-move 不拒**：`k.move` 后 `k.get(1)` 在 collections 族编译通过（冻结既有行为，collections 面逐字节同态）；V-08 非法邻改用视图物化拒（执法中）。owner：collections resolve 所有权失效。关闭：`source.use-after-move`（或等价）落地且冻结面同步裁定。

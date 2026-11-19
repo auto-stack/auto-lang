@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1082
-status: drafting
+status: archived
 feature_name: AV数组、集合语法与嵌套place补齐
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
+updated_at: 2026-11-20
 plan_revision: 3
-current_step: 0
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080, PLAN-1081]
 supersedes_spec_components: [docs/specs/ace-migration/m2-aggregates.md, docs/specs/ace-migration/m2-stdlib-core.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -356,18 +356,64 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering ace
 
 本轮任务状态（全部未施工）：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
+- [x] **T-01** work：已完成 2026-11-20。冻结记录+决策D-1082-01..09见§9；探针O1–O29观察矩阵真实运行（`plan1082_collections_places.rs`）。canonical位置冻结：`crates/auto-lang/test/cases/language/collections/list-places.case.ad`（新collections目录，1078 suite只增引用）；判等条件=FC合同（同一Auto源/工程闭包，AV检查+非AV `#ignore`/NOT_RUN分列）。
+- [x] **T-02** work：已完成 2026-11-20，提交 `eb7d7796c`。place-assign-stmt（auto面独占，置于path/index-assign后仅承新形）；复合赋值`+ - * /`；数组字面量rvalue放宽（auto面，sink提升）；空`[]`语法收录+具名拒`source.array-lit-empty`；嵌套字面量Move包裹。962冻结面（aggregates init-only）字节保持（`aggregates_t01_probe::array_literal_negative_controls`复绿）。回归：ace-source/syntax/semantics/comptime/lowering PASS；ace-av 1468例仅2项**基线继承红**（host_console entry policy两项，经base复测确认先于本包存在，证据`plan-artifacts/plan-1082/logs/base-host-console.txt`）+2项当时待实现T-03探针。
+- [x] **T-03** work：已完成 2026-11-20。`List.new(e1..en)`受检兼容糖（elem取e1+同质校验+同push admission；零参具名拒`source.list-new-empty`；影子局部/record/variant优先）；HOF六件套`map/filter/reduce/find/any/all`方法面→冻结`stdlib/ace/asm/list.at`（include_str身份）经`compile_language_source`按需文本graft（`__std_list_`mangle、`pub`剥离、方法形不动、字节稳定单测）+`CallFn`直调——同源同编译器，无第二算法；非int元素具名拒`source.hof-elem-domain`。
+- [x] **T-05** work：已完成 2026-11-20，提交 `5278a3399`。canonical唯一作者 `language/collections/list-places.case.ad`（25 Case：§6四件+PLACE-SIDE-EFFECT+BOUNDS五面+nested/record place+List ops族+tuple解构+复合语句族+HOF族+int-shim+三个具名反例；25条av检查全PASS，legacy VM检查34条带`#ignore`在`--check av`视图NOT_RUN不阻AV门）；suite只增canonical引用；legacy-map.tsv新增62行（33 mapped带审计normalization/29 research-hold具名owner：AVP-06×8、AVP-05×1、AVP-08×1、stdlib容器×19）+跨批关闭statement-surface 6行（mapped复合语句族）+21_conv 2行重定向；`fixed-tests.py`修复per-group `check`选择器经prepared清单丢失的infra缺陷（run-prepared丢`--check av`致全量套件对滤后期望判定）；故意红元控制：单oracle变异42→43使scratch套件FAIL=1/exit1（`plan-artifacts/plan-1082/meta-red*`）。
+- [x] **T-06** work：已完成 2026-11-20，冻结提交 `5278a3399`（树clean）。§6固定组并集实测（`plan-artifacts/plan-1082/logs/t06-frozen-union.json`）：`case-av-language-parity` PASS（67 av检查）、`ace-source` PASS（927）、`ace-lowering` PASS（9）、`ace-stdlib` PASS（2）、`ace-semantics` FAIL=**1项继承红**（`semantics-store::sema_boundary_case_files_executed_status_honest`：PLAN-1062文件`cache-roundtrip.document.case.ad`缺executed标记，base复测同红，证据`logs/base-sema-audit.txt`）、`ace-av` FAIL=**2项继承红**（host_console entry-policy两项，base复测同红，证据`logs/base-host-console.txt`）。继承红具名分账不判本包、不充PASS；本包触面0红。
+
+  **IF-AV-PARITY-COLLECTION 收据（T-06交付接口）**：
+  - 语言面：数组/List字面量任意rvalue位（auto面）、`List.new(e1..en)`受检varargs糖（零参具名拒）、复合赋值`+= -= *= /=`（裸名/字段链/索引链/mixed链，base/index/RHS源序恰一次）、place链写回（field×index、index×index，句柄写穿透）、负索引/OOB/空容器统一`av.trap.list-index`（SEM-02）。
+  - HOF方法面：`map/filter/reduce/find/any/all/pop` on List<int> → 冻结`stdlib/ace/asm/list.at`同源直调（`__std_list_` graft，字节稳定单测），非int元素具名拒`source.hof-elem-domain`。
+  - canonical语料：`crates/auto-lang/test/cases/language/collections/list-places.case.ad` + suite引用 + legacy-map 62行/跨批8行；AV视图固定组`case-av-language-parity`（67检查绿/34 NOT_RUN隔离）。
+  - 诊断面：`source.array-lit-empty`、`source.list-new-empty`、`source.place-elem-field`、`source.compound-elem-type`、`source.hof-elem-domain`、既有`source.iterate-mutate`/`source.move-required`边界保持。
+  - Rust语义pin：`experimental/ace/crates/av/tests/cases/plan1082_collections_places.rs`（18例绿：O-观察矩阵+§6+extra+negative）。
+
 - [ ] **T-03** work：见上表唯一任务合同。
 - [ ] **T-04** work：见上表唯一任务合同。
 - [ ] **T-05** work：见上表唯一任务合同。
 - [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-07** review：已完成 2026-11-20，final pass（见§9复审记录）。
+- [x] **T-08** merge：已完成 2026-11-20（delivery 6bda0f03b，见§9合并收据）。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-20 **work完成交接（T-01..T-06全绿）**：`stage: work | plan_id: PLAN-1082 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1082/auto-lang | branch: plan-1082-dev | base_commit: da458f671 | code_commit: 5278a3399（前序 eb7d7796c T-02、2da4e761b T-03/T-04）| dependency_revisions: PLAN-1078/1079/1080/1081 archived | task_ids: T-01..T-06 | evidence: §6固定组并集 t06-frozen-union.json（corpus 67av绿/34隔离；ace-source 927绿；ace-lowering 9绿；ace-stdlib 2绿；继承红3项具名分账：host_console×2 + sema-boundary-audit×1，base复测同红）；18例Rust语义pin绿；故意红元控制绿 | blockers: 无 | next: review (T-07)`
+  Work-owned AC结果：AC-01 pass（§6四件42/42/42/42 + 全oracle）、AC-02 pass（具名反例+SEM-02 trap分账）、AC-03 pass（PLACE-SIDE-EFFECT/BOUNDS真实断言非exit0推断）、AC-04 pass（62行映射33mapped/29hold守恒）、AC-05 pass（共忍受检前门+AV dispatch，无case特判/第二parser）、AC-06 pass（固定组并集+计时记录；继承红具名非本包）、AC-AV-ONLY pass（非AV #ignore NOT_RUN零dispatch不阻AV，#ignore不充PASS）、AC-FC pass（唯一作者+迁移表+suite引用+故意红）。开放项：无未决in-contract发现。
+
+- 2026-11-20 **T-08合并收尾**（`stage: merge | plan_id: PLAN-1082 | plan_revision: r3 | outcome: pass`）：
+  - `prepared`：reviewed 5278a3399 + docs-only Spec 沉淀（SD-01 `docs/specs/auto-av/language-parity.md`、SD-02 `m2-aggregates.md`、SD-03 `m2-stdlib-core.md`、SD-FC `auto-test-case/feature-organized-corpus.md`，+43 行）= 87346a093。
+  - `landed`：master 因并行会话 PLAN-1107 前移（1afa94897）→ rebase 零冲突，`git range-diff` 四提交全 `=`（等价证明）；旧→新映射 eb7d7796c→8c1045197、2da4e761b→396ad6038、5278a3399→091ea923c、87346a093→**6bda0f03b（delivery commit）**；rebase 后语料组在 6bda0f03b 重验 PASS（`t08-rebased-corpus.json`）；main `git merge --ff-only plan-1082-dev` ✓ tip==delivery，无 merge commit。
+  - `canonical_verified`：四 Spec 路径随 delivery 落 main（docs-only 后代，实现/依赖未变）；KNOWN-DEBT D-962-C1 具名关闭（残留裸 `hold` 拼写改记 C1a，owner 不变）。
+  - 继承红分账（非本包触面，base 复测同红证据 `logs/base-host-console.txt`、`logs/base-sema-audit.txt`）：host_console entry-policy ×2（owner：host-console 面）、sema_boundary_case_files_executed_status_honest ×1（PLAN-1062 文件缺 executed 标记，owner：1062 收尾）。
+  - `archived`/`cleaned`：见下（本收据随归档提交落主）。
+
+- 2026-11-20 **T-07最终复审（final）**：`stage: review | review_scope: final | reviewer_identity: 同会话独立上下文（限制已声明：结论自工件重建——冻结提交5278a3399上独立重跑pin17例+graft稳定1例、TSV守恒独立脚本核对62/62、语料组复用t06-frozen-union（同冻结基线）、diff特殊化扫描零命中） | plan_id: PLAN-1082 | plan_revision: r3 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1082/auto-lang | branch: plan-1082-dev | reviewed_commit: 5278a3399 | base_commit: da458f671 | dependency_revisions: PLAN-1078/1079/1080/1081 archived | spec_inputs: docs/specs/auto-av/language-parity.md, ace-migration/m2-aggregates.md, m2-stdlib-core.md, auto-test-case/feature-organized-corpus.md（SD-01..04+SD-FC提案审读有效，落盘归merge）| acceptance_results: AC-01 pass、AC-02 pass、AC-03 pass、AC-04 pass、AC-05 pass、AC-06 pass、AC-AV-ONLY pass、AC-FC pass（AC-07本记录、AC-08 merge-owned）| pending_closeout_gates: merge落主后冻结并集重验（同一基线t06证据可复用）；KNOWN-DEBT D-962-C1读面已交的具名更新；1081名下09_functions.010/013 stdlib-HOF行可由其owner按本包HOF面关闭（观察项非义务）| findings: F-R1过程事故已闭环（共享stash栈误pop旧PLAN-1066条目入本树→UU冲突，树已恢复clean、原stash条目完好零丢失；教训：stash栈全仓共享，clean树不得盲pop）；F-R2文档微瑕（收据24→25 Case已改正）；3项继承红具名分账（host_console×2、sema-boundary-audit×1，base复测同红证据在案，非本包触面）| evidence: 本记录内嵌命令/结果；logs/t06-frozen-union.json（67av绿/34隔离；ace-source 927绿；lowering 9；stdlib 2；继承红3具名）；新用例计时：语料av最慢834ms（25例均值~800ms）全≤10s；Rust pin 17例0.24s；无新增未处理告警 | next: merge (T-08)`
+  AC→task→工件→证据映射：AC-01→T-02/03/05→§6四case(42)+pin→corpus run+pin重跑；AC-02→T-02/04→5具名反例+4 trap面→pin/corpus；AC-03→T-04→place-side-effect/bounds→pin+corpus真实断言；AC-04→T-01/05→legacy-map 62行(33mapped/29hold,15 canonical)→独立守恒脚本；AC-05→T-02/03→diff扫描零case-id特判、单一parser/graft按源内容→diff+graft单测；AC-06→T-06→t06-frozen-union计时在案；AC-AV-ONLY→T-03..06→34条#ignore NOT_RUN零dispatch→corpus run;AC-FC→T-01/02/05→唯一作者+suite只增+故意红FAIL=1→meta-red证据。
+
+- 2026-11-20 goal轮2：`stage: goal | plan_id: PLAN-1082 | plan_revision: r3 | round: 2 | from: work | to: review | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1082/auto-lang | commit: 5278a3399 | next: review`
+
+- 2026-11-20 goal授权：`/goal 完成计划1082`（auto-plan-goal全链授权：work→review→有限repair→merge；目标/验收/范围/预算不变）。worktree `D:/autostack/.wt/lang-1082/auto-lang`（branch `plan-1082-dev`，base `da458f671`）已建；材料scope `D:/autostack/plan-artifacts/plan-1082/` 已登记（`.retention/policy.json`）。主检出在途docs改动（00-intro/58-/ace-route-plan-map/1046/1107草案）属其它会话，不触不并。
+  `stage: goal | plan_id: PLAN-1082 | plan_revision: r3 | round: 1 | from: start | to: work | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1082/auto-lang | commit: da458f671 | next: work`
+
+- 2026-11-20 T-01冻结（work）：探针文件 `experimental/ace/crates/av/tests/cases/plan1082_collections_places.rs`（挂接conformance.rs），观察矩阵O1–O29真实跑通于普通AV链（`compile_language_source`→HIR→MIR verify→ABC admit→AV execute），关键观测：
+  - **已绿**：O1/O2数组字面量(let/var init)、O3裸索引读、O4裸索引写、O10–O13越界/负下标=统一`Trap ListIndex`（SEM-02现行冻结正确）、O15 `List<int>.new()`、O17 `arr[0].x`读、O25/O26 record List字段经`.push`/`.set`写穿透（句柄共享语义成立）、O27/O28 tuple字面量+解构。
+  - **缺口**：O5 `+=`复合赋值（text拒）、O6链式field+index place（text拒）、O7裸`List.new(varargs)`（bind `source.undefined`）、O8 HOF方法面（bind：现合法表仅new/push/insert/get/set/remove/len/clear）、O9空`[]`（text拒）、O14/O29 tuple `.N`位置读（text拒）、O16/O21/O22/O24 数组字面量仅init位（`source.array-lit-position`）、O18/O19/O20 place链写（text拒）、O23 record方法/`mut fn`/`self`（`source.unsupported`，非本包面）。
+
+  **T-01决策（本Plan内冻结）**：
+  - **D-1082-01**：裸`xs[i]`读写在auto面已绿（962 L-48 + 964 postfix所交）；本Plan r3文字"裸读仍是D-962-C1"过时——KNOWN-DEBT D-962-C1待merge时具名更新（读面已交，非`.get`独占）。
+  - **D-1082-02**：复合赋值语句`=扩展 op∈{+,-,*,/}`（与legacy 11_compound_ops族同集），place目标（裸名/字段链/索引链），base/index/RHS源序各恰一次；一并关闭1079遗留的6条statement-surface research-hold行（跨批行更正具名记录）。
+  - **D-1082-03**：新语句规则`place-assign-stmt`（[aggregates,auto,scheduler]）`ident (.f | [e])* (op)= e`，置于path-assign/index-assign之后仅承旧规则不匹配之形（混合链/多级索引/复合op）；`arr[0].x=v`走既有MIR `LIST_FIELD_SET`，`m[0][1]=v`走`ListSet`(base=ListGet链)，record字段链写穿透按O26句柄语义。closures面`cell[k]=v`旧规则字节不动。
+  - **D-1082-04**：数组字面量放宽到一般rvalue位：resolve语句级临时提升（同一ListNew+push脱糖，init位快速路径保留）；空`[]`维持具名拒`source.array-lit-empty`（不引入新推导机制；空表=显式`List<T>.new()`），legacy `[]`/零参`List.new()`规范化为`List<int>.new()`（oracle只观察len/空，不变）。
+  - **D-1082-05**：`List.new(e1..en)`受检兼容糖：elem VT取自e1（与数组字面量同同质校验/同push admission），按位脱糖ListNew+push；零参`List.new()`具名拒（elem不可推导，用`List<T>.new()`）；不新增任意用户varargs语法。
+  - **D-1082-06**：HOF方法面`xs.(map|filter|reduce|find|any|all)(...)`仅List<int>接收者，脱糖为对冻结`stdlib/ace/asm/list.at`同名pub fn的直接调用——按需把该冻结源（include_str身份）的函数编入同一模块函数表（mangled `__std_list_*`，仅在源码用到时 graft，零漂移）；同源同编译器=972真实公共实现，不写第二算法。非int元素/`for_each`（972集无此函数）具名拒/留owner。
+  - **D-1082-07**：tuple位置读`.N`不加语法（FIRST集机制风险、无§6消费者）；legacy 06_arrays.010规范化为解构读（oracle语义不变）。
+  - **D-1082-08**：record方法/`self`（15_nested_mutation.015）→ research-hold归records/方法owner（AVP-05线）；O23实证`source.unsupported`。
+  - **D-1082-09**：hashmap/hashset/StrBldr载体（13_collections.001–019、21_conv.003/004）与对象字面量深链（15_nested_mutation.001/003/006/007/008/011/012/013/014之对象部分）→ research-hold分别归stdlib容器owner与AVP-06动态对象面（L-20）；本包canonical面=typed record/index链。
+  - 负索引（06_arrays.002）：SEM-02批准差异分账——canonical按现行trap行为断言，legacy行记差异不冒绿。
+  `stage: work | plan_id: PLAN-1082 | plan_revision: r3 | outcome: in-progress(T-01 done) | worktree: D:/autostack/.wt/lang-1082/auto-lang | branch: plan-1082-dev | base: da458f671 | evidence: plan1082_collections_places.rs O1–O29观察矩阵（cargo test -p ace-av --test conformance plan1082_collections_places::t01 pass 1） | next: T-02`
 
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
