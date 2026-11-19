@@ -2982,6 +2982,70 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
     }
 }
 
+/// PLAN-980 P3 / PLAN-1072：对单个 view 条目表达式执行本地 style 字面量替换，
+/// 并统一对导入引用、未声明名引用及带参调用形执行 `source.age.style-call` fail-closed 检查。
+fn replace_style_in_entry_expr(
+    e: &mut crate::source::ast::Expr,
+    entry_key: &str,
+    lits: &std::collections::BTreeMap<String, String>,
+    imports: &std::collections::BTreeSet<String>,
+    reject_unknown: bool,
+) -> Result<(), crate::atom_text::Diagnostic> {
+    match &e.kind {
+        crate::source::ast::ExprKind::Var(id) => {
+            if let Some(lit) = lits.get(&id.name) {
+                e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
+            } else if imports.contains(&id.name) {
+                return Err(crate::atom_text::Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.style-call",
+                    format!(
+                        "style reference `{}` resolves to an imported style; \
+                         imported style references are a named pending surface in \
+                         this slice",
+                        id.name
+                    ),
+                    e.span,
+                ));
+            } else if reject_unknown && entry_key == "style" {
+                // PLAN-1072 刀A：组件面具名拒（fail-closed——
+                // 条目值惰性，但不留静默未解析 ident；限定
+                // `style` 键——其它键的裸 ident 值不属 style 面）。
+                return Err(crate::atom_text::Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.style-call",
+                    format!(
+                        "style reference `{}` does not resolve to a style declared \
+                         in this module; undeclared style references are a named \
+                         pending surface in this slice",
+                        id.name
+                    ),
+                    e.span,
+                ));
+            }
+        }
+        crate::source::ast::ExprKind::Call { callee, .. } => {
+            if lits.contains_key(&callee.name)
+                || imports.contains(&callee.name)
+                || (reject_unknown && entry_key == "style")
+            {
+                return Err(crate::atom_text::Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.style-call",
+                    format!(
+                        "style call `{}(…)` is a named pending surface in this \
+                         slice (parameterised style calls are not folded)",
+                        callee.name
+                    ),
+                    e.span,
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// PLAN-980 P3：把 view 条目里的本地 style 名替换为其字面量（投影期解析；
 /// 981 回签 (c)3——不引入 module-global 读，下游车道只见到普通字符串字面量）。
 /// 导入的 style 引用与带参调用 = `style-call` 具名拒（本刀不折叠）。
@@ -3006,72 +3070,33 @@ fn replace_style_in_items(
             ComponentViewItem::Element(el) => {
                 replace_style_in_items(&mut el.items, lits, imports, reject_unknown)?
             }
-            ComponentViewItem::Entry(en) => {
-                if let ComponentEntryValue::If {
+            ComponentViewItem::Entry(en) => match &mut en.value {
+                ComponentEntryValue::If {
                     then_value,
                     else_value,
                     ..
-                } = &mut en.value
-                {
-                    // PLAN-1072 刀B：条件样式两臂的字面量替换（与 Expr 值同
-                    // 规则——两臂均为值表达式）。
-                    for e in [then_value, else_value] {
-                        if let crate::source::ast::ExprKind::Var(id) = &e.kind {
-                            if let Some(lit) = lits.get(&id.name) {
-                                e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
-                            }
-                        }
-                    }
+                } => {
+                    // PLAN-1072 刀B / T-04：条件样式两臂与 Expr 值共享同一 fail-closed 检查。
+                    replace_style_in_entry_expr(
+                        then_value,
+                        &en.key,
+                        lits,
+                        imports,
+                        reject_unknown,
+                    )?;
+                    replace_style_in_entry_expr(
+                        else_value,
+                        &en.key,
+                        lits,
+                        imports,
+                        reject_unknown,
+                    )?;
                 }
-                if let ComponentEntryValue::Expr(e) = &mut en.value {
-                    match &e.kind {
-                        crate::source::ast::ExprKind::Var(id) => {
-                            if let Some(lit) = lits.get(&id.name) {
-                                e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
-                            } else if imports.contains(&id.name) {
-                                return Err(crate::atom_text::Diagnostic::new(
-                                    crate::atom_text::Stage::Text,
-                                    "source.age.style-call",
-                                    format!(
-                                        "style reference `{}` resolves to an imported style;                                          imported style references are a named pending surface in                                          this slice",
-                                        id.name
-                                    ),
-                                    e.span,
-                                ));
-                            } else if reject_unknown && en.key == "style" {
-                                // PLAN-1072 刀A：组件面具名拒（fail-closed——
-                                // 条目值惰性，但不留静默未解析 ident；限定
-                                // `style` 键——其它键的裸 ident 值不属 style 面）。
-                                return Err(crate::atom_text::Diagnostic::new(
-                                    crate::atom_text::Stage::Text,
-                                    "source.age.style-call",
-                                    format!(
-                                        "style reference `{}` does not resolve to a style declared \
-                                         in this module; undeclared style references are a named \
-                                         pending surface in this slice",
-                                        id.name
-                                    ),
-                                    e.span,
-                                ));
-                            }
-                        }
-                        crate::source::ast::ExprKind::Call { callee, .. } => {
-                            if lits.contains_key(&callee.name) || imports.contains(&callee.name) {
-                                return Err(crate::atom_text::Diagnostic::new(
-                                    crate::atom_text::Stage::Text,
-                                    "source.age.style-call",
-                                    format!(
-                                        "style call `{}(…)` is a named pending surface in this                                          slice (parameterised style calls are not folded)",
-                                        callee.name
-                                    ),
-                                    e.span,
-                                ));
-                            }
-                        }
-                        _ => {}
-                    }
+                ComponentEntryValue::Expr(e) => {
+                    replace_style_in_entry_expr(e, &en.key, lits, imports, reject_unknown)?;
                 }
-            }
+                ComponentEntryValue::Lambda { .. } => {}
+            },
             ComponentViewItem::Text(_) => {}
         }
     }

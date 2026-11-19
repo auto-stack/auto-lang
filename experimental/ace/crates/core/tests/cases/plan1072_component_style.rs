@@ -119,7 +119,7 @@ fn p1072_component_style_params_stay_package_face() {
 #[test]
 fn p1072_component_style_as_plain_identifier_stays_legal() {
     let src = "\nwidget App {\n    model {\n        var style int = 1\n    }\n    view {\n        col { text \"x\" {} }\n    }\n    on {\n        .Submit -> { .style += 1 }\n    }\n}\n";
-    let _ = compile(src);
+    compile(src).expect("`style` remains legal as a plain identifier");
 }
 
 /// ⑩刀A 第二刀（005 真语料）：`type: "password"` 条目键——`type` 是全局
@@ -445,4 +445,34 @@ fn p1072_expose_dot_prefixed_names_project_and_compile() {
         )
         .unwrap_or_else(|e| panic!("{label} compile failed: {e:?}"));
     }
+}
+
+/// ⑰T-04 负控：条件样式两臂含未声明标识符 `ghost` → `source.age.style-call` 具名拒。
+#[test]
+fn p1072_conditional_style_unknown_ident_is_named() {
+    let src = "\nwidget App {\n    model {\n        var dark bool = false\n        var n int = 0\n    }\n    view {\n        col { text \"x\" { style: if .dark { ghost } else { \"b\" } } }\n    }\n    on {\n        .Submit -> { .n += 1 }\n    }\n}\n";
+    let err = compile(src).expect_err("conditional style unknown ident must fail closed");
+    assert_eq!(err[0].code, "source.age.style-call", "{err:?}");
+}
+
+/// ⑱T-04 负控：条件样式两臂含跨模块导入样式名 `Auto` → `source.age.style-call` 具名拒。
+#[test]
+fn p1072_conditional_style_imported_ident_is_named() {
+    let src = "use themes.themes: Auto, Solarized\nwidget App {\n    model {\n        var dark bool = false\n        var n int = 0\n    }\n    view {\n        col { text \"x\" { style: if .dark { \"a\" } else { Auto } } }\n    }\n    on {\n        .Submit -> { .n += 1 }\n    }\n}\n";
+    let err = compile(src).expect_err("conditional style imported ident must fail closed");
+    assert_eq!(err[0].code, "source.age.style-call", "{err:?}");
+}
+
+/// ⑲T-04 负控：条件样式两臂含参数化或未声明调用形 → `source.age.style-call` 具名拒。
+#[test]
+fn p1072_conditional_style_call_form_is_named() {
+    let declared_call = "style card = \"p-2\"\nwidget App {\n    model {\n        var dark bool = false\n        var n int = 0\n    }\n    view {\n        col { text \"x\" { style: if .dark { card(k: \"v\") } else { \"b\" } } }\n    }\n    on {\n        .Submit -> { .n += 1 }\n    }\n}\n";
+    let err1 =
+        compile(declared_call).expect_err("conditional declared style call must fail closed");
+    assert_eq!(err1[0].code, "source.age.style-call", "{err1:?}");
+
+    let undeclared_call = "widget App {\n    model {\n        var dark bool = false\n        var n int = 0\n    }\n    view {\n        col { text \"x\" { style: if .dark { \"a\" } else { ghost_fn(1) } } }\n    }\n    on {\n        .Submit -> { .n += 1 }\n    }\n}\n";
+    let err2 =
+        compile(undeclared_call).expect_err("conditional undeclared style call must fail closed");
+    assert_eq!(err2[0].code, "source.age.style-call", "{err2:?}");
 }
