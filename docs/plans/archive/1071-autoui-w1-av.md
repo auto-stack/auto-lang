@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1071
-status: reviewed
+status: archived
 feature_name: AutoUI 示例与 Widgets 的 AV 接管
 author: [Codex]
 created_at: 2026-11-19
