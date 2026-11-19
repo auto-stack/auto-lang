@@ -111,9 +111,12 @@ fn main() int {
     expect_value("pop-via-remove", src, 302);
 }
 
-/// Empty-pop contract observation leg (V-DETAIL-02): remove on an empty
-/// list — current frozen behaviour printed; T-02 pins the old-contract
-/// form (Option/default/named reject) for the public wrapper.
+/// Empty-remove contract (PLAN-1098 T-05, O-01).
+///
+/// Independent oracle from `docs/specs/stdlib/design/ace-collections.md:17`:
+/// the bare `remove(len-1)` on an EMPTY list traps `list-index`; it is `pop`
+/// (the `?T` wrapper) that answers `None`. The old probe printed whichever
+/// branch happened and could never go red.
 #[test]
 fn p946_empty_remove_contract_observed() {
     let src = r#"
@@ -123,10 +126,28 @@ fn main() int {
     return p
 }
 "#;
-    match compile_and_execute(src, "main") {
-        Ok(out) => println!("empty-remove: executes value={}", out.value),
-        Err(e) => println!("empty-remove: rejected/trapped: {e}"),
-    }
+    let err = match compile_and_execute(src, "main") {
+        Ok(out) => panic!(
+            "empty `remove` must trap, never return a value (got value={})",
+            out.value
+        ),
+        Err(e) => e,
+    };
+    assert_eq!(
+        err, "trap: av.trap.list-index",
+        "empty remove contract (spec trap kind `list-index`, code `av.trap.list-index`)"
+    );
+
+    // Legal neighbour: the same call on a non-empty list is a value transfer.
+    let ok_src = r#"
+fn main() int {
+    var xs = List<int>.new()
+    xs.push(7)
+    var p = xs.remove(xs.len() - 1)
+    return p
+}
+"#;
+    expect_value("remove-nonempty", ok_src, 7);
 }
 
 /// Owned-Str elements: `List<Str>` push/get with `.len()` reads — the
@@ -290,11 +311,10 @@ fn main() int {
     // Pin the single-module borrow as the reference semantics; the
     // packages divergence is recorded in PLAN-946 §9.
     expect_value_aggregates("arg-borrow-single", src, 22);
-    // Same source with the packages capability carried: does the
-    // capability alone change the convention? (isolates caps vs program
-    // shape as the divergence source)
-    match ace_av::collections_864_support::compile_and_execute_aggregates(src, "main") {
-        Ok(out) => println!("caps-isolation not reachable via support fn: {}", out.value),
-        Err(e) => println!("caps-isolation: {e}"),
-    }
+    // PLAN-1098 T-05 (O-05): the old "caps-isolation" block called the very
+    // same `compile_and_execute_aggregates(src, "main")` a second time and only
+    // printed the result, so it could never fail and observed nothing new.
+    // Isolating a capability-only axis needs the raw assembly path (a
+    // different fixture than this support fn), so it is named out of this
+    // probe instead of being kept as decoration.
 }
