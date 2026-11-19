@@ -123,3 +123,18 @@ ext 与自有方法同名）、`source.argument`（缺位/超元数/中段缺席
 与四端真实验证均在本包完成并归档；**B（全产品替换）未交付**，保持 pending，不改 NA。
 B 开工前须核 M2A-08 正式收据（本文件落盘 + 963 归档）；由 985/A 消费并按 Design55
 §16 继续。
+
+
+## PLAN-1080 增量（2026-11-19，调用/管道/隐式签名）
+
+普通语言入口（`auto.source.language.av/v1`）新增调用绑定面事实（全部经
+`compile_language_source` 真实执行验定，冻结窄面不变；详见
+[auto-av/language-parity.md](../auto-av/language-parity.md) §6）：
+
+- record 方法（实例/静态/receiver `.field`）入普通面；MIR 单元名
+  `m.<Rec>.<name>`；963 声明位默认值边界保持（`n int = 42` 调用点填充）。
+- 无类型签名补全遍（调用点单态+体内推导）与原型 `fn f(..) R;` 落地；
+  诊断 `source.inference` / `source.unresolved` 冻结。
+- 管道三形 + 行首续行落地（紧结合边界为已批审计规范化）。
+- 可复现：`cargo t case-av-language-parity`；`cargo test -p ace-av
+  --test conformance plan1080_calls_binding`。

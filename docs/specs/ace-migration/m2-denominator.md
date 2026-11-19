@@ -369,3 +369,14 @@ paint/reader/todo），OS064/ASSEMBLY 以 gitlink 同 SHA 为准。**28 与 OS06
   [auto-test-case/document-cases.md](../auto-test-case/document-cases.md) 与
   [auto-test-case/feature-organized-corpus.md](../auto-test-case/feature-organized-corpus.md)。
   本台账仅登记事实，不提升任何冻结行状态。
+
+
+## PLAN-1080 分母记账（2026-11-19，调用/管道批）
+
+`crates/auto-lang/test/cases/language/migration/legacy-map.tsv` 新增 10 行
+mapped（09_functions 001-006/009/020/021 + 99_idiom2/m10_pipe），SHA16 逐份
+对账零漂移；canonical 作者 `language/calls/binding-pipeline.case.ad`，原
+oracle 全数复现（006 `double`→`twice` 具名审计改名——保留词冲突）。非 AV
+检查（ac-native/legacy-reference）保持 `#ignore`/NOT_RUN 与后续 owner，
+不充 PASS。compound-ops 6 行 owner 修正为 statement-surface 批（1079 原标
+注 "PLAN-1080" 与本包 r3 合同不符——分母不减，closure 条件不变）。

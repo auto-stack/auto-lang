@@ -105,7 +105,7 @@
 
 | 形态 | 实际观察 | owner | 关闭条件 |
 |---|---|---|---|
-| 复合赋值语句 `x += …` | `source.syntax`（`expected expression, found =`）；Auto 语句面只收 `=`，同一 checked 加法经 `x = x + 1` 已验 | PLAN-1080（调用与管道语句面） | 语句面接纳该形后按原 case oracle 重跑 |
+| 复合赋值语句 `x += …` | `source.syntax`（`expected expression, found =`）；Auto 语句面只收 `=`，同一 checked 加法经 `x = x + 1` 已验 | statement-surface 批（未排号；PLAN-1080 r3 合同不含 `+=` 语句面——1079 原标注修正） | 语句面接纳该形后按原 case oracle 重跑 |
 | `char.to(Str)`（char→owned Str 装箱） | CST 前门拒绝（回退到 legacy 解析器报 `fn is not part of this source profile`） | PLAN-975 后续批次 | 该形可编译后按 `len`/`len_bytes` 断言 |
 | 计算借用视图局部量 `let t = s.slice(1,3)` | `verify.local-type`（aggregates 面局部量只收 owned `Str`） | PLAN-1086 | 借用视图局部量准入后按 `slice` 原 oracle 重跑 |
 | `str` 形参收 owned `Str` 实参 | `source.type-mismatch`（`expected str, found Str`） | PLAN-1086 | 形参视图/自有转换准入后重跑 |
@@ -127,3 +127,69 @@
 
 复跑入口：`cargo t case-av-language-parity`（AV 视图，选中 8 行）与
 `cargo test -p ace-av --test conformance plan1079`（7 例类型化/位型 oracle）。
+
+## 6. AVP-02（PLAN-1080）交付：调用绑定、隐式签名与管道
+
+交付提交见归档 Plan 1080（reviewed 34d97223c）。全部能力经唯一普通入口
+`compile_language_source`（`auto.source.language.av/v1`）真实执行验定；
+冻结窄面（closures/numeric/aggregates/scheduler）描述符与拒绝逐字节不变。
+
+### 6.1 新支持（普通 Auto 面）
+
+- **record 方法**：实例方法（receiver=只读 view，体内 `.field` 直读）、
+  `static fn` 与 `Type.static(args)` 调用；MIR 单元名 `m.<Rec>.<name>`
+  （PLAN-881 数据路径同规则）。新描述符身份
+  `auto.hir.auto-language.draft/1/auto-language-draft`
+  （aggregates 词汇 + method 声明 + unit 表达式）。
+- **无类型签名补全**（parse→resolve 间补全遍）：省略形参/返回注解按
+  调用点单态定形（定点迭代，嵌套/前向调用可达）；尾表达式与 `return`
+  定返回；`fn main()` 无值尾 = Unit 入口（worker unit 通道）。
+- **原型声明** `fn f(..) R;`：与同签名实体合一；无实体具名拒。
+- **管道** `x |> .m(args)`、`x |> .f`、行首 `|>` 显式续行；投影层与点
+  后缀/调用同构脱糖（AST/HIR 零新节点；LHS 与每个实参恰求值一次）。
+- **紧结合边界（已批审计规范化）**：管道先作用于紧邻后缀链——
+  `t |> .get() - 1` = `(t |> .get()) - 1`；legacy 低结合 `(x + y) |> .m()`
+  须显式括号。`| >`（带空白）保持位或/比较分词；is or 臂不受表达式
+  postfix 面影响。
+
+### 6.2 诊断冻结（stage/code）
+
+| 形态 | stage | code |
+|---|---|---|
+| 缺实参/重复命名/未知命名/参数未绑定 | resolve | `source.argument`（963 家族原码） |
+| 推导冲突（调用点类型分歧）/无约束（无调用点）/体返回分歧 | resolve | `source.inference` |
+| 原型无实体 | resolve | `source.unresolved` |
+
+无静默默认类型；Inferred 到达 resolve = fail-closed 具名拒。
+
+### 6.3 本包 case → owner（真实运行，`language/calls/binding-pipeline.case.ad` 22 例）
+
+| case | oracle | 结果 |
+|---|---|---|
+| `av.parity.1080.pipe-method-and-field` | exit 42（方法管道/多行续行/字段管道） | PASS |
+| `av.parity.1080.named-binding` | exit 7（按名绑定） | PASS |
+| `av.parity.1080.untyped-old-form` | exit 26 | PASS |
+| `av.parity.1080.missing-call-argument` | resolve/`source.argument` | PASS |
+| `av.parity.1080.call-source-order` | exit 12 + stdout `2
+1
+`（源序求值×按名绑定双观察） | PASS |
+| `av.parity.1080.pipe-legacy-m10` | stdout `3
+18
+18
+`（m10 源逐字节）+ unit 通道 | PASS |
+| legacy 001-006/009/020/021 迁移 9 例 | 原 oracle（14/3/10/26/18/10/42/7/103） | PASS |
+| `pipe-neighbor-binop` / `pipe-neighbor-token-separation` | 603 / 3（紧结合与分词正例） | PASS |
+| `duplicate/unknown-named-arg`、`inference-conflict/unconstrained`、`prototype-no-body` | §6.2 诊断 | PASS |
+
+（006 `double`→`twice` 为唯一具名审计改名——保留词冲突，语义/oracle 不变。）
+
+### 6.4 AVP-02 承接的 L 行状态
+
+| L 行 | 状态 | 证据 |
+|---|---|---|
+| L-24（parser-only 子项单列） | **mapped** | 无类型签名以补全遍落地为真实执行（非 parser-only）；compound-ops `+=` 语句面维持 research-hold，owner 修正为 statement-surface 批（本包合同不含，legacy-map 具名） |
+| L-25（已批差异双账） | **mapped** | 紧结合边界 + `double` 保留词改名，双账于 §6.1/legacy-map |
+| L-47（管道差异双账） | **mapped** | m10 逐字节复跑 + PIPE-NEIGHBOR 正例；`x \|> f(x)` 自由函数注入未新增（路线裁定保持） |
+
+复跑入口：`cargo t case-av-language-parity`（30 例选中）与
+`cargo test -p ace-av --test conformance plan1080_calls_binding`（15 例）。

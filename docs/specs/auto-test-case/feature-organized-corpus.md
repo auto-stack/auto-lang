@@ -55,3 +55,14 @@
 - 门禁控制（真实执行）：oracle 变异（成功例 `exit: 41`）→ FAIL
   `exit[exit] mismatch: expected "41", actual "Some(42)"`；全部 AV 检查 `#ignore`
   的视图 → 组级 `NOT_APPLICABLE` 且单独运行 exit=1（零选中不绿）。
+
+
+## PLAN-1080 增量（2026-11-19，calls 家族）
+
+`language/calls/binding-pipeline.case.ad` 为 calls 家族唯一活跃作者
+（22 例：§6 正/负例 + 10 份旧 VM 迁移 + PIPE-NEIGHBOR/CALL-SOURCE-ORDER
+补充 ID）；`language.suite.ad` 增 canonical 引用。迁移判等以整份旧
+`.case.ad` 文件字节 SHA256 前 16 hex 对账（10/10 零漂移）；保留词冲突的
+`double`→`twice` 改名是唯一具名审计规范化（语义/oracle 不变）。旧
+`test/vm` 文件零改动（具名冻结历史）；legacy-map 本包行 owner=PLAN-1080。
+故意红元控制（oracle 三处变异各红、复原绿）实证语料判决器真实。
