@@ -183,3 +183,33 @@ CTE常规小修订使用8fn/3修订验证相同值、居民generation与未修�
   补了 `ace-a2x` 的工具声明（`tools = ["a2x"]`）与 Linux/WSL 腿的平台门（PLAN-1061 承接）。
 - 有效证据复用：driver 的 `source_state` 校验源码/工具/输入/配置身份；纯文档改动不使测量失效，
   负载窗口差异与数字一并记录。
+
+## 显式组边界与准备/执行握手（PLAN-1098 SD-01）
+
+固定组按用途分三层，`scripts/test-groups.toml` 是唯一登记处：
+
+- **日常常规组**（24 个）：`ace-source-syntax-927` … `ace-rust-lowering` 加上 `ace-toolchain`。
+  统一排除 `::performance::`，每组独立预算（见 [ace-regular-test-budget](ace-regular-test-budget.md)）。
+- **显式组**（`all = false`，不被 `cargo t` 默认、`all`、`ace` 三个选择隐含选中）：
+  `ace-toolchain`（真实 rustc/C/py 认证，见 [ace-toolchain-certification](ace-toolchain-certification.md)）、
+  `ace-host-suites`（宿主原始套件重放：`tests::language_conformance::` 与
+  `governance::{reuse_obligations_run_green_via_original_suites,v07_emit_not_run}`）、
+  `ace-perf`（正式性能）。显式组的墙钟另计，不摊入日常 120 秒。
+- **聚合组**：`ace-workspace`、`ace-facade`、`ace-adapters` 覆盖多包并集，墙钟单列。
+
+**准备/执行分离**（`scripts/fixed-tests.py`）：
+
+- `--prepare-only` 产出发现清单、nextest archive、工具与环境、`prepared.json`；
+  `--run-prepared <manifest>` 只执行，任何身份不一致即 `PREPARATION_REQUIRED`（退出码 2）。
+- 运行段**零 lazy build / 零下载 / 零 release 回落**：测试通过环境变量取得准备好的产物
+  （`AC_AV_CASE_WORKER`、`AC_A2X_HIR_WORKER`、`ACE_TEXT_RUNTIME_LIB`、`ACE_DATA_RUNTIME_LIB`、
+  `ACE_COLLECTIONS_RUNTIME_LIB`、`ACE_TRACE_RUNTIME_LIB`、`ACE_STORE_GC_BIN` 等），缺变量即具名准备错误。
+- **构件 pin**：工具产物复制到 `target/test-groups/prepared/<identity>/tools/<tool>/`，
+  收据、receipts 行与 env 全部绑定 pin；后续别的准备重建 `target/<profile>/<artifact>`
+  不会让既有收据变成"被篡改"。
+- **工具 profile**：17 个工具 = debug 11、release 3（`abi`、`a2x`、`store-gc`）、
+  `runtime-release` 2（text/data）、`runtime-dev` 1（trace）。MSVC 发现探针 deadline 30s
+  （并发 `cl` 探针下 10s 会误报 deadline）。
+- **feature 门控**：认证用例由 `test-toolchain` feature 逐测试门控；`ace-batch` 由
+  `test-case-batch` 门控；未开 feature 的组既编译不到也选不到这些身份。
+

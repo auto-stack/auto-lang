@@ -53,3 +53,24 @@ recommend / not-recommended / pending 建议、触发建议、成本参考与 ow
 默认包、旧别名、忽略条件、周期频率、注册、原 oracle/采样/压力规模均不因建议改变；用户批准后另行调整。
 
 PLAN-896整编以源码行为与真实消费者为依据：私有模块单测和公开API/生命周期/异常/oracle反例保留，跨后端路径不当重复。仅将已重复挂载的同一生产Rust模块折叠到其实际库注册；closures/dynamic夹具中的自定义公开API控制原样保留。正式30样本/收益/资源campaign在performance语义命名空间显式选择，原门限与样本保持。未知用途继续保留，不按probe/计划号/快慢删除。
+
+## ACE 47 行慢例的逐项处置与守恒（PLAN-1098 SD-05）
+
+历史 47 个 >10s 的 AV 原生项按"是否触外部链"分五类，每行一个去向，**不是按耗时改称性能**：
+
+| 类 | 数量 | 去向 |
+|---|---:|---|
+| C（真 rustc/C/py 跨端腿） | 19 | 显式 `ace-toolchain`（`test-toolchain` 门控） |
+| Q（正式基准 smoke） | 1 | `::performance::`（`ace-perf`） |
+| L（Linux 目标绑定） | 1 | 留日常（bind-only），原生 Linux 归 1061/1063 |
+| D（AV 内部语义/资源） | 19 | 留日常，原断言与条件逐字保留 |
+| R（身份/恢复/增量） | 7 | 留日常，原断言与条件逐字保留 |
+
+- **探针准入**：测试体不得"两分支都打印"；每例必须有独立 oracle（精确值、精确诊断阶段+码，
+  或明确的拒绝）。事实来源优先规范/算术，其次冻结诊断；无法定值的观测须具名 research 或退休，留原依据。
+- **守恒**：47 行冻结台账 `scripts/test-governance/ace-row-ledger.json`（`ace-row-ledger/1`，
+  class 分布 C19/D19/R7/Q1/L1）由 `RowLedgerConservation` 校验——缺行、重复身份、类别漂移、
+  未知类别、目的地组不存在，**各自变红**。
+- **宿主/console 运输**：比较层必须至少有一条**真实 worker 帧**同时携带 stdout/stderr/exit；
+  删任一运输轴或整个 capture 都必须被 parent admission 拒绝，不得只在伪造响应上证明比较器。
+

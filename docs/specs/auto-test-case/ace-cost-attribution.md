@@ -53,3 +53,17 @@ profile正式合同）；≤60秒是完整组成本目标不是本13项强杀门
 - 阶段边界单列：准备（tools）/发现/运行/父判定/复制清理分别记录；`--cold-run` 把冷构建与
   工具构建单列为 T_cold，不混入 T_warm。
 - 非本次执行的选择项（`#[ignore]`、平台排除）记为 reclaimed/裁定排除，不计入分母也不冒 PASS。
+
+## 会话模式：跨组差集与新增 item 门（PLAN-1098 SD-03）
+
+`--mode session` 在同一只读输入上判定多个模块，新增两件单组看不到的事：
+
+- **身份差集**：`--baseline <ace-session-baseline/1>` 给出 `added` / `removed` 原生身份；
+  `--baseline-out` 把本次身份写成下一次基线（可往返）。
+- **新增 item ≤10 秒**：只对 `added` 身份执行 `--new-item-cap-seconds`（默认 10s）；
+  老身份继续走组预算。无 `exec_time` 的新身份同样判违规。
+
+退出码沿用 `policy`/`regular` 语义：0 = GREEN、1 = OVER_BUDGET/新增例超时、2 = 不可验证
+（坏基线、缺终态、STALE 传播）。会话模式不建新 meter、不重跑、不改写产物；它复用
+`regular_module` 的暖预算、终态完整性、STALE 与 Case 控制覆盖判定。
+

@@ -35,3 +35,18 @@
 21 组全部 ≤120s：17 组 ≤60s，`ace-a2x` 75.8s 为唯一 60–120s 组；3 组因既有功能红为 FAIL
 （`ace-host` 101.6s、`ace-runtime` 13.4s、`ace-rust-lowering` 5.8s）。71 个 case 入口组全部 ≤60s。
 聚合 `cargo t ace` 的 `ace-workspace` 单趟 320.7s（起点 879.0s）。
+
+## 重冻：24 组与"新增 item ≤10 秒"（PLAN-1098 SD-02，2026-11-19）
+
+- **冻结集合**：24 个日常常规组（22 个模块组 + `ace-toolchain` + `ase-m0`）。`ace-host` 拆出
+  显式 `ace-host-suites`（原始套件重放）后不再是日常组的一部分；`ace-perf` 仍为显式专项。
+- **预算口径**：组 `T_warm` ≤120s 为验收上限、≤60s 为目标；**≤10 秒只约束新增 item**
+  （新出现身份必须 ≤10s），留日常的既有 item 不要求 ≤10s，但其逐行时间必须留档并接受组预算约束
+  （2026-11-19 用户裁决）。原判据"逐 item ≤10 秒"不再适用。
+- **判定补充**：新增 item 由 `ace_cost_report.py --mode session` 的 `--new-item-cap-seconds`
+  对 `added` 身份执行；旧身份继续走组预算。缺失观测（无 exec_time）同样计违规。
+- **冻结基线**（提交 `5f04e1d50`，`source_state 51eac69a…`）：24 组全部 ≤120s，其中 21 组 ≤60s，
+  最大 `ace-toolchain` 64.2s；显式组 `ace-host-suites` 43.2s、`ace-perf` 677.0s（<3600s 合同）；
+  聚合 `ace-workspace` 255.8s。真实编译组（`ace-native`/`ace-a2x`）在连续批次下受 CPU 争用污染时，
+  采用**单组空闲复跑**并同时记录两个数字。
+
