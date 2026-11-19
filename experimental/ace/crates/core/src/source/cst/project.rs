@@ -6115,6 +6115,10 @@ impl<'a> Engine<'a> {
                     }
                 }
                 crate::source::age_component::ComponentStmt::Let { .. } => {}
+                // PLAN-105 T-02：循环体里的赋值同样进平铺流（执行语义按 stmts）。
+                crate::source::age_component::ComponentStmt::For { body, .. } => {
+                    Self::flat_handler_assigns(body, out)
+                }
             }
         }
     }
@@ -7636,6 +7640,26 @@ impl<'a> Engine<'a> {
                     name: ident_of(&mut self.cx, name_leaf),
                     ann,
                     value: self.project_expr_sync(value_node),
+                    span: self.cx.span_of(inner),
+                })
+            }
+            "age-on-for" => {
+                let value_leaf = self.cx.field_child(inner, "value").expect("on for value");
+                let iter_node = self.cx.field_child(inner, "iter").expect("on for iter");
+                let iter = self.project_expr_sync(iter_node);
+                // for 体语句包装：age-on-branch-stmt（与 if 分支同一条面）。
+                let branch_kind = self.rule_kind_of("age-on-branch-stmt");
+                let body_nodes: Vec<u32> = self
+                    .cx
+                    .children(inner)
+                    .into_iter()
+                    .filter(|&c| Some(self.cx.tree.kind(c)) == branch_kind)
+                    .collect();
+                let body = self.project_on_stmts(&body_nodes);
+                Some(ComponentStmt::For {
+                    value: ident_of(&mut self.cx, value_leaf),
+                    iter,
+                    body,
                     span: self.cx.span_of(inner),
                 })
             }

@@ -651,11 +651,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 调用两臂（age-view-stmt 的原臂，`;` 语义随子规则）+ hook-local
         // `let`/`if`（与直接形 age-on-stmt 同两条规则）。投影进
         // handler.stmts（Let/If 全深度），执行/校验走共享 hook_stmts_lower。
-        age-on-widget-stmt(profiles: [age-component, age-package], expect: "a handler statement (`<field> = <expr>` / a channel call / hook-local `let` / `if-else`)") {
+        age-on-widget-stmt(profiles: [age-component, age-package], expect: "a handler statement (`<field> = <expr>` / a channel call / hook-local `let` / `if-else` / `for`)") {
             alt { age-view-assign-stmt() {} }
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
             alt { age-on-let() {} }
             alt { age-on-if() {} }
+            // PLAN-105 T-02（U03 真语料 012）：handler 级 `for`（`.Tick` 里
+            // `for c in .cities { … }`）——结构进 `ComponentStmt::For`，
+            // 语义（列表迭代）在铸语句处**具名**拒（不静默丢循环体）。
+            alt { age-on-for() {} }
             // F-R21-3 并集兜底臂：age-view-if-stmt（980 view 方言 if——分支内
             // 调用形/链式作者面）。PEG 序后置——仅 age-on-if 整体失败时命中
             //（如分支体含调用：age-on-branch-stmt 无调用臂→age-on-if 拒→
@@ -1097,11 +1101,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //（`mode = 1`）与 widget 形点前缀赋值（`.mode = 1`，006 真语料形）
         // 都接受，外加 hook-local let 与嵌套 if。分支归属哪种外层形式由作者
         // 决定，两拼写不互斥（同一体内混用也解析——字段语义同一条检查链）。
-        age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / hook-local `let` / nested `if`)") {
+        age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / hook-local `let` / nested `if` / `for`)") {
             alt { age-on-assign() {} }
             alt { age-view-assign-stmt() {} }
             alt { age-on-let() {} }
             alt { age-on-if() {} }
+            alt { age-on-for() {} }
+        }
+        // PLAN-105 T-02（U03 真语料 012）：handler 级 `for <value> in <expr> { … }`。
+        age-on-for(profiles: [age-component, age-package], expect: "a handler-level `for <value> in <expr> { … }` loop") {
+            for(field: "kw") {}
+            ident(field: "value") {}
+            in(field: "iter-kw") {}
+            pratt(of: "wide-ops", field: "iter") {}
+            lbrace(same-line: true) {}
+            list-nl { age-on-branch-stmt() {} }
+            rbrace() {}
         }
         // PLAN-981：`Life.Tick` 这类限定消息名的尾巴（仅 age-package 裁剪）。
         age-on-msg-tail(profiles: [age-package]) {

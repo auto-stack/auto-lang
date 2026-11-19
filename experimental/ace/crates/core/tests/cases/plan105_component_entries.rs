@@ -633,3 +633,52 @@ fn p105_handler_compound_assign() {
     assert!(binaries >= 2, "both compound assignments desugar to binary writes");
     assert!(compiles(src), "package face admits compound assignments on bound names");
 }
+
+/// 012 真语料形：**handler 级 `for`**（`.Tick` 里 `for c in .cities { … }`）——
+/// 结构进 `ComponentStmt::For`；列表迭代语义未接，包面以具名
+/// `component-unsupported` 拒（不静默丢循环体）。
+#[test]
+fn p105_handler_for_structure_and_named_reject() {
+    let src = "widget App {\n\
+        msg { T }\n\
+        model { var n int = 0\n var rows = [\"a\", \"b\"] }\n\
+        view { text \"x\" {} }\n\
+        on {\n\
+            .T -> {\n\
+                for r in .rows {\n\
+                    .n += 1\n\
+                }\n\
+            }\n\
+        }\n\
+    }\n";
+    let nodes = ace_core::source::age_component::project_component_candidates(src)
+        .expect("handler-level for projects");
+    let handler = &nodes[0].handlers[0];
+    let for_stmt = handler.stmts.iter().find_map(|s| match s {
+        ace_core::source::age_component::ComponentStmt::For { value, body, .. } => {
+            Some((value.name.clone(), body.len()))
+        }
+        _ => None,
+    });
+    assert_eq!(for_stmt, Some(("r".to_string(), 1)));
+    let caps = vec![PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    let err = compile_age_package_with_scenario(
+        &[PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: src.into(),
+            provider: None,
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .expect_err("list iteration is a named pending surface today");
+    assert!(
+        err.iter().any(|d| d.code == "source.age.component-unsupported"),
+        "named reject expected, got {err:?}"
+    );
+}

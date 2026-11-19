@@ -73,6 +73,15 @@ pub enum ComponentStmt {
         els: Option<Vec<ComponentStmt>>,
         span: Span,
     },
+    /// PLAN-105 T-02（U03 真语料 012）：handler 级 `for <value> in <expr> { … }`
+    /// ——结构先入候选；列表迭代语义在铸语句处**具名**拒（component-unsupported），
+    /// 不静默丢循环体。
+    For {
+        value: Ident,
+        iter: Expr,
+        body: Vec<ComponentStmt>,
+        span: Span,
+    },
 }
 
 /// PLAN-980 WEB #6p（调用表达式形）：**通道调用**语句行——callee ∈ widget
@@ -1930,6 +1939,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                             collect_assign_targets(e, out);
                         }
                     }
+                    ComponentStmt::For { body, .. } => collect_assign_targets(body, out),
                     ComponentStmt::Let { .. } => {}
                 }
             }
@@ -1951,6 +1961,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         }
                     }
                     ComponentStmt::Assign(_) => {}
+                    ComponentStmt::For { body, .. } => collect_local_names(body, out),
                 }
             }
         }
@@ -2040,6 +2051,12 @@ fn walk_stmt_exprs(
                 if let Some(ds) = f(value) {
                     return Err(ds);
                 }
+            }
+            ComponentStmt::For { iter, body, .. } => {
+                if let Some(ds) = f(iter) {
+                    return Err(ds);
+                }
+                walk_stmt_exprs(body, f)?;
             }
             ComponentStmt::If {
                 cond, then, els, ..
@@ -2375,6 +2392,15 @@ pub(crate) fn lambda_value_fn(
     ) -> Option<Result<(), Vec<Diagnostic>>> {
         for st in body {
             match st {
+                // PLAN-105 T-02：view inline lambda 的 `for` 结构已入候选，
+                // 语义未接——具名拒（不静默丢循环体）。
+                ComponentStmt::For { span, .. } => {
+                    return Some(Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        "view inline lambda `for` is not wired yet",
+                        *span,
+                    )]))
+                }
                 ComponentStmt::Assign(assign) => {
                     let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
                         return Some(Err(vec![text_diag(
@@ -2467,7 +2493,9 @@ pub(crate) fn lambda_value_fn(
         .first()
         .map(|s| match s {
             ComponentStmt::Assign(a) => a.span,
-            ComponentStmt::Let { span, .. } | ComponentStmt::If { span, .. } => *span,
+            ComponentStmt::Let { span, .. }
+            | ComponentStmt::If { span, .. }
+            | ComponentStmt::For { span, .. } => *span,
         })
         .unwrap_or(first_field.span);
     Some(Ok(Item::Fn(FnItem {
@@ -2562,6 +2590,15 @@ fn hook_stmts_lower(
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
     for st in body {
         match st {
+            // PLAN-105 T-02（U03 真语料 012）：handler 级 `for` 结构已入候选，
+            // 列表迭代语义未接——具名拒（不静默丢循环体）。
+            ComponentStmt::For { span, .. } => {
+                return Err(vec![text_diag(
+                    "source.age.component-unsupported",
+                    "handler-level `for` over view-data is not wired yet (list iteration is a named pending surface)",
+                    *span,
+                )])
+            }
             ComponentStmt::Assign(assign) => {
                 // PLAN-105 T-02（U03 真语料 012）：裸名先查执行路径绑定表
                 // （hook-local 遮蔽同拼写 model 字段——981 语义注记同款）；
