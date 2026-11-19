@@ -213,6 +213,7 @@ fn assert_certified(case: &Case, c: bool, request: &Value, response: &Value) {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_daily_seven_sources_both_targets() {
     let scratch = Scratch::new();
@@ -230,6 +231,7 @@ fn worker_ct_958_daily_seven_sources_both_targets() {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_rust_certifies_seven_independent_oracles() {
     let scratch = Scratch::new();
@@ -242,6 +244,7 @@ fn worker_ct_958_rust_certifies_seven_independent_oracles() {
 }
 
 #[cfg(windows)]
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_c_certifies_seven_independent_oracles() {
     let scratch = Scratch::new();
@@ -253,6 +256,7 @@ fn worker_ct_958_c_certifies_seven_independent_oracles() {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_capability_refusal_and_ordinary_source_compatibility() {
     let scratch = Scratch::new();
@@ -276,6 +280,7 @@ fn worker_ct_958_capability_refusal_and_ordinary_source_compatibility() {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_wrong_oracle_cannot_certify() {
     let scratch = Scratch::new();
@@ -299,6 +304,7 @@ fn worker_ct_958_wrong_oracle_cannot_certify() {
     assert_eq!(response["reference_observed"], "value:43");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_certification_capability_and_ordinary_source_control() {
     let scratch = Scratch::new();
@@ -326,6 +332,7 @@ fn worker_ct_958_certification_capability_and_ordinary_source_control() {
 }
 
 #[cfg(windows)]
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_958_c_rejects_wrong_oracle_and_reference() {
     let scratch = Scratch::new();
@@ -382,6 +389,7 @@ fn assert_refused_941(request: &Value, root: &Path) {
     );
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_941_missing_meta_capability_four_operations() {
     let scratch = Scratch::new();
@@ -398,6 +406,7 @@ fn worker_ct_941_missing_meta_capability_four_operations() {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_941_protected_names_four_operations() {
     let scratch = Scratch::new();
@@ -413,6 +422,7 @@ fn worker_ct_941_protected_names_four_operations() {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn worker_ct_941_ordinary_same_names_four_operations() {
     let scratch = Scratch::new();

@@ -442,6 +442,7 @@ fn main() int {{
     )
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v02_d01_d06_a2r_cross_end() {
     let tmp = scratch("d01_d06_a2r_disk");
@@ -481,6 +482,7 @@ fn v02_d01_d06_a2r_cross_end() {
     assert_eq!(sw, r#"{"exit_code":3,"stdout":"two words","stderr":""}"#);
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v02_d01_d06_a2py_cross_end() {
     let tmp = scratch("d01_d06_a2py_disk");

@@ -142,6 +142,7 @@ fn run_c_stdout(files: &[(String, String)], manifest: &str, dir: &Path) -> Strin
     String::from_utf8_lossy(&run.stdout).to_string()
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity() {
     let dir = fixture_dir("src");

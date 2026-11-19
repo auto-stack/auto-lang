@@ -94,33 +94,28 @@ fn sha256_hex(data: &[u8]) -> String {
 /// Path of the built runtime staticlib (builds it on demand, same as the
 /// harness) plus its contract sidecar path.
 fn lib_and_contract() -> (PathBuf, PathBuf) {
-    // Reuse the harness's cached build by invoking the same cargo command.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let lib = root.join("../../target/runtime-release/ac_text_runtime.lib");
-    if !lib.is_file() {
-        let mut cmd = std::process::Command::new("cargo");
-        cmd.args([
-            "build",
-            "-p",
-            "ace-text-runtime",
-            "--profile",
-            "runtime-release",
-            "--locked",
-        ])
-        .current_dir(&root);
-        cmd.env_remove("CARGO_TARGET_DIR")
-            .arg("--target-dir")
-            .arg(root.join("../../target"));
-        let output = auto_tool_execution::run_command_output(cmd).expect("cargo build shim");
-        {
-            use std::io::Write;
-            std::io::stdout().write_all(&output.stdout).unwrap();
-            std::io::stderr().write_all(&output.stderr).unwrap();
-        }
-        let st = output.status;
-        assert!(st.success(), "shim release build failed");
-    }
-    let contract = root.join("../../target/runtime-release/ac_text_runtime.lib.contract.json");
+    // PLAN-1098 T-02/T-10: the staticlib comes from the prepared `text-runtime`
+    // tool. No in-body cargo build and no write into the shared target tree —
+    // the sidecar is this test's own evidence, so it lives in a scratch dir
+    // beside the run.
+    let lib = match std::env::var_os("ACE_TEXT_RUNTIME_LIB") {
+        Some(path) => PathBuf::from(path),
+        None => panic!(
+            "ACE_TEXT_RUNTIME_LIB is not set: prepare the `text-runtime` tool \
+             (python scripts/fixed-tests.py <group> --prepare-only); the runtime is \
+             never built inside the test"
+        ),
+    };
+    assert!(
+        lib.is_file(),
+        "prepared runtime lib missing: {}",
+        lib.display()
+    );
+    let contract = std::env::temp_dir()
+        .join(format!("ace-text-runtime-contract-{}", std::process::id()))
+        .join("ac_text_runtime.lib.contract.json");
+    std::fs::create_dir_all(contract.parent().expect("contract scratch dir"))
+        .expect("contract scratch dir");
     (lib, contract)
 }
 

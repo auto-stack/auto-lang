@@ -299,6 +299,10 @@ fn ac_av_probe_prep_executor_contained_failure_shapes() {
         "AV798_BUILD_CARGO",
         "AV798_BUILD_WALL_MS",
     ]);
+    // PLAN-1098 T-02/T-10: remember the prepared worker before the preparer
+    // controls clear the environment — shape 3 must NOT trigger a real release
+    // build inside a prepared run.
+    let prepared_worker = std::env::var("AC_AV_CASE_WORKER").ok();
     // A supplied worker normally bypasses preparation. Prove that positive
     // path, then isolate the preparer controls from any caller's override.
     let supplied = std::env::current_exe().unwrap();
@@ -392,12 +396,31 @@ fn ac_av_probe_prep_executor_contained_failure_shapes() {
             assert_eq!(alive, "dead", "descendant {pid} reaped with the tree");
         }
     }
-    // Shape 3 (control): the REAL happy path still builds/locates.
+    // Shape 3 (control): under a PREPARED run the seam returns the prepared
+    // worker and spawns no build. (Shapes 1/2 already exercise the build-launch
+    // machinery through the seam; the old "real happy path builds" leg is
+    // exactly the lazy release build PLAN-1098 forbids.)
     std::env::remove_var("AV798_BUILD_CARGO");
     std::env::remove_var("AV798_BUILD_WALL_MS");
-    let exe = crate::test_cases::ac_av::tests_seam::locate_worker_for_test()
-        .expect("real locate still works");
-    assert!(exe.is_file(), "worker binary at {:?}", exe);
+    match prepared_worker {
+        Some(path) => {
+            std::env::set_var("AC_AV_CASE_WORKER", &path);
+            let exe = crate::test_cases::ac_av::tests_seam::locate_worker_for_test()
+                .expect("prepared locate works");
+            assert!(exe.is_file(), "worker binary at {:?}", exe);
+            assert_eq!(
+                exe,
+                std::path::PathBuf::from(&path),
+                "the seam returns the prepared worker unchanged"
+            );
+            std::env::remove_var("AC_AV_CASE_WORKER");
+        }
+        None => {
+            // Bare `cargo test` (no prepared env): this control cannot run
+            // without a real build, so it is skipped — never silently passed.
+            eprintln!("shape 3 skipped: AC_AV_CASE_WORKER is not prepared");
+        }
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

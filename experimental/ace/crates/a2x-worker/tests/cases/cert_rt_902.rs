@@ -155,6 +155,7 @@ fn rt_cert_draft(
 /// and the independent reference both really compile and run to the
 /// closed-form oracle; the strict rt certificate validates and serializes
 /// byte-stably.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_pass_leg_and_binding() {
     let compiled =
@@ -199,6 +200,7 @@ fn rt_certify_pass_leg_and_binding() {
 }
 
 /// V-09: a WRONG oracle rejects (both legs observe 23; the oracle says 43).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_wrong_oracle_rejected() {
     let compiled =
@@ -219,6 +221,7 @@ fn rt_certify_wrong_oracle_rejected() {
 
 /// V-09: a WRONG reference rejects (actual matches the oracle; the
 /// independent reference does not).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_wrong_reference_rejected() {
     let compiled =
@@ -239,6 +242,7 @@ fn rt_certify_wrong_reference_rejected() {
 
 /// V-09: a LATE FAILURE (correct observation, then a non-zero exit) is a
 /// controlled refusal — never a PASS.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_late_failure_not_pass() {
     let compiled =
@@ -263,6 +267,7 @@ fn rt_certify_late_failure_not_pass() {
 /// V-09/V-10: cross-channel impersonation and tampered cert shapes are
 /// REJECTED by strict validation — the scalar identities never validate a
 /// record-text certificate and vice versa.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_strict_validation_negatives() {
     let vv = "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\n";
@@ -300,41 +305,26 @@ fn rt_certify_strict_validation_negatives() {
 }
 
 /// V-10: the PROTOCOL-level certify legs through the REAL prebuilt worker
-/// (the same tool identity the registered case group spawns). Skipped
-/// with the maintenance pointer when the tool has not been prepared — the
-/// case group (`tools = ["a2x"]`) always runs it for real.
+/// (the same tool identity the registered case group spawns).
+///
+/// PLAN-1098 B-05: the worker comes from the explicit preparation
+/// (`AC_A2X_HIR_WORKER`); there is no directory walk and no profile-specific
+/// `target/release` fallback. A missing tool is a named infra failure.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn rt_certify_protocol_legs_via_prebuilt_worker() {
-    let worker = std::env::var("AC_A2X_HIR_WORKER")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| {
-            let mut dir: Option<PathBuf> = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
-            while let Some(d) = dir {
-                let exe = d
-                    .join("experimental/ace/target/release")
-                    .join(if cfg!(windows) {
-                        "a2x-worker.exe"
-                    } else {
-                        "a2x-worker"
-                    });
-                if exe.is_file() {
-                    return Some(exe);
-                }
-                dir = d.parent().map(|p| p.to_path_buf());
-            }
-            None
-        });
-    let Some(worker) = worker else {
-        eprintln!(
-            "SKIP: prebuilt a2x-worker not found — run the fixed group \
-             case-a2r-hir-record-text-902 (tools=[a2x]) or build: \
-             cargo build --release --manifest-path experimental/ace/Cargo.toml \
-             -p ace-a2x-worker --bin a2x-worker"
-        );
-        return;
+    let worker = match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     };
-
+    assert!(
+        worker.is_file(),
+        "prepared a2x worker missing at {}",
+        worker.display()
+    );
     let src_path = out_root().join("t03.at");
     write(&out_root(), "t03.at", T03);
     let ref_path = out_root().join("reference-T03.rs");

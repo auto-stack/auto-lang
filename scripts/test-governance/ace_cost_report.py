@@ -12,6 +12,11 @@ Two read-only modes:
   full warm wall clock, accepting ordinary tests that the formal policy does not
   cover. Exit 0 = all GREEN/WITHIN_BUDGET, 1 = OVER_BUDGET or functional FAIL,
   2 = missing/stale/ambiguous evidence (never green).
+* session (PLAN-1098 T-08): judges several ordinary modules together, keeps the
+  per-module warm budget/terminal/STALE rules above, and adds the session-only
+  observations - the added/removed native identity diff against `--baseline`
+  plus the admission rule that a NEW identity must finish within
+  `--new-item-cap-seconds` (default 10 s). No new meter is introduced.
 
 Never starts tests, builds, jobs or meters, and never rewrites run artifacts
 (reports go to a fresh --out path only). The only process it may spawn is `git`
@@ -757,18 +762,179 @@ def render_regular_markdown(records):
     return '\n'.join(lines) + '\n'
 
 
+SESSION_BASELINE_SCHEMA = 'ace-session-baseline/1'
+SESSION_REPORT_SCHEMA = 'ace-session-report/1'
+
+
+def session_identities(records):
+    """Native identity -> observed warm exec time (ms), from judged modules."""
+    identities = {}
+    for record in records:
+        for row in record.get('tests') or []:
+            identities[row['name']] = row.get('exec_time_ms')
+    return identities
+
+
+def write_session_baseline(records, path):
+    """Persist the current session's identities as the next session's baseline."""
+    Path(path).write_text(json.dumps({'schema': SESSION_BASELINE_SCHEMA,
+                                      'identities': session_identities(records)},
+                                     ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def load_session_baseline(path):
+    document = json.loads(Path(path).read_text(encoding='utf-8'))
+    if document.get('schema') != SESSION_BASELINE_SCHEMA:
+        raise ValueError('unsupported session baseline schema: %s' % document.get('schema'))
+    identities = document.get('identities')
+    if not isinstance(identities, dict):
+        raise ValueError('session baseline carries no identities map')
+    return identities
+
+
+def session_report(run_dirs, repo_root=None, budget_seconds=120.0, target_seconds=60.0,
+                   baseline=None, new_item_cap_seconds=10.0, case_oracles=None):
+    """Judge several ordinary modules together and diff them against a baseline.
+
+    Session scope adds only what one module cannot see:
+
+    * added/removed native identities versus the previous session, and
+    * the admission rule for NEW items: a newly appeared identity must finish
+      within `new_item_cap_seconds` (default 10 s); an old identity keeps the
+      group budget instead. Terminal events, the per-module warm budget and the
+      STALE identity check are reused from `regular_module`, never re-derived.
+    """
+    run_dirs = [Path(run_dir) for run_dir in run_dirs]
+    records = [regular_module(run_dir, repo_root=repo_root, budget_seconds=budget_seconds,
+                              target_seconds=target_seconds, case_oracles=case_oracles)
+               for run_dir in run_dirs]
+    current = session_identities(records)
+    added, removed, baseline_error = [], [], None
+    if baseline is not None:
+        try:
+            previous = load_session_baseline(baseline)
+        except (OSError, ValueError) as error:
+            baseline_error = 'unreadable session baseline: %s' % error
+            previous = {}
+        added = sorted(set(current) - set(previous))
+        removed = sorted(set(previous) - set(current))
+    violations = []
+    for name in added:
+        observed = current.get(name)
+        if observed is None:
+            violations.append({'identity': name, 'exec_time_ms': None,
+                               'reason': 'new identity has no observed exec time'})
+        elif observed > new_item_cap_seconds * 1000.0:
+            violations.append({'identity': name, 'exec_time_ms': observed,
+                               'reason': 'new identity exceeds %.0fs' % new_item_cap_seconds})
+    unverifiable = [record['module'] for record in records if record['status'] == 'UNVERIFIABLE']
+    over = [record['module'] for record in records
+            if record['status'] in ('OVER_BUDGET', 'FAIL')]
+    if baseline_error or unverifiable:
+        status = 'UNVERIFIABLE'
+    elif over or violations:
+        status = 'OVER_BUDGET'
+    else:
+        status = 'GREEN'
+    return {'schema': SESSION_REPORT_SCHEMA, 'mode': 'session', 'status': status,
+            'budget_seconds': budget_seconds, 'target_seconds': target_seconds,
+            'new_item_cap_seconds': new_item_cap_seconds,
+            'baseline': None if baseline is None else str(baseline),
+            'baseline_error': baseline_error,
+            'identities': len(current), 'modules': records,
+            'added': added, 'removed': removed, 'new_item_violations': violations,
+            'unverifiable_modules': unverifiable, 'over_budget_modules': over}
+
+
+def render_session_markdown(document):
+    lines = ['# ACE session cost report (read-only)', '',
+             'Status: **%s**' % document['status'], '',
+             '- modules: %d; identities: %d' % (len(document['modules']), document['identities']),
+             '- budget: target %ss / accept %ss; NEW item cap: %.0fs'
+             % (document['target_seconds'], document['budget_seconds'],
+                document['new_item_cap_seconds'])]
+    if document.get('baseline'):
+        lines.append('- baseline: `%s` (added=%d, removed=%d)'
+                     % (document['baseline'], len(document['added']), len(document['removed'])))
+    if document.get('baseline_error'):
+        lines.append('- baseline error: %s' % document['baseline_error'])
+    lines.append('')
+    lines.append('| module | status | T_warm (s) | target | budget | executed | stale |')
+    lines.append('|---|---|---:|---:|---:|---:|---|')
+    for record in document['modules']:
+        warm = record.get('warm_wall_seconds')
+        lines.append('| %s | %s | %s | %ss | %ss | %s | %s |' % (
+            record.get('module') or 'unknown', record['status'],
+            'UNOBSERVED' if warm is None else '%.3f' % warm,
+            record['target_seconds'], record['budget_seconds'],
+            (record.get('identity') or {}).get('executed'),
+            'yes' if record.get('stale') else 'no'))
+    if document.get('added'):
+        lines.append('')
+        lines.append('## Added identities (%d)' % len(document['added']))
+        for name in document['added']:
+            lines.append('- `%s`' % name)
+    if document.get('removed'):
+        lines.append('')
+        lines.append('## Removed identities (%d)' % len(document['removed']))
+        for name in document['removed']:
+            lines.append('- `%s`' % name)
+    if document.get('new_item_violations'):
+        lines.append('')
+        lines.append('## New-item cap violations (%d)' % len(document['new_item_violations']))
+        for row in document['new_item_violations']:
+            lines.append('- `%s` %s: %s' % (
+                row['identity'],
+                'UNOBSERVED' if row['exec_time_ms'] is None else '%.1fms' % row['exec_time_ms'],
+                row['reason']))
+    problems = [(record.get('module'), record.get('problems') or [],
+                 record.get('missing_evidence') or []) for record in document['modules']]
+    if any(module_problems for _, module_problems, _ in problems):
+        lines.append('')
+        lines.append('## Module problems')
+        for module, module_problems, _ in problems:
+            for item in module_problems:
+                lines.append('- `%s`: %s' % (module, item))
+    if any(missing for _, _, missing in problems):
+        lines.append('')
+        lines.append('## Missing / unverifiable evidence (exit 2)')
+        for module, _, missing in problems:
+            for item in missing:
+                lines.append('- `%s`: %s' % (module, item))
+    lines.append('')
+    lines.append('Boundary: session scope reuses the per-module warm budget, terminal-event '
+                 'integrity and STALE check; it adds only the identity diff and the new-item '
+                 'cap. No new meter, no re-run, no artifact rewrite.')
+    return '\n'.join(lines) + '\n'
+
+
+def session_exit_code(document):
+    if document['status'] == 'UNVERIFIABLE':
+        return REGULAR_EXIT_UNVERIFIABLE
+    if document['status'] == 'OVER_BUDGET':
+        return REGULAR_EXIT_OVER
+    return REGULAR_EXIT_OK
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run', action='append', required=True, type=Path,
                         help='a fixed-driver --out directory (results.json inside)')
-    parser.add_argument('--mode', choices=('policy', 'regular'), default='policy',
-                        help='policy = frozen 13-item attribution (default); regular = ordinary module budget')
+    parser.add_argument('--mode', choices=('policy', 'regular', 'session'), default='policy',
+                        help='policy = frozen 13-item attribution (default); regular = one ordinary '
+                             'module budget; session = several modules + identity diff/new-item cap')
     parser.add_argument('--budget-seconds', type=float, default=120.0,
                         help='regular mode acceptance upper bound (complete warm module invocation)')
     parser.add_argument('--target-seconds', type=float, default=60.0,
                         help='regular mode target (GREEN at or below it)')
     parser.add_argument('--cold-run', action='append', type=Path, default=[],
                         help='regular mode first cold preparation run (reported, never budgeted)')
+    parser.add_argument('--baseline', type=Path,
+                        help='session mode: previous session-baseline JSON for the added/removed diff')
+    parser.add_argument('--baseline-out', type=Path,
+                        help="session mode: write this session's identities as a fresh baseline")
+    parser.add_argument('--new-item-cap-seconds', type=float, default=10.0,
+                        help='session mode: an ADDED identity must finish within this cap')
     parser.add_argument('--policy', type=Path, default=POLICY_DEFAULT)
     parser.add_argument('--repo', type=Path, default=ROOT,
                         help='repo root used for staleness comparison')
@@ -781,9 +947,28 @@ def main(argv=None):
         parser.error('report output already exists; preserve previous reports: ' + str(args.out))
     if args.json_out and args.json_out.exists():
         parser.error('json report output already exists: ' + str(args.json_out))
+    if args.mode == 'session' and args.baseline_out and args.baseline_out.exists():
+        parser.error('baseline output already exists; keep the previous baseline: '
+                     + str(args.baseline_out))
+    if args.mode != 'session' and (args.baseline or args.baseline_out):
+        parser.error('--baseline/--baseline-out belong to --mode session')
     for run_dir in list(args.run) + list(args.cold_run):
         if not (run_dir / 'results.json').is_file():
             parser.error('not a fixed-driver run directory: ' + str(run_dir))
+    if args.mode == 'session':
+        document = session_report(args.run, repo_root=args.repo,
+                                  budget_seconds=args.budget_seconds,
+                                  target_seconds=args.target_seconds,
+                                  baseline=args.baseline,
+                                  new_item_cap_seconds=args.new_item_cap_seconds)
+        args.out.write_text(render_session_markdown(document), encoding='utf-8')
+        if args.json_out:
+            args.json_out.write_text(json.dumps(document, ensure_ascii=False, indent=2) + '\n',
+                                     encoding='utf-8')
+        if args.baseline_out:
+            write_session_baseline(document['modules'], args.baseline_out)
+        print(str(args.out))
+        return session_exit_code(document)
     if args.mode == 'regular':
         if args.cold_run and len(args.run) != 1:
             parser.error('--cold-run pairs one cold record with exactly one warm --run')

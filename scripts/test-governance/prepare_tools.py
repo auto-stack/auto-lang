@@ -15,6 +15,7 @@ rebuilds. The receipt lives in the tool's target dir (git-ignored), never in a
 source path.
 """
 import hashlib
+import shutil
 import json
 import os
 from pathlib import Path
@@ -82,6 +83,27 @@ def artifacts_match(document):
     return True
 
 
+def pin_artifacts(target, identity, name, paths):
+    """Copy build outputs into an identity-scoped directory.
+
+    PLAN-1098 T-02/T-10: a receipt that points at `target/<profile>/<artifact>`
+    is invalidated whenever another preparation rebuilds the same path (a
+    different feature set or profile overwrites it), which then looks like
+    "tampered" and forces a rebuild in the middle of a batch. The pin copy is
+    never rebuilt, so one identity keeps exactly one verified artifact set.
+    """
+    digest = identity if isinstance(identity, str) else json.dumps(identity, sort_keys=True)
+    key = hashlib.sha256(digest.encode()).hexdigest()[:16]
+    pin_dir = target / "test-groups" / "prepared" / key / "tools" / name
+    pin_dir.mkdir(parents=True, exist_ok=True)
+    pinned = []
+    for path in paths:
+        destination = pin_dir / path.name
+        shutil.copy2(path, destination)
+        pinned.append(destination)
+    return pinned
+
+
 def prepare(root, names, output, prepared, source_state=None):
     document=load(root/"scripts/test-governance/toolchains.json")
     if document.get("schema")!="test-module-tools/1":
@@ -128,12 +150,37 @@ def prepare(root, names, output, prepared, source_state=None):
                              "artifacts":reused["artifacts"]})
         else:
             if not all(p.is_file() for p in paths):raise ValueError("prepared tool artifact missing")
-            written = [{"path": str(p), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in paths]
+            pinned = pin_artifacts(target, identity, name, paths)
+            written = [{"path": str(p), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in pinned]
             write(receipt_path(target, name), {"schema": RECEIPT_SCHEMA, "tool": name,
                                                "identity": identity, "artifacts": written})
-        for path in paths:
+        # PLAN-1098 T-02: content-bound runtime builders cache by their own
+        # identity stamp and only avoid a rebuild after the builder itself ran
+        # once in this target tree. Warm them here so the run phase never
+        # compiles; the builder still validates any reused library.
+        warm = tool.get("warm")
+        if warm:
+            binary = target/tool["profile"]/(warm[0]+(".exe" if os.name=="nt" else ""))
+            if not binary.is_file():
+                raise ValueError(f"prepared warm binary missing: {binary}")
+            started_warm = time.monotonic()
+            output.mkdir(parents=True, exist_ok=True)
+            warm_log = output/(name+"-warm.log")
+            warm_env = dict(os.environ)
+            warm_env.pop('CARGO_TARGET_DIR', None)
+            warm_result = capture([str(binary), *[str(a) for a in warm[1:]]], cwd=cwd,
+                                  env=warm_env, timeout=1800, compiler_auxiliary_cleanup=True)
+            warm_log.write_bytes(warm_result.stdout + warm_result.stderr)
+            if warm_result.measurement is not None:
+                write(warm_log.with_suffix('.meter.json'), warm_result.measurement)
+            if warm_result.returncode:
+                raise ValueError(f"tool warm-up failed: {name}; {warm_log}")
+            receipts.append({"tool":name+"#warm","command":[str(binary), *[str(a) for a in warm[1:]]],
+                             "exit":0,"warm_seconds":time.monotonic()-started_warm,"log":str(warm_log)})
+        effective = ([Path(row["path"]) for row in reused["artifacts"]] if reused is not None else pinned)
+        for path in effective:
             receipts.append({"tool":name,"path":str(path),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
-        if tool.get("env"):env[tool["env"]]=str(paths[0])
+        if tool.get("env"):env[tool["env"]]=str(effective[0])
     return env,receipts
 
 

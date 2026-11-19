@@ -87,22 +87,23 @@ fn mir_admission_mutation_matrix_rejects_and_proves_change() {
 
 /// V-09 r2 counter-control 2/3: the MODULE table family has its own
 /// allocation guard (independent of the per-function guard).
-#[test]
-fn mir_admission_module_tables_over_budget_is_resource() {
+///
+/// PLAN-1098 F-01: build the module tables directly. `intern_const` is a
+/// linear scan of the whole table, so the old 70k-call loop was O(n^2) (30s+)
+/// while adding no oracle value; the resulting table content is identical.
+fn module_with_const_count(consts: i32) -> MirModule {
     let mut m = MirModule::new(OwnerScope {
         schema: ace_av_core::contract::MIR_SCHEMA.to_string(),
         module: "m".into(),
     });
-    // 70_000 consts blow the module-table family while no function exists.
-    for i in 0..70_000i32 {
-        m.intern_const(MirConst::I32(i));
-    }
+    m.consts.extend((0..consts).map(MirConst::I32));
     let ti = m.intern_type(MirType::I32);
     let sig = m.intern_type(MirType::Fn(FnSig {
         params: vec![],
         result: ti,
     }));
-    let c = m.intern_const(MirConst::I32(1));
+    m.consts.push(MirConst::I32(1));
+    let c = (m.consts.len() - 1) as u32;
     m.funcs.push(MirFunction {
         owner: m.owner.clone(),
         name: "d_main".into(),
@@ -122,7 +123,11 @@ fn mir_admission_module_tables_over_budget_is_resource() {
         env: None,
     });
     m.entry = 0;
-    let err = verify_mir(&m).unwrap_err();
+    m
+}
+
+fn assert_table_entries_resource(m: &MirModule) {
+    let err = verify_mir(m).unwrap_err();
     assert!(
         matches!(
             err,
@@ -133,6 +138,27 @@ fn mir_admission_module_tables_over_budget_is_resource() {
         ),
         "module table family guard: {err:?}"
     );
+}
+
+#[test]
+fn mir_admission_module_tables_over_budget_is_resource() {
+    // 70_000 consts blow the module-table family while no function exists.
+    assert_table_entries_resource(&module_with_const_count(70_000));
+}
+
+/// PLAN-1098 F-01 neighbour: the frozen 65_536 cap is EXACT. A module whose
+/// module-table total is exactly at the cap stays legal (types 2 + funcs 1 +
+/// consts), and adding a single further const turns it into the same named
+/// Resource(TableEntries) rejection — i.e. the gate is not "large input fails
+/// somewhere", it fails exactly one entry past the budget.
+#[test]
+fn mir_admission_module_tables_boundary_is_exact() {
+    use ace_av_core::contract::MAX_TABLE_ENTRIES;
+    // The helper contributes types(2) + funcs(1) + one extra I32(consts) on
+    // top of `count`, so `count = MAX - 4` totals exactly MAX entries.
+    let at_cap = MAX_TABLE_ENTRIES as i32 - 4;
+    verify_mir(&module_with_const_count(at_cap)).expect("a module exactly at the cap is legal");
+    assert_table_entries_resource(&module_with_const_count(at_cap + 1));
 }
 
 /// V-09 r2 counter-control 3/3: the COMBINATION upper bound. Every

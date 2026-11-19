@@ -364,45 +364,24 @@ fn store_gc_binary() -> PathBuf {
     static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
     CACHE
         .get_or_init(|| {
-            let mut dir: Option<&Path> = Some(Path::new(env!("AUTO_LANG_HOST_DIR")));
-            let manifest = loop {
-                let Some(d) = dir else {
-                    return Err("ac-artifact-probe not located above the crate".into());
-                };
-                let m = d
-                    .join("experimental/ace/crates/artifacts")
-                    .join("Cargo.toml");
-                if m.is_file() {
-                    break m;
-                }
-                dir = d.parent();
-            };
-            let mut owned_compiler = Command::new("cargo");
-            owned_compiler
-                .args(["build", "--release", "--manifest-path"])
-                .arg(&manifest)
-                .arg("--bin")
-                .arg("store-gc")
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped())
-                .env_remove("CARGO_TARGET_DIR")
-                .arg("--target-dir")
-                .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-            let status = auto_tool_execution::run_command_output(owned_compiler)
-                .map_err(|e| format!("spawn cargo for store-gc: {}", e))?;
-            if !status.status.success() {
-                return Err(format!(
-                    "store-gc build failed: {}",
-                    String::from_utf8_lossy(&status.stderr)
-                ));
+            // PLAN-1098 T-02/T-10: `store-gc` is an explicitly PREPARED tool
+            // (`store-gc` in toolchains.json exports ACE_STORE_GC_BIN). No
+            // in-body release build, no target/release path guess.
+            let path = std::env::var_os("ACE_STORE_GC_BIN").ok_or_else(|| {
+                "ACE_STORE_GC_BIN is not set: prepare the `store-gc` tool \
+                 (python scripts/fixed-tests.py <group> --prepare-only); the binary is \
+                 never built inside the test"
+                    .to_string()
+            })?;
+            let exe = PathBuf::from(path);
+            if exe.is_file() {
+                Ok(exe)
+            } else {
+                Err(format!(
+                    "ACE_STORE_GC_BIN points at a missing file: {}",
+                    exe.display()
+                ))
             }
-            let exe = manifest
-                .parent()
-                .unwrap()
-                .join("../../target/release/store-gc.exe");
-            exe.is_file()
-                .then_some(exe)
-                .ok_or_else(|| "store-gc.exe missing after build".to_string())
         })
         .clone()
         .unwrap_or_else(|e| panic!("store-gc binary: {e}"))

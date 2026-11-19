@@ -134,6 +134,7 @@ fn native_exit(product: &PackageProduct, dir: &Path) -> i32 {
 /// "可投影/绑定/发射/运行到完成"，"宏被绑定为同名前门调用"由 core
 /// `plan966_tests` 的 AST/引用断言承载（AC 原生 v1 面不支持模块全局，故不用全局
 /// 计数做可观测副作用）。
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn p966_ct_statements_and_macro_run_on_av_native_rust_c_py() {
     let dir = fixture_dir("src", MAIN);
@@ -261,6 +262,7 @@ const DECL: &str = "#is sys.current {
 }
 fn main() int { return plat() }";
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn p966_ct_generated_declarations_change_end_results() {
     let dir = fixture_dir("decl", DECL);

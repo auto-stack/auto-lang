@@ -1462,6 +1462,19 @@ fn text_runtime_support_lib() -> Result<std::path::PathBuf, String> {
     if let Some(p) = g.as_ref() {
         return Ok(p.clone());
     }
+    // PLAN-1098 T-10/AC-02: prefer the prepared tool artifact; the lazy build
+    // below is only the product fallback for an unprepared environment.
+    if let Some(path) = std::env::var_os("ACE_TEXT_RUNTIME_LIB") {
+        let lib = std::path::PathBuf::from(path);
+        if lib.is_file() {
+            *g = Some(lib.clone());
+            return Ok(lib);
+        }
+        return Err(format!(
+            "ACE_TEXT_RUNTIME_LIB points at a missing file: {}",
+            lib.display()
+        ));
+    }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if !root.join("crates/text-runtime/Cargo.toml").is_file() {
         return Err("text runtime workspace missing".into());

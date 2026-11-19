@@ -1383,6 +1383,30 @@ pub fn run_console_check(
     )
 }
 
+/// PLAN-1098 T-07 (H-02): run the PARENT-SIDE console transport admission on a
+/// raw worker observation frame (`console-observation.json` shape), so a host
+/// control can mutate a REAL worker response at the transport layer and prove
+/// the parent rejects it. The plain admission unit test only exercises
+/// fabricated steps; this seam is what lets the host test start from a real
+/// response carrying all three axes.
+pub fn console_admission_for_observation(observation: &serde_json::Value) -> Option<String> {
+    let field = |name: &str| observation.get(name).cloned().unwrap_or(serde_json::Value::Null);
+    let frame = serde_json::json!({
+        "op": "run",
+        "outcome": field("outcome"),
+        "value": field("value"),
+        "channel": field("channel"),
+        "trap": field("trap"),
+        "diag": field("diag"),
+        "console": field("console"),
+    });
+    let step: StepOut = match serde_json::from_value(frame) {
+        Ok(step) => step,
+        Err(error) => return Some(format!("console observation does not parse: {error}")),
+    };
+    console_admission(RecipeFamily::Console, &[step])
+}
+
 /// PLAN-820: the data-recipe entry — same executor/judgement contract,
 /// data-profile pipeline (record source front door in the worker).
 /// PLAN-820 F820-R6-01: the PARENT's frozen av.data-fixture/1 expectation
@@ -2455,7 +2479,7 @@ fn run_check_with_transport(
         if family == RecipeFamily::Console {
             if let Some(step) = ok.steps.first() {
                 // Preserve raw observations for resource/infra diagnostics too; no PASS is trusted.
-                std::fs::write(artifact_dir.join("console-observation.json"), serde_json::to_vec_pretty(&serde_json::json!({"outcome":step.outcome,"diag":step.diag,"console":step.console})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                std::fs::write(artifact_dir.join("console-observation.json"), serde_json::to_vec_pretty(&serde_json::json!({"outcome":step.outcome,"value":step.value,"channel":step.channel,"trap":step.trap,"diag":step.diag,"console":step.console})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             }
         }
         if let Some(error) = console_admission(family, &ok.steps) {

@@ -894,6 +894,20 @@ fn mn_t07_percentile(v: &[f64], p: f64) -> f64 {
 
 /// Raw admissibility (the T-07 counter-control): zero/NaN/missing
 /// windows never pass; write the scenario raw file.
+/// PLAN-1098 T-10/AC-02: prepared runs must never write evidence into the repo
+/// checkout. `MN_T07_REPORT_DIR` overrides; under the nextest runner the
+/// default moves to a scratch dir, while a bare developer `cargo test` keeps
+/// the historical in-tree path.
+fn mn_t07_report_dir() -> PathBuf {
+    match std::env::var_os("MN_T07_REPORT_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None if std::env::var_os("NEXTEST").is_some() => {
+            std::env::temp_dir().join("ace-mn-t07-reports")
+        }
+        None => PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join("../../docs/reports/plan818"),
+    }
+}
+
 fn mn_t07_finish_raw(scenario: &str, note: &str, walls: &[f64]) -> (f64, f64, f64) {
     assert!(!walls.is_empty(), "{scenario}: no samples (missing raw)");
     for (i, w) in walls.iter().enumerate() {
@@ -917,9 +931,7 @@ fn mn_t07_finish_raw(scenario: &str, note: &str, walls: &[f64]) -> (f64, f64, f6
         "max_ms": walls.iter().cloned().fold(0.0f64, f64::max),
         "windows_ms": walls,
     });
-    let path = PathBuf::from(env!("AUTO_LANG_HOST_DIR")).join(format!(
-        "../../docs/reports/plan818/turnaround-mn-{scenario}.json"
-    ));
+    let path = mn_t07_report_dir().join(format!("turnaround-mn-{scenario}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
     (p50, p95, p99)
@@ -1864,8 +1876,7 @@ mod performance {
             "p99_ms": mn_t07_percentile(&walls, 99.0),
             "windows_ms": walls,
         });
-        let path = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
-            .join("../../docs/reports/plan818/turnaround-mn-incremental-series.json");
+        let path = mn_t07_report_dir().join("turnaround-mn-incremental-series.json");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&root);

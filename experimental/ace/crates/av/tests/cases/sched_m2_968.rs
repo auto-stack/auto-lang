@@ -41,8 +41,14 @@ fn run_sched(src: &str) -> Result<(ExecOutcome, String), String> {
 }
 
 fn ok(src: &str, want_stdout: &str, want_exit: Option<i32>) {
-    match run_sched(src) {
-        Ok((ExecOutcome::Success { value, .. }, _)) => {
+    // PLAN-1098 F-02: one run judges BOTH the exit and the stdout. The old
+    // helper ran every program twice (first for exit, then for stdout), which
+    // doubled the cost of every scheduler case without a determinism oracle.
+    // The determinism role is kept as one explicit case below.
+    let (out, stdout) = run_sched(src)
+        .unwrap_or_else(|e| panic!("compile failed: {e} for source:\n{src}"));
+    match out {
+        ExecOutcome::Success { value, .. } => {
             let got = match value {
                 ace_av_core::contract::Value::I32(v) => v,
                 other => panic!("non-i32 exit {other:?}"),
@@ -51,13 +57,24 @@ fn ok(src: &str, want_stdout: &str, want_exit: Option<i32>) {
                 assert_eq!(got, w, "exit mismatch for source:\n{src}");
             }
         }
-        Ok((other, stdout)) => {
+        other => {
             panic!("expected success, got {other:?} (stdout {stdout:?}) for source:\n{src}")
         }
-        Err(e) => panic!("compile failed: {e} for source:\n{src}"),
     }
-    let (_, stdout) = run_sched(src).expect("second run deterministic");
     assert_eq!(stdout, want_stdout, "stdout mismatch for source:\n{src}");
+}
+
+/// PLAN-1098 F-02: the double-run determinism obligation of the old `ok`
+/// helper, kept as ONE named case instead of paying it on every scheduler
+/// example (replay must reproduce the exact outcome and stdout).
+#[test]
+fn sched_968_replay_is_deterministic() {
+    let src = "task B {\n    on {\n        n int -> {\n            print(n)\n        }\n    }\n}\nfn main() {\n    let h = Task.spawn(\"B\", 2)\n    h.send(1)\n    h.send(2)\n    print(\"done\")\n}\n";
+    let first = run_sched(src).expect("first scheduler run");
+    let second = run_sched(src).expect("second scheduler run");
+    assert_eq!(first.0, second.0, "replayed outcome differs");
+    assert_eq!(first.1, second.1, "replayed stdout differs");
+    assert_eq!(first.1, "done\n1\n2\n", "replay keeps the expected program");
 }
 
 fn rejected(src: &str, want_code: &str) {

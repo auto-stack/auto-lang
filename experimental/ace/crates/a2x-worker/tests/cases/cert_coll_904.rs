@@ -9,15 +9,17 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-const WORKER: &str = "../../target/release/a2x-worker.exe";
 
 fn worker_path() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(WORKER);
-    if p.exists() {
-        return p;
+    // PLAN-1098 B-05: the worker is an explicitly prepared tool; no
+    // profile-specific `target/release` search and no in-test rebuild.
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     }
-    // dev-tree fallback
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/release/a2x-worker.exe")
 }
 
 fn out_base() -> PathBuf {
@@ -91,6 +93,7 @@ const REF_L01: &str = r#"fn main() {
 }
 "#;
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn cert_coll_two_leg_pass_and_wrong_oracle_rejected() {
     // PASS: both legs equal the independent oracle (42)
@@ -120,6 +123,7 @@ fn cert_coll_two_leg_pass_and_wrong_oracle_rejected() {
     assert_eq!(r["verdict"], "REJECTED", "{r}");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn cert_coll_trap_case_named_identity() {
     // L06-shaped trap: the ONLY certified outcome is the named ListIndex
@@ -178,6 +182,7 @@ fn cert_coll_trap_case_named_identity() {
     assert_eq!(r["reference_observed"], "trap:ListIndex");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn cert_coll_mode_is_key_material() {
     // V-16: debug and release are DIFFERENT config identities — the
@@ -202,6 +207,7 @@ fn cert_coll_mode_is_key_material() {
     assert_ne!(cert_d, cert_r, "configs never share one certificate");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn cert_coll_schema_isolation() {
     // the collections certificate schema is strictly disjoint from the
@@ -375,6 +381,7 @@ fn count_polls(stderr: &str) -> usize {
 /// F35 / LOOP-03 (Rust leg): exactly one poll per real back edge — three
 /// continue-driven back edges, none for the `break` exit — and the poll is
 /// the charge/cancel point the budget and cancellation knobs observe.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn audit1036_loop_03_continue_backedge_polls() {
     // clean run: value + exactly 3 polls (pre-fix: 0)
@@ -471,6 +478,7 @@ fn owned_loop_src(shape: &str) -> String {
 /// F-R1-03 (Rust leg): a poll trap with an owned per-iteration local and an
 /// owned loop survivor releases every buffer exactly once — value path,
 /// cancel path and budget path each keep the ledger closed.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn audit1036_loop_03_owned_cleanup() {
     for shape in ["continue", "fallthrough"] {

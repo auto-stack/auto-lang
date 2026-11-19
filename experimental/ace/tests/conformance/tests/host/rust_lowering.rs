@@ -46,16 +46,8 @@ fn failing(report: &auto_test_case::report::RunReport) -> Vec<String> {
 #[test]
 fn a2r_hir_first_case_green() {
     let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    // the maintenance build is an observable pre-consumer op, never on the
-    // case timing path (plan §5.5): build the release worker now
-    let repo = PathBuf::from(env!("AUTO_LANG_HOST_DIR"))
-        .ancestors()
-        .nth(2)
-        .unwrap()
-        .to_path_buf();
-    if std::env::var_os("AC_A2X_HIR_WORKER").is_none() {
-        maintenance_build_worker(&repo);
-    }
+    // PLAN-1098 B-03: the worker is prepared by the explicit preparation
+    // step; this daily case builds nothing (a missing worker is named infra).
 
     let root = temp_root("base");
     let report = run_suite(
@@ -169,74 +161,29 @@ struct CertifyCase {
     oracle_trap: Option<&'static str>,
 }
 
-/// The observable maintenance build (plan §5.5: outside case timing). Under
-/// the parallel module runner several shards of this suite may build the
-/// worker CONCURRENTLY while yet another shard has the exe running: a
-/// relink can hit Windows' locked-file remove. Serialize cross-process via
-/// a temp lock file, pin a stable toolchain env, and retry the relink once.
-fn maintenance_build_worker(repo: &Path) {
-    let lock = std::env::temp_dir().join("a2x-892-worker-build.lock");
-    let mut guard = None;
-    for _ in 0..240 {
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock)
-        {
-            Ok(f) => {
-                guard = Some(f);
-                break;
-            }
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
+/// The a2x-hir worker is an explicitly prepared tool (PLAN-1098 B-03).
+///
+/// Preparation builds and pins it via `toolchains.json` (`a2x` →
+/// `AC_A2X_HIR_WORKER`); this suite never builds a release worker and never
+/// falls back to a profile-specific `target/release` path. A missing tool is a
+/// named infra failure, not a test-body compile.
+fn worker_exe(_repo: &Path) -> std::path::PathBuf {
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => {
+            let exe = PathBuf::from(value);
+            assert!(
+                exe.is_file(),
+                "prepared a2x-hir worker missing at {} (run: python scripts/fixed-tests.py ace-rust-lowering --prepare-only)",
+                exe.display()
+            );
+            exe
         }
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py ace-rust-lowering --prepare-only); \
+             no release fallback and no maintenance build"
+        ),
     }
-    let _guard = guard;
-    let manifest = repo.join("experimental/ace/Cargo.toml");
-    assert!(manifest.is_file(), "a2x workspace present");
-    let mut last_err = String::new();
-    for attempt in 0..2 {
-        let mut owned_compiler = std::process::Command::new(env!("CARGO"));
-        owned_compiler
-            .args([
-                "build",
-                "--release",
-                "-p",
-                "ace-a2x-worker",
-                "--bin",
-                "a2x-worker",
-                "--manifest-path",
-            ])
-            .arg(&manifest)
-            .env("RUSTC_WRAPPER", "")
-            .current_dir(repo)
-            .env_remove("CARGO_TARGET_DIR")
-            .arg("--target-dir")
-            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-        let build = auto_tool_execution::run_command_output(owned_compiler)
-            .expect("maintenance worker build spawns");
-        if build.status.success() {
-            let _ = std::fs::remove_file(&lock);
-            return;
-        }
-        last_err = String::from_utf8_lossy(&build.stderr).to_string();
-        std::thread::sleep(std::time::Duration::from_millis(500 * (attempt + 1)));
-    }
-    panic!("maintenance build failed (attempt {}): {}", 2, last_err);
-}
-
-fn worker_exe(repo: &Path) -> std::path::PathBuf {
-    let exe = std::env::var_os("AC_A2X_HIR_WORKER")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            repo.join("experimental/ace/target/release")
-                .join(if cfg!(windows) {
-                    "a2x-worker.exe"
-                } else {
-                    "a2x-worker"
-                })
-        });
-    assert!(exe.is_file(), "prebuilt worker at {}", exe.display());
-    exe
 }
 
 fn run_certify(
@@ -322,6 +269,7 @@ fn certify_family() -> Vec<CertifyCase> {
     ]
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2r_hir_certify_leg_all_cases_pass() {
     let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -362,6 +310,7 @@ fn a2r_hir_certify_leg_all_cases_pass() {
 
 /// V-09 shapes: a wrong oracle and a wrong independent reference are
 /// REJECTED certifications — never a PASS by force.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2r_hir_certify_negative_controls_reject() {
     let _guard = A2R_HIR_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());

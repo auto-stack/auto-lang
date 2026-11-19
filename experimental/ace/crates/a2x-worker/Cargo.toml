@@ -6,6 +6,12 @@ edition = "2021"
 description = "PLAN-892 T-02 private true-chain probe: source -> Checked HIR -> view -> Rust -> real rustc -> run -> oracle"
 publish = false
 
+[features]
+default = []
+# PLAN-1098 T-06: explicit toolchain-certification cases (real cl/rustc legs);
+# absent from every ordinary/daily selection.
+test-toolchain = []
+
 [dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # PLAN-1034: pyrun 解释器内容 hash 流式计算（不整缓存 binary）。

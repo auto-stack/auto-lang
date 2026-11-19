@@ -21,6 +21,18 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 fn trace_support_lib() -> std::path::PathBuf {
+    // PLAN-1098 B-01: prepared artifact first (missing = named infra failure,
+    // never an in-test compile); the legacy build path stays only for direct
+    // `cargo test` without the prepared environment.
+    if let Some(value) = std::env::var_os("ACE_TRACE_RUNTIME_LIB") {
+        let prepared = std::path::PathBuf::from(value);
+        assert!(
+            prepared.is_file(),
+            "prepared trace support lib missing at {} (run: python scripts/fixed-tests.py <group> --prepare-only)",
+            prepared.display()
+        );
+        return prepared;
+    }
     let support = repo_root().join("experimental/ace/crates/trace-runtime");
     let lib = support.join("../../target/runtime-dev/ace_trace_runtime.lib");
     if !lib.is_file() {

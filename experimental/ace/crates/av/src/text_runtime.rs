@@ -17,6 +17,20 @@ pub fn text_runtime_lib() -> Result<PathBuf, String> {
     if let Some(p) = g.as_ref() {
         return Ok(p.clone());
     }
+    // PLAN-1098 T-10/AC-02: a PREPARED run exports the tool artifact and never
+    // builds. The lazy build stays only for product flows that genuinely need
+    // to materialize the repo's own runtime (no prepared environment).
+    if let Some(path) = std::env::var_os("ACE_TEXT_RUNTIME_LIB") {
+        let lib = PathBuf::from(path);
+        if lib.is_file() {
+            *g = Some(lib.clone());
+            return Ok(lib);
+        }
+        return Err(format!(
+            "ACE_TEXT_RUNTIME_LIB points at a missing file: {}",
+            lib.display()
+        ));
+    }
     let root = probe_workspace_root()?;
     // probe root = <repo>/experimental/ace -> sibling ac-core.
     let rt = root.join("crates/text-runtime");

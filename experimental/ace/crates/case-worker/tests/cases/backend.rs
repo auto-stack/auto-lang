@@ -204,23 +204,24 @@ fn hir_atom_input_builds_and_runs_through_mn() {
 fn trace_support_library_travels_to_the_mn_link() {
     let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::remove_var(VAR);
-    // The landed trace-marks support library (built on first use).
-    let support = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../trace-runtime")
-        .canonicalize()
-        .expect("test-support dir");
-    let lib = support.join("../../target/runtime-dev/ace_trace_runtime.lib");
-    if !lib.is_file() {
-        let mut owned_compiler = std::process::Command::new("cargo");
-        owned_compiler
-            .args(["build", "--locked", "--profile", "runtime-dev"])
-            .current_dir(&support)
-            .env_remove("CARGO_TARGET_DIR")
-            .arg("--target-dir")
-            .arg(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-        let st = compiler_status(owned_compiler).expect("spawn cargo for test-support");
-        assert!(st.success(), "test-support build failed");
-    }
+    // PLAN-1098 B-02: the trace support library is an explicitly prepared
+    // artifact. Missing/tampered = named infra failure; never a compile here.
+    let lib = match std::env::var_os("ACE_TRACE_RUNTIME_LIB") {
+        Some(value) => {
+            let prepared = PathBuf::from(value);
+            assert!(
+                prepared.is_file(),
+                "prepared trace support lib missing at {} (run: python scripts/fixed-tests.py <group> --prepare-only)",
+                prepared.display()
+            );
+            prepared
+        }
+        None => panic!(
+            "ACE_TRACE_RUNTIME_LIB is not set: prepare the `trace-runtime` tool \
+             (python scripts/fixed-tests.py <group> --prepare-only); the support lib is \
+             never built inside the test"
+        ),
+    };
     let src = "fn pair(a int, b int) int { return a * 10 + b }\n\
                fn main() int { return pair(b: mark_b(), a: mark_a()) }";
     let mut r = req("run", "core", src, None);
@@ -240,10 +241,3 @@ fn trace_support_library_travels_to_the_mn_link() {
     assert_eq!(String::from_utf8_lossy(&stderr), "ba");
 }
 
-fn compiler_status(command: std::process::Command) -> std::io::Result<std::process::ExitStatus> {
-    use std::io::Write;
-    let output = auto_tool_execution::run_command_output(command)?;
-    std::io::stdout().write_all(&output.stdout)?;
-    std::io::stderr().write_all(&output.stderr)?;
-    Ok(output.status)
-}

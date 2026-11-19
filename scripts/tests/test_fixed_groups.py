@@ -1,5 +1,6 @@
 """Controls for fixed native scope, truthful results, and owned cache cleanup."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -1112,6 +1113,300 @@ class ActiveDocumentCaseEntries(unittest.TestCase):
         missing = self.scan.scan(self.mirror('missing', document, 'absent.case.ad'))
         self.assertEqual(missing['offenders'], [])
         self.assertEqual([row['reason'] for row in missing['missing']], ['include missing'])
+
+
+class PreparedRunGate(unittest.TestCase):
+    """PLAN-1098 T-02: ordinary ACE entries consume only a verified preparation."""
+
+    PAYLOAD = b'prepared-archive-placeholder'
+
+    def _manifest(self, temp, **overrides):
+        from prepare_tools import toolchain_marker
+        archive = Path(temp) / 'archive-0.tar.zst'
+        archive.write_bytes(self.PAYLOAD)
+        manifest = {
+            'schema': fixed.PREPARED_SCHEMA,
+            'driver': 'scripts/fixed-tests.py',
+            'config_sha256': fixed.configuration()[0]['_sha256'],
+            'source_state': fixed.checkout_state(),
+            'toolchain': toolchain_marker(),
+            'invocations': [{
+                'index': 0, 'groups': ['ace-lowering'], 'runner': 'nextest',
+                'workspace': 'experimental/ace', 'domain': 'ace',
+                'expression': 'all()', 'expressions': ['all()'],
+                'tools': [], 'tool_env': {}, 'receipts': [],
+                'archive': {'path': str(archive),
+                            'sha256': hashlib.sha256(self.PAYLOAD).hexdigest(),
+                            'bytes': len(self.PAYLOAD)},
+            }],
+        }
+        manifest.update(overrides)
+        return manifest
+
+    def test_verified_manifest_passes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixed.verify_prepared(self._manifest(temp))
+
+    def test_config_source_and_toolchain_drift_are_named_failures(self):
+        from prepare_tools import toolchain_marker
+        with tempfile.TemporaryDirectory() as temp:
+            for overrides in ({'config_sha256': '0' * 64},
+                              {'source_state': '0' * 64},
+                              {'toolchain': 'not-' + toolchain_marker()}):
+                with self.subTest(overrides=list(overrides)):
+                    manifest = self._manifest(temp, **overrides)
+                    with self.assertRaises(ValueError) as caught:
+                        fixed.verify_prepared(manifest)
+                    self.assertIn('PREPARATION_REQUIRED', str(caught.exception))
+
+    def test_archive_tamper_and_missing_are_named_failures(self):
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = self._manifest(temp)
+            row = manifest['invocations'][0]['archive']
+            Path(row['path']).write_bytes(b'tampered')
+            with self.assertRaises(ValueError) as caught:
+                fixed.verify_prepared(manifest)
+            self.assertIn('archive changed since preparation', str(caught.exception))
+            Path(row['path']).unlink()
+            with self.assertRaises(ValueError) as caught:
+                fixed.verify_prepared(manifest)
+            self.assertIn('archive missing', str(caught.exception))
+
+    def test_find_matching_manifest_skips_invalid_and_requires_full_cover(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            stale = home / 'stale'; stale.mkdir()
+            (stale / 'prepared.json').write_text(
+                json.dumps(self._manifest(temp, config_sha256='0' * 64)), encoding='utf-8')
+            good = home / 'good'; good.mkdir()
+            (good / 'prepared.json').write_text(json.dumps(self._manifest(temp)), encoding='utf-8')
+            with mock.patch.object(fixed, 'PREPARED_ROOT', home):
+                self.assertEqual(fixed.find_matching_manifest(['ace-lowering']),
+                                 good / 'prepared.json')
+                self.assertIsNone(fixed.find_matching_manifest(['ace-lowering', 'ace-source']))
+
+    def test_ordinary_ace_entry_requires_preparation_before_any_run(self):
+        with mock.patch.object(fixed, 'find_matching_manifest', return_value=None), \
+                mock.patch.object(fixed, 'execute_plan') as execute:
+            with self.assertRaises(ValueError) as caught:
+                fixed.main(['ace-lowering'])
+            self.assertIn('PREPARATION_REQUIRED', str(caught.exception))
+            self.assertIn('--prepare-only', str(caught.exception))
+            execute.assert_not_called()
+
+class PerformanceSelection(unittest.TestCase):
+    """PLAN-1098 T-03: formal timing cases are selected by ace-perf only."""
+
+    def test_syntax_perf_cases_live_under_the_performance_module(self):
+        source = (ROOT / 'experimental/ace/crates/syntax-core/tests/cases/perf.rs').read_text(encoding='utf-8')
+        self.assertIn('mod performance {', source)
+        self.assertNotIn('mod perf {', source)
+
+    def test_six_scenario_bench_smoke_stays_under_performance(self):
+        # PLAN-1098 T-06 (Q row): the bench smoke is one multi-axis run with the
+        # original 3 samples; it lives under performance:: so the daily group
+        # never pays its wall time.
+        source = (ROOT / 'experimental/ace/crates/av/tests/cases/resources_tier.rs').read_text(encoding='utf-8')
+        module = source.find('mod performance {')
+        case = source.find('fn av_turnaround_six_scenarios_smoke(')
+        self.assertGreater(module, 0)
+        self.assertGreater(case, module, 'the bench smoke must sit inside mod performance')
+
+    def test_ace_perf_is_the_only_positive_performance_selector(self):
+        value, groups = fixed.configuration()
+        positive = [g['name'] for g in groups.values()
+                    if g['expression'].strip() == 'test(/(^|::)performance::/)']
+        self.assertEqual(positive, ['ace-perf'])
+        for group in groups.values():
+            # Root-workspace ACE groups (ace-facade/ace-adapters) select all() by
+            # design and own no formal performance cases; the ACE workspace
+            # groups must exclude performance:: from their daily entry.
+            if (group['domain'] == 'ace' and group['runner'] == 'nextest'
+                    and group['workspace'] == 'experimental/ace' and group['name'] != 'ace-perf'):
+                self.assertIn('not test(/(^|::)performance::/)', group['expression'], group['name'])
+
+
+class ToolchainSplit(unittest.TestCase):
+    """PLAN-1098 T-06: certified toolchain cases have one explicit home."""
+
+    def test_toolchain_group_is_explicit_and_never_implied(self):
+        value, groups = fixed.configuration()
+        group = groups['ace-toolchain']
+        self.assertFalse(group['all'])
+        self.assertEqual('ace-toolchain', group['name'])
+        self.assertIn('test-toolchain', group['args'])
+        for selection in ([], ['all'], ['ace']):
+            self.assertNotIn('ace-toolchain', [g['name'] for g in fixed.select(selection, value, groups)])
+
+    def test_toolchain_cases_are_feature_gated_in_source(self):
+        harness = (ROOT / 'experimental/ace/crates/a2x-worker/tests/conformance.rs').read_text(encoding='utf-8')
+        # The modules stay compiled (daily tests consume their data tables);
+        # only the certification test bodies are gated.
+        self.assertIn('mod a2c_rt_cert;', harness)
+        for name in ('a2c_cert', 'a2c_coll_cert', 'a2c_rt_cert', 'cert_coll_904', 'cert_rt_902',
+                     'worker_ct_frontdoor_958'):
+            source = (ROOT / ('experimental/ace/crates/a2x-worker/tests/cases/%s.rs' % name)).read_text(encoding='utf-8')
+            self.assertIn('#[cfg(feature = "test-toolchain")]', source, name)
+            self.assertEqual(source.count('#[cfg(feature = "test-toolchain")]'),
+                             source.count('#[test]'), name + ' has an ungated test')
+        host = (ROOT / 'experimental/ace/tests/conformance/tests/host/rust_lowering.rs').read_text(encoding='utf-8')
+        for case in ('a2r_hir_certify_leg_all_cases_pass', 'a2r_hir_certify_negative_controls_reject'):
+            self.assertIn('#[cfg(feature = "test-toolchain")]\n#[test]\nfn ' + case, host)
+
+
+    AV_TOOLCHAIN_CASES = {
+        'bstr_1064': ['bstr_1064_v_d09_file_read_bytes_cross_end', 'bstr_1064_v_codec_five_ends'],
+        'stdlib_asm_972': ['stdlib_asm_972_cross_end_gaps_and_a2r_math'],
+        'kv_zip_1064': ['v03_kv_a2r_roundtrip_and_budget_4096', 'v03_zip_a2r_roundtrip_and_budget',
+                        'v03_zip_a2py_roundtrip_and_budget', 'v03_kv_a2py_roundtrip_and_budget_4096'],
+        'stdlib_sys_973': ['sys973_a2r_real_rustc_leg', 'sys973_a2py_real_python_leg'],
+        'sys_d01_d06_1064': ['v02_d01_d06_a2r_cross_end', 'v02_d01_d06_a2py_cross_end'],
+        'v08_surface_972': ['v08_surface_manifest_and_five_end_exercise'],
+        'json_975': ['json975_char_to_str_a2x_ends'],
+        'module_packages_960': ['packages_960_four_ends_run_public_str_and_recover'],
+        'stdlib_core_945': ['stdlib_core_945_four_ends_run_math_and_text_slices'],
+        'plan966_ct_product': ['p966_ct_generated_declarations_change_end_results',
+                               'p966_ct_statements_and_macro_run_on_av_native_rust_c_py'],
+        'stdlib_assembly_1043': ['stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c'],
+        'console_coverage_1041': ['vcoverage_1041_same_source_runs_on_a2r_c_and_a2py_with_provider_identity'],
+    }
+
+    def test_av_toolchain_cases_are_gated_and_named_in_the_group(self):
+        value, groups = fixed.configuration()
+        expression = groups['ace-toolchain']['expression']
+        self.assertIn('ace-av', groups['ace-toolchain']['args'])
+        for module, cases in self.AV_TOOLCHAIN_CASES.items():
+            source = (ROOT / ('experimental/ace/crates/av/tests/cases/%s.rs' % module)).read_text(encoding='utf-8')
+            for case in cases:
+                with self.subTest(case=case):
+                    self.assertIn('#[cfg(feature = "test-toolchain")]\n#[test]\nfn ' + case + '(', source)
+                    self.assertIn('test(%s::%s)' % (module, case), expression)
+        # Daily ace-av never selects them: gated tests do not exist without the
+        # feature (discovery: 1428 -> 1411, the 19 rows above minus 2 added).
+
+    def test_ace_av_declares_the_toolchain_feature(self):
+        manifest = (ROOT / 'experimental/ace/crates/av/Cargo.toml').read_text(encoding='utf-8')
+        self.assertIn('test-toolchain = []', manifest)
+
+
+class AceArchiveArgs(unittest.TestCase):
+    """PLAN-1098 T-09: `cargo nextest archive` rejects positional filters.
+
+    A group that filters with a positional token builds fine under the old
+    "run" path but breaks explicit preparation (the archive command exits with
+    `unexpected argument`). Such groups must express the filter in the -E
+    expression instead, or they cannot be prepared at all.
+    """
+
+    VALUED_OPTIONS = {
+        '-p', '--package', '--test', '--bin', '--config-file', '--features',
+        '-E', '--filter-expr', '--profile', '--target', '--exclude',
+        '--archive-file', '--archive-format', '--workspace-remap',
+        '-j', '--test-threads',
+    }
+
+    def positional_args(self, args):
+        positional, index = [], 0
+        while index < len(args):
+            token = args[index]
+            if token in self.VALUED_OPTIONS:
+                index += 2
+                continue
+            if token.startswith('-'):
+                index += 1
+                continue
+            positional.append(token)
+            index += 1
+        return positional
+
+    def test_ace_nextest_groups_carry_no_positional_filters(self):
+        value, groups = fixed.configuration()
+        offenders = {}
+        for group in groups.values():
+            if group.get('domain') != 'ace' or group.get('runner') != 'nextest':
+                continue
+            positional = self.positional_args(group.get('args') or [])
+            if positional:
+                offenders[group['name']] = positional
+        self.assertEqual(offenders, {}, 'move positional filters into the expression')
+
+
+class RowLedgerConservation(unittest.TestCase):
+    """PLAN-1098 V-01: the 47-row freeze is conserved, not just asserted.
+
+    A missing row, a drifted class/condition, or a duplicated obligation must
+    each turn this red; the plan's own table is not machine-checkable, so the
+    frozen ledger is a repo artifact validated here.
+    """
+
+    LEDGER = ROOT / 'scripts/test-governance/ace-row-ledger.json'
+    CLASSES = {'C', 'D', 'R', 'Q', 'L'}
+
+    def document(self):
+        return json.loads(self.LEDGER.read_text(encoding='utf-8'))
+
+    def problems(self, document):
+        problems = []
+        if document.get('schema') != 'ace-row-ledger/1':
+            problems.append('schema')
+        rows = document.get('rows') or []
+        expected = document.get('expected') or {}
+        if len(rows) != expected.get('rows'):
+            problems.append('row count %d != frozen %s' % (len(rows), expected.get('rows')))
+        ids = [row.get('id') for row in rows]
+        names = [row.get('name') for row in rows]
+        if len(set(ids)) != len(ids):
+            problems.append('duplicate id')
+        if len(set(names)) != len(names):
+            problems.append('duplicate name')
+        counts = {}
+        for row in rows:
+            klass = row.get('class')
+            if klass not in self.CLASSES:
+                problems.append('unknown class %r on %s' % (klass, row.get('id')))
+                continue
+            counts[klass] = counts.get(klass, 0) + 1
+            if not row.get('destination'):
+                problems.append('no destination on %s' % row.get('id'))
+            if not isinstance(row.get('historical_seconds'), (int, float)):
+                problems.append('no historical time on %s' % row.get('id'))
+        if counts != expected.get('classes'):
+            problems.append('class distribution %s != frozen %s'
+                            % (dict(sorted(counts.items())), expected.get('classes')))
+        return problems
+
+    def test_frozen_ledger_is_conserved(self):
+        self.assertEqual(self.problems(self.document()), [])
+
+    def test_missing_row_is_red(self):
+        document = self.document()
+        document['rows'] = document['rows'][:-1]
+        self.assertIn('row count', ' '.join(self.problems(document)))
+
+    def test_duplicate_row_is_red(self):
+        document = self.document()
+        document['rows'].append(dict(document['rows'][0]))
+        problems = self.problems(document)
+        self.assertTrue(any('duplicate' in item for item in problems), problems)
+
+    def test_drifted_class_is_red(self):
+        document = self.document()
+        document['rows'][0]['class'] = 'D'
+        problems = self.problems(document)
+        self.assertTrue(any('class distribution' in item for item in problems), problems)
+
+    def test_unknown_class_is_red(self):
+        document = self.document()
+        document['rows'][0]['class'] = 'X'
+        problems = self.problems(document)
+        self.assertTrue(any('unknown class' in item for item in problems), problems)
+
+    def test_destinations_match_the_frozen_groups(self):
+        value, groups = fixed.configuration()
+        document = self.document()
+        for row in document['rows']:
+            with self.subTest(row=row['id']):
+                self.assertIn(row['destination'], groups)
 
 
 if __name__ == '__main__':

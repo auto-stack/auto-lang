@@ -19,11 +19,15 @@ fn out_base() -> PathBuf {
 }
 
 fn worker_path() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/a2x-worker.exe");
-    if p.exists() {
-        return p;
+    // PLAN-1098 B-05: the worker is an explicitly prepared tool; no
+    // profile-specific `target/release` search and no in-test rebuild.
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     }
-    p.join("../../../target/release/a2x-worker.exe")
 }
 
 /// Drive the worker's certify-c op; returns (exit ok, parsed json or the
@@ -67,6 +71,7 @@ fn base_req(tag: &str) -> serde_json::Value {
 /// The two-leg pass: actual and reference each REALLY compile and run
 /// under cl and match the oracle; the cert validates; serialization is
 /// byte-stable across runs.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn c_certify_two_leg_pass_and_stable_bytes() {
     let (ok, r) = certify(&base_req("pass-a"));
@@ -91,6 +96,7 @@ fn c_certify_two_leg_pass_and_stable_bytes() {
 
 /// A WRONG oracle is refused on BOTH legs (the actual observation must
 /// equal the claimed closed-form oracle).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn c_certify_wrong_oracle_refused() {
     let mut req = base_req("wrong-oracle");
@@ -108,6 +114,7 @@ fn c_certify_wrong_oracle_refused() {
 /// impersonation, trimmed actual files, non-PASS verdicts, unknown
 /// oracle kinds, wrong backend/standard and incomplete toolchain
 /// identities are all REJECTED by validation.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn c_cert_draft_strict_controls() {
     use ace_a2x_c::cert::{BoundFile, CCertDraft, CToolchainIdentity, C_CERT_SCHEMA};

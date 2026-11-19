@@ -692,6 +692,7 @@ pub fn main() int {
     assert!(elapsed_ms <= 10_000, "A2R 64KB test took {elapsed_ms}ms > 10s");
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn bstr_1064_v_codec_five_ends() {
     use ace_a2x_c::CTargetProvider;
@@ -964,6 +965,7 @@ pub fn main() int {
     }
 }
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn bstr_1064_v_d09_file_read_bytes_cross_end() {
     use ace_a2x_python::PythonTargetProvider;

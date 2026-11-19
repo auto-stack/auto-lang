@@ -153,6 +153,7 @@ fn native_exit(product: &PackageProduct, dir: &Path) -> i32 {
 /// provider_id: at=1 c=2 rs=3 (py=4 pending 1042); common adds +101 on
 /// every provider (pure public single source); plat: winio=10 lnxio=20 by
 /// the `#in sys is current` target axis.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn stdlib_assembly_1043_selection_runs_on_av_native_rust_and_c() {
     let dir = fixture_dir("src");

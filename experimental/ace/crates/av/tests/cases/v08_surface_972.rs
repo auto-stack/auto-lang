@@ -344,6 +344,7 @@ y")
 }
 "#;
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn v08_surface_manifest_and_five_end_exercise() {
     // ---- Part A: manifest parity (remove-a-row / stray-symbol control) ----

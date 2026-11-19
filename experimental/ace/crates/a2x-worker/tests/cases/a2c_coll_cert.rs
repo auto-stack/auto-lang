@@ -12,14 +12,17 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-const WORKER: &str = "../../target/release/a2x-worker.exe";
 
 fn worker_path() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(WORKER);
-    if p.exists() {
-        return p;
+    // PLAN-1098 B-05: the worker is an explicitly prepared tool; no
+    // profile-specific `target/release` search and no in-test rebuild.
+    match std::env::var_os("AC_A2X_HIR_WORKER") {
+        Some(value) => PathBuf::from(value),
+        None => panic!(
+            "AC_A2X_HIR_WORKER must be provided by explicit preparation \
+             (python scripts/fixed-tests.py <group> --prepare-only)"
+        ),
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/release/a2x-worker.exe")
 }
 
 fn suite_dir() -> PathBuf {
@@ -126,6 +129,7 @@ fn certify(
 /// V-01/V-11: all twenty suite cases certify TWO-LEG against the frozen
 /// oracle table; every certificate is the strict collections schema with
 /// the execution-config identity; both legs really ran cl (2 spawns).
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2c_coll_certify_all_suite_cases() {
     // PLAN-1060：20 个 case 各自 out_dir、各自新 worker，按有界池并行；
@@ -170,6 +174,7 @@ fn certify_one(tag: &str, case: &str, kind: &str, value: &str) {
 /// leg produces) and a WRONG reference (independently computes a
 /// different value) are both REJECTED; a scalar-schema impersonation is
 /// refused by the strict pairing.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2c_coll_certify_wrong_legs_rejected() {
     // wrong oracle: the ACTUAL leg disagrees -> controlled failure
@@ -210,6 +215,7 @@ fn a2c_coll_certify_wrong_legs_rejected() {
 /// V-12 (daily spawn-zero): the daily-emit-c leg of the collections
 /// channel never spawns cl/rustc, and the manifest binds the full-source
 /// sha + the collections schema.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn a2c_coll_daily_emit_spawn_zero() {
     let dir = out_base().join("daily-L01");

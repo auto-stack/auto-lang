@@ -203,6 +203,7 @@ fn native_exit(product: &PackageProduct, dir: &Path) -> i32 {
 /// T-02/T-03/T-08: the four ends run every slice program against the
 /// independent oracles (8 / 181703 / 3927), the overflow traps, and the
 /// closed-loop clone survives its source's release.
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn stdlib_core_945_four_ends_run_math_and_text_slices() {
     // ---- P1: closed loop = 8 on every end ----

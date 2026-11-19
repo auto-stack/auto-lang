@@ -256,9 +256,15 @@ fn probe972_p1b2_closure_param_frozen_rejection() {
         Ok(_) => panic!("p1b2: closure-typed params unexpectedly admitted"),
         Err(ds) => ds,
     };
-    eprintln!(
-        "p1b2 frozen rejection observed: module={} code={} msg={}",
-        e[0].module, e[0].diagnostic.code, e[0].diagnostic.message
+    // PLAN-1098 T-05 (O-03): the construct dies in the grammar face, not in a
+    // semantic stage. Pin the exact stage+code+message so an admission (or a
+    // silently different rejection) turns this RED and forces a deliberate
+    // decision instead of a printed line nobody reads.
+    assert_eq!(e[0].diagnostic.code, "source.syntax", "p1b2 rejection stage");
+    assert!(
+        e[0].diagnostic.message.contains("expected `,` or `)`, found `fn`"),
+        "p1b2 rejection message: {}",
+        e[0].diagnostic.message
     );
 }
 
@@ -278,10 +284,17 @@ fn probe972_p1c_suffix_list_public_frozen_rejection() {
         Ok(_) => panic!("p1c: List-typed publics unexpectedly admitted on the assembled lane"),
         Err(ds) => ds,
     };
-    // 记录当前真实拒绝码（预期 list-value-context 族）；放行即红。
-    eprintln!(
-        "p1c frozen rejection observed: module={} code={} msg={}",
-        e[0].module, e[0].diagnostic.code, e[0].diagnostic.message
+    // PLAN-1098 T-05 (O-04): pin the exact stage+code+message. NOTE: the
+    // older collections spec says the packages face rejects List parameters at
+    // the BINDER with `source.module-symbol`; on this suffix-assembly lane the
+    // construct is rejected earlier, in the grammar face (`source.syntax`,
+    // generic parameter syntax absent). That divergence is recorded in the
+    // plan (§5.2 O-04 / SD-05) rather than silently recorded here.
+    assert_eq!(e[0].diagnostic.code, "source.syntax", "p1c rejection stage");
+    assert!(
+        e[0].diagnostic.message.contains("expected `,` or `)`, found `<`"),
+        "p1c rejection message: {}",
+        e[0].diagnostic.message
     );
 }
 
@@ -404,47 +417,80 @@ fn asm_aggr_compile(
 }
 
 /// 文本/char 表面逐项探针：str 相等、str 拼接、char 比较、char 字面量、
-/// slice/char_at/len_bytes。打印当前真值（编译诊断码或 AV 值）。
+/// slice/char_at/len_bytes。
+///
+/// PLAN-1098 T-05 (O-02): every sub-scenario carries an INDEPENDENT oracle —
+/// arithmetic/Unicode facts for the values (1 / 4 / 1 / 97 / 1 / 20013) and the
+/// frozen profile boundary (stage + code + message) for the two constructs this
+/// source profile does not admit. Printing whichever branch happened could
+/// never go red.
+enum StrSurface {
+    Value(i32),
+    Diagnostic(&'static str, &'static str),
+}
+
 #[test]
 fn probe972_t02_str_surface() {
-    let cases: &[(&str, &str)] = &[
+    use ace_av_core::contract::Value;
+    let cases: &[(&str, &str, StrSurface)] = &[
         (
             "str_eq",
             "fn main() int {\n    let a = \"ab\"\n    let b = \"ab\"\n    if a == b {\n        return 1\n    }\n    return 0\n}",
+            StrSurface::Diagnostic("source.unsupported", "`fn` is not part of this source profile"),
         ),
         (
             "str_concat",
             "fn main() int {\n    let a = \"ab\" + \"cd\"\n    return a.len()\n}",
+            StrSurface::Value(4),
         ),
         (
             "char_codepoint_cmp",
             "fn main() int {\n    let c = 'a'\n    let d = 'z'\n    if c.to_codepoint() >= 'a'.to_codepoint() {\n        if c.to_codepoint() <= d.to_codepoint() {\n            return 1\n        }\n    }\n    return 0\n}",
+            StrSurface::Value(1),
         ),
         (
             "char_codepoint",
             "fn main() int {\n    let c = 'a'\n    return c.to_codepoint()\n}",
+            StrSurface::Value(97),
         ),
         (
             "str_slice_len_bytes",
             "fn main() int {\n    let s Str = \"A中😀\"\n    let t = s.slice(0, 1)\n    return t.len_bytes()\n}",
+            StrSurface::Diagnostic(
+                "verify.local-type",
+                "text types exist only in the text-i32-draft profile",
+            ),
         ),
         (
             "str_char_at",
             "fn main() int {\n    let s = \"A中\"\n    let c = s.char_at(1)\n    return c.to_codepoint()\n}",
+            StrSurface::Value(20013),
         ),
     ];
-    for (name, src) in cases {
-        match asm_aggr_compile(src) {
-            Ok(p) => {
+    for (name, src, expect) in cases {
+        match (asm_aggr_compile(src), expect) {
+            (Ok(p), StrSurface::Value(want)) => {
                 let dir = scratch(&format!("str-{name}"));
                 let av = PackageAvTarget::cold(&dir, &p).unwrap();
                 match av.run_value() {
-                    Ok(v) => eprintln!("STR-PROBE {name}: OK {v:?}"),
-                    Err(e) => eprintln!("STR-PROBE {name}: RUN-ERR {e}"),
+                    Ok(Value::I32(got)) => assert_eq!(got, *want, "STR-PROBE {name}"),
+                    Ok(other) => panic!("STR-PROBE {name}: non-i32 value {other:?}"),
+                    Err(e) => panic!("STR-PROBE {name}: RUN-ERR {e}"),
                 }
             }
-            Err(ds) => eprintln!(
-                "STR-PROBE {name}: COMPILE-ERR {} {}",
+            (Ok(_), StrSurface::Diagnostic(code, _)) => {
+                panic!("STR-PROBE {name}: expected diagnostic {code}, got an admitted product")
+            }
+            (Err(ds), StrSurface::Diagnostic(code, needle)) => {
+                assert_eq!(ds[0].diagnostic.code, *code, "STR-PROBE {name} code");
+                assert!(
+                    ds[0].diagnostic.message.contains(needle),
+                    "STR-PROBE {name} message: {}",
+                    ds[0].diagnostic.message
+                );
+            }
+            (Err(ds), StrSurface::Value(_)) => panic!(
+                "STR-PROBE {name}: expected a value, got {} {}",
                 ds[0].diagnostic.code, ds[0].diagnostic.message
             ),
         }

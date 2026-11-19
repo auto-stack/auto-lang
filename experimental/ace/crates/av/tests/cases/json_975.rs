@@ -299,6 +299,7 @@ fn main() int {{
 // concatenation equals the literal "A中😀" (+7) -> 134*10+7 = 1347.
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "test-toolchain")]
 #[test]
 fn json975_char_to_str_a2x_ends() {
     use ace_a2x_c::CTargetProvider;
