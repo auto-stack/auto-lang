@@ -1,0 +1,26 @@
+row_id	kind	key	value	unit	note
+profile.identity.a-receipt	identity	a-receipt	docs/specs/ace-migration/m2-certification.md:045340642830E6B0	path:sha16	PLAN-985 T-A05 正式 M2A-08 收据（delivery 95c7fbad8）；G-AAC 开工门
+profile.identity.design59	identity	design59	docs/design/59-aac-native-bootstrap-and-compiler-subject.md:B7A4013BEEB18A42	path:sha16	AAC 主体/需求审计设计（开工重绑）
+profile.identity.roadmap	identity	roadmap	docs/design/strategy/aac-delivery-roadmap.md:32D55995FEC8A2DE	path:sha16	AAC 落地与独立验收路线（开工重绑）
+profile.identity.source-mod	identity	source-mod	experimental/ace/crates/core/src/source/mod.rs:92B5CD1BADE1DD7F	path:sha16	前端源码身份（开工重绑）
+profile.identity.source-hir	identity	source-hir	experimental/ace/crates/core/src/hir.rs:870D33B813AD5902	path:sha16	受检 HIR 源码身份（开工重绑）
+profile.identity.mir	identity	mir	experimental/ace/crates/av-core/src/mir.rs:2A2C32D4746C4A17	path:sha16	共享 Typed MIR 源码身份（开工重绑）
+profile.identity.source-query	identity	source-query	experimental/ace/crates/source-query/src/lib.rs:E79BB8BCF94597D0	path:sha16	语义事实/查询源码身份（未变）
+profile.identity.grammar	identity	grammar	experimental/ace/grammars/auto-source.at:9E5248B2A6AEACD7	path:sha16	共享语法单文件规则源（canonical bytes 身份）
+profile.identity.spec-ac-project	identity	spec-ac-project	docs/specs/auto-ac/project.md:0E9CA9D469698FA6	path:sha16	AC 项目 Spec（SD-02 修改目标）
+profile.identity.spec-hir-stage	identity	spec-hir-stage	docs/specs/auto-hir/stage-contract.md:8BE44EA7473E1954	path:sha16	HIR 阶段合同 Spec
+profile.identity.spec-abi	identity	spec-abi	docs/specs/auto-abi/project.md:27333270014826A0	path:sha16	AutoABI 候选 profile Spec
+profile.host	profile	host	windows-x64	axis	首版独立 AAC 基线 host（x86_64-pc-windows-msvc）
+profile.target	profile	target	windows-x64	axis	首版 target 与 host 同轴；host≠target 场景属后续扩面
+profile.abi	profile	abi	autoabi-windows-x64	profile	AutoABI 候选 profile（candidate 状态，非生产 ABI 冻结）
+profile.ct-domain	profile	ct-domain	hosted-av	domain	CT 执行域：Auto 定型请求进入 Rust AV；禁源码重绑定
+profile.execution-mode	profile	execution-mode	single-request-serial	mode	首版 CS 执行模式：单编译请求/单 CT 服务串行，不承诺无限资源
+profile.schema	profile	schema	autolang.aac-baseline/1	schema	本包冻结的合同 schema 身份（wire/格式版本）
+profile.checked-serialization	profile	checked-serialization	never-trusted	policy	序列化 Checked 标志不具权威；消费方按安全规则重验
+profile.receipt-roots	profile	receipt-roots	docs/specs/,docs/plans/archive/	roots	landed 证据只锚定已复审知识/归档收据
+profile.driver-policy	profile	driver-policy	first-user-work-task	policy	每包首次使用某 Auto 阶段 driver 的 work 任务建立/登记实际入口；1053 只汇总整机
+resource.front-work-bytes	resource	front-work-bytes	67108864	bytes	M2-A 冻结：FrontBudget::WORK_OWNED_64MIB（core/source/cst/frontdoor.rs）；不得用 256MiB 默认档冒 64MiB 授权
+resource.parse-depth-max	resource	parse-depth-max	1048576	nodes	M2-A 冻结：max_parse_depth = 1<<20（同一 frontdoor.rs）
+resource.semantic-steps-max	resource	semantic-steps-max	1000000	steps	M2-A 冻结：DEFAULT_MAX_STEPS（semantics/src/budget.rs）；单语义任务单调步计数
+resource.semantic-wall-ms	resource	semantic-wall-ms	5000	ms	M2-A 冻结：DEFAULT_WALL（同一 budget.rs）
+resource.ct-root-wall-ms	resource	ct-root-wall-ms	10000	ms	M2-A 冻结：RootBudget::default_total（source-cte/schedule.rs，817 REQUEST_WALL_LIMIT 轴；单 root 累积期限，不重置）

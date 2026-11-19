@@ -60,6 +60,7 @@ pub mod execution_trace;
 pub mod inventory;
 pub mod materialize;
 pub mod obligation_ledger;
+pub mod aac_baseline;
 pub mod sema;
 pub mod stale;
 

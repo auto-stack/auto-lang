@@ -1,0 +1,8 @@
+row_id	seam	dimension	value	note
+bridge.syntax-hir.authority	syntax-hir	semantic-authority	auto-only	Auto 为 AAC 本链唯一源码语义权威；拔掉 Rust parse/resolve/infer/源码 compile 服务后 AAC 正例仍成功，故意非法源仍在对应前端阶段拒绝
+bridge.mir-backend.checked-flag	mir-backend	serialized-checked	reject	序列化对象不是可信 Checked；Rust 先验版本/形状/类型/布局/资源及目标 ABI 后重新产生进程内 capability，篡改 ownership/DefRef/布局/版本失败且不调用 codegen
+bridge.ct-av.source-input	ct-av	source-rebinding	reject	禁止传源文本/AST 让服务重绑定；CT timeout/禁用 IO/取消不能冒普通语言错误或发布冻结值
+bridge.incremental.cache-upgrade	incremental	bad-cache	reject	坏缓存不升级为 Checked；失败 edit 不发布半新集合，冷/热/恢复同 oracle
+bridge.ffi-os.link-fallback	ffi-os	legacy-fallback	reject	不退回旧 AutoVM/A2X；不可用 dependency 明确缺失；受检 ABI 真调用与清理证明
+bridge.runtime.execution	runtime	av-execution	rust-retained	AV 执行器及显式 runtime/FFI helper 可保留 Rust；执行单元必须已定型（受检可执行体＋明确 host imports）
+bridge.incremental.publish	incremental	identity-axes	hash-schema-target-stdlib-grammar-profile-pass-bridge	增量/发布身份按 hash/schema/target/stdlib/grammar/profile/pass/桥身份分轴冻结，不共享进程内 capability

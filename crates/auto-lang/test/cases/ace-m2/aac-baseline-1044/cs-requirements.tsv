@@ -1,0 +1,17 @@
+row_id	kind	family	requirement	producer_chain	consumer	phase	disposition	owner	source_ref	evidence_state	evidence_ref
+CS-101	CS	core-language	record/enum/递归节点、match、函数/方法、局部可变、精确整数/位运算；AST/HIR/MIR 图与 ID 表	语法投影→1046/T-02..05→Auto语义 1047/T-02..04/T-09→MIR 1050/T-03/04→runtime 1051	1046/1047/1050/1051	stage	required	1046+1047	Design59 §3 D-L01	pending	
+CS-102	CS	core-language	泛型容器/函数与跨模块实例化、可观测错误传播；infer 工作表/事实表/集合	语法投影→1046→泛型/实例化 1048/T-02→MIR 1050/T-03/04→runtime 1051	1048/1050/1051	stage	required	1048	Design59 §3 D-L02	pending	
+CS-103	CS	core-language	模块/namespace/use/pub、编译期平台选择与类型/语法元数据；syntax-grammar、packages、CT schedule	模块装配 1046/T-02..05→绑定 1047→CT 编排 1048/T-03..05	1046/1047/1048	stage	required	1046	Design59 §3 D-L03	pending	
+CS-104	CS	core-language	所有权/借用/资源终结与 FFI 句柄；失败/早退的清理，不双 drop、不漏最后 owner	语义 1047/1049/T-02..05→MIR 1050（drop/borrow/effect）→runtime 1051	1047/1049/1050/1051	stage	required	1049	Design59 §3 D-L04	pending	
+CS-105	CS	core-language	CS 默认单线程确定性编译；受限递归/遍历预算、显式错误和取消	语义/预算 1047→MIR 1050→runtime 1051；资源 profile 取本包 contract-profile.tsv 冻结值	1047/1050/1051	stage	required	1047	Design59 §3 D-L05	pending	
+CS-106	CS	core-language	高级函数值/闭包或等价显式回调接口、递归图/索引/别名资源语义及错误传播（LowerCt 工厂与统一语义工作表）	闭包/回调语义 1049/T-02..05→MIR 1050→CT 工厂 1055（基础）/1050（完整）	1049/1050/1055	stage	required	1049	Design59 §3 r2 D-L06	pending	
+CS-107	CS	core-language	所有实际数值/字面量的位精度、parse/format 和 locale 无关性	语法投影 1046→语义 1047/1049→MIR 1050	1046/1047/1049	stage	required	1046	Design59 §3 r2 D-L07	pending	
+CS-201	CS	text	长度字符串/bytes/UTF-8、切片/span、文本构造、intern、诊断格式	库供给 945/972→host 客户端 1045→语义 1046/1047	1045/1046/1047	stage	required	1045	Design59 §3 D-S01	pending	
+CS-202	CS	collections	Vec/Map/Set、arena/索引图、确定性排序、精确数值与溢出	库供给 946/972→host 客户端 1045→语义 1047/1049	1045/1047/1049	stage	required	1045	Design59 §3 D-S02	pending	
+CS-203	CS	alloc	allocator、arena 释放、预算统计、深图遍历；可分配资源 profile	库供给 972/1039→host 1045；固定 arena vs 通用 allocator 本包有界评估	1045/1047	stage	required	1045	Design59 §3 D-S03	pending	
+CS-204	CS	hosted	File/Path/目录、环境/目标信息、完整读写、原子发布、进程/管道/退出码/取消回收与链接器发现	OS/库 973/1039/1040/1041→host 1045→driver 1052→链接 1051	1045/1051/1052	stage	required	1045	Design59 §3 D-S04	pending	
+CS-205	CS	codec	精确 BLAKE3/实际所需 SHA-256、域/长度帧、稳定 codec/manifest 及恢复校验	算法/库 972/975→精确补充 1056/T-02..→artifact 身份 1052	1056/1052	stage	required	1056	Design59 §3 D-S05	pending	
+CS-206	CS	backend	Typed MIR/ABC/backend 请求编码、外部对象/链接器、CTE 调用、FFI 错误/句柄协议	MIR 1050→服务接缝 1051/T-02..→AV/机器执行	1050/1051	stage	required	1051	Design59 §3 D-S06	pending	
+CS-207	CS	hosted	CLI argv/env/cwd、诊断 bytes→UTF-8/UTF-16 位置及 CRLF/emoji 规则	host 1045/T-02..→driver 1052→1053 诊断核	1045/1052	stage	required	1045	Design59 §3 r2 D-S07	pending	
+CS-208	CS	ffi	typed foreign 规范化描述/句柄/错误/异步 callback 与 binding/shim 构建闭包	ABI 967/auto-abi→FFI 接缝 1051→binding/shim 1045	1051/1045	stage	required	1051	Design59 §3 r2 D-S08	pending	
+CS-209	CS	artifacts	现有 AC canonical Atom/HIR 文本数据 reader/writer 及公开输入/产物合同	codec 1056/T-02→语义准入 1047→驱动 1052→1053 实际兼容	1056/1047/1052	stage	required	1056	Design59 §3 r2 D-S09	pending	

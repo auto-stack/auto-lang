@@ -1,0 +1,43 @@
+row_id	kind	family	requirement	producer_chain	consumer	phase	disposition	owner	source_ref	evidence_state	evidence_ref
+CL-101	CL	modules-names-numbers	多模块 source→模块装配；合法模块互递归不误判为非法循环	语法投影 1046/T-02..04→绑定 1047/T-02→MIR 1050/T-03/04→runtime 1051	1046/1047/1050	stage	required	1046	Design59 §3 模块/名称族	pending	
+CL-102	CL	modules-names-numbers	名字绑定/use/pub/namespace/跨模块解析与歧义拒绝	语法投影 1046→绑定 1047/T-02..04→MIR 1050→1053 整机	1046/1047/1053	stage	required	1047	Design59 §3 模块/名称族	pending	
+CL-103	CL	modules-names-numbers	宽整数/位精度/溢出语义；合法执行与错误阶段/资源各有独立 oracle	语法投影 1046→语义 1047/T-09→MIR 1050→runtime 1051	1046/1047/1050/1051	stage	required	1047	Design59 §3 数值族	pending	
+CL-104	CL	modules-names-numbers	递归数据/record/enum/pattern 匹配；合法近邻与非法输入区分	语法投影 1046→语义 1047→MIR 1050→1053	1046/1047/1050	stage	required	1047	Design59 §3 聚合/模式族	pending	
+CL-105	CL	modules-names-numbers	路径/span/诊断位置（UTF-16 位置、CRLF/emoji 规则、诊断 bytes→UTF-8）	语法投影 1046→诊断通道 1047→driver 1052→1053	1046/1047/1052	stage	required	1046	Design59 §3 + r2 D-S07	pending	
+CL-106	CL	modules-names-numbers	聚合容器 Vec/Map/Set 全语义（确定性排序、溢出、合法/非法近邻）	库 946/972→语义 1047/1049→MIR 1050→1053	1047/1049/1050	stage	required	1049	Design59 §3 聚合族	pending	
+CL-201	CL	option-result	Option 不可擦成 T；缺失和失败分开；?T 组合	语义 1049/T-02..05→MIR 1050/T-03/04→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 ?T/!T族	pending	
+CL-202	CL	option-result	Result/错误传播/默认/匹配；失败独立 oracle	语义 1049→MIR 1050→runtime 1051→1068 回验	1049/1050/1051	stage	required	1049	Design59 §3 ?T/!T族	pending	
+CL-203	CL	option-result	?T 泛型返回/集合内/跨模块组合	语义 1048/1049→MIR 1050→1053	1048/1049/1050	stage	required	1049	Design59 §3 ?T/!T族	pending	
+CL-204	CL	option-result	!T 不可达/类型组合	语义 1049→MIR 1050→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 ?T/!T族	pending	
+CL-205	CL	option-result	错误路径清理/资源终结（不双 drop、不漏最后 owner）	语义 1049/T-02..05→MIR 1050 drop/borrow/effect→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 ?T/!T族	pending	
+CL-301	CL	async	~T 挂起/恢复：被编译程序真实 AC 运行（1067 已交原生调度基础）	语义 1049/T-03/04/T-09→MIR 1050/T-03/09→runtime 1051（补执行余量）→1068 联合回验	1049/1050/1051/1068	stage	required	1049	Design59 §3 ~T/await族	pending	
+CL-302	CL	async	await/go/Task 组合（挂起/恢复/调度）	语义 1049→MIR 1050→runtime 1051→1068	1049/1050/1051	stage	required	1049	Design59 §3 ~T/await族	pending	
+CL-303	CL	async	~Iter 流（背压/close）	语义 1049/T-09→MIR 1050→runtime 1051→1068	1049/1050/1051	stage	required	1049	Design59 §3 ~T/await族	pending	
+CL-304	CL	async	取消/背压/close；AAC 自身单线程不是排除理由	语义 1049→MIR 1050→runtime 1051→1068 联合回验	1049/1050/1051/1068	stage	required	1049	Design59 §3 ~T/await族	pending	
+CL-401	CL	generics	类型/值参数与约束、spec/ext 签名	泛型 1048/T-02→绑定 1047 签名/接口→MIR 1050/T-03	1047/1048/1050	stage	required	1048	Design59 §3 泛型族	pending	
+CL-402	CL	generics	泛型方法/spec/ext/实例化；共享 query/实例化接面	泛型 1048/T-02..→MIR 1050/T-03/04→runtime 1051	1048/1050/1051	stage	required	1048	Design59 §3 泛型族	pending	
+CL-403	CL	generics	跨模块实例化与嵌套 owned 容器；不能只编 AAC 源码出现的几个具体实例	泛型 1048/T-02→MIR 1050 布局与调用→1053 全 CL	1048/1050/1053	stage	required	1048	Design59 §3 泛型族	pending	
+CL-404	CL	generics	类型/值参数约束违反的受控拒绝与诊断阶段	泛型 1048→绑定 1047→1053	1047/1048/1053	stage	required	1048	Design59 §3 泛型族	pending	
+CL-501	CL	comptime	CTE 真实求值→生成声明→重绑定/verify；目标条件与 hygiene	CT 编排 1048/T-03..05→基础 LowerCt 1055→完整 LowerCt 1050/T-09→执行尾 1051/T-04	1048/1055/1050/1051	stage	required	1048	Design59 §3 CTE族	pending	
+CL-502	CL	comptime	宏/#in 装配与生成源码闭包	语法投影 1046/T-04→绑定 1047→CT 编排 1048/T-03..05→1050	1046/1047/1048	stage	required	1048	Design59 §3 CTE族	pending	
+CL-503	CL	comptime	metadata/target 条件选择；读集/预算/权限	CT 编排 1048→执行 1051/T-04→1053	1048/1051/1053	stage	required	1048	Design59 §3 CTE族	pending	
+CL-504	CL	comptime	CT 失败恢复与资源状态（timeout/禁用 IO/取消不冒普通语言错误）	CT 编排 1048→执行 1051→1053；资源 profile 取本包冻结值	1048/1051/1053	stage	required	1048	Design59 §3 CTE族	pending	
+CL-505	CL	comptime	基础 LowerCt（1055 有界）→完整 LowerCt（1050 扩全域），早期子集不冒充全量	1055/T-02..→1050/T-09→1053 全 CL	1055/1050/1053	stage	required	1055	Design59 §3 CTE族	pending	
+CL-601	CL	attributes	required 标注及其语义消费者有实际效果；本版 test/api/FFI 等标注按规范	语义 1048/T-03/T-09→消费者 971/967/980/982→1053	1048+consumers	stage	required	1048	Design59 §3 标注族	pending	
+CL-602	CL	attributes	标注参数/作用域/阶段按规范；仅 parse 保字符串不算支持	语义 1048/T-09→MIR 1050→1053	1048/1050/1053	stage	required	1048	Design59 §3 标注族	pending	
+CL-701	CL	dynamic	dynamic/对象/反射语义（捕获/方法分派/运行前拒绝非法近邻）	语义 1049/T-02..05→MIR 1050/T-03/04→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 dynamic族	pending	
+CL-702	CL	dynamic	闭包/捕获/函数值；间接调用	语义 1049→MIR 1050→runtime 1051→1053	1049/1050/1051	stage	required	1049	Design59 §3 闭包族	pending	
+CL-703	CL	dynamic	分支与循环合流/控制流语义	语义 1049→MIR 1050/T-03/04→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 控制族	pending	
+CL-704	CL	dynamic	borrow/move/drop 规则（失败/回调/挂起路径）	语义 1049→MIR 1050 资源清理→runtime 1051	1049/1050/1051	stage	required	1049	Design59 §3 资源族	pending	
+CL-705	CL	dynamic	非法近邻运行前拒绝（类型/资源/效果错误与故障输入区分）	语义 1049→MIR 1050→1053 诊断阶段	1049/1050/1053	stage	required	1049	Design59 §3 资源族	pending	
+CL-801	CL	library-ffi-domain	普通库公共操作逐行验证（CS 只使用一部分不删行）	库 1045/1056→语义 1047/1049→MIR 1050→1053 全 CL 逐行	1045/1047/1050/1053	stage	required	1045	Design59 §3 库族	pending	
+CL-802	CL	library-ffi-domain	FFI/ABI（967 稳定 ABI）；真实 OS/协议/ABI/Node 宿主回调，不借隐含 libc/旧 VM	ABI 967/auto-abi→接缝 1051→1068 三端	1051/1068	stage	required	1051	Design59 §3 FFI族	pending	
+CL-803	CL	library-ffi-domain	文本/分配/同步文件等基础库操作（真实 Unicode 文件名/非法编码/嵌零/span 边界）	库 945/946/972→host 1045→语义 1046/1047→1053	1045/1046/1047	stage	required	1045	Design59 §3 库族	pending	
+CL-804	CL	library-ffi-domain	领域 Node/UI/AGE 接缝（1097 独立交 AC 宿主）	域宿主 1097→语义 1049→MIR 1050→1053 域执行	1097/1049/1050/1053	stage	required	1097	Design59 §3 领域族	pending	
+CL-805	CL	library-ffi-domain	不借隐含 libc/旧 AAVM/AA2R；CS 未用公共操作仍保 CL 义务	全链；1053/1068 逐行核	1053/1068	stage	required	1053	Design59 §3 边界	pending	
+CL-901	CL	full-run	Gen1 编译 CL 到实际 AC 产物并运行；无 Rust 源语义回落	1053/T-03..05/T-09：Gen0 编 Gen1，完整 CL 执行	1053	stage	required	1053	Design59 §3 完整运行族	pending	
+CL-902	CL	full-run	Gen1/2/3 各代验全 CL（同源自编译；不同 exe 不能借绿报告）	1054/T-03/T-09：同源代际链、独立 oracle	1054	stage	required	1054	Design59 §3 代际族	pending	
+CL-903	CL	full-run	服务日志/源码入口计数证明无 Rust 源码语义入口	1053/T-02/09 两窗与阻断/计数；1054 复核	1053/1054	stage	required	1053	Design59 §9 F09	pending	
+CL-904	CL	full-run	独立 oracle 不双错（AV/AC/A2R 三端对照、独立 expected/事件轨迹）	1068/T-02..与 1053/1054 独立 expected	1068/1053/1054	stage	required	1068	Design59 §3 完整运行族	pending	
+CL-905	CL	full-run	失败/资源/清理/恢复独立分类；required 缺项不签	1053/T-09、1054/T-09 收口	1053/1054	stage	required	1053	Design59 §7	pending	
+CL-906	CL	full-run	Linux/其他 host 扩面（具名后继；Windows AAC 独立验收不冒 Linux 运行）	1054 显式 pending/后继；不改 M2 既有平台义务	1054	stage	deferred	1054	Design59 §8	pending	

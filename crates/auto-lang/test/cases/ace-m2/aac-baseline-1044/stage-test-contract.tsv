@@ -1,0 +1,8 @@
+row_id	dimension	value	note
+stage-test.case-format-owner	doc-format-owner	auto-down	AutoDown 文档格式 owner（docs/specs/00-overview.md）；实际 vendored parser 版本以语言仓 PROVENANCE/源码为准
+stage-test.case-producer	language-testcase-owner	auto-lang	语言仓 TestCase/core adapter：crates/auto-test-case + crates/auto-lang-core/src/test_cases + vendor/autodown-test-parser；协议 core/厂商解析器/语言 adapter 与 ACE worker 按现协议保字节及来源身份
+stage-test.worker	ace-worker	experimental/ace/crates/case-worker	ACE worker；父侧独立裁判，worker 不见期望
+stage-test.driver-policy	stage-driver	first-user-work-task	每包首次使用某 Auto 阶段 driver 的 work 任务建立/登记实际入口（必要时注册 Cargo target/现固定组）；1053 只汇总整机，不能把早期 Auto 代码一直等到 1053 才测
+stage-test.evidence-policy	evidence	auto-stage-run-required	仅旧 Rust 组绿未跑 Auto 阶段 driver 的报告必须拒绝；真实命令/退出码/输入与产物 hash/覆盖与缺口入计划
+stage-test.cross-repo	read-state	provenance-pinned	跨仓文件/commit/读取状态及版本变动失效规则登记；仅消费现有规范/SDK/域 host/TestCase 格式，无外仓代码修改授权
+stage-test.gen0-window	observation-window	gen0-legal	Gen0 编译 driver 可使用 Rust 前端；driver 运行并处理被测源码/IR 时主体对应算法必须 Auto 执行，不能用 Gen0 重新编译被测用户源码冒 Auto 主体

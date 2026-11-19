@@ -1,0 +1,8 @@
+row_id	module_path	subject_authority	rust_retention	note
+subject.syntax	syntax-runtime/src/{lexer,parse,cst,edit}/、syntax-grammar/src/lib.rs、core/source/cst/、core/source/parser.rs	auto	grammar-data-tools	Auto 语法执行、CST→AST 投影、span/edit 与模块语法处理；复用同一 grammar 定义与身份；冻结 grammar 数据生成工具可留 Rust，最终不得委托 Rust parser 完成用户源码解析
+subject.bind	core/source/{ast,resolve,typecheck,adapter,modules,packages,decl_env}.rs、descriptor、hir.rs、verify.rs	auto	rust-reference	名字绑定、类型/受检 HIR、模块/包与公共语义准入规则；原 Rust 实现留作 reference，生产 AAC 路径不得静默回落
+subject.semantics	semantics/src/{infer,input,query,reflect,budget}.rs、source-query/src/{produce,apply,facts,instances,resources}.rs	auto	none	推导算法、实例化、反射投影、语义事实及资源事实生成；统一 schema/算法版本合同共享，Rust solver 不得作为隐藏服务保留主体
+subject.cte	source-cte/src/{schedule,service,executor,envelope,store}.rs、comptime/src/{driver,av_driver}.rs	auto	av-executor	CT 需求发现、依赖/预算/实例编排、冻结结果和失效策略；AV 执行器可留 Rust，服务仅消费已定型执行单元，不收源码代做语义
+subject.lower	lowering/src/hir_adapter.rs、av-core/src/{mir,mir_verify,ownership,place}.rs	auto	mir-verifier	HIR→Typed MIR、控制流/布局语义、资源 drop/borrow/effect 保持；Auto 本地准入；Rust MIR verifier 仅作机器码/AV 服务二次安全边界
+subject.incremental	source-query/src/{host,session,store,restore,ident,keys}.rs、artifacts/src/identity.rs、artifacts/src/codec.rs、artifacts/src/store/	auto	os-primitives	查询、正负依赖、缓存键/恢复准入、事务发布和驱动策略；底层文件/进程/原子 OS 原语由新版标准库提供
+subject.native	native/src/{backend,lower,emit,layout,foreign_lower,typed_pipeline,typed_session,driver,link_driver}.rs、bin/ac-native.rs、core/src/link.rs	auto-driver	cranelift-linker-ffi	Auto 编译驱动、对象/链接编排和身份；Cranelift、对象格式 writer、机器后端、平台 linker 及显式 runtime/FFI helper 可保留 Rust
