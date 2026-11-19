@@ -368,6 +368,23 @@ Round 9 增量（冻结提交 `cb3fee558`，树内 clean）：
 
 goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 9 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: cb3fee558 | next: work`
 
+2026-11-20 · stage: work（round 10 · **V-02 病例：A2PY 通过，AV 暴露 lane 缺陷**）| plan_id: PLAN-1107 | plan_revision: r2 | worktree: `D:/autostack/.wt/lang-1107/auto-lang` | branch: `plan-1107-dev` | base_commit: `5089d3de0` | code_commit: `be7eb83fe` | task_ids: V-02 部分（A2PY 真跑+oracle；AV 缺陷待 AV owner）| outcome: pass（round 级；AC-03 因 AV lane 缺陷不能宣称）| next_responsible_role: work（T-05 余量）＋ AV owner（V-02 AV 缺陷）
+
+Round 10 增量（冻结提交 `be7eb83fe`，树内 clean）：
+- **共享 V-02 病例**：`crates/auto-lang/test/cases/ace-m2/python-1107/protocol_1107.at` + 独立参考 `protocol_1107_ref.py`（纯 Python、不经 ACE）。程序覆盖：`use.py` 多成员、绑定方法（`l.append`/`l.count`）、嵌套调用（`len(repr(12345))`）、关键字实参（`round(2.5, ndigits: 0)`）、循环/分支中的 Python 值流与显式 `.to(int)`/`.to(float)` 转换。
+- **A2PY 端 PASS**：`p1107_v02_protocol_case_a2py_matches_the_native_oracle` —— 生成的原生 Python 输出 `[5, 1, 2, 6]` 与独立 oracle 逐行一致。
+- **AV 端发现两个 lane 缺陷**（同一语料，`p1107_v02_protocol_case_av_matches_the_native_oracle` 暂 `#[ignore]` 并具名）：
+  1) 完整病例：`Infra("foreign.frame: p967.frame/1 rejected: payload not LF-terminated")`；
+  2) 去掉循环的子集（`builtins: list, round, len, repr` + 三次 print）：`Success` 但 **stdout 为空**（打印被吞）。
+  单构造探针（嵌套调用/关键字实参/绑定方法/循环内 py 局部/内联转换）在 AV 均单独通过，说明缺陷在**组合**路径（帧编码/console 打印），不是单一语法形态。按 IF-AV，这属 AV lane 的帧/输出实现缺陷，交 1094/AV owner；1107 不在此私修解释器/帧协议。
+- 影响：AC-03（两端一致）与 V-02 不能在 AV 端关闭，直到该缺陷修复；A2PY 侧的语义/值流证据已独立成立。
+
+证据：`cargo nextest -p ace-a2x-python -E 'test(p1107_v02)'` PASS；`cargo t ace-python` PASS（含 AV 端 ignore 后的套件）；`cargo t ace-a2x` 仍仅预存 ts tripwire 与 pyready_03 并行偶发。
+
+未决：AV V-02 帧/打印缺陷（owner=AV/1094，具名复现见上）；T-05 余量（解释器/包身份轴、暖编辑失效、CLI run 用例）；V-04 错误/位置病例；V-08 回归控制；支持矩阵与 Specs。
+
+goal 收据：`stage: goal | plan_id: PLAN-1107 | plan_revision: r2 | round: 10 | from: work | to: work | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1107/auto-lang | commit: be7eb83fe | next: work`
+
 ## 10. 待澄清事项
 
 方向已明确，无需重新选择旧链路。技术未决由T-01负责：共同Python操作投影的实际接口、1094最小源面是否已交、A2PY支持形态/错误/浮点对应、978公开工程/SDK的解释器与包解析身份。支持矩阵/预算冻结前不实施依赖该决定的功能；不能把未验证旧边界当已证拒绝。
