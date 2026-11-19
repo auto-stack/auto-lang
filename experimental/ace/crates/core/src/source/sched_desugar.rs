@@ -592,6 +592,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     })
 }
 

@@ -66,6 +66,12 @@ pub struct TypeAnn {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TypeRef {
     Builtin(TypeWord),
+    /// PLAN-1080 (D-04): the annotation was OMITTED (Auto face untyped
+    /// parameter / return). Never produced by the frozen narrow faces
+    /// (their grammars require the annotation); the inference pre-pass
+    /// replaces every `Inferred` with a concrete type or reports
+    /// `bind/source.inference` — resolve never sees one.
+    Inferred,
     /// PLAN-935: a declared type parameter reference (`T`) — only produced
     /// under the `ac.source.instances.scalar/v1` capability face, and only
     /// valid inside the template fn that declares it. Never reaches a
@@ -164,6 +170,12 @@ pub struct FnItem {
     /// expression statement types the script as `int`, otherwise Unit).
     /// Never true for a declared `fn`.
     pub script: bool,
+    /// PLAN-1080 (D-05): this function is a signature-only PROTOTYPE
+    /// declaration (`fn test() int;` — the legacy 009 forward-decl shape,
+    /// Auto face only). The projection leaves the body empty and the
+    /// inference pre-pass unifies it with the real body item before
+    /// resolve; a proto without a matching body is a named bind error.
+    pub proto: bool,
 }
 
 /// One record field, in declaration order (= layout order, 774 D-05).

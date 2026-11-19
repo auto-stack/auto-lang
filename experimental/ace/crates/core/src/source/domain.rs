@@ -496,6 +496,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     }
 }
 

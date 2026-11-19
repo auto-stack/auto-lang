@@ -1,0 +1,775 @@
+# PLAN-1080 — AV 调用绑定、隐式函数签名与管道（语言共享语料 calls 面）
+
+The canonical author of the call/binding/pipeline language family. Every
+case carries ONE Auto source; the `av` check runs the ordinary AV language
+chain (`ac-av/language-source-run-v1`); ac-native and legacy-reference
+checks keep their original oracles and owners with the AV-phase `#ignore`
+marker (AV-ONLY-1078-1096) — not executed in this phase, never blocking
+the AV gate; their backend tasks remove the marker when they land.
+
+Legacy migration rows (old case ids / oracles / source SHA16) live in
+`language/migration/legacy-map.tsv`; the `double`→`twice` rename of
+legacy.09_functions.006 is the one auditable normalization (the legacy
+identifier is a reserved numeric type word in the current language —
+fn-local-var keeps the original semantics and oracle).
+
+## Case: pipe-method-and-field
+id: "av.parity.1080.pipe-method-and-field"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P {
+ v int
+ fn add(n int) P { return P(.v + n) }
+}
+fn main() int {
+ let p = P(19)
+ let q = p |> .add(20)
+            |> .add(3)
+ return q |> .v
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Probe ac-native
+#ignore
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Notes
+
+The pipe three-form contract: `x |> .m(args)` method call, multi-line
+`|>` continuation (line-start pipe), `x |> .field` projection. The
+receiver and every argument are evaluated exactly once (single desugared
+method call — no second parser, no AST addition).
+
+## Case: named-binding
+id: "av.parity.1080.named-binding"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn sub(a int, b int) int { return a * 3 + b * 2 }
+fn main() int { return sub(b: 2, a: 1) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 7
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+7
+```
+
+### Notes
+
+Named arguments bind by NAME (a=1, b=2) while the argument EXPRESSIONS
+evaluate in source order (see call-source-order).
+
+## Case: untyped-old-form
+id: "av.parity.1080.untyped-old-form"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+fn mul(a, b) { a * b }
+fn main() int { return add(mul(3, 4), mul(2, 7)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 26
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+26
+```
+
+### Notes
+
+The legacy untyped signatures: omitted parameter/return annotations are
+completed monomorphically from the call sites (all sites agree) before
+resolve; the body tail expression is the return value.
+
+## Case: missing-call-argument
+id: "av.parity.1080.missing-call-argument"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn f(a int, b int) int { return a + b }
+fn main() int { return f(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.argument"
+
+### Notes
+
+The missing-argument rejection keeps its frozen family code
+(`bind/source.argument` — "`f` expects 2 argument(s), found 1"); never a
+silent default value or an any-Err.
+
+## Case: call-source-order
+id: "av.parity.1080.call-source-order"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn mark(n int) int { print(n); return n }
+fn sub(a int, b int) int { return a * 10 + b }
+fn main() int { return sub(b: mark(2), a: mark(1)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 12
+
+#### stdout
+
+```text
+2
+1
+```
+
+### Notes
+
+CALL-SOURCE-ORDER: the named argument expressions evaluate in SOURCE
+order (stdout `2` then `1`) while the binding is by name (a=1, b=2 →
+value 12). The trace channel is the console (module globals are not part
+of this batch); the assertion observes both streams, not only the final
+value.
+
+## Case: pipe-legacy-m10
+id: "av.parity.1080.pipe-legacy-m10"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080", "PLAN-514"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Pipe10 {
+    v int
+    fn add(n int) Pipe10 { return Pipe10.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Pipe10 { return Pipe10(v) }
+}
+fn main() {
+    print(Pipe10.new(1) |> .add(2) |> .get())
+    var x = Pipe10.new(5)
+    |> .add(3)
+    |> .add(10)
+    print(x.get())
+    print(x |> .v)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+18
+18
+```
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+
+```text
+3
+18
+18
+```
+
+### Notes
+
+The legacy m10_pipe source byte-for-byte (its original oracle
+`3\n18\n18`): static constructor calls, receiver `.v` reads, line-start
+`|>` continuations and the field-projection pipe, on the ordinary AV
+chain. The void `fn main()` is the Unit entry (the worker's unit
+channel).
+
+## Case: fn-simple
+id: "av.parity.1080.fn-simple"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+add(12, 2)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 14
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+14
+```
+
+### Notes
+
+legacy.09_functions.001_fn_simple (source SHA16 3003be71e06cd3de): the
+top-level script tail is the program value.
+
+## Case: fn-named-args
+id: "av.parity.1080.fn-named-args"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+add(a:1, b:2)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 3
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+3
+```
+
+### Notes
+
+legacy.09_functions.002_fn_named_args (a44435fd2df153ef).
+
+## Case: fn-multiple
+id: "av.parity.1080.fn-multiple"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+add(add(1, 2), add(3, 4))
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+10
+```
+
+### Notes
+
+legacy.09_functions.003_fn_multiple (b55ad62b3e57e3b0): nested calls of
+the SAME untyped function feed the fixed-point inference.
+
+## Case: fn-nested
+id: "av.parity.1080.fn-nested"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+fn mul(a, b) { a * b }
+add(mul(3, 4), mul(2, 7))
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 26
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+26
+```
+
+### Notes
+
+legacy.09_functions.004_fn_nested (ef3e2742964f35f2).
+
+## Case: fn-in-expr
+id: "av.parity.1080.fn-in-expr"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+10 + add(5, 3)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 18
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+18
+```
+
+### Notes
+
+legacy.09_functions.005_fn_in_expr (c66d142a29e90f33): the untyped
+return feeds a typed binary operand.
+
+## Case: fn-local-var
+id: "av.parity.1080.fn-local-var"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice(a) { let x = a + a; x }
+twice(5)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+10
+```
+
+### Notes
+
+legacy.09_functions.006_fn_local_var (7bf94abbcb12673c). ONE auditable
+normalization: the legacy fn name `double` is a reserved numeric type
+word in the current language, so the canonical author spells it `twice`
+— semantics, body shape and oracle (10) unchanged; recorded in
+legacy-map.tsv.
+
+## Case: forward-decl
+id: "av.parity.1080.forward-decl"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn test() int;
+fn test() int { 42 }
+test()
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+legacy.09_functions.009_forward_decl (ed852c1e296ac424): the
+signature-only prototype `fn test() int;` unifies with its body before
+resolve; a prototype without a body is a named `source.unresolved`
+rejection (prototype-no-body).
+
+## Case: named-args-reordered
+id: "av.parity.1080.named-args-reordered"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn sub(a int, b int) int {
+    a * 3 + b * 2
+}
+
+sub(b: 2, a: 1)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 7
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+7
+```
+
+### Notes
+
+legacy.09_functions.020_fn_named_args_reordered (35817c956f16ea4c):
+typed signature, tail-expression body.
+
+## Case: named-ctor-reordered
+id: "av.parity.1080.named-ctor-reordered"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Pair {
+    left int
+    right int
+}
+
+fn fan(p Pair) int {
+    p.left * 101 + p.right
+}
+
+fan(Pair { right: 2, left: 1 })
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 103
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+103
+```
+
+### Notes
+
+legacy.09_functions.021_fn_named_ctor_reordered (ac248b4d972e2f87):
+named record construction with reordered fields.
+
+## Case: pipe-neighbor-binop
+id: "av.parity.1080.pipe-neighbor-binop"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type T {
+    v int
+    fn get() int { return .v }
+}
+fn main() int {
+    let t = T(7)
+    let a = t |> .get() - 1
+    let b = 10 - (t |> .get())
+    return a * 100 + b
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 603
+
+### Notes
+
+PIPE-NEIGHBOR (frozen auditable normalization, §6.5 D-03): the pipe binds
+its immediately-preceding suffix chain TIGHTLY — `t |> .get() - 1` =
+`(t |> .get()) - 1` = 6, and a parenthesized pipe chain is a normal
+operand (`10 - (t |> .get())` = 3; total 6*100+3 = 603). The legacy
+engine's lower-binding `(x + y) |> .m()` shape is written with explicit
+parentheses on the left operand here; the separated `| >` tokens and
+`is`-arm patterns keep their own meanings
+(pipe-neighbor-token-separation).
+
+## Case: pipe-neighbor-token-separation
+id: "av.parity.1080.pipe-neighbor-token-separation"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    if 8 > (4 | 2) {
+        return 3
+    }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 3
+
+### Notes
+
+PIPE-NEIGHBOR: `|` (bitwise) and `>` (comparison) keep their separate
+meanings — `4 | 2` is 6, `8 > 6` is true, so the branch fires; the
+two-character `|>` pipe token never swallows the separated pair. `is`-arm or-patterns live in
+the statement pattern grammar (not the expression postfix surface) and
+are untouched by the pipe step.
+
+## Case: duplicate-named-arg
+id: "av.parity.1080.duplicate-named-arg"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn sub(a int, b int) int { return a * 3 + b * 2 }
+fn main() int { return sub(a: 1, a: 2) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.argument"
+
+### Notes
+
+A duplicate named argument is the frozen `bind/source.argument`
+rejection ("argument `a` is passed more than once").
+
+## Case: unknown-named-arg
+id: "av.parity.1080.unknown-named-arg"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn sub(a int, b int) int { return a * 3 + b * 2 }
+fn main() int { return sub(a: 1, c: 2) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.argument"
+
+### Notes
+
+An unknown parameter name is the frozen `bind/source.argument` rejection
+("`sub` has no parameter named `c`").
+
+## Case: inference-conflict
+id: "av.parity.1080.inference-conflict"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a, b) { a + b }
+fn main() int {
+    let x = add(1, 2)
+    let y = add(true, false)
+    return x
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.inference"
+
+### Notes
+
+Conflicting call sites (int vs bool for the same parameter) are a named
+`bind/source.inference` rejection — the monomorphic completion never
+picks a silent default.
+
+## Case: inference-unconstrained
+id: "av.parity.1080.inference-unconstrained"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn lonely(a, b) { a + b }
+fn main() int { return 5 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.inference"
+
+### Notes
+
+An untyped function with NO constraining call site is a named
+`bind/source.inference` rejection (never a default type, never a silent
+skip).
+
+## Case: prototype-no-body
+id: "av.parity.1080.prototype-no-body"
+tags: ["av-language-parity", "plan-1080", "calls"]
+links: ["PLAN-1080"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn test() int;
+fn main() int { return 5 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.unresolved"
+
+### Notes
+
+A signature-only prototype without a matching body is a named
+`source.unresolved` rejection.

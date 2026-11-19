@@ -1654,6 +1654,7 @@ fn bind_package_syntax_inner(
             receiver: Receiver::Free,
             owner: None,
             script: false,
+            proto: false,
         }));
         module_init_fns.insert(key.clone(), owner);
     }
@@ -1693,6 +1694,8 @@ fn sh(span: &mut Span, offset: usize) {
 fn shift_ann(ann: &mut TypeAnn, offset: usize) {
     sh(&mut ann.span, offset);
     match &mut ann.kind {
+        // PLAN-1080：Inferred 无坐标载荷。
+        TypeRef::Inferred => {}
         TypeRef::Builtin(_) => {}
         TypeRef::TyVar(i) | TypeRef::Record(i) => sh(&mut i.span, offset),
         TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
@@ -2229,6 +2232,8 @@ impl<'a> Walker<'a> {
 
     fn walk_ann(&mut self, ann: &mut TypeAnn) -> Result<(), PackageDiagnostic> {
         match &mut ann.kind {
+            // PLAN-1080：Inferred 无嵌套名（Auto 单文件面不走包绑定）。
+            TypeRef::Inferred => Ok(()),
             // PLAN-962：tuple 类型界递归。
             TypeRef::Tuple(args) => {
                 for a in args {

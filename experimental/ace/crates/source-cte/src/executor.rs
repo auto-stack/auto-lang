@@ -542,6 +542,7 @@ fn wrapper_item_from_expr(entry: &str, expr: &Expr, expr_is_bool: bool) -> FnIte
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     }
 }
 
@@ -615,6 +616,7 @@ fn wrapper_item(entry: &str, callee: &str, args: &[CtValue], callee_bool: bool) 
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     }
 }
 

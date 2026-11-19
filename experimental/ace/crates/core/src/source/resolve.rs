@@ -2293,7 +2293,11 @@ fn resolve_detailed(
                     coll.variants[enum_index].arms = arms;
                 }
                 ast::Item::Type(t) => {
-                    if !t.methods.is_empty() {
+                    // PLAN-1080 (D-02): the Auto language face admits record
+                    // methods through the same shared method machinery the
+                    // record domain uses; the frozen narrow collections-
+                    // family profiles keep the historical rejection.
+                    if !t.methods.is_empty() && !surface.is_auto_language() {
                         for m in &t.methods {
                             diags.push(Diagnostic::new(
                                 Stage::Bind,
@@ -4836,6 +4840,17 @@ fn vt_of_ann(
 ) -> VT {
     match &ann.kind {
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        // PLAN-1080（D-04）：Inferred 到达 resolve = 补全遍没有覆盖到该
+        // 注解位（fail-closed 具名拒，不静默默认类型）。
+        ast::TypeRef::Inferred => {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.inference",
+                "an omitted type annotation could not be inferred here".to_string(),
+                ann.span,
+            ));
+            VT::I32
+        }
         // PLAN-962：tuple 类型只在聚合面的表感知路径解析；到达本（无表）
         // 路径 = 具名拒。
         ast::TypeRef::Tuple(_) => {
@@ -4960,6 +4975,15 @@ fn vt_of_ann_coll(
         vt
     };
     match &ann.kind {
+        // PLAN-1080（D-04）：同上——补全遍后仍 Inferred = 具名拒。
+        ast::TypeRef::Inferred => {
+            reject(
+                diags,
+                VT::I32,
+                "an omitted type annotation could not be inferred here".to_string(),
+                ann.span,
+            )
+        }
         // PLAN-962 (L-15): tuple type `(T1, T2, ...)`. Structural VT;
         // aggregates surface only (the grammar crops tuple-ty to it).
         ast::TypeRef::Tuple(args) if coll.aggregates_admission => {

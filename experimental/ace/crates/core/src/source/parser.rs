@@ -871,6 +871,7 @@ impl<'s> Parser<'s> {
                         receiver: Receiver::Free,
                         owner: None,
                         script: true,
+                        proto: false,
                     });
                 }
                 Some(Token {
@@ -1883,6 +1884,7 @@ impl<'s> Parser<'s> {
                     receiver,
                     owner: None,
                     script: false,
+                    proto: false,
                 }))
             }
             BlockCont::IfThen { kw, cond } => {

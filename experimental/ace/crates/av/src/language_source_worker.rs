@@ -149,7 +149,9 @@ fn run_chain(source: &str, caps: &[String]) -> (Result<ExecOutcome, Json>, Conso
                     "message": d.map(|x| x.message.clone()).unwrap_or_default()
                 })
             })?;
-        let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
+        // PLAN-1080: the ordinary language face lowers through the same
+        // frozen closures-family MIR with the record-method def admission.
+        let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
             .map_err(|e| json!({"stage":"lower","code":"lower","message":format!("{e:?}")}))?;
         verify_mir(&mir)
             .map_err(|e| json!({"stage":"verify","code":"mir","message":format!("{e:?}")}))?;

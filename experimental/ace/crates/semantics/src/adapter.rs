@@ -403,6 +403,9 @@ fn project_fn_scoped(f: &core_ast::FnItem, target: &str) -> Result<InputFn, Stri
 
 fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
     match &a.kind {
+        // PLAN-1080：Inferred 是 Auto 面补全遍前置标记，query 面不消费
+        //（具名拒，不猜类型）。
+        core_ast::TypeRef::Inferred => Err("inferred-annotation".to_string()),
         // PLAN-962: tuple types are outside the query surface (named).
         core_ast::TypeRef::Tuple(_) => Err("tuple-type".to_string()),
         core_ast::TypeRef::Builtin(w) => Ok(match w {

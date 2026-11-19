@@ -255,6 +255,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-961：单字符位算符（最长匹配下 `&&`/`||` 不受影响；仅
         // numeric 面引用，其余面裁剪为保留）。
         amp(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { literal: "&" }
+        // PLAN-1080（T-03）：管道算子 `|>`（仅 auto 面引用；其余面裁剪后
+        // `|>` 仍按 vbar+gt 两 token 词法，冻结面行为不变）。最长匹配使
+        // `|` 单独出现仍落 vbar。
+        pipegt(profiles: [auto]) { literal: "|>" }
         vbar(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { literal: "|" }
         caret(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { literal: "^" }
         tilde(profiles: [aggregates, auto, scheduler]) { literal: "~" }
@@ -1254,8 +1258,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // ---- 声明 ----
         fn-item(recover: true) {
-            fn(field: "kw")
-            fn-tail() {}
+            // PLAN-1080（D-05）：普通 Auto 语言面收纳旧原型声明
+            // （`fn test() int;`——009 forward-decl 形）：签名先行，实体体
+            // 在同列表他处；投影注册签名并要求一致实体。冻结面保持
+            // 体必选形（auto 外整臂裁剪，逐字节不变）。
+            alt(profiles: [auto]) {
+                fn(field: "kw")
+                ident(field: "name")
+                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package]) { type-params(field: "type_params") }
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                opt { ret-ty(field: "ty") }
+                semi(field: "proto")
+            }
+            alt { fn(field: "kw") fn-tail() {} }
         }
         public-fn(profiles: [scalar-modules, host-console, entry-unit, text-record, config-document]) {
             r-pub() {}
@@ -1662,14 +1679,27 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         params { param() {} many { param-tail() {} } }
         param-tail { comma() {} param() {} }
         param {
-            // mode 词全域结构化（旧 parser 对非可用面在 expect_ident 上以
-            // "keyword `X` cannot be used as a name" 拒绝——由投影层复刻）
-            opt { r-move(field: "mode") }
-            opt { mut(field: "mode") }
-            ident(field: "name")
-            ann-ty(field: "ty")
-            // PLAN-963（T-08，L-24）：声明位默认值 `n int = 42`。
-            opt { param-default(field: "default") }
+            // PLAN-1080（D-04）：普通 Auto 语言面收纳旧无类型形参
+            // （`fn add(a, b) { … }`）——注解步可选，形参类型由投影/resolve
+            // 按体内推导与调用点一致性检查得出；冻结窄面保持必选注解形
+            //（本臂在 auto 外整臂裁剪，编译产物逐字节不变）。
+            alt(profiles: [auto]) {
+                opt { r-move(field: "mode") }
+                opt { mut(field: "mode") }
+                ident(field: "name")
+                opt { ann-ty(field: "ty") }
+                opt { param-default(field: "default") }
+            }
+            alt {
+                // mode 词全域结构化（旧 parser 对非可用面在 expect_ident 上以
+                // "keyword `X` cannot be used as a name" 拒绝——由投影层复刻）
+                opt { r-move(field: "mode") }
+                opt { mut(field: "mode") }
+                ident(field: "name")
+                ann-ty(field: "ty")
+                // PLAN-963（T-08，L-24）：声明位默认值 `n int = 42`。
+                opt { param-default(field: "default") }
+            }
         }
         param-default {
             assign() {}
@@ -2588,6 +2618,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `to` 的 carve-out。core/scalar/entry 无点后缀（`.` 在这些面由
         // 投影按旧 unsupported/语法错误合同映射）。
         postfix-step(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, collections, closures, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) {
+            // PLAN-1080（D-03）：管道步 `|> .member`（仅 auto 面）——`|>`
+            // 不带 same-line ⇒ 行首管道=显式续行（legacy 同形）；调用实参
+            // 由 pratt call 后缀在成员后衔接（`x |> .m(args)`）。投影层脱糖
+            // 为与点后缀/调用相同的成员原子（AST/HIR 零新节点）。auto 外
+            // 整臂裁剪，冻结面逐字节不变。
+            alt(profiles: [auto]) { pipegt() dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) { dot(same-line: true) ident(field: "member") }
             // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。

@@ -1122,7 +1122,17 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     .params
                     .iter()
                     .all(|p| self.module.type_shape(*p).is_some())
-                    && self.module.type_shape(entry_sig.result).is_some();
+                    && (self.module.type_shape(entry_sig.result).is_some()
+                        // PLAN-1080 (D-04)：普通 Auto 语言的 void main——
+                        // 零参 Unit 结果入口放行（ABC 布局不为 closures 家
+                        // 族携带 entry kind，按签名形状收纳；冻结窄面的
+                        // **源路径**产不出该形状——注解必选，故仅 MIR 准入
+                        // 面放宽，可审计）。
+                        || (entry_sig.params.is_empty()
+                            && matches!(
+                                self.module.types.get(entry_sig.result as usize),
+                                Some(MirType::Unit)
+                            )));
                 if !scalar_ok {
                     return Err(MirVerifyError::inv(
                         "mir.entry-sig",

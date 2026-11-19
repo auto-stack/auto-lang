@@ -1494,6 +1494,9 @@ pub struct DeclSummary {
 pub fn canonical_type_word(t: &ace_core::source::ast::TypeAnn) -> String {
     use ace_core::source::ast::{TypeRef, TypeWord};
     match &t.kind {
+        // PLAN-1080：Inferred 是补全遍前置标记，canonical 面不消费（按
+        // 字面记录，调用方以补全后的具体注解为准）。
+        TypeRef::Inferred => "inferred".into(),
         TypeRef::Builtin(TypeWord::Int) | TypeRef::Builtin(TypeWord::I32) => "i32".into(),
         TypeRef::Builtin(TypeWord::Bool) => "bool".into(),
         TypeRef::Builtin(TypeWord::Str) => "str".into(),

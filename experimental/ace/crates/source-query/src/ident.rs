@@ -95,6 +95,8 @@ pub fn owner_logical(package: &str, module: &str, name: &str) -> LogicalId {
 /// but different names are different types); positions never enter.
 pub fn type_canonical(t: &TypeAnn, out: &mut Vec<u8>) {
     match &t.kind {
+        // PLAN-1080：Inferred 是补全遍前置标记（canonical 记字面）。
+        TypeRef::Inferred => out.extend_from_slice(b"inferred"),
         // PLAN-962: tuple canonical = element canonicals in order.
         TypeRef::Tuple(args) => {
             out.extend_from_slice(b"tuple:[");

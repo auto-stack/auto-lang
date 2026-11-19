@@ -537,7 +537,7 @@ pub fn lower_checked_collections(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    lower_checked_collection_family(checked, entry_name, source_snapshot, false)
+    lower_checked_collection_family(checked, entry_name, source_snapshot, false, false)
 }
 
 /// PLAN-865: lower a checked source-closures bundle to the frozen
@@ -548,7 +548,20 @@ pub fn lower_checked_closures(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    lower_checked_collection_family(checked, entry_name, source_snapshot, true)
+    lower_checked_collection_family(checked, entry_name, source_snapshot, true, false)
+}
+
+/// PLAN-1080: lower a checked ordinary-Auto-language bundle. Same frozen
+/// av.closures/1 MIR profile and instruction set as the closures entry;
+/// the only difference is the record-method def admission (methods lower
+/// as ordinary functions under the owner-based `m.<Rec>.<name>` unit,
+/// the PLAN-881 data-path rule).
+pub fn lower_checked_auto_language(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    lower_checked_collection_family(checked, entry_name, source_snapshot, true, true)
 }
 
 fn lower_checked_collection_family(
@@ -556,6 +569,7 @@ fn lower_checked_collection_family(
     entry_name: &str,
     source_snapshot: u64,
     closures_profile: bool,
+    auto_language: bool,
 ) -> Result<MirModule, AdapterError> {
     match (checked.domain(), closures_profile) {
         (hir::HirDomain::Collections, false) | (hir::HirDomain::Closures, true) => {}
@@ -604,6 +618,21 @@ fn lower_checked_collection_family(
                 def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
                 next_fn_idx += 1;
                 fn_order.push((di as u32, *ty, *body, d.id_text.clone()));
+            }
+            // PLAN-1080 (D-02): the ordinary Auto language face carries the
+            // record-domain method shapes — methods lower as ordinary MIR
+            // functions under the owner-based `m.<Rec>.<name>` unit name
+            // (same rule `lower_checked_data` freezes for PLAN-881); the
+            // frozen narrow collections-family profiles keep the rejection.
+            hir::DefKind::Method { ty, body, .. } if auto_language => {
+                def_map.insert(di as u32, CalleeRef::Func(next_fn_idx));
+                next_fn_idx += 1;
+                fn_order.push((
+                    di as u32,
+                    *ty,
+                    *body,
+                    mir_name_of_def(module, di)?,
+                ));
             }
             hir::DefKind::Method { .. } => {
                 return Err(AdapterError::uns(

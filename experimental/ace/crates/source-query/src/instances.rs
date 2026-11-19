@@ -174,6 +174,8 @@ fn slot_of(ann: &TypeAnn, ty_params: &[String], diags: &mut Vec<Diagnostic>) -> 
 /// 诊断用的类型位拼写（有限面）。
 fn spell_ty(t: &TypeRef) -> String {
     match t {
+        // PLAN-1080：补全遍前置标记（实例面不消费）。
+        TypeRef::Inferred => "?".into(),
         TypeRef::Builtin(w) => format!("{w:?}").to_lowercase(),
         TypeRef::TyVar(id) => id.name.clone(),
         TypeRef::Record(id) => id.name.clone(),
@@ -387,6 +389,7 @@ fn concretize(
         receiver: template.receiver,
         owner: template.owner.clone(),
         script: false,
+        proto: false,
     }
 }
 

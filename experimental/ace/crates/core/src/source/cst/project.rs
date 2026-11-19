@@ -6753,7 +6753,55 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// PLAN-1080（D-05）：`fn name(params) ret;` 原型臂投影——签名先行、无
+    /// 体。`proto=true` + 空体 FnItem；补全遍负责与同签名实体合一并移除。
+    fn run_fn_proto(&mut self, node: u32, owner: Option<Ident>, receiver: Receiver) -> FnItem {
+        let name_leaf = self.cx.field_child(node, "name").expect("proto fn name");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let params = self.project_params(self.cx.field_child(node, "params"));
+        let ret = match self.cx.field_child(node, "ty") {
+            Some(ty_n) => self.classify_word(ty_n, true, false),
+            None => {
+                let span = name.span;
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        "a prototype declaration requires a return type annotation (`fn test() int;`)",
+                        span,
+                    )
+                });
+                TypeAnn {
+                    kind: TypeRef::Inferred,
+                    span,
+                }
+            }
+        };
+        let span = self.cx.span_of(node);
+        FnItem {
+            name,
+            type_params: Vec::new(),
+            params,
+            ret,
+            body: crate::source::ast::Block {
+                stmts: Vec::new(),
+                span,
+            },
+            span,
+            receiver,
+            owner,
+            script: false,
+            proto: true,
+        }
+    }
+
     fn run_fn_item(&mut self, node: u32, owner: Option<Ident>, receiver: Receiver) -> FnItem {
+        // PLAN-1080（D-05）：签名先行原型臂（`fn test() int;`——auto 面文法
+        // 专属，无 fn-tail 包装）。投影为 proto=true 的空体 FnItem，补全遍
+        // 与同签名实体合一；无实体 = 具名 bind 错。
+        if self.cx.field_child(node, "proto").is_some() {
+            return self.run_fn_proto(node, owner, receiver);
+        }
         let tail = self
             .cx
             .children(node)
@@ -6826,6 +6874,13 @@ impl<'a> Engine<'a> {
                         kind: TypeRef::Builtin(TypeWord::Void),
                         span,
                     }
+                } else if self.cx.profile.is_auto_language() {
+                    // PLAN-1080（D-04）：auto 面无返回注解 = 推导标记（补全遍
+                    // 从体推导；`fn main()` 无尾值时落 Unit）。
+                    TypeAnn {
+                        kind: TypeRef::Inferred,
+                        span,
+                    }
                 } else {
                     self.cx.reject(span, || {
                         Diagnostic::new(
@@ -6877,6 +6932,7 @@ impl<'a> Engine<'a> {
                 receiver,
                 owner: owner.clone(),
                 script: false,
+                proto: false,
             },
         }
     }
@@ -7013,11 +7069,19 @@ impl<'a> Engine<'a> {
                 }
                 _ => ParamMode::Default,
             };
-            let ty = self.classify_word(
-                self.cx.field_child(param_n, "ty").expect("param ty"),
-                false,
-                true,
-            );
+            // PLAN-1080（D-04）：auto 面无类型形参（`fn add(a, b)`）——注解
+            // 步在文法层可选；缺位投影为 Inferred 标记，由补全遍定 concrete
+            // 类型。冻结窄面文法必选注解，此分支不可达。
+            let ty = match self.cx.field_child(param_n, "ty") {
+                Some(ty_n) => self.classify_word(ty_n, false, true),
+                None => {
+                    let span = name.span;
+                    TypeAnn {
+                        kind: TypeRef::Inferred,
+                        span,
+                    }
+                }
+            };
             // PLAN-963（T-08，L-24）：`n int = 42` 的默认值。默认值在**调用位**
             // 按调用者作用域求值，缺席实参时每个调用只求值一次。
             let default = self
@@ -7950,6 +8014,7 @@ impl<'a> Engine<'a> {
                 receiver: Receiver::Free,
                 owner: None,
                 script: true,
+                proto: false,
             },
         }
     }
@@ -9757,7 +9822,9 @@ impl<'a> Engine<'a> {
         (base.expect("postfix base"), steps)
     }
 
-    /// 折叠全部后缀步（迭代；不递归）。
+    /// 折叠全部后缀步（迭代；不递归）。PLAN-1080（T-03）：管道步与点后缀
+    /// 同构脱糖（紧结合——管道作用于紧邻后缀链，二元算子在其后作用于整
+    /// 个管道结果；legacy 低结合形需显式括号，见 §6.5 D-03 边界记录）。
     fn fold_postfix(&mut self, recv: Expr, steps: Vec<u32>) -> Expr {
         let mut value = recv;
         for step in steps {
@@ -11277,6 +11344,7 @@ impl<'a> Engine<'a> {
                     receiver,
                     owner,
                     script: false,
+                    proto: false,
                 }));
             }
             Frame::ScriptFinish { start_span } => {
@@ -11299,6 +11367,7 @@ impl<'a> Engine<'a> {
                     receiver: Receiver::Free,
                     owner: None,
                     script: true,
+                    proto: false,
                 }));
             }
             Frame::ExprEnter(n) => self.enter_expr(n),
@@ -12027,6 +12096,7 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                                 span: owner_span,
                             }),
                             script: false,
+                            proto: false,
                         }),
                         None => {
                             let sp = m.name.span;
@@ -12313,6 +12383,8 @@ impl TypeSubst {
             return a.clone();
         }
         match &a.kind {
+            // PLAN-1080：Inferred 无别名面（推断标记不在此解析）。
+            TypeRef::Inferred => a.clone(),
             TypeRef::Record(id) => match self.map.get(&id.name).cloned() {
                 Some(target) => {
                     self.depth += 1;

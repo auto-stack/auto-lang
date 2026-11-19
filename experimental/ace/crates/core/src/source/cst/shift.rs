@@ -23,6 +23,8 @@ fn shift_ident(i: &mut Ident, delta: i64) {
 fn shift_type_ann(t: &mut TypeAnn, delta: i64) {
     shift_span(&mut t.span, delta);
     match &mut t.kind {
+        // PLAN-1080：Inferred 无坐标载荷。
+        TypeRef::Inferred => {}
         TypeRef::Record(id) => shift_ident(id, delta),
         // PLAN-935：类型变量引用同 ident 平移。
         TypeRef::TyVar(id) => shift_ident(id, delta),

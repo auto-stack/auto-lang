@@ -303,6 +303,8 @@ fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {
         // a CST-projected declaration is never the PLAN-862 synthetic
         // script item (the script form has no n keyword to project).
         script: false,
+        // PLAN-1080：严格投影面无原型臂。
+        proto: false,
     })
 }
 

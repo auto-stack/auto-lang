@@ -952,6 +952,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     }
 }
 
@@ -1533,6 +1534,7 @@ fn compile_component_scenario_full(
                 receiver: Receiver::Free,
                 owner: None,
                 script: false,
+                proto: false,
             }));
         }
     } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
@@ -1614,6 +1616,7 @@ fn compile_component_scenario_full(
             receiver: Receiver::Free,
             owner: None,
             script: false,
+            proto: false,
         }));
     }
     let desugared = Program { items };
@@ -2225,6 +2228,7 @@ pub(crate) fn handler_check_fn(
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     })))
 }
 
@@ -2409,6 +2413,7 @@ pub(crate) fn lambda_value_fn(
         receiver: Receiver::Free,
         owner: None,
         script: false,
+        proto: false,
     })))
 }
 

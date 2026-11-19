@@ -79,6 +79,13 @@ pub fn compile_source(
 /// The numeric profile owns its vocabulary (the closures-superset VERIFICATION
 /// domain it maps to would reject the numeric kinds).
 fn profile_descriptor(profile: SourceProfile) -> &'static crate::descriptor::Descriptor {
+    // PLAN-1080: the ordinary Auto language face binds through its own
+    // descriptor (closures vocabulary + record methods). Checked before
+    // the aggregates arm — the Auto face keeps the aggregates surface but
+    // is NOT the frozen aggregates descriptor.
+    if profile.is_auto_language() {
+        return crate::auto_language_descriptor();
+    }
     // PLAN-972（T-02）：aggregates 用自身描述符（numeric 超集 + 文本
     // 表达式面）；numeric 等其余 profile 描述符不变。
     if profile.is_aggregates() {
@@ -575,7 +582,7 @@ fn compile_parts_observed(
     mut observer: Option<&mut dyn SourceObserver>,
     age_eq: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    let program = match super::parse_program_with(src, profile) {
+    let mut program = match super::parse_program_with(src, profile) {
         Ok(p) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Parse, &[]);
@@ -589,6 +596,12 @@ fn compile_parts_observed(
             return Err(vec![d]);
         }
     };
+    // PLAN-1080 (D-04/D-05)：普通 Auto 面在 parse 与 resolve 之间补全旧
+    // 无类型签名（省略形参/返回注解、`fn f(..) R;` 原型）。冻结窄面文法
+    // 不产 Inferred/proto 形状，此处恒为快路径 no-op。
+    if profile.is_auto_language() {
+        super::infer::complete(&mut program)?;
+    }
     compile_program_observed_with_age(
         &program,
         src,
@@ -4012,7 +4025,11 @@ impl<'p> Emitter<'p> {
         // (its Atom text binds against the numeric descriptor).
         // PLAN-972 (T-02): the aggregates profile renders its own identity
         // triple (numeric superset + text expression surface descriptor).
-        let (schema, profile_word) = if self.profile.is_aggregates() {
+        // PLAN-1080: the ordinary Auto language face renders its own triple
+        // (closures vocabulary + record methods descriptor).
+        let (schema, profile_word) = if self.profile.is_auto_language() {
+            ("auto.hir.auto-language.draft", "auto-language-draft")
+        } else if self.profile.is_aggregates() {
             ("auto.hir.aggregates.draft", "source-aggregates-draft")
         } else if self.profile.is_numeric() {
             ("auto.hir.numeric.draft", "source-numeric-draft")

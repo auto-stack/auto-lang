@@ -489,6 +489,22 @@ pub fn closures_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// PLAN-1080 ordinary Auto language descriptor. It starts from the closures
+/// vocabulary and adds the type-bound record method declaration (static +
+/// readonly view instance receivers) so the single widening language face
+/// carries the call/binding surface; the frozen narrow descriptors stay
+/// byte-identical.
+pub const AUTO_LANGUAGE_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/auto-language.atom");
+
+pub fn auto_language_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(AUTO_LANGUAGE_DESCRIPTOR_SCHEMA)
+            .expect("embedded auto-language descriptor must parse")
+    })
+}
+
 /// PLAN-961 source-numeric descriptor. It starts from the closures
 /// vocabulary (the largest frozen source surface) and adds the numeric
 /// kinds/ops/constants/cast — same-type operands, checked narrowing and
@@ -540,6 +556,7 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         (entry_unit_descriptor(), "entry-unit"),
         (collections_descriptor(), "collections"),
         (closures_descriptor(), "closures"),
+        (auto_language_descriptor(), "auto-language"),
     ];
     let header = match descriptor::peek_identity(source) {
         Ok(h) => h,

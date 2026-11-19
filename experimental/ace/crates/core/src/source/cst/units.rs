@@ -430,6 +430,8 @@ fn signature_of(f: &FnItem) -> String {
 fn type_digest(t: &crate::source::ast::TypeRef) -> String {
     use crate::source::ast::TypeRef;
     match t {
+        // PLAN-1080：推断标记（补全遍前置，正常不出现在摘要位）。
+        TypeRef::Inferred => "inf".to_string(),
         TypeRef::Builtin(w) => format!("{w:?}"),
         TypeRef::TyVar(id) => format!("tv:{}", id.name),
         TypeRef::Record(id) => format!("rec:{}", id.name),

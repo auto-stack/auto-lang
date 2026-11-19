@@ -1046,6 +1046,7 @@ pub(crate) fn project_packages_front(
                             receiver: crate::source::ast::Receiver::Free,
                             owner: None,
                             script: false,
+                            proto: false,
                         }));
                     }
                 }
@@ -1743,6 +1744,7 @@ pub(crate) fn project_packages_front(
                         receiver: crate::source::ast::Receiver::Free,
                         owner: None,
                         script: false,
+                        proto: false,
                     }));
                 }
                 declarations.insert(name.clone(), item_span);

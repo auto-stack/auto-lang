@@ -273,6 +273,15 @@ impl Descriptor {
             && self.profile == "source-aggregates-draft"
     }
 
+    /// PLAN-1080: whether this descriptor carries the ordinary Auto
+    /// language identity (`auto.hir.auto-language.draft/1/
+    /// auto-language-draft` — the aggregates superset + record methods).
+    pub fn is_auto_language(&self) -> bool {
+        self.schema == "auto.hir.auto-language.draft"
+            && self.revision == 1
+            && self.profile == "auto-language-draft"
+    }
+
     pub fn domain(&self) -> Option<hir::HirDomain> {
         if self.schema == "auto.hir.core.draft"
             && self.revision == 1
@@ -323,6 +332,15 @@ impl Descriptor {
         {
             // PLAN-865: source closure declarations and call sites have a
             // separate identity from the collections-only descriptor.
+            Some(hir::HirDomain::Closures)
+        } else if self.schema == "auto.hir.auto-language.draft"
+            && self.revision == 1
+            && self.profile == "auto-language-draft"
+        {
+            // PLAN-1080: the ordinary Auto language face — closures
+            // vocabulary + record methods; verification rides the
+            // closures-superset domain, the descriptor identity stays its
+            // own widening face.
             Some(hir::HirDomain::Closures)
         } else if self.schema == "auto.hir.numeric.draft"
             && self.revision == 1
@@ -3554,7 +3572,10 @@ impl<'d> Binder<'d> {
             // PLAN-972 (T-02): the aggregates descriptor is the numeric
             // superset — the numeric words bind under it as well.
             Value::Ident(word)
-                if (self.desc.is_numeric() || self.desc.is_aggregates())
+                if (self.desc.is_numeric()
+                    || self.desc.is_aggregates()
+                    // PLAN-1080：普通 Auto 语言面 = aggregates 词汇超集。
+                    || self.desc.is_auto_language())
                     && numeric_builtin(word).is_some() =>
             {
                 Some(hir::TypeUse::Builtin(numeric_builtin(word).unwrap()))
