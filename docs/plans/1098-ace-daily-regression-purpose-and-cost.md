@@ -351,6 +351,38 @@ cargo nextest run … --ignore-default-filter -E 'test(closures_lowering::)' …
 
 **H-06 由静态推断升级为实测**：日志逐字显示 `Running ace-host, ace-console`（一次），`results` 只有 3 条 = 4 组；合并表达式为 `(all() and not performance::) or (^console:: and not performance::)`。另证 `ace-console` 的选择面是 `ace-host` 的真子集（`all()` 覆盖），即两者的日常义务在合并调用里同时满足，但**组预算仍须按组各记**（§6.2 不变）。
 
+**第三批（其余 10 个中等组，`discover-batch3/`，整批墙 212.33s）**：
+
+| 组 | 选择/排除 | 二进制数 |
+|---|---:|---:|
+| `ace-source-syntax-927` | 13 / 0 | 1（`ace-core`） |
+| `ace-source` | **904 / 0** | 1（`ace-core`） |
+| `ace-syntax` | 159 / 0 | 4（syntax-runtime 52 / grammar 45 / core 31 / artifacts 31） |
+| `ace-abi` | 314 / 0 | 1 |
+| `ace-comptime` | 136 / 0 | 2（comptime 85 / source-cte 51） |
+| `ace-stdlib` | 2 / 0 | 1 |
+| `ace-runtime` | 84 / 0 | 2（data-conformance 64 / text-conformance 20） |
+| `ace-foreign-contract` | 56 / 0 | 1 |
+| `ace-python` | 10 / 0 | 1（`ace-abi`，`-E test(p1026)`） |
+| `ace-a2c-abi` | 9 / 0 | 1（`ace-a2x-c` lib 单测；确认"只有 lib"但有 9 例） |
+| **小计** | **1,687 / 0** | — |
+
+已发现合计（5 批）：`ace-av` 1,428 + 4 组 347 + conformance 4 组 189 + 本批 1,687 = **3,651 例**；尚未发现：`ace-native`、`ace-native-worker`、`ace-a2x`、`ace-m2-build`（8 target）、`ace-facade`/`ace-adapters`（根 workspace）、聚合 `ace-workspace`、`ace-perf`（串行 PERF 窗口）。
+
+### 5.11 T-01 第五段：O 类探针的独立预期（按 Spec 钉住，不录当前输出）
+
+§5.2 的 O 行原来只有"要独立 oracle"的原则；本节把**预期来源**钉住（执行仍属 T-05）：
+
+| ID | 现状（实测代码） | 独立预期来源与内容 |
+|---|---|---|
+| O-01 `p946_empty_remove_contract_observed` | `p946_t01_probe.rs:118-130` 两分支只 `println!`，无条件断言 | `docs/specs/stdlib/design/ace-collections.md:17`：**空 `remove` 裸形 = trap `list-index`**（`pop` 空=None 只是包装层合同）→ 断言 Trap 且 code=`list-index`，合法邻例（非空 remove、空 pop=None）各自独立断言 |
+| O-02 `probe972_t02_str_surface` | `probe972.rs:409-449` 六子场景只 `eprintln!` | 语言/Unicode 事实（非实现回读）：`str_eq`→1、`str_concat`→4、`char_codepoint_cmp`→1、`char_codepoint`→97、`str_slice_len_bytes`→1（"A" 单字节）、`str_char_at`→20013（'中' U+4E2D） |
+| O-03 `probe972_p1b2_closure_param_frozen_rejection` | `:237-263` 只断言 `Err`（`Ok` 即 panic）+ 打印 code | **无 spec 声明的精确 code** → 不得把打印值录成 oracle；T-05 必须二选一：转正例（已支持）或由 owner 钉住阶段+code |
+| O-04 `probe972_p1c_suffix_list_public_frozen_rejection` | `:269-286` 同上只打印 | Spec 已声明：packages 面在 binder 层拒 `source.module-symbol`（`docs/specs/stdlib/design/ace-collections.md:33`、`docs/specs/auto-ac/source-collections-variants.md:137-138`）→ 断言该码 |
+| O-05 `p946_list_argument_moves_single_module` | `p946_t01_probe.rs:275+`，已有返回值 22 断言 + cap 观察打印 | 保留 `==22` 断言；cap 观察段要么给独立 oracle（cap 值/事件），要么具名移 research，不留在日常当装饰 |
+
+即：O-01/O-02/O-04 的预期可完全从既有 Spec/Unicode 事实写出，**不需要**先跑一次再抄；O-03 缺合同须由 T-05 决策。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -496,6 +528,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2026-11-19（goal round 4，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①**准备/运行接口实证**（§5.9）——`cargo nextest archive -p ace-lowering --lib --tests` 18.75s 产出 4.56MB tar.zst；`cargo nextest run --archive-file … --workspace-remap …` **9/9 PASS 0.34s 零构建**；再加 `--ignore-default-filter -E 'test(closures_lowering::)'` → 3/3 PASS 0.39s（表达式在 archive 模式生效）。prepare/run 分离在真实 nextest 上成立。②**真实发现分母第一批**（§5.10）：`ace-av` **1,428/0**（8 二进制，墙 56.378s，峰值 Job 3.50GB）、`ace-lowering` 9、`ace-artifacts` 43、`ace-semantics` 295；`ace-av` 发现数与此前执行的 1,428 一致。③材料：`discover-ace-av/`、`discover-small-3/`、`archive-spike/`。仍受并发会话（lang-1078 `case-av-language-parity`，14:50 起持续）限速：`ace-host`/`ace-console`/`ace-batch`/`ace-rust-lowering`（共享 `ace-conformance` target）等其余组未发现。
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: pass（进行中：archive 接口实证 + 四组真实分母；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续：其余组发现 + 收口）`
+
+2026-11-19（goal round 5，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①第三批 **10 组真实发现分母**（§5.10）：`ace-source` 904、`ace-abi` 314、`ace-syntax` 159、`ace-comptime` 136、`ace-runtime` 84、`ace-foreign-contract` 56、`ace-source-syntax-927` 13、`ace-python` 10、`ace-a2c-abi` 9（lib 单测）、`ace-stdlib` 2，小计 1,687/0，整批墙 212.33s；五批累计已发现 **3,651** 例。②**O 类独立预期钉住**（§5.11）：O-01 依 `ace-collections.md:17` 钉为 Trap `list-index`；O-02 六场景按 Unicode/算术事实钉出精确值（1/4/1/97/1/20013）；O-04 依 packages 面 `source.module-symbol` 声明；O-03 无 spec 声明 → 交 T-05 决策（不得录打印值）；O-05 保留 22 断言 + cap 段须独立 oracle 或具名移 research。未闭：`ace-native`/`ace-native-worker`/`ace-a2x`/`ace-m2-build`（8 target）/`ace-facade`/`ace-adapters`（根 workspace）、聚合 `ace-workspace`、Case inventory。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: pass（进行中：10 组分母 + O 类预期钉住；T-01 未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 本轮 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 收口：重内存组发现 + Case inventory）`
 
 ## 10. 待澄清事项
 
