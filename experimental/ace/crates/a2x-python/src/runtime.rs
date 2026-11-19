@@ -63,6 +63,90 @@ def a2x_py_to_bool(v) -> bool:
 
 def a2x_py_to_str(v) -> bytes:
     return str(v).encode("utf-8")
+
+# ---- console print lanes (Plan 403 formatting parity) --------------------
+# Same spellings the AV console lane uses: NaN/Infinity, whole numbers without
+# a decimal part, shortest round-trip otherwise; one line per call.
+
+import struct as _a2x_struct
+import sys as _a2x_sys
+
+def _a2x_console_fmt_f64(v) -> str:
+    if v != v:
+        return "NaN"
+    if v == float("inf"):
+        return "Infinity"
+    if v == float("-inf"):
+        return "-Infinity"
+    r = round(v)
+    if abs(v - r) < 1e-9 and abs(r) < 1e15:
+        return str(int(r))
+    return repr(float(v))
+
+def _a2x_console_fmt_f32(v) -> str:
+    if v != v:
+        return "NaN"
+    if v == float("inf"):
+        return "Infinity"
+    if v == float("-inf"):
+        return "-Infinity"
+    r = round(v)
+    if abs(v - r) < 1e-9 and abs(r) < 1e15:
+        return str(int(r))
+    target = _a2x_struct.unpack("<f", _a2x_struct.pack("<f", v))[0]
+    for p in range(1, 10):
+        s = format(v, "." + str(p) + "g")
+        if _a2x_struct.unpack("<f", _a2x_struct.pack("<f", float(s)))[0] == target:
+            return s
+    return repr(float(v))
+
+def _a2x_console_write(stream, text):
+    stream.write(text + "\n")
+    stream.flush()
+
+def a2x_console_print_i32(v):
+    _a2x_console_write(_a2x_sys.stdout, str(int(v)))
+
+def a2x_console_print_bool(v):
+    _a2x_console_write(_a2x_sys.stdout, "true" if v else "false")
+
+def a2x_console_print_f64(v):
+    _a2x_console_write(_a2x_sys.stdout, _a2x_console_fmt_f64(float(v)))
+
+def a2x_console_print_f32(v):
+    _a2x_console_write(_a2x_sys.stdout, _a2x_console_fmt_f32(float(v)))
+
+def a2x_console_print_str(v):
+    if isinstance(v, (bytes, bytearray)):
+        text = bytes(v).decode("utf-8")
+    else:
+        text = str(v)
+    _a2x_console_write(_a2x_sys.stdout, text)
+
+def a2x_console_print_char(v):
+    _a2x_console_write(_a2x_sys.stdout, chr(int(v)) if isinstance(v, int) else str(v))
+
+def a2x_console_eprint_i32(v):
+    _a2x_console_write(_a2x_sys.stderr, str(int(v)))
+
+def a2x_console_eprint_bool(v):
+    _a2x_console_write(_a2x_sys.stderr, "true" if v else "false")
+
+def a2x_console_eprint_f64(v):
+    _a2x_console_write(_a2x_sys.stderr, _a2x_console_fmt_f64(float(v)))
+
+def a2x_console_eprint_f32(v):
+    _a2x_console_write(_a2x_sys.stderr, _a2x_console_fmt_f32(float(v)))
+
+def a2x_console_eprint_str(v):
+    if isinstance(v, (bytes, bytearray)):
+        text = bytes(v).decode("utf-8")
+    else:
+        text = str(v)
+    _a2x_console_write(_a2x_sys.stderr, text)
+
+def a2x_console_eprint_char(v):
+    _a2x_console_write(_a2x_sys.stderr, chr(int(v)) if isinstance(v, int) else str(v))
 "#;
 
 /// The native Python object helpers (PLAN-1107 T-03).

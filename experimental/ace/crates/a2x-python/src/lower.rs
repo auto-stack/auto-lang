@@ -373,6 +373,34 @@ fn py_literal_text(lit: &PyLiteral) -> String {
     }
 }
 
+/// PLAN-1107 T-03: the console print lane helper for one
+/// `auto.console.<print|eprint>.<ty>.v1` symbol.
+fn console_print_helper(symbol: &str) -> Option<&'static str> {
+    let (stream, ty) = if let Some(rest) = symbol.strip_prefix("auto.console.print.") {
+        ("print", rest)
+    } else if let Some(rest) = symbol.strip_prefix("auto.console.eprint.") {
+        ("eprint", rest)
+    } else {
+        return None;
+    };
+    let name = match (stream, ty) {
+        ("print", "i32.v1") => "a2x_console_print_i32",
+        ("print", "bool.v1") => "a2x_console_print_bool",
+        ("print", "f64.v1") => "a2x_console_print_f64",
+        ("print", "f32.v1") => "a2x_console_print_f32",
+        ("print", "str.v1") => "a2x_console_print_str",
+        ("print", "char.v1") => "a2x_console_print_char",
+        ("eprint", "i32.v1") => "a2x_console_eprint_i32",
+        ("eprint", "bool.v1") => "a2x_console_eprint_bool",
+        ("eprint", "f64.v1") => "a2x_console_eprint_f64",
+        ("eprint", "f32.v1") => "a2x_console_eprint_f32",
+        ("eprint", "str.v1") => "a2x_console_eprint_str",
+        ("eprint", "char.v1") => "a2x_console_eprint_char",
+        _ => return None,
+    };
+    Some(name)
+}
+
 struct PyLowerCtx<'v, 'a> {
     view: &'v SemanticView<'a>,
     facts: &'v FnFacts<'a>,
@@ -1533,6 +1561,22 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         if let Some(sym) = self.view.platform_symbol(target_id) {
             let port_id = platform_port_id(sym)?;
             return self.emit_port_call(&port_id, &slots, bindings);
+        }
+        // PLAN-1107 T-03: the language console print lanes
+        // (`auto.console.print|eprint.<ty>.v1`, shared with every other
+        // target's console) lower to the runtime's formatting helpers.
+        if let Some(sym) = self.view.sched_symbol(target_id) {
+            if let Some(helper) = console_print_helper(sym) {
+                if slots.len() != 1 {
+                    return Err(A2xReject::new(
+                        "a2x.internal",
+                        format!("console lane `{sym}` carries one value argument"),
+                    ));
+                }
+                let t = self.fresh_temp();
+                self.emit_line(&format!("{t} = {helper}({})", slots[0]));
+                return Ok(t);
+            }
         }
 
         // PLAN-967 (A2PY ctypes leg): a foreign callee bridges through

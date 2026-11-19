@@ -129,7 +129,7 @@ fn emit_fileset(dir: &PathBuf) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "T-03 in progress: the aggregates-family console print intrinsics (`auto.console.print.*`) have no a2py lowering yet; the py-op lowering itself is exercised by the lower tests. Un-ignore when T-03 closes."]
+#[ignore = "T-03 in progress: the staged-text readback lane (py_stage_str/py_str_word) is reached without a shared fact after the console-print lowering; the console print lanes themselves are wired. Un-ignore when T-03 closes."]
 fn p1107_t03_section51_runs_as_native_python() {
     let dir = scratch_dir("train");
     let files = emit_fileset(&dir);
