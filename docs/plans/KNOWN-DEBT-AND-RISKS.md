@@ -4848,3 +4848,12 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 状态（round 198 更新）：**console 面已闭**（round 197 落主，九门链＋真 CLI 验收腿绿）；**aggregates 文本入口裁定已下达**（2026-11-19 用户，PLAN-982 §10 Q-982-2 aggregates 段）——独立切片、复用 `ac.runtime.text.v1` 谱系、包编译端能力入产物＋运行端单元级 StrView 签名核对＋实参释放/arena 核对、CLI 按受检入口签名读 stdin、授权粒度不变；剩余＝stdin 切片落地＋man wall/cancel（`AUTO_ACE_WALL_MS`＋取消信号）与 same_sdk 见证接线＋完整兼容门（stdin+argv 同脚本）→ 默认切换（缺 stdin 腿可作中间收据）。
 - 状态（round 198 落地，同日晚）：**aggregates 文本入口刀已交付并落主**（lang merge `8d3b70341`、man `e0813ea`）——九门生产者链（双前门语法/投影、车道门入口专属纪律＋能力写入受检产物、mir_verify 白名单、`execute_program_text_platform` 入口单元核对＋arena 归零、UnitView 按入口单元回答能力、产品入口形、宿主 `request.input`）＋man 三接线（wall/cancel、stdin 按受检签名、same_sdk 收据〔`legacy_dispatch=0`〕）＋**完整兼容门收据在手**（lang 4/4＋man 4/4：stdin+argv 同脚本对拍/回归族〔零参/六形/隔离/spawn 拒〕/取消/收据核对；主检出复核绿）。
 - 状态（round 199，**默认切换收官——argv/stdin 主体闭**）：`auto <file.at>` 的 Windows 默认执行入口已翻转为 ACE sys 车道（man `f5a427c`；切前 legacy 对拍面实证＋`plan982_default_switch_cli` 5/5 字节对拍收据；`AUTO_ACE_CANDIDATE=0` 显式回退钮；UI 面/`--dump-lowered` 为只属默认路径的命名边界）。**本债务主体关闭**（车道接通＋兼容门＋默认切换全链闭环）；**唯一余留＝`03_image_scraper.at` 整支迁移**（http/file 需全 sys 装配 ⇒ A 产物前裁剪先行，round 196 结论维持——归 A 切片排程，不阻塞本债关闭）。
+
+## D-1098-01 — 两例 863 host-console 测试仍按旧入口策略断言，已被 PLAN-982 具名入口裁定废弃（2026-11-19 PLAN-1098 T-01 登记，非本包代码）
+
+- 现象：ce-av::conformance host_console::av_console_entry_selection_cannot_bypass_main_policy（crates/av/tests/cases/host_console.rs:12）与 host_console::av_console_owned_front_door_enforces_console_entry_only（同文件 :23）在基面 d20cf3f87 的**冷 debug 重放**中均红（0.092s / 0.049s）：前者 \.err().unwrap()\ 取到 \Ok\，后者 \.unwrap_err()\ 取到 \Ok\（已降级出 \MirModule{profile:"av.host-console/1", name:"d_helper"}\）。同组其余 19 例绿，整命令 62.7s（准备 61s + 执行 0.280s）。原始日志 D:/autostack/plan-artifacts/plan-1098/t01-av-console-replay/run.log（PLAN-1098 T-01 材料 scope）。
+- 结论：**不是产品回归，是陈旧 oracle**。3a9d9c1fb（2026-11-18，PLAN-982）"the console lane admits named entries (d_fn) for the service text routes; the entry shape stays gated by verify" 已把 console 车道入口面从"只许 \d_main\"改为"具名入口 \d_fn\ + \erify\ 守形状"；\crates/lowering/src/hir_adapter.rs:1535-1575\ 现在只在"模块内查无此名"时报 \lower.entry\。两例断言的是 863 时期旧策略。
+- 影响：任何含 ce-av 的门禁/预算测量都会带这 2 红；不构成产品功能失败，但**不得** ignore、不得改 expected 充绿、不得用成本绿代功能绿。
+- owner：PLAN-982 线（入口面裁定方）或用户裁定；PLAN-1098 仅登记与保留，不单方面改预期。
+- 关闭条件：二选一并留证——(a) 按 982 合同把两例改写为独立 oracle（具名入口可降级 + \erify\ 拒非法入口形状/签名，含一条真实错形状负控），不再是"不 panic/不打印即绿"；(b) 若 982 裁定回退为"只许 main"，则恢复产品侧 \lower.entry\ 并保持两例原断言。两种都要在两次独立整组运行中稳定。
+- 状态：open（不阻塞 PLAN-1098 T-01；批量回归继续具名记录）。

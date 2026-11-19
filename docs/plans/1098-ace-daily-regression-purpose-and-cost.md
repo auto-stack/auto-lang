@@ -249,6 +249,31 @@ T-01优先只读既有收据/配置/源码。确需新发现时仅显式debug/te
 
 本轮仍**未**关闭任何 T-01 出口项：逐行（P/B/F/O/H + 47 行）义务映射、真实发现差集、两个旧红的重放判定、Case 消费者组核对尚未完成，且未构建。下一步仍在 T-01 内（先等并发会话空闲再取代表基线）。
 
+### 5.6 T-01 第二轮：真实重放与逐行静态核查（2026-11-19，树 `d20cf3f87`，debug）
+
+**重放（本轮唯一执行）**：worktree `experimental/ace` 内 `cargo nextest run -p ace-av --test conformance -E 'test(host_console::)' --no-fail-fast --status-level all`。观测（冷 debug，本树首次构建）：**准备/编译 61s**、**执行 0.280s**（21 例 19 绿 2 红）、整命令 **62.7s**、`exit=100`。原始日志 `D:/autostack/plan-artifacts/plan-1098/t01-av-console-replay/run.log`。该 1:218 的准备/执行比正是 §2 要拆开的两段，不是"测试慢"。
+
+两个旧红（§4.2）**首红复现**，完整身份与实测：
+
+| 完整 nextest 身份 | 结果 | 失败点 | 根因（实证） |
+|---|---|---|---|
+| `ace-av::conformance host_console::av_console_entry_selection_cannot_bypass_main_policy` | FAIL 0.092s | `host_console.rs:18` `.err().unwrap()` 取到 `Ok` | `ace_av::console_host::compile("…d_helper")` 不再拒 |
+| `ace-av::conformance host_console::av_console_owned_front_door_enforces_console_entry_only` | FAIL 0.049s | `host_console.rs:28` `.unwrap_err()` 取到 `Ok`（已降级出 `MirModule{profile:"av.host-console/1", name:"d_helper"}`） | `lower_checked_owned(…, "d_helper", 1)` 不再拒 |
+
+**判定：不是产品回归，是陈旧 oracle。** `3a9d9c1fb`（2026-11-18，PLAN-982）"the console lane admits named entries (d_fn) …entry shape stays gated by verify" 已把入口面从"只许 d_main"改为"具名入口 + verify 守形状"；`crates/lowering/src/hir_adapter.rs:1535-1575` 现在只为"模块内查不到该名"报 `lower.entry`。两个 863 测试仍断言旧策略。按仓库规则**不得单方面改预期**，故具名移交 `D-1098-01`（见 `docs/plans/KNOWN-DEBT-AND-RISKS.md`），不充 PASS、不 `#[ignore]`、不用成本绿代功能绿。
+
+**逐行静态核查新增结论（§5.2/§5.3）**：
+
+- **B-01**：缺库即 `cargo build --locked --profile runtime-dev`，`crates/native/tests/common/mod.rs:19-40`（target-dir `../../target`）；collections 侧同型但 `--profile runtime-release`，`crates/native/tests/common/collections.rs:31-46`。
+- **B-02**：`crates/case-worker/tests/cases/backend.rs:204-223` **另抄了一份**同样的"缺库即 cargo build"——同一反模式实测 **4 处**（native common ×2、case-worker ×1、core common ×1），不是 2 处；`exit=12`/stderr`ba` 的参数求值顺序义务在 :224-229，保留。
+- **B-04**：`crates/core/tests/common/mod.rs:293-350` 的 `text_runtime_lib/text_runtime_pair_copy/text_runtime_sha` 全仓**无测试消费者**（其余命中均为产品符号 `ace_av::text_runtime::*`）→ 死 helper；清理不提"实测收益"。
+- **C 类判据实证**：`crates/av/tests/cases/console_coverage_1041.rs:98 run_rust_stdout` 真跑 `rustc --edition 2021` 并执行产物；`:128 run_c_stdout` 走 `ace_a2x_worker::crun::compile_c_fileset`（真 C 编译）。同类 helper 在 `plan966_ct_product.rs:71`、`stdlib_assembly_1043.rs:90`、`module_packages_960.rs:79,132`、`stdlib_core_945.rs:190`、`module_sources_950.rs:60` 各自复制 → C 类"多端"义务集中在少数 helper，可按端映射进 `ace-toolchain`。
+- **P-01/P-02 原条件**：`cases/perf.rs` `N=32`、3 预热、`build_doc(8000)`；P-02 6,000 函数、CST vs legacy 双链、P50/P95/P99——与 §5.2 完全一致，不得缩。
+- **H-04/H-05**：便宜日常例 `a2r_hir_first_case_green`（5 注册例）+ `a2r_hir_tampered_golden_is_red`；其 release worker 维护构建在 `rust_lowering.rs:56-58`（B-03）。certify 族逐例 PASS + `cert_sha256` + 每 leg `<120_000ms`（:326-360），负控 14→15 与错 reference（:366-379）。
+- **47 行静态分档（候选，非最终处置）**：47 行全文按"是否触外部链 helper"分档，产物 `D:/autostack/plan-artifacts/plan-1098/t01-47-rows-static-triage.md`（SHA256 `314539e1…0f68`）。候选：C 触外部链 21 行、D/R 纯 AV 内部 20 行、thin-wrapper 待展开 5 行、L Linux 绑定 1 行（S-39）。**分档只看文本标记，不等于逐行处置结论**；每行仍须展开角色/独立 oracle/条件/消费者后才能勾 T-01。
+
+**T-01 仍未闭**：47 行逐项展开（角色/预期/条件/消费者）、24 组真实发现分母与 >10s 项、`ace-toolchain` 的目标清单与 Case 消费者核对、两个旧红的 owner 答复（D-1098-01）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs目标 | before/after rule | rationale | acceptance IDs |
@@ -381,6 +406,10 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 
 `stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 1 | from: drafting | to: work | status: executing | outcome: pass（仅路由：drafting→work 已开启，T-01 未完成） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: ccbe165f3（计划文档）/ d20cf3f87（树基面） | next: work（继续 T-01）`
 
+2026-11-19（goal round 2，r1）：`stage: work`，T-01 继续（未 pass）。执行内容：①真实重放 `ace-av` 的 `host_console::` 21 例（冷 debug，准备 61s / 执行 0.280s / 整命令 62.7s / exit=100，19 绿 2 红），两个旧红**首红复现**并定位为 982 具名入口裁定后的**陈旧 oracle**（非产品回归），具名移交 D-1098-01；②逐行静态核查补齐 B-01/B-02/B-04（含"同一缺库补构建反模式 4 处"、B-04 死 helper 无消费者）、C 类真 rustc/真 C 编译 helper 实证、P-01/P-02 原参数、H-04/H-05 预算与负控；③47 行候选分档落材料 scope（`t01-47-rows-static-triage.md`，sha256 `314539e1…0f68`）。机器无并发构建（开工前后均已核对）。仍未闭：47 行逐项展开、24 组真实发现分母与 >10s 项、toolchain 目标清单/Case 消费者核对。
+
+`stage: goal | plan_id: PLAN-1098 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: pass（进行中：重放与静态核查落地，T-01 出口未闭） | worktree: D:/autostack/.wt/lang-1098/auto-lang | commit: 计划文档见下一条 docs(plan1098) 提交；树 d20cf3f87 | next: work（T-01 续）`
+
 ## 10. 待澄清事项
 
 无阻止提交本稿的用户决策。以下由T-01有界核查，不据此推迟全包或重新请求同范围许可：
@@ -389,3 +418,4 @@ work迭代跑定向负控+受影响完整组；T-09冻结24个单组预算，可
 2. O-01…04当前Spec及独立预期：区分已支持/仍拒绝并记录精确值或阶段/code，不能自动录制当前输出。合同矛盾时只冻结该行并提出具体行为决策。
 3. C/Q/L每行角色、冻结尺度与Linux归属先查真实代码。无等价分流或日常120/10预算不可达时，具名保未完成和最小修订，不自行降门。
 4. 24组/47项为规划分母；并行计划delta须补对照，不能删旧行。新的产品语义、外仓实施或预算改变需用户决定。
+5. **D-1098-01（具名未决，已登记 KNOWN-DEBT）**：`ace-av::conformance host_console::av_console_entry_selection_cannot_bypass_main_policy` 与 `…_owned_front_door_enforces_console_entry_only` 两例按 863 旧策略断言 `lower.entry`，已被 PLAN-982 `3a9d9c1fb`（具名入口 `d_fn`，形状由 verify 守）废弃；2026-11-19 于本树 debug 重放两例均红（§5.6）。**不得由本包单方面改预期**：需 982 线 owner 或用户裁定"改写成新合同的独立 oracle"还是"恢复旧策略"，本包按外部既有红具名保留、不 ignore、不充 PASS。关闭条件见债务条目。
