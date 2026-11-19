@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-20
 updated_at: 2026-11-20
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: [PLAN-1106, PLAN-1023, PLAN-980, PLAN-981]
 supersedes_spec_components: []
@@ -132,7 +132,7 @@ ASE 管理选中与可见代次，调度沿现有原生宿主事件循环或原 
   - owner_stage: work；依赖 T-04。扩展原生验证入口并运行 V-05/06，汇总单进程、会话/frame 工作量与各阶段时间。整理 SD-01/02 候选和独立复审入口。AC-01/04。
 - [x] T-06 独立复审
   - owner_stage: review；依赖 T-05。同树按实际源码、运行入口和冻结身份审计 V-01–06，核对原例归属、未授权延后、错误/关闭、重复派发及 Spec 差量。复审有缺口即返 work 定向修正。AC-05。
-- [ ] T-07 正式落地与归档
+- [x] T-07 正式落地与归档
   - owner_stage: merge；依赖 T-06 pass。在冻结提交核受影响职责及消费者并集，落地 Spec/路线/验收摘要并验证版本，归档并按 repo 规则对账和清理各专属树、材料目录。AC-05。
 
 ## 9. 复审记录
@@ -222,6 +222,24 @@ stage: merge | plan_id: PLAN-1109 | plan_revision: r1 | checkpoints: prepared + 
 ABI 固定组选取配置 SHA256 8bb5c62196c720dbd4d78c3f15246b7add4ff1ed834d4ae69b4912dcf39f295a，冻结执行 source_state 21ec4c77c560acfc9b51a0ff281964a78c9f2de239855beb7143a00fee84270d。失败 ID 集 SHA256 b8efbc61a66ff0f5ca40441af9e9fe6242090b0a8f24ac561e3780324ca30aef。冻结/基线 ABI 结果 SHA256 f1b70c1e35ccfcac1ffe000fd622540f41cae1ea5cede140da9cfac64d4915c0 / 108de90f0dc65dc435060b422084bcdd6809fc211294a815c1f6d0a2a885e470。Facade 等价配置 SHA256 e375af75561721b811994ebc98fc2d43e5ea0c35a211250533be9246914adf69，基线控制台日志 SHA256 d1e479568aa035e6d9d97808d1edd6c265e61b1567d4de98563050a1f0ab9274。主检出原生冒烟日志 SHA256 fe2b9e48ae14d27bf60a6ce098032924616f050cf8e1ef8fd191ab3b42a02e38。
 
 归档门已核实际位置、archived 状态、清理前 6/7、双仓已交付祖先、规范链接和两条 Gallery/ASE 反向链接。归档提交后继续守闸清理。
+
+### 关闭路径对账
+
+| 实际输出根 | 核验结果 | 文件数 | 字节数（清理前） |
+|---|---|---|---|
+| D:/autostack/.wt/lang-1109/auto-lang | 已移除 | 62356 | 20818442886 |
+| D:/autostack/.wt/lang-1109/auto-ui | 已移除 | 21389 | 8655445887 |
+| D:/autostack/.wt/lang-1109/auto-down | 已移除 | 1294 | 26841766 |
+| D:/autostack/.wt/lang-1109/auto-web | 已移除 | 88 | 1584322 |
+| D:/autostack/plan-artifacts/plan-1109 | 已移除 | 1000 | 795582140 |
+
+语言目标目录（含 experimental/ace/target）、UI target、两个 detached 兄弟树均在上表的专属工作树内。临时验证、provider/F0、归档包、预备产物、对照和 nextest 输出均在登记的 Plan 材料根。核过实际命令路径与进程，未见其他计划所有的外置输出。两个计划分支和空组目录已移除。没有具名材料持有。
+
+stage: merge | plan_id: PLAN-1109 | plan_revision: r1 | outcome: pass | delivery_commit: auto-lang 42546f007 / auto-ui b8da1ab1 | checkpoints: prepared + landed + canonical_verified + archived + cleaned | archive_commit: 5a0bddc03 | cleanup: 四个工作树通过 pwsh wt-guard 后分别移除，两仓计划分支和空组移除，材料折入归档并删除，登记表刷新 | next: done
+
+递归删除命令被执行策略拒绝，材料目录随后按已守闸的清单逐文件删除并自底向上移除已确认的空目录。核验范围根和专属工作树均已不存在。两个主检出中和本计划相关的交付路径干净；并行计划的既有文档与辅助文件不计入本计划清理。已验原生 debug 产物随专属工作树回收。周期门复核最后覆盖号 1098，已有当日收据，本轮 1109 及收据后的归档没有新的五倍数或 48h 到期条件。
+
+stage: goal | plan_id: PLAN-1109 | plan_revision: r1 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: 已删除 | commit: lang 42546f007 / ui b8da1ab1 | next: done
 
 ## 10. 待澄清事项
 
