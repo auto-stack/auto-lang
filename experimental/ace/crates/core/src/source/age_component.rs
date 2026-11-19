@@ -912,6 +912,42 @@ fn subst_params_stmts(stmts: &mut [ComponentStmt], subs: &[(String, Expr)]) {
     }
 }
 
+/// 递归重写 view 树里的 store 引用（循环体/条件体/元素条目/文本叶——循环体文本
+/// 叶不进 `texts`，必须单独走）。
+fn rewrite_store_view_items(
+    items: &mut [ComponentViewItem],
+    map: &[(String, String)],
+) -> Result<(), Vec<Diagnostic>> {
+    for item in items {
+        match item {
+            ComponentViewItem::Text(t) => rewrite_store_expr(&mut t.expr, map)?,
+            ComponentViewItem::Element(e) => {
+                if let Some(label) = &mut e.label {
+                    rewrite_store_expr(label, map)?;
+                }
+                rewrite_store_view_items(&mut e.items, map)?;
+            }
+            ComponentViewItem::Entry(en) => match &mut en.value {
+                ComponentEntryValue::Expr(x) => rewrite_store_expr(x, map)?,
+                ComponentEntryValue::Lambda { stmts, .. } => {
+                    rewrite_store_stmts(stmts, map)?;
+                }
+                _ => {}
+            },
+            ComponentViewItem::Cond(c) => {
+                rewrite_store_expr(&mut c.cond, map)?;
+                rewrite_store_view_items(&mut c.then_items, map)?;
+                rewrite_store_view_items(&mut c.else_items, map)?;
+            }
+            ComponentViewItem::For(f) => {
+                rewrite_store_expr(&mut f.iter, map)?;
+                rewrite_store_view_items(&mut f.items, map)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 把 node 内 `store` 声明内联成前缀字段/消息/处理器，并重写组件侧
 /// `.store.field` 引用。返回具名诊断（未知字段 / store 方法 / 多 store）。
 pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
@@ -1092,6 +1128,10 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
     }
     for t in &mut node.view.texts {
         rewrite_store_expr(&mut t.expr, &map)?;
+    }
+    rewrite_store_view_items(&mut node.view.tree, &map)?;
+    for (_, items) in &mut node.view.named_trees {
+        rewrite_store_view_items(items, &map)?;
     }
     Ok(())
 }
