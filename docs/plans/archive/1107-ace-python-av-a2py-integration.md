@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1107
-status: reviewed
+status: archived
 feature_name: ACE Python AV与A2PY同源互操作及工程分发集成
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-20
 plan_revision: 2
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1026, PLAN-1042, PLAN-977, PLAN-978, PLAN-967, PLAN-1094]
 supersedes_spec_components:
@@ -227,7 +227,7 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
 - [x] AC-05（work）：V-05/06通过真实978 build/run/SDK入口，身份/缓存/运行计数分账成立，无legacy/AV兜底A2PY，无不变Rust重编。
 - [x] AC-06（work）：V-07/08可重定位包、依赖/失败/恢复/原适用回归及支持矩阵通过，缺环境不PASS，其他978后端义务保留。
 - [x] AC-07（review）：同一树冻结写入，独立核AC-01..06、SD-01..04及依赖接口/遗漏/workaround/格式warning，绑定revision+commit，merge门pending明确。
-- [ ] AC-08（merge）：冻结门通过、已验Spec沉淀、归档及材料/输出/树/分支清理完成；不借本Plan声称所有Python生态或整版M2交付。
+- [x] AC-08（merge）：冻结门通过、已验Spec沉淀、归档及材料/输出/树/分支清理完成；不借本Plan声称所有Python生态或整版M2交付。
 
 ## 8. 执行步骤
 
@@ -265,7 +265,7 @@ Windows不运行Linux/WSL用例；Linux源/原义务保留，由1063/专用Linux
   - owner_stage: review；前置：T-06、同树冻结提交。
   - 核AC/Spec delta/原义务/架构与数据flow，扫遗漏/延期/绕过与健康；不在review修代码。
   - 关闭：AC-07；pass保merge门pending，finding返原树work。
-- [ ] T-08 合入沉淀与清理
+- [x] T-08 合入沉淀与清理
   - owner_stage: merge；前置：T-07 pass。
   - 冻结门并集/规范沉淀/归档；材料摘要、所有实际输出目录/外部消费根逐项对账，guard后清唯一树与分支。
   - 关闭：AC-08；复用有效证据，不把周期全量/性能门加为本Plan默认门。
@@ -584,3 +584,19 @@ next: merge
 2026-11-20（T-01 已决）：共同投影取方案 A（结构化 py-op 事实，AV 帧不变）；§5.1 的 `while`/void 入口改为语言拼写（r2，语义等价）；1094 整包不再是 T-01/V-01 的前置，其剩余协议义务按病例实测具名回原 owner。A2PY 解释器/包身份与错误/浮点对应留待 T-02/T-03/T-05 以真实运行冻结（当前无证据，不填 PASS）。
 
 本计划首先关闭既定PyTorch真实工程及列明协议/SDK验收；更广公共Python义务继续按977/1094及后续owner逐行承接，不据本Plan单例成功宣称全生态。若用户另要求删除978的其他目标或扩GPU/图形/全Python生态，须另行明确范围，本次不推定。
+
+2026-11-20 · stage: merge | plan_id: PLAN-1107 | plan_revision: r2 | outcome: pass | completion_kind: delivered
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed baseline `d202960ed`（review pass，final）；Spec delta SD-01..04 在 worktree 准备并提交 `c505512da`（docs-only descendant） |
+| landed | `git rebase master` 干净（20 commits，无冲突）→ 新 delivery tip `535b34a01`；主检出 `git merge --ff-only plan-1107-dev`，master tip == `535b34a01`，无 merge commit |
+| rebase 等价 | `git range-diff 5089d3de0..c505512da bf7efcf39..535b34a01` 全部 `=`（20/20 补丁等价）；hash 映射：reviewed `d202960ed→10926da77`、delivery `c505512da→535b34a01` |
+| canonical_verified | 落地 commit 含 `docs/specs/auto-a2x/python-ecosystem-integration.md`（新，sha256 前缀 `1724e803a3ae01bb`）＋ `auto-av/python-interop.md`（`7417968cf5173622`）、`auto-a2x/python-stdlib-readiness.md`（`66b5ecc6e2836741`）、`ace-migration/m2-build.md`（`271ce2a0763437e4`）追加段；`auto-a2x/plans.md` 计划史补行 |
+| 冻结并集门（重跑于 rebased delivery tip） | `cargo t ace-python ace-a2x ace-m2-build`：ace-python PASS(10)、ace-m2-build PASS(39)、ace-a2x FAIL(1/300) = 预存 `ace-a2x-ts ports::…fingerprint…`（72 vs 71，master 同红），具名保留未充 PASS |
+| archived | `docs/plans/archive/1107-ace-python-av-a2py-integration.md`，`status: archived`，AC-01..08/T-01..08 全勾 |
+| cleaned | worktree `D:/autostack/.wt/lang-1107/auto-lang` 经 `wt-guard.ps1` clean 后移除；branch `plan-1107-dev` 删除；`D:/autostack/plan-artifacts/plan-1107/` 整目录删除（证据已折入本文件与 §7/§9）；构建中间产物随 worktree 消失，未回收 |
+
+交付边界（不扩大）：本 Plan 交付既定 PyTorch 同源工程与列明协议/SDK 面；未宣称全 Python 生态或整版 M2 交付，也未宣称 Linux 腿（按 2026-11-14 裁定归专用环境）。遗留边界（不计债务、已在 §5/复审记录具名）：A2PY Python 异常→Auto 错误类映射、容器/记录跨边界、动态浮点实参。
+
+stage: merge | next: batch-regression-due-check
