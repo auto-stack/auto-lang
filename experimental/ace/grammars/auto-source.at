@@ -284,8 +284,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
         name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package] }
         name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package] }
-        // PLAN-980 P3（981 回签 (a)）：style 声明头——仅 age-package 面（组件面无语义 const/public 面）。
-        name(style-head) { spelling: "style", token: "ident", role: "style", profiles: [age-package] }
+        // PLAN-980 P3（981 回签 (a)）→ PLAN-1072 刀A：style 声明头开 age-component
+        // ——惰性视图数据面（投影期字面量替换，981 (c)3 路径；不产 const/fn、
+        // 不触发 981 三锁条件）。参数化/pub 仍包面专属（style-params 步骤门控）。
+        name(style-head) { spelling: "style", token: "ident", role: "style", profiles: [age-component, age-package] }
         name(age-model-head) { spelling: "model", token: "ident", role: "model", profiles: [age-component, age-package] }
         name(age-on-head) { spelling: "on", token: "ident", role: "on", profiles: [age-component, age-package] }
         // PLAN-980（B-DIALECT-I 完整批）：widget 成员槽位的槽位限定拼写
@@ -337,8 +339,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-980：`use themes.themes: Auto, Solarized` 模块成员导入
             //（002-counter 等传统工程的主题包导入形；仅 age-component 面）。
             alt(profiles: [age-component, age-package]) { age-use-module-item() {} }
-            // PLAN-980 P3（981 回签 (a)）：style <name> [(params)] = <text> 作者面（仅 age-package）。
-            alt(profiles: [age-package]) { style-item() {} }
+            // PLAN-980 P3（981 回签 (a)）→ PLAN-1072 刀A：style <name> = <text> 作者面
+            // 开 age-component（惰性视图数据；参数化仍包面）。
+            alt(profiles: [age-component, age-package]) { style-item() {} }
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
@@ -764,15 +767,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-use-import-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "import") {}
         }
-        // PLAN-980 P3（981 回签 (a)(c)(d)）：style 声明 = str const/fn 语法糖。
-        //   style NAME = "classes"                 → const NAME: Str
-        //   style NAME(p: str) = "classes"          → fn NAME(p: str) -> Str（插值本刀具名拒）
-        //   style NAME(p: str = "d") = "…"          → 默认值具名拒（source.age.style-defaults）
-        // 只开 age-package 面；style 不进 token 表（声明头按 spelling 识别）。
-        style-item(profiles: [age-package], expect: "a style <name> = <text> recipe declaration") {
+        // PLAN-980 P3（981 回签 (a)(c)(d)）→ PLAN-1072 刀A：age-package 面
+        // 保持 str const/fn 语法糖；age-component 面=惰性视图数据（投影期
+        // 字面量替换，不产 const/fn item——981 三锁条件不触发）。
+        //   style NAME = "classes"                 → 包面 const NAME: Str；组件面 style 表
+        //   style NAME(p: str) = "classes"          → 包面 fn NAME(p: str) -> Str（插值本刀具名拒）；
+        //                                           组件面=文法层边界（params 步骤包面门控缺席）
+        //   style NAME(p: str = "d") = "…"          → 包面默认值具名拒（source.age.style-defaults）
+        // style 不进 token 表（声明头按 spelling 识别）。
+        style-item(profiles: [age-component, age-package], expect: "a style <name> = <text> recipe declaration") {
             name(of: "style-head", field: "kw") {}
             ident(field: "name") {}
-            opt { style-params(field: "params") {} }
+            opt(profiles: [age-package]) { style-params(field: "params") {} }
             assign() {}
             pratt(of: "wide-ops", field: "value") {}
         }
@@ -1067,9 +1073,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-980 WEB #6m：事件键——ident 基名 + 可选点修饰符链
         //（`onclick.self`）；引号自定义键归方言层（本面不收）。
+        // PLAN-1072 刀A（005 真语料）：`type: "password"`（input 的 HTML
+        // type 属性）——`type` 是全局 token（type-item 声明头），条目键位
+        // 按 token 直收（投影 spelling 同名兼容）。
         age-event-key(profiles: [age-component, age-package]) {
-            ident(field: "base")
-            many { age-event-key-mod() {} }
+            alt {
+                tok(of: "type-kw", field: "base") {}
+                many { age-event-key-mod() {} }
+            }
+            alt {
+                ident(field: "base") {}
+                many { age-event-key-mod() {} }
+            }
         }
         age-event-key-mod(profiles: [age-component, age-package]) {
             dot() {}

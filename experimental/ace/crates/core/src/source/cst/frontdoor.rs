@@ -866,7 +866,7 @@ pub(crate) fn project_packages_front(
     let mut items = Vec::new();
     let node_span = |tree: &CstTree, n| {
         let (start, end) = tree.abs_range(n);
-        Span {
+        crate::atom_text::Span {
             start: start as usize,
             end: end as usize,
         }
@@ -2079,7 +2079,9 @@ pub(crate) fn project_packages_front(
     let import_names: std::collections::BTreeSet<String> =
         imports.iter().map(|i| i.bound_name().to_string()).collect();
     for (node, _texts, _scene) in &mut age_components {
-        if let Err(d) = replace_style_in_items(&mut node.view.tree, &style_lits, &import_names) {
+        if let Err(d) =
+            replace_style_in_items(&mut node.view.tree, &style_lits, &import_names, false)
+        {
             return Err(vec![d]);
         }
     }
@@ -2976,16 +2978,19 @@ fn replace_style_in_items(
     items: &mut Vec<crate::source::age_component::ComponentViewItem>,
     lits: &std::collections::BTreeMap<String, String>,
     imports: &std::collections::BTreeSet<String>,
+    reject_unknown: bool,
 ) -> Result<(), crate::atom_text::Diagnostic> {
     use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
     for it in items.iter_mut() {
         match it {
             // PLAN-980 view-if：style 字面量替换进条件双子树。
             ComponentViewItem::Cond(c) => {
-                replace_style_in_items(&mut c.then_items, lits, imports)?;
-                replace_style_in_items(&mut c.else_items, lits, imports)?;
+                replace_style_in_items(&mut c.then_items, lits, imports, reject_unknown)?;
+                replace_style_in_items(&mut c.else_items, lits, imports, reject_unknown)?;
             }
-            ComponentViewItem::Element(el) => replace_style_in_items(&mut el.items, lits, imports)?,
+            ComponentViewItem::Element(el) => {
+                replace_style_in_items(&mut el.items, lits, imports, reject_unknown)?
+            }
             ComponentViewItem::Entry(en) => {
                 if let ComponentEntryValue::Expr(e) = &mut en.value {
                     match &e.kind {
@@ -2998,6 +3003,21 @@ fn replace_style_in_items(
                                     "source.age.style-call",
                                     format!(
                                         "style reference `{}` resolves to an imported style;                                          imported style references are a named pending surface in                                          this slice",
+                                        id.name
+                                    ),
+                                    e.span,
+                                ));
+                            } else if reject_unknown && en.key == "style" {
+                                // PLAN-1072 刀A：组件面具名拒（fail-closed——
+                                // 条目值惰性，但不留静默未解析 ident；限定
+                                // `style` 键——其它键的裸 ident 值不属 style 面）。
+                                return Err(crate::atom_text::Diagnostic::new(
+                                    crate::atom_text::Stage::Text,
+                                    "source.age.style-call",
+                                    format!(
+                                        "style reference `{}` does not resolve to a style declared \
+                                         in this module; undeclared style references are a named \
+                                         pending surface in this slice",
                                         id.name
                                     ),
                                     e.span,
@@ -3022,6 +3042,186 @@ fn replace_style_in_items(
                 }
             }
             ComponentViewItem::Text(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// PLAN-1072 刀A：组件面 `style` 声明 = **惰性视图数据**（981 r18 会签 (c)3
+/// 投影期字面量替换路径——非 const 面：不产 Item::Const/Fn、不进 resolve/
+/// ModuleGlobalsPlan，981 会签三锁条件不触发）。收集本模块 style 字面量表
+/// 并替换 view 内 `style: NAME` ident 引用；重名沿包面 (c)1 同码，导入引用/
+/// 带参调用/不可折叠值沿包面 style-call 族具名拒；未声明名引用 fail-closed
+/// 具名拒（条目值惰性，不留静默未解析 ident）。参数化/pub 声明是包面专属
+///（组件面 style-params 步骤 profile 门控缺席=文法层边界）。
+fn apply_component_face_styles(
+    cached: &CachedGrammar,
+    tree: &CstTree,
+    snap: &Snapshot,
+    nodes: &mut [crate::source::age_component::ComponentNode],
+) -> Result<(), Vec<Diagnostic>> {
+    let rule = |name: &str| {
+        cached
+            .program
+            .rules
+            .iter()
+            .position(|r| r.name == name)
+            .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
+    };
+    let style_item = match rule("style-item") {
+        Some(k) => k,
+        None => return Ok(()),
+    };
+    let node_span = |tree: &CstTree, n| {
+        let (start, end) = tree.abs_range(n);
+        crate::atom_text::Span {
+            start: start as usize,
+            end: end as usize,
+        }
+    };
+    let field = |tree: &CstTree, n, name: &str| {
+        cached
+            .program
+            .field_id(name)
+            .and_then(|f| tree.field_child(n, f))
+    };
+    let text = |tree: &CstTree, n| {
+        let (a, b) = tree.abs_range(n);
+        snap.read_str(a, b).expect("CST source range")
+    };
+    // 源序收集 style 声明节点 + 组件面导入名（age-use-module-item 的成员）。
+    let mut style_nodes: Vec<(u64, u32)> = Vec::new();
+    let mut imports: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let age_use_module = rule("age-use-module-item");
+    let age_use_import_tail = rule("age-use-import-tail");
+    let mut stack = vec![tree.root];
+    while let Some(n) = stack.pop() {
+        if tree.kind(n) == style_item {
+            let (a, _) = tree.abs_range(n);
+            style_nodes.push((a, n));
+        }
+        if Some(tree.kind(n)) == age_use_module {
+            if let Some(im) = field(tree, n, "import") {
+                imports.insert(text(tree, im));
+            }
+            for c in tree.children(n) {
+                if Some(tree.kind(c)) == age_use_import_tail {
+                    if let Some(im) = field(tree, c, "import") {
+                        imports.insert(text(tree, im));
+                    }
+                }
+            }
+        }
+        for c in tree.children(n).into_iter().rev() {
+            stack.push(c);
+        }
+    }
+    if style_nodes.is_empty() {
+        // 零 style 声明也要走替换/拒绝走查——`style: ghost`（未声明名）与
+        // 导入名引用在无声明源里同样 fail-closed 具名拒。
+        for node in nodes.iter_mut() {
+            if let Err(d) = replace_style_in_items(
+                &mut node.view.tree,
+                &std::collections::BTreeMap::new(),
+                &imports,
+                true,
+            ) {
+                return Err(vec![d]);
+            }
+        }
+        return Ok(());
+    }
+    style_nodes.sort_by_key(|(a, _)| *a);
+    let mut lits: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut spans: std::collections::BTreeMap<String, crate::atom_text::Span> =
+        std::collections::BTreeMap::new();
+    let mut copies: Vec<(String, String, crate::atom_text::Span)> = Vec::new();
+    for (_, st) in &style_nodes {
+        let name_leaf = field(tree, *st, "name").expect("style name");
+        let name = text(tree, name_leaf);
+        let value_node = field(tree, *st, "value").expect("style value");
+        let value_span = node_span(tree, value_node);
+        let value = project::project_expr_node(
+            &cached.program,
+            &cached.kinds,
+            tree,
+            snap,
+            SourceProfile::AgeComponent,
+            value_node,
+        );
+        match &value.kind {
+            crate::source::ast::ExprKind::StrLit(lit) => {
+                if lits.insert(name.clone(), lit.clone()).is_some() {
+                    return Err(vec![Diagnostic::new(
+                        crate::atom_text::Stage::Text,
+                        "source.module-duplicate-declaration",
+                        format!(
+                            "style `{name}` is declared more than once in this module \
+                             (component-face style declarations share the module style table)"
+                        ),
+                        spans.get(&name).copied().unwrap_or(value_span),
+                    )]);
+                }
+                spans.insert(name, node_span(tree, name_leaf));
+            }
+            // 零参 ident 复制（本地字面量）——延后解析，允许前向（包面同形）。
+            crate::source::ast::ExprKind::Var(target) => {
+                copies.push((name.clone(), target.name.clone(), value_span));
+            }
+            crate::source::ast::ExprKind::Call { callee, .. } => {
+                return Err(vec![Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.style-call",
+                    format!(
+                        "style `{name} = {}(…)` is a named pending surface in this slice \
+                         (parameterised style calls are not folded; parameterised styles are a \
+                         package-face form)",
+                        callee.name
+                    ),
+                    value_span,
+                )]);
+            }
+            _other => {
+                return Err(vec![Diagnostic::new(
+                    crate::atom_text::Stage::Text,
+                    "source.age.style-call",
+                    format!(
+                        "style `{name}` has a value that does not fold to a string literal on \
+                         the component face in this slice"
+                    ),
+                    value_span,
+                )]);
+            }
+        }
+    }
+    for (name, target, span) in copies {
+        let Some(lit) = lits.get(&target).cloned() else {
+            return Err(vec![Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.age.style-call",
+                format!(
+                    "style `{name}` copies `{target}`, which is not a literal style declared in \
+                     this module; imported/non-literal style references are a named pending \
+                     surface in this slice"
+                ),
+                span,
+            )]);
+        };
+        if lits.insert(name.clone(), lit).is_some() {
+            return Err(vec![Diagnostic::new(
+                crate::atom_text::Stage::Text,
+                "source.module-duplicate-declaration",
+                format!(
+                    "style `{name}` is declared more than once in this module \
+                     (component-face style declarations share the module style table)"
+                ),
+                span,
+            )]);
+        }
+    }
+    for node in nodes.iter_mut() {
+        if let Err(d) = replace_style_in_items(&mut node.view.tree, &lits, &imports, true) {
+            return Err(vec![d]);
         }
     }
     Ok(())
@@ -3215,7 +3415,15 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
             &snap,
             profile,
         ) {
-            Ok(nodes) => component_nodes = nodes,
+            Ok(mut nodes) => {
+                // PLAN-1072 刀A：组件面 style 惰性视图数据 + 投影期字面量
+                // 替换（style 声明在 program 投影层跳过——项目循环的领域前门
+                // 单独投影注释同源）。
+                if let Err(ds) = apply_component_face_styles(cached, &tree, &snap, &mut nodes) {
+                    return FrontOutcome::Diag(ds);
+                }
+                component_nodes = nodes;
+            }
             Err(diags) => return FrontOutcome::Diag(diags),
         }
     }

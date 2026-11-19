@@ -452,7 +452,8 @@ pub(crate) fn project_program_with_caps(
                     r.name == "age-node-item"
                         || r.name == "age-node-c-item"
                         || r.name == "age-pub-node-item"
-                        // PLAN-980 P3：style 声明由包前门单独投影（str const/fn 糖）。
+                        // PLAN-980 P3/PLAN-1072 刀A：style 声明由领域前门单独投影
+                        // （包面=str const/fn 糖；组件面=惰性视图数据表）。
                         || r.name == "style-item"
                 })
                 .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)

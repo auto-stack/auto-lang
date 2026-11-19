@@ -149,7 +149,13 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 臂 + age-on-else 增 else-if chain 臂——e3859aed…/ab4c2000…
             // 双前值均失真，按并集树实测重冻结；13 邻居逐字节不变（下表
             // 逐行冻结，任何邻居漂移都会红）。
-            "61799f12ea4e0fedc3a87d72012c224c74bb1bc71f6c94841b0e3ec14be8d4cf",
+            // PLAN-1072 刀A（组件面 style）：style-head/style-item 开
+            // age-component + item 位 alt（params 步骤保持包面门控）——
+            // 61799f12…→4755265c…。
+            // PLAN-1072 刀A 第二刀（005 真语料）：age-event-key 增 type-kw
+            // 键臂（`type: "password"` input 属性——type 是全局 token，键位
+            // 直收；两面同改）——4755265c…→c8a7479d…；13 邻居逐字节不变。
+            "c8a7479d95f64815ea7b344a71a2d80efa4de1c146d6a1213e0f051b4ba4c805",
         ),
         (
             SourceProfile::AgeH0,
@@ -237,6 +243,8 @@ fn p981_age_package_grammar_id_is_frozen() {
         // age-on-else chain 臂——7497650a…/a8fe5d99… 双前值均失真，按并集
         // 树实测重冻结；age-component 同批（上表 AgeComponent 行）；13 邻居
         // 逐字节不变。
-        "93cd681422c28d1ed97840713bec2fd4bc9acd2eda58de00058d3f41f6fb135c"
+        // PLAN-1072 刀A 第二刀（age-event-key 增 type-kw 键臂，两面同改）：
+        // 93cd6814…→c337685c…。
+        "c337685c5ac1b7061fe9dee142f77a5d7bb545fae47c2861044ccc3eb7863b71"
     );
 }
