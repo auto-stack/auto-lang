@@ -42,9 +42,15 @@ pub fn typecheck(program: &ResolvedProgram) -> Result<(), Vec<Diagnostic>> {
 /// shared; only documentation of the checked rules differs.
 pub fn typecheck_with(
     program: &ResolvedProgram,
-    _surface: SourceProfile,
+    surface: SourceProfile,
 ) -> Result<(), Vec<Diagnostic>> {
-    typecheck_with_skip(program, &BTreeSet::new())
+    // PLAN-980 on-if 刀：AGE 两面的字符串相等性跨借用/owned 放行
+    // （`t == "light"`——内容相等）；其它面（text 族等）保持严格拒绝。
+    let age_eq = matches!(
+        surface,
+        SourceProfile::AgeComponent | SourceProfile::AgePackage
+    );
+    typecheck_with_skip(program, age_eq, &BTreeSet::new())
 }
 
 /// PLAN-909 §5.5: the whole-module typecheck walk, minus a named skip set —
@@ -53,6 +59,7 @@ pub fn typecheck_with(
 /// is recorded for a skipped name.
 pub fn typecheck_with_skip(
     program: &ResolvedProgram,
+    age_eq: bool,
     skip: &BTreeSet<String>,
 ) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
@@ -60,7 +67,7 @@ pub fn typecheck_with_skip(
         if skip.contains(&f.name) {
             continue;
         }
-        check_block(&f.body, program, f, &mut diags);
+        check_block(&f.body, program, f, &mut diags, age_eq);
     }
     if diags.is_empty() {
         Ok(())
@@ -76,7 +83,7 @@ pub fn typecheck_with_skip(
 pub fn check_body_in(program: &ResolvedProgram, fn_index: usize) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let f = &program.fns[fn_index];
-    check_block(&f.body, program, f, &mut diags);
+    check_block(&f.body, program, f, &mut diags, false);
     diags
 }
 
@@ -94,6 +101,7 @@ fn check_block(
     program: &ResolvedProgram,
     f: &ResolvedFn,
     diags: &mut Vec<Diagnostic>,
+    age_eq: bool,
 ) {
     crate::body_work::record_typecheck(&f.work_key(&program.records));
     // Iterative walk (R6: block nesting is unlimited, so no recursion).
@@ -121,7 +129,7 @@ fn check_block(
         };
         match s {
             RStmt::Let { local, value, .. } => {
-                check_expr(value, program, f, diags);
+                check_expr(value, program, f, diags, age_eq);
                 // With an annotation the resolver pinned the local's type to
                 // it; without one the local took the value's type, so this
                 // compares annotation vs initializer exactly.
@@ -133,7 +141,7 @@ fn check_block(
             RStmt::Assign {
                 local, path, value, ..
             } => {
-                check_expr(value, program, f, diags);
+                check_expr(value, program, f, diags, age_eq);
                 if local.0 != usize::MAX {
                     // the write target's type: the path's final field for
                     // field-path places, the local itself otherwise
@@ -150,10 +158,10 @@ fn check_block(
             // (position + i32-only); here it is just one more expression
             // whose operators/arguments must typecheck.
             RStmt::ExprStmt { value, .. } | RStmt::Fail { value, .. } => {
-                check_expr(value, program, f, diags)
+                check_expr(value, program, f, diags, age_eq)
             }
             RStmt::Return { value, .. } => {
-                check_expr(value, program, f, diags);
+                check_expr(value, program, f, diags, age_eq);
                 if value.vt != f.result {
                     mismatch(diags, f.result, value.vt, value.span);
                 }
@@ -161,7 +169,7 @@ fn check_block(
             RStmt::If {
                 cond, then, els, ..
             } => {
-                check_expr(cond, program, f, diags);
+                check_expr(cond, program, f, diags, age_eq);
                 if cond.vt != VT::Bool {
                     mismatch(diags, VT::Bool, cond.vt, cond.span);
                 }
@@ -171,7 +179,7 @@ fn check_block(
                 frames.push(TCFrame { src: then, idx: 0 });
             }
             RStmt::While { cond, body, .. } => {
-                check_expr(cond, program, f, diags);
+                check_expr(cond, program, f, diags, age_eq);
                 if cond.vt != VT::Bool {
                     mismatch(diags, VT::Bool, cond.vt, cond.span);
                 }
@@ -239,6 +247,7 @@ fn check_expr(
     program: &ResolvedProgram,
     f: &ResolvedFn,
     diags: &mut Vec<Diagnostic>,
+    age_eq: bool,
 ) {
     // Iterative walk (R3-QA-02): legal operator chains are unbounded in
     // depth, so no recursion. Visitation order (operands left-to-right
@@ -531,7 +540,14 @@ fn check_expr(
                         }
                     }
                     BinOp::Eq | BinOp::Ne => {
-                        if lhs.vt != rhs.vt {
+                        // PLAN-980 on-if 刀：AGE 面字符串相等性跨借用/owned
+                        // 放行（内容相等）；其它面保持严格（text 族负控在案）。
+                        let str_pair = age_eq
+                            && matches!(
+                                (lhs.vt, rhs.vt),
+                                (VT::Str, VT::StrOwned) | (VT::StrOwned, VT::Str)
+                            );
+                        if lhs.vt != rhs.vt && !str_pair {
                             diags.push(Diagnostic::new(
                                 Stage::Verify,
                                 "source.type-mismatch",

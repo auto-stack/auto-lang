@@ -585,7 +585,13 @@ impl Codegen {
                 for (name, &addr) in &self.exports {
                     if addr > entry_point {
                         // Note: > not >=
-                        let shift = if n_locals > 0 { 5 } else { 3 }; // FN_PROLOG (3 bytes) + optional RESERVE_STACK (2 bytes)
+                        // PLAN-983 r25/F-R5：RESERVE_STACK 恒发射（0 局部帧
+                        // 也占 1 个惯例槽）——native shim 的参数边界算式
+                        // （bp==0: num_locals+1；bp!=0: bp+num_locals+2）都以
+                        // 该槽存在为前提；0 局部帧缺它时首个实参帧
+                        // sp<=target 被误判无参（模块级 List<T>.new([..])
+                        // 静默得空列表的根因）。
+                        let shift = 5; // FN_PROLOG (3 bytes) + RESERVE_STACK (2 bytes)
                         adjusted_exports.insert(name.clone(), addr + shift);
                     }
                 }
@@ -597,7 +603,7 @@ impl Codegen {
                 // IMPORTANT: Adjust reloc offsets too!
                 // Relocations that target positions >= entry_point will have their placeholder
                 // positions shifted after insertion.
-                let shift = if n_locals > 0 { 5 } else { 3 };
+                let shift = 5;
                 for reloc in &mut self.relocs {
                     if reloc.offset >= entry_point {
                         reloc.offset += shift;
@@ -629,14 +635,13 @@ impl Codegen {
                 self.code.insert(entry_point as usize + 1, n_args as u8);
                 self.code.insert(entry_point as usize + 2, n_locals as u8);
 
-                // Insert RESERVE_STACK after FN_PROLOG (if needed)
-                if n_locals > 0 {
-                    // Insert RESERVE_STACK at entry_point + 3 (after FN_PROLOG)
-                    // This is 2 bytes: 1 byte opcode + 1 byte operand
-                    self.code
-                        .insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
-                    self.code.insert(entry_point as usize + 4, n_locals as u8);
-                }
+                // Insert RESERVE_STACK after FN_PROLOG — ALWAYS (PLAN-983
+                // r25/F-R5)：0 局部帧同样占 1 个惯例槽（RESERVE(n) 本就推
+                // n+1 个槽），维持 native 参数边界算式的帧不变量。
+                // This is 2 bytes: 1 byte opcode + 1 byte operand
+                self.code
+                    .insert(entry_point as usize + 3, OpCode::RESERVE_STACK as u8);
+                self.code.insert(entry_point as usize + 4, n_locals as u8);
 
                 // Plan 118 Phase 5: Recalculate jump offsets after FN_PROLOG insertion
                 // After inserting FN_PROLOG (+ RESERVE_STACK if any), all jump targets have shifted.

@@ -110,11 +110,15 @@ fn p981_hook_let_and_if_reach_the_description_stmts_in_source_order() {
     assert_eq!(m.handler_assigns[0].1.len(), 2);
 }
 
-/// **on-if 组件面刀（2026-11-19）修订**：两面**同开** `age-on-let`/
-/// `age-on-if`（G2 时组件面裁剪不含两臂的旧合同被本刀取代——006-hero-
-/// section 真语料 `.SetTheme(t) -> { if … }` 墙；执行/校验链 G2 已建为共
-/// 享）。两面裁剪都含两臂；同一 hook 源在组件面**解析+投影成功**（不再
-/// 语法拒）。TS/WEB 复放车道的 Let/If 消费门归 980（窗口声明在计划收据）。
+/// **on-if 组件面刀（2026-11-19）修订；F-R21-3 并集终版**：两面**同开**
+/// `age-on-let`/`age-on-if`（G2 时组件面裁剪不含两臂的旧合同被本刀取代
+/// ——006-hero-section 真语料 `.SetTheme(t) -> { if … }` 墙；执行/校验链
+/// G2 已建为共享）。两面裁剪都含两臂；同一 hook 源在组件面**解析+投影
+/// 成功**（不再语法拒）。TS/WEB 复放车道的 Let/If 消费门归 980（窗口声明
+/// 在计划收据）。
+/// 并集 reconcile：980 on-if 刀的中间版合同（"if 开、let 仍拒——组件面
+/// 无 let 消费"）被本刀取代——组件面 let 消费已由共享 `hook_stmts_lower`
+/// 链交付（AV 真值 `p981_widget_let_binds_for_the_branch`），拒因消除。
 #[test]
 fn p981_hook_let_and_if_open_on_both_faces() {
     let component = profile_grammar(SourceProfile::AgeComponent).expect("component trim");
@@ -126,11 +130,11 @@ fn p981_hook_let_and_if_open_on_both_faces() {
         .collect();
     assert!(
         names.contains(&"age-on-let"),
-        "the component face carries the hook-let arm (on-if knife)"
+        "the component face carries the hook-let arm (on-if knife; F-R21-3 union final)"
     );
     assert!(
         names.contains(&"age-on-if"),
-        "the component face carries the hook-if arm (on-if knife)"
+        "the component face carries the hook-if arm (on-if knife; F-R21-3 union final)"
     );
     let package = profile_grammar(SourceProfile::AgePackage).expect("package trim");
     let pnames: Vec<&str> = package

@@ -115,10 +115,18 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
                     .any(|i| matches!(i, crate::mir::MirInstr::ForeignCall { .. }))
             })
         });
+    // PLAN-982 (Q-982-2 step 2): the sys script lane — an aggregates app
+    // module carries console print imports alongside its platform ones
+    // (argv reading + mem); the run-time grant ledger stays the authority.
+    let sys_lane_module =
+        module.host_imports.iter().all(|h| {
+            h.symbol.starts_with("auto.platform.") || h.symbol.starts_with("auto.console.")
+        }) && !module.host_imports.is_empty();
     if !module.is_host_console_profile()
         && !sched_module
         && !platform_module
         && !py_lane_module
+        && !sys_lane_module
         && !module.host_imports.is_empty()
     {
         return Err(err(

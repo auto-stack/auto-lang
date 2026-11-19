@@ -578,6 +578,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
             alt { age-on-let() {} }
             alt { age-on-if() {} }
+            // F-R21-3 并集兜底臂：age-view-if-stmt（980 view 方言 if——分支内
+            // 调用形/链式作者面）。PEG 序后置——仅 age-on-if 整体失败时命中
+            //（如分支体含调用：age-on-branch-stmt 无调用臂→age-on-if 拒→
+            // 落本臂→project_view_if 以 body_foreign 承载，980 语义原样）。
+            alt { age-view-if-stmt() {} }
         }
         age-on-handler-params(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
@@ -598,6 +603,30 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 首匹配），`.field = x` 不落入本臂。组合器约束：alt 内不可
             // 混排非 alt 子步——`;` 分隔归各子规则尾。
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
+            // PLAN-980 on-if 刀：view-stmt 面 if 臂（widget on 体与 view 内联
+            // lambda 体共用本面——010 的 on 体 if 与 005 的 lambda 体 if 一并
+            // 开）。then/else 体=**本面方言**（age-view-stmt——带点赋值形；
+            // age-on-if 是 979 钩子形的无点方言，不通用）。
+            alt { age-view-if-stmt() {} }
+        }
+        // PLAN-980 on-if 刀：view-stmt 方言的体分支（镜像 age-on-if；体=
+        // many age-view-stmt——多语句/watch 形；else-if 链式递归）。
+        age-view-if-stmt(profiles: [age-component, age-package], expect: "an `if <expr> { … } [else …]` branch in a handler body") {
+            if(field: "kw")
+            if-cond(field: "cond")
+            lbrace(same-line: true) {}
+            many { age-view-stmt() {} }
+            rbrace() {}
+            opt { age-view-if-else(field: "els") {} }
+        }
+        age-view-if-else(profiles: [age-component, age-package]) {
+            alt { else(field: "kw") age-view-if-stmt(field: "chain") }
+            alt {
+                else(field: "kw")
+                lbrace(same-line: true) {}
+                many { age-view-stmt() {} }
+                rbrace() {}
+            }
         }
         age-view-assign-stmt(profiles: [age-component, age-package]) {
             dot() {}
@@ -820,6 +849,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 落，防平铺 handler_assigns 双支静默重放）。
         age-on-stmt(profiles: [age-component, age-package], expect: "an `on` handler statement (`<field> = <expr>`; hook-local `let` / `if-else` allowed on both faces)") {
             alt { age-on-assign() {} }
+            // 并集注记（F-R21-3）：980 on-if 刀先开组件面 if（let 仍包面专属）；
+            // 本刀（排程⑤）两面同开 let+if——980 的「let 仍拒」G2 负控修订
+            // 按 981 语义 reconcile（见 plan981_g2_hooks）。
             alt { age-on-let() {} }
             alt { age-on-if() {} }
         }
@@ -852,11 +884,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
             opt { age-on-else(field: "els") {} }
         }
+        // F-R21-3 并集：else-if 链臂（镜像 980 的 age-view-if-else——980 已
+        // 交付的链式作者面不因 union 换规则回归）；块臂=原形。
         age-on-else(profiles: [age-component, age-package]) {
-            else() {}
-            lbrace(same-line: true) {}
-            list-nl { age-on-branch-stmt() {} }
-            rbrace() {}
+            alt { else(field: "kw") age-on-if(field: "chain") }
+            alt {
+                else(field: "kw")
+                lbrace(same-line: true) {}
+                list-nl { age-on-branch-stmt() {} }
+                rbrace() {}
+            }
         }
         // PLAN-981（on-if 组件面刀）：**分支体**语句并集——直接形裸名赋值
         //（`mode = 1`）与 widget 形点前缀赋值（`.mode = 1`，006 真语料形）

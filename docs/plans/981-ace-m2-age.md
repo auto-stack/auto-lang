@@ -5,7 +5,7 @@ feature_name: AGE Node直接接入ACE与AV开发及A2R游戏发行
 author: [Codex]
 created_at: 2026-11-06
 updated_at: 2026-11-19
-plan_revision: 20
+plan_revision: 21
 current_step: 3
 total_steps: 34
 depends_on: [PLAN-960, PLAN-961, PLAN-962, PLAN-966, PLAN-967, PLAN-968, PLAN-969, PLAN-970, PLAN-972, PLAN-978, PLAN-979, PLAN-980, ag-examples/PLAN-024, ag-examples/PLAN-025, ag-examples/PLAN-028, auto-ui/PLAN-061, auto-ui/PLAN-062, auto-ui/PLAN-063, auto-ui/PLAN-067, auto-ui/PLAN-072]
@@ -921,6 +921,65 @@ B收口：所有B work、原全产品/组合及A证据适用性齐→原全包�
 
 ## 9. 复审记录
 
+### 2026-11-19 stage: work（**on-if 组件面刀：组件事件体 if/let 开面**；用户排程⑤「010/005 暴露的组件事件体 if 语言缺口」，OK 后开工）| PLAN-981 r21 | outcome: **pass（两面文法+投影+AV 分支真值齐；窗口未合入声明在案）** | worktree `D:/autostack/.wt/lang-981/auto-lang` | branch `plan-981-dev` | base `b574c550a`（=view-if 刀落主 tip） | code_commit `c80d39553`
+
+**红相（基线复现墙）**：`b574c550a` 上两探针——widget 形（006-hero-section 真语料形 `.Set(v) -> { if … }`）与直接形 `on Msg { if … }` 在组件面均解析拒（G2 旧裁剪合同：`age-on-let`/`age-on-if` 仅 age-package 臂）。
+
+**文法**（三处，两面）：①`age-on-let`/`age-on-if`/`age-on-else` 与 `age-on-stmt` 双臂去 age-package 门（直接形两面同开——G2 旧合同被本刀取代，翻正用例在 `plan981_g2_hooks`）；②widget 形 handler 体从 `age-view-stmt` 换**专用并集规则** `age-on-widget-stmt`（赋值/调用[组件面]+let/if——watch/lifecycle 等 age-view-stmt 其它消费体**不动**，负控钉住）；③**分支体**新 `age-on-branch-stmt` 并集（裸名赋值/点前缀赋值/let/嵌套 if）——首跑红相实证：widget 风格分支体 `.field = …`（点前缀）不被直接形裸名 assign 接受，故分支体两拼写并集（外层形式由作者决定，字段语义同一条检查链）。
+
+**投影**：`project_on_stmt_inner` 共用 helper（直接形/widget 形/分支体三处共用，+点前缀赋值臂走 collect_view_stmt 同一复合赋值脱糖）；if 分支收集按包装规则双匹配（age-on-stmt/age-on-branch-stmt）；widget 形 `stmts` **源序**（let 先于 if 用例钉住）；`assigns` 平铺兼容面=**全深度收平**（`flat_handler_assigns` 两面共用——与 G2 直接形同合同：分支赋值不消失、执行语义以 stmts 为准）。执行/校验零新代码：G2 共享链（`hook_stmts_lower` 消费 stmts+形参）组件面首次真跑。
+
+**AV 真值**（`plan981_on_if_av` 3 例，0.03s）：双派发分支选择（Set(1)→then mode=1；再 Set(0)→**else 赢**末态 0——两支同放/条件失效必红）；裸 if 假跳真跑（假⇒状态保持、真⇒赋值发生）；hook-local let 驱动条件+体（三 Tick→4，第三次假条件保持）。**具名边界**：`str` 载荷与字面量 `==`（借用 str vs owned Str）是共享检查既有类型边界（实测红），与本刀正交、另归 owner——AV 用例载荷用 int，判别性质不变。
+
+**grammar id 双值具名重基线**：age-component `620a0f73…→ab4c2000…`、age-package `30834de6…→a8fe5d99…`；13 邻居逐字节不变（冻结表全表断言复跑绿）。G2 套件 9/9（含翻正）、view-if 两套件不受扰、event_b（SendArgs 族）9/9。
+
+**门禁（机器空闲核后）**：`cargo t ace-source ace-av`——**ace-source PASS 895/895**；**ace-av 1420/1424**：唯二代码红=已具名 host_console 预存对（owner 982 console）；另两红 `stdlib_sys_973::sys973_dirs_and_replace`/`sys973_t08_seek_permissions_mtime` **环境归因**（组跑 15s 超时 vs 同树隔离重放 2/2 绿@3.8s——文件系统时敏族并发负载，非代码红）；wall 468.6s。新用例计时：core 4 例+av 3 例全 0.03s 级。
+
+**未合入声明（窗口协议，view-if 同款）**：`handler_assigns` 平铺兼容面含**两支赋值**（G2 全深度设计，包面 AV 真值依赖）；auto-ui 两处平铺消费（`ace_package_sfc.rs` 脚本重放逐条 emit、`ace_ts_provider.rs` 计数）**无 Let/If 消费门**（grep 实证 handler_stmts 零消费）。**本提交只在 plan-981-dev；980 落 handler_stmts Let/If 消费门（具名拒或真复放）+其 auto-ui 提交 SHA 前，不得 fold 到 lang master**——否则 on-if 组件源经 components 通道会静默双支重放（错状态值）。窗口开启条件 = 980 消费提交 SHA + 其 auto-ui 门禁 + grammar_scope 在本提交复跑绿。010 的另一墙（`var faqs = [...]` 无类型列表字段）不在本刀。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work | status: executing | outcome: pass（on-if 刀语言面齐；消费门=980 窗口）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | base: b574c550a | code_commit: c80d39553 | next: review（on-if 刀；含窗口条件核验）
+
+### 2026-11-19 stage: review（**on-if 组件面刀 r21 独立复审**；用户排程⑤交付验收，含窗口条件核验）| review_scope: final（阶段刀验收；整包 executing 保持，无本刀专属 T 框可复开）| reviewer_identity/limitations: 独立会话上下文（非实施会话）；结论由工件重构——冻结提交 diff 逐文件审读、定向复放、master/auto-ui 双仓实况核验，非采信执行者摘要 | plan_id: PLAN-981 | plan_revision: r21 | outcome: **needs_fix（刀语言面验收通过；F-R21-1 工位修复回 work；F-R21-2 窗口未全开、F-R21-3 fold 并集义务=合入前闭）** | worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev（clean，tip=reviewed）| reviewed_commit: c80d39553 | base_commit: b574c550a | dependency_revisions: r21 收据基 master `787ffdae0` 已被超越——当前 lang master `15cae2ded` **含 980 on-if/view-if 刀合入 `9468fdcf6`/`f169cf17c`**；auto-ui master `c679e2a5`（含 980 UI 侧 `56725cd5`/`d856529a`/`ae41e304`）| spec_inputs: docs/specs/ace-migration/m2-age.md（phase-1 沉淀 `b574c550a`；本刀 r21 增量=merge 时按 SD-PHASE 谱系沉淀，review 零 canonical 写入、worktree docs 零触碰、零 legacy ledger 写入——8 文件全为文法/投影/测试）
+
+**AC→证据映射（r21 刀内范围，全 pass）**。①文法三处两面：`age-on-let/-if/-else`+`age-on-stmt` 双臂去 age-package 门✓（diff 实读；G2 翻正用例 `p981_hook_let_and_if_open_on_both_faces` 复放绿）；`age-on-widget-stmt` 并集=忠实并入 age-view-stmt 原两臂（assign+component-only call）+let/if，watch/lifecycle 三消费点（auto-source.at:675/701/1069）仍 age-view-stmt 未动（结构性实证；master 侧 980 已另开 view 面镜像 if 臂——并集归 F-R21-3）；`age-on-branch-stmt` 裸名/点前缀两拼写并集✓（core 用例双拼写触达）。②投影：`flat_handler_assigns` 提共用语义不变（Assign 收/If 双支递归/Let 跳过）；widget 形 stmts 源序（let<if 断言钉住）、assigns=stmts 全深度收平（两支平铺判别 `p981_widget_handler_if_else_projects_into_stmts`）；`project_on_stmt_inner` 三处共用+点前缀臂+分支包装双匹配（age-on-stmt/age-on-branch-stmt）；执行/校验零新代码（`hook_stmts_lower` 共享链组件面首跑，AV 三例实证）。③AV 真值 3 例判别力实在：双派发 else 赢/单派发 then 赢（双支同放必红）、裸 if 假跳真跑、let 驱动条件+体三 Tick→4。④id 双值重基线 `620a0f73→ab4c2000`/`30834de6→a8fe5d99`+13 邻居冻结全表断言复放绿（grammar_scope 4/4，**窗口条件③本提交复跑绿=复审独立证实**）。⑤红相：直接形由基线自带 G2 负控（基线绿=拒收实证）承载；widget 形为探针（已删）+结构性论证（基线 handler 体 `many{age-view-stmt}` 无 if 臂不可解析）。⑥str 载荷==字面量=具名既有类型边界正交（master 侧 980 已落 AGE 旗控放行——本分支先于其切出，AV 用例载荷 int 不弱化判别，成立）。
+
+**发现（stable ID）**。
+- **F-R21-1〔P3 卫生，回 work〕**：`project.rs` 本刀区域 fmt 漂移 2 处（:7177/:7194——`project_on_stmt_inner` 提取时 `age-on-if` 臂体保留提取前 20 空格缩进，arm 标签已移 12 空格；`cargo fmt --check -p ace-core` 唯二 project.rs 命中，基线该文件无此漂移=刀主）。最小修复=仅 fmt 该文件（勿整包 fmt——av 测试面 bstr/kv_zip/net_974/plan980_state_face/plan981_f32_surface/age_package_modules/gfx_seam 漂移为预存/他会话 stash@{0} 注记在案，非本刀触面）；修复后重放 core 四套件即可（零语义变更）。
+- **F-R21-2〔P1 窗口未全开，fold 阻断，owner=980/UI 侧〕**：r21 窗口文本具名**两处**平铺消费需门。已落：lane/components 通道=**真复放形**（auto-ui `56725cd5`：`stmt_fragments_in` 根块 `hir::Stmt::If` 整语句发射+永久例 `p980_on_if_param_handler_if_body_derives_structured`+SetTheme 形 bodies=1/absent=[]——代码与 980 收据双核实）。未落：**`ace_package_sfc.rs` `generate_package_sfc` 脚本重放**（:52-98 逐条平铺 `handler_assigns` 无条件发射，无 Let/If 门；auto-ui master `c679e2a5` 实读；今日调用方仅测试、文件头自declared「单层 on-block 赋值」边界未由具名拒执行——包面 on-if 源可达即双支裸喷；该暴露自 G2（包面先开）即存在，非本刀新创，但本刀 fold 将组件面并入同一未门路径）；`ace_ts_provider.rs` `n_assigns` 平铺计数（:390-407，漂移面仅 census 计数非执行语义）。**处置**：fold 解锁须 980/UI 侧为剩余消费落门（具名拒或真复放）**或**用户显式裁定重划窗口（如按「测试可达+G2 预存」归 980 后续刀）；本复审不代作该裁定。附带：a2x-ts lower 备 `Stmt::Let` 臂（:385）但组件面 let 过 lane 无 UI 侧永久例（980 因文法拒 let 无法测——fold 后 980/UI 侧补）。
+- **F-R21-3〔fold 并集义务，merge-owned 清单〕**：分支基 `b574c550a` 先于 980 双刀落主，fold 非快进：(a) **grammar id 第三次重基线**（master 现值 `e3859aed/7497650a` 与分支值 `ab4c2000/a8fe5d99` 在并集树上双失真，两侧冻结测试均须随并集重基线）；(b) **G2 负控双修订冲突显式 reconcile**（master=980 版「if 开/let 仍拒」vs 分支=981 版「两面同开」——用户排程⑤下 981 版为准，须显式采981 语义解冲突，不得静默取一侧）；(c) **980 套件并集验证**（`plan980_on_if` 4 例语料 `widget` 形+`.` 方言+Str==str 走 `age-view-if-stmt`——并集后 handler 体规则换 `age-on-widget-stmt`（if 臂=age-on-if、分支体双拼写并集），树形变更须实证 980/981 双套件在并集树全绿；Str==str 旗控放行仅 master 有）；(d) 并集树冻结受影响固定组复跑（phase-fold 协议）。
+
+**测试表（test-discipline）**。新用例：core 4（on_if_component）+av 3（on_if_av）全 0.03-0.42s 级✓（≤10s）；G2 翻正 1 例改写不新增。复审会话定向复放（worktree `c80d39553` 增量编译）：core 过滤 22 例=0.42s（on_if 4+g2 9+grammar_scope 4+view_if 5）；av 过滤 16 例=0.10s（on_if 3+view_if 5+event_b 8）；**sys973 两红隔离串行重放 2/2 绿=6.35s**（当时机器仍有 3 外部 cargo 在跑——归因独立复核成立：同树同提交隔离绿，组跑 15s 超时=文件系统时敏族并发负载，非代码红；与本刀触面文法/投影零交叠一致）。复用证据（输入同一性）：执行者同提交全组 `cargo t ace-source ace-av`=ace-source 895/895、ace-av 1420/1424（唯二代码红=host_console×2 预存 A/B 实证 owner 982 console——980 收据交叉核实；另两红=sys973 环境归因如上）、wall 468.6s。未执行：全组复跑（按 repair-re-review 范围纪律不复用后不再跑）；冻结受影响组并集=merge-owned pending。
+
+next: work 修 F-R21-1（fmt 单文件+core 四套件重放）→复审快验（fmt clean+复放绿即转 pass）；**fold 前置=F-R21-2 闭（980/UI 侧门或用户裁定）+F-R21-3 并集义务随 fold 执行**；期间 plan-981-dev 保持唯一树不清理。
+
+stage: review | plan_id: PLAN-981 | plan_revision: r21 | from: work | to: work | status: executing | outcome: needs_fix（F-R21-1 回 work；F-R21-2/3=合入前闭）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | reviewed_commit: c80d39553 | base_commit: b574c550a | findings: F-R21-1(fmt,P3)/F-R21-2(窗口未全开,P1,外部 owner)/F-R21-3(fold 并集义务) | evidence: 本记录内嵌（diff 审读/复放命令与计数/auto-ui 实况行号） | next: 见上
+
+### 2026-11-19 stage: work+review（**F-R21-1 修复＋复审快验**；用户预定授权「fmt clean+复放绿即转 pass」）| plan_id: PLAN-981 | plan_revision: r21 | outcome: **pass（on-if 刀语言面验收闭合；F-R21-2 窗口、F-R21-3 fold 并集义务保持合入前闭）** | worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev（clean，tip=reviewed）| code_commit: 修复 **`bcd7d2aad`**（ atop `c80d39553`）| base_commit: b574c550a
+
+**修复（F-R21-1 闭）**：`rustfmt --edition 2021` 单文件 `project.rs`——`project_on_stmt_inner` 的 `age-on-if` 臂体 20→16 空格缩进（提取时遗留旧嵌套层级）；**纯空白 20+/20−**，diff 逐 hunk 核对全部落在该臂内、零触面外改动；预存漂移测试面（bstr/kv_zip/net_974/plan980_state_face/plan981_f32_surface/age_package_modules/gfx_seam）未触碰（他会话 stash@{0} 注记保持）。
+
+**快验（复审会话实测，冻结提交 `bcd7d2aad`）**：①`cargo fmt --check -p ace-core` project.rs 命中 **0**（余漂移均为预存非本刀文件）✓；②core 四套件 **22/22=0.83s**（on_if 4+g2 9+grammar_scope 4+view_if 5，计数与复审前一致）✓；③av `plan981_on_if_av` **3/3=0.07s**（直接消费改动函数）✓。输入同一性：空白级修复不动文法/语义/依赖/配置——`c80d39553` 全组证据（ace-source 895/895、ace-av 1420/1424 具名口径）按同一性复用；grammar id 不涉。
+
+**裁决翻转**：r21 刀语言面 review outcome needs_fix→**pass**（F-R21-1 闭；其余发现零新增）。**保持为合入前门**：F-R21-2（窗口未全开——`ace_package_sfc.rs` 脚本重放无 Let/If 门，owner=980/UI 侧落门或用户裁定重划）；F-R21-3（fold 并集义务：grammar id 第三次重基线/G2 双修订显式 reconcile 按 981 语义/980 套件并集验证/冻结组复跑）。整包 executing 保持、`plan-981-dev` 唯一树保留。
+
+stage: work | plan_id: PLAN-981 | plan_revision: r21 | from: review(needs_fix) | to: review(pass) | status: executing | outcome: pass（F-R21-1 闭；fold 阻断=F-R21-2/3）| worktree: D:/autostack/.wt/lang-981/auto-lang | branch: plan-981-dev | code_commit: bcd7d2aad | task_ids: 无专属 T 框（排程⑤阶段刀）| evidence: 本记录内嵌 | blockers: F-R21-2（外部 owner）/F-R21-3（fold 时执行）| next_responsible_role: 980/UI 侧（F-R21-2 消费门）→ merge（fold 并集）
+
+### 2026-11-19 stage: merge（**view-if 刀 phase 落主**；用户指令「先 merge 本刀」。非归档合并——整包 34 任务继续 executing，worktree/分支保留供后续批）| PLAN-981 r20 | outcome: **pass（landed + canonical_verified；无 archive/cleanup——phase fold）** | delivery `b574c550a`（master tip，ff-only 无 merge commit）
+
+**prepared**：复审 pass（reviewed_commit `ac1ae182c`）之上补 merge-owned 规范沉淀——`docs/specs/ace-migration/m2-age.md` **首个 phase 沉淀**（plan frontmatter 声明落点；两面文法臂+正式 grammar id `620a0f73…/`30834de6…`+age-h0 文法不可达根据、Cond 投影契约、两支平铺进 texts 绑定验证设计、`cond_spans` 描述事实、四观察入口 fail-closed+撤门条件、永久用例与变异判别力记录）——docs-only 后继（实现/依赖零改动，即 delivery 候选）`d91ac422d`。
+
+**冻结组门（delivery 树 `d91ac422d`，机器空闲核后单实例）**：`cargo t ace-source ace-av` → **ace-source PASS 891/891**；**ace-av 1419/1421**（含 F-1 新例；唯二红=已分诊预存对 host_console `entry_selection…`/`owned_front_door…`，owner 982 console 谱系、隔离重放确定性红、diff 零交集——按 980 落主先例具名携带，不充绿）；wall 584.9s 含准备。
+
+**landed**：master 前进至 `a8f1110a8`（982 argv 落主）→ `git rebase master` 零冲突；**range-diff 三提交全 `=`**（`386d6c748→126c80b0b`/`ac1ae182c→45ff3edb3`/`d91ac422d→b574c550a`——补丁等价的安全重写证明）；重基树定向复跑 core 13/13 + av 13/13（基面含 982 argv 改动后仍绿）；wt-guard clean → 主检出 `git merge --ff-only plan-981-dev` → **master tip = `b574c550a` = delivery commit**。主干冒烟：view_if+grammar_scope+980_view_if 13/13 绿。
+
+**canonical_verified**：`docs/specs/ace-migration/m2-age.md` 落主（blob `8119deeb0…`，tracked）；内容=复审通过的知识面（无超范围新要求）。
+
+**批回归到期检查（fix-test-tiering）**：`docs/plans/.last-batch-regression.json` = last_covered `1064` @2026-11-16 → **due**（980 落主触发 plan-id%5 规则；且 >48h 有合并）。**owner: [regress]**——主检出单实例 `cargo t all`，未在本 merge 内执行（独立门，红则走 fix-forward 计划、不解并）。
+
+**清理（phase 口径）**：worktree/分支保留（后续批共用）；plan-artifacts/plan-981 仍受 in-flight 保护，仅 opportunistically 删除本刀过时 scratch `view_if_final.rs`（r19 被取代设计的暂存副本，事实已折叠进计划收据）。stash@{0}（他会话 av fmt 残留）保持留置待其 owner。
+
+stage: merge | plan_id: PLAN-981 | plan_revision: r20 | outcome: pass（phase fold：landed+canonical_verified；archive/cleanup 不适用）| worktree: D:/autostack/.wt/lang-981/auto-lang（保留）| branch: plan-981-dev（保留）| delivery: b574c550a（master tip，ff-only）| spec: docs/specs/ace-migration/m2-age.md@8119deeb0 | gates: ace-source 891/891；ace-av 1419/1421（2 预存红具名）| pending: 批回归 due→regress（主检出单实例）| next: 用户排程（后续批；批回归门）
+
 ### 2026-11-19 stage: review（**view-if 刀两片独立复审**——r20 主线移植片 + F-1 修复；fresh 子代理两轮，verify-don't-trust）| PLAN-981 r20 | outcome: **pass（phase 级切片复审；F-1 修复后闭环；整包保持 executing）**
 
 **review_scope**: phase（view-if 刀：r19 被取代核对 + r20 第二片 + 修复）。**reviewer**: fresh 独立子代理（非实施会话上下文，自跑复现两轮：初审 → F-1 修复定向复验）；orchestrator 仅记录，verdict 由子代理实测重建。
@@ -970,6 +1029,8 @@ stage: work | plan_id: PLAN-981 | plan_revision: r20 | from: work | to: work | s
 **grammar id 双值具名重基线**（`plan981_grammar_scope.rs` 注明前值与原因）：age-component `8292feae…`→`b0ae9d90…`；age-package `c0e635d2…`→`ecc64b8e…`；13 邻居（age-h0+12 非 AGE）逐字节不变——冻结表全表断言复跑绿（测试本身即证据）。980 按 style 会签条件③在本提交上复跑 `p981_grammar_scope` 并核 diff。
 
 > **980 view-if 刀重基线通知（2026-11-19，lang master `f169cf17c`）**：980 落地组件/包面 view 级条件语句（`age-view-if/if-then/else` 三规则两面同开）——grammar-id 再动：age-component `8292feae…`→`620a0f73…`、age-package `c0e635d2…`→`30834de6…`（13 邻居逐字节不变，`plan981_grammar_scope` 冻结表随刀更新并 4/4 绿）。981 台账 reconcile（含本表 `b0ae9d90/ecc64b8e` 前值链）归 981 下轮会签核对；#6m 先例流程（980 落地+981 复跑核 diff）——`p981_grammar_scope` 在合并树已由 980 复跑绿。
+
+> **980 on-if 刀合同修订通知（2026-11-19，lang master `9468fdcf6`）**：G2 的组件面 hook-if 拒绝（"不开能解析跑不了的半面"）由 980 以**全链交付**消除——文法臂（age-view-if-stmt 镜像规则）+结构化投影+lane 语句片段发射齐备（010 SetTheme 形真实派生）；G2 负控 `p981_hook_let_and_if_stay_syntax_refused…` 已按新合同修订（**if 臂开、let 臂仍拒**）。grammar-id 第三次重基线：age-component `620a0f73→e3859aed`、age-package `30834de6→7497650a`（13 邻居不变，scope 4/4）。Str==str 相等性以 AGE 专用入口对放行（text 族严格与 774 负控保持）。981 台账 reconcile 归下轮。
 
 **永久用例**（`plan981_view_if.rs` 9 例，整组 0.04s，远低于 10s 门）：裸 if 投影+span、if/else 双分支子树+叶 span+不进 texts、else-if 嵌套链（嵌套 span 锚内层 if）、元素体/命名 view 内嵌套、非条件近邻负控（既有面不扰动）、states-only 车道过、双文本观察车道具名拒（含 span 判据）、包车道具名拒且**非**解析墙（`source.age.slot` 不在——包面文法接受的判别证据）、普查行。
 

@@ -1938,6 +1938,18 @@ impl CompileSession {
         // (e.g. "db.notes" instead of "notes"), providing cross-module isolation.
         codegen.current_module = module_name.clone();
 
+        // PLAN-983 r25/F-R5：依赖模块的顶层 init 任务从模块代码起点 spawn
+        // （Store 就地编译、无包装 fn）——若起点无帧头，任务以 sp=0 起步，
+        // 首个带实参的 native 调用撞 shim 的参数边界算式
+        // （num_locals+1）被误判无参（db 模块 List<Note>.new([..]) 静默得
+        // 空列表）。镜像主模块 script wrapper 的帧头：FN_PROLOG(0,16)+
+        // RESERVE_STACK(16)——sp 起步 17，边界算式成立。
+        codegen.emit_op(crate::vm::opcode::OpCode::FN_PROLOG);
+        codegen.emit_byte(0);
+        codegen.emit_byte(16);
+        codegen.emit_op(crate::vm::opcode::OpCode::RESERVE_STACK);
+        codegen.emit_byte(16);
+
         // PLAN-093 (G-7) 修正：Use 必须最先编译——解析器把 ext 块合并进
         // `type X`（AST 中 Ext 消失），合并后的方法随 TypeDecl pass 编码；
         // Use 原在 pass3 才处理 → 方法体内 import_scope 恒空 → 裸名 reloc

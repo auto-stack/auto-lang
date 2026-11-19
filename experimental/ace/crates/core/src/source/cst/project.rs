@@ -5897,6 +5897,9 @@ impl<'a> Engine<'a> {
     /// PLAN-981（G2 全深度收平；on-if 组件面刀提为两面共用）：语句面 →
     /// 赋值兼容面（含 if/else 分支里的赋值，源序）。执行语义以 `stmts` 为
     /// 准；assign-only 消费者见 Let/If 必须具名拒（stmts 契约）。
+    /// 并集注记（F-R21-3）：980 on-if 刀的单句版 `flatten_stmt_assigns`
+    /// 语义被本切片版包含（其唯一调用点=widget 循环，并集后改走本
+    /// helper），按并集政策删除、全仓保单一份。
     fn flat_handler_assigns(
         stmts: &[crate::source::age_component::ComponentStmt],
         out: &mut Vec<crate::source::age_component::ComponentAssign>,
@@ -6140,22 +6143,30 @@ impl<'a> Engine<'a> {
             let mut body_foreign = false;
             let mut channel_calls = Vec::new();
             // PLAN-981（on-if 组件面刀）：handler 体语句 = age-on-widget-stmt
-            // （赋值/调用 + hook-local let/if——006 真语料形）。
+            // （赋值/调用 + hook-local let/if——006 真语料形）。并集注记
+            // （F-R21-3）：age-view-if-stmt 为**兜底臂**（980 view 方言——
+            // 分支内调用形 foreign/链式作者面），PEG 序后置于 age-on-if，
+            // 仅 age-on-if 整体失败时命中，走 980 的 project_view_if
+            // （channel/foreign 语义原样）。
             let stmt_kind = self.rule_kind_of("age-on-widget-stmt");
+            let view_if_kind = self.rule_kind_of("age-view-if-stmt");
             // 语句面按**源序**收集（G2 直接形同合同）：赋值双进平铺 assigns
             // （兼容面，消费方见 Let/If 必须具名拒——窗口声明在计划收据）
             // 与 stmts；let/if 只进 stmts。
             let mut stmts = Vec::new();
             for stmt in self.cx.children(c) {
                 if Some(self.cx.tree.kind(stmt)) == stmt_kind {
-                    // PLAN-980 WEB #6o/#6p：语句=alt——解包后判形：
-                    // age-view-assign-stmt（field/rhs/op 字段）走赋值模型；
-                    // 调用形：callee ∈ widget 头参数=通道调用行（宿主通道
-                    // prop，原源 span；实参仅位置形）；let/if 走 on 体共享
-                    // 投影；否则 body_foreign（④ 外部名面族，fail-closed
-                    // ——976 后继目标域决策）。
+                    // PLAN-980 WEB #6o/#6p + 981 on-if 并集：语句=alt——解包
+                    // 后判形：age-view-if-stmt（兜底 view 方言 if）走 980 结构
+                    // 化分支；age-view-assign-stmt（field/rhs/op 字段）走赋值
+                    // 模型；调用形：callee ∈ widget 头参数=通道调用行（宿主
+                    // 通道 prop，原源 span；实参仅位置形）；let/if 走 on 体
+                    // 共享投影；否则 body_foreign（④ 外部名面族，
+                    // fail-closed——976 后继目标域决策）。
                     let inner = self.unwrap_child(stmt);
-                    if self.cx.field_child(inner, "field").is_some() {
+                    if Some(self.cx.tree.kind(inner)) == view_if_kind {
+                        stmts.push(self.project_view_if(inner, channel_names, &mut body_foreign));
+                    } else if self.cx.field_child(inner, "field").is_some() {
                         let mut one = Vec::new();
                         self.collect_view_stmt(inner, &mut one);
                         if let Some(a) = one.pop() {
@@ -6175,7 +6186,7 @@ impl<'a> Engine<'a> {
             }
             // 兼容面：赋值子集 = stmts **全深度**收平（与直接形同一条
             // flat_handler_assigns——分支里的赋值不消失；执行语义以 stmts
-            // 为准）。
+            // 为准；980 view-if 兜底臂的 If 同经此收平）。
             let mut assigns = Vec::new();
             Self::flat_handler_assigns(&stmts, &mut assigns);
             handlers.push(ComponentHandler {
@@ -7112,11 +7123,76 @@ impl<'a> Engine<'a> {
     /// age-package 裁剪存在；其它裁剪里这些节点不出现）。`if` 的 then/else
     /// 体递归走同一函数；类型注解按 `ann-ty` 词法分类（裸 ident → 名义
     /// record，如 `Sweep2D`；无注解交共享 resolver 推断）。
+    /// PLAN-980 on-if 刀：`age-view-if-stmt` 节点 → `ComponentStmt::If`
+    /// （view-stmt 方言体——带点赋值/嵌套 if/调用形；调用形置 foreign——
+    /// fail-closed 不做部分体）。assigns 深平铺由调用方经
+    /// `flatten_stmt_assigns` 完成。
+    fn project_view_if(
+        &mut self,
+        inner: u32,
+        channel_names: &[String],
+        foreign: &mut bool,
+    ) -> crate::source::age_component::ComponentStmt {
+        let cond_node = self.cx.field_child(inner, "cond").expect("view-if cond");
+        let cond = self.project_expr_sync(cond_node);
+        let then = self.project_view_stmt_children(inner, channel_names, foreign);
+        let els = self.cx.field_child(inner, "els").map(|e| {
+            if let Some(chain) = self.cx.field_child(e, "chain") {
+                // else-if 链：单一嵌套条件（递归）。
+                vec![self.project_view_if(chain, channel_names, foreign)]
+            } else {
+                self.project_view_stmt_children(e, channel_names, foreign)
+            }
+        });
+        crate::source::age_component::ComponentStmt::If {
+            cond,
+            then,
+            els,
+            span: self.cx.span_of(inner),
+        }
+    }
+
+    /// view-if 体（age-view-stmt 子节点，声明序）→ 结构化语句面（赋值 +
+    /// 嵌套 if；调用形置 foreign）。
+    fn project_view_stmt_children(
+        &mut self,
+        node: u32,
+        channel_names: &[String],
+        foreign: &mut bool,
+    ) -> Vec<crate::source::age_component::ComponentStmt> {
+        use crate::source::age_component::ComponentStmt;
+        let stmt_kind = self.rule_kind_of("age-view-stmt");
+        let if_kind = self.rule_kind_of("age-view-if-stmt");
+        let mut out: Vec<ComponentStmt> = Vec::new();
+        let mut sink: Vec<ComponentAssign> = Vec::new();
+        for ch in self.cx.children(node) {
+            if Some(self.cx.tree.kind(ch)) != stmt_kind {
+                continue;
+            }
+            let inner = self.unwrap_child(ch);
+            if Some(self.cx.tree.kind(inner)) == if_kind {
+                out.push(self.project_view_if(inner, channel_names, foreign));
+            } else if self.cx.field_child(inner, "field").is_some() {
+                sink.clear();
+                self.collect_view_stmt(inner, &mut sink);
+                if let Some(a) = sink.last() {
+                    out.push(ComponentStmt::Assign(a.clone()));
+                }
+            } else if self.cx.field_child(inner, "call").is_some() {
+                *foreign = true;
+            } else {
+                *foreign = true;
+            }
+        }
+        out
+    }
+
     fn project_on_stmts(
         &mut self,
         nodes: &[u32],
     ) -> Vec<crate::source::age_component::ComponentStmt> {
-        use crate::source::age_component::{ComponentAssign, ComponentStmt};
+        // 并集顺手闭（F-R21-3）：981 提取 helper 时遗留的孤儿 import
+        //（增量编译不重发警告，复审时漏网——本提交触该文件一并清）。
         let mut out = Vec::new();
         for &n in nodes {
             // 每个 `age-on-stmt` 恰有一个内层语句节点（assign/let/if）。
@@ -7193,13 +7269,23 @@ impl<'a> Engine<'a> {
                     .collect();
                 let then = self.project_on_stmts(&then_nodes);
                 let els = self.cx.field_child(inner, "els").map(|e| {
-                    let else_nodes: Vec<u32> = self
-                        .cx
-                        .children(e)
-                        .into_iter()
-                        .filter(|&c| is_branch(self.cx.tree.kind(c)))
-                        .collect();
-                    self.project_on_stmts(&else_nodes)
+                    // F-R21-3 并集：else-if 链臂（镜像 980 的 age-view-if-else
+                    // chain——本刀前 age-on-else 无链形，980 已交付的链式作者
+                    // 面不能因换 union 规则回归）= 单一嵌套条件（递归）。
+                    if let Some(chain) = self.cx.field_child(e, "chain") {
+                        match self.project_on_stmt_inner(chain) {
+                            Some(st) => vec![st],
+                            None => Vec::new(),
+                        }
+                    } else {
+                        let else_nodes: Vec<u32> = self
+                            .cx
+                            .children(e)
+                            .into_iter()
+                            .filter(|&c| is_branch(self.cx.tree.kind(c)))
+                            .collect();
+                        self.project_on_stmts(&else_nodes)
+                    }
                 });
                 Some(ComponentStmt::If {
                     cond,

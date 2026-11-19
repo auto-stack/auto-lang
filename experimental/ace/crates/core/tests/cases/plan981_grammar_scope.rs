@@ -129,7 +129,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         //     `age-on-let`/`age-on-if` 仅 age-package 臂）——两面都动；
         //   - G1：`layer: render-only` 冻结属性行（`age-attr` 双臂包装 +
         //     `r-render-only` 单 token，仅 age-package）。
-        //   前值：age-component f35cf593…→19a1376e…（spawn）→8292feae…（本批）→620a0f73…（980 view-if）；
+        //   前值：age-component f35cf593…→19a1376e…（spawn）→8292feae…（本批）→620a0f73…（980 view-if）→e3859aed…（980 on-if）；
         //   age-package 2d1e0547…→0290d0ab…（spawn）→5398368c…（本批）。
         //   其余 13 行（age-h0 + 12 非 AGE 邻居）本批逐字节不变——本表逐行冻结，
         //   任何邻居漂移都会在此红。
@@ -137,13 +137,19 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::AgeComponent,
             // PLAN-980 view-if 刀重基线：age-view-item 增 age-view-if/then/
             // else 三规则（两 AGE 面同开）——8292feae…→620a0f73…。
-            // PLAN-981（on-if 组件面刀，2026-11-19 二次重基线）：`on` 体
-            // hook-local `let`/`if` 两面同开（age-on-let/-if/-else 与
-            // age-on-stmt 双臂去 age-package 门）+ widget 形 handler 体换
+            // PLAN-980 on-if 刀：age-view-stmt 增 if 镜像臂——620a0f73…→
+            // e3859aed…（master 线）。
+            // PLAN-981（on-if 组件面刀，分支线 620a0f73…→ab4c2000…）：
+            // `on` 体 hook-local `let`/`if` 两面同开（age-on-let/-if/-else
+            // 与 age-on-stmt 双臂去 age-package 门）+ widget 形 handler 体换
             // `age-on-widget-stmt` 并集 + 分支体 `age-on-branch-stmt` 并集
-            //（裸名/点前缀赋值+let+if）——620a0f73…→ab4c2000…；13 邻居
-            // 逐字节不变（下表逐行冻结，任何邻居漂移都会红）。
-            "ab4c20003f12a5776059ddadd7bd75ccef8434355dc160e045552f01f91bd5ef",
+            //（裸名/点前缀赋值+let+if）。
+            // F-R21-3 并集第三次重基线：双线合流（980 view 方言 if 臂 +
+            // 981 on 面开臂）+ age-on-widget-stmt 增 age-view-if-stmt 兜底
+            // 臂 + age-on-else 增 else-if chain 臂——e3859aed…/ab4c2000…
+            // 双前值均失真，按并集树实测重冻结；13 邻居逐字节不变（下表
+            // 逐行冻结，任何邻居漂移都会红）。
+            "61799f12ea4e0fedc3a87d72012c224c74bb1bc71f6c94841b0e3ec14be8d4cf",
         ),
         (
             SourceProfile::AgeH0,
@@ -225,12 +231,12 @@ fn p981_age_package_grammar_id_is_frozen() {
     assert_eq!(
         id_of(SourceProfile::AgePackage),
         // PLAN-980 view-if 刀重基线：c0e635d2…→30834de6…（同批双值）。
-        // PLAN-981（on-if 组件面刀，2026-11-19 二次重基线）：`on` 体
-        // hook-local `let`/`if` 两面同开（age-on-let/-if/-else 去门 +
-        // age-on-stmt 双臂去门）+ widget 形 handler 体换 `age-on-widget-stmt`
-        // 并集 + 分支体 `age-on-branch-stmt` 并集（裸名/点前缀赋值+let+if）
-        // ——前值 30834de6… → a8fe5d99…；age-component 同批 620a0f73… →
-        // ab4c2000…（上表 AgeComponent 行）；13 邻居逐字节不变。
-        "a8fe5d9939c7e6cccffdf464611522d3ce5b4866ae9e480dffc705d05a812e7e"
+        // PLAN-980 on-if 刀：30834de6…→7497650a…（master 线）。
+        // PLAN-981（on-if 组件面刀，分支线 30834de6…→a8fe5d99…）。
+        // F-R21-3 并集第三次重基线：双线合流 + age-on-widget-stmt 兜底臂 +
+        // age-on-else chain 臂——7497650a…/a8fe5d99… 双前值均失真，按并集
+        // 树实测重冻结；age-component 同批（上表 AgeComponent 行）；13 邻居
+        // 逐字节不变。
+        "93cd681422c28d1ed97840713bec2fd4bc9acd2eda58de00058d3f41f6fb135c"
     );
 }

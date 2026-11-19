@@ -130,12 +130,38 @@ impl PackageAvTarget {
         ),
         String,
     > {
-        let (out, _trace, summary) = ace_av_core::execute_program_platform(
-            &self.current,
+        self.run_platform_value_with(
             &ace_av_core::ExecLimits::default(),
             &ace_av_core::CancelFlag::default(),
-            grants,
             None,
+            grants,
+            backend,
+        )
+    }
+
+    /// PLAN-982 (Q-982-2 step 2): the product-entry form — the caller owns
+    /// the wall/cancel budgets and the CONSOLE HOST (capture or pass-through
+    /// is the door's choice); grants stay the per-declared-import authority.
+    pub fn run_platform_value_with(
+        &self,
+        limits: &ace_av_core::ExecLimits,
+        cancel: &ace_av_core::CancelFlag,
+        console: Option<&mut dyn ace_av_core::host::ConsoleHost>,
+        grants: &[String],
+        backend: &mut dyn ace_av_core::platform_io::PlatformIoBackend,
+    ) -> Result<
+        (
+            ace_av_core::contract::ExecOutcome,
+            ace_av_core::PlatformSessionSummary,
+        ),
+        String,
+    > {
+        let (out, _trace, summary) = ace_av_core::execute_program_platform(
+            &self.current,
+            limits,
+            cancel,
+            grants,
+            console,
             backend,
         )
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
