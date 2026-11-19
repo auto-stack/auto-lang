@@ -18,7 +18,7 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
-2026-11-19 实施归属更新。共享 AC 缺口按[Design59 实施归属表](../design/59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属)落到实际任务，1068 接正式证据并做三端最终验收。 本包按原任务收实际生产任务的证据，安排已验阶段交接。
+2026-11-19 实施归属更新。共享 AC 缺口按[Design59 实施归属表](../../design/59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属)落到实际任务，1068 接正式证据并做三端最终验收。 本包按原任务收实际生产任务的证据，安排已验阶段交接。
 
 2026-11-16 r3本轮检查：把执行条款中的“M2-A AC适用子集”校正为最终M2三端required＋A后延；按本包实际族/原任务细化语法→语义→MIR→runtime→consumer。~T/?T/!T、泛型、CTE、required标注及CS未用特性不得遗漏。保原任务ID/阶段/数量/依赖/0进度，本轮仅规划核对。
 
@@ -30,7 +30,7 @@ touched_goals: [GOAL-002]
 
 补齐AAC实际需要的精确摘要、长度/域分隔及版本化codec支持，不能把975有JSON或972有hash泛称为现Rust工件身份已可复现。 按真实CS/artifact协议取最小BLAKE3、实际用到的SHA-256、bytes/hex/整数和长度帧、确定性编码/版本/拒绝规则；不用扩成通用密码套件或复制serde框架。优先复用M2-A已交等价Auto库能力，差额由本Plan与标准库owner同一单源补齐。编译器专有IR/envelope codec属AAC应用层。新增能力单列AAC profile/version，不无声覆盖冻结M2-A std或改变它的分母；如果新增公共标准库操作，按现覆盖合同验证AV三provider、AC、A2R、A2PY并保A2C旧腿，不能因AAC只用AC就豁免。
 
-依据[Design59](../design/59-aac-native-bootstrap-and-compiler-subject.md)和[AAC路线](../design/strategy/aac-delivery-roadmap.md)。AAC在M2-A稳定后与M2-B可并行，独立后续版本/验收，非M2硬门。非目标：不重写AV/Cranelift/全部A2X，不迁全部产品，不改旧M2分母/旧oracle，不用旧AAVM证书证明AAC。
+依据[Design59](../../design/59-aac-native-bootstrap-and-compiler-subject.md)和[AAC路线](../../design/strategy/aac-delivery-roadmap.md)。AAC在M2-A稳定后与M2-B可并行，独立后续版本/验收，非M2硬门。非目标：不重写AV/Cranelift/全部A2X，不迁全部产品，不改旧M2分母/旧oracle，不用旧AAVM证书证明AAC。
 
 ## 2. 架构方案
 
@@ -74,7 +74,7 @@ frontmatter为本Plan完整交付前置；§8任务再细化本包批次。开�
 
 ### AAC与M2三端能力的当前交接（2026-11-16优先）
 
-本包执行[1068](1068-ace-m2b-three-backend-parity-and-aac-proof.md)和[Design59当前阶段合同](../design/59-aac-native-bootstrap-and-compiler-subject.md)：985/A正式来源仍为开工门，但允许其AC具名差额账。初始CS审计可列未交操作，依赖某操作的实现/验证切片必须先收到该操作正式来源；缺口回Design59 具名实施任务或实际库/领域 owner补齐，不回落旧VM或私建临时stdlib，也不令AAC整条路线反等所有AC能力先完成。
+本包执行[1068](../1068-ace-m2b-three-backend-parity-and-aac-proof.md)和[Design59当前阶段合同](../../design/59-aac-native-bootstrap-and-compiler-subject.md)：985/A正式来源仍为开工门，但允许其AC具名差额账。初始CS审计可列未交操作，依赖某操作的实现/验证切片必须先收到该操作正式来源；缺口回Design59 具名实施任务或实际库/领域 owner补齐，不回落旧VM或私建临时stdlib，也不令AAC整条路线反等所有AC能力先完成。
 
 CS只表示本编译器源码需要什么，CL必须保最终M2的AV/AC/A2R完整能力目标，包括~T/?T/!T、泛型、CTE、标注及组合；不得因源码未用或A期AC不支持而删行。已交阶段模块/host/语法/符号/CT/构建driver可独立复核并正式交1068作AAC实证，不需等本包/1053/1054整包；不能以阶段收据冒完整自举。相反，本包尚未实际依赖的AC行不应卡其独立工作。
 
