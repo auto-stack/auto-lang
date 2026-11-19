@@ -1302,6 +1302,7 @@ class AceArchiveArgs(unittest.TestCase):
         '-p', '--package', '--test', '--bin', '--config-file', '--features',
         '-E', '--filter-expr', '--profile', '--target', '--exclude',
         '--archive-file', '--archive-format', '--workspace-remap',
+        '-j', '--test-threads',
     }
 
     def positional_args(self, args):

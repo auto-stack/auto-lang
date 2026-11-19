@@ -19,7 +19,10 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 const VSWHERE: &str = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
-const DISCOVERY_DEADLINE: Duration = Duration::from_secs(10);
+// PLAN-1098 T-10: 10s was tight enough that a loaded machine (a certified
+// group spawning ~20 cl probes at once) turned `cl -?` into a deadline
+// failure; the bound stays finite, just sized for contention.
+const DISCOVERY_DEADLINE: Duration = Duration::from_secs(30);
 pub const COMPILE_DEADLINE: Duration = Duration::from_secs(60);
 pub(crate) const TOOL_STREAM_MAX: usize = 1 << 20;
 
