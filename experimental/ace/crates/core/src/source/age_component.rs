@@ -826,27 +826,30 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         )]);
     }
     let store = node.stores.remove(0);
-    let map: Vec<(String, String)> = store
-        .fields
-        .iter()
-        .map(|f| (f.name.clone(), store_field_prefixed(&f.name)))
-        .collect();
-    // 字段并入（同名字段/前缀冲突具名拒——不静默覆盖）。
+    // 字段映射：组件已有**同名字段** = 作者刻意镜像（016 App 的 dark_mode 镜像
+    // store 同名状态）——直接复用该字段；否则加 `st_` 前缀新字段。前缀名相撞
+    // 仍具名拒（不静默覆盖）。
+    let mut map: Vec<(String, String)> = Vec::new();
     for f in &store.fields {
+        if node.fields.iter().any(|cf| cf.name == f.name) {
+            map.push((f.name.clone(), f.name.clone()));
+            continue;
+        }
         let prefixed = store_field_prefixed(&f.name);
-        if node.fields.iter().any(|cf| cf.name == prefixed || cf.name == f.name) {
+        if node.fields.iter().any(|cf| cf.name == prefixed) {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "store field `{}` collides with an existing component field (S1)",
+                    "store field `{}` collides with an existing component field `{prefixed}` (S1)",
                     f.name
                 ),
                 f.span,
             )]);
         }
         let mut nf = f.clone();
-        nf.name = prefixed;
+        nf.name = prefixed.clone();
         node.fields.push(nf);
+        map.push((f.name.clone(), prefixed));
     }
     // 消息并入。
     for m in &store.messages {
