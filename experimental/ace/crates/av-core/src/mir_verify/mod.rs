@@ -1146,11 +1146,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // contract is superseded for this family by the numeric
                 // entry matrix (spec delta SD-01); records still never
                 // cross the entry boundary.
+                // PLAN-105 T-02（U03 真语料 013）：组件面的文本状态函数
+                // （`__age_state_0_<field>() str`）——参数仍标量，结果额外放行
+                // **owned Str**（host 接收 owned 文本、单次释放；record/视图
+                // 仍不跨 entry 边界）。
                 let scalar_ok = entry_sig
                     .params
                     .iter()
                     .all(|p| self.module.type_shape(*p).is_some())
                     && (self.module.type_shape(entry_sig.result).is_some()
+                        || matches!(
+                            self.module.types.get(entry_sig.result as usize),
+                            Some(MirType::Str)
+                        )
                         // PLAN-1080 (D-04)：普通 Auto 语言的 void main——
                         // 零参 Unit 结果入口放行（ABC 布局不为 closures 家
                         // 族携带 entry kind，按签名形状收纳；冻结窄面的
