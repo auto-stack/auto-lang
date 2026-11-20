@@ -501,11 +501,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 数表（`widget App(on_delete: msg)` 真语料形）可解析；组件面
             // 按宿主通道 prop 处理（不进字段/handler 语义，投影 §13.16）。
             opt(profiles: [age-package, age-component]) { age-node-params(field: "params") {} }
+            // PLAN-105 T-02（U03 真语料 013）：**空参数表**形（`widget TodoList() { … }`）
+            // ——作者面用空括号显式声明无参组件。
+            opt(profiles: [age-package, age-component]) { age-node-params-empty() {} }
             lbrace(same-line: true)
             age-node-c-body(field: "body") {}
             rbrace() {}
         }
         // `( <name>: <type>, … )`——作者参数形，类型交给 AGE 既有类型面。
+        age-node-params-empty(profiles: [age-package, age-component]) { lparen() {} rparen() {} }
         age-node-params(profiles: [age-package, age-component], expect: "a parameter list `(<name>: <type>, …)`") {
             lparen() {}
             age-node-param(field: "first") {}
