@@ -858,6 +858,190 @@ fn method_members(item: &mut Item) -> Option<(&str, &mut Vec<FnItem>)> {
     }
 }
 
+fn register_auto_template(
+    templates: &mut BTreeMap<String, FnItem>,
+    names: &mut BTreeSet<String>,
+    key: String,
+    function: &FnItem,
+) -> Result<(), Vec<Diagnostic>> {
+    if !names.insert(key.clone())
+        && (!function.type_params.is_empty() || templates.contains_key(&key))
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.duplicate",
+            format!("duplicate function `{key}`"),
+            function.name.span,
+        )]);
+    }
+    if !function.type_params.is_empty() {
+        templates.insert(key, function.clone());
+    }
+    Ok(())
+}
+
+fn register_auto_methods(
+    templates: &mut BTreeMap<String, FnItem>,
+    names: &mut BTreeSet<String>,
+    owner: &str,
+    methods: &mut Vec<FnItem>,
+) -> Result<(), Vec<Diagnostic>> {
+    for method in methods.iter() {
+        register_auto_template(
+            templates,
+            names,
+            format!("{owner}.{}", method.name.name),
+            method,
+        )?;
+    }
+    methods.retain(|m| m.type_params.is_empty());
+    Ok(())
+}
+
+fn verify_auto_bound(
+    items: &[Item],
+    template: &str,
+    param: &ace_core::source::ast::TypeParamDecl,
+    ty: &TypeAnn,
+    call: Span,
+) -> Result<(), Vec<Diagnostic>> {
+    let Some(bound) = &param.bound else {
+        return Ok(());
+    };
+    let satisfied = matches!(&ty.kind, TypeRef::Record(id) if items.iter().any(|item| {
+        matches!(item, Item::Type(t) if t.name.name == id.name && t.conforms.iter().any(|c| c.name.name == bound.name))
+    }));
+    if satisfied {
+        Ok(())
+    } else {
+        Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.instances-bound",
+            format!(
+                "type argument `{}` does not satisfy `{}` (bound of `{}` in `{template}`)",
+                spell_ty(&ty.kind),
+                bound.name,
+                param.name.name,
+            ),
+            call,
+        )])
+    }
+}
+
+type EnumCallRewrites = BTreeMap<(String, u32, u32), (String, String)>;
+
+fn materialize_enum_instance(
+    template: &ace_core::source::ast::EnumItem,
+    name: &str,
+    types: &BTreeMap<String, TypeAnn>,
+) -> ace_core::source::ast::EnumItem {
+    let mut concrete = template.clone();
+    concrete.name.name = name.to_owned();
+    concrete.type_params.clear();
+    let mut unbound_arms = Vec::new();
+    let lookup = |id: &Ident| types.get(&id.name).map(|ty| ty.kind.clone());
+    for arm in &mut concrete.arms {
+        let missing = std::cell::Cell::new(false);
+        let subst = |ann: &TypeAnn| {
+            substitute_annotation(ann, &|id| {
+                let value = lookup(id);
+                if value.is_none() {
+                    missing.set(true);
+                }
+                value
+            })
+        };
+        if let Some(payload) = &mut arm.payload {
+            *payload = subst(payload);
+        }
+        for (_, ty) in &mut arm.fields {
+            *ty = subst(ty);
+        }
+        if missing.get() {
+            // Preserve the original discriminant. This arm cannot be
+            // constructed in this instance without a concrete payload type.
+            unbound_arms.push(arm.name.name.clone());
+            arm.payload = None;
+            arm.fields.clear();
+        }
+    }
+    let mut unbound_methods = Vec::new();
+    concrete.methods = template
+        .methods
+        .iter()
+        .filter_map(|method| {
+            let missing = std::cell::Cell::new(false);
+            let substitute = |ann: &TypeAnn| {
+                substitute_annotation(ann, &|id| {
+                    if method
+                        .type_params
+                        .iter()
+                        .any(|param| param.name.name == id.name)
+                    {
+                        return None;
+                    }
+                    let value = lookup(id);
+                    if value.is_none() {
+                        missing.set(true);
+                    }
+                    value
+                })
+            };
+            let mut specialized = materialize_instance(method, &substitute, &[], &method.name.name);
+            if missing.get() {
+                unbound_methods.push(method.name.name.clone());
+                return None;
+            }
+            specialized.type_params = method.type_params.clone();
+            specialized.owner = Some(concrete.name.clone());
+            Some(specialized)
+        })
+        .collect();
+    concrete.instance = Some(ace_core::source::ast::EnumInstance {
+        template: template.name.name.clone(),
+        arguments: template
+            .type_params
+            .iter()
+            .map(|p| types.get(&p.name.name).cloned())
+            .collect(),
+        unbound_arms,
+        unbound_methods,
+    });
+    concrete
+}
+
+fn rebind_enum_constructors(body: &mut Block, owner: &str, rewrites: &EnumCallRewrites) -> usize {
+    let mut rewritten = 0;
+    if rewrites.is_empty() {
+        return rewritten;
+    }
+    for_each_block_mut(body, &mut |expr| {
+        let key = (
+            owner.to_owned(),
+            expr.span.start as u32,
+            expr.span.end as u32,
+        );
+        let Some((template, concrete)) = rewrites.get(&key) else {
+            return;
+        };
+        let receiver = match &mut expr.kind {
+            ExprKind::MethodCall { recv, .. } | ExprKind::Field { base: recv, .. } => recv,
+            _ => return,
+        };
+        match &receiver.kind {
+            ExprKind::Var(name) | ExprKind::GenericType { name, .. } if &name.name == template => {
+                receiver.kind = ExprKind::Var(Ident {
+                    name: concrete.clone(),
+                    span: name.span,
+                });
+                rewritten += 1;
+            }
+            _ => {}
+        }
+    });
+    rewritten
+}
+
 /// Return the origin of each concrete symbol so a package can retain source
 /// associations after templates are removed from the executable AST.
 pub(crate) fn instantiate_auto_program_scoped(
@@ -870,56 +1054,117 @@ pub(crate) fn instantiate_auto_program_scoped(
 
     let mut templates = BTreeMap::new();
     let mut names = BTreeSet::new();
+    let mut type_names = BTreeSet::new();
+    let mut enums = BTreeMap::new();
     for item in &mut program.items {
-        let mut register = |key: String, f: &FnItem| {
-            if !names.insert(key.clone())
-                && (!f.type_params.is_empty() || templates.contains_key(&key))
+        if let Item::Type(record) = item {
+            if !type_names.insert(record.name.name.clone()) && enums.contains_key(&record.name.name)
             {
                 return Err(vec![Diagnostic::new(
                     Stage::Bind,
                     "source.duplicate",
-                    format!("duplicate function `{key}`"),
-                    f.name.span,
+                    format!("duplicate type `{}`", record.name.name),
+                    record.name.span,
                 )]);
             }
-            if !f.type_params.is_empty() {
-                templates.insert(key, f.clone());
+        }
+        if let Item::Enum(en) = item {
+            if !type_names.insert(en.name.name.clone())
+                && (!en.type_params.is_empty() || enums.contains_key(&en.name.name))
+            {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate",
+                    format!("duplicate type `{}`", en.name.name),
+                    en.name.span,
+                )]);
             }
-            Ok(())
-        };
+            if !en.type_params.is_empty() {
+                enums.insert(en.name.name.clone(), en.clone());
+                continue;
+            }
+        }
         if let Item::Fn(f) = item {
-            register(f.name.name.clone(), f)?;
+            register_auto_template(&mut templates, &mut names, f.name.name.clone(), f)?;
         } else if let Some((owner, methods)) = method_members(item) {
-            for method in methods.iter() {
-                register(format!("{owner}.{}", method.name.name), method)?;
-            }
-            methods.retain(|m| m.type_params.is_empty());
+            register_auto_methods(&mut templates, &mut names, owner, methods)?;
         }
     }
-    program
-        .items
-        .retain(|item| !matches!(item, Item::Fn(f) if !f.type_params.is_empty()));
+    program.items.retain(|item| match item {
+        Item::Fn(f) => f.type_params.is_empty(),
+        Item::Enum(en) => en.type_params.is_empty(),
+        _ => true,
+    });
+    let mut expanded_enums = BTreeMap::<String, String>::new();
     let mut expanded = BTreeMap::<String, String>::new();
     let mut origins = BTreeMap::new();
     let limit = ProduceLimits::default();
     let start = Instant::now();
     let mut steps = 0;
     loop {
-        let demands = discover_auto_instance_calls(program, &templates, capabilities)?;
-        if demands.is_empty() {
+        let demands = discover_auto_instance_calls(program, &templates, &enums, capabilities)?;
+        let Some(first_span) = demands
+            .calls
+            .first()
+            .map(|d| d.call)
+            .or_else(|| demands.constructors.first().map(|d| d.call))
+        else {
             return Ok(origins);
-        }
-        steps += demands.len() as u64;
+        };
+        steps += (demands.calls.len() + demands.constructors.len()) as u64;
         if steps > limit.max_steps || start.elapsed() >= limit.wall {
             return Err(vec![Diagnostic::new(
                 Stage::Text,
                 "source.instances-resource",
                 "ordinary instance discovery budget exhausted",
-                demands[0].call,
+                first_span,
             )]);
         }
+        let mut enum_rewrites = BTreeMap::new();
+        for demand in demands.constructors {
+            let template = &enums[&demand.template];
+            let mut key = Vec::new();
+            for param in &template.type_params {
+                if let Some(ty) = demand.types.get(&param.name.name) {
+                    verify_auto_bound(&program.items, &demand.template, param, ty, demand.call)?;
+                    key.push(b't');
+                    crate::ident::type_canonical(ty, &mut key);
+                } else {
+                    key.push(b'?');
+                }
+            }
+            let template_key = template_identity(&demand.template);
+            let identity = sq_hash("ac1088/enum-instance/v1", &[template_key.as_bytes(), &key]);
+            let name = match expanded_enums.entry(identity.clone()) {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    let base = format!("{}_{}", template.name.name, &identity[..16]);
+                    let mut name = base.clone();
+                    let mut suffix = 1;
+                    while !type_names.insert(name.clone()) {
+                        suffix += 1;
+                        name = format!("{base}__{suffix}");
+                    }
+                    let mut instance = materialize_enum_instance(template, &name, &demand.types);
+                    register_auto_methods(
+                        &mut templates,
+                        &mut names,
+                        &name,
+                        &mut instance.methods,
+                    )?;
+                    program.items.push(Item::Enum(instance));
+                    entry.insert(name)
+                }
+            };
+            if let Some(owner) = demand.owner {
+                enum_rewrites.insert(
+                    (owner, demand.call.start as u32, demand.call.end as u32),
+                    (demand.template, name.clone()),
+                );
+            }
+        }
         let mut rewrites = BTreeMap::new();
-        for demand in demands {
+        for demand in demands.calls {
             let template = &templates[&demand.callee];
             let mut consts = Vec::new();
             let mut values = demand.consts.iter();
@@ -937,16 +1182,7 @@ pub(crate) fn instantiate_auto_program_scoped(
                     }
                     TypeParamKind::Type => {
                         let ty = &demand.types[&param.name.name];
-                        if let Some(bound) = &param.bound {
-                            let satisfied = matches!(&ty.kind, TypeRef::Record(id) if program.items.iter().any(|item| {
-                                matches!(item, Item::Type(t) if t.name.name == id.name && t.conforms.iter().any(|c| c.name.name == bound.name))
-                            }));
-                            if !satisfied {
-                                return Err(vec![Diagnostic::new(Stage::Bind, "source.instances-bound",
-                                    format!("type argument `{}` does not satisfy `{}` (bound of `{}` in `{}`)",
-                                        spell_ty(&ty.kind), bound.name, param.name.name, demand.callee), demand.call)]);
-                            }
-                        }
+                        verify_auto_bound(&program.items, &demand.callee, param, ty, demand.call)?;
                         key.push(b't');
                         crate::ident::type_canonical(ty, &mut key);
                     }
@@ -1009,14 +1245,16 @@ pub(crate) fn instantiate_auto_program_scoped(
         for item in &mut program.items {
             if let Item::Fn(f) = item {
                 rewritten += rebind_callsites_owned(&mut f.body, &f.name.name, &rewrites);
+                rewritten += rebind_enum_constructors(&mut f.body, &f.name.name, &enum_rewrites);
             } else if let Some((owner, methods)) = method_members(item) {
                 for method in methods {
                     let key = format!("{owner}.{}", method.name.name);
                     rewritten += rebind_callsites_owned(&mut method.body, &key, &rewrites);
+                    rewritten += rebind_enum_constructors(&mut method.body, &key, &enum_rewrites);
                 }
             }
         }
-        if rewritten != rewrites.len() {
+        if rewritten != rewrites.len() + enum_rewrites.len() {
             return Err(vec![Diagnostic::new(
                 Stage::Bind,
                 "source.instances-rebind",

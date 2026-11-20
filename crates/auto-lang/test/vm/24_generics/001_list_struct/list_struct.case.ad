@@ -1,30 +1,5 @@
-# Legacy vm corpus: 24_generics/001_list_struct
+# Canonical VM case
 
-## Case: legacy-24-generics-001-list-struct
-id: "legacy.24_generics.001_list_struct"
-entry-mode: "program"
+[legacy.24_generics.001_list_struct](../../../cases/language/generics/spec-methods.case.ad)
 
-### Auto
-path: "list_struct.at"
-```auto
-type Note { id int; title str }
-
-fn main() {
-    let notes = List<Note>.new([
-        Note { id: 0, title: "first" },
-        Note { id: 1, title: "second" },
-    ])
-    var count = 0
-    for n in notes {
-        count = count + 1
-    }
-    print(count)
-}
-```
-
-### VM result
-check-id: "vm-stdout"
-
-```text
-2
-```
+The language migration map resolves this path to the case and its original VM check.

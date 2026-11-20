@@ -23,7 +23,7 @@ mod agg_lower;
 
 #[path = "resolve_instances.rs"]
 mod instances;
-pub use instances::{discover_auto_instance_calls, AutoInstanceDemand};
+pub use instances::{discover_auto_instance_calls, AutoInstanceDemand, AutoInstanceDemands, AutoEnumDemand};
 
 /// Value type of the profile: `int`/`i32` are the same exact signed 32-bit
 /// type; `bool` is distinct with no implicit conversions.
@@ -1095,6 +1095,9 @@ pub struct CollTables {
     pub variants: Vec<ResolvedVariant>,
     pub function_types: Vec<ClosureFnType>,
     variant_names: BTreeMap<String, usize>,
+    enum_instances: BTreeMap<usize, ast::EnumInstance>,
+    enum_type_templates: BTreeMap<String, Vec<String>>,
+    enum_type_requests: Vec<instances::AutoEnumDemand>,
     /// PLAN-962: aggregates-profile admission — nested List, composite
     /// record/variant field and payload positions, and the wide numeric
     /// element kinds are legal. The frozen 822 one-layer element domain
@@ -2225,6 +2228,9 @@ fn resolve_detailed_in_mode(
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
     coll.script_errors = script_errors;
+    if let Some(probe) = instance_probe {
+        probe.register_enum_types(&mut coll);
+    }
     // PLAN-962: the aggregates surface widens the collections admission.
     coll.aggregates_admission = surface.is_aggregates();
     coll.ordinary_auto = surface.is_auto_language();
@@ -2380,6 +2386,9 @@ fn resolve_detailed_in_mode(
                 let index = coll.intern_variant(&e.name.name, e.name.span, Vec::new());
                 enum_indices.insert(item_index, index);
                 enum_variant_index.insert(e.name.name.clone(), index);
+                if let Some(instance) = &e.instance {
+                    coll.enum_instances.insert(index, instance.clone());
+                }
             }
         }
     }
@@ -2551,6 +2560,9 @@ fn resolve_detailed_in_mode(
         reject_variant_cycles(&coll, &mut diags);
         // A cycle must not reach ownership/type construction or emission.
         if !diags.is_empty() {
+            if let Some(probe) = instance_probe {
+                probe.collect_enum_annotations(&mut coll);
+            }
             return Err(diags);
         }
     }
@@ -2934,6 +2946,9 @@ fn resolve_detailed_in_mode(
             );
         }
         if !diags.is_empty() {
+            if let Some(probe) = instance_probe {
+                probe.collect_enum_annotations(&mut coll);
+            }
             return Err(diags);
         }
     }
@@ -3175,9 +3190,10 @@ fn resolve_detailed_in_mode(
     // and a frozen accept/reject set (`entry-contract.md` §2). Runs after
     // Pass 2 so a script's result type can be derived from its tail
     // statement's RESOLVED type.
-    if instance_probe.is_some() {
+    if let Some(probe) = instance_probe {
         // Discovery may have unfinished call sites. Its result is consumed
         // only by the instance worklist, before any body normalization.
+        probe.collect_enum_annotations(&mut coll);
         return Err(diags);
     }
     if surface.is_entry_unit() {
@@ -5652,6 +5668,11 @@ fn vt_of_ann_coll(
         ));
         vt
     };
+    if let ast::TypeRef::Generic { name, args } = &ann.kind {
+        if let Some(ty) = instances::enum_type_annotation(name, args, rec_index, coll, diags, ann.span) {
+            return ty;
+        }
+    }
     match &ann.kind {
         // PLAN-1080（D-04）：同上——补全遍后仍 Inferred = 具名拒。
         ast::TypeRef::Inferred => reject(
@@ -5671,9 +5692,16 @@ fn vt_of_ann_coll(
                     ann.span,
                 )
             } else {
+                let element_pos = if coll.ordinary_auto
+                    && matches!(pos, TypePos::Field | TypePos::ContainerPayload)
+                {
+                    TypePos::ContainerPayload
+                } else {
+                    TypePos::Local
+                };
                 let vts: Vec<VT> = args
                     .iter()
-                    .map(|a| vt_of_ann_coll(a, rec_index, coll, diags, TypePos::Local))
+                    .map(|a| vt_of_ann_coll(a, rec_index, coll, diags, element_pos))
                     .collect();
                 VT::Tuple(coll.intern_tuple(vts))
             }
@@ -6080,7 +6108,7 @@ struct ViewBinding {
 /// PLAN-864: how a method-call receiver was classified before its
 /// arguments resolve.
 #[derive(Clone, Copy, Debug)]
-enum RecvClass {
+enum RecvClass<'a> {
     /// A value receiver (record instance / list / variant-free text).
     Value,
     /// A bare record type name selecting a static method — carries the
@@ -6092,6 +6120,7 @@ enum RecvClass {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    GenericEnum { template: &'a ast::Ident, types: &'a [ast::TypeAnn] },
     /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
     /// （`material2d.color(...)`）。携带声明表里那一条 op。
     AgeService(&'static super::age_resources::AgeResourceOp),
@@ -9105,22 +9134,34 @@ F:{d}
     /// PLAN-1083: `E.A` (no call) — a payload-less qualified variant arm
     /// constructs the variant value directly; a payload arm is a named
     /// argument-count error (never silently default).
-    fn try_resolve_variant_arm(&mut self, e: &ast::Expr) -> Option<ResolvedExpr> {
+    fn contextual_enum(&self, template: &ast::Ident, explicit: &[ast::TypeAnn], expect: Option<VT>) -> Option<Vec<ast::TypeAnn>> {
+        let Some(VT::Variant(vi)) = expect else { return None };
+        let info = self.coll.enum_instances.get(&vi)?;
+        if explicit.is_empty() && info.template == template.name {
+            info.arguments.iter().cloned().collect()
+        } else {
+            None
+        }
+    }
+
+    fn try_resolve_variant_arm(&mut self, e: &ast::Expr, expect: Option<VT>) -> Option<ResolvedExpr> {
         if !self.profile.is_collections() {
             return None;
         }
         let ExprKind::Field { base, name } = &e.kind else {
             return None;
         };
-        let ExprKind::Var(id) = &base.kind else {
-            return None;
-        };
+        if let Some((template, types)) = self.generic_enum_receiver(base) {
+            let hint = self.contextual_enum(template, types, expect);
+            return Some(self.probe_enum_constructor(
+                template, hint.as_deref().unwrap_or(types), name, &[], e.span,
+            ));
+        }
+        let ExprKind::Var(id) = &base.kind else { return None };
         if self.lookup(&id.name).is_some() {
             return None;
         }
-        let Some(vi) = self.coll.variant_by_name(&id.name) else {
-            return None;
-        };
+        let vi = self.coll.variant_by_name(&id.name)?;
         let Some(disc) = self.coll.variants[vi]
             .arms
             .iter()
@@ -9128,6 +9169,9 @@ F:{d}
         else {
             return None;
         };
+        if self.reject_unbound_variant_arm(vi, disc as u32, name.span) {
+            return Some(instances::pending_expression(e.span));
+        }
         if self.coll.variants[vi].arms[disc].1.is_some() {
             self.bind_err(
                 "source.argument",
@@ -11784,7 +11828,7 @@ F:{d}
     /// PLAN-864: classify a `List<T>`-style generic receiver. Only
     /// `List<one elem>` with a legal element type commits;
     /// everything else is a named rejection.
-    fn classify_generic_recv(&mut self, name: &ast::Ident, args: &[ast::TypeAnn]) -> RecvClass {
+    fn classify_generic_recv(&mut self, name: &ast::Ident, args: &[ast::TypeAnn]) -> RecvClass<'static> {
         if !self.profile.is_collections() {
             self.bind_err(
                 "source.unsupported",
@@ -11853,7 +11897,25 @@ F:{d}
     }
 
     /// PLAN-864: a qualified ctor takes exactly the arm's payload arity.
+    fn reject_unbound_variant_arm(&mut self, vi: usize, disc: u32, span: Span) -> bool {
+        let label = &self.coll.variants[vi].arms[disc as usize].0;
+        if self.coll.enum_instances.get(&vi)
+            .is_some_and(|instance| instance.unbound_arms.contains(label))
+        {
+            self.bind_err(
+                "unsolved-variable",
+                format!("constructing `{label}` requires the complete enum type arguments"),
+                span,
+            );
+            return true;
+        }
+        false
+    }
+
     fn check_qualified_ctor_args(&mut self, vi: usize, disc: u32, args: &[ast::Arg], span: Span) {
+        if self.reject_unbound_variant_arm(vi, disc, span) {
+            return;
+        }
         // PLAN-1083: tuple/record payloads take one value per element/
         // field (positional or named); a single-value payload keeps the
         // PLAN-864 one-argument contract.
@@ -12091,7 +12153,7 @@ F:{d}
         if let Some(se) = self.try_resolve_scalar_enum(v, expect) {
             return se;
         }
-        if let Some(va) = self.try_resolve_variant_arm(v) {
+        if let Some(va) = self.try_resolve_variant_arm(v, expect) {
             return va;
         }
         if let Some(may) = self.try_resolve_may_ctor(v, expect) {
@@ -12155,7 +12217,7 @@ F:{d}
                 self.resolve_bare_ctor(cname, payload, expect, v.span)
             }
             None => {
-                let value = self.expr_iterative(v);
+                let value = self.expr_iterative_with_hint(v, expect);
                 match expect {
                     Some(expected)
                         if recover_dynamic
@@ -12182,7 +12244,8 @@ F:{d}
             return None;
         };
         if let Some(q) = qual {
-            if self.coll.variants[vi].name != q.name {
+            let source_family = self.coll.enum_instances.get(&vi).map(|instance| instance.template.as_str());
+            if self.coll.variants[vi].name != q.name && source_family != Some(q.name.as_str()) {
                 self.bind_err(
                     "source.pattern-unknown-arm",
                     format!(
@@ -16048,6 +16111,7 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         span: Span,
         explicit: Option<&ast::InstanceArguments>,
+        expected: Option<VT>,
     ) -> ResolvedExpr {
         if let Some(pending) = self.probe_template_method(
             static_rec,
@@ -16056,6 +16120,7 @@ F:{d}
             &mut rargs,
             explicit,
             span,
+            expected,
         ) {
             return pending;
         }
@@ -16078,6 +16143,16 @@ F:{d}
             // PLAN-1083: enum instance methods — the receiver is a
             // variant-typed value (`Light.Red.is_red()`).
             if let VT::Variant(vi) = rrecv.vt {
+                if self.coll.enum_instances.get(&vi).is_some_and(|instance| {
+                    instance.unbound_methods.contains(&name.name)
+                }) {
+                    self.bind_err(
+                        "unsolved-variable",
+                        format!("method `{}` requires the complete enum type arguments", name.name),
+                        name.span,
+                    );
+                    return instances::pending_expression(span);
+                }
                 if let Some(m) = self.coll.variants[vi]
                     .methods
                     .iter()
@@ -16559,6 +16634,10 @@ F:{d}
     /// pre-allocated result slots after both children complete (children
     /// first: lhs slot allocated before rhs, combining after both).
     fn expr_iterative(&mut self, root: &Expr) -> ResolvedExpr {
+        self.expr_iterative_with_hint(root, None)
+    }
+
+    fn expr_iterative_with_hint(&mut self, root: &Expr, root_hint: Option<VT>) -> ResolvedExpr {
         fn dummy_resolved() -> ResolvedExpr {
             ResolvedExpr {
                 span: Span { start: 0, end: 0 },
@@ -16574,6 +16653,7 @@ F:{d}
             CallOut {
                 callee: &'a ast::Ident,
                 explicit: Option<(&'a [ast::TypeAnn], &'a [ast::ConstArgUse])>,
+                expected: Option<VT>,
                 dest: usize,
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
@@ -16608,7 +16688,8 @@ F:{d}
                 explicit: Option<&'a ast::InstanceArguments>,
                 dest: usize,
                 recv_slot: Option<usize>,
-                recv_kind: RecvClass,
+                recv_kind: RecvClass<'a>,
+                expected: Option<VT>,
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
                 spans: Vec<Span>,
@@ -16714,6 +16795,7 @@ F:{d}
                         }
                         continue;
                     }
+                    let expected = if std::ptr::eq(root, node) { root_hint } else { None };
                     let call = match &node.kind {
                         ExprKind::Call { callee, args } => Some((callee, args, None)),
                         ExprKind::ConstCall {
@@ -16740,7 +16822,7 @@ F:{d}
                                 continue;
                             }
                         }
-                        if args.is_empty() && explicit.is_none() {
+                        if args.is_empty() && explicit.is_none() && !self.is_template_call(callee) {
                             out[slot] = self.call(callee, &[], node.span);
                             continue;
                         }
@@ -16774,6 +16856,7 @@ F:{d}
                         subtasks.push(Task::CallOut {
                             callee,
                             explicit,
+                            expected,
                             dest: slot,
                             arg_slots,
                             names,
@@ -16857,7 +16940,7 @@ F:{d}
                             if let Some(se) = self.try_resolve_scalar_enum(node, None) {
                                 out[slot] = se;
                                 continue;
-                            } else if let Some(va) = self.try_resolve_variant_arm(node) {
+                            } else if let Some(va) = self.try_resolve_variant_arm(node, expected) {
                                 out[slot] = va;
                                 continue;
                             } else if let Some(may) = self.try_resolve_may_ctor(node, None) {
@@ -17036,7 +17119,7 @@ F:{d}
                             if let Some(se) = self.try_resolve_scalar_enum(node, None) {
                                 out[slot] = se;
                                 continue;
-                            } else if let Some(va) = self.try_resolve_variant_arm(node) {
+                            } else if let Some(va) = self.try_resolve_variant_arm(node, expected) {
                                 out[slot] = va;
                                 continue;
                             } else if let Some(may) = self.try_resolve_may_ctor(node, None) {
@@ -17069,6 +17152,8 @@ F:{d}
                                     .map_or(RecvClass::Value, RecvClass::Static),
                                 _ => RecvClass::Value,
                             }
+                        } else if let Some((template, types)) = self.generic_enum_receiver(recv) {
+                            RecvClass::GenericEnum { template, types }
                         } else if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
@@ -17262,6 +17347,7 @@ F:{d}
                             dest: slot,
                             recv_slot,
                             recv_kind: recv_class,
+                            expected,
                             arg_slots,
                             names,
                             spans,
@@ -17527,6 +17613,7 @@ F:{d}
                     dest,
                     recv_slot,
                     recv_kind,
+                    expected,
                     arg_slots,
                     names,
                     spans,
@@ -17697,7 +17784,7 @@ F:{d}
                         }
                         RecvClass::Value => {
                             out[dest] = self
-                                .method_call_out(rrecv, None, &name, rargs, node_span, explicit);
+                                .method_call_out(rrecv, None, &name, rargs, node_span, explicit, expected);
                         }
                         RecvClass::Static(ri) => {
                             out[dest] = self.method_call_out(
@@ -17707,6 +17794,7 @@ F:{d}
                                 rargs,
                                 node_span,
                                 explicit,
+                                expected,
                             );
                         }
                         RecvClass::ListCtor(li) => {
@@ -17745,6 +17833,12 @@ F:{d}
                                     args: Vec::new(),
                                 },
                             };
+                        }
+                        RecvClass::GenericEnum { template, types } => {
+                            let hint = self.contextual_enum(template, types, expected);
+                            out[dest] = self.probe_enum_constructor(
+                                template, hint.as_deref().unwrap_or(types), &name, &rargs, node_span,
+                            );
                         }
                         RecvClass::VariantArm { vi, disc } => {
                             // PLAN-864: `E.A(e)` / `E.A` — qualified variant
@@ -17867,6 +17961,7 @@ F:{d}
                 Task::CallOut {
                     callee,
                     explicit,
+                    expected,
                     dest,
                     arg_slots,
                     names,
@@ -17897,11 +17992,11 @@ F:{d}
                         });
                     }
                     // the node's own span already covers callee..
-                    out[dest] = match explicit {
-                        Some(explicit) => self
-                            .probe_template_call(callee, rargs, Some(explicit), node_span)
-                            .expect("explicit template call dispatched only in discovery"),
-                        None => self.resolve_call(callee, rargs, node_span),
+                    out[dest] = if explicit.is_some() || self.is_template_call(callee) {
+                        self.probe_template_call(callee, rargs, explicit, node_span, expected)
+                            .expect("explicit template call dispatched only in discovery")
+                    } else {
+                        self.resolve_call(callee, rargs, node_span)
                     };
                 }
                 Task::CallValueOut {
@@ -19312,7 +19407,7 @@ F:{d}
     ) -> ResolvedExpr {
         if self.is_template_call(callee) {
             return self
-                .probe_template_call(callee, rargs, None, call_span)
+                .probe_template_call(callee, rargs, None, call_span, None)
                 .expect("known template in discovery");
         }
         if self.profile.is_auto_language()

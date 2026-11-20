@@ -3543,7 +3543,7 @@ pub fn parse_program_via_cst(src: &str, profile: SourceProfile) -> Result<Progra
 pub(crate) fn parse_auto_program_for_instances(src: &str) -> Result<(Program, bool), Diagnostic> {
     let profile = SourceProfile::Auto;
     let ok = parse_whole_front_ok(src, profile)?;
-    let template = ok.program.has_function_templates();
+    let template = ok.program.has_instance_templates();
     let explicit_call = !template && src.contains('<') && profile_grammar(profile)
         .ok()
         .and_then(|cached| cached.kinds.generic_call)

@@ -227,7 +227,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-1041：host-console/entry-unit 内联公共 stdlib 源（如 io 输出）
         // 也用 `pub fn` 拼写——单模块文件里 pub 是可见性 no-op，保持包面/内联
         // 单源同一拼写。
-        r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, text-record, config-document, auto-packages]) { literal: "pub" }
+        r-pub(profiles: [scalar-modules, packages-modules, packages-ct, host-console, entry-unit, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, text-record, config-document, auto-packages, auto]) { literal: "pub" }
         // PLAN-981（G1）：`render-only` —— `shape2d` 的 `layer:` 冻结值（单个
         // 保留字 token，按字节最长匹配；普通标识符 `render` 不受影响——只在
         // 精确字节序 `render-only` 处命中）。仅 age-package 裁剪。
@@ -367,7 +367,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-960（T-02）：完整模块包面 items —— 单一 public-item 前缀
             //（fn/type/const/use 各自 token 开头，避免 recover 规则与前缀
             // 备选相互作用）；const/var 模块项与别名导入。
-            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { public-item() {} }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) { public-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { const-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package]) { var-item() {} }
             alt(profiles: [auto-packages]) { auto-var-item() {} }
@@ -1467,15 +1467,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-960（T-02）：公共项统一前缀 `pub fn/type/const/use`——
         // public-body 各备选首 token 互异（fn/type/const/use），recover
         // 规则在自身关键字命中前干净失败，不产生前缀误恢复。
-        public-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        public-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             r-pub(field: "pub") {}
             public-body(field: "body")
         }
-        public-body(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        public-body(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             alt { fn-item(field: "function") }
             alt { type-item(field: "type") }
-            alt { const-item(field: "const") }
-            alt { use-tail-p(field: "use") }
+            alt(profiles: [auto, auto-packages]) { enum-item(field: "type") }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, age-package, auto-packages]) { const-item(field: "const") }
+            alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, age-package, auto-packages]) { use-tail-p(field: "use") }
             // PLAN-980 P3：pub style（age-package 公共面；首 token style 与 fn/type/const/use 互异）。
             alt(profiles: [age-package]) { style-item(field: "style") }
             // PLAN-1043（T-02）：公共必需实现声明（无块；首 token `spec` 与
@@ -2167,6 +2168,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         enum-item(recover: true, profiles: [collections, aggregates, auto, scheduler, auto-packages]) {
             enum(field: "kw")
             ident(field: "name")
+            opt(profiles: [auto, auto-packages]) { type-params(field: "type_params") }
             lbrace() {}
             list { enum-member() {} }
             rbrace() {}
@@ -2198,6 +2200,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { ident(field: "name") lparen() {} ann-ty(field: "payload") many(profiles: [auto, auto-packages]) { enum-payload-tail() {} } rparen() {} opt(profiles: [auto, auto-packages]) { comma() {} } }
             alt(profiles: [auto, auto-packages]) { ident(field: "name") lbrace() {} list { field-member(field: "fields") {} } rbrace() {} opt(profiles: [auto, auto-packages]) { comma() {} } }
             alt(profiles: [auto, auto-packages]) { ident(field: "name") assign() {} int-lit(field: "disc") opt(profiles: [auto, auto-packages]) { comma() {} } }
+            alt(profiles: [auto, auto-packages]) { ident(field: "name") ann-ty(field: "payload", same-line: true) opt { comma() {} } }
             alt { ident(field: "name") opt(profiles: [auto, auto-packages]) { comma() {} } }
         }
         // PLAN-1083（auto 面）：多元组载荷尾（`Arm(int, int, ...)`）——

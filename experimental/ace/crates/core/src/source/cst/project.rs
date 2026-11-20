@@ -7585,6 +7585,21 @@ impl<'a> Engine<'a> {
     fn run_enum_item(&mut self, node: u32) -> EnumItem {
         let name_leaf = self.cx.field_child(node, "name").expect("enum name");
         let name = ident_of(&mut self.cx, name_leaf);
+        let type_params = self.project_type_params(self.cx.field_child(node, "type_params"));
+        let saved = std::mem::take(&mut self.cx.ty_params);
+        self.cx.ty_params = type_params.iter().map(|p| p.name.name.clone()).collect();
+        for param in &type_params {
+            if param.kind == TypeParamKind::Const {
+                self.cx.reject(param.name.span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "enum parameters are types",
+                        param.name.span,
+                    )
+                });
+            }
+        }
         // PLAN-1083: arms ride the enum-member wrapper (transparent for the
         // frozen profiles — projection only looks at arm/method children);
         // auto-face enum bodies may carry view-method members.
@@ -7610,8 +7625,23 @@ impl<'a> Engine<'a> {
                 methods.push(self.run_fn_item(f, Some(name.clone()), Receiver::View));
             }
         }
+        self.cx.ty_params = saved;
+        if !type_params.is_empty() {
+            if let Some(arm) = arms.iter().find(|arm| arm.disc.is_some()) {
+                self.cx.reject(arm.span, || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.instances-unsupported",
+                        "a generic enum cannot declare integer discriminants",
+                        arm.span,
+                    )
+                });
+            }
+        }
         EnumItem {
             name,
+            type_params,
+            instance: None,
             arms,
             methods,
             span: self.cx.span_of(node),
@@ -7708,7 +7738,7 @@ impl<'a> Engine<'a> {
             if let Some(leaf) = self.cx.field_child(item, "lit") {
                 consts.push(self.project_const_argument(leaf));
             } else if let Some(ty) = self.cx.field_child(item, "ty") {
-                types.push(self.classify_word(ty, false, false));
+                types.push(self.classify_storage_word(ty));
             }
         }
         InstanceArguments { types, consts }
@@ -7844,7 +7874,7 @@ impl<'a> Engine<'a> {
         if let Some(o) = self.cx.field_child(n, "optional") {
             return self.project_optional_ty(o);
         }
-        self.classify_word(n, false, false)
+        self.classify_storage_word(n)
     }
 
     /// PLAN-928：函数类型 `fn(T0, ...) [->] R`（嵌套允许；`->` 缺席 = K 语料

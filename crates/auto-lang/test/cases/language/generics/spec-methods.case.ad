@@ -979,3 +979,371 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: legacy-28-enum-methods-005-generic-enum-method
+id: "legacy.28_enum_methods.005_generic_enum_method"
+entry-mode: "program"
+
+### Auto
+path: "generic_enum_method.at"
+```auto
+// Plan 325: 本模块泛型 enum + 方法通过变量调用
+pub enum Bag<T, E> {
+    Hit T
+    Miss E
+    fn is_hit() bool {
+        is self {
+            Bag.Hit -> return true
+        }
+        return false
+    }
+}
+fn main() {
+    let r = Bag.Hit(42)
+    print(r.is_hit())
+    let e = Bag.Miss("nope")
+    print(e.is_hit())
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+1
+0
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+true
+false
+```
+
+### Notes
+
+The legacy check keeps its numeric display oracle. The AV oracle uses the
+Boolean display settled in PLAN-474.
+
+## Case: generic-enum-tuple-inference
+id: "av.parity.1088.generic-enum-tuple-inference"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty; fn both() bool { is self { Pair.Both -> return true }; return false } }
+fn main() int { let pair = Pair.Both(19, 23); is pair { Pair.Both(a,b) -> return a+b; Pair.Empty -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-explicit-empty
+id: "av.parity.1088.generic-enum-explicit-empty"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty; fn both() bool { is self { Pair.Both -> return true }; return false } }
+fn main() int { let p = Pair<int,str>.Empty; if p.both() { return 0 }; return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-explicit-constructor
+id: "av.parity.1088.generic-enum-explicit-constructor"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty; fn both() bool { is self { Pair.Both -> return true }; return false } }
+fn main() int { let p = Pair<int,int>.Both(19,23); is p { Pair.Both(a,b) -> return a+b; Pair.Empty -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-contextual-constructor
+id: "av.parity.1088.generic-enum-contextual-constructor"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty; fn both() bool { is self { Pair.Both -> return true }; return false } }
+fn main() int { let p Pair<int,int> = Pair.Both(19,23); is p { Pair.Both(a,b) -> return a+b; Pair.Empty -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-owned-payload
+id: "av.parity.1088.generic-enum-owned-payload"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Box<T> { Full T; Empty }
+fn main() int { let q = Box.Full("test".clone()); is q { Box.Full(s) -> return s.len(); Box.Empty -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 4
+
+## Case: generic-enum-template-method
+id: "av.parity.1088.generic-enum-template-method"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Box<T> { Full T; Empty; fn take<U>(x U) U { return x } }
+fn main() int { return Box.Full(1).take(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-named-payload
+id: "av.parity.1088.generic-enum-named-payload"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Box<T> { Full { a T; b int }; Empty }
+fn main() int { let b = Box.Full(b: 2, a: 40); is b { Box.Full(a,b) -> return a+b; Box.Empty -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-conflicting-payload
+id: "av.parity.1088.generic-enum-conflicting-payload"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T> { Both(T,T) }
+fn main() int { let p = Pair.Both(42,true); return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "type-mismatch"
+
+## Case: generic-enum-wrong-arity
+id: "av.parity.1088.generic-enum-wrong-arity"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty; fn both() bool { is self { Pair.Both -> return true }; return false } }
+fn main() int { let p = Pair<int>.Both(19,23); return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "type-arity-mismatch"
+
+## Case: generic-enum-missing-method-type
+id: "av.parity.1088.generic-enum-missing-method-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Box<T> { Full T; Empty; fn take(x T) T { return x } }
+fn main() int { let b = Box.Empty; return b.take(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "unsolved-variable"
+
+## Case: generic-enum-nominal-mismatch
+id: "av.parity.1088.generic-enum-nominal-mismatch"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Bag<T> { Hit T }
+enum Other<T> { Hit T }
+fn main() int { let x = Bag.Hit(42); is x { Other.Hit(v) -> return v }; return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.pattern-unknown-arm"
+
+## Case: generic-enum-signature-context
+id: "av.parity.1088.generic-enum-signature-context"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty }
+fn make() Pair<int,int> { return Pair.Both(19,23) }
+fn consume(p Pair<int,int>) int { is p { Pair.Both(a,b) -> return a+b; Pair.Empty -> return 0 } }
+fn main() int { return consume(make()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-as-function-input
+id: "av.parity.1088.generic-enum-as-function-input"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty }
+fn first<T>(p Pair<T,T>) T { is p { Pair.Both(a,b) -> return a; Pair.Empty -> return 0 } }
+fn main() int { return first(Pair<int,int>.Both(42,0)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-enum-stored-text-type
+id: "av.parity.1088.generic-enum-stored-text-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Pair<T,E> { Both(T,E); Empty }
+fn main() int {
+    let p = Pair<int,str>.Both(41,"s")
+    is p { Pair.Both(a,s) -> return a+s.len(); Pair.Empty -> return 0 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-function-result-context
+id: "av.parity.1088.generic-function-result-context"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn answer<T>() T { return 42 }
+fn main() int { return answer() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-method-result-context
+id: "av.parity.1088.generic-method-result-context"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Factory { seed int; fn answer<T>() T { return .seed } }
+fn main() int { let n int = Factory(42).answer(); return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

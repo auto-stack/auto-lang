@@ -10,12 +10,12 @@ use super::{
 };
 use crate::atom_text::{Diagnostic, Span};
 use crate::source::ast::{
-    ConstArgUse, FnItem, Ident, InstanceArguments, Program, Receiver, TypeAnn, TypeParamKind,
-    TypeRef, TypeWord,
+    ConstArgUse, EnumItem, Expr, ExprKind, FnItem, Ident, InstanceArguments, Program, Receiver,
+    TypeAnn, TypeParamKind, TypeRef, TypeWord,
 };
 use crate::source::SourceProfile;
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub struct AutoInstanceDemand {
     pub owner: String,
@@ -25,14 +25,50 @@ pub struct AutoInstanceDemand {
     pub consts: Vec<u32>,
 }
 
+pub struct AutoEnumDemand {
+    /// An annotation demands a type without an expression to rebind.
+    pub owner: Option<String>,
+    pub call: Span,
+    pub template: String,
+    pub types: BTreeMap<String, TypeAnn>,
+}
+
+pub struct AutoInstanceDemands {
+    pub calls: Vec<AutoInstanceDemand>,
+    pub constructors: Vec<AutoEnumDemand>,
+}
+
 pub(super) struct InstanceProbe<'a> {
     templates: &'a BTreeMap<String, FnItem>,
+    enums: &'a BTreeMap<String, EnumItem>,
+    constructors: RefCell<Vec<AutoEnumDemand>>,
     demands: RefCell<Vec<AutoInstanceDemand>>,
     body_diagnostics: Cell<usize>,
     owner: RefCell<String>,
 }
 
 impl InstanceProbe<'_> {
+    pub(super) fn register_enum_types(&self, tables: &mut CollTables) {
+        tables.enum_type_templates = self
+            .enums
+            .iter()
+            .map(|(name, item)| {
+                let parameters = item
+                    .type_params
+                    .iter()
+                    .map(|param| param.name.name.clone())
+                    .collect();
+                (name.clone(), parameters)
+            })
+            .collect();
+    }
+
+    pub(super) fn collect_enum_annotations(&self, tables: &mut CollTables) {
+        self.constructors
+            .borrow_mut()
+            .append(&mut tables.enum_type_requests);
+    }
+
     pub(super) fn begin_body(&self, name: &str, owner: Option<&str>, diagnostics: usize) {
         self.body_diagnostics.set(diagnostics);
         *self.owner.borrow_mut() = match owner {
@@ -48,10 +84,13 @@ impl InstanceProbe<'_> {
 pub fn discover_auto_instance_calls(
     program: &Program,
     templates: &BTreeMap<String, FnItem>,
+    enums: &BTreeMap<String, EnumItem>,
     capabilities: &[String],
-) -> Result<Vec<AutoInstanceDemand>, Vec<Diagnostic>> {
+) -> Result<AutoInstanceDemands, Vec<Diagnostic>> {
     let probe = InstanceProbe {
         templates,
+        enums,
+        constructors: RefCell::new(Vec::new()),
         demands: RefCell::new(Vec::new()),
         body_diagnostics: Cell::new(0),
         owner: RefCell::new(String::new()),
@@ -68,15 +107,145 @@ pub fn discover_auto_instance_calls(
     )
     .err()
     .expect("instance discovery never publishes a resolved program");
-    let demands = probe.demands.take();
-    if demands.is_empty() && !diagnostics.is_empty() {
+    let calls = probe.demands.into_inner();
+    let constructors = probe.constructors.into_inner();
+    if calls.is_empty() && constructors.is_empty() && !diagnostics.is_empty() {
         Err(diagnostics)
     } else {
-        Ok(demands)
+        Ok(AutoInstanceDemands {
+            calls,
+            constructors,
+        })
     }
 }
 
 impl FnResolver<'_, '_> {
+    pub(super) fn generic_enum_receiver<'e>(
+        &self,
+        receiver: &'e Expr,
+    ) -> Option<(&'e Ident, &'e [TypeAnn])> {
+        let probe = self.instance_probe?;
+        let (name, types) = match &receiver.kind {
+            ExprKind::Var(name) if self.lookup(&name.name).is_none() => (name, &[][..]),
+            ExprKind::GenericType { name, args } => (name, args.as_slice()),
+            _ => return None,
+        };
+        probe
+            .enums
+            .contains_key(&name.name)
+            .then_some((name, types))
+    }
+
+    pub(super) fn probe_enum_constructor(
+        &mut self,
+        name: &Ident,
+        annotations: &[TypeAnn],
+        member: &Ident,
+        args: &[ResolvedArg],
+        span: Span,
+    ) -> ResolvedExpr {
+        let pending = pending_expression(span);
+        let probe = self.instance_probe.expect("enum discovery has a probe");
+        if self.diags.len() != probe.body_diagnostics.get() {
+            return pending;
+        }
+        let template = &probe.enums[&name.name];
+        let Some(arm) = template
+            .arms
+            .iter()
+            .find(|arm| arm.name.name == member.name)
+        else {
+            self.bind_err(
+                "source.pattern-unknown-arm",
+                format!("enum `{}` has no arm named `{}`", name.name, member.name),
+                member.span,
+            );
+            return pending;
+        };
+        let mut types = BTreeMap::new();
+        let mut required = BTreeSet::new();
+        if !annotations.is_empty() {
+            if annotations.len() != template.type_params.len() {
+                self.bind_err(
+                    "type-arity-mismatch",
+                    format!(
+                        "`{}` needs {} type argument(s), found {}",
+                        name.name,
+                        template.type_params.len(),
+                        annotations.len()
+                    ),
+                    span,
+                );
+                return pending;
+            }
+            for (param, ann) in template.type_params.iter().zip(annotations) {
+                let Some(canonical) = self.canonical_explicit_type(ann) else {
+                    return pending;
+                };
+                types.insert(param.name.name.clone(), canonical);
+            }
+        } else {
+            let params = match &arm.payload {
+                Some(payload) => match &payload.kind {
+                    TypeRef::Tuple(elements) => elements.iter().collect(),
+                    _ => vec![payload],
+                },
+                None => arm.fields.iter().map(|(_, ty)| ty).collect::<Vec<_>>(),
+            };
+            let labels = arm
+                .fields
+                .iter()
+                .map(|(id, _)| id.name.clone())
+                .collect::<Vec<_>>();
+            self.check_argument_shape(&member.name, &labels, params.len(), args, span);
+            if self.diags.len() != probe.body_diagnostics.get() {
+                return pending;
+            }
+            for (index, arg) in args.iter().enumerate() {
+                let slot = arg
+                    .name
+                    .as_ref()
+                    .and_then(|name| labels.iter().position(|label| label == &name.name))
+                    .unwrap_or(index);
+                let formal = params[slot];
+                collect_type_variables(formal, &mut required);
+                if let Some(actual) = source_annotation(arg.value.vt, self.records, self.coll) {
+                    if !collect_type_arguments(formal, &actual, &mut types) {
+                        self.bind_err(
+                            "type-mismatch",
+                            format!(
+                                "conflicting payload types for `{}.{}`",
+                                name.name, member.name
+                            ),
+                            arg.span,
+                        );
+                        return pending;
+                    }
+                }
+            }
+            if let Some(var) = required.iter().find(|name| !types.contains_key(*name)) {
+                self.bind_err(
+                    "unsolved-variable",
+                    format!("cannot determine type argument `{var}` for this variant payload"),
+                    span,
+                );
+                return pending;
+            }
+        }
+        probe.constructors.borrow_mut().push(AutoEnumDemand {
+            owner: Some(probe.owner.borrow().clone()),
+            call: span,
+            template: name.name.clone(),
+            types,
+        });
+        self.bind_err(
+            "source.instance-pending",
+            "waiting for a concrete enum instance",
+            span,
+        );
+        pending
+    }
+
     pub(super) fn is_template_call(&self, callee: &Ident) -> bool {
         self.instance_probe.is_some_and(|probe| {
             probe.templates.contains_key(&callee.name)
@@ -91,6 +260,7 @@ impl FnResolver<'_, '_> {
         args: Vec<ResolvedArg>,
         explicit: Option<(&[TypeAnn], &[ConstArgUse])>,
         call: Span,
+        expected: Option<VT>,
     ) -> Option<ResolvedExpr> {
         let probe = self.instance_probe?;
         let Some(template) = probe
@@ -107,7 +277,15 @@ impl FnResolver<'_, '_> {
             }
             return Some(pending_expression(call));
         };
-        Some(self.probe_known_template(probe, &callee.name, template, args, explicit, call))
+        Some(self.probe_known_template(
+            probe,
+            &callee.name,
+            template,
+            args,
+            explicit,
+            call,
+            expected,
+        ))
     }
 
     pub(super) fn probe_template_method(
@@ -118,6 +296,7 @@ impl FnResolver<'_, '_> {
         args: &mut Vec<ResolvedArg>,
         explicit: Option<&InstanceArguments>,
         call: Span,
+        expected: Option<VT>,
     ) -> Option<ResolvedExpr> {
         let probe = self.instance_probe?;
         let (owner, is_static) = match (static_rec, receiver) {
@@ -146,6 +325,7 @@ impl FnResolver<'_, '_> {
             std::mem::take(args),
             explicit.map(|a| (a.types.as_slice(), a.consts.as_slice())),
             call,
+            expected,
         ))
     }
 
@@ -157,6 +337,7 @@ impl FnResolver<'_, '_> {
         mut args: Vec<ResolvedArg>,
         explicit: Option<(&[TypeAnn], &[ConstArgUse])>,
         call: Span,
+        expected: Option<VT>,
     ) -> ResolvedExpr {
         let unresolved = pending_expression(call);
         if self.diags.len() != probe.body_diagnostics.get() {
@@ -203,6 +384,18 @@ impl FnResolver<'_, '_> {
                 }
             }
         }
+        if explicit_types.is_empty() {
+            if let Some(expected) =
+                expected.and_then(|ty| source_annotation(ty, self.records, self.coll))
+            {
+                let mut result_types = BTreeMap::new();
+                if collect_type_arguments(&template.ret, &expected, &mut result_types) {
+                    for (param, ty) in result_types {
+                        types.entry(param).or_insert(ty);
+                    }
+                }
+            }
+        }
         if let Some(param) = template
             .type_params
             .iter()
@@ -239,6 +432,23 @@ impl FnResolver<'_, '_> {
             call,
         );
         unresolved
+    }
+
+    fn canonical_explicit_type(&mut self, ann: &TypeAnn) -> Option<TypeAnn> {
+        let before = self.diags.len();
+        let ty = vt_of_ann_coll(ann, self.rec_index, self.coll, self.diags, TypePos::Local);
+        if self.diags.len() != before {
+            return None;
+        }
+        let canonical = source_annotation(ty, self.records, self.coll);
+        if canonical.is_none() {
+            self.bind_err(
+                "source.instances-unsupported",
+                "unsupported explicit instance type",
+                ann.span,
+            );
+        }
+        canonical
     }
 
     fn explicit_instance_types(
@@ -296,20 +506,7 @@ impl FnResolver<'_, '_> {
         for (param, (span, argument)) in template.type_params.iter().zip(positioned) {
             match (param.kind, argument) {
                 (TypeParamKind::Type, Some(ann)) => {
-                    let before = self.diags.len();
-                    let ty =
-                        vt_of_ann_coll(ann, self.rec_index, self.coll, self.diags, TypePos::Local);
-                    if self.diags.len() != before {
-                        return None;
-                    }
-                    let Some(canonical) = source_annotation(ty, self.records, self.coll) else {
-                        self.bind_err(
-                            "source.instances-unsupported",
-                            "unsupported explicit instance type",
-                            span,
-                        );
-                        return None;
-                    };
+                    let canonical = self.canonical_explicit_type(ann)?;
                     types.insert(param.name.name.clone(), canonical);
                 }
                 (TypeParamKind::Const, None) => {}
@@ -335,6 +532,29 @@ pub(super) fn pending_expression(span: Span) -> ResolvedExpr {
         span,
         vt: VT::I32,
         kind: RExprKind::IntLit(0),
+    }
+}
+
+fn collect_type_variables(ty: &TypeAnn, names: &mut BTreeSet<String>) {
+    match &ty.kind {
+        TypeRef::TyVar(name) => {
+            names.insert(name.name.clone());
+        }
+        TypeRef::Generic { args, .. } | TypeRef::Tuple(args) => {
+            for arg in args {
+                collect_type_variables(arg, names);
+            }
+        }
+        TypeRef::Function { params, result } => {
+            for arg in params {
+                collect_type_variables(arg, names);
+            }
+            collect_type_variables(result, names);
+        }
+        TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
+            collect_type_variables(inner, names);
+        }
+        TypeRef::Builtin(_) | TypeRef::Record(_) | TypeRef::Inferred => {}
     }
 }
 
@@ -394,13 +614,25 @@ fn collect_type_arguments(
 }
 
 fn source_annotation(vt: VT, records: &[ResolvedRecord], tables: &CollTables) -> Option<TypeAnn> {
+    source_annotation_by_name(
+        vt,
+        &|record| records.get(record).map(|r| r.name.clone()),
+        tables,
+    )
+}
+
+fn source_annotation_by_name(
+    vt: VT,
+    record_name: &impl Fn(usize) -> Option<String>,
+    tables: &CollTables,
+) -> Option<TypeAnn> {
     // Spans are kept on the demand. Canonical type equality has no coordinates.
     let span = Span { start: 0, end: 0 };
     let ident = |name: &str| Ident {
         name: name.to_string(),
         span,
     };
-    let ann = |ty| source_annotation(ty, records, tables);
+    let ann = |ty| source_annotation_by_name(ty, record_name, tables);
     let kind = match vt {
         VT::I32 => TypeRef::Builtin(TypeWord::Int),
         VT::Bool => TypeRef::Builtin(TypeWord::Bool),
@@ -415,12 +647,23 @@ fn source_annotation(vt: VT, records: &[ResolvedRecord], tables: &CollTables) ->
         VT::U64 => TypeRef::Builtin(TypeWord::U64),
         VT::F32 => TypeRef::Builtin(TypeWord::Float),
         VT::F64 => TypeRef::Builtin(TypeWord::F64),
-        VT::Rec(index) => TypeRef::Record(ident(&records.get(index)?.name)),
+        VT::Rec(index) => TypeRef::Record(ident(&record_name(index)?)),
         VT::List(index) => TypeRef::Generic {
             name: ident("List"),
             args: vec![ann(*tables.lists.get(index)?)?],
         },
         VT::Variant(index) => {
+            if let Some(instance) = tables.enum_instances.get(&index) {
+                if let Some(args) = instance.arguments.iter().cloned().collect() {
+                    return Some(TypeAnn {
+                        span,
+                        kind: TypeRef::Generic {
+                            name: ident(&instance.template),
+                            args,
+                        },
+                    });
+                }
+            }
             let variant = tables.variants.get(index)?;
             match variant.name.as_str() {
                 "Option" => TypeRef::Optional(Box::new(ann(variant.arms.first()?.1?)?)),
@@ -454,4 +697,90 @@ fn source_annotation(vt: VT, records: &[ResolvedRecord], tables: &CollTables) ->
         _ => return None,
     };
     Some(TypeAnn { kind, span })
+}
+
+pub(super) fn enum_type_annotation(
+    name: &Ident,
+    args: &[TypeAnn],
+    rec_index: &BTreeMap<String, usize>,
+    tables: &mut CollTables,
+    diags: &mut Vec<Diagnostic>,
+    span: Span,
+) -> Option<VT> {
+    let arity = tables
+        .enum_type_templates
+        .get(&name.name)
+        .map(Vec::len)
+        .or_else(|| {
+            tables
+                .enum_instances
+                .values()
+                .find_map(|item| (item.template == name.name).then_some(item.arguments.len()))
+        })?;
+    if args.len() != arity {
+        diags.push(Diagnostic::new(
+            crate::atom_text::Stage::Bind,
+            "type-arity-mismatch",
+            format!(
+                "`{}` needs {arity} type argument(s), found {}",
+                name.name,
+                args.len()
+            ),
+            span,
+        ));
+        return Some(VT::I32);
+    }
+    let diag_count = diags.len();
+    let mut canonical = Vec::with_capacity(args.len());
+    for arg in args {
+        let vt = vt_of_ann_coll(arg, rec_index, tables, diags, TypePos::Local);
+        if diags.len() != diag_count {
+            return Some(VT::I32);
+        }
+        let resolved = source_annotation_by_name(
+            vt,
+            &|record| {
+                rec_index
+                    .iter()
+                    .find_map(|(symbol, &index)| (index == record).then(|| symbol.clone()))
+            },
+            tables,
+        );
+        let Some(resolved) = resolved else {
+            diags.push(Diagnostic::new(
+                crate::atom_text::Stage::Bind,
+                "source.instances-unsupported",
+                "unsupported enum type argument",
+                arg.span,
+            ));
+            return Some(VT::I32);
+        };
+        canonical.push(Some(resolved));
+    }
+    if let Some((index, _)) = tables
+        .enum_instances
+        .iter()
+        .find(|(_, item)| item.template == name.name && item.arguments == canonical)
+    {
+        return Some(VT::Variant(*index));
+    }
+    if let Some(params) = tables.enum_type_templates.get(&name.name) {
+        tables.enum_type_requests.push(AutoEnumDemand {
+            owner: None,
+            call: span,
+            template: name.name.clone(),
+            types: params
+                .iter()
+                .cloned()
+                .zip(canonical.into_iter().flatten())
+                .collect(),
+        });
+    }
+    diags.push(Diagnostic::new(
+        crate::atom_text::Stage::Bind,
+        "source.instance-pending",
+        format!("waiting for a concrete type for `{}`", name.name),
+        span,
+    ));
+    Some(VT::I32)
 }

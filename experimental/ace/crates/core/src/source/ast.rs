@@ -395,10 +395,21 @@ pub struct StoreItem {
 #[derive(Clone, Debug)]
 pub struct EnumItem {
     pub name: Ident,
+    pub type_params: Vec<TypeParamDecl>,
+    pub instance: Option<EnumInstance>,
     pub arms: Vec<EnumArm>,
     pub methods: Vec<FnItem>,
     /// `enum` keyword through the closing brace.
     pub span: Span,
+}
+
+/// Source family and unavailable payloads of an inferred enum instance.
+#[derive(Clone, Debug)]
+pub struct EnumInstance {
+    pub template: String,
+    pub arguments: Vec<Option<TypeAnn>>,
+    pub unbound_arms: Vec<String>,
+    pub unbound_methods: Vec<String>,
 }
 
 /// One variant arm: `Name` or `Name(PayloadType)`. PLAN-1083 (auto face):
@@ -422,14 +433,14 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn has_function_templates(&self) -> bool {
+    pub fn has_instance_templates(&self) -> bool {
         fn generic(f: &FnItem) -> bool {
             !f.type_params.is_empty()
         }
         self.items.iter().any(|item| match item {
             Item::Fn(f) => generic(f),
             Item::Type(t) => t.methods.iter().any(generic),
-            Item::Enum(e) => e.methods.iter().any(generic),
+            Item::Enum(e) => !e.type_params.is_empty() || e.methods.iter().any(generic),
             _ => false,
         })
     }

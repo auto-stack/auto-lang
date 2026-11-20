@@ -2731,6 +2731,8 @@ impl<'s> Parser<'s> {
         let close = self.toks[self.pos - 1].span;
         Ok(EnumItem {
             name,
+            type_params: Vec::new(),
+            instance: None,
             arms,
             methods: Vec::new(),
             span: kw.join(close),
