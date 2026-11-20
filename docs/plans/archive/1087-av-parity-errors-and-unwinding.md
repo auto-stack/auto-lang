@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-20
 plan_revision: 4
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1082, PLAN-1083, PLAN-1084, PLAN-1085, PLAN-1086]
 supersedes_spec_components: [docs/specs/ace-migration/m2-control-effects.md, docs/specs/auto-lang/vm/design/null-family.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -352,7 +352,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -376,9 +376,9 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-05** work：见上表唯一任务合同。
 - [x] **T-06** work：见上表唯一任务合同。
 - [x] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：见上表唯一任务合同。
 
-当前入口：在 §9 指定的冻结提交上收齐最后一轮适用组、复审和落主证据。
+全部任务已完成，交付与验证来源见 §9。
 
 ## 9. 复审记录
 
@@ -468,7 +468,13 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - 规范文件 SHA256 已从落地主检出复核。language-parity.md `d46f3cb9db6a494a8d2f035785f44868fde19c02063be0fd80a0cb219f820b77`，m2-control-effects.md `39b6382d5846b70e1011387cfdc14adacc7522673d2541fc005cbf9ef9261cc5`，null-family.md `e5fb0cc99f6b95feab3773f2e339033313fbfa631a7ce0770419663e6192d9eb`，feature-organized-corpus.md `03f5d0729d67c49bf7478e6c0231b40731572c45de81c84a6a7630206f60efb8`。
 - 周期回归收据截止编号 1098，时间为 2026-11-20T00:00:00Z。1087 不满足每五包触发，收据时间未到 48h。独立批量门本次未到期。
 - 交付形态为源码、语料和规范。主检出已有 debug AV worker 于 2026-11-20 12:44:11 构建，release 于 2026-11-19 11:10:13 构建；本次源码合入尚未刷新这些产物。其它会话的主检出文档及计划编辑仍由原会话拥有。
-- archived（delivered）。档案路径为 `docs/plans/archive/1087-av-parity-errors-and-unwinding.md`，仅 T-08 清理为本收据的后续操作。
+- archived（delivered）。档案路径为 `docs/plans/archive/1087-av-parity-errors-and-unwinding.md`，本检查点后的 T-08 清理结果见下。
+
+- 两个 worktree 在各自 `wt-guard.ps1` 返回 clean 后移除。auto-lang 实施树含 117166 文件、17241131266 字节，auto-down 只读依赖树含 1318 文件、27021855 字节。原分支与空组目录已移除。未移入任何构建中间产物。
+- 收尾路径逐项核对。Cargo 固定组的树内 target 随实施树移除。ACE 直建、Python probe/provider、AAC 生成器输出、外部消费、AutoDown 报告和 TEMP/TMP 均在 `D:/autostack/plan-artifacts/plan-1087/`。材料目录删除前扫描 clean，登记 owner 与实际目录一致，核 46743 文件、16059907846 字节（含最终清单前的测量）。未发现额外安装根、跨盘输出或需要保留的具名持有。
+
+- cleaned。上述目录和分支均已确认不存在。材料已折叠入本档并按唯一 scope 删除，登记表记录 deleted-at-merge，未保留持有。归档校验通过，T-08 与 AC-08 完成。
+- `stage: goal | plan_id: PLAN-1087 | plan_revision: r4 | from: merge | to: done | status: archived | outcome: pass | delivery_commit: ad9a3a2f2f6348b7a553a3dc397f9a0cd2c143c4`。
 
 ## 10. 待澄清事项
 
