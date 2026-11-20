@@ -1179,32 +1179,31 @@ fn assemble(pg List<int>, pool List<int>, cstab List<int>, scan List<int>, toks 
     // n_pratt, n_modes, n_scan, n_fields, n_ctx, n_expects, start, sig,
     // n_stmt_end, n_sep, n_sync, has_outline] (18 slots) — normalize into
     // the canonical header order with placeholders for region offsets.
-    var hdr = List<int>.new()
+    var out = List<int>.new()
     var i = 0
     for (i < h_slots()) {
-        hdr.push(0)
+        out.push(0)
         i = i + 1
     }
-    hdr.set(h_schema(), pg.get(0))
-    hdr.set(h_rev(), pg.get(1))
-    hdr.set(h_name_off(), pg.get(2))
-    hdr.set(h_name_len(), pg.get(3))
-    hdr.set(h_n_tokens(), pg.get(4))
-    hdr.set(h_n_rules(), pg.get(5))
-    hdr.set(h_n_pratt(), pg.get(6))
-    hdr.set(h_n_modes(), pg.get(7))
-    hdr.set(h_n_scan(), pg.get(8))
-    hdr.set(h_n_fields(), pg.get(9))
-    hdr.set(h_n_ctx(), pg.get(10))
-    hdr.set(h_n_expects(), pg.get(11))
-    hdr.set(h_start(), pg.get(12))
-    hdr.set(h_newline_sig(), pg.get(13))
-    hdr.set(h_n_stmt_end(), pg.get(14))
-    hdr.set(h_n_sep(), pg.get(15))
-    hdr.set(h_n_sync(), pg.get(16))
-    hdr.set(h_has_outline(), pg.get(17))
+    out.set(h_schema(), pg.get(0))
+    out.set(h_rev(), pg.get(1))
+    out.set(h_name_off(), pg.get(2))
+    out.set(h_name_len(), pg.get(3))
+    out.set(h_n_tokens(), pg.get(4))
+    out.set(h_n_rules(), pg.get(5))
+    out.set(h_n_pratt(), pg.get(6))
+    out.set(h_n_modes(), pg.get(7))
+    out.set(h_n_scan(), pg.get(8))
+    out.set(h_n_fields(), pg.get(9))
+    out.set(h_n_ctx(), pg.get(10))
+    out.set(h_n_expects(), pg.get(11))
+    out.set(h_start(), pg.get(12))
+    out.set(h_newline_sig(), pg.get(13))
+    out.set(h_n_stmt_end(), pg.get(14))
+    out.set(h_n_sep(), pg.get(15))
+    out.set(h_n_sync(), pg.get(16))
+    out.set(h_has_outline(), pg.get(17))
 
-    var out = hdr
     out.set(o_scan(), out.len())
     append_all(out, scan)
     out.set(o_tokens(), out.len())

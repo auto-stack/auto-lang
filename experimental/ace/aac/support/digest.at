@@ -790,7 +790,7 @@ fn b3_merge(stack List<int>, cv List<int>, total int) List<int> {
 /// record, not just its chaining value: the root compression needs the final
 /// node's message block, block length and flags).
 fn b3_fold(stack List<int>, out List<int>) List<int> {
-    var acc = out
+    var acc = slice_bytes(out, 0, out.len())
     for (stack.len() >= 8) {
         let left = stack_pop_cv(stack)
         let right = b3_output_cv(acc)

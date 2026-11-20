@@ -361,10 +361,10 @@ fn aac1046_edit_incremental_equality() {
         .strip_prefix("INCR|")
         .unwrap_or_else(|| panic!("missing incremental tree: {tree}"));
     assert_eq!(tree, rust_oracle("scalar", &edited), "incremental vs fresh");
-    assert!(facts.contains("ok=1 fb=0"), "splice must converge: {facts}");
-    assert!(
-        facts.ends_with(&format!("grafted={}", splice.reused_decls)),
-        "reuse count must match the Rust incremental parser: {facts}",
+    assert_eq!(
+        facts,
+        format!(" ok=1 fb=0 rescan={} grafted={}", splice.rescan_bytes, splice.reused_decls),
+        "actual rescan bytes and reuse count must match the Rust incremental parser",
     );
 }
 
