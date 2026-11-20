@@ -1,0 +1,581 @@
+use app.atom_data.bind_document_shape
+use app.binding.bind_budget
+use app.binding.call_mapping_stride
+use app.binding.call_parameter_slots
+use app.binding.decl_category
+use app.binding.decl_name
+use app.binding.function_decl
+use app.binding.parameter_decl
+use app.binding.resolved_function
+use app.binding.take_step
+use app.core_atom_bound.bind_core_atom
+use app.hir_schema_data.core_schema
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.syntax_cst.join_rows
+use app.syntax_frontend.str_to_bytes
+use app.types.boolean_type
+use app.types.integer_type
+use std.conv.from_int
+use std.conv.to_int
+
+pub fn hir_unsupported() int { return -30 }
+pub fn hir_owner_error() int { return -31 }
+pub fn hir_reference_error() int { return -32 }
+pub fn hir_type_error() int { return -33 }
+pub fn hir_shape_error() int { return -34 }
+
+fn constant_op() int { return 1 }
+fn read_op() int { return 2 }
+fn call_op() int { return 3 }
+fn less_than_op() int { return 4 }
+fn add_op() int { return 5 }
+fn multiply_op() int { return 6 }
+fn supported_type(t int) bool { return t == integer_type() || t == boolean_type() }
+
+// Definition IDs and expression IDs are distinct even when they share an
+// origin row. Each table carries its own owner and exact source-row identity.
+// Definitions: (id, result type, body owner, return expr)
+// Params:      (owner, id, type, formal position)
+// Expressions: (id, owner, op, result type, value/ref)
+// Args:        (call expr, evaluation expr, formal position)
+type VerifiedCore {
+    definitions int
+}
+
+fn failed(errors List<int>, row int, code int) int {
+    errors.push(row)
+    errors.push(code)
+    return code
+}
+
+fn find_row(table List<int>, stride int, id int, field int) int {
+    var pos = 0
+    for (pos < table.len()) {
+        if (table.get(pos + field) == id) { return pos }
+        pos = pos + stride
+    }
+    return -1
+}
+
+fn has_budget(fuel List<int>, deadline i64, work int) bool {
+    if (!take_step(fuel, deadline) || fuel.get(0) < work) { return false }
+    fuel.set(0, fuel.get(0) - work)
+    return true
+}
+
+fn append_expression(exprs List<int>, row int, owner int, op int, type_id int, data int) int {
+    exprs.push(row)
+    exprs.push(owner)
+    exprs.push(op)
+    exprs.push(type_id)
+    exprs.push(data)
+    return 0
+}
+
+fn add_expression(exprs List<int>, expression_ids List<int>, row int, owner int, op int, type_id int, data int) int {
+    append_expression(exprs, row, owner, op, type_id, data)
+    expression_ids.set(row, row)
+    return 0
+}
+
+fn binary_inputs(args List<int>, expression int, lhs int, rhs int) int {
+    args.push(expression)
+    args.push(lhs)
+    args.push(0)
+    args.push(expression)
+    args.push(rhs)
+    args.push(1)
+    return 0
+}
+
+fn source_binary(node_kind Str) int {
+    if (node_kind == "lt") { return less_than_op() }
+    if (node_kind == "plus") { return add_op() }
+    if (node_kind == "star") { return multiply_op() }
+    return 0
+}
+
+fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var owners = List<int>.new()
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
+        let outer = parent(ast, row)
+        var owner = -1
+        if (outer >= 0) { owner = owners.get(outer) }
+        if (decl_category(declarations, row) == function_decl()) { owner = row }
+        owners.push(owner)
+        expressions.push(-1)
+        row = row + 1
+    }
+    row = row_count(ast) - 1
+    for (row >= 0) {
+        if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
+        let owner = owners.get(row)
+        let t = facts.get(row)
+        if (owner >= 0 && supported_type(t)) {
+            let node_kind = kind(pg, ast, row)
+            let binary = source_binary(node_kind.clone())
+            if (binary != 0 && first_child(links, row) >= 0) {
+                let left = first_child(links, row)
+                let operator_token = next_sibling(links, left)
+                if (operator_token < 0) { return failed(errors, row, hir_unsupported()) }
+                let right = next_sibling(links, operator_token)
+                if (right < 0 || expressions.get(left) < 0 || expressions.get(right) < 0) {
+                    return failed(errors, row, hir_unsupported())
+                }
+                add_expression(exprs, expressions, row, owner, binary, t, 0)
+                binary_inputs(args, row, expressions.get(left), expressions.get(right))
+            }
+            if (node_kind == "true-kw" || node_kind == "false-kw") {
+                var value = 0
+                if (node_kind == "true-kw") { value = 1 }
+                let left = row_count(ast) + row * 2
+                let right = left + 1
+                append_expression(exprs, left, owner, constant_op(), integer_type(), 0)
+                append_expression(exprs, right, owner, constant_op(), integer_type(), value)
+                add_expression(exprs, expressions, row, owner, less_than_op(), t, 0)
+                binary_inputs(args, row, left, right)
+            }
+            if (node_kind == "int-literal") {
+                let parsed = to_int(spelling(src, ast, row))
+                is parsed {
+                    Some(value) -> { add_expression(exprs, expressions, row, owner, constant_op(), t, value) }
+                    None -> { return failed(errors, row, hir_unsupported()) }
+                }
+            }
+            if (node_kind == "ident") {
+                let target = uses.get(row)
+                if (target >= 0 && decl_category(declarations, target) == parameter_decl()) {
+                    add_expression(exprs, expressions, row, owner, read_op(), t, target)
+                }
+            }
+            if (node_kind == "call") {
+                let target = resolved_function(pg, ast, links, declarations, uses, row)
+                if (target < 0) { return failed(errors, row, hir_unsupported()) }
+                add_expression(exprs, expressions, row, owner, call_op(), t, target)
+                var pos = 0
+                for (pos < mappings.len()) {
+                    if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
+                    if (mappings.get(pos) == row) {
+                        let evaluation = expressions.get(mappings.get(pos + 1))
+                        if (evaluation < 0) { return failed(errors, row, hir_unsupported()) }
+                        args.push(row)
+                        args.push(evaluation)
+                        args.push(mappings.get(pos + 2))
+                    }
+                    pos = pos + call_mapping_stride()
+                }
+            }
+            let wrapper = node_kind == "expr" || node_kind == "unary-expr" || node_kind == "atom-expr" || node_kind == "postfix-expr"
+            if (wrapper) {
+                let child = first_child(links, row)
+                if (child >= 0 && next_sibling(links, child) < 0) {
+                    expressions.set(row, expressions.get(child))
+                }
+            }
+        }
+        row = row - 1
+    }
+    return 0
+}
+
+fn return_value(pg List<int>, ast List<int>, links List<int>, body int) int {
+    var child = first_child(links, body)
+    var result = -1
+    for (child >= 0) {
+        let node_kind = kind(pg, ast, child)
+        if (node_kind == "stmt") {
+            let stmt = first_child(links, child)
+            if (result >= 0 || stmt < 0 || kind(pg, ast, stmt) != "return-stmt") { return -1 }
+            result = child_with_role(pg, ast, links, stmt, "value")
+        }
+        child = next_sibling(links, child)
+    }
+    return result
+}
+
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var expressions = List<int>.new()
+    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, exprs, args, expressions, fuel, deadline, errors)
+    if (lowered != 0) { return lowered }
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
+        let category = decl_category(declarations, row)
+        if (category == function_decl()) {
+            let body = child_with_role(pg, ast, links, row, "body")
+            if (body < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
+            let returning = return_value(pg, ast, links, body)
+            if (returning < 0 || expressions.get(returning) < 0) { return failed(errors, row, hir_unsupported()) }
+            defs.push(row)
+            defs.push(facts.get(row))
+            defs.push(row)
+            defs.push(expressions.get(returning))
+            let params = call_parameter_slots(pg, ast, links, row)
+            var slot = 0
+            for (slot < params.len()) {
+                let param = params.get(slot)
+                let ty = facts.get(param)
+                if (!supported_type(ty)) { return failed(errors, param, hir_unsupported()) }
+                parameters.push(row)
+                parameters.push(param)
+                parameters.push(ty)
+                parameters.push(slot)
+                slot = slot + 1
+            }
+        } else {
+            if (category != 0 && category != parameter_decl()) { return failed(errors, row, hir_unsupported()) }
+        }
+        row = row + 1
+    }
+    if (defs.len() == 0) { return failed(errors, 0, hir_unsupported()) }
+    return 0
+}
+
+fn param_at(parameters List<int>, owner int, slot int) int {
+    var pos = 0
+    for (pos < parameters.len()) {
+        if (parameters.get(pos) == owner && parameters.get(pos + 3) == slot) { return pos }
+        pos = pos + 4
+    }
+    return -1
+}
+
+fn param_count(parameters List<int>, owner int) int {
+    var count = 0
+    var pos = 0
+    for (pos < parameters.len()) {
+        if (parameters.get(pos) == owner) { count = count + 1 }
+        pos = pos + 4
+    }
+    return count
+}
+
+fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+    let target_id = exprs.get(position + 4)
+    let definition = find_row(defs, 4, target_id, 0)
+    if (definition < 0) { return hir_reference_error() }
+    if (exprs.get(position + 3) != defs.get(definition + 1)) { return hir_type_error() }
+    if (!has_budget(fuel, deadline, parameters.len() / 4)) { return bind_budget() }
+    let expected = param_count(parameters, target_id)
+    var slots = List<int>.new()
+    var i = 0
+    for (i < expected) {
+        slots.push(0)
+        i = i + 1
+    }
+    let owner = exprs.get(position + 1)
+    let call = exprs.get(position)
+    var found = 0
+    i = 0
+    for (i < args.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (args.get(i) == call) {
+            let slot = args.get(i + 2)
+            if (slot < 0 || slot >= expected || slots.get(slot) != 0) { return hir_reference_error() }
+            if (!has_budget(fuel, deadline, parameters.len() / 4 + exprs.len() / 5)) { return bind_budget() }
+            let param = param_at(parameters, target_id, slot)
+            let arg = find_row(exprs, 5, args.get(i + 1), 0)
+            if (param < 0 || arg < 0 || arg >= position) { return hir_reference_error() }
+            if (exprs.get(arg + 1) != owner) { return hir_owner_error() }
+            if (parameters.get(param + 2) != exprs.get(arg + 3)) { return hir_type_error() }
+            slots.set(slot, 1)
+            found = found + 1
+        }
+        i = i + 3
+    }
+    if (found != expected) { return hir_reference_error() }
+    return 0
+}
+
+fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel List<int>, deadline i64) int {
+    var result = integer_type()
+    if (op == less_than_op()) { result = boolean_type() }
+    if (exprs.get(position + 3) != result) { return hir_type_error() }
+    let expression = exprs.get(position)
+    let owner = exprs.get(position + 1)
+    var at = 0
+    var left = false
+    var right = false
+    for (at < args.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (args.get(at) == expression) {
+            let slot = args.get(at + 2)
+            if (slot < 0 || slot > 1 || (slot == 0 && left) || (slot == 1 && right)) { return hir_reference_error() }
+            if (!has_budget(fuel, deadline, exprs.len() / 5)) { return bind_budget() }
+            let operand = find_row(exprs, 5, args.get(at + 1), 0)
+            if (operand < 0 || operand >= position) { return hir_reference_error() }
+            if (exprs.get(operand + 1) != owner) { return hir_owner_error() }
+            if (exprs.get(operand + 3) != integer_type()) { return hir_type_error() }
+            if (slot == 0) { left = true } else { right = true }
+        }
+        at = at + 3
+    }
+    if (!left || !right) { return hir_reference_error() }
+    return 0
+}
+
+fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+    var position = 0
+    for (position < defs.len()) {
+        let id = defs.get(position)
+        if (!has_budget(fuel, deadline, exprs.len() / 5)) {
+            failed(errors, id, bind_budget())
+            return None
+        }
+        if (defs.get(position + 2) != id) {
+            failed(errors, id, hir_owner_error())
+            return None
+        }
+        let returning = find_row(exprs, 5, defs.get(position + 3), 0)
+        if (returning < 0 || exprs.get(returning + 1) != id) {
+            failed(errors, id, hir_reference_error())
+            return None
+        }
+        if (defs.get(position + 1) != exprs.get(returning + 3)) {
+            failed(errors, id, hir_type_error())
+            return None
+        }
+        position = position + 4
+    }
+    position = 0
+    for (position < exprs.len()) {
+        let row = exprs.get(position)
+        if (!has_budget(fuel, deadline, defs.len() / 4 + parameters.len() / 4)) {
+            failed(errors, row, bind_budget())
+            return None
+        }
+        let owner = exprs.get(position + 1)
+        if (find_row(defs, 4, owner, 0) < 0) {
+            failed(errors, row, hir_owner_error())
+            return None
+        }
+        let op = exprs.get(position + 2)
+        let type_id = exprs.get(position + 3)
+        let data = exprs.get(position + 4)
+        var status = hir_reference_error()
+        if (op == constant_op() || op == read_op() || op == call_op()) { status = 0 }
+        if (!supported_type(type_id)) { status = hir_type_error() }
+        if (op == read_op()) {
+            let param = find_row(parameters, 4, data, 1)
+            if (param < 0 || parameters.get(param) != owner) {
+                status = hir_owner_error()
+            } else {
+                if (parameters.get(param + 2) != type_id) { status = hir_type_error() }
+            }
+        }
+        if (op == constant_op() && type_id != integer_type()) { status = hir_type_error() }
+        if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, fuel, deadline) }
+        if (op == less_than_op() || op == add_op() || op == multiply_op()) {
+            status = verify_binary(exprs, args, position, op, fuel, deadline)
+        }
+        if (status != 0) {
+            failed(errors, row, status)
+            return None
+        }
+        position = position + 5
+    }
+    return Some(VerifiedCore { definitions: defs.len() / 4 })
+}
+
+fn id(prefix Str, row int) Str { return prefix + from_int(row) }
+fn ref_text(prefix Str, row int) Str { return "\"" + id(prefix, row) + "\"" }
+
+fn write_call(args List<int>, call int, target int) Str {
+    var evaluation = ""
+    var bindings = ""
+    var at = 0
+    var index = 0
+    for (at < args.len()) {
+        if (args.get(at) == call) {
+            if (index > 0) {
+                evaluation = evaluation + ", "
+                bindings = bindings + ", "
+            }
+            evaluation = evaluation + ref_text("e", args.get(at + 1))
+            bindings = bindings + "{ param: " + from_int(args.get(at + 2)) + "u32, arg: " + from_int(index) + "u32 }"
+            index = index + 1
+        }
+        at = at + 3
+    }
+    return "callee: " + ref_text("d", target) + "; eval_args: [" + evaluation + "]; bindings: [" + bindings + "]"
+}
+
+fn write_binary(args List<int>, expression int, op int) Str {
+    var lhs = -1
+    var rhs = -1
+    var at = 0
+    for (at < args.len()) {
+        if (args.get(at) == expression) {
+            if (args.get(at + 2) == 0) { lhs = args.get(at + 1) } else { rhs = args.get(at + 1) }
+        }
+        at = at + 3
+    }
+    var operation = "lt_i32; "
+    if (op == add_op()) { operation = "add_i32; overflow: trap; " }
+    if (op == multiply_op()) { operation = "mul_i32; overflow: trap; " }
+    return "op: " + operation + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
+}
+
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, ast List<int>, src List<int>, declarations List<int>) Str {
+    var output = List<Str>.new()
+    output.push("hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {\n module m {\n path: \"app.core\"\n types {\n type t1 i32 {}\n type t2 bool {}\n")
+    var def_at = 0
+    for (def_at < checked.definitions * 4) {
+        let def = defs.get(def_at)
+        var param_list = ""
+        var param_at = 0
+        for (param_at < parameters.len()) {
+            if (parameters.get(param_at) == def) {
+                if (param_list.len() > 0) { param_list = param_list + ", " }
+                param_list = param_list + ref_text("t", parameters.get(param_at + 2))
+            }
+            param_at = param_at + 4
+        }
+        let line = " type " + id("s", def) + " function { params: [" + param_list + "]; result: " + ref_text("t", defs.get(def_at + 1)) + " }\n"
+        output.push(line.move)
+        def_at = def_at + 4
+    }
+    output.push(" }\n declarations {\n")
+    def_at = 0
+    for (def_at < checked.definitions * 4) {
+        let def = defs.get(def_at)
+        let name = spelling(src, ast, decl_name(declarations, def))
+        let line = " function " + id("d", def) + " " + id("s", def) + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
+        output.push(line.move)
+        def_at = def_at + 4
+    }
+    output.push(" }\n bodies {\n")
+    def_at = 0
+    for (def_at < checked.definitions * 4) {
+        let def = defs.get(def_at)
+        let start = " body " + id("b", def) + " { owner: " + ref_text("d", def) + "; entry: \"k\"\n locals {\n"
+        output.push(start.move)
+        var param_at = 0
+        for (param_at < parameters.len()) {
+            if (parameters.get(param_at) == def) {
+                let param = parameters.get(param_at + 1)
+                let name = spelling(src, ast, decl_name(declarations, param))
+                let line = " local " + id("l", param) + " " + id("t", parameters.get(param_at + 2)) + " { name: \"" + name + "\"; role: param; index: " + from_int(parameters.get(param_at + 3)) + "u32 }\n"
+                output.push(line.move)
+            }
+            param_at = param_at + 4
+        }
+        output.push(" }\n expressions {\n")
+        var expr_at = 0
+        for (expr_at < exprs.len()) {
+            if (exprs.get(expr_at + 1) == def) {
+                let expr = exprs.get(expr_at)
+                let op = exprs.get(expr_at + 2)
+                let t = ref_text("t", exprs.get(expr_at + 3))
+                let data = exprs.get(expr_at + 4)
+                var form = "constant"
+                var fields = "value: " + from_int(data) + "i32"
+                if (op == read_op()) {
+                    form = "read_local"
+                    fields = "local: " + ref_text("l", data)
+                }
+                if (op == call_op()) {
+                    form = "call"
+                    fields = write_call(args, expr, data)
+                }
+                if (op == less_than_op() || op == add_op() || op == multiply_op()) {
+                    form = "binary"
+                    fields = write_binary(args, expr, op)
+                }
+                let line = " expr " + id("e", expr) + " " + form + " { type: " + t + "; " + fields + " }\n"
+                output.push(line.move)
+            }
+            expr_at = expr_at + 5
+        }
+        let tail = " }\n blocks { block k { return(value: " + ref_text("e", defs.get(def_at + 3)) + ") {} } }\n }\n"
+        output.push(tail.move)
+        def_at = def_at + 4
+    }
+    output.push(" }\n }\n}\n")
+    return join_rows(output, output.len())
+}
+
+// Controls inside the stage driver alter the real draft before verification.
+// The serialized Atom document is a transport value and carries no verifier
+// credential. VerifiedCore exists only inside this module.
+pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
+    var member = first_child(links, 0)
+    for (member >= 0) {
+        let item = first_child(links, member)
+        if (item < 0) {
+            failed(errors, member, hir_unsupported())
+            return ""
+        }
+        let node_kind = kind(pg, ast, item)
+        var accepted = node_kind == "fn-item"
+        if (node_kind == "public-item") {
+            let body = child_with_role(pg, ast, links, item, "body")
+            if (body >= 0) { accepted = child_with_kind(pg, ast, links, body, "fn-item") >= 0 }
+        }
+        if (!accepted) {
+            failed(errors, item, hir_unsupported())
+            return ""
+        }
+        member = next_sibling(links, member)
+    }
+    var defs = List<int>.new()
+    var parameters = List<int>.new()
+    var exprs = List<int>.new()
+    var args = List<int>.new()
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, defs, parameters, exprs, args, fuel, deadline, errors)
+    if (status != 0) { return "" }
+    if (control == 1) { defs.set(2, row_count(ast)) }
+    if (control == 2) {
+        var position = 0
+        for (position < exprs.len()) {
+            if (exprs.get(position + 2) == call_op()) {
+                exprs.set(position + 4, row_count(ast))
+                break
+            }
+            position = position + 5
+        }
+    }
+    let verified = verify(defs, parameters, exprs, args, fuel, deadline, errors)
+    is verified {
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, ast, src, declarations) }
+        None -> {}
+    }
+    return ""
+}
+
+pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
+    var tokens = List<int>.new()
+    var values = List<int>.new()
+    var nodes = List<int>.new()
+    var sequence = List<int>.new()
+    var fields = List<int>.new()
+    var items = List<int>.new()
+    var parser_error = List<int>.new()
+    parser_error.push(0)
+    let root = bind_document_shape(str_to_bytes(core_schema()), bytes, parser_error, tokens, values, nodes, sequence, fields, items)
+    if (!take_step(fuel, deadline)) { return bind_budget() }
+    if (root < 0) { return hir_shape_error() }
+    var definitions = List<int>.new()
+    var parameters = List<int>.new()
+    var expressions = List<int>.new()
+    var arguments = List<int>.new()
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, definitions, parameters, expressions, arguments)
+    if (!take_step(fuel, deadline)) { return bind_budget() }
+    if (status != 0) { return status }
+    var errors = List<int>.new()
+    let verified = verify(definitions, parameters, expressions, arguments, fuel, deadline, errors)
+    is verified {
+        Some(_) -> { return 0 }
+        None -> {}
+    }
+    return errors.get(1)
+}

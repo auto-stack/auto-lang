@@ -1,6 +1,8 @@
 #![cfg(windows)]
 
-use ace_aac_syntax_conformance::{run_semantic_case, run_semantic_project, run_type_case};
+use ace_aac_syntax_conformance::{
+    run_core_hir_case, run_semantic_case, run_semantic_project, run_type_case,
+};
 
 fn observe(source: &str) -> String {
     run_semantic_case(source.as_bytes(), None).expect("Auto semantic stage driver")
@@ -243,4 +245,216 @@ fn preserves_nested_option_result_future_and_iterator_identity() {
         type_report(unwrapped),
         format!("ERROR type.return 0 {start}..{}\n", start + 1)
     );
+}
+
+#[test]
+fn binds_methods_through_their_receiver_and_maps_formals() {
+    let source = concat!(
+        "type Gauge {\n",
+        "    count int\n",
+        "    fn choose(v int, enabled bool) int { return v }\n",
+        "}\n",
+        "type Switch {\n",
+        "    fn choose(v bool, enabled bool) bool { return v }\n",
+        "}\n",
+        "fn read(g Gauge) int { return g.count }\n",
+        "fn choose(g Gauge) int { return g.choose(enabled: true, v: g.count) }\n",
+    );
+    let report = type_report(source);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let declared: Vec<_> = report
+        .lines()
+        .filter(|line| line.contains(" 9 choose 0 "))
+        .map(|line| line.split_whitespace().nth(1).unwrap())
+        .collect();
+    assert_eq!(declared.len(), 2);
+    assert!(
+        report.contains(&format!("USE {} choose 0 ", declared[0])),
+        "{report}"
+    );
+    assert!(
+        !report.contains(&format!("USE {} choose 0 ", declared[1])),
+        "{report}"
+    );
+    let wrong = source.replace("enabled: true", "enabled: 9");
+    let start = wrong.rfind('9').unwrap();
+    assert_eq!(
+        type_report(&wrong),
+        format!("ERROR type.argument 0 {start}..{}\n", start + 1)
+    );
+}
+
+const CORE_HIR_INPUT: &[u8] = b"fn A() int { return 41 }\n\
+fn B() bool { return true }\n\
+fn f(a int, b bool) int { return a }\n\
+fn main() int { return f(b: B(), a: A()) }\n";
+
+#[test]
+fn emits_schema_bound_hir_from_auto_with_mapped_eval_order() {
+    let atom = run_core_hir_case(CORE_HIR_INPUT, "verify").expect("Auto HIR driver");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
+        .unwrap_or_else(|diagnostic| panic!("{diagnostic:?}\n{atom}"));
+    let checked = ace_core::verify::verify(bound).expect("independent reference verifier");
+    let module = &checked.bundle().modules[0];
+    let (body, evaluation, bindings) = module
+        .bodies
+        .iter()
+        .find_map(|body| {
+            body.exprs.iter().find_map(|expr| match &expr.kind {
+                ace_core::hir::ExprKind::Call {
+                    eval_args,
+                    bindings,
+                    ..
+                } if bindings.len() == 2 => Some((body, eval_args, bindings)),
+                _ => None,
+            })
+        })
+        .expect("two-argument call");
+    let observed: Vec<_> = evaluation
+        .iter()
+        .map(|id| {
+            let ace_core::hir::ExprKind::Call { callee, .. } = &body.exprs[id.0 as usize].kind
+            else {
+                panic!("expected an evaluated call")
+            };
+            let ace_core::hir::DefKind::Function { name, .. } =
+                &module.defs[callee.0 as usize].kind
+            else {
+                panic!("expected a function definition")
+            };
+            name.as_str()
+        })
+        .collect();
+    assert_eq!(observed, ["B", "A"]);
+    assert_eq!((bindings[0].param, bindings[0].arg), (1, 0));
+    assert_eq!((bindings[1].param, bindings[1].arg), (0, 1));
+}
+
+#[test]
+fn rejects_a_wrong_owner_and_dangling_defref_in_real_draft() {
+    let good = run_core_hir_case(CORE_HIR_INPUT, "verify").expect("Auto HIR driver");
+    assert!(good.starts_with("hir("), "{good}");
+    for (mode, expected) in [
+        ("owner", "ERROR hir.owner "),
+        ("defref", "ERROR hir.reference "),
+    ] {
+        let report = run_core_hir_case(CORE_HIR_INPUT, mode).expect("Auto HIR control");
+        assert!(report.starts_with(expected), "{mode}: {report}");
+    }
+}
+
+#[test]
+fn rechecks_descriptor_shape_references_and_mapped_types() {
+    let atom = run_core_hir_case(CORE_HIR_INPUT, "verify").expect("Auto HIR producer");
+    let admit = |input: &str| {
+        run_core_hir_case(input.as_bytes(), "descriptor").expect("Auto descriptor admission")
+    };
+    assert_eq!(admit(&atom), "ADMITTED core-i32-draft\n", "{atom}");
+    let checked_bit = atom.replacen("hir(", "hir(checked: true, ", 1);
+    let callee = atom
+        .split_once("callee: \"")
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap();
+    let wrong_callee = atom.replacen(
+        &format!("callee: \"{callee}\""),
+        "callee: \"missing_definition\"",
+        1,
+    );
+    let first = atom
+        .split_once("owner: \"")
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap();
+    let wrong_owner = atom.replacen(
+        &format!("owner: \"{first}\""),
+        "owner: \"missing_owner\"",
+        1,
+    );
+    let wrong_slot = atom.replace(
+        "{ param: 1u32, arg: 0u32 }, { param: 0u32, arg: 1u32 }",
+        "{ param: 0u32, arg: 0u32 }, { param: 1u32, arg: 1u32 }",
+    );
+    assert_eq!(admit(&checked_bit), "ERROR hir.shape\n");
+    assert_eq!(admit(&wrong_callee), "ERROR hir.reference\n");
+    assert_eq!(admit(&wrong_owner), "ERROR hir.owner\n");
+    assert_ne!(wrong_slot, atom);
+    assert_eq!(admit(&wrong_slot), "ERROR hir.type\n");
+}
+
+#[test]
+fn checks_integer_width_and_radix_before_type_publication() {
+    let valid = concat!(
+        "fn min() i64 { return -9223372036854775808i64 }\n",
+        "fn max() u64 { return 18446744073709551615u64 }\n",
+        "fn hex() int { return 0x1f32 }\n",
+        "fn bits() u8 { return 0b1111_1111u8 }\n",
+    );
+    let report = type_report(valid);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let bad = valid.replace("18446744073709551615u64", "18446744073709551616u64");
+    let start = bad.find("18446744073709551616").unwrap();
+    assert_eq!(
+        type_report(&bad),
+        format!(
+            "ERROR type.literal-range 0 {start}..{}\n",
+            start + "18446744073709551616u64".len()
+        )
+    );
+}
+
+#[test]
+fn stable_annotations_point_to_their_declaration_and_reject_a_field_owner() {
+    let good = "#[api(method = \"GET\", path = \"/read\")]\npub fn read() int { return 1 }";
+    let report = type_report(good);
+    let annotation = report
+        .lines()
+        .find(|line| line.starts_with("ANNOTATION api "))
+        .unwrap_or_else(|| panic!("{report}"));
+    let spans: Vec<_> = annotation.split_whitespace().collect();
+    let span = |column: &str| {
+        let (start, end) = column.split_once("..").unwrap();
+        &good[start.parse::<usize>().unwrap()..end.parse::<usize>().unwrap()]
+    };
+    assert!(span(spans[3]).starts_with("fn read"));
+    assert!(span(spans[5]).starts_with("api(method"));
+    let bad = "type Settings {\n #[api(method = \"GET\")] value int\n}";
+    let start = bad.find("api").unwrap();
+    assert_eq!(
+        type_report(bad),
+        format!("ERROR type.annotation-owner 0 {start}..{}\n", start + 3)
+    );
+}
+
+#[test]
+fn hands_off_unresolved_templates_ct_and_foreign_without_hir() {
+    let source = concat!(
+        "use.rs probe_host\n",
+        "fn log2<const N>(n int) int { return n }\n",
+        "fn main() int { let v = #{ log2<2>(21) }\n return v }\n",
+    );
+    let report = run_core_hir_case(source.as_bytes(), "verify").expect("Auto stage driver");
+    assert!(report.starts_with("aac.pending-work/1\n"), "{report}");
+    let pending: Vec<_> = report
+        .lines()
+        .filter_map(|line| line.strip_prefix("PENDING "))
+        .map(|line| line.split_whitespace().next().unwrap())
+        .collect();
+    assert_eq!(pending, ["4", "1", "2"], "{report}");
+}
+
+#[test]
+fn emits_core_arithmetic_traps_and_rejects_an_erased_overflow_policy() {
+    let source = b"fn main() int { return 17 + 3 * 5 }";
+    let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
+    let bundle = ace_core::descriptor::bind(ace_core::descriptor(), &atom).unwrap();
+    ace_core::verify::verify(bundle).expect("reference verifies typed arithmetic");
+    assert_eq!(atom.matches("overflow: trap").count(), 2, "{atom}");
+    let corrupted = atom.replacen("overflow: trap; ", "", 1);
+    let report = run_core_hir_case(corrupted.as_bytes(), "descriptor").expect("Auto admission");
+    assert_eq!(report, "ERROR hir.unsupported\n");
 }

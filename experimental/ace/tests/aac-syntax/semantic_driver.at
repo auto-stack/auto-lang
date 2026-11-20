@@ -10,9 +10,22 @@ use app.binding.bind_unresolved
 use app.binding.call_mapping_stride
 use app.binding.decl_category
 use app.binding.decl_name
+use app.core_hir.checked_core_atom
+use app.core_hir.hir_owner_error
+use app.core_hir.hir_reference_error
+use app.core_hir.hir_shape_error
+use app.core_hir.hir_type_error
+use app.core_hir.hir_unsupported
+use app.core_hir.verify_core_document
+use app.declarations.annotation_owner_error
+use app.declarations.annotation_stride
+use app.declarations.collect_declaration_inputs
+use app.declarations.deferred_stride
 use app.initializers.initialize_order
 use app.initializers.initializer_cycle
 use app.initializers.initializer_module_order
+use app.numeric_literal.literal_range
+use app.numeric_literal.literal_syntax
 use app.semantic_tree.add_module_name
 use app.semantic_tree.append_source
 use app.semantic_tree.build_child_index
@@ -33,6 +46,7 @@ use app.typecheck.infer_source
 use app.typecheck.type_argument
 use app.typecheck.type_branch
 use app.typecheck.type_condition
+use app.typecheck.type_member
 use app.typecheck.type_operator
 use app.typecheck.type_return
 use app.typecheck.type_unknown
@@ -75,6 +89,15 @@ fn diagnostic_name(code int) Str {
     if (code == type_argument()) { return "type.argument" }
     if (code == type_branch()) { return "type.branch" }
     if (code == type_condition()) { return "type.condition" }
+    if (code == type_member()) { return "type.member" }
+    if (code == literal_range()) { return "type.literal-range" }
+    if (code == literal_syntax()) { return "type.literal-syntax" }
+    if (code == hir_unsupported()) { return "hir.unsupported" }
+    if (code == hir_owner_error()) { return "hir.owner" }
+    if (code == hir_reference_error()) { return "hir.reference" }
+    if (code == hir_type_error()) { return "hir.type" }
+    if (code == hir_shape_error()) { return "hir.shape" }
+    if (code == annotation_owner_error()) { return "type.annotation-owner" }
     return "internal.semantic"
 }
 
@@ -137,6 +160,28 @@ fn type_report(ast List<int>, bases List<int>, facts List<int>, types List<int>)
     return join_rows(result, result.len())
 }
 
+fn declaration_report(ast List<int>, src List<int>, bases List<int>, annotations List<int>, pending List<int>) Str {
+    var lines = List<Str>.new()
+    if (pending.len() > 0) { lines.push("aac.pending-work/1\n") }
+    var at = 0
+    for (at < pending.len()) {
+        let row = pending.get(at + 1)
+        let line = "PENDING " + from_int(pending.get(at)) + " " + from_int(pending.get(at + 2)) + " " + location(ast, row, bases) + "\n"
+        lines.push(line.move)
+        at = at + deferred_stride()
+    }
+    at = 0
+    for (at < annotations.len()) {
+        let owner = annotations.get(at)
+        let entry = annotations.get(at + 1)
+        let text = spelling(src, ast, annotations.get(at + 2))
+        let line = "ANNOTATION " + text + " " + location(ast, owner, bases) + " " + location(ast, entry, bases) + "\n"
+        lines.push(line.move)
+        at = at + annotation_stride()
+    }
+    return join_rows(lines, lines.len())
+}
+
 fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package Str, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
@@ -149,26 +194,45 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     let started = mono_ms()
     if (started < 0i64) { return "ERROR os.clock\n" }
     let deadline = started + 5000i64
+    var metadata = List<int>.new()
+    var pending = List<int>.new()
+    let cataloged = collect_declaration_inputs(pg, ast, links, src, metadata, pending, errors, fuel, deadline)
+    if (cataloged != 0) {
+        return "ERROR " + diagnostic_name(cataloged) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    if (pending.len() > 0) { return declaration_report(ast, src, bases, metadata, pending) }
     let status = bind_source(pg, ast, links, src, modules, package, roots, declarations, uses, mappings, errors, fuel, deadline)
     if (status != 0) {
         return "ERROR " + diagnostic_name(status) + " " + location(ast, errors.get(0), bases) + "\n"
     }
-    var initializers = List<int>.new()
-    let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
-    if (ordered != 0) {
-        return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
-    }
-    if (get("AAC1047_TYPED") == "1") {
+    var typed_report = ""
+    let hir_mode = get("AAC1047_HIR")
+    if (get("AAC1047_TYPED") == "1" || hir_mode.len() > 0) {
         var facts = List<int>.new()
         var types = List<int>.new()
         let typed = infer_source(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
         if (typed != 0) {
             return "ERROR " + diagnostic_name(typed) + " " + location(ast, errors.get(0), bases) + "\n"
         }
-        let report = type_report(ast, bases, facts, types)
-        return report + binding_report(ast, src, bases, declarations, uses, mappings, initializers)
+        if (hir_mode.len() > 0) {
+            if (roots.len() != 1) { return "ERROR hir.unsupported\n" }
+            var control = 0
+            if (hir_mode == "owner") { control = 1 }
+            if (hir_mode == "defref") { control = 2 }
+            let document = checked_core_atom(pg, ast, links, src, declarations, uses, mappings, facts, fuel, deadline, errors, control)
+            if (document.len() == 0) {
+                return "ERROR " + diagnostic_name(errors.get(1)) + " " + location(ast, errors.get(0), bases) + "\n"
+            }
+            return document
+        }
+        typed_report = type_report(ast, bases, facts, types)
     }
-    return binding_report(ast, src, bases, declarations, uses, mappings, initializers)
+    var initializers = List<int>.new()
+    let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
+    if (ordered != 0) {
+        return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    return typed_report + binding_report(ast, src, bases, declarations, uses, mappings, initializers) + declaration_report(ast, src, bases, metadata, pending)
 }
 
 fn load_source(pg List<int>, path Str, id int, src List<int>, ast List<int>, bases List<int>, roots List<int>) Str {
@@ -226,12 +290,36 @@ fn project(steps int) Str {
     return observe(pg, src, ast, bases, roots, names, package, steps)
 }
 
+fn admit_document(path Str, steps int) Str {
+    let length = size(path.clone())
+    if (length < 0i64) { return "ERROR os.read\n" }
+    if (length > 262144i64 || steps < 1 || steps > 1000000) { return "ERROR resource.semantic\n" }
+    let input = read_bytes(path)
+    is input {
+        Some(bytes) -> {
+            var fuel = List<int>.new()
+            fuel.push(steps)
+            let started = mono_ms()
+            if (started < 0i64) { return "ERROR os.clock\n" }
+            let result = verify_core_document(bytes, fuel, started + 5000i64)
+            if (result == 0) { return "ADMITTED core-i32-draft\n" }
+            return "ERROR " + diagnostic_name(result) + "\n"
+        }
+        None -> {}
+    }
+    return "ERROR os.read\n"
+}
+
 fn main() int {
     var limit = 1000000
     let requested = to_int(get("AAC1047_STEPS"))
     is requested {
         Some(value) -> { limit = value }
         None -> {}
+    }
+    if (get("AAC1047_HIR") == "descriptor") {
+        let report = admit_document(get("AAC1047_INPUT"), limit)
+        return write_text(get("AAC1047_OUTPUT"), report)
     }
     let report = project(limit)
     return write_text(get("AAC1047_OUTPUT"), report)

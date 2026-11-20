@@ -1,0 +1,332 @@
+use app.semantic_tree.span_text
+use std.conv.to_int
+
+pub fn atom_tag(bytes List<int>, tokens List<int>, nodes List<int>, node int) Str {
+    if (node < 0) { return "" }
+    return token_text(bytes, tokens, nodes.get(node * 8))
+}
+
+fn token_text(bytes List<int>, tokens List<int>, token int) Str {
+    if (token < 0) { return "" }
+    return span_text(bytes, tokens.get(token * 3 + 1), tokens.get(token * 3 + 2))
+}
+
+fn value_text(bytes List<int>, tokens List<int>, values List<int>, value int, expected int) Str {
+    if (value < 0 || values.get(value * 4) != expected) { return "" }
+    return token_text(bytes, tokens, values.get(value * 4 + 1))
+}
+
+fn slot(nodes List<int>, seq List<int>, node int, index int) int {
+    if (node < 0 || index >= nodes.get(node * 8 + 2)) { return -1 }
+    return seq.get(nodes.get(node * 8 + 1) + index)
+}
+
+fn field(bytes List<int>, tokens List<int>, nodes List<int>, fields List<int>, node int, name Str) int {
+    if (node < 0) { return -1 }
+    let start = nodes.get(node * 8 + 3)
+    let end = start + nodes.get(node * 8 + 4)
+    var at = start
+    for (at < end) {
+        if (token_text(bytes, tokens, fields.get(at * 2)) == name) { return fields.get(at * 2 + 1) }
+        at = at + 1
+    }
+    return -1
+}
+
+fn child(bytes List<int>, tokens List<int>, nodes List<int>, items List<int>, node int, name Str) int {
+    if (node < 0) { return -1 }
+    var at = nodes.get(node * 8 + 5)
+    let limit = at + nodes.get(node * 8 + 6)
+    var result = -1
+    for (at < limit) {
+        if (items.get(at * 2) == 1) {
+            let member = items.get(at * 2 + 1)
+            if (atom_tag(bytes, tokens, nodes, member) == name) {
+                if (result >= 0) { return -1 }
+                result = member
+            }
+        }
+        at = at + 1
+    }
+    return result
+}
+
+fn list_size(values List<int>, node int) int {
+    if (node < 0 || values.get(node * 4) != 3) { return -1 }
+    return values.get(node * 4 + 3)
+}
+
+fn list_entry(values List<int>, sequence List<int>, node int, offset int) int {
+    return sequence.get(values.get(node * 4 + 2) + offset)
+}
+
+fn count_children(nodes List<int>, items List<int>, node int) int {
+    if (node < 0) { return 0 }
+    var at = nodes.get(node * 8 + 5)
+    let limit = at + nodes.get(node * 8 + 6)
+    var result = 0
+    for (at < limit) {
+        if (items.get(at * 2) == 1) { result = result + 1 }
+        at = at + 1
+    }
+    return result
+}
+
+fn by_id(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, owner int, name Str) int {
+    if (owner < 0 || name.len() == 0) { return -1 }
+    var at = nodes.get(owner * 8 + 5)
+    let limit = at + nodes.get(owner * 8 + 6)
+    var result = -1
+    for (at < limit) {
+        if (items.get(at * 2) == 1) {
+            let node = items.get(at * 2 + 1)
+            if (value_text(bytes, tokens, values, slot(nodes, sequence, node, 0), 0) == name) {
+                if (result >= 0) { return -1 }
+                result = node
+            }
+        }
+        at = at + 1
+    }
+    return result
+}
+
+fn number(bytes List<int>, tokens List<int>, values List<int>, value int, ending Str, parsed List<int>) bool {
+    let text = value_text(bytes, tokens, values, value, 2)
+    let length = text.len()
+    if (length <= 3 || text.slice(length - 3, length).clone() != ending) { return false }
+    let converted = to_int(text.slice(0, length - 3).clone())
+    is converted {
+        Some(n) -> {
+            parsed.set(0, n)
+            return true
+        }
+        None -> {}
+    }
+    return false
+}
+
+fn primitive(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, types int, value int) int {
+    let type_name = value_text(bytes, tokens, values, value, 1)
+    let type_node = by_id(bytes, tokens, values, nodes, sequence, items, types, type_name)
+    let shape = value_text(bytes, tokens, values, slot(nodes, sequence, type_node, 1), 0)
+    if (shape == "i32") { return 1 }
+    if (shape == "bool") { return 2 }
+    return 0
+}
+
+fn bind_arguments(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, expr_group int, expression int, args List<int>) bool {
+    let evaluation = field(bytes, tokens, nodes, fields, expression, "eval_args")
+    let bindings = field(bytes, tokens, nodes, fields, expression, "bindings")
+    let arity = list_size(values, evaluation)
+    if (arity < 0 || arity != list_size(values, bindings)) { return false }
+    var slots = List<int>.new()
+    var parsed = List<int>.new()
+    parsed.push(0)
+    var at = 0
+    for (at < arity) {
+        slots.push(-1)
+        at = at + 1
+    }
+    at = 0
+    for (at < arity) {
+        let entry = list_entry(values, sequence, bindings, at)
+        if (values.get(entry * 4) != 4) { return false }
+        let pair = values.get(entry * 4 + 2)
+        if (nodes.get(pair * 8 + 4) != 2) { return false }
+        let arg = field(bytes, tokens, nodes, fields, pair, "arg")
+        let parameter = field(bytes, tokens, nodes, fields, pair, "param")
+        if (!number(bytes, tokens, values, arg, "u32", parsed)) { return false }
+        let index = parsed.get(0)
+        if (index < 0 || index >= arity || slots.get(index) >= 0) { return false }
+        if (!number(bytes, tokens, values, parameter, "u32", parsed) || parsed.get(0) < 0) { return false }
+        slots.set(index, parsed.get(0))
+        at = at + 1
+    }
+    at = 0
+    for (at < arity) {
+        let value = list_entry(values, sequence, evaluation, at)
+        let name = value_text(bytes, tokens, values, value, 1)
+        let reference = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, name)
+        if (reference < 0) { return false }
+        args.push(expression)
+        args.push(reference)
+        args.push(slots.get(at))
+        at = at + 1
+    }
+    return true
+}
+
+fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, defs List<int>, params List<int>, expressions List<int>, args List<int>) int {
+    let local_group = child(bytes, tokens, nodes, items, body, "locals")
+    let expr_group = child(bytes, tokens, nodes, items, body, "expressions")
+    let block_group = child(bytes, tokens, nodes, items, body, "blocks")
+    if (expr_group < 0 || block_group < 0 || count_children(nodes, items, block_group) != 1) { return -30 }
+    var groups = 2
+    if (local_group >= 0) { groups = 3 }
+    if (groups != count_children(nodes, items, body) || nodes.get(body * 8 + 4) != 2) { return -30 }
+    let entry_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, body, "entry"), 1)
+    let entry = by_id(bytes, tokens, values, nodes, sequence, items, block_group, entry_name)
+    if (atom_tag(bytes, tokens, nodes, entry) != "block" || count_children(nodes, items, entry) != 1) { return -30 }
+    let returning = child(bytes, tokens, nodes, items, entry, "return")
+    let return_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, returning, "value"), 1)
+    let returned = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, return_name)
+    if (returned < 0) { return -32 }
+    let result = primitive(bytes, tokens, values, nodes, sequence, items, type_group, field(bytes, tokens, nodes, fields, signature, "result"))
+    if (result == 0) { return -33 }
+    defs.push(owner)
+    defs.push(result)
+    let owner_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, body, "owner"), 1)
+    defs.push(by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, owner_name))
+    defs.push(returned)
+
+    let sig_params = field(bytes, tokens, nodes, fields, signature, "params")
+    let expected = list_size(values, sig_params)
+    if (expected < 0 || expected != count_children(nodes, items, local_group)) { return -33 }
+    var parsed = List<int>.new()
+    parsed.push(0)
+    if (local_group >= 0) {
+        var at = nodes.get(local_group * 8 + 5)
+        let limit = at + nodes.get(local_group * 8 + 6)
+        var seen = List<int>.new()
+        var index = 0
+        for (index < expected) {
+            seen.push(0)
+            index = index + 1
+        }
+        for (at < limit) {
+            if (items.get(at * 2) == 1) {
+                let local = items.get(at * 2 + 1)
+                let local_role = field(bytes, tokens, nodes, fields, local, "role")
+                let index_value = field(bytes, tokens, nodes, fields, local, "index")
+                if (atom_tag(bytes, tokens, nodes, local) != "local" || value_text(bytes, tokens, values, local_role, 0) != "param") { return -30 }
+                if (nodes.get(local * 8 + 2) != 2 || nodes.get(local * 8 + 4) != 3 || count_children(nodes, items, local) != 0) { return -30 }
+                let local_id = value_text(bytes, tokens, values, slot(nodes, sequence, local, 0), 0)
+                let local_name = field(bytes, tokens, nodes, fields, local, "name")
+                if (value_text(bytes, tokens, values, local_name, 1).len() == 0 || by_id(bytes, tokens, values, nodes, sequence, items, local_group, local_id) != local) { return -32 }
+                if (!number(bytes, tokens, values, index_value, "u32", parsed)) { return -33 }
+                index = parsed.get(0)
+                if (index < 0 || index >= expected || seen.get(index) != 0) { return -33 }
+                seen.set(index, 1)
+                let type_name = value_text(bytes, tokens, values, slot(nodes, sequence, local, 1), 0)
+                let expected_type = list_entry(values, sequence, sig_params, index)
+                if (type_name != value_text(bytes, tokens, values, expected_type, 1)) { return -33 }
+                let type_id = primitive(bytes, tokens, values, nodes, sequence, items, type_group, expected_type)
+                if (type_id == 0) { return -33 }
+                params.push(owner)
+                params.push(local)
+                params.push(type_id)
+                params.push(index)
+            }
+            at = at + 1
+        }
+    }
+    var at = nodes.get(expr_group * 8 + 5)
+    let limit = at + nodes.get(expr_group * 8 + 6)
+    for (at < limit) {
+        if (items.get(at * 2) == 1) {
+            let expression = items.get(at * 2 + 1)
+            if (atom_tag(bytes, tokens, nodes, expression) != "expr") { return -30 }
+            if (nodes.get(expression * 8 + 2) != 2 || count_children(nodes, items, expression) != 0) { return -30 }
+            let name = value_text(bytes, tokens, values, slot(nodes, sequence, expression, 0), 0)
+            if (by_id(bytes, tokens, values, nodes, sequence, items, expr_group, name) != expression) { return -32 }
+            let ty = primitive(bytes, tokens, values, nodes, sequence, items, type_group, field(bytes, tokens, nodes, fields, expression, "type"))
+            if (ty == 0) { return -33 }
+            let form = value_text(bytes, tokens, values, slot(nodes, sequence, expression, 1), 0)
+            var operation = 0
+            var payload = -1
+            let field_count = nodes.get(expression * 8 + 4)
+            if (form == "constant") {
+                if (field_count != 2) { return -30 }
+                operation = 1
+                let value = field(bytes, tokens, nodes, fields, expression, "value")
+                if (!number(bytes, tokens, values, value, "i32", parsed)) { return -33 }
+                payload = parsed.get(0)
+            }
+            if (form == "read_local") {
+                if (field_count != 2) { return -30 }
+                operation = 2
+                let name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "local"), 1)
+                payload = by_id(bytes, tokens, values, nodes, sequence, items, local_group, name)
+            }
+            if (form == "call") {
+                if (field_count != 4) { return -30 }
+                operation = 3
+                let name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "callee"), 1)
+                payload = by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, name)
+                if (!bind_arguments(bytes, tokens, values, nodes, sequence, fields, items, expr_group, expression, args)) { return -32 }
+            }
+            if (form == "binary") {
+                let op_field = field(bytes, tokens, nodes, fields, expression, "op")
+                let op = value_text(bytes, tokens, values, op_field, 0)
+                if (op == "lt_i32" && field_count == 4) { operation = 4 }
+                if (op == "add_i32" || op == "mul_i32") {
+                    let overflow = field(bytes, tokens, nodes, fields, expression, "overflow")
+                    if (field_count != 5 || value_text(bytes, tokens, values, overflow, 0) != "trap") { return -30 }
+                    if (op == "add_i32") { operation = 5 } else { operation = 6 }
+                }
+                let left_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "lhs"), 1)
+                let right_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "rhs"), 1)
+                args.push(expression)
+                args.push(by_id(bytes, tokens, values, nodes, sequence, items, expr_group, left_name))
+                args.push(0)
+                args.push(expression)
+                args.push(by_id(bytes, tokens, values, nodes, sequence, items, expr_group, right_name))
+                args.push(1)
+            }
+            if (operation == 0) { return -30 }
+            expressions.push(expression)
+            expressions.push(owner)
+            expressions.push(operation)
+            expressions.push(ty)
+            expressions.push(payload)
+        }
+        at = at + 1
+    }
+    return 0
+}
+
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, defs List<int>, params List<int>, expressions List<int>, args List<int>) int {
+    let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
+    let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
+    let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
+    if (schema != "auto.hir.core.draft" || profile != "core-i32-draft" || revision != "1u32") { return -34 }
+    let capabilities = field(bytes, tokens, nodes, fields, root, "requires")
+    if (nodes.get(root * 8 + 2) != 0 || (capabilities >= 0 && list_size(values, capabilities) != 0)) { return -30 }
+    let module_node = child(bytes, tokens, nodes, items, root, "module")
+    if (module_node < 0 || count_children(nodes, items, root) != 1) { return -30 }
+    let types = child(bytes, tokens, nodes, items, module_node, "types")
+    let declarations = child(bytes, tokens, nodes, items, module_node, "declarations")
+    let bodies = child(bytes, tokens, nodes, items, module_node, "bodies")
+    if (types < 0 || declarations < 0 || bodies < 0 || count_children(nodes, items, module_node) != 3) { return -30 }
+    let count = count_children(nodes, items, declarations)
+    if (count == 0 || count != count_children(nodes, items, bodies)) { return -31 }
+    var at = nodes.get(declarations * 8 + 5)
+    let limit = at + nodes.get(declarations * 8 + 6)
+    var claimed = List<int>.new()
+    for (at < limit) {
+        if (items.get(at * 2) == 1) {
+            let function = items.get(at * 2 + 1)
+            if (atom_tag(bytes, tokens, nodes, function) != "function") { return -30 }
+            if (nodes.get(function * 8 + 2) != 2 || nodes.get(function * 8 + 4) != 2 || count_children(nodes, items, function) != 0) { return -30 }
+            if (value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, function, "name"), 1).len() == 0) { return -30 }
+            let name = value_text(bytes, tokens, values, slot(nodes, sequence, function, 0), 0)
+            if (by_id(bytes, tokens, values, nodes, sequence, items, declarations, name) != function) { return -32 }
+            let sig_name = value_text(bytes, tokens, values, slot(nodes, sequence, function, 1), 0)
+            let signature = by_id(bytes, tokens, values, nodes, sequence, items, types, sig_name)
+            if (value_text(bytes, tokens, values, slot(nodes, sequence, signature, 1), 0) != "function") { return -33 }
+            let body_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, function, "body"), 1)
+            let body = by_id(bytes, tokens, values, nodes, sequence, items, bodies, body_name)
+            if (body < 0 || atom_tag(bytes, tokens, nodes, body) != "body") { return -31 }
+            var i = 0
+            for (i < claimed.len()) {
+                if (claimed.get(i) == body) { return -31 }
+                i = i + 1
+            }
+            claimed.push(body)
+            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, function, signature, defs, params, expressions, args)
+            if (status != 0) { return status }
+        }
+        at = at + 1
+    }
+    return 0
+}

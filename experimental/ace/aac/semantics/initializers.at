@@ -2,10 +2,10 @@ use app.binding.bind_budget
 use app.binding.decl_category
 use app.binding.decl_name
 use app.binding.constant_decl
-use app.binding.direct_callee
 use app.binding.function_decl
 use app.binding.global_var_decl
 use app.binding.method_decl
+use app.binding.resolved_function
 use app.binding.take_step
 use app.semantic_tree.kind
 use app.semantic_tree.module_name_at
@@ -49,13 +49,10 @@ fn collect_edges(pg List<int>, ast List<int>, links List<int>, declarations List
                 }
             }
             if (kind(pg, ast, row) == "call") {
-                let callee = direct_callee(pg, ast, links, row)
-                if (callee >= 0) {
-                    let function = uses.get(callee)
-                    if (function >= 0 && is_function(declarations, function)) {
-                        edges.push(owner)
-                        edges.push(function)
-                    }
+                let function = resolved_function(pg, ast, links, declarations, uses, row)
+                if (function >= 0 && is_function(declarations, function)) {
+                    edges.push(owner)
+                    edges.push(function)
                 }
             }
         }

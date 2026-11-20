@@ -1,0 +1,109 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.role
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+
+pub fn annotation_owner_error() int { return -35 }
+pub fn pending_templates() int { return 1 }
+pub fn pending_compile_time() int { return 2 }
+pub fn pending_effects() int { return 3 }
+pub fn pending_foreign() int { return 4 }
+pub fn deferred_stride() int { return 3 }
+pub fn annotation_stride() int { return 3 }
+
+fn declaration_owner(pg List<int>, ast List<int>, row int, fuel List<int>, deadline i64) int {
+    var node = row
+    for (node >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let category = kind(pg, ast, node)
+        let symbol = category == "fn-tail" || category == "fn-item" || category == "type-item" || category == "const-item" || category == "var-item"
+        if (symbol || category == "field-member" || category == "enum-item" || category == "task-item") { return node }
+        node = parent(ast, node)
+    }
+    return -1
+}
+
+fn deferred_kind(pg List<int>, ast List<int>, row int, node_kind Str) int {
+    if (node_kind == "type-params") { return pending_templates() }
+    let compile_time = node_kind == "in-item" || node_kind == "ct-if-item" || node_kind == "ct-is-item" || node_kind == "ct-for-item" || node_kind == "hash-expr"
+    let stmt_ct = node_kind == "hash-if-stmt" || node_kind == "hash-is-stmt" || node_kind == "hash-for-stmt" || node_kind == "hash-macro-stmt"
+    if (compile_time || stmt_ct) { return pending_compile_time() }
+    let effects = node_kind == "r-await" || node_kind == "yield-stmt" || node_kind == "try-stmt" || node_kind == "task-item" || node_kind == "go-stmt" || node_kind == "reply-stmt"
+    if (effects || (node_kind == "bang" && role(pg, ast, row) == "effect")) { return pending_effects() }
+    if (node_kind == "use-rs-item" || node_kind == "use-c-item" || node_kind == "use-py-item") { return pending_foreign() }
+    return 0
+}
+
+fn attribute_owner(pg List<int>, ast List<int>, links List<int>, entry int) int {
+    var node = parent(ast, entry)
+    if (kind(pg, ast, node) == "attribute-entry-tail") { node = parent(ast, node) }
+    if (kind(pg, ast, node) != "declaration-attribute") { return -1 }
+    let wrapper = parent(ast, node)
+    let category = kind(pg, ast, wrapper)
+    if (category == "field-member" || category == "type-item") { return wrapper }
+    if (category != "attributed-item" && category != "attributed-method") { return -1 }
+    let declared = child_with_role(pg, ast, links, wrapper, "owner")
+    if (declared < 0) { return -1 }
+    let actual = first_child(links, declared)
+    if (actual < 0) { return -1 }
+    if (kind(pg, ast, actual) == "public-item") {
+        let body = child_with_role(pg, ast, links, actual, "body")
+        if (body < 0) { return -1 }
+        return first_child(links, body)
+    }
+    return actual
+}
+
+fn annotation_allowed(name Str, owner_kind Str) bool {
+    if (name == "api") { return owner_kind == "fn-item" }
+    if (name == "test") { return owner_kind == "fn-item" }
+    return true
+}
+
+// Facts carry the actual target AST, attribute entry, and name row. Runtime
+// or compile-time consumers can address the argument children using the same
+// projection, including source IDs and the original byte spans.
+pub fn collect_declaration_inputs(pg List<int>, ast List<int>, links List<int>, src List<int>, metadata List<int>, pending List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) {
+            errors.push(row)
+            return bind_budget()
+        }
+        let node_kind = kind(pg, ast, row)
+        let work_kind = deferred_kind(pg, ast, row, node_kind.clone())
+        if (work_kind != 0) {
+            let owner = declaration_owner(pg, ast, row, fuel, deadline)
+            if (owner == bind_budget()) {
+                errors.push(row)
+                return bind_budget()
+            }
+            pending.push(work_kind)
+            pending.push(row)
+            pending.push(owner)
+        }
+        if (node_kind == "attribute-entry") {
+            let owner = attribute_owner(pg, ast, links, row)
+            let name = child_with_role(pg, ast, links, row, "name")
+            if (owner < 0 || name < 0) {
+                errors.push(row)
+                return annotation_owner_error()
+            }
+            if (!annotation_allowed(spelling(src, ast, name), kind(pg, ast, owner))) {
+                errors.push(name)
+                return annotation_owner_error()
+            }
+            metadata.push(owner)
+            metadata.push(row)
+            metadata.push(name)
+        }
+        row = row + 1
+    }
+    return 0
+}

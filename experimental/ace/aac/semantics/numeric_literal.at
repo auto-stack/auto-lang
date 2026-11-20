@@ -1,0 +1,106 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.semantic_tree.span_text
+use app.types.f32_type
+use app.types.f64_type
+use app.types.i8_type
+use app.types.i64_type
+use app.types.integer_type
+use app.types.u8_type
+use app.types.u32_type
+use app.types.u64_type
+
+pub fn literal_range() int { return -28 }
+pub fn literal_syntax() int { return -29 }
+
+fn radix_digit(c int, radix int) int {
+    var value = -1
+    if (c >= 48 && c <= 57) { value = c - 48 }
+    if (c >= 65 && c <= 70) { value = c - 65 + 10 }
+    if (c >= 97 && c <= 102) { value = c - 97 + 10 }
+    if (value >= radix) { return -1 }
+    return value
+}
+
+fn integer_suffix(suffix Str) int {
+    if (suffix == "" || suffix == "i" || suffix == "i32") { return integer_type() }
+    if (suffix == "i8") { return i8_type() }
+    if (suffix == "u8" || suffix == "b") { return u8_type() }
+    if (suffix == "u" || suffix == "u32") { return u32_type() }
+    if (suffix == "i64") { return i64_type() }
+    if (suffix == "u64") { return u64_type() }
+    return literal_syntax()
+}
+
+fn magnitude_limit(type_id int, negative bool) u64 {
+    if (type_id == integer_type()) {
+        if (negative) { return 2147483648u64 }
+        return 2147483647u64
+    }
+    if (type_id == i8_type()) {
+        if (negative) { return 128u64 }
+        return 127u64
+    }
+    if (type_id == i64_type()) {
+        if (negative) { return 9223372036854775808u64 }
+        return 9223372036854775807u64
+    }
+    if (negative) { return 0u64 }
+    if (type_id == u8_type()) { return 255u64 }
+    if (type_id == u32_type()) { return 4294967295u64 }
+    return 18446744073709551615u64
+}
+
+// Recognize the numeric body before interpreting the suffix. In hexadecimal,
+// letters a..f belong to the magnitude, including trailing "f32"/"f64".
+pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fuel List<int>, deadline i64) int {
+    var radix = 10
+    var digits_start = start
+    if (end - start >= 2 && src.get(start) == 48) {
+        let prefix = src.get(start + 1)
+        if (prefix == 120) { radix = 16 }
+        if (prefix == 98) { radix = 2 }
+        if (radix != 10) { digits_start = start + 2 }
+    }
+    var offset = digits_start
+    var dots = 0
+    var digits = 0
+    for (offset < end) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let byte_value = src.get(offset)
+        if (byte_value == 46) {
+            dots = dots + 1
+        } else {
+            if (byte_value != 95) {
+                if (radix_digit(byte_value, radix) < 0) { break }
+                digits = digits + 1
+            }
+        }
+        offset = offset + 1
+    }
+    if (digits == 0 || dots > 1 || (dots > 0 && radix != 10)) { return literal_syntax() }
+    let suffix = span_text(src, offset, end)
+    if (dots == 1) {
+        if (suffix == "" || suffix == "f" || suffix == "f32") { return f32_type() }
+        if (suffix == "d" || suffix == "f64") { return f64_type() }
+        return literal_syntax()
+    }
+    let type_id = integer_suffix(suffix)
+    if (type_id < 0) { return type_id }
+    let limit = magnitude_limit(type_id, negative)
+    if (limit == 0u64) { return literal_range() }
+    let base = radix.to(u64)
+    var magnitude = 0u64
+    var node = digits_start
+    for (node < offset) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let byte_value = src.get(node)
+        if (byte_value != 95) {
+            let digit = radix_digit(byte_value, radix).to(u64)
+            if (magnitude > (limit - digit) / base) { return literal_range() }
+            magnitude = magnitude * base + digit
+        }
+        node = node + 1
+    }
+    return type_id
+}

@@ -17,6 +17,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
     let mut files = syntax_av_modules();
     files.extend([
         (
+            "atom_data.at".into(),
+            include_str!("../../../aac/support/atom_data.at").into(),
+        ),
+        (
             "semantic_tree.at".into(),
             include_str!("../../../aac/semantics/semantic_tree.at").into(),
         ),
@@ -29,14 +33,37 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/initializers.at").into(),
         ),
         (
+            "declarations.at".into(),
+            include_str!("../../../aac/semantics/declarations.at").into(),
+        ),
+        (
             "types.at".into(),
             include_str!("../../../aac/semantics/types.at").into(),
+        ),
+        (
+            "numeric_literal.at".into(),
+            include_str!("../../../aac/semantics/numeric_literal.at").into(),
         ),
         (
             "typecheck.at".into(),
             include_str!("../../../aac/semantics/typecheck.at").into(),
         ),
+        (
+            "core_hir.at".into(),
+            include_str!("../../../aac/hir/core_hir.at").into(),
+        ),
+        (
+            "core_atom_bound.at".into(),
+            include_str!("../../../aac/hir/core_atom_bound.at").into(),
+        ),
     ]);
+    files.push((
+        "hir_schema_data.at".into(),
+        format!(
+            "pub fn core_schema() Str {{ return {:?} }}\n",
+            include_str!("../../../crates/core/schema/core-i32.atom")
+        ),
+    ));
     files
 }
 
@@ -133,14 +160,23 @@ fn prepared_semantic() -> Result<&'static Path, String> {
 }
 
 pub fn run_semantic_case(sample: &[u8], steps: Option<u32>) -> Result<String, String> {
-    run_semantic_source(sample, steps, false)
+    run_semantic_source(sample, steps, false, None)
 }
 
 pub fn run_type_case(sample: &[u8], steps: Option<u32>) -> Result<String, String> {
-    run_semantic_source(sample, steps, true)
+    run_semantic_source(sample, steps, true, None)
 }
 
-fn run_semantic_source(sample: &[u8], steps: Option<u32>, typed: bool) -> Result<String, String> {
+pub fn run_core_hir_case(sample: &[u8], mode: &str) -> Result<String, String> {
+    run_semantic_source(sample, None, true, Some(mode))
+}
+
+fn run_semantic_source(
+    sample: &[u8],
+    steps: Option<u32>,
+    typed: bool,
+    hir_mode: Option<&str>,
+) -> Result<String, String> {
     let exe = prepared_semantic()?;
     with_fixture("semantic", |root| {
         let input = root.join("input.at");
@@ -151,10 +187,14 @@ fn run_semantic_source(sample: &[u8], steps: Option<u32>, typed: bool) -> Result
             .env("AAC1047_INPUT", input)
             .env("AAC1047_OUTPUT", &output)
             .env("AAC1047_TYPED", if typed { "1" } else { "0" })
+            .env_remove("AAC1047_HIR")
             .env_remove("AAC1047_PROJECT")
             .env_remove("AAC1047_STEPS");
         if let Some(steps) = steps {
             cmd.env("AAC1047_STEPS", steps.to_string());
+        }
+        if let Some(mode) = hir_mode {
+            cmd.env("AAC1047_HIR", mode);
         }
         execute_report(cmd, &output, "semantic")
     })
@@ -180,6 +220,7 @@ pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> 
             .env("AAC1047_INVENTORY", names.join("\n"))
             .env("AAC1047_OUTPUT", &output)
             .env_remove("AAC1047_TYPED")
+            .env_remove("AAC1047_HIR")
             .env_remove("AAC1047_STEPS");
         execute_report(cmd, &output, "semantic-project")
     })

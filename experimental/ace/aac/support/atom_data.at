@@ -1806,7 +1806,13 @@ fn build_canonical(bs List<int>, errs List<int>) List<int> {
 /// Real-schema driven mode over byte vectors: read the descriptor document into
 /// a tag/field table, then parse, validate and emit the document with the SAME
 /// writer.
-fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) List<int> {
+// The versioned descriptor supplies allowed shapes. The returned arenas
+// remain untrusted semantic data and retain document byte locations.
+pub fn bind_document_shape(sbs List<int>, dbs List<int>, errs List<int>, toks List<int>, vals List<int>, nodes List<int>, seq List<int>, flds List<int>, items List<int>) int {
+    if (sbs.len() > 262144 || dbs.len() > 262144) {
+        errs.set(0, 6)
+        return -1
+    }
     var stoks = List<int>.new()
     var svals = List<int>.new()
     var snodes = List<int>.new()
@@ -1815,7 +1821,7 @@ fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) Lis
     var sitems = List<int>.new()
     let sroot = parse_root(sbs, errs, stoks, svals, snodes, sseq, sflds, sitems)
     if (sroot < 0) {
-        return List<int>.new()
+        return -1
     }
     var meta = List<int>.new()
     var fspan = List<int>.new()
@@ -1825,22 +1831,16 @@ fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) Lis
     )
     if (tc != 0) {
         errs.set(0, tc)
-        return List<int>.new()
+        return -1
     }
-    var toks = List<int>.new()
-    var vals = List<int>.new()
-    var nodes = List<int>.new()
-    var seq = List<int>.new()
-    var flds = List<int>.new()
-    var items = List<int>.new()
     let root = parse_root(dbs, errs, toks, vals, nodes, seq, flds, items)
     if (root < 0) {
-        return List<int>.new()
+        return -1
     }
     let vc = schema_doc_check(dbs, toks, nodes, flds, items, root, meta, fspan, pool)
     if (vc != 0) {
         errs.set(0, vc)
-        return List<int>.new()
+        return -1
     }
     // A repeated field is 8 in BOTH modes, including inside an INLINE node
     // (`{ k: 1, k: 2 }`). `schema_doc_check` walks tagged nodes only (an inline
@@ -1851,8 +1851,20 @@ fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) Lis
     let dc = dup_all(dbs, toks, nodes, flds)
     if (dc != 0) {
         errs.set(0, dc)
-        return List<int>.new()
+        return -1
     }
+    return root
+}
+
+fn build_canonical_with_schema(sbs List<int>, dbs List<int>, errs List<int>) List<int> {
+    var toks = List<int>.new()
+    var vals = List<int>.new()
+    var nodes = List<int>.new()
+    var seq = List<int>.new()
+    var flds = List<int>.new()
+    var items = List<int>.new()
+    let root = bind_document_shape(sbs, dbs, errs, toks, vals, nodes, seq, flds, items)
+    if (root < 0) { return List<int>.new() }
     return emit_document(dbs, toks, vals, nodes, seq, flds, items, root)
 }
 

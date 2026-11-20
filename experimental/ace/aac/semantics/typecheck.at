@@ -1,30 +1,38 @@
 use app.binding.bind_budget
 use app.binding.call_mapping_stride
 use app.binding.call_parameter_slots
+use app.binding.call_postfix
 use app.binding.constant_decl
 use app.binding.decl_category
+use app.binding.decl_name
 use app.binding.direct_callee
+use app.binding.field_decl
 use app.binding.function_decl
 use app.binding.global_var_decl
 use app.binding.local_let_decl
 use app.binding.local_var_decl
 use app.binding.method_decl
+use app.binding.map_call
+use app.binding.resolved_function
 use app.binding.take_step
+use app.binding.type_decl
+use app.numeric_literal.numeric_literal_type
 use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
 use app.semantic_tree.first_child
 use app.semantic_tree.kind
 use app.semantic_tree.next_sibling
 use app.semantic_tree.parent
 use app.semantic_tree.row_count
 use app.semantic_tree.spelling
+use app.semantic_tree.start_of
 use app.types.annotation_types
 use app.types.boolean_type
 use app.types.char_type
-use app.types.f32_type
 use app.types.f64_type
 use app.types.function_kind
 use app.types.i8_type
-use app.types.i64_type
+use app.types.nominal_kind
 use app.types.init_types
 use app.types.integer_type
 use app.types.intern_type
@@ -32,11 +40,7 @@ use app.types.text_view_type
 use app.types.type_chain_kind
 use app.types.type_first
 use app.types.type_kind
-use app.types.u8_type
-use app.types.u32_type
-use app.types.u64_type
 use app.types.unit_type
-use std.text.ends_with
 
 pub fn type_unknown() int { return -20 }
 pub fn type_operator() int { return -21 }
@@ -45,6 +49,7 @@ pub fn type_return() int { return -23 }
 pub fn type_argument() int { return -24 }
 pub fn type_branch() int { return -25 }
 pub fn type_condition() int { return -26 }
+pub fn type_member() int { return -27 }
 
 fn failure(errors List<int>, row int, code int) int {
     errors.push(row)
@@ -88,23 +93,15 @@ fn numeric_type(id int) bool {
     return id == integer_type() || (id >= i8_type() && id <= f64_type())
 }
 
-fn affix_type(text Str) int {
-    if (ends_with(text.clone(), "i8")) { return i8_type() }
-    if (ends_with(text.clone(), "u8") || ends_with(text.clone(), "byte")) { return u8_type() }
-    if (ends_with(text.clone(), "i32")) { return integer_type() }
-    if (ends_with(text.clone(), "u32") || ends_with(text.clone(), "uint")) { return u32_type() }
-    if (ends_with(text.clone(), "i64")) { return i64_type() }
-    if (ends_with(text.clone(), "u64")) { return u64_type() }
-    if (ends_with(text.clone(), "f32") || ends_with(text.clone(), "float")) { return f32_type() }
-    if (ends_with(text.clone(), "f64") || ends_with(text, "double")) { return f64_type() }
-    return 0
-}
-
-fn literal_type(src List<int>, ast List<int>, row int, node_kind Str) int {
+fn literal_type(src List<int>, ast List<int>, row int, node_kind Str, fuel List<int>, deadline i64) int {
     if (node_kind == "true-kw" || node_kind == "false-kw") { return boolean_type() }
-    if (node_kind == "int-lit") { return integer_type() }
-    if (node_kind == "float-lit") { return f64_type() }
-    if (node_kind == "affix-num") { return affix_type(spelling(src, ast, row)) }
+    if (node_kind == "int-lit" || node_kind == "affix-num") {
+        let outer = parent(ast, row)
+        let begin = start_of(ast, row)
+        let sign = start_of(ast, outer)
+        let negative = sign < begin && src.get(sign) == 45
+        return numeric_literal_type(src, begin, end_of(ast, row), negative, fuel, deadline)
+    }
     if (node_kind == "str-lit") { return text_view_type() }
     if (node_kind == "char-lit") { return char_type() }
     return 0
@@ -170,7 +167,7 @@ fn conditional_value(pg List<int>, ast List<int>, links List<int>, facts List<in
     return when_true
 }
 
-fn wrapped_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int, node_kind Str) int {
+fn wrapped_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int) int {
     let value = child_with_role(pg, ast, links, row, "value")
     if (value >= 0) { return facts.get(value) }
     let first = first_child(links, row)
@@ -190,10 +187,66 @@ fn wrapped_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, 
         if (start_kind == "minus" && !numeric_type(inner_type)) { return type_operator() }
         return inner_type
     }
-    // Member calls/types are attached to their postfix result before
-    // propagation. A field access cannot silently inherit its receiver.
-    if ((node_kind == "postfix-expr" || node_kind == "condition-postfix") && next_sibling(links, first) >= 0) { return 0 }
     return facts.get(first)
+}
+
+fn member_definition(pg List<int>, ast List<int>, src List<int>, declarations List<int>, owner int, token int, static_receiver bool, fuel List<int>, deadline i64) int {
+    let name = spelling(src, ast, token)
+    let end = end_of(ast, owner)
+    var row = owner + 1
+    for (row < row_count(ast) && start_of(ast, row) < end) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let category = decl_category(declarations, row)
+        if (category == field_decl() || category == method_decl()) {
+            let form = parent(ast, row)
+            let member = parent(ast, form)
+            let tail = parent(ast, member)
+            var enclosing_type = tail
+            if (category == method_decl() && tail >= 0) { enclosing_type = parent(ast, tail) }
+            if (enclosing_type == owner && spelling(src, ast, decl_name(declarations, row)) == name) {
+                if (category == field_decl() && !static_receiver) { return row }
+                if (category == method_decl()) {
+                    let is_static = kind(pg, ast, form) == "static-method"
+                    if (is_static == static_receiver) { return row }
+                }
+            }
+        }
+        row = row + 1
+    }
+    return type_member()
+}
+
+fn postfix_type(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let atom = first_child(links, row)
+    if (atom < 0) { return 0 }
+    var current = facts.get(atom)
+    if (current == 0) { return 0 }
+    let identifier = first_child(links, atom)
+    var static_receiver = false
+    if (identifier >= 0 && uses.get(identifier) >= 0) {
+        let reference = uses.get(identifier)
+        let category = decl_category(declarations, reference)
+        if (category == function_decl()) { return current }
+        static_receiver = category == type_decl()
+    }
+    var step = next_sibling(links, atom)
+    for (step >= 0) {
+        let token = child_with_role(pg, ast, links, step, "member")
+        if (token < 0 || type_kind(types, current) != nominal_kind()) { return 0 }
+        let owner = type_first(types, current)
+        let member = member_definition(pg, ast, src, declarations, owner, token, static_receiver, fuel, deadline)
+        if (member < 0) { return member }
+        uses.set(token, member)
+        if (decl_category(declarations, member) == method_decl()) {
+            current = signature(pg, ast, links, facts, types, member, fuel, deadline)
+        } else {
+            current = facts.get(member)
+        }
+        if (current <= 0) { return current }
+        static_receiver = false
+        step = next_sibling(links, step)
+    }
+    return current
 }
 
 fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
@@ -215,15 +268,20 @@ fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarati
     if (node_kind == "call") {
         let callee = direct_callee(pg, ast, links, row)
         if (callee < 0) { return 0 }
-        let callable = facts.get(callee)
+        let postfix = call_postfix(pg, ast, links, row)
+        let callable = facts.get(postfix)
         if (callable == 0) { return 0 }
         if (type_kind(types, callable) != function_kind()) { return type_argument() }
+        if (resolved_function(pg, ast, links, declarations, uses, row) < 0) { return type_unknown() }
         return type_first(types, callable)
+    }
+    if (node_kind == "postfix-expr" || node_kind == "condition-postfix") {
+        return postfix_type(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
     }
     if (node_kind == "if-value") { return conditional_value(pg, ast, links, facts, row) }
     if (matching_operator(node_kind.clone())) { return binary_type(pg, ast, links, facts, row, node_kind) }
-    if (value_wrapper(node_kind.clone())) { return wrapped_value(pg, ast, links, facts, row, node_kind) }
-    return literal_type(src, ast, row, node_kind)
+    if (value_wrapper(node_kind.clone())) { return wrapped_value(pg, ast, links, facts, row) }
+    return literal_type(src, ast, row, node_kind, fuel, deadline)
 }
 
 fn enclosing_function(ast List<int>, declarations List<int>, row int) int {
@@ -272,13 +330,30 @@ fn validate(pg List<int>, ast List<int>, links List<int>, declarations List<int>
         let argument = mappings.get(row + 1)
         let slot = mappings.get(row + 2)
         if (!take_step(fuel, deadline)) { return failure(errors, argument, bind_budget()) }
-        let function = uses.get(direct_callee(pg, ast, links, call))
+        let function = resolved_function(pg, ast, links, declarations, uses, call)
+        if (function < 0) { return failure(errors, call, type_argument()) }
         let params = call_parameter_slots(pg, ast, links, function)
         let expected = facts.get(params.get(slot))
         let actual = facts.get(argument)
         if (actual == 0) { return failure(errors, argument, type_unknown()) }
         if (actual != expected) { return failure(errors, argument, type_argument()) }
         row = row + call_mapping_stride()
+    }
+    return 0
+}
+
+fn map_methods(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        if (kind(pg, ast, row) == "call") {
+            let target = resolved_function(pg, ast, links, declarations, uses, row)
+            if (target >= 0 && decl_category(declarations, target) == method_decl()) {
+                let status = map_call(pg, ast, links, src, row, target, declarations, mappings, errors, fuel, deadline)
+                if (status != 0) { return status }
+            }
+        }
+        row = row + 1
     }
     return 0
 }
@@ -304,6 +379,11 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
                 facts.set(row, type_id)
             } else {
                 if (function_category(category)) { facts.set(row, unit_type()) }
+                if (category == type_decl()) {
+                    let type_id = intern_type(types, nominal_kind(), row, 0, fuel, deadline)
+                    if (type_id < 0) { return failure(errors, row, bind_budget()) }
+                    facts.set(row, type_id)
+                }
             }
         }
         row = row + 1
@@ -325,5 +405,7 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
             row = row - 1
         }
     }
+    let methods = map_methods(pg, ast, links, src, declarations, uses, mappings, errors, fuel, deadline)
+    if (methods != 0) { return methods }
     return validate(pg, ast, links, declarations, uses, mappings, facts, errors, fuel, deadline)
 }

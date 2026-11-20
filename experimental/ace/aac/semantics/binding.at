@@ -463,15 +463,44 @@ fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
     return -1
 }
 
-pub fn direct_callee(pg List<int>, ast List<int>, links List<int>, call int) int {
+pub fn call_postfix(pg List<int>, ast List<int>, links List<int>, call int) int {
     let unary = first_child(links, call)
     if (unary < 0) { return -1 }
     var postfix = child_with_kind(pg, ast, links, unary, "postfix-expr")
     if (postfix < 0) { postfix = child_with_kind(pg, ast, links, unary, "condition-postfix") }
+    return postfix
+}
+
+pub fn direct_callee(pg List<int>, ast List<int>, links List<int>, call int) int {
+    let postfix = call_postfix(pg, ast, links, call)
     if (postfix < 0) { return -1 }
     let atom = first_child(links, postfix)
     if (atom < 0) { return -1 }
     return child_with_kind(pg, ast, links, atom, "ident")
+}
+
+pub fn resolved_function(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, call int) int {
+    let callee = direct_callee(pg, ast, links, call)
+    if (callee >= 0) {
+        let target = uses.get(callee)
+        if (target >= 0 && decl_category(declarations, target) == function_decl()) { return target }
+    }
+    let postfix = call_postfix(pg, ast, links, call)
+    if (postfix < 0) { return -1 }
+    let atom = first_child(links, postfix)
+    if (atom < 0) { return -1 }
+    var step = next_sibling(links, atom)
+    var resolved = -1
+    for (step >= 0) {
+        let member = child_with_role(pg, ast, links, step, "member")
+        if (member >= 0) {
+            let target = uses.get(member)
+            resolved = -1
+            if (target >= 0 && decl_category(declarations, target) == method_decl()) { resolved = target }
+        }
+        step = next_sibling(links, step)
+    }
+    return resolved
 }
 
 fn named_slot(src List<int>, ast List<int>, declarations List<int>, params List<int>, name int, fuel List<int>, deadline i64) int {
@@ -490,7 +519,7 @@ fn named_slot(src List<int>, ast List<int>, declarations List<int>, params List<
 // order comes from the argument list; slot assignment never reorders it.
 pub fn call_mapping_stride() int { return 3 }
 
-fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, call int, function int, declarations List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+pub fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, call int, function int, declarations List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let args = call_args(pg, ast, links, call)
     if (args < 0) { return fail(errors, call, bind_arguments()) }
     let params = call_parameter_slots(pg, ast, links, function)
