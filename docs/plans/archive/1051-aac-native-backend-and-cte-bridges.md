@@ -300,6 +300,14 @@ stage: goal | plan_id: PLAN-1051 | plan_revision: r6 | round: 2 | from: review |
 
 归档门核真实位置和 `archived`、原 T-01..T-09 唯一且清理前完成 8/9、交付祖先和五处 canonical diff、计划文档相对链接与两个 Design59 锚均有效。同步其它工作树的在途文档无需纳入本计划提交。
 
+2026-11-20 stage: merge | PLAN-1051:r6 | outcome: blocked | checkpoints: landed, canonical_verified, archived, worktrees_removed | delivery_commit: `1d949f30b52be1f1544b43e53c494a9a6d0a2a77` | archive_commit: `c8c487996772dcec86ae73330cdeced0a2c3aeb4` | next: cleanup only
+
+专树及只读 auto-down 兄弟树、材料根分别经 `wt-guard.ps1` 检查 clean。无在用产物进程。两棵 worktree、`plan-1051-dev` 与空 `lang-1051` 组目录均已实际移除并复查。材料根 `D:/autostack/plan-artifacts/plan-1051` 的目录精确解析、归属、无链接及数量已核。执行工具以 `blocked by policy` 拒绝对该单一材料根执行批量删除，逐文件校验删除和字面固定路径删除也被拒绝；材料根仍存在。登记状态标记为 `cleanup-pending`；待该目录移除后完成 T-08 与 cleaned 收据。已交代码/Spec/归档不用重跑。
+
+主检出无本计划代码、Spec 或归档外的待处理变化；保留并行的既有文档 WIP。`ace-aac-bridge` 未在 PATH 安装，交付验证为 debug，不涉及应用部署。周期回归收据覆盖 1098，距今 11.09 h，收据后新增归档号 1051 不触发五倍数，当前不到期。
+
+stage: goal | plan_id: PLAN-1051 | plan_revision: r6 | round: 3 | from: merge | to: user | status: archived | outcome: blocked | worktree: 已移除 | commit: `1d949f30b` | next: 仅剩 plan-artifacts 根清理
+
 ## 10. 待澄清事项
 
-无须当前用户新增决定。可与1046并行；先T-02有界可行性决策，再T-03/04生产实现。候选不满足则本包明确needs_replan，不让消费者发明fallback。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。
+代码、规范及归档已交付。须由具备删除权限的执行环境移除单一材料根 `D:/autostack/plan-artifacts/plan-1051`，再核对目录不存在、刷新登记与归档 SHA256，并完成 T-08。当前工具的自动执行策略拦截该删除，详见 §9。
