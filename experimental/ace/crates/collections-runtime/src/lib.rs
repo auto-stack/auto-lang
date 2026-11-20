@@ -161,6 +161,12 @@ const TAGGED: u32 = 4;
 /// nominal owner hash; `disc` = live call pins, `epoch` = accepted dispatch
 /// count, `moved` = parked-for-free (last owner left while pinned).
 const CLOSURE: u32 = 5;
+const DYNAMIC: u32 = 6;
+const DYN_TYPE: i32 = -30;
+const OBJECT: u32 = 7;
+const OBJECT_MISSING: i32 = -31;
+const OBJECT_CYCLE: i32 = -32;
+const OBJECT_DUPLICATE: i32 = -33;
 #[repr(C)]
 struct Node {
     type_fp: [u64; 4],
@@ -210,6 +216,7 @@ struct State {
     guest: usize,
     peak: usize,
     nodes: usize,
+    graph_cells: usize,
     allocs: u64,
     frees: u64,
     invalid: u64,
@@ -239,6 +246,7 @@ static mut STATE: State = State {
     guest: 0,
     peak: 0,
     nodes: 0,
+    graph_cells: 0,
     allocs: 0,
     frees: 0,
     invalid: 0,
@@ -561,14 +569,14 @@ pub unsafe extern "system" fn mn_coll_type(
         line(b"MN-COLL-TYPE refusal=", 1);
         return INVALID;
     };
-    if mode > 1 || !matches!(kind, TEXT | RECORD | LIST | TAGGED) {
+    if mode > 1 || !matches!(kind, TEXT | RECORD | LIST | TAGGED | DYNAMIC | OBJECT) {
         line(b"MN-COLL-TYPE refusal=", 2);
         return INVALID;
     }
     if (kind == RECORD && (*p).len != arity as usize)
         || (kind == LIST && arity != 1)
         || (kind == TAGGED && (*p).disc >= arity)
-        || (kind == TEXT && arity != 0)
+        || (matches!(kind, TEXT | DYNAMIC | OBJECT) && arity != 0)
     {
         line(b"MN-COLL-TYPE refusal=", 3);
         return INVALID;
@@ -690,6 +698,18 @@ unsafe fn drain_drop_stack(stack: &mut *mut Node) {
                     enqueue(read((*p).data.cast::<Cell>().add(i)), stack);
                 }
             }
+            OBJECT => {
+                for i in 0..(*p).len {
+                    let entry = read((*p).data.cast::<ObjectEntry>().add(i));
+                    enqueue(entry.key, stack);
+                    enqueue(entry.value, stack);
+                }
+                free((*p).data);
+            }
+            DYNAMIC => {
+                enqueue((*p).payload, stack);
+                free((*p).data);
+            }
             TAGGED => {
                 if !(*p).moved {
                     enqueue((*p).payload, stack);
@@ -698,6 +718,9 @@ unsafe fn drain_drop_stack(stack: &mut *mut Node) {
             _ => {
                 state().invalid += 1;
             }
+        }
+        if matches!((*p).kind, DYNAMIC | OBJECT) {
+            state().graph_cells -= 1;
         }
         let gone_id = (*p).id;
         let gone_bytes = (*p).bytes;
@@ -734,6 +757,8 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
     let cell_bytes = if kind == LIST || kind == RECORD {
         cap.checked_mul(core::mem::size_of::<Cell>())
             .ok_or(RESOURCE)?
+    } else if kind == DYNAMIC {
+        core::mem::size_of::<[u64; 4]>()
     } else {
         0
     };
@@ -807,6 +832,9 @@ fn new_node(kind: u32, cap: usize, guest: usize) -> Result<*mut Node, i32> {
     }
     state().head = p;
     state().nodes += 1;
+    if matches!(kind, DYNAMIC | OBJECT) {
+        state().graph_cells += 1;
+    }
     state().allocs += 1;
     charge(bytes, guest);
     Ok(p)
@@ -1142,7 +1170,9 @@ pub unsafe extern "system" fn mn_coll_record_put(bits: u64, index: u64, src: *mu
         if index as usize >= (*p).len {
             return Err(INDEX);
         }
-        validate(read(src))?;
+        let value = read(src);
+        validate(value)?;
+        reject_value_cycle(value, p)?;
         commit((*p).data.cast::<Cell>().add(index as usize), take(src));
         Ok(())
     })())
@@ -1201,6 +1231,7 @@ pub unsafe extern "system" fn mn_coll_list_insert(bits: u64, index: i32, src: *m
         } else if input.owned != 0 {
             return Err(INVALID);
         }
+        reject_value_cycle(input, p)?;
         // Admission of bounded data work precedes mutation, keeping cancellation
         // atomic even when capacity growth and a shift are both required.
         let work = (*p).len - index as usize + 1 + if (*p).len == (*p).cap { (*p).len } else { 0 };
@@ -1326,6 +1357,7 @@ pub unsafe extern "system" fn mn_coll_list_set(bits: u64, index: i32, src: *mut 
         } else if (*src).owned != 0 {
             return Err(INVALID);
         }
+        reject_value_cycle(read(src), p)?;
         commit((*p).data.cast::<Cell>().add(index as usize), take(src));
         // PLAN-923: an in-place replacement bumps the element generation —
         // the element's own places (and every sibling minted before the
@@ -1482,6 +1514,7 @@ pub unsafe extern "system" fn mn_coll_place_set(place: *mut Cell, value: *mut Ce
         } else if v.owned != 0 {
             return Err(INVALID);
         }
+        reject_value_cycle(v, p)?;
         commit(p.as_ref().unwrap().data.cast::<Cell>().add((*t).index), v);
         let gen = read((*p).gens.add((*t).index)) + 1;
         write((*p).gens.add((*t).index), gen);
@@ -1508,6 +1541,319 @@ pub unsafe extern "system" fn mn_coll_variant_pack(
         }
         commit(dst, owner(p));
         ev_own(dst, false);
+        Ok(())
+    })())
+}
+
+/// Box the value with its exact emitted type identity. The source retains
+/// its original owner and replacing the destination is a single commit.
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_dyn_pack(
+    dst: *mut Cell,
+    src: *const Cell,
+    a: u64,
+    b: u64,
+    c: u64,
+    d: u64,
+) -> i32 {
+    status((|| {
+        let value = read(src);
+        validate(value)?;
+        let boxed = new_node(DYNAMIC, 0, 16)?;
+        if let Err(error) = retain(value) {
+            release(owner(boxed));
+            return Err(error);
+        }
+        write((*boxed).data.cast::<[u64; 4]>(), [a, b, c, d]);
+        (*boxed).payload = value;
+        commit(dst, owner(boxed));
+        ev_own(dst, false);
+        Ok(())
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_dyn_is(bits: u64, a: u64, b: u64, c: u64, d: u64) -> i32 {
+    let node = match of_kind(bits, DYNAMIC) {
+        Ok(node) => node,
+        Err(error) => return error,
+    };
+    i32::from(read((*node).data.cast::<[u64; 4]>()) == [a, b, c, d])
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_dyn_take(
+    dst: *mut Cell,
+    bits: u64,
+    a: u64,
+    b: u64,
+    c: u64,
+    d: u64,
+) -> i32 {
+    status((|| {
+        let node = of_kind(bits, DYNAMIC)?;
+        if read((*node).data.cast::<[u64; 4]>()) != [a, b, c, d] {
+            return Err(DYN_TYPE);
+        }
+        let value = (*node).payload;
+        retain(value)?;
+        commit(dst, value);
+        ev_own(dst, true);
+        Ok(())
+    })())
+}
+
+/// Keys carry a separate fixed tag (text=1, I32=2, Bool=3).
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ObjectEntry {
+    key: Cell,
+    value: Cell,
+    tag: u64,
+    value_type: [u64; 4],
+}
+
+fn object_node(bits: u64) -> Result<*mut Node, i32> {
+    let candidate = node(bits)?;
+    unsafe {
+        match (*candidate).kind {
+            OBJECT => Ok(candidate),
+            DYNAMIC if (*candidate).payload.owned == 1 => {
+                of_kind((*candidate).payload.bits, OBJECT)
+            }
+            _ => Err(INVALID),
+        }
+    }
+}
+
+unsafe fn same_object_key(left: Cell, right: Cell, tag: u64) -> Result<bool, i32> {
+    match tag {
+        1 => {
+            let a = of_kind(left.bits, TEXT)?;
+            let b = of_kind(right.bits, TEXT)?;
+            if (*a).len != (*b).len {
+                return Ok(false);
+            }
+            if poll((*a).len as u64) != 0 {
+                return Err(CANCELLED);
+            }
+            for i in 0..(*a).len {
+                if *(*a).data.add(i) != *(*b).data.add(i) {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        2 if left.owned == 0 && right.owned == 0 => Ok(left.bits as u32 == right.bits as u32),
+        3 if left.owned == 0 && right.owned == 0 && left.bits <= 1 && right.bits <= 1 => {
+            Ok(left.bits == right.bits)
+        }
+        _ => Err(INVALID),
+    }
+}
+
+unsafe fn object_index(object: *mut Node, tag: u64, key: Cell) -> Result<Option<usize>, i32> {
+    let entries = (*object).data.cast::<ObjectEntry>();
+    // Validate even when the object is empty.
+    same_object_key(key, key, tag)?;
+    for index in 0..(*object).len {
+        if poll(1) != 0 {
+            return Err(CANCELLED);
+        }
+        let entry = read(entries.add(index));
+        if tag == entry.tag && same_object_key(entry.key, key, tag)? {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+unsafe fn value_children(node: *mut Node) -> usize {
+    match (*node).kind {
+        RECORD | LIST | CLOSURE | OBJECT => (*node).len,
+        DYNAMIC => 1,
+        TAGGED if !(*node).moved => 1,
+        _ => 0,
+    }
+}
+
+unsafe fn value_child(node: *mut Node, index: usize) -> Cell {
+    match (*node).kind {
+        DYNAMIC | TAGGED => (*node).payload,
+        OBJECT => (*(*node).data.cast::<ObjectEntry>().add(index)).value,
+        _ => read((*node).data.cast::<Cell>().add(index)),
+    }
+}
+
+/// Use the idle intrusive link as a bounded traversal queue. No ownership
+/// changes, re-entry or allocations occur while the queue is linked. A
+/// cleanup walk clears the marks even when a lookup or cancellation fails.
+unsafe fn reject_value_cycle(value: Cell, target: *mut Node) -> Result<(), i32> {
+    if value.owned == 0 || state().graph_cells == 0 {
+        return Ok(());
+    }
+    let head = node(value.bits)?;
+    let end = core::ptr::dangling_mut::<Node>();
+    (*head).drop_next = end;
+    let mut tail = head;
+    let mut current = head;
+    let result = (|| {
+        while current != end {
+            if current == target {
+                return Err(OBJECT_CYCLE);
+            }
+            if poll(1) != 0 {
+                return Err(CANCELLED);
+            }
+            for index in 0..value_children(current) {
+                if poll(1) != 0 {
+                    return Err(CANCELLED);
+                }
+                let child = value_child(current, index);
+                if child.owned != 1 {
+                    continue;
+                }
+                let child = node(child.bits)?;
+                if (*child).drop_next.is_null() {
+                    (*child).drop_next = end;
+                    (*tail).drop_next = child;
+                    tail = child;
+                }
+            }
+            current = (*current).drop_next;
+        }
+        Ok(())
+    })();
+    let mut current = head;
+    while current != end {
+        let next = (*current).drop_next;
+        (*current).drop_next = null_mut();
+        current = next;
+    }
+    result
+}
+
+unsafe fn grow_object(object: *mut Node) -> Result<(), i32> {
+    let old_cap = (*object).cap;
+    let new_cap = old_cap.max(1).checked_mul(2).ok_or(RESOURCE)?;
+    let word = core::mem::size_of::<ObjectEntry>();
+    let old_size = old_cap * word;
+    let new_size = new_cap.checked_mul(word).ok_or(RESOURCE)?;
+    if poll((*object).len as u64) != 0 {
+        return Err(CANCELLED);
+    }
+    precheck(new_size, new_size)?;
+    let buffer = allocate(new_size, SEAM_GROW)?;
+    charge(new_size, new_size);
+    for index in 0..(*object).len {
+        write(
+            buffer.cast::<ObjectEntry>().add(index),
+            read((*object).data.cast::<ObjectEntry>().add(index)),
+        );
+    }
+    free((*object).data);
+    uncharge(old_size, old_size);
+    (*object).data = buffer;
+    (*object).cap = new_cap;
+    (*object).bytes += new_size - old_size;
+    (*object).guest += new_size - old_size;
+    Ok(())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_object_new(dst: *mut Cell) -> i32 {
+    status((|| {
+        let object = new_node(OBJECT, 0, 0)?;
+        commit(dst, owner(object));
+        ev_own(dst, false);
+        Ok(())
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_object_get(
+    dst: *mut Cell,
+    bits: u64,
+    key: *const Cell,
+    tag: u64,
+    a: u64,
+    b: u64,
+    c: u64,
+    d: u64,
+) -> i32 {
+    status((|| {
+        let object = object_node(bits)?;
+        let index = object_index(object, tag, read(key))?.ok_or(OBJECT_MISSING)?;
+        let entry = read((*object).data.cast::<ObjectEntry>().add(index));
+        if entry.value_type != [a, b, c, d] {
+            return Err(DYN_TYPE);
+        }
+        let value = entry.value;
+        retain(value)?;
+        commit(dst, value);
+        ev_own(dst, true);
+        Ok(())
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_object_set(
+    bits: u64,
+    key: *const Cell,
+    tag: u64,
+    a: u64,
+    b: u64,
+    c: u64,
+    d: u64,
+    value: *const Cell,
+    initializing: u64,
+) -> i32 {
+    status((|| {
+        let object = object_node(bits)?;
+        let key = read(key);
+        let key = if tag == 1 {
+            owner(of_kind(key.bits, TEXT)?)
+        } else {
+            key
+        };
+        let value = read(value);
+        validate(value)?;
+        reject_value_cycle(value, object)?;
+        if let Some(index) = object_index(object, tag, key)? {
+            if initializing != 0 {
+                return Err(OBJECT_DUPLICATE);
+            }
+            retain(value)?;
+            let entry = (*object).data.cast::<ObjectEntry>().add(index);
+            let old = (*entry).value;
+            (*entry).value = value;
+            (*entry).value_type = [a, b, c, d];
+            release(old);
+            return Ok(());
+        }
+
+        retain(key)?;
+        if let Err(error) = retain(value) {
+            release(key);
+            return Err(error);
+        }
+        if (*object).len == (*object).cap {
+            if let Err(error) = grow_object(object) {
+                release(value);
+                release(key);
+                return Err(error);
+            }
+        }
+        write(
+            (*object).data.cast::<ObjectEntry>().add((*object).len),
+            ObjectEntry {
+                key,
+                value,
+                tag,
+                value_type: [a, b, c, d],
+            },
+        );
+        (*object).len += 1;
         Ok(())
     })())
 }
@@ -1844,6 +2190,10 @@ unsafe fn clone_value(input: Cell) -> Result<Cell, i32> {
         return Ok(input);
     }
     let root = node(input.bits)?;
+    if matches!((*root).kind, DYNAMIC | OBJECT) {
+        retain(input)?;
+        return Ok(input);
+    }
     let output = clone_shallow(root)?;
     let mut stack = null_mut();
     let result = (|| {
@@ -1865,6 +2215,11 @@ unsafe fn clone_value(input: Cell) -> Result<Cell, i32> {
                 write(clone_child((*w).dest, index), child);
             } else {
                 let source = node(child.bits)?;
+                if matches!((*source).kind, DYNAMIC | OBJECT) {
+                    retain(child)?;
+                    write(clone_child((*w).dest, index), child);
+                    continue;
+                }
                 let dest = clone_shallow(source)?;
                 write(clone_child((*w).dest, index), owner(dest));
                 push_clone_work(&mut stack, source, dest)?;

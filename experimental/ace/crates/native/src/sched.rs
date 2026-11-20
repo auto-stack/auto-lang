@@ -182,23 +182,6 @@ pub fn sched_callees(module: &MirModule) -> Result<lower::SchedCtx, SchedDiag> {
     Ok(lower::SchedCtx { callees })
 }
 
-fn has_text_ops(module: &MirModule) -> bool {
-    module.funcs.iter().any(|f| {
-        f.blocks.iter().any(|b| {
-            b.instrs.iter().any(|i| {
-                matches!(
-                    i,
-                    MirInstr::StrCharAt { .. }
-                        | MirInstr::StrSlice { .. }
-                        | MirInstr::StrConcat { .. }
-                        | MirInstr::StrToOwned { .. }
-                        | MirInstr::StrFromChar { .. }
-                )
-            })
-        })
-    })
-}
-
 fn has_host_call(module: &MirModule) -> bool {
     module.funcs.iter().any(|f| {
         f.blocks.iter().any(|b| {
@@ -332,8 +315,6 @@ fn sched_native_build_inner(
     workdir: &Path,
     prepared: Option<(&Path, &str)>,
 ) -> Result<link_driver::PeLink, MnError> {
-    ace_av_core::verify_mir(module)
-        .map_err(|error| MnError::Unsupported("sched.mir", format!("{error:?}")))?;
     if let Some((runtime, hash)) = prepared {
         if crate::sched_runtime::file_hash(runtime)? != hash {
             return Err(MnError::Admit(
@@ -342,6 +323,49 @@ fn sched_native_build_inner(
             ));
         }
     }
+    let program = emit_sched_program_objects(module, entry)?;
+    // The scheduler staticlib includes the owned-text support symbols.
+    let library = match prepared {
+        Some((runtime, _)) => runtime.to_path_buf(),
+        None => crate::sched_runtime::prepare()?.library,
+    };
+    let objects: Vec<_> = program
+        .units
+        .into_iter()
+        .map(|unit| ObjectInput {
+            name: unit.symbol,
+            bytes: unit.bytes,
+        })
+        .collect();
+    link_driver::link_only(
+        &objects,
+        &program.wrapper,
+        START_SYMBOL,
+        workdir,
+        &[library],
+        if program.uses_platform {
+            "sched-platform/1"
+        } else {
+            "plan1067-sched-lane"
+        },
+    )
+}
+
+pub struct SchedProgramObjects {
+    pub entry_symbol: String,
+    pub units: Vec<emit::UnitObject>,
+    pub wrapper: Vec<u8>,
+    pub uses_platform: bool,
+}
+
+/// This boundary accepts only the provided MIR closure. Runtime libraries
+/// and the linker are selected by the caller after object production.
+pub fn emit_sched_program_objects(
+    module: &MirModule,
+    entry: &str,
+) -> Result<SchedProgramObjects, MnError> {
+    ace_av_core::verify_mir(module)
+        .map_err(|error| MnError::Unsupported("sched.mir", format!("{error:?}")))?;
     let entry_unit = module
         .funcs
         .get(module.entry as usize)
@@ -361,16 +385,14 @@ fn sched_native_build_inner(
         emit::admit_sched_unit(unit)?;
     }
     let mut objects = Vec::with_capacity(units.len() + 2);
-    for (i, unit) in units.iter().enumerate() {
+    for unit in &units {
         let object = emit::emit_sched_unit_coff(unit, &callees)?;
-        objects.push(ObjectInput {
-            name: format!("mn-sched-unit-{i}"),
-            bytes: object.bytes,
-        });
+        objects.push(object);
     }
     if has_host_call(module) {
-        objects.push(ObjectInput {
-            name: "mn-console-shim".into(),
+        objects.push(emit::UnitObject {
+            symbol: "mn-console-shim".into(),
+            imports: Vec::new(),
             bytes: crate::console::emit_console_shim_coff()?,
         });
     }
@@ -382,34 +404,19 @@ fn sched_native_build_inner(
             .any(|instruction| matches!(instruction, MirInstr::PlatformCall { .. }))
     });
     if uses_platform {
-        objects.push(ObjectInput {
-            name: "mn-platform-shim".into(),
+        objects.push(emit::UnitObject {
+            symbol: "mn-platform-shim".into(),
+            imports: Vec::new(),
             bytes: crate::platform_io::emit_platform_shim_coff()?,
         });
     }
     let wrapper = emit_sched_wrapper_coff(&entry_symbol)?;
-    let _ = has_text_ops(module);
-    // ONE Rust support staticlib: the scheduler runtime embeds the owned-text
-    // runtime as a dependency (its text/alloc ABI + the compiler-generated
-    // mem* intrinsics). Two separate Rust staticlibs collide on the panic /
-    // unwind runtime symbols.
-    let library = match prepared {
-        Some((runtime, _)) => runtime.to_path_buf(),
-        None => crate::sched_runtime::prepare()?.library,
-    };
-    let support_libs = [library];
-    link_driver::link_only(
-        &objects,
-        &wrapper,
-        START_SYMBOL,
-        workdir,
-        &support_libs,
-        if uses_platform {
-            "sched-platform/1"
-        } else {
-            "plan1067-sched-lane"
-        },
-    )
+    Ok(SchedProgramObjects {
+        entry_symbol,
+        units: objects,
+        wrapper,
+        uses_platform,
+    })
 }
 
 /// Compile → build → run ONE scheduler program on the native lane. The run

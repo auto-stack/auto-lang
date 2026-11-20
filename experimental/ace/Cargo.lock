@@ -106,12 +106,17 @@ name = "ace-aac-bridge"
 version = "0.1.0"
 dependencies = [
  "ace-aac-host-conformance",
+ "ace-abi",
  "ace-av",
  "ace-av-core",
  "ace-core",
+ "ace-foreign-contract",
+ "ace-lowering",
  "ace-native",
+ "ace-source-query",
  "auto-tool-execution",
  "blake3",
+ "libloading",
  "serde",
  "serde_json",
  "tempfile",

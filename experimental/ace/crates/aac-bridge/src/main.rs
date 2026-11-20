@@ -7,6 +7,23 @@ fn run(args: &[std::ffi::OsString]) -> Result<(), Failure> {
         [mode] if mode == "--worker" => {
             ace_aac_bridge::serve(std::io::stdin().lock(), std::io::stdout().lock())
         }
+        [mode, config, expected] if mode == "--worker-foreign" => {
+            let hash = expected
+                .to_str()
+                .and_then(|hex| blake3::Hash::from_hex(hex).ok())
+                .ok_or(Failure {
+                    kind: FailureKind::Admission,
+                    code: "bridge.foreign-config-identity".into(),
+                    message: "expected the SDK configuration digest".into(),
+                    span: None,
+                })?;
+            let permit = ace_aac_bridge::ForeignPermit::read(Path::new(config), *hash.as_bytes())?;
+            ace_aac_bridge::serve_with_foreign(
+                std::io::stdin().lock(),
+                std::io::stdout().lock(),
+                &permit,
+            )
+        }
         [mode, input, target] if mode == "--exchange" => {
             let executable = std::env::current_exe().map_err(|error| Failure {
                 kind: FailureKind::Tool,

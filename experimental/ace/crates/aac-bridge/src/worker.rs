@@ -1,5 +1,5 @@
 use crate::protocol::{read_frame, write_frame, Frame, REQUEST_MAGIC, RESPONSE_MAGIC};
-use crate::{Failure, Outcome, Request, Response, REQUEST_CAP, RESPONSE_CAP};
+use crate::{Failure, ForeignPermit, Outcome, Request, Response, REQUEST_CAP, RESPONSE_CAP};
 use auto_tool_execution::{
     run_bounded, run_bounded_cancellable, BoundedError, BoundedPolicy, ExecutionSpec, ExitKind,
     StdioPolicy, TreeScope,
@@ -14,11 +14,27 @@ const CLEANUP_BUDGET: Duration = Duration::from_secs(1);
 
 /// One request on an owned pipe. Partial or malformed framing cannot produce
 /// a success reply and the transport closes after a single exchange.
-pub fn serve(input: impl Read, mut output: impl Write) -> Result<(), Failure> {
+pub fn serve(input: impl Read, output: impl Write) -> Result<(), Failure> {
+    serve_inner(input, output, None)
+}
+
+pub fn serve_with_foreign(
+    input: impl Read,
+    output: impl Write,
+    permit: &ForeignPermit,
+) -> Result<(), Failure> {
+    serve_inner(input, output, Some(permit))
+}
+
+fn serve_inner(
+    input: impl Read,
+    mut output: impl Write,
+    permit: Option<&ForeignPermit>,
+) -> Result<(), Failure> {
     let started = Instant::now();
     let frame = read_frame::<Request>(input, REQUEST_MAGIC, REQUEST_CAP)?;
     let id = frame.metadata.id;
-    let (outcome, payload) = crate::execution::run(frame.metadata, &frame.bytes, started)
+    let (outcome, payload) = crate::execution::run(frame.metadata, &frame.bytes, started, permit)
         .unwrap_or_else(|error| (Outcome::Failure { error }, Vec::new()));
     let response = Response {
         id,
@@ -39,6 +55,7 @@ pub fn serve(input: impl Read, mut output: impl Write) -> Result<(), Failure> {
 /// A program's IR cannot supply executables, environment overrides or paths.
 pub struct Client {
     bridge: PathBuf,
+    provider: Option<(PathBuf, [u8; 32])>,
 }
 
 impl Client {
@@ -58,7 +75,21 @@ impl Client {
                 "configured bridge executable is not a file",
             ));
         }
-        Ok(Self { bridge })
+        Ok(Self {
+            bridge,
+            provider: None,
+        })
+    }
+
+    pub fn with_foreign_provider(mut self, config: &Path, hash: [u8; 32]) -> Result<Self, Failure> {
+        ForeignPermit::read(config, hash)?;
+        self.provider = Some((
+            config
+                .canonicalize()
+                .map_err(|error| Failure::tool("bridge.foreign-config-path", error.to_string()))?,
+            hash,
+        ));
+        Ok(self)
     }
 
     pub fn run(&self, request: &Request, abc: &[u8]) -> Result<(Response, Vec<u8>), Failure> {
@@ -158,8 +189,19 @@ impl Client {
                 "the request has no remaining wall budget",
             ));
         }
-        let mut spec =
-            ExecutionSpec::new([self.bridge.as_os_str(), std::ffi::OsStr::new("--worker")]);
+        let mut argv = vec![self.bridge.clone().into_os_string()];
+        if let Some((path, digest)) = self
+            .provider
+            .as_ref()
+            .filter(|_| request.external_provider.is_some())
+        {
+            argv.push("--worker-foreign".into());
+            argv.push(path.clone().into_os_string());
+            argv.push(blake3::Hash::from(*digest).to_hex().to_string().into());
+        } else {
+            argv.push("--worker".into());
+        }
+        let mut spec = ExecutionSpec::new(argv);
         spec.stdin = StdioPolicy::Piped;
         spec.stdin_data = Some(encoded);
         spec.tree_scope = TreeScope::ProcessTree;
@@ -204,10 +246,31 @@ impl Client {
                 "response belongs to a different request",
             ));
         }
+        use crate::{Mode, NativeRuntime};
         match (&frame.metadata.outcome, request.mode) {
             (Outcome::Failure { .. }, _)
-            | (Outcome::Objects { .. }, crate::Mode::NativeObjects)
-            | (Outcome::Value { .. }, crate::Mode::CompileTime) => {}
+            | (
+                Outcome::Objects {
+                    runtime: NativeRuntime::None | NativeRuntime::Text,
+                    ..
+                },
+                Mode::NativeObjects,
+            )
+            | (
+                Outcome::Objects {
+                    runtime: NativeRuntime::Collections,
+                    ..
+                },
+                Mode::NativeCollections,
+            )
+            | (
+                Outcome::Objects {
+                    runtime: NativeRuntime::Scheduler,
+                    ..
+                },
+                Mode::NativeScheduler,
+            )
+            | (Outcome::Value { .. }, Mode::CompileTime) => {}
             _ => {
                 return Err(Failure::admission(
                     "bridge.response-mode",

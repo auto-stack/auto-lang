@@ -49,6 +49,7 @@ fn children(ty: &MirType) -> Vec<TypeIdx> {
     match ty {
         MirType::Record(r) | MirType::RecordView(r) => r.fields.iter().map(|f| f.ty).collect(),
         MirType::List(l) => vec![l.elem],
+        MirType::Object { elem } => vec![*elem],
         MirType::Variant(v) => v.arms.iter().filter_map(|a| a.payload).collect(),
         MirType::Fn(s) => s.params.iter().copied().chain([s.result]).collect(),
         _ => vec![],
@@ -58,9 +59,23 @@ fn text(h: &mut blake3::Hasher, value: &str) {
     h.update(&(value.len() as u64).to_le_bytes());
     h.update(value.as_bytes());
 }
+pub(crate) fn erased_object_words() -> [u64; 4] {
+    let mut identity = blake3::Hasher::new();
+    text(&mut identity, LAYOUT);
+    text(&mut identity, "boxed-object");
+    let hash = identity.finalize();
+    std::array::from_fn(|i| {
+        u64::from_le_bytes(hash.as_bytes()[i * 8..i * 8 + 8].try_into().unwrap())
+    })
+}
+
 /// Caller first runs shared verify_mir and the native type whitelist. This also
 /// bounds references/cycles defensively for direct descriptor consumers.
 pub fn descriptors(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
+    let exact_values = m.profile == ace_av_core::contract::AV_DYNAMIC_PROFILE
+        || m.capabilities
+            .iter()
+            .any(|cap| cap == ace_av_core::contract::LANGUAGE_VALUES_CAPABILITY);
     let n = m.types.len();
     let mut remaining = vec![0usize; n];
     let mut parents = vec![Vec::new(); n];
@@ -116,6 +131,41 @@ pub fn descriptors(m: &MirModule) -> Result<Vec<Descriptor>, MnError> {
                 }
                 h.update(&result[sig.result as usize].fingerprint);
                 (0, sig.params.len() as u32)
+            }
+            MirType::Object { elem } => {
+                text(&mut h, "object/cell16");
+                h.update(&result[*elem as usize].fingerprint);
+                (7, 0)
+            }
+            MirType::Dyn => {
+                text(&mut h, "dynamic/cell16");
+                (6, 0)
+            }
+            MirType::Nil => {
+                text(&mut h, "nil");
+                (0, 0)
+            }
+            ty @ (MirType::I64
+            | MirType::U64
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32
+            | MirType::F64)
+                if exact_values =>
+            {
+                let name = match ty {
+                    MirType::I64 => "i64",
+                    MirType::U64 => "u64",
+                    MirType::I8 => "i8",
+                    MirType::U8 => "u8",
+                    MirType::U32 => "u32",
+                    MirType::F32 => "f32",
+                    MirType::F64 => "f64",
+                    _ => unreachable!(),
+                };
+                text(&mut h, name);
+                (0, 0)
             }
             MirType::I64
             | MirType::U64

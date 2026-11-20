@@ -18,6 +18,7 @@ pub fn request(mode: Mode, mir: &MirModule, id: u8) -> Request {
         mir_schema: mir.owner.schema.clone(),
         options: Options { remaining_ms: 2000 },
         capabilities: mir.capabilities.clone(),
+        external_provider: None,
         globals: vec![],
         initializers: vec![],
     }

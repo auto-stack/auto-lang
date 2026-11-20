@@ -76,12 +76,12 @@ fn emits_real_objects_and_rejects_bad_owner_references() {
         units,
         wrapper,
         entry,
-        text_runtime,
+        runtime,
     } = outcome
     else {
         panic!("not a native object response: {outcome:?}");
     };
-    assert!(text_runtime);
+    assert_eq!(runtime, ace_aac_bridge::NativeRuntime::Text);
     assert_eq!(units.len(), 1);
     assert_eq!(units[0].symbol, entry);
     assert_eq!(wrapper.symbol, ace_native::config::START_SYMBOL);

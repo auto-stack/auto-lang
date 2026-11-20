@@ -19,13 +19,15 @@ pub(crate) const RESPONSE_MAGIC: [u8; 4] = *b"AR01";
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     NativeObjects,
+    NativeCollections,
+    NativeScheduler,
     CompileTime,
 }
 
 impl Mode {
     pub fn budget(self) -> Duration {
         match self {
-            Self::NativeObjects => BUILD_BUDGET,
+            Self::NativeObjects | Self::NativeCollections | Self::NativeScheduler => BUILD_BUDGET,
             Self::CompileTime => CT_BUDGET,
         }
     }
@@ -45,6 +47,8 @@ impl Domains {
     pub fn windows(mode: Mode) -> Self {
         let (abi, execution) = match mode {
             Mode::NativeObjects => (ace_native::config::MN_ABI, "native-object"),
+            Mode::NativeCollections => (ace_native::collections_lower::ABI, "native-object"),
+            Mode::NativeScheduler => ("mn.sched.runtime/1", "native-object"),
             Mode::CompileTime => ("av-value/1", "hosted-av"),
         };
         Self {
@@ -88,6 +92,8 @@ pub struct Request {
     pub mir_schema: String,
     pub options: Options,
     pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_provider: Option<[u8; 32]>,
     pub globals: Vec<WireGlobal>,
     pub initializers: Vec<u32>,
 }
@@ -196,6 +202,7 @@ pub struct CtFacts {
     pub peak_slot_bytes: u64,
     pub root_frames: u64,
     pub live_text: u64,
+    pub foreign_calls: u64,
     pub read_set: Vec<String>,
 }
 
@@ -208,6 +215,15 @@ pub struct Object {
     pub hash: [u8; 32],
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeRuntime {
+    None,
+    Text,
+    Collections,
+    Scheduler,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
@@ -215,7 +231,7 @@ pub enum Outcome {
         entry: String,
         units: Vec<Object>,
         wrapper: Object,
-        text_runtime: bool,
+        runtime: NativeRuntime,
     },
     Value {
         value: Value,

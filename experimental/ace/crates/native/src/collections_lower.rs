@@ -87,7 +87,11 @@ pub fn admit_unit(m: &MirModule) -> Result<(), MnError> {
 pub(crate) fn admit_layouts(
     m: &MirModule,
 ) -> Result<Vec<crate::collections_layout::Descriptor>, MnError> {
-    if m.profile != ace_av_core::contract::AV_COLLECTIONS_PROFILE
+    let dynamic = m.profile == ace_av_core::contract::AV_DYNAMIC_PROFILE
+        || m.capabilities
+            .iter()
+            .any(|cap| cap == ace_av_core::contract::LANGUAGE_VALUES_CAPABILITY);
+    if !dynamic && m.profile != ace_av_core::contract::AV_COLLECTIONS_PROFILE
         // PLAN-962: aggregates documents lower through the closures-family
         // entry (profile av.closures/1) — the av.aggregates/1 capability
         // is the admission key (mir_verify's precedent).
@@ -127,6 +131,7 @@ pub(crate) fn admit_layouts(
             | MirType::U32
             | MirType::F32
             | MirType::F64 => {}
+            MirType::Dyn | MirType::Nil | MirType::Object { .. } if dynamic => {}
             // PLAN-972 (T-03): capture-free closure VALUES — the inlined
             // unit carries the closure slot type; construction/call instrs
             // are named-rejected below if any survive inlining.
@@ -233,6 +238,12 @@ pub(crate) fn admit_layouts(
                     // PLAN-972 (T-03): integer conversions (checked
                     // narrowing; sign-aware widening).
                     | MirInstr::Conv { .. }
+                    | MirInstr::DynPack { .. }
+                    | MirInstr::DynIs { .. }
+                    | MirInstr::DynTake { .. }
+                    | MirInstr::ObjectNew { .. }
+                    | MirInstr::ObjectGet { .. }
+                    | MirInstr::ObjectSet { .. }
             ) {
                 return Err(unsupported(
                     "instruction",
@@ -664,10 +675,16 @@ impl Lower<'_, '_> {
             | Clone { src, .. }
             | View { src, .. }
             | ListLen { src, .. }
-            | VariantGuard { src, .. } => vec![*src],
+            | VariantGuard { src, .. }
+            | DynPack { src, .. }
+            | DynIs { src, .. }
+            | DynTake { src, .. } => vec![*src],
             // PLAN-923: a place access re-validates the token before the
             // runtime touches the buffer; the base list + index are reads.
             ListPlace { base, index, .. } => vec![*base, *index],
+            ObjectNew { keys, vals, .. } => keys.iter().chain(vals).copied().collect(),
+            ObjectGet { obj, key, .. } => vec![*obj, *key],
+            ObjectSet { obj, key, value } => vec![*obj, *key, *value],
             PlaceGet { src, .. } => vec![*src],
             PlaceSet { place, value } => vec![*place, *value],
             // Shared MIR permits an already-ended initialized token to end
@@ -710,6 +727,10 @@ impl Lower<'_, '_> {
             | VariantPack { dst, .. }
             | VariantProject { dst, .. }
             | Call { dst, .. }
+            | DynPack { dst, .. }
+            | DynTake { dst, .. }
+            | ObjectNew { dst, .. }
+            | ObjectGet { dst, .. }
             // PLAN-972 (T-08): the round-6 text arms allocate FRESH nodes
             // (slice own-clones its view; concat / to_owned deep-copy) —
             // they must carry a dst binding like every other allocation,
@@ -733,6 +754,8 @@ impl Lower<'_, '_> {
                     | ListNew { .. }
                     | VariantPack { .. }
                     | VariantSwitch { .. }
+                    | DynPack { .. }
+                    | ObjectNew { .. }
                     // PLAN-972 (T-08): the round-6 text arms allocate
                     // FRESH nodes (slice own-clones its view; concat and
                     // to_owned deep-copy) — they must BIND their type
@@ -751,6 +774,50 @@ impl Lower<'_, '_> {
         }
         Ok(())
     }
+    fn erased_words(&self, ty: TypeIdx) -> [u64; 4] {
+        if matches!(self.m.types[ty as usize], MirType::Object { .. }) {
+            crate::collections_layout::erased_object_words()
+        } else {
+            self.descriptors[ty as usize].words()
+        }
+    }
+
+    fn object_key_tag(&self, slot: SlotId) -> Result<i64, MnError> {
+        let ty = self.m.funcs[0].slots[slot as usize].ty;
+        match self.m.types[ty as usize] {
+            MirType::Str | MirType::StrView => Ok(1),
+            MirType::I32 => Ok(2),
+            MirType::Bool => Ok(3),
+            _ => Err(unsupported(
+                "object-key",
+                "object key must be text, I32 or Bool",
+            )),
+        }
+    }
+
+    fn object_set(
+        &mut self,
+        bits: Value,
+        key: SlotId,
+        value: SlotId,
+        initializing: bool,
+    ) -> Result<(), MnError> {
+        let key_tag = self.object_key_tag(key)?;
+        let mut args = vec![
+            (bits, types::I64),
+            (self.addr(key), types::I64),
+            (self.i64(key_tag), types::I64),
+        ];
+        let ty = self.m.funcs[0].slots[value as usize].ty;
+        for word in self.descriptors[ty as usize].words() {
+            args.push((self.i64(word as i64), types::I64));
+        }
+        args.push((self.addr(value), types::I64));
+        args.push((self.i64(i64::from(initializing)), types::I64));
+        self.checked("mn_coll_object_set", &args)?;
+        Ok(())
+    }
+
     fn instruction_inner(&mut self, instruction: &MirInstr) -> Result<(), MnError> {
         use MirInstr::*;
         match instruction {
@@ -827,7 +894,10 @@ impl Lower<'_, '_> {
                         &[(dst, types::I64), (address, types::I64), (len, types::I32)],
                     )?;
                 }
-                c => return Err(unsupported("const", format!("collections constant {c:?}"))),
+                MirConst::Nil => {
+                    let nil = self.i64(0);
+                    self.word_to(*dst, nil);
+                }
             },
             Copy { dst, src } | Move { dst, src } | Clone { dst, src } => {
                 let (dst, src) = (self.addr(*dst), self.addr(*src));
@@ -838,17 +908,86 @@ impl Lower<'_, '_> {
                 };
                 self.checked(name, &[(dst, types::I64), (src, types::I64)])?;
             }
+            DynPack { dst, src } => {
+                let ty = self.m.funcs[0].slots[*src as usize].ty;
+                let mut args = vec![(self.addr(*dst), types::I64), (self.addr(*src), types::I64)];
+                for word in self.erased_words(ty) {
+                    args.push((self.i64(word as i64), types::I64));
+                }
+                self.checked("mn_coll_dyn_pack", &args)?;
+            }
+            DynIs { dst, src, ty } => {
+                let mut args = vec![(self.bits(*src), types::I64)];
+                for word in self.erased_words(*ty) {
+                    args.push((self.i64(word as i64), types::I64));
+                }
+                let result = self.checked("mn_coll_dyn_is", &args)?;
+                self.scalar_to(*dst, result);
+            }
+            DynTake { dst, src, ty } => {
+                let mut args = vec![(self.addr(*dst), types::I64), (self.bits(*src), types::I64)];
+                for word in self.erased_words(*ty) {
+                    args.push((self.i64(word as i64), types::I64));
+                }
+                self.checked("mn_coll_dyn_take", &args)?;
+            }
+            ObjectNew { dst, keys, vals } => {
+                let staged = self.addr(self.scratch);
+                self.checked("mn_coll_object_new", &[(staged, types::I64)])?;
+                let bits = self.bits(self.scratch);
+                for (&key, &value) in keys.iter().zip(vals) {
+                    self.object_set(bits, key, value, true)?;
+                }
+                let ty = self.m.funcs[0].slots[*dst as usize].ty;
+                let output = self.addr(*dst);
+                if matches!(self.m.types[ty as usize], MirType::Dyn) {
+                    let mut args = vec![(output, types::I64), (staged, types::I64)];
+                    for word in crate::collections_layout::erased_object_words() {
+                        args.push((self.i64(word as i64), types::I64));
+                    }
+                    self.checked("mn_coll_dyn_pack", &args)?;
+                    self.call("mn_coll_drop", &[(staged, types::I64)], None)?;
+                } else {
+                    self.checked(
+                        "mn_coll_move",
+                        &[(output, types::I64), (staged, types::I64)],
+                    )?;
+                }
+            }
+            ObjectGet {
+                dst,
+                obj,
+                key,
+                elem,
+            } => {
+                let key_tag = self.object_key_tag(*key)?;
+                let mut args = vec![
+                    (self.addr(*dst), types::I64),
+                    (self.bits(*obj), types::I64),
+                    (self.addr(*key), types::I64),
+                    (self.i64(key_tag), types::I64),
+                ];
+                for word in self.descriptors[*elem as usize].words() {
+                    args.push((self.i64(word as i64), types::I64));
+                }
+                self.checked("mn_coll_object_get", &args)?;
+            }
+            ObjectSet { obj, key, value } => {
+                let bits = self.bits(*obj);
+                self.object_set(bits, *key, *value, false)?;
+            }
             View { dst, src } => {
                 let bits = self.bits(*src);
                 let dst = self.addr(*dst);
-                let zero = self.i64(0);
+                self.call("mn_coll_drop", &[(dst, types::I64)], None)?;
                 self.fb.ins().store(MemFlags::new(), bits, dst, 0);
-                self.fb.ins().store(MemFlags::new(), zero, dst, 8);
             }
             BorrowEnd { token } => {
                 let dst = self.addr(*token);
-                let zero = self.i64(0);
-                self.fb.ins().store(MemFlags::new(), zero, dst, 0);
+                // A literal-backed view may own the native materialization.
+                // Dropping the cell releases that owner, while a true view
+                // has no destructor right and clears without a free.
+                self.call("mn_coll_drop", &[(dst, types::I64)], None)?;
             }
             Drop { slot } => {
                 let p = self.addr(*slot);

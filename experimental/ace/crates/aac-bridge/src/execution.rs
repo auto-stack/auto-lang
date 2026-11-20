@@ -1,5 +1,9 @@
+use crate::foreign::Provider;
 use crate::protocol::{hash_bytes, CtFacts, Object, SourceSpan};
-use crate::{Domains, Failure, FailureKind, Mode, Outcome, Request, Value, RESPONSE_CAP};
+use crate::ForeignPermit;
+use crate::{
+    Domains, Failure, FailureKind, Mode, NativeRuntime, Outcome, Request, Value, RESPONSE_CAP,
+};
 use ace_av_core::abc::{decode_abc, AbcDecodeError};
 use ace_av_core::abc_verify::AbcAdmissionError;
 use ace_av_core::av::{CancelFlag, ExecLimits};
@@ -15,6 +19,7 @@ pub(crate) fn run(
     request: Request,
     bytes: &[u8],
     started: Instant,
+    permit: Option<&ForeignPermit>,
 ) -> Result<(Outcome, Vec<u8>), Failure> {
     if !cfg!(all(windows, target_arch = "x86_64", target_env = "msvc"))
         || request.domains != Domains::windows(request.mode)
@@ -55,13 +60,50 @@ pub(crate) fn run(
             "logical MIR schema or owner differs from the request's admitted profile",
         ));
     }
-    if request.capabilities != module.capabilities
-        || module.capabilities.iter().any(|cap| !pure_capability(cap))
-        || !module.host_imports.is_empty()
+    if request.capabilities != module.capabilities {
+        return Err(Failure::admission(
+            "bridge.capability",
+            "request capabilities differ from the typed closure",
+        ));
+    }
+    let foreign = match request.external_provider {
+        Some(hash) if request.mode == Mode::CompileTime => {
+            Some(permit.filter(|permit| permit.hash == hash).ok_or_else(|| {
+                Failure::admission(
+                    "bridge.foreign-authority",
+                    "no matching host-owned provider binding is installed",
+                )
+            })?)
+        }
+        Some(_) => {
+            return Err(Failure::admission(
+                "bridge.foreign-domain",
+                "foreign provider binding is a CT host capability",
+            ))
+        }
+        None => None,
+    };
+    if request.mode != Mode::NativeScheduler
+        && (!module.host_imports.is_empty()
+            || module.capabilities.iter().any(|cap| {
+                !pure_capability(cap)
+                    && !(foreign.is_some()
+                        && matches!(
+                            cap.as_str(),
+                            ace_foreign_contract::manual::SOURCE_CAP
+                                | ace_foreign_contract::resource::RESOURCE_CAP
+                        ))
+            }))
     {
         return Err(Failure::admission(
             "bridge.capability",
-            "service profile grants guest-only execution capabilities and no host imports",
+            "the selected service rejects undeclared or ambient host imports",
+        ));
+    }
+    if module.is_unit {
+        return Err(Failure::admission(
+            "bridge.closure",
+            "service requires a complete closure, not a detached unit",
         ));
     }
     bind_program_state(&request, module)?;
@@ -69,7 +111,31 @@ pub(crate) fn run(
         schema: request.mir_schema.clone(),
         module: request.owner.clone(),
     };
-    let loaded = ace_av_core::verify_abc(decoded, &owner).map_err(abc_admission_failure)?;
+    let (loaded, provider) = if let Some(permit) = foreign {
+        if !module.globals.is_empty() || !module.init.is_empty() {
+            return Err(Failure::admission(
+                "bridge.foreign-program-state",
+                "foreign CT runs in one checked stateless closure",
+            ));
+        }
+        permit.admit(module)?;
+        module.owner = owner.clone();
+        for function in &mut module.funcs {
+            function.owner = owner.clone();
+        }
+        ace_av_core::verify_mir(module)
+            .map_err(|error| abc_admission_failure(AbcAdmissionError::Verify(error)))?;
+        remaining(&request, started)?;
+        let provider = permit.load(module)?;
+        let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &owner, &provider.stubs)
+            .map_err(abc_admission_failure)?;
+        (loaded, Some(provider))
+    } else {
+        (
+            ace_av_core::verify_abc(decoded, &owner).map_err(abc_admission_failure)?,
+            None,
+        )
+    };
     if !loaded.executable() {
         return Err(Failure::admission(
             "bridge.closure",
@@ -78,8 +144,11 @@ pub(crate) fn run(
     }
     let budget = remaining(&request, started)?;
     match request.mode {
-        Mode::NativeObjects => native_objects(loaded.module()),
-        Mode::CompileTime => ct(&loaded, budget),
+        Mode::NativeObjects | Mode::NativeCollections => {
+            native_objects(loaded.module(), request.mode)
+        }
+        Mode::NativeScheduler => native_scheduler(loaded.module()),
+        Mode::CompileTime => ct(&loaded, budget, provider),
     }
 }
 
@@ -237,8 +306,15 @@ fn append_object(object: emit::UnitObject, payload: &mut Vec<u8>) -> Result<Obje
     })
 }
 
-fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
+fn native_objects(module: &MirModule, mode: Mode) -> Result<(Outcome, Vec<u8>), Failure> {
+    let collections = mode == Mode::NativeCollections;
     let stateful = !module.globals.is_empty() || !module.init.is_empty();
+    if collections && stateful {
+        return Err(Failure::admission(
+            "bridge.collections-program-state",
+            "collection object ABI needs a program-owned cell provider",
+        ));
+    }
     if stateful {
         emit::admit_program_startup(module).map_err(native_failure)?;
     }
@@ -259,12 +335,19 @@ fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
     let units = ace_av::cache::split_units(module)
         .map_err(|message| Failure::admission("bridge.native-units", message))?;
     for unit in &units {
-        emit::admit_unit(unit).map_err(native_failure)?;
+        (if collections {
+            ace_native::collections_lower::admit_unit(unit)
+        } else {
+            emit::admit_unit(unit)
+        })
+        .map_err(native_failure)?;
     }
     let mut payload = Vec::new();
     let mut objects = Vec::with_capacity(units.len());
     for unit in &units {
-        let object = if stateful {
+        let object = if collections {
+            ace_native::collections_lower::emit_unit_coff(unit)
+        } else if stateful {
             emit::emit_program_unit_coff(unit)
         } else {
             emit::emit_unit_coff(unit)
@@ -276,7 +359,9 @@ fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
         emit::UnitObject {
             symbol: ace_native::config::START_SYMBOL.into(),
             imports: Vec::new(),
-            bytes: if stateful {
+            bytes: if collections {
+                ace_native::collections_lower::emit_wrapper_coff(&entry, &Default::default())
+            } else if stateful {
                 emit::emit_program_wrapper_coff(module)
             } else {
                 emit::emit_wrapper_coff(&entry)
@@ -285,16 +370,58 @@ fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
         },
         &mut payload,
     )?;
-    let text_runtime = module
+    let runtime = if collections {
+        NativeRuntime::Collections
+    } else if module
         .capabilities
         .iter()
-        .any(|cap| cap == TEXT_RUNTIME_CAPABILITY);
+        .any(|cap| cap == TEXT_RUNTIME_CAPABILITY)
+    {
+        NativeRuntime::Text
+    } else {
+        NativeRuntime::None
+    };
     Ok((
         Outcome::Objects {
             entry,
             units: objects,
             wrapper,
-            text_runtime,
+            runtime,
+        },
+        payload,
+    ))
+}
+
+fn native_scheduler(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
+    if !module.globals.is_empty() || !module.init.is_empty() {
+        return Err(Failure::admission(
+            "bridge.scheduler-program-state",
+            "scheduler ABI needs a program-owned cell provider",
+        ));
+    }
+    let entry = &module.funcs[module.entry as usize].name;
+    let program =
+        ace_native::sched::emit_sched_program_objects(module, entry).map_err(native_failure)?;
+    let mut payload = Vec::new();
+    let units = program
+        .units
+        .into_iter()
+        .map(|unit| append_object(unit, &mut payload))
+        .collect::<Result<Vec<_>, _>>()?;
+    let wrapper = append_object(
+        emit::UnitObject {
+            symbol: ace_native::config::START_SYMBOL.into(),
+            imports: Vec::new(),
+            bytes: program.wrapper,
+        },
+        &mut payload,
+    )?;
+    Ok((
+        Outcome::Objects {
+            entry: program.entry_symbol,
+            units,
+            wrapper,
+            runtime: NativeRuntime::Scheduler,
         },
         payload,
     ))
@@ -354,13 +481,30 @@ fn ct_program(
     ))
 }
 
-fn ct(loaded: &ace_av_core::LoadedModule, wall: Duration) -> Result<(Outcome, Vec<u8>), Failure> {
+fn ct(
+    loaded: &ace_av_core::LoadedModule,
+    wall: Duration,
+    mut provider: Option<Provider>,
+) -> Result<(Outcome, Vec<u8>), Failure> {
     let limits = ExecLimits {
         wall: wall.min(ExecLimits::default().wall),
         ..Default::default()
     };
     let module = loaded.module();
-    let (outcome, trace) = if module.globals.is_empty() && module.init.is_empty() {
+    let (outcome, trace) = if let Some(provider) = provider.as_mut() {
+        ace_av_core::av::execute_foreign(
+            loaded,
+            &limits,
+            &CancelFlag::default(),
+            &mut provider.stubs,
+        )
+        .map_err(|error| {
+            Failure::admission(
+                "bridge.foreign-execution",
+                format!("{}: {}", error.code, error.message),
+            )
+        })?
+    } else if module.globals.is_empty() && module.init.is_empty() {
         ace_av_core::execute(loaded, &limits, &CancelFlag::default())
     } else {
         ct_program(module, limits)?
@@ -380,7 +524,13 @@ fn ct(loaded: &ace_av_core::LoadedModule, wall: Duration) -> Result<(Outcome, Ve
                 peak_slot_bytes: trace.peak_slot_bytes,
                 root_frames: trace.root_frame_commits,
                 live_text,
-                read_set: Vec::new(), // No filesystem capability is granted in this execution profile.
+                foreign_calls: provider
+                    .as_ref()
+                    .map_or(0, |provider| provider.stubs.callee_count()),
+                read_set: provider
+                    .into_iter()
+                    .map(|provider| provider.identity)
+                    .collect(),
             };
             Ok((Outcome::Value { value, facts }, bytes))
         }

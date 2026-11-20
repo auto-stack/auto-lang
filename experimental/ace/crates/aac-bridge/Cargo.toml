@@ -9,13 +9,19 @@ description = "Bounded native object and compile-time AV services for AAC"
 ace-av-core = { path = "../av-core" }
 ace-av = { path = "../av" }
 ace-native = { path = "../native" }
+ace-foreign-contract = { path = "../foreign-contract" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+libloading = "0.8"
 
 [dev-dependencies]
 ace-core = { path = "../core" }
+ace-abi = { path = "../abi" }
+ace-source-query = { path = "../source-query" }
 ace-aac-host-conformance = { path = "../../tests/aac-host" }
+ace-lowering = { path = "../lowering" }
