@@ -6,10 +6,11 @@ use std::{fs, path::PathBuf};
 const RICH_BOOL: &str = "use.rs f0_rich\nfn main() bool { return rich_is_longer(\"hello\", 4) }";
 const RICH_FALLIBLE: &str = "use.rs f0_rich\nfn main() int { return rich_find(\"hello\", 111) }";
 
-fn prepared_page(environment: &str) -> (Vec<u8>, String) {
+fn prepared_page(fixture: &str) -> (Vec<u8>, String) {
     let root = PathBuf::from(
-        std::env::var_os(environment).unwrap_or_else(|| panic!("prepare fixture {environment}")),
-    );
+        std::env::var_os("AAC1047_FOREIGN_FIXTURE").expect("prepare the 967 foreign fixtures"),
+    )
+    .join(fixture);
     let page = fs::read(root.join("source-declarations.json")).expect("normalized 967 SourceDecls");
     let authority = fs::read_to_string(root.join("authority.blake3"))
         .expect("independently prepared authority");
@@ -19,7 +20,7 @@ fn prepared_page(environment: &str) -> (Vec<u8>, String) {
 
 #[test]
 fn checks_source_calls_before_whole_hir_admission() {
-    let (page, authority) = prepared_page("AAC1047_FOREIGN_FIXTURE");
+    let (page, authority) = prepared_page("");
     let run =
         |source: &str| run_semantic_foreign_case(source, &page, &authority).expect("Auto frontend");
     for source in [RICH_BOOL, RICH_FALLIBLE] {
@@ -45,7 +46,7 @@ fn checks_source_calls_before_whole_hir_admission() {
 
 #[test]
 fn rejects_substituted_physical_layout_and_unknown_provider() {
-    let (page, authority) = prepared_page("AAC1047_FOREIGN_FIXTURE");
+    let (page, authority) = prepared_page("");
     let mut changed: serde_json::Value = serde_json::from_slice(&page).unwrap();
     changed[0]["physical_table_digest"] = serde_json::Value::String("0".repeat(64));
     let altered = serde_json::to_vec(&changed).unwrap();
@@ -62,7 +63,7 @@ fn rejects_substituted_physical_layout_and_unknown_provider() {
 
 #[test]
 fn checks_c_provider_handle_credentials_and_callback_targets() {
-    let (page, authority) = prepared_page("AAC1047_C_FIXTURE");
+    let (page, authority) = prepared_page("c-provider");
     let run =
         |source: &str| run_semantic_foreign_case(source, &page, &authority).expect("Auto frontend");
     let handle_flow = concat!(
@@ -115,7 +116,7 @@ fn checks_c_provider_handle_credentials_and_callback_targets() {
 
 #[test]
 fn compares_c_record_name_field_order_and_lane_types() {
-    let (page, authority) = prepared_page("AAC1047_C_FIXTURE");
+    let (page, authority) = prepared_page("c-provider");
     let run =
         |source: &str| run_semantic_foreign_case(source, &page, &authority).expect("Auto frontend");
     let source = concat!(
@@ -148,7 +149,7 @@ fn compares_c_record_name_field_order_and_lane_types() {
 
 #[test]
 fn keeps_credentials_distinct_between_admitted_c_providers() {
-    let (page, authority) = prepared_page("AAC1047_C_ALTERNATE_FIXTURE");
+    let (page, authority) = prepared_page("c-alternate");
     let source = concat!(
         "use.c f0_c\nuse.c f0_alternate\n",
         "fn main() int {\n",
