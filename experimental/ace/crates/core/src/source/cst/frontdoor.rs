@@ -3870,6 +3870,7 @@ pub fn parse_method_fragment_via_cst(
     let mut words = fragment.split_whitespace();
     let receiver = match (words.next(), words.next()) {
         (Some("static"), Some("fn")) => Receiver::Static,
+        (Some("mut"), Some("fn")) if profile.is_auto_language() => Receiver::Mut,
         (Some("fn"), _) => Receiver::View,
         _ => {
             return Err(Diagnostic::new(

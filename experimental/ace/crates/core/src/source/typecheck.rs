@@ -186,7 +186,7 @@ fn check_block(
                 frames.push(TCFrame { src: body, idx: 0 });
             }
             RStmt::Loop { body, .. } => frames.push(TCFrame { src: body, idx: 0 }),
-            RStmt::Break { .. } | RStmt::Continue { .. } => {}
+            RStmt::Break { .. } | RStmt::Continue { .. } | RStmt::EndView { .. } => {}
         }
     }
 }

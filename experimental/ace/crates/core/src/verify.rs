@@ -3129,6 +3129,7 @@ impl Verifier {
             }
             if self.domain == HirDomain::Closures {
                 self.check_closure_borrow_rules(m, body);
+                self.check_collection_mut_calls(m, body);
             }
             // projection/consumption marks (expr indices)
             let mut projected: BTreeSet<u32> = BTreeSet::new();
@@ -3255,72 +3256,161 @@ impl Verifier {
         }
     }
 
+    fn expr_operands(kind: &hir::ExprKind) -> Vec<hir::ExprId> {
+        use hir::ExprKind as E;
+        match kind {
+            E::ReadLocal { .. }
+            | E::Constant { .. }
+            | E::Unit
+            | E::StrLit { .. }
+            | E::CharLit { .. }
+            | E::CreateClosure { .. }
+            | E::BorrowMut { .. }
+            | E::ListNew { .. }
+            // PLAN-939 S06: a named callback target has no operands.
+            | E::CallbackRef { .. } => Vec::new(),
+            E::Binary { lhs, rhs, .. } | E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
+            // PLAN-961: a numeric constant is a leaf; a cast reads its operand.
+            E::NumericConst { .. } => Vec::new(),
+            E::Cast { operand, .. } => vec![*operand],
+            E::Unary { operand, .. }
+            | E::TextLen { operand }
+            | E::TextLenBytes { operand }
+            | E::TextClone { operand }
+            | E::ClosureClone { operand }
+            | E::TextToOwned { operand }
+            | E::TextToBorrowed { operand }
+            | E::CharToCodepoint { operand }
+            | E::CharFromCodepoint { operand }
+            | E::TextFromChar { operand } => vec![*operand],
+            E::Call { eval_args, .. } | E::RecordCtor { eval_args, .. } => eval_args.clone(),
+            E::CallClosure { callee, eval_args } => std::iter::once(*callee)
+                .chain(eval_args.iter().copied())
+                .collect(),
+            E::TextCharAt { operand, index } => vec![*operand, *index],
+            E::TextSlice {
+                operand,
+                start,
+                end,
+            } => vec![*operand, *start, *end],
+            E::TextConcat { lhs, rhs } => vec![*lhs, *rhs],
+            E::FieldGet { base, .. } | E::BorrowView { base } | E::RecordClone { base, .. } => {
+                vec![*base]
+            }
+            E::Move { inner } => vec![*inner],
+            E::ListLen { list }
+            | E::ListClear { list }
+            | E::ListGet { list, .. }
+            | E::ListRemove { list, .. } => vec![*list],
+            E::ListPush { list, value } => vec![*list, *value],
+            E::ListInsert { list, index, value } | E::ListSet { list, index, value } => {
+                vec![*list, *index, *value]
+            }
+            E::VariantCtor { payload, .. } => payload.iter().copied().collect(),
+            E::VariantGuardTest { root, .. } | E::VariantProject { root, .. } => vec![*root],
+            // -- PLAN-964 object/nil/FStr surface --
+            E::NilLit => Vec::new(),
+            E::ObjectCtor { eval_args, .. } => eval_args.clone(),
+            E::ObjectGet { base, key } => vec![*base, *key],
+            E::ObjectSet { base, key, value } => vec![*base, *key, *value],
+            E::TextDisplay { operand } | E::DynCast { operand, .. } => vec![*operand],
+        }
+    }
+
+    /// A mutable record argument has one exclusive write-back target.
+    /// Check aliases before MIR represents copyable records as value temps.
+    fn check_collection_mut_calls(&mut self, m: &hir::Module, body: &hir::Body) {
+        for expr in &body.exprs {
+            let hir::ExprKind::Call {
+                callee,
+                eval_args,
+                bindings,
+            } = &expr.kind
+            else {
+                continue;
+            };
+            let callee_body = m
+                .defs
+                .get(callee.0 as usize)
+                .and_then(|def| match def.kind {
+                    hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
+                        m.bodies.get(body.0 as usize)
+                    }
+                    _ => None,
+                });
+            if let Some(callee_body) = callee_body {
+                for binding in bindings {
+                    let Some(actual) = eval_args
+                        .get(binding.arg as usize)
+                        .and_then(|arg| body.exprs.get(arg.0 as usize))
+                    else {
+                        continue;
+                    };
+                    let Some(formal) = callee_body.locals.iter().find(|l| {
+                        l.role == hir::LocalRole::Param && l.index == Some(binding.param)
+                    }) else {
+                        continue;
+                    };
+                    let actual_mut = matches!(actual.kind, hir::ExprKind::BorrowMut { .. });
+                    let formal_mut = formal.param_mode == hir::ParamMode::MutBorrow;
+                    if actual_mut != formal_mut {
+                        self.error(
+                            "verify.ownership-required",
+                            "mutable record arguments and parameters must agree",
+                            actual.span,
+                        );
+                    }
+                }
+            }
+            if !eval_args.iter().any(|id| {
+                matches!(
+                    body.exprs[id.0 as usize].kind,
+                    hir::ExprKind::BorrowMut { .. }
+                )
+            }) {
+                continue;
+            }
+            let mut events: BTreeMap<u32, (usize, bool)> = BTreeMap::new();
+            let mut pending = eval_args.clone();
+            let mut seen = BTreeSet::new();
+            while let Some(id) = pending.pop() {
+                if !seen.insert(id.0) {
+                    continue;
+                }
+                let arg = &body.exprs[id.0 as usize];
+                match arg.kind {
+                    hir::ExprKind::BorrowMut { local } => {
+                        let event = events.entry(local.0).or_default();
+                        event.0 += 1;
+                        event.1 = true;
+                    }
+                    hir::ExprKind::ReadLocal { local } => {
+                        events.entry(local.0).or_default().0 += 1;
+                    }
+                    _ => pending.extend(Self::expr_operands(&arg.kind)),
+                }
+            }
+            if let Some((local, _)) = events
+                .iter()
+                .find(|(_, (count, mutates))| *mutates && *count > 1)
+            {
+                self.error(
+                    "verify.mut-conflict",
+                    format!(
+                        "multiple accesses to local `{}` during one mutable call",
+                        body.locals[*local as usize].name
+                    ),
+                    expr.span,
+                );
+            }
+        }
+    }
+
     /// Source closures are conservatively non-escaping when any environment
     /// field borrows an owner. Keep this rule in HIR verification as well as
     /// the MIR defense so a descriptor-authored bundle cannot bypass the
     /// source resolver's lifetime checks.
     fn check_closure_borrow_rules(&mut self, _m: &hir::Module, body: &hir::Body) {
-        fn operands(kind: &hir::ExprKind) -> Vec<hir::ExprId> {
-            use hir::ExprKind as E;
-            match kind {
-                E::ReadLocal { .. }
-                | E::Constant { .. }
-                | E::Unit
-                | E::StrLit { .. }
-                | E::CharLit { .. }
-                | E::CreateClosure { .. }
-                | E::BorrowMut { .. }
-                | E::ListNew { .. }
-                // PLAN-939 S06: a named callback target has no operands.
-                | E::CallbackRef { .. } => Vec::new(),
-                E::Binary { lhs, rhs, .. } | E::Logical { lhs, rhs, .. } => vec![*lhs, *rhs],
-                // PLAN-961: a numeric constant is a leaf; a cast reads its operand.
-                E::NumericConst { .. } => Vec::new(),
-                E::Cast { operand, .. } => vec![*operand],
-                E::Unary { operand, .. }
-                | E::TextLen { operand }
-                | E::TextLenBytes { operand }
-                | E::TextClone { operand }
-                | E::ClosureClone { operand }
-                | E::TextToOwned { operand }
-                | E::TextToBorrowed { operand }
-                | E::CharToCodepoint { operand }
-                | E::CharFromCodepoint { operand }
-                | E::TextFromChar { operand } => vec![*operand],
-                E::Call { eval_args, .. } | E::RecordCtor { eval_args, .. } => eval_args.clone(),
-                E::CallClosure { callee, eval_args } => std::iter::once(*callee)
-                    .chain(eval_args.iter().copied())
-                    .collect(),
-                E::TextCharAt { operand, index } => vec![*operand, *index],
-                E::TextSlice {
-                    operand,
-                    start,
-                    end,
-                } => vec![*operand, *start, *end],
-                E::TextConcat { lhs, rhs } => vec![*lhs, *rhs],
-                E::FieldGet { base, .. } | E::BorrowView { base } | E::RecordClone { base, .. } => {
-                    vec![*base]
-                }
-                E::Move { inner } => vec![*inner],
-                E::ListLen { list }
-                | E::ListClear { list }
-                | E::ListGet { list, .. }
-                | E::ListRemove { list, .. } => vec![*list],
-                E::ListPush { list, value } => vec![*list, *value],
-                E::ListInsert { list, index, value } | E::ListSet { list, index, value } => {
-                    vec![*list, *index, *value]
-                }
-                E::VariantCtor { payload, .. } => payload.iter().copied().collect(),
-                E::VariantGuardTest { root, .. } | E::VariantProject { root, .. } => vec![*root],
-                // -- PLAN-964 object/nil/FStr surface --
-                E::NilLit => Vec::new(),
-                E::ObjectCtor { eval_args, .. } => eval_args.clone(),
-                E::ObjectGet { base, key } => vec![*base, *key],
-                E::ObjectSet { base, key, value } => vec![*base, *key, *value],
-                E::TextDisplay { operand } | E::DynCast { operand, .. } => vec![*operand],
-            }
-        }
-
         let mut uses = vec![0usize; body.exprs.len()];
         let mut direct_callee_uses = vec![0usize; body.exprs.len()];
         let mut borrowed_creators = BTreeSet::new();
@@ -3348,7 +3438,7 @@ impl Verifier {
                     *count += 1;
                 }
             }
-            for child in operands(&expr.kind) {
+            for child in Self::expr_operands(&expr.kind) {
                 if let Some(count) = uses.get_mut(child.0 as usize) {
                     *count += 1;
                 }
@@ -4363,7 +4453,7 @@ impl Verifier {
                 continue; // callee-type error already recorded
             };
             match receiver {
-                hir::ReceiverKind::View => {
+                hir::ReceiverKind::View | hir::ReceiverKind::Mut => {
                     if sig.params.is_empty() {
                         self.error(
                             "verify.type-mismatch",
@@ -4577,7 +4667,7 @@ impl Verifier {
         // receivers = `mut fn` are not in this batch).
         if let Some(def) = m.defs.get(body.owner.0 as usize) {
             if let hir::DefKind::Method { receiver, .. } = &def.kind {
-                if *receiver == hir::ReceiverKind::View {
+                if *receiver != hir::ReceiverKind::Static {
                     for l in &body.locals {
                         if l.role == hir::LocalRole::Param && l.index == Some(0) {
                             if l.param_mode != hir::ParamMode::View {
@@ -5317,16 +5407,7 @@ impl Verifier {
                     HirDomain::HostConsole | HirDomain::Text | HirDomain::TextRecord
                 ) || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
                     && lvt == ValueType::StrOwned)
-                    || (self.domain == HirDomain::Closures
-                        && l.role == hir::LocalRole::Capture
-                        && lvt == ValueType::Str)
-                    // PLAN-982（aggregates 文本入口裁定，2026-11-19）：closures
-                    // 域**参数位**的借用 `str`（受检文本入口 `fn main(input
-                    // str)` 的形参）——解析面只在 aggregates 参数位放行，入口
-                    // 专属纪律（非入口 fn 不得带 `str` 形参）由车道门把守。
-                    || (self.domain == HirDomain::Closures
-                        && l.role == hir::LocalRole::Param
-                        && lvt == ValueType::Str)
+                    || (self.domain == HirDomain::Closures && lvt == ValueType::Str)
                     // PLAN-909:  locals join the CLOSURES domain (the
                     // shared-cell value domain is int/bool/char, SEM-04).
                     || (self.domain == HirDomain::Closures && lvt == ValueType::Char))

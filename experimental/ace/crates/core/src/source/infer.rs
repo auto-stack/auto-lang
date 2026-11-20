@@ -30,8 +30,8 @@
 
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::source::ast::{
-    Arg, BinOp, Block, Expr, ExprKind, FnItem, Item, Program, Stmt, TypeAnn, TypeItem, TypeRef,
-    TypeWord,
+    Arg, BinOp, Block, Expr, ExprKind, FnItem, Item, Program, Receiver, Stmt, TypeAnn, TypeItem,
+    TypeRef, TypeWord,
 };
 use std::collections::BTreeMap;
 
@@ -78,6 +78,23 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     normalize_auto_face(program);
     merge_prototypes(program, &mut diags);
+    for item in &mut program.items {
+        let Item::Type(record) = item else {
+            continue;
+        };
+        for method in &mut record.methods {
+            if method.receiver == Receiver::View && writes_self(&method.body) {
+                method.receiver = Receiver::Mut;
+            }
+            if method.receiver == Receiver::Mut
+                && method.ret.kind == TypeRef::Inferred
+                && !returns_value(&method.body)
+            {
+                method.ret.kind = TypeRef::Builtin(TypeWord::Void);
+            }
+        }
+    }
+
     let global_get = crate::source::packages::GLOBAL_GET_PREFIX;
     let inferred_globals: Vec<_> = program
         .items
@@ -351,6 +368,48 @@ fn ty_text(t: &Ty) -> String {
         Ty::Concrete(_) => "x".to_string(),
         Ty::Unknown => "?".to_string(),
     }
+}
+
+/// The ordinary Auto face preserves legacy methods that write their
+/// receiver without the explicit `mut fn` spelling.
+fn writes_self(body: &Block) -> bool {
+    let mut blocks = vec![body];
+    while let Some(block) = blocks.pop() {
+        for statement in &block.stmts {
+            match statement {
+                Stmt::Assign { target, .. } if target.base.name == "self" => return true,
+                Stmt::IndexAssign(target) if target.base.name == "self" => return true,
+                Stmt::PlaceAssign(target) if target.base.name == "self" => return true,
+                Stmt::If { then, els, .. } => {
+                    blocks.push(then);
+                    blocks.extend(els);
+                }
+                Stmt::While { body, .. }
+                | Stmt::Loop { body, .. }
+                | Stmt::ForIn { body, .. }
+                | Stmt::Hold { body, .. } => blocks.push(body),
+                Stmt::IsMatch { arms, .. } => blocks.extend(arms.iter().map(|arm| &arm.body)),
+                Stmt::AggIsMatch { arms, .. } => {
+                    blocks.extend(arms.iter().filter_map(|arm| match &arm.body {
+                        crate::source::ast::AggArmBody::Block(body) => Some(body),
+                        _ => None,
+                    }))
+                }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } => {
+                    blocks.push(body);
+                    blocks.extend(catch.iter().map(|clause| &clause.body));
+                    blocks.extend(finally);
+                }
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 /// A body "returns a value" when it has a trailing expression statement or

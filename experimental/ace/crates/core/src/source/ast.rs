@@ -144,6 +144,14 @@ pub enum Receiver {
     Static,
     /// Readonly instance method: implicit `self` view param.
     View,
+    /// Mutable instance method: implicit `mut self` param.
+    Mut,
+}
+
+impl Receiver {
+    pub(crate) fn is_instance(self) -> bool {
+        matches!(self, Self::View | Self::Mut)
+    }
 }
 
 #[derive(Clone, Debug)]

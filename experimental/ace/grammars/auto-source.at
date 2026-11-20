@@ -2159,6 +2159,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fn-tail() {}
         }
         view-method {
+            opt(profiles: [auto, auto-packages]) { mut(field: "mut_receiver") }
             fn(field: "kw")
             fn-tail() {}
         }

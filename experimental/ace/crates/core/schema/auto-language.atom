@@ -27,7 +27,7 @@ descriptor(schema: "auto.hir.auto-language.draft", revision: 1u32, profile: "aut
         enum AccessKind { cases: [mutable, readonly] }
         enum EffectKind { cases: [observable, pure] }
         enum ParamModeKind { cases: [view, mut, move] }
-        enum ReceiverKind { cases: [static, view] }
+        enum ReceiverKind { cases: [static, view, mut] }
     }
 
     nodes {
@@ -143,7 +143,7 @@ descriptor(schema: "auto.hir.auto-language.draft", revision: 1u32, profile: "aut
 
         node block {
             slots: [Id]
-            statements: [let, return, if, loop, assign, break, continue, eval, fail]
+            statements: [let, return, if, loop, assign, break, continue, eval, fail, drop]
         }
 
         node let { fields { local: LocalRef; value: ExprRef } }
@@ -155,6 +155,7 @@ descriptor(schema: "auto.hir.auto-language.draft", revision: 1u32, profile: "aut
         node continue { fields { target: LoopRef } }
         node eval { fields { value: ExprRef } }
         node fail { fields { value: ExprRef } }
+        node drop { fields { local: LocalRef } }
     }
 
     branches {

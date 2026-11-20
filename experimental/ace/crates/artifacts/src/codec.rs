@@ -1567,6 +1567,7 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
                         Receiver::Free => "free",
                         Receiver::Static => "static",
                         Receiver::View => "view",
+                        Receiver::Mut => "mut",
                     }
                     .into(),
                     type_params: f.type_params.iter().map(|t| t.name.name.clone()).collect(),
@@ -1587,6 +1588,7 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
                             Receiver::Free => "free",
                             Receiver::Static => "static",
                             Receiver::View => "view",
+                            Receiver::Mut => "mut",
                         }
                         .into(),
                         // methods never carry type parameters (935 named

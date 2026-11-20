@@ -1306,7 +1306,9 @@ fn collections_fn_sig_for_def(
         .defs
         .get(def_index as usize)
         .and_then(|d| match d.kind {
-            hir::DefKind::Function { body, .. } => m.bodies.get(body.0 as usize),
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
+                m.bodies.get(body.0 as usize)
+            }
             _ => None,
         })
         .map(|body| {
@@ -1335,10 +1337,14 @@ fn collections_fn_sig_for_def(
         params.push(ty);
     }
     let result = collections_type_idx_of(&sig.result, m, out, &mut memo, &mut visiting)?;
-    let mut fields = vec![MirFieldDef {
-        name: "f0".into(),
-        ty: result,
-    }];
+    let mut fields = Vec::new();
+    // Unit has no storage and must never appear as a record field.
+    if !matches!(out.types.get(result as usize), Some(MirType::Unit)) {
+        fields.push(MirFieldDef {
+            name: "f0".into(),
+            ty: result,
+        });
+    }
     let mut has_mut_record = false;
     for (m_mode, base_ty) in modes.iter().zip(param_mir_tys.iter()) {
         if *m_mode != hir::ParamMode::MutBorrow {
@@ -2864,9 +2870,7 @@ fn collections_type_idx_of(
             hir::BuiltinType::I32 => Ok(out.intern_type(MirType::I32)),
             hir::BuiltinType::Bool => Ok(out.intern_type(MirType::Bool)),
             hir::BuiltinType::StrOwned => Ok(out.intern_type(MirType::Str)),
-            hir::BuiltinType::StrSlice if out.is_closures_profile() => {
-                Ok(out.intern_type(MirType::StrView))
-            }
+            hir::BuiltinType::StrSlice => Ok(out.intern_type(MirType::StrView)),
             // PLAN-909:  joins the CLOSURES surface (shared cell
             // value domain int/bool/char, SEM-04 / V-03).
             hir::BuiltinType::Char if out.is_closures_profile() => {
@@ -2915,9 +2919,7 @@ fn collections_type_idx_of(
                 hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
                 hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
                 hir::TypeKind::StrOwned => Ok(out.intern_type(MirType::Str)),
-                hir::TypeKind::Str if out.is_closures_profile() => {
-                    Ok(out.intern_type(MirType::StrView))
-                }
+                hir::TypeKind::Str => Ok(out.intern_type(MirType::StrView)),
                 // PLAN-909:  joins the CLOSURES surface (the shared
                 // cell value domain is int/bool/char, SEM-04 / V-03).
                 hir::TypeKind::Char if out.is_closures_profile() => {
@@ -3504,11 +3506,8 @@ struct FnLower<'a, 'budget> {
     /// callee's mut-record param positions, which the document's type
     /// section cannot express). Captured where the real bodies exist.
     sig_mode_overrides: BTreeMap<String, Vec<hir::ParamMode>>,
-    /// Slot index (into the FINAL slot table) one past the last slot at
-    /// the current STATEMENT's start — statement-tail borrow ends (774
-    /// 语句尾寿命 for temporaries) release view temps minted inside the
-    /// statement once its core instruction has been emitted.
-    stmt_slot_watermark: u32,
+    /// Outstanding temporary view tokens on the current control-flow path.
+    pending_temp_views: Vec<SlotId>,
     spans: Vec<(u32, SpanInfo)>,
     /// Whether block 0 got a real (non-placeholder) terminator.
     root_wired: bool,
@@ -4177,9 +4176,6 @@ k 0
         self.set_term(Terminator::Jump { target: hdr });
         self.cur = exit;
         self.terminated = false;
-        // the in-body views are ALL ended in-body; keep the statement-tail
-        // epilogue away from them (zero-iteration paths never mint them).
-        self.stmt_slot_watermark = self.base_slots + self.extra_slots.len() as u32;
         Ok(dst)
     }
 
@@ -4199,6 +4195,15 @@ k 0
     }
 
     fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
+        if let MirInstr::BorrowEnd { token } = &instr {
+            if let Some(index) = self
+                .pending_temp_views
+                .iter()
+                .rposition(|view| view == token)
+            {
+                self.pending_temp_views.remove(index);
+            }
+        }
         if let Some(reserve) = self.emission_reserve.as_mut() {
             grow_emission(
                 &mut self.blocks[self.cur as usize].instrs,
@@ -4363,31 +4368,24 @@ k 0
             ty,
             name: None,
         });
+        if matches!(self.out.types.get(ty as usize), Some(MirType::StrView)) {
+            self.pending_temp_views.push(idx);
+        }
         Ok(idx)
     }
 
-    /// End every StrView TEMP minted since the statement watermark (774
-    /// statement-tail lifetime): a method-receiver view dies with its
-    /// statement, so a later field replace of the root is legal. Named
-    /// view LOCALS live to scope end (782's root-hold semantics).
-    fn end_stmt_temp_views(&mut self) -> Result<(), AdapterError> {
-        let base = self.base_slots;
-        let wm = self.stmt_slot_watermark;
-        let mut ends: Vec<SlotId> = Vec::new();
-        for (i, slot) in self.extra_slots.iter().enumerate().rev() {
-            let idx = base + i as u32;
-            if idx < wm {
-                break;
-            }
-            if matches!(self.out.types.get(slot.ty as usize), Some(MirType::StrView)) {
-                ends.push(idx);
-            }
+    /// End only views minted in the current arm or statement, in reverse
+    /// order. A skipped short-circuit operand never creates its tokens.
+    fn end_temp_views_since(&mut self, start: usize) -> Result<(), AdapterError> {
+        while self.pending_temp_views.len() > start {
+            let token = self.pending_temp_views.pop().expect("outstanding view");
+            self.emit(MirInstr::BorrowEnd { token }, None)?;
         }
-        for t in ends {
-            self.emit(MirInstr::BorrowEnd { token: t }, None)?;
-        }
-        self.stmt_slot_watermark = base + self.extra_slots.len() as u32;
         Ok(())
+    }
+
+    fn end_stmt_temp_views(&mut self) -> Result<(), AdapterError> {
+        self.end_temp_views_since(0)
     }
 
     fn scalar_const(&mut self, value: MirConst) -> Result<u32, AdapterError> {
@@ -4667,6 +4665,7 @@ k 0
                 // Taken arm: result = rhs.
                 self.cur = rhs_b;
                 self.terminated = false;
+                let rhs_views = self.pending_temp_views.len();
                 let r = self.eval_expr(*rhs, depth + 1)?;
                 let rsp = self.span(*rhs);
                 self.emit(
@@ -4676,6 +4675,7 @@ k 0
                     },
                     rsp,
                 )?;
+                self.end_temp_views_since(rhs_views)?;
                 self.set_term(Terminator::Jump { target: join });
                 self.cur = join;
                 self.terminated = false;
@@ -5457,28 +5457,30 @@ k 0
                         // is not Copy — FIELD_MOVE field 0 is the only
                         // ownership exit (R3-F08: FieldGet of a Str field only
                         // ever mints a view).
-                        let f0_owned =
-                            ace_av_core::ownership::type_is_owned(&self.out, fields[0].ty);
-                        let v = self.temp_ty(ty)?;
-                        if f0_owned {
-                            self.emit(
-                                MirInstr::FieldMove {
-                                    dst: v,
-                                    root: wrap_dst,
-                                    path: vec![0],
-                                },
-                                sp,
-                            )?;
+                        let mut wb_idx = 0;
+                        let v = if is_unit_result {
+                            let unit = self.out.intern_type(MirType::Unit);
+                            self.temp_ty(unit)?
                         } else {
-                            self.emit(
-                                MirInstr::FieldGet {
-                                    dst: v,
-                                    base: wrap_dst,
-                                    path: vec![0],
-                                },
-                                sp,
-                            )?;
-                        }
+                            let v = self.temp_ty(ty)?;
+                            let extract =
+                                if ace_av_core::ownership::type_is_owned(self.out, fields[0].ty) {
+                                    MirInstr::FieldMove {
+                                        dst: v,
+                                        root: wrap_dst,
+                                        path: vec![0],
+                                    }
+                                } else {
+                                    MirInstr::FieldGet {
+                                        dst: v,
+                                        base: wrap_dst,
+                                        path: vec![0],
+                                    }
+                                };
+                            self.emit(extract, sp)?;
+                            wb_idx = 1;
+                            v
+                        };
                         // wb*: one write-back field per MUT-RECORD param of the
                         // callee, in signature order (fields[1..] mirror that
                         // order exactly). Only the callee's OWN mut params
@@ -5487,7 +5489,6 @@ k 0
                         // the old loop keyed on "any record actual", mis-
                         // indexing mixed signatures and panicking past the
                         // wrapper's field count).
-                        let mut wb_idx = 1usize;
                         for pos in self.callee_mut_record_params(callee_def, &callee_sig_ty) {
                             let back = self.temp_ty_from_cache(fields[wb_idx].ty)?;
                             // PLAN-881 V-09: a COPYABLE wb field copies out and
@@ -7258,7 +7259,7 @@ fn lower_function_with_emission(
         mut_param_slots,
         mut_borrow_temps: vec![],
         sig_mode_overrides: mode_overrides.clone(),
-        stmt_slot_watermark: slots.len() as u32,
+        pending_temp_views: Vec::new(),
         spans: vec![],
         root_wired: false,
         pending_joins: vec![],
@@ -7344,7 +7345,6 @@ fn lower_function_with_emission(
             }
             let stmt = &block.stmts[task.stmt_idx];
             task.stmt_idx += 1;
-            lower.stmt_slot_watermark = lower.base_slots + lower.extra_slots.len() as u32;
             match stmt {
                 hir::Stmt::Let { local, value } => {
                     // PLAN-864: a variant-typed binding whose initializer is
@@ -7373,9 +7373,21 @@ fn lower_function_with_emission(
                         }
                     }
                     let v = lower.eval_expr(*value, 0)?;
-                    lower.end_stmt_temp_views()?;
                     let dst = lower.slot_of_local[local.0 as usize];
                     let sp = lower.span(*value);
+                    if matches!(
+                        lower
+                            .out
+                            .types
+                            .get(lower.slot_ty_cache[dst as usize] as usize),
+                        Some(MirType::StrView)
+                    ) {
+                        // Copy the rooted view before ending its temporary token.
+                        lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
+                        lower.end_stmt_temp_views()?;
+                        continue;
+                    }
+                    lower.end_stmt_temp_views()?;
                     if lower.cell_locals.contains(&(local.0 as usize)) {
                         // PLAN-909: the initializer evaluates EXACTLY ONCE,
                         // then the cell is created and charged before any
@@ -7534,16 +7546,36 @@ fn lower_function_with_emission(
                     }
                 }
                 hir::Stmt::Return { value } => {
-                    let v = lower.eval_expr(*value, 0)?;
+                    let mut v = lower.eval_expr(*value, 0)?;
+                    let view_ty = (v != NO_SLOT)
+                        .then(|| lower.slot_ty_all(v))
+                        .filter(|ty| matches!(lower.out.types.get(*ty as usize), Some(MirType::StrView)));
+                    if let Some(ty) = view_ty {
+                        // Even a local read has its own source position at
+                        // the return boundary, where borrow escape is checked.
+                        let result = lower.temp_ty(ty)?;
+                        lower.emit(
+                            MirInstr::Copy {
+                                dst: result,
+                                src: v,
+                            },
+                            lower.span(*value),
+                        )?;
+                        v = result;
+                    }
                     lower.end_stmt_temp_views()?;
                     // R2-F08': a mut-record-param function returns the
                     // (source result, final mut params) wrapper — the
                     // caller unwraps and writes the params back.
                     let v = if let Some(wrap_ty) = lower.mut_wrap_ty {
-                        let mut operands = vec![v];
-                        for p in &lower.mut_param_slots {
-                            operands.push(*p);
+                        let mut operands = Vec::new();
+                        if !matches!(
+                            lower.out.types.get(lower.slot_ty_all(v) as usize),
+                            Some(MirType::Unit)
+                        ) {
+                            operands.push(v);
                         }
+                        operands.extend_from_slice(&lower.mut_param_slots);
                         let w = lower.temp_ty(wrap_ty)?;
                         lower.emit(
                             MirInstr::Aggregate {
@@ -7696,13 +7728,14 @@ fn lower_function_with_emission(
                         ),
                         _ => false,
                     };
-                    if is_closure {
-                        lower.emit(
-                            MirInstr::Drop {
-                                slot: lower.slot_of_local[local.0 as usize],
-                            },
-                            None,
-                        )?;
+                    let slot = lower.slot_of_local[local.0 as usize];
+                    if matches!(
+                        lower.out.types.get(lower.slot_ty_all(slot) as usize),
+                        Some(MirType::StrView)
+                    ) {
+                        lower.emit(MirInstr::BorrowEnd { token: slot }, None)?;
+                    } else if is_closure {
+                        lower.emit(MirInstr::Drop { slot }, None)?;
                     }
                 }
                 hir::Stmt::Eval { value } => {

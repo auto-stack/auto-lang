@@ -1877,6 +1877,14 @@ fn verify_owned_function_impl(
                             (0..n).find(|r| roots.get(*r) && !external_borrow[*r])
                         });
                         if let Some(r) = offending {
+                            // Checked source copies a view into its return
+                            // slot at the source expression span.
+                            let at = f.blocks[b as usize]
+                                .instrs
+                                .iter()
+                                .rposition(|instr| matches!(instr, MirInstr::Copy { dst, .. } if dst == value))
+                                .map(|index| bases[b as usize] + index as u32)
+                                .unwrap_or(flat);
                             fail = Some(err(
                                 "mir.borrow-escape",
                                 format!(
@@ -1884,7 +1892,7 @@ fn verify_owned_function_impl(
                                     slot_name(f, vs),
                                     slot_name(f, r)
                                 ),
-                                flat,
+                                at,
                             ));
                         }
                     }

@@ -161,6 +161,7 @@ fn receiver_token(r: ast::Receiver) -> &'static str {
         ast::Receiver::Free => "free",
         ast::Receiver::Static => "static",
         ast::Receiver::View => "view",
+        ast::Receiver::Mut => "mut",
     }
 }
 
@@ -169,6 +170,7 @@ fn receiver_parse(t: &str) -> Result<ast::Receiver, DeclEnvError> {
         "free" => ast::Receiver::Free,
         "static" => ast::Receiver::Static,
         "view" => ast::Receiver::View,
+        "mut" => ast::Receiver::Mut,
         _ => return Err(DeclEnvError::Malformed(format!("unknown receiver {t:?}"))),
     })
 }
@@ -727,6 +729,7 @@ pub fn decl_env_restore_with_foreign(
                     .map(|(n, st, fi, (s, e))| ResolvedMethod {
                         name: n.clone(),
                         is_static: *st,
+                        is_mut: d.fns.get(*fi).is_some_and(|f| f.receiver == "mut"),
                         fn_index: *fi,
                         span: Span { start: *s, end: *e },
                     })

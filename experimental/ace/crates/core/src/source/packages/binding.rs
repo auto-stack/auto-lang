@@ -2264,7 +2264,7 @@ impl<'a> Walker<'a> {
             self.walk_ann(&mut p.ty)?;
         }
         let mut locals: BTreeSet<String> = f.params.iter().map(|p| p.name.name.clone()).collect();
-        if f.receiver == Receiver::View {
+        if f.receiver.is_instance() {
             locals.insert("self".into());
         }
         self.walk_block(&mut f.body, locals)

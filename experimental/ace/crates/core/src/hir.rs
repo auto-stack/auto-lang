@@ -347,6 +347,7 @@ impl Effect {
 pub enum ReceiverKind {
     Static,
     View,
+    Mut,
 }
 
 impl ReceiverKind {
@@ -354,6 +355,7 @@ impl ReceiverKind {
         match self {
             ReceiverKind::Static => "static",
             ReceiverKind::View => "view",
+            ReceiverKind::Mut => "mut",
         }
     }
 }

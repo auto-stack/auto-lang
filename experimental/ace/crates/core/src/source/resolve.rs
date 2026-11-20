@@ -863,6 +863,11 @@ pub enum RStmt {
         value: ResolvedExpr,
         span: Span,
     },
+    /// End a named text view when execution leaves its lexical scope.
+    EndView {
+        local: LocalRef,
+        span: Span,
+    },
     /// PLAN-965: language-level error unwind (`fail(msg)` / uncaught `.?`).
     Fail {
         value: ResolvedExpr,
@@ -1275,8 +1280,9 @@ pub struct ResolvedField {
 #[derive(Clone, Debug)]
 pub struct ResolvedMethod {
     pub name: String,
-    /// static (no receiver) or readonly view (receiver = params[0]).
+    /// A static method has no receiver; instance methods use params[0].
     pub is_static: bool,
+    pub is_mut: bool,
     /// Index into `ResolvedProgram::fns`.
     pub fn_index: usize,
     pub span: Span,
@@ -2749,6 +2755,7 @@ fn resolve_detailed_in_mode(
             coll.variants[vi].methods.push(ResolvedMethod {
                 name: f.name.name.clone(),
                 is_static: false,
+                is_mut: false,
                 fn_index: i,
                 span: f.span,
             });
@@ -2775,6 +2782,7 @@ fn resolve_detailed_in_mode(
             records[oi].methods.push(ResolvedMethod {
                 name: f.name.name.clone(),
                 is_static: fn_receiver[i] == ast::Receiver::Static,
+                is_mut: fn_receiver[i] == ast::Receiver::Mut,
                 fn_index: i,
                 span: f.span,
             });
@@ -3546,7 +3554,7 @@ fn patch_foreign_sentinels(fns: &mut [ResolvedFn], sigs: &mut BTreeMap<String, F
                 patch_block(body, patch_idx);
             }
             RStmt::Loop { body, .. } => patch_block(body, patch_idx),
-            RStmt::Break { .. } | RStmt::Continue { .. } => {}
+            RStmt::Break { .. } | RStmt::Continue { .. } | RStmt::EndView { .. } => {}
         }
     }
     for f in fns.iter_mut() {
@@ -3577,7 +3585,9 @@ fn normalize_aggregates_bodies(
                 _ => None,
             };
             if let Some(vt) = tail_val_vt {
-                let vt = if ordinary_auto && matches!(vt, VT::Object(_) | VT::Str | VT::StrOwned) {
+                let vt = if ordinary_auto
+                    && matches!(vt, VT::Object(_) | VT::List(_) | VT::Str | VT::StrOwned)
+                {
                     VT::Dyn
                 } else {
                     vt
@@ -5379,7 +5389,7 @@ fn fn_sig_of_coll(
     // names/types below are the written ones.
     let mut param_names: Vec<String> = Vec::new();
     let mut params: Vec<VT> = Vec::new();
-    if recv == ast::Receiver::View {
+    if recv.is_instance() {
         param_names.push("self".to_string());
         // PLAN-1083: an enum instance method's receiver is the VARIANT
         // value (`is self` dispatches on it).
@@ -5397,8 +5407,7 @@ fn fn_sig_of_coll(
         });
     }
     // PLAN-963（T-08，L-24）：默认值与 param_names 逐位对齐（隐含 self 位恒 None）。
-    let mut defaults: Vec<Option<Box<ast::Expr>>> =
-        vec![None; usize::from(recv == ast::Receiver::View)];
+    let mut defaults: Vec<Option<Box<ast::Expr>>> = vec![None; usize::from(recv.is_instance())];
     for p in &f.params {
         defaults.push(p.default.clone());
     }
@@ -6346,7 +6355,7 @@ fn resolve_fn_reuse<'a, 's>(
     let mut param_modes: Vec<bool> = Vec::new();
     // Params live in the function's outermost scope. A view receiver is
     // the implicit `self` param 0 (PLAN-771 §5.3).
-    if receiver == ast::Receiver::View {
+    if receiver.is_instance() {
         // PLAN-1083: an enum instance method's receiver is the VARIANT.
         let self_vt = match owner_var {
             Some(vi) => VT::Variant(vi),
@@ -6356,20 +6365,24 @@ fn resolve_fn_reuse<'a, 's>(
         r.locals.push(LocalDecl {
             name: "self".to_string(),
             vt: self_vt,
-            mutable: false,
+            mutable: receiver == ast::Receiver::Mut,
             is_param: true,
             param_index: Some(0),
             capture_index: None,
             cell: false,
             is_capture: false,
-            mode: super::ast::ParamMode::Default,
+            mode: if receiver == ast::Receiver::Mut {
+                ast::ParamMode::Mut
+            } else {
+                ast::ParamMode::Default
+            },
             span: f.name.span,
         });
         r.scopes[0].names.insert("self".to_string(), lref);
         r.declared_names.insert("self".to_string());
         param_names.push("self".to_string());
         params.push(self_vt);
-        param_modes.push(false);
+        param_modes.push(receiver == ast::Receiver::Mut);
     }
     for (i, p) in f.params.iter().enumerate() {
         if rec_index.contains_key(&p.name.name) {
@@ -6407,13 +6420,7 @@ fn resolve_fn_reuse<'a, 's>(
             mutable: p.mode == ast::ParamMode::Mut,
             is_param: true,
             mode: p.mode,
-            param_index: Some(
-                (i + if receiver == ast::Receiver::View {
-                    1
-                } else {
-                    0
-                }) as u32,
-            ),
+            param_index: Some((i + if receiver.is_instance() { 1 } else { 0 }) as u32),
             capture_index: None,
             cell: false,
             is_capture: false,
@@ -6453,12 +6460,12 @@ fn resolve_fn_reuse<'a, 's>(
         name: f.name.name.clone(),
         name_span: f.name.span,
         item_span: f.span,
-        param_names: if receiver == ast::Receiver::View {
+        param_names: if receiver.is_instance() {
             param_names
         } else {
             sig.map(|g| g.param_names.clone()).unwrap_or(param_names)
         },
-        params: if receiver == ast::Receiver::View {
+        params: if receiver.is_instance() {
             params
         } else {
             sig.map(|g| g.params.clone()).unwrap_or(params)
@@ -12077,6 +12084,28 @@ F:{d}
         }
     }
 
+    fn end_block_views(&self, statements: &[RStmt], span: Span) -> Vec<RStmt> {
+        let mut ended = BTreeSet::new();
+        let mut ends = Vec::new();
+        for statement in statements.iter().rev() {
+            match statement {
+                RStmt::EndView { local, .. } => {
+                    ended.insert(*local);
+                }
+                RStmt::Let { local, .. }
+                    if self.locals[local.0].vt == VT::Str && !ended.contains(local) =>
+                {
+                    ends.push(RStmt::EndView {
+                        local: *local,
+                        span,
+                    });
+                }
+                _ => {}
+            }
+        }
+        ends
+    }
+
     /// Resolve one function body with an explicit block-frame stack (R6:
     /// block nesting is unlimited, so no recursion). Each frame owns a
     /// lexical scope (pushed on open, popped on close); while/loop frames
@@ -12147,10 +12176,17 @@ F:{d}
             let Some(s) = action else {
                 let frame = stack.pop().expect("resolve frame");
                 self.scopes.pop();
-                let block = RBlock {
+                let mut block = RBlock {
                     stmts: frame.stmts,
                     span: frame.src.span,
                 };
+                if self.profile.is_auto_language()
+                    && (!value_context || !matches!(frame.cont, RCont::FnBody))
+                    && rblock_can_fall_through(&block)
+                {
+                    let ends = self.end_block_views(&block.stmts, block.span);
+                    block.stmts.extend(ends);
+                }
                 match frame.cont {
                     RCont::FnBody => return block,
                     RCont::ThenArm { cond, els, span } => match els {
@@ -13519,6 +13555,17 @@ F:{d}
                             continue;
                         }
                         let mut stmts = Vec::new();
+                        if self.profile.is_auto_language() {
+                            for frame in stack.iter().rev() {
+                                stmts.extend(self.end_block_views(&frame.stmts, *span));
+                                if matches!(
+                                    frame.cont,
+                                    RCont::WhileArm { .. } | RCont::LoopArm { .. } | RCont::FnBody
+                                ) {
+                                    break;
+                                }
+                            }
+                        }
                         self.emit_break_or_continue_to_out(true, *span, &mut stmts);
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
@@ -13544,6 +13591,17 @@ F:{d}
                             continue;
                         }
                         let mut stmts = Vec::new();
+                        if self.profile.is_auto_language() {
+                            for frame in stack.iter().rev() {
+                                stmts.extend(self.end_block_views(&frame.stmts, *span));
+                                if matches!(
+                                    frame.cont,
+                                    RCont::WhileArm { .. } | RCont::LoopArm { .. } | RCont::FnBody
+                                ) {
+                                    break;
+                                }
+                            }
+                        }
                         self.emit_break_or_continue_to_out(false, *span, &mut stmts);
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
@@ -14981,11 +15039,29 @@ F:{d}
             ExprKind::ViewArg { name } => match self.lookup(&name.name) {
                 Some(l) => {
                     let vt = self.locals[l.0].vt;
-                    if !matches!(vt, VT::Rec(_)) {
+                    if self.profile.is_auto_language() && vt == VT::StrOwned {
+                        return ResolvedExpr {
+                            span: e.span,
+                            vt: VT::Str,
+                            kind: RExprKind::Method {
+                                recv: Box::new(ResolvedExpr {
+                                    span: name.span,
+                                    vt,
+                                    kind: RExprKind::ReadLocal(l),
+                                }),
+                                method: BuiltinMethod::To,
+                                to: Some(VT::Str),
+                                args: Vec::new(),
+                            },
+                        };
+                    }
+                    let readonly_value = self.profile.is_auto_language()
+                        && matches!(vt, VT::I32 | VT::Bool | VT::Char | VT::Str);
+                    if !matches!(vt, VT::Rec(_)) && !readonly_value {
                         self.bind_err(
                             "source.type-mismatch",
                             format!(
-                                "`.view` requires a record-typed local, `{}` is `{}`",
+                                "`.view` is not available for local `{}` of type `{}`",
                                 name.name,
                                 vt.as_str()
                             ),
@@ -15414,7 +15490,24 @@ F:{d}
             .find(|m| m.name == name.name)
         {
             Some(m) if !m.is_static => {
+                let recv = recv.map(|mut recv| {
+                    if m.is_mut {
+                        if let RExprKind::ReadLocal(local) = recv.kind {
+                            recv.kind = RExprKind::BorrowMut { local };
+                        } else {
+                            self.bind_err(
+                                "source.mut-receiver-place",
+                                "a mutable method requires a named receiver local",
+                                recv.span,
+                            );
+                        }
+                    }
+                    recv
+                });
                 let sig_params = self.method_sig_params(m.fn_index, 1);
+                let sig_names = self.method_sig_names(m.fn_index, 1);
+                let sig_defaults = self.method_sig_defaults(m.fn_index, 1);
+                self.fill_default_args(&sig_names, &sig_params, &sig_defaults, &mut rargs, span);
                 self.retag_method_args(&mut rargs, m.fn_index, 1);
                 self.check_args(
                     &name.name,
@@ -15551,67 +15644,8 @@ F:{d}
                 kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
             };
         };
-        let mut rargs = self.resolve_args(args);
-        match self.records[ri]
-            .methods
-            .iter()
-            .find(|m| m.name == name.name)
-        {
-            Some(m) if !m.is_static => {
-                // receiver occupies param 0; visible args bind from param 1
-                let sig_params = self.method_sig_params(m.fn_index, 1);
-                let sig_names = self.method_sig_names(m.fn_index, 1);
-                let sig_defaults = self.method_sig_defaults(m.fn_index, 1);
-                self.fill_default_args(&sig_names, &sig_params, &sig_defaults, &mut rargs, span);
-                self.retag_method_args(&mut rargs, m.fn_index, 1);
-                self.check_args(
-                    &name.name,
-                    &self.method_sig_names(m.fn_index, 1),
-                    &sig_params,
-                    &rargs,
-                    span,
-                );
-                ResolvedExpr {
-                    span,
-                    vt: self.method_sig_result(m.fn_index),
-                    kind: RExprKind::MethodCall {
-                        fn_index: m.fn_index,
-                        recv: Some(Box::new(rrecv)),
-                        args: rargs,
-                    },
-                }
-            }
-            Some(_) => {
-                self.bind_err(
-                    "source.not-callable",
-                    format!(
-                        "`{}` is a static method of `{}`; call it as `{}.{}(...)`",
-                        name.name, self.records[ri].name, self.records[ri].name, name.name
-                    ),
-                    name.span,
-                );
-                ResolvedExpr {
-                    span,
-                    vt: VT::I32,
-                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
-                }
-            }
-            None => {
-                self.bind_err(
-                    "source.undefined",
-                    format!(
-                        "type `{}` has no method named `{}`",
-                        self.records[ri].name, name.name
-                    ),
-                    name.span,
-                );
-                ResolvedExpr {
-                    span,
-                    vt: VT::I32,
-                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
-                }
-            }
-        }
+        let args = self.resolve_args(args);
+        self.instance_or_static(Some(Box::new(rrecv)), ri, name, args, span)
     }
 
     /// Resolve an argument list (positional and named).
@@ -16572,6 +16606,10 @@ F:{d}
                         continue;
                     }
                     if self.profile == SourceProfile::Auto {
+                        if base.vt.is_text() && name.name == "len" {
+                            out[dest] = self.resolve_method(&name, base, Vec::new(), None, span);
+                            continue;
+                        }
                         if base.vt == VT::Dyn {
                             let object = self.coll.intern_object(VT::Dyn);
                             base = Self::coerce_dynamic(base, VT::Object(object));
@@ -18676,7 +18714,7 @@ F:{d}
                     Some(i)
                 };
                 if let Some(pos) = pos.filter(|&p| p < sig.params.len()) {
-                    retag_literal(&mut a.value, sig.params[pos]);
+                    self.adapt_argument_type(&mut a.value, sig.params[pos]);
                 }
             }
             self.check_args(
@@ -19307,7 +19345,7 @@ F:{d}
                 );
             }
             if let Some(want) = signature.params.get(index).copied() {
-                retag_literal(&mut arg.value, want);
+                self.adapt_argument_type(&mut arg.value, want);
                 if arg.value.vt != want {
                     self.bind_err(
                         "source.type-mismatch",
@@ -19349,6 +19387,27 @@ F:{d}
     /// owning formal (D-03 / AP-4): the same contextual typing a `let s Str`
     /// initializer gets, applied to METHOD call arguments — regular function
     /// calls retag in their own arm; `from` skips the receiver param.
+    fn adapt_argument_type(&self, value: &mut ResolvedExpr, want: VT) {
+        retag_literal(value, want);
+        if self.profile.is_auto_language() && want == VT::Str && value.vt == VT::StrOwned {
+            let span = value.span;
+            let owned = std::mem::replace(
+                value,
+                ResolvedExpr {
+                    span,
+                    vt: VT::Str,
+                    kind: RExprKind::Unit,
+                },
+            );
+            value.kind = RExprKind::Method {
+                recv: Box::new(owned),
+                method: BuiltinMethod::To,
+                to: Some(VT::Str),
+                args: Vec::new(),
+            };
+        }
+    }
+
     fn retag_method_args(&mut self, rargs: &mut [ResolvedArg], fn_index: usize, from: usize) {
         let param_names = self.method_sig_names(fn_index, from);
         let params = self.method_sig_params(fn_index, from);
@@ -19361,7 +19420,7 @@ F:{d}
                 Some(i)
             };
             if let Some(pos) = pos.filter(|&p| p < params.len()) {
-                retag_literal(&mut a.value, params[pos]);
+                self.adapt_argument_type(&mut a.value, params[pos]);
             }
         }
     }

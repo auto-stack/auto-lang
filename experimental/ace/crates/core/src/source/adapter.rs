@@ -1952,6 +1952,9 @@ struct ENode {
 
 #[derive(Clone, Copy)]
 enum SKind {
+    EndView {
+        local: usize,
+    },
     Let {
         local: usize,
         value: usize,
@@ -2396,6 +2399,12 @@ impl PlanCtx<'_> {
                     let v = self.plan_expr(plan, f, value);
                     plan.blocks[home].stmts.push(SNode {
                         kind: SKind::Return { value: v },
+                        span: *span,
+                    });
+                }
+                RStmt::EndView { local, span } => {
+                    plan.blocks[home].stmts.push(SNode {
+                        kind: SKind::EndView { local: local.0 },
                         span: *span,
                     });
                 }
@@ -3723,7 +3732,9 @@ impl PlanCtx<'_> {
                     // VARIANT receiver passes by value — composites are
                     // never view-borrowed on this surface (verify 864).
                     let rs = self.plan_expr(plan, f, r);
-                    if matches!(r.vt, VT::Variant(_)) {
+                    if matches!(r.vt, VT::Variant(_))
+                        || matches!(r.kind, RExprKind::BorrowMut { .. })
+                    {
                         eval.push(rs);
                     } else {
                         plan.exprs.push(ENode {
@@ -3941,7 +3952,9 @@ fn stmt_term_memo(s: &RStmt, terms: &BTreeMap<usize, Option<Term>>) -> Term {
                 Term::No
             }
         }
-        RStmt::While { .. } | RStmt::Let { .. } | RStmt::Assign { .. } => Term::No,
+        RStmt::While { .. } | RStmt::Let { .. } | RStmt::Assign { .. } | RStmt::EndView { .. } => {
+            Term::No
+        }
     }
 }
 
@@ -4004,6 +4017,7 @@ fn stmt_span(s: &RStmt) -> Span {
         RStmt::Let { span, .. }
         | RStmt::Assign { span, .. }
         | RStmt::Return { span, .. }
+        | RStmt::EndView { span, .. }
         | RStmt::Fail { span, .. }
         | RStmt::If { span, .. }
         | RStmt::While { span, .. }
@@ -4366,20 +4380,24 @@ impl<'p> Emitter<'p> {
         // PLAN-864: the collections surface owns `Str` values (literals,
         // fields, elements) — the named entry the ty_name ref resolves to.
         if self.profile.is_collections() || self.profile.is_aggregates() {
-            if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates() {
+            let admits_char =
+                self.profile == SourceProfile::Closures || self.profile.is_aggregates();
+            // Collections exposes Str owners. A literal used as a text
+            // operand may still need the existing static view representation.
+            if admits_char
+                || self
+                    .plans
+                    .iter()
+                    .any(|plan| plan.exprs.iter().any(|expr| expr.vt == VT::Str))
+            {
                 frag!("type t_str str {}", program_span);
                 spans.types.push(program_span);
                 nl!(12);
-                // PLAN-909: the closures surface admits  — the shared
-                // cell value domain is int/bool/char (SEM-04 / V-03).
-                // PLAN-972 (T-02): the aggregates profile rides the same
-                // closures-superset verification domain (char locals and
-                // char-typed expressions admitted) — t_char rides along.
-                if self.profile == super::SourceProfile::Closures || self.profile.is_aggregates() {
-                    frag!("type t_char char {}", program_span);
-                    spans.types.push(program_span);
-                    nl!(12);
-                }
+            }
+            if admits_char {
+                frag!("type t_char char {}", program_span);
+                spans.types.push(program_span);
+                nl!(12);
             }
             frag!("type t_Str Str {}", program_span);
             spans.types.push(program_span);
@@ -4830,6 +4848,7 @@ impl<'p> Emitter<'p> {
                 .unwrap_or_default();
             let recv_word = match f.receiver {
                 crate::source::ast::Receiver::Static => "static",
+                crate::source::ast::Receiver::Mut => "mut",
                 _ => "view",
             };
             // PLAN-881 (R3-F07 parity): a SCAFFOLD method declaration is
@@ -5694,6 +5713,7 @@ impl<'p> Emitter<'p> {
                         SKind::Eval { value } => {
                             format!("eval(value: e{}) {{}}", value)
                         }
+                        SKind::EndView { local } => format!("drop(local: l{}) {{}}", local),
                         SKind::Fail { value } => {
                             format!("fail(value: e{}) {{}}", value)
                         }

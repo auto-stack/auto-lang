@@ -252,7 +252,7 @@ pub fn apply_body_facts(
                 stmts.extend(body.stmts.iter_mut());
             }
             RStmt::Loop { body, .. } => stmts.extend(body.stmts.iter_mut()),
-            RStmt::Break { .. } | RStmt::Continue { .. } => {}
+            RStmt::Break { .. } | RStmt::Continue { .. } | RStmt::EndView { .. } => {}
         }
     }
 

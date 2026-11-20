@@ -5,6 +5,7 @@
 use ace_av_core::abc::encode_abc;
 use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits};
 use ace_av_core::contract::{fnv1a64, ExecOutcome, ObjectKey, Value};
+use ace_av_core::mir_verify::MirVerifyError;
 use ace_av_core::verify_mir;
 use ace_core::atom_text::Diagnostic;
 use ace_core::runtime_contract::sha256_hex;
@@ -150,20 +151,23 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                         step["value"] = json!(value);
                     }
                     Value::Unit => step["channel"] = json!("unit"),
-                    Value::Str(_) | Value::Object(_) => match display_result(value) {
-                        Some(text) => {
-                            step["channel"] = json!(if matches!(value, Value::Str(_)) {
-                                "text"
-                            } else {
-                                "object"
-                            });
-                            step["value_text"] = json!(text);
+                    Value::Str(_) | Value::List(_) | Value::Object(_) => {
+                        match display_result(value) {
+                            Some(text) => {
+                                step["channel"] =
+                                    json!(if matches!(value, Value::Str(_) | Value::List(_)) {
+                                        "text"
+                                    } else {
+                                        "object"
+                                    });
+                                step["value_text"] = json!(text);
+                            }
+                            None => {
+                                step["outcome"] = json!("resource");
+                                step["diag"] = json!({"stage":"run", "code":"av.resource.result-display", "message":"result display exceeds its bounded value domain"});
+                            }
                         }
-                        None => {
-                            step["outcome"] = json!("resource");
-                            step["diag"] = json!({"stage":"run", "code":"av.resource.result-display", "message":"result display exceeds its bounded value domain"});
-                        }
-                    },
+                    }
                     other => {
                         return Err(format!(
                             "language-source returned unsupported result {}",
@@ -225,6 +229,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
 fn display_result(value: &Value) -> Option<String> {
     enum Part {
         Value(Value),
+        ListMember(Value),
         Key(ObjectKey),
         Text(&'static str),
     }
@@ -256,6 +261,33 @@ fn display_result(value: &Value) -> Option<String> {
             Part::Value(Value::Nil) => append("None")?,
             Part::Value(Value::Str(text)) => append(std::str::from_utf8(text.bytes()).ok()?)?,
             Part::Value(Value::Dyn(value)) => stack.push(Part::Value(value.as_value().clone())),
+            Part::ListMember(Value::Dyn(value)) => {
+                stack.push(Part::ListMember(value.as_value().clone()));
+            }
+            Part::ListMember(Value::Str(text)) => {
+                let text = std::str::from_utf8(text.bytes()).ok()?;
+                if text.len() > MAX_BYTES {
+                    return None;
+                }
+                append(&serde_json::to_string(text).ok()?)?;
+            }
+            Part::ListMember(value) => stack.push(Part::Value(value)),
+            Part::Value(Value::List(list)) => {
+                let list = list.rc.borrow();
+                if list.elems.len().saturating_mul(2) + stack.len() + visited
+                    > ace_av_core::dynamic::MAX_DYN_NODES as usize
+                {
+                    return None;
+                }
+                append("[")?;
+                stack.push(Part::Text("]"));
+                for (index, value) in list.elems.iter().enumerate().rev() {
+                    stack.push(Part::ListMember(value.clone()));
+                    if index > 0 {
+                        stack.push(Part::Text(", "));
+                    }
+                }
+            }
             Part::Value(Value::Object(cell)) => {
                 let cell = cell.borrow();
                 if cell.entries.len().saturating_mul(4) + stack.len() + visited
@@ -467,8 +499,24 @@ fn run_chain(
         // frozen closures-family MIR with the record-method def admission.
         let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
             .map_err(|e| json!({"stage":"lower","code":"lower","message":format!("{e:?}")}))?;
-        verify_mir(&mir)
-            .map_err(|e| json!({"stage":"verify","code":"mir","message":format!("{e:?}")}))?;
+        verify_mir(&mir).map_err(|error| {
+            let mut diagnostic = json!({
+                "stage": "verify",
+                "code": error.code(),
+                "message": format!("{error:?}"),
+            });
+            if let MirVerifyError::Invalid {
+                span: Some(span), ..
+            }
+            | MirVerifyError::Unsupported {
+                span: Some(span), ..
+            } = error
+            {
+                diagnostic["path"] = json!(path);
+                diagnostic["span"] = json!({"start": span.start, "end": span.end});
+            }
+            diagnostic
+        })?;
         let abc = encode_abc(&mir)
             .map_err(|e| json!({"stage":"encode","code":"abc","message":format!("{e:?}")}))?;
         let flat = abc.to_flat();

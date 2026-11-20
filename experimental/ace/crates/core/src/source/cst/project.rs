@@ -6885,7 +6885,7 @@ impl<'a> Engine<'a> {
             .expect("fn-item carries fn-tail");
         let name_leaf = self.cx.field_child(tail, "name").expect("fn name");
         let name = ident_of(&mut self.cx, name_leaf);
-        if receiver == Receiver::View && name.name == "self" {
+        if receiver.is_instance() && name.name == "self" {
             let span = name.span;
             self.cx.reject(span, || self_method_name(span));
         }
@@ -6927,7 +6927,7 @@ impl<'a> Engine<'a> {
             .chain(type_params.iter().map(|t| t.name.name.clone()))
             .collect();
         let params = self.project_params(self.cx.field_child(tail, "params"));
-        if receiver == Receiver::View {
+        if receiver.is_instance() {
             for prm in &params {
                 if prm.name.name == "self" {
                     let span = prm.name.span;
@@ -7307,6 +7307,9 @@ impl<'a> Engine<'a> {
                 // 面**函数参数位**的借用 `str`（受检文本入口专属面——
                 // `VT::Str` ⇒ MIR `StrView`）；字段/返回位与其余 collections
                 // 面维持具名拒绝，入口专属纪律由车道门把守。
+                "str" if ret_pos && self.cx.profile.is_auto_language() => {
+                    return int(TypeWord::Str)
+                }
                 "str" if param_pos && self.cx.profile.is_aggregates() => return int(TypeWord::Str),
                 "Str" => return int(TypeWord::StrOwned),
                 "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
@@ -7335,7 +7338,8 @@ impl<'a> Engine<'a> {
             self.cx.reject(span, move || unsupported_ty(&word, span));
             return int(TypeWord::Int);
         }
-        if self.cx.profile.is_entry_unit() && word == "void" {
+        if (self.cx.profile.is_entry_unit() || self.cx.profile.is_auto_language()) && word == "void"
+        {
             return int(TypeWord::Void);
         }
         if self.cx.profile.is_record() {
@@ -7862,6 +7866,8 @@ impl<'a> Engine<'a> {
             } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
                 let receiver = if kind == self.cx.k.static_method {
                     Receiver::Static
+                } else if self.cx.field_child(c, "mut_receiver").is_some() {
+                    Receiver::Mut
                 } else {
                     Receiver::View
                 };
@@ -7938,6 +7944,8 @@ impl<'a> Engine<'a> {
             } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
                 let receiver = if kind == self.cx.k.static_method {
                     Receiver::Static
+                } else if self.cx.field_child(c, "mut_receiver").is_some() {
+                    Receiver::Mut
                 } else {
                     Receiver::View
                 };

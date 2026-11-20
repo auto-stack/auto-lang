@@ -1544,6 +1544,7 @@ impl<'d> Binder<'d> {
                     let receiver = match word.as_str() {
                         "static" => hir::ReceiverKind::Static,
                         "view" => hir::ReceiverKind::View,
+                        "mut" => hir::ReceiverKind::Mut,
                         _ => continue,
                     };
                     // PLAN-881 (828 D-01 parity): a BODY-LESS method

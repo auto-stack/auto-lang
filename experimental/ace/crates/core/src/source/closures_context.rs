@@ -112,6 +112,7 @@ pub enum ReceiverDump {
     Free,
     Static,
     View,
+    Mut,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +162,8 @@ pub struct FieldDump {
 pub struct MethodDump {
     pub name: String,
     pub is_static: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_mut: bool,
     pub fn_index: usize,
     pub span: (usize, usize),
 }
@@ -365,6 +368,7 @@ fn receiver_dump(r: Receiver) -> ReceiverDump {
         Receiver::Free => ReceiverDump::Free,
         Receiver::Static => ReceiverDump::Static,
         Receiver::View => ReceiverDump::View,
+        Receiver::Mut => ReceiverDump::Mut,
     }
 }
 
@@ -461,6 +465,7 @@ pub fn dump_context(front: &ClosuresFunctionFrontend) -> ContextDump {
                 .map(|m| MethodDump {
                     name: m.name.clone(),
                     is_static: m.is_static,
+                    is_mut: m.is_mut,
                     fn_index: m.fn_index,
                     span: pair(m.span),
                 })
@@ -618,6 +623,7 @@ fn receiver_in(d: ReceiverDump) -> Receiver {
         ReceiverDump::Free => Receiver::Free,
         ReceiverDump::Static => Receiver::Static,
         ReceiverDump::View => Receiver::View,
+        ReceiverDump::Mut => Receiver::Mut,
     }
 }
 
@@ -913,6 +919,7 @@ pub fn restore_context(
                 .map(|m| ResolvedMethod {
                     name: m.name.clone(),
                     is_static: m.is_static,
+                    is_mut: m.is_mut,
                     fn_index: m.fn_index,
                     span: span(m.span),
                 })

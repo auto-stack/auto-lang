@@ -1358,6 +1358,11 @@ fn remap_locals_stmts(stmts: &mut [RStmt], map: &BTreeMap<usize, LocalRef>) {
                     stack.push(bs);
                 }
             }
+            RStmt::EndView { local, .. } => {
+                if let Some(&mapped) = map.get(&local.0) {
+                    *local = mapped;
+                }
+            }
             RStmt::Break { .. } | RStmt::Continue { .. } => {}
         }
     }
@@ -1404,6 +1409,7 @@ fn offset_step_locals_stmts(stmts: &mut [RStmt], offset: usize) {
                     stack.push(bs);
                 }
             }
+            RStmt::EndView { local, .. } => shift(local),
             RStmt::Break { .. } | RStmt::Continue { .. } => {}
         }
     }
@@ -1802,6 +1808,7 @@ impl<'a> StateBuilder<'a> {
                 }
                 body.stmts = bnew;
             }
+            RStmt::EndView { .. } => {}
         }
         out.push(s);
     }

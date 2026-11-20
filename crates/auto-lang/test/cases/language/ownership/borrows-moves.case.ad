@@ -1,0 +1,1249 @@
+# Borrowing, moves and scoped ownership
+
+## Case: mut-reborrow
+id: "av.parity.1086.mut-reborrow"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { n int }
+fn bump(mut p P) { p.n = p.n + 2 }
+fn main() int { var p = P(40); bump(p.mut); return p.n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: owned-transfer
+id: "av.parity.1086.owned-transfer"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { text Str }
+fn consume(move p P) int { if p.text == "ok" { return 42 }; return 0 }
+fn main() int { let p = P("ok".clone()); return consume(p.move) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: hold-scope
+id: "av.parity.1086.hold-scope"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { v int }
+fn main() int {
+ var p = P(40)
+ let hold p as q { p = P(q.v + 2) }
+ return p.v
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: use-after-move
+id: "av.parity.1086.use-after-move"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let a = List<int>.new()
+ let b = a.move
+ return a.len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "mir.use-after-move"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: collections-str
+id: "av.parity.1086.collections-str"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn label() Str {
+    return "你".clone() + "好"
+}
+fn main() int {
+    var labels = List<Str>.new()
+    let next = label()
+    labels.push(next.move)
+    let taken = labels.remove(0)
+    if taken.len() != 2 { return 0 }
+    let copied = taken.clone()
+    if copied != "你好".clone() || taken.len() != 2 { return 1 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/collections-source-run-v1"
+entry: "d_main"
+exit: 42
+
+## Case: owned-argument
+id: "av.parity.1086.owned-argument"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn len(s str) int { return s.len() }
+fn main() int { let s = "你好".clone(); return len(s) + 40 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: named-view
+id: "av.parity.1086.named-view"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let s = "abc".clone(); let v = s.slice(0,2); return v.len() + 40 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: borrow-block
+id: "av.parity.1086.borrow-block"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { var s = "abc".clone(); if true { let v = s.view; if v.len() != 3 { return 0 } }; s = "ok".clone(); return 40 + s.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: mut-resource
+id: "av.parity.1086.mut-resource"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { s Str }; fn bump(mut p P) { p.s = p.s + "!" }; fn main() int { var p = P("你"); bump(p.mut); return p.s.len() + 40 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: mut-return
+id: "av.parity.1086.mut-return"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { n int; mut fn bump() int { self.n = self.n + 2; return self.n } }; fn main() int { var p = P(19); return p.bump() + p.n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: method-write
+id: "av.parity.1086.method-write"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { n int; mut fn bump() { self.n = self.n + 2 } }; fn main() int { var p = P(40); p.bump(); return p.n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: method-readonly-receiver
+id: "av.parity.1086.method-readonly-receiver"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { n int; mut fn bump() { self.n = self.n + 2 } }; fn main() int { let p = P(40); p.bump(); return p.n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "verify.immutable-write"
+
+## Case: mut-alias-rejected
+id: "av.parity.1086.mut-alias-rejected"
+tags: ["av-language-parity", "plan-1086"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { n int }; fn bump(mut a P, mut b P) { a.n = a.n + 2; b.n = b.n + 2 }; fn main() int { var p = P(40); bump(p.mut, p.mut); return p.n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "verify.mut-conflict"
+
+## Case: legacy-14-borrow-001-view-basic
+id: "legacy.14_borrow.001_view_basic"
+entry-mode: "program"
+
+### Auto
+path: "view_basic.at"
+```auto
+let s = "hello"
+let v = s.view
+v
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello"
+
+## Case: legacy-14-borrow-002-view-multiple
+id: "legacy.14_borrow.002_view_multiple"
+entry-mode: "program"
+
+### Auto
+path: "view_multiple.at"
+```auto
+let x = 42
+let v1 = x.view
+let v2 = x.view
+v1 + v2
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+84
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 84
+
+## Case: legacy-14-borrow-004-move-basic
+id: "legacy.14_borrow.004_move_basic"
+entry-mode: "program"
+
+### Auto
+path: "move_basic.at"
+```auto
+let s1 = "hello"
+let s2 = s1.move
+s2
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello"
+
+## Case: legacy-14-borrow-005-view-preserves
+id: "legacy.14_borrow.005_view_preserves"
+entry-mode: "program"
+
+### Auto
+path: "view_preserves.at"
+```auto
+let x = 100
+let v = x.view
+x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+100
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 100
+
+## Case: legacy-14-borrow-006-nested-view
+id: "legacy.14_borrow.006_nested_view"
+entry-mode: "program"
+
+### Auto
+path: "nested_view.at"
+```auto
+let x = 21
+let v1 = x.view
+let v2 = v1.view
+v2 + v2
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-14-borrow-007-borrow-arithmetic
+id: "legacy.14_borrow.007_borrow_arithmetic"
+entry-mode: "program"
+
+### Auto
+path: "borrow_arithmetic.at"
+```auto
+let x = 5
+let y = 6
+let vx = x.view
+let vy = y.view
+vx * vy
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 30
+
+## Case: legacy-14-borrow-009-view-in-expr
+id: "legacy.14_borrow.009_view_in_expr"
+entry-mode: "program"
+
+### Auto
+path: "view_in_expr.at"
+```auto
+let x = 10
+let v = x.view
+v + 5
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+15
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 15
+
+## Case: legacy-14-borrow-011-move-chaining
+id: "legacy.14_borrow.011_move_chaining"
+entry-mode: "program"
+
+### Auto
+path: "move_chaining.at"
+```auto
+let s1 = "first"
+let s2 = s1.move
+s2
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+first
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "first"
+
+## Case: legacy-14-borrow-012-str-sliceview
+id: "legacy.14_borrow.012_str_sliceview"
+entry-mode: "program"
+
+### Auto
+path: "str_sliceview.at"
+```auto
+let s = "hello world"
+let v = s.view
+v
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello world
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello world"
+
+## Case: legacy-14-borrow-013-str-slice-multi
+id: "legacy.14_borrow.013_str_slice_multi"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_multi.at"
+```auto
+let s = "hello"
+let v1 = s.view
+let v2 = s.view
+f"[$v1, $v2]"
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+[hello, hello]
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "[hello, hello]"
+
+## Case: legacy-14-borrow-014-str-slice-nested
+id: "legacy.14_borrow.014_str_slice_nested"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_nested.at"
+```auto
+let s = "hello"
+let v = s.view
+v
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello"
+
+## Case: legacy-14-borrow-016-str-slice-take
+id: "legacy.14_borrow.016_str_slice_take"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_take.at"
+```auto
+let s = "hello"
+let t = s.move
+t
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello"
+
+## Case: legacy-14-borrow-017-str-slice-mixed
+id: "legacy.14_borrow.017_str_slice_mixed"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_mixed.at"
+```auto
+let s = "first"
+let v = s.view
+let t = s.move
+v
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+first
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "mir.mut-conflict"
+
+## Case: legacy-14-borrow-018-str-slice-preserves
+id: "legacy.14_borrow.018_str_slice_preserves"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_preserves.at"
+```auto
+let s = "hello"
+let v = s.view
+s
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello"
+
+## Case: legacy-99-plan231-006-mutfn-int-return
+id: "legacy.99_plan231.006_mutfn_int_return"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_int_return.at"
+```auto
+// Test: mut fn returning int (no Option)
+type Counter {
+    count int
+
+    mut fn next() int {
+        self.count = self.count - 1
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let v1 = c.next()
+    print(f"v1: $v1")
+    let v2 = c.next()
+    print(f"v2: $v2")
+    print("mutfn int return OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+v1: 2
+v2: 1
+mutfn int return OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+v1: 2
+v2: 1
+mutfn int return OK
+```
+
+## Case: legacy-99-plan231-007-mutfn-void-return
+id: "legacy.99_plan231.007_mutfn_void_return"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_void_return.at"
+```auto
+// Test: mut fn returning void (should pass like vmtest-09)
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+
+    fn get_count() int {
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    let n = c.get_count()
+    print(f"count: $n")
+    print("mutfn void return OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+count: 3
+mutfn void return OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+count: 3
+mutfn void return OK
+```
+
+## Case: legacy-99-plan231-008-like-vmtest09
+id: "legacy.99_plan231.008_like_vmtest09"
+entry-mode: "program"
+
+### Auto
+path: "like_vmtest09.at"
+```auto
+// Exact copy of vmtest-09-self-field.at
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+
+    fn get_count() int {
+        return self.count
+    }
+}
+
+fn main() {
+    print("=== Self field access test ===")
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    let n = c.get_count()
+    print(f"count: $n")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+=== Self field access test ===
+count: 3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+=== Self field access test ===
+count: 3
+```
+
+## Case: legacy-99-plan231-009-mutfn-print-direct
+id: "legacy.99_plan231.009_mutfn_print_direct"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_print_direct.at"
+```auto
+// Test: mut fn + direct print after calls (no f-string)
+type Counter {
+    count int
+
+    mut fn increment() void {
+        self.count = self.count + 1
+    }
+}
+
+fn main() {
+    var c = Counter(0)
+    c.increment()
+    c.increment()
+    c.increment()
+    print(c.count)
+    print("mutfn print direct OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+3
+mutfn print direct OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+mutfn print direct OK
+```
+
+## Case: legacy-99-plan231-010-mutfn-int-no-fstr
+id: "legacy.99_plan231.010_mutfn_int_no_fstr"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_int_no_fstr.at"
+```auto
+// Test: mut fn returning int, no f-string
+type Counter {
+    count int
+
+    mut fn next() int {
+        self.count = self.count - 1
+        return self.count
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let v1 = c.next()
+    print(v1)
+    let v2 = c.next()
+    print(v2)
+    print("mutfn int no fstr OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+2
+1
+mutfn int no fstr OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+2
+1
+mutfn int no fstr OK
+```
+
+## Case: return-external-view
+id: "av.parity.1086.return-external-view"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn head(s str) str { return s.slice(0,2) }; fn main() int { let s = "abcd".clone(); let v = head(s); return 40 + v.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: return-local-view
+id: "av.parity.1086.return-local-view"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leak() str { let s = "abcd".clone(); let v = s.view; return v }; fn main() int { return leak().len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "mir.borrow-escape"
+message-contains: "rooted at this frame"
+
+## Case: borrow-loop
+id: "av.parity.1086.borrow-loop"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { var s = "ab".clone(); var n = 0; loop { let v = s.view; n = n + v.len(); if n == 2 { continue }; if n == 4 { break } }; s = "ok".clone(); return 36 + n + s.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-14-borrow-008-view-in-array
+id: "legacy.14_borrow.008_view_in_array"
+entry-mode: "program"
+
+### Auto
+path: "view_in_array.at"
+```auto
+let x = 10
+let y = 20
+[x.view, y.view]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+[10, 20]
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "[10, 20]"
+
+## Case: legacy-14-borrow-010-borrow-diff-types
+id: "legacy.14_borrow.010_borrow_diff_types"
+entry-mode: "program"
+
+### Auto
+path: "borrow_diff_types.at"
+```auto
+let x = 42
+let s = "hello"
+[x.view, s.view]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+[42, "hello"]
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "[42, \"hello\"]"
+
+## Case: legacy-99-idiom2-m01-field-rw
+id: "legacy.99_idiom2.m01_field_rw"
+entry-mode: "program"
+
+### Auto
+path: "field_rw.at"
+```auto
+// Plan 514 W1-2 探针 m01：方法读字段 / 写字段（&mut 判定）
+// VM 侧绿件；a2r 侧字段写方法须发 &mut self（见 method-emission-spec.md §1）
+type Counter {
+    value int
+    fn get() int { return .value }
+    fn inc() int {
+        .value = .value + 1
+        return .value
+    }
+    fn set_to(n int) {
+        .value = n
+    }
+    static fn new(v int) Counter { return Counter(v) }
+}
+fn main() {
+    var c = Counter.new(10)
+    print(f"get=${c.get()}")
+    print(f"inc=${c.inc()}")
+    print(f"inc=${c.inc()}")
+    c.set_to(99)
+    print(f"after set_to=${c.get()}")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+get=10
+inc=11
+inc=12
+after set_to=99
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+get=10
+inc=11
+inc=12
+after set_to=99
+```
+
+## Case: legacy-99-idiom2-m08-receiver-forms
+id: "legacy.99_idiom2.m08_receiver_forms"
+entry-mode: "program"
+
+### Auto
+path: "receiver_forms.at"
+```auto
+// Plan 514 W1-2 探针 m08：.field 简写与 self.x 双形态（读位 + 写位交叉）
+type Mixed {
+    a int
+    b int
+    fn short_sum() int { return .a + .b }
+    fn self_sum() int { return self.a + self.b }
+    fn mixed_set(n int) { self.a = n }
+    fn short_set(n int) { .b = n }
+    static fn new(a int, b int) Mixed { return Mixed(a, b) }
+}
+fn main() {
+    let m = Mixed.new(1, 2)
+    print(f"short=${m.short_sum()}")
+    print(f"self=${m.self_sum()}")
+    var n = Mixed.new(10, 20)
+    n.mixed_set(100)
+    n.short_set(200)
+    print(f"after=${n.short_sum()}")
+    print(f"after_self=${n.self_sum()}")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+short=3
+self=3
+after=300
+after_self=300
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+short=3
+self=3
+after=300
+after_self=300
+```
+
+## Case: legacy-99-idiom2-m09-method-name-set
+id: "legacy.99_idiom2.m09_method_name_set"
+entry-mode: "program"
+
+### Auto
+path: "method_name_set.at"
+```auto
+// Plan 514 W1-2 探针 m09：用户方法名命中内建名（洞 B 复现件）
+// VM 侧绿件（VM 按类型方法表解析 `set`）。
+// a2r 侧在 W1-4 修复前为红：trans/rust.rs "set" => Some("insert") 无接收者
+// 类型检查，`h.set(42)` 被误发射为 `h.insert(...)`（method-emission-spec §3 洞 B）。
+type Holder {
+    v int
+    fn set(n int) { self.v = n }
+    fn get() int { return .v }
+    static fn new(v int) Holder { return Holder(v) }
+}
+fn main() {
+    var h = Holder.new(1)
+    h.set(42)
+    print(f"set_get=${h.get()}")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+set_get=42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+set_get=42
+```
+
+## Case: legacy-08-strings-013-str-param
+id: "legacy.08_strings.013_str_param"
+entry-mode: "program"
+
+### Auto
+path: "str_param.at"
+```auto
+let text = "hello"
+let n = text.len
+print(n)
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+5
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+5
+```
