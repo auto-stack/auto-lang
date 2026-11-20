@@ -777,7 +777,7 @@ path: "main.at"
 ```auto
 fn leaf() int { let xs = [1]; return xs[-1] }
 fn main() int {
-    try { return leaf() } catch e { if e == "IndexError: index 9 out of range" { return 42 }; return 0 }
+    try { return leaf() } catch e { if e == "IndexError: index -1 out of range" { return 42 }; return 0 }
 }
 ```
 
