@@ -458,6 +458,14 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 
 ## 9. 复审记录
 
+- 2026-11-20 goal round 50（**用户裁定①，goal 暂停收尾**）：`stage: goal | plan_id: PLAN-1094
+  | plan_revision: r5 | round: 50 | from: user | to: paused | status: executing | outcome: waiting
+  | worktree: D:/autostack/.wt/lang-1094/auto-lang（保留，clean @ 5a76167cc）| branch: plan-1094-dev
+  | commit: c6544ee5e | next: user`。用户裁定 §10 解锁路径 **①**：按路线图顺序以独立 goal 完成
+  依赖链（1083 并行会话推进中 → 1084→…→1093 各自独立 goal），链后以新 goal「完成计划1094」
+  从 T-02 无损恢复。裁定即时生效并记录于 §10；本会话 goal 随裁定暂停，不做后续轮询/写入；
+  恢复点不变（§4 T-01 冻结记录＋§9 收据链＋worktree/分支/plan-artifacts/登记）。
+
 - 2026-11-20 goal round 4（waiting×3 → **goal blocked**）：`stage: goal | plan_id: PLAN-1094
   | plan_revision: r5 | round: 4 | from: user | to: blocked | status: executing | outcome: blocked
   | worktree: D:/autostack/.wt/lang-1094/auto-lang（保留，clean @ 5a76167cc）| branch: plan-1094-dev
@@ -514,5 +522,8 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
   解锁动作二选一：①按路线图顺序完成 1083→…→1093 后恢复本包 T-02（多 goal 会话推进）；
   ②用户显式修订本包解除/缩减硬依赖（改变范围与验收阈值，需同步路线图与 1084/1087/1092/1093 活跃作者合同）。
   本包保持 executing；worktree/分支/plan-artifacts scope 保留待恢复。
+  **[2026-11-20 用户裁定①，本条已决]**：选择路径①——按路线图顺序以独立 goal 完成依赖链
+  （1083→1084→1085→1086→1087→1088→1089→1090→1091→1092→1093），链后以新 goal「完成计划1094」
+  从 T-02 恢复；本包合同/验收/硬依赖不变，路径②作废。
 
 不需再次确认已经授权的规划范围。已定语言规范/数值宽度/安全边界沿原来源；T-01对真实旧用例与Spec冲突做具名裁定或有界机制探测，属于本包必要工作。涉及改变已批准公共语义、资源承诺或验收阈值时提交具体差异再决定；不得以“未定”无限延期本包required行。默认支持同一合法源或已批准、可审计的兼容规范化，不承诺复制旧bug或尚无语言构造。
