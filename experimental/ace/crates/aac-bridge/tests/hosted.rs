@@ -5,7 +5,7 @@
 
 mod support;
 
-use ace_aac_bridge::{Client, Mode, Outcome};
+use ace_aac_bridge::{Client, Mode, Outcome, Request, FOREIGN_CONFIG_ENV, FOREIGN_CONFIG_HASH_ENV};
 use ace_av_core::mir::{
     BinOp, FnSig, MirBlock, MirConst, MirHostImport, MirInstr, MirModule, MirSlot, MirType,
     SlotKind, Terminator,
@@ -34,6 +34,25 @@ fn file_literal(path: &Path) -> String {
 
 #[test]
 fn gen0_native_auto_client_executes_ct_and_releases_its_exchange() {
+    let mir = fixture(false);
+    let abc = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    run_gen0_ct_client(request(Mode::CompileTime, &mir, 1), abc, None);
+}
+
+#[test]
+fn gen0_native_auto_client_requires_sdk_authority_for_ct_foreign_calls() {
+    let scope = PathBuf::from(
+        std::env::var_os("ACE_AAC_FOREIGN_FIXTURE").expect("prepare ACE_AAC_FOREIGN_FIXTURE"),
+    );
+    let config = scope.join("provider.json");
+    let hash = blake3::hash(&std::fs::read(&config).unwrap());
+    let request =
+        serde_json::from_slice(&std::fs::read(scope.join("request.json")).unwrap()).unwrap();
+    let abc = std::fs::read(scope.join("module.abc")).unwrap();
+    run_gen0_ct_client(request, abc, Some((&config, hash)));
+}
+
+fn run_gen0_ct_client(mut request: Request, abc: Vec<u8>, provider: Option<(&Path, blake3::Hash)>) {
     let started = Instant::now();
     let runtime = PathBuf::from(
         std::env::var_os("ACE_AAC_COLLECTIONS_LIB").expect("prepare ACE_AAC_COLLECTIONS_LIB"),
@@ -43,12 +62,10 @@ fn gen0_native_auto_client_executes_ct_and_releases_its_exchange() {
     let request_path = stage.path().join("输入 request.bin");
     let response_path = stage.path().join("输出 response.bin");
     let bridge = Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"));
-    let mir = fixture(false);
-    let abc = ace_av_core::encode_abc(&mir).unwrap().to_flat();
-    let mut request = request(Mode::CompileTime, &mir, 1);
     request.options.remaining_ms = 5000;
     request.inputs.source = *blake3::hash(&abc).as_bytes();
     let metadata = serde_json::to_string(&request).unwrap();
+    let request_bytes = 44 + metadata.len() + abc.len();
     let mut main = String::from(
         r#"
 use app.client.exchange
@@ -70,6 +87,7 @@ fn main() int {
     main.push_str(
         r#"
     let value = ct_i32(response.move)
+    if (value.status == -6) { return 60 }
     if (value.status != 0) { return value.status }
     return value.value
 }
@@ -104,26 +122,47 @@ fn main() int {
         .unwrap();
     let mut spec = ExecutionSpec::new([OsStr::new(&product.exe_path)]);
     spec.tree_scope = TreeScope::ProcessTree;
-    let observed = run_bounded(
-        &spec,
-        &BoundedPolicy {
-            exec_deadline: Duration::from_secs(6),
-            cleanup_deadline: Duration::from_secs(1),
-            stdout_cap: Some(64 * 1024),
-            stderr_cap: Some(128 * 1024),
-        },
-    )
-    .unwrap();
-    let stderr = String::from_utf8_lossy(observed.stderr.as_deref().unwrap_or_default());
-    assert_eq!(observed.kind, ExitKind::Failure(7), "{stderr}");
-    assert!(
-        stderr.lines().any(|line| line == "MN-COLL live=0"),
-        "{stderr}"
-    );
-    assert!(!request_path.exists() && !response_path.exists());
+    spec.env_remove = vec![FOREIGN_CONFIG_ENV.into(), FOREIGN_CONFIG_HASH_ENV.into()];
+    let check = |spec: &ExecutionSpec, expected| {
+        let observed = run_bounded(
+            spec,
+            &BoundedPolicy {
+                exec_deadline: Duration::from_secs(6),
+                cleanup_deadline: Duration::from_secs(1),
+                stdout_cap: Some(64 * 1024),
+                stderr_cap: Some(128 * 1024),
+            },
+        )
+        .unwrap();
+        let stderr = String::from_utf8_lossy(observed.stderr.as_deref().unwrap_or_default());
+        assert_eq!(observed.kind, ExitKind::Failure(expected), "{stderr}");
+        assert!(
+            stderr.lines().any(|line| line == "MN-COLL live=0"),
+            "{stderr}"
+        );
+        assert!(!request_path.exists() && !response_path.exists());
+    };
+    if let Some((config, hash)) = provider {
+        check(&spec, 60);
+        spec.env
+            .push((FOREIGN_CONFIG_ENV.into(), config.as_os_str().into()));
+        check(&spec, 2);
+        spec.env.push((
+            FOREIGN_CONFIG_HASH_ENV.into(),
+            hash.to_hex().as_str().into(),
+        ));
+        check(&spec, 9);
+    } else {
+        check(&spec, 7);
+    }
     stage.close().unwrap();
     eprintln!(
-        "gen0_native_auto_client_executes_ct_and_releases_its_exchange {:?}",
+        "Gen0 CT client {} request={request_bytes} B elapsed={:?}",
+        if provider.is_some() {
+            "967 F0"
+        } else {
+            "scalar"
+        },
         started.elapsed()
     );
 }

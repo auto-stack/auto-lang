@@ -1,6 +1,40 @@
-use ace_aac_bridge::{Client, Failure, FailureKind};
+use ace_aac_bridge::{Client, Failure, FailureKind, FOREIGN_CONFIG_ENV, FOREIGN_CONFIG_HASH_ENV};
 use std::path::Path;
 use std::process::ExitCode;
+
+fn config_hash(expected: &std::ffi::OsStr) -> Result<[u8; 32], Failure> {
+    expected
+        .to_str()
+        .and_then(|hex| blake3::Hash::from_hex(hex).ok())
+        .map(|hash| *hash.as_bytes())
+        .ok_or(Failure {
+            kind: FailureKind::Admission,
+            code: "bridge.foreign-config-identity".into(),
+            message: "expected the SDK configuration digest".into(),
+            span: None,
+        })
+}
+
+fn sdk_client(executable: &Path) -> Result<Client, Failure> {
+    let client = Client::new(executable)?;
+    // The SDK launcher supplies both values independently of the request.
+    // A digest in the request can select only this already approved provider.
+    match (
+        std::env::var_os(FOREIGN_CONFIG_ENV),
+        std::env::var_os(FOREIGN_CONFIG_HASH_ENV),
+    ) {
+        (None, None) => Ok(client),
+        (Some(config), Some(expected)) => {
+            client.with_foreign_provider(Path::new(&config), config_hash(&expected)?)
+        }
+        _ => Err(Failure {
+            kind: FailureKind::Admission,
+            code: "bridge.foreign-config-identity".into(),
+            message: "the SDK launcher must supply both configuration path and digest".into(),
+            span: None,
+        }),
+    }
+}
 
 fn run(args: &[std::ffi::OsString]) -> Result<(), Failure> {
     match args {
@@ -8,16 +42,8 @@ fn run(args: &[std::ffi::OsString]) -> Result<(), Failure> {
             ace_aac_bridge::serve(std::io::stdin().lock(), std::io::stdout().lock())
         }
         [mode, config, expected] if mode == "--worker-foreign" => {
-            let hash = expected
-                .to_str()
-                .and_then(|hex| blake3::Hash::from_hex(hex).ok())
-                .ok_or(Failure {
-                    kind: FailureKind::Admission,
-                    code: "bridge.foreign-config-identity".into(),
-                    message: "expected the SDK configuration digest".into(),
-                    span: None,
-                })?;
-            let permit = ace_aac_bridge::ForeignPermit::read(Path::new(config), *hash.as_bytes())?;
+            let permit =
+                ace_aac_bridge::ForeignPermit::read(Path::new(config), config_hash(expected)?)?;
             ace_aac_bridge::serve_with_foreign(
                 std::io::stdin().lock(),
                 std::io::stdout().lock(),
@@ -31,7 +57,7 @@ fn run(args: &[std::ffi::OsString]) -> Result<(), Failure> {
                 message: error.to_string(),
                 span: None,
             })?;
-            Client::new(&executable)?.exchange_file(Path::new(input), Path::new(target))
+            sdk_client(&executable)?.exchange_file(Path::new(input), Path::new(target))
         }
         _ => Err(Failure {
             kind: FailureKind::Admission,

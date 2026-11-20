@@ -260,8 +260,11 @@ fn file_exchange_preserves_existing_bytes_and_admits_the_next_request() {
     assert!(!response_path.exists());
     assert_eq!(std::fs::read_dir(stage.path()).unwrap().count(), 1);
 
+    let request_bytes = good.len();
     std::fs::write(&request_path, good).unwrap();
+    let exchange_started = Instant::now();
     client.exchange_file(&request_path, &response_path).unwrap();
+    let exchange_elapsed = exchange_started.elapsed();
     let frame = std::fs::read(&response_path).unwrap();
     assert_eq!(&frame[..4], b"AR01");
     let size = u32::from_le_bytes(frame[4..8].try_into().unwrap()) as usize;
@@ -278,7 +281,7 @@ fn file_exchange_preserves_existing_bytes_and_admits_the_next_request() {
     assert_eq!(std::fs::read_dir(stage.path()).unwrap().count(), 2);
     stage.close().unwrap();
     eprintln!(
-        "file_exchange_preserves_existing_bytes_and_admits_the_next_request {:?}",
-        started.elapsed()
+        "file_exchange_preserves_existing_bytes_and_admits_the_next_request {:?} request={request_bytes} B response={} B exchange={exchange_elapsed:?}",
+        started.elapsed(), frame.len()
     );
 }

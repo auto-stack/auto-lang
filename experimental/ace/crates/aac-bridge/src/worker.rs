@@ -212,6 +212,10 @@ impl Client {
             argv.push("--worker".into());
         }
         let mut spec = ExecutionSpec::new(argv);
+        spec.env_remove = vec![
+            crate::FOREIGN_CONFIG_ENV.into(),
+            crate::FOREIGN_CONFIG_HASH_ENV.into(),
+        ];
         spec.stdin = StdioPolicy::Piped;
         spec.stdin_data = Some(encoded);
         spec.tree_scope = TreeScope::ProcessTree;

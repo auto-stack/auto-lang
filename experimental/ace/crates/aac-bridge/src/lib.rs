@@ -15,3 +15,6 @@ pub use protocol::{
     REQUEST_CAP, RESPONSE_CAP, TARGET,
 };
 pub use worker::{serve, serve_with_foreign, Client};
+
+pub const FOREIGN_CONFIG_ENV: &str = "ACE_AAC_FOREIGN_CONFIG";
+pub const FOREIGN_CONFIG_HASH_ENV: &str = "ACE_AAC_FOREIGN_CONFIG_BLAKE3";
