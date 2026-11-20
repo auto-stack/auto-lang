@@ -3,6 +3,7 @@ use app.binding.decl_category
 use app.binding.record_fields
 use app.binding.take_step
 use app.binding.type_decl
+use app.semantic_tree.kind
 use app.semantic_tree.row_count
 use app.types.boolean_type
 use app.types.integer_type
@@ -46,12 +47,12 @@ pub fn core_value_type(records List<int>, type_id int) bool {
     return type_id == integer_type() || type_id == boolean_type() || type_id == text_view_type() || record_at(records, type_id) >= 0
 }
 
-pub fn source_record_shapes(ast List<int>, declarations List<int>, facts List<int>, types List<int>, records List<int>, fuel List<int>, deadline i64) int {
+pub fn source_record_shapes(pg List<int>, ast List<int>, declarations List<int>, facts List<int>, types List<int>, records List<int>, fuel List<int>, deadline i64) int {
     var definition = 0
     for (definition < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
         let lane = facts.get(definition)
-        if (decl_category(declarations, definition) == type_decl() && lane > 0 && type_kind(types, lane) == nominal_kind() && type_first(types, lane) == definition) {
+        if (decl_category(declarations, definition) == type_decl() && kind(pg, ast, definition) == "type-item" && lane > 0 && type_kind(types, lane) == nominal_kind() && type_first(types, lane) == definition) {
             var fields = List<int>.new()
             let indexed = record_fields(ast, declarations, definition, fields, fuel, deadline)
             if (indexed != 0) { return indexed }

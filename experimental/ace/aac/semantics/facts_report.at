@@ -1,0 +1,164 @@
+use app.binding.call_mapping_stride
+use app.binding.decl_category
+use app.binding.decl_name
+use app.binding.external_signature
+use app.binding.take_step
+use app.declarations.annotation_stride
+use app.declarations.deferred_stride
+use app.digest.blake3_hex_bytes
+use app.initializers.global_access_stride
+use app.initializers.global_layout_stride
+use app.initializers.global_symbol
+use app.semantic_tree.end_of
+use app.semantic_tree.module_name_at
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.syntax_cst.join_rows
+use app.types.type_first
+use app.types.type_kind
+use app.types.type_second
+use app.types.type_stride
+use std.conv.from_int
+
+pub fn location(ast List<int>, row int, bases List<int>) Str {
+    let id = source_id(ast, row)
+    let base = bases.get(id)
+    return from_int(id) + " " + from_int(start_of(ast, row) - base) + ".." + from_int(end_of(ast, row) - base)
+}
+
+pub fn binding_report(ast List<int>, src List<int>, bases List<int>, declarations List<int>, uses List<int>, mappings List<int>, initializers List<int>) Str {
+    var output = List<Str>.new()
+    output.push("aac.binding-report/1\n")
+    var row = 0
+    for (row < row_count(ast)) {
+        let name = decl_name(declarations, row)
+        if (name >= 0) {
+            let text = spelling(src, ast, name)
+            let line = "DECL " + from_int(row) + " " + from_int(decl_category(declarations, row)) + " " + text + " " + location(ast, name, bases) + "\n"
+            output.push(line.move)
+        }
+        let target = uses.get(row)
+        if (target >= 0) {
+            let text = spelling(src, ast, row)
+            let line = "USE " + from_int(target) + " " + text + " " + location(ast, row, bases) + "\n"
+            output.push(line.move)
+        }
+        if (external_signature(target) >= 0) {
+            let text = spelling(src, ast, row)
+            let line = "FOREIGN-USE " + from_int(external_signature(target)) + " " + text + " " + location(ast, row, bases) + "\n"
+            output.push(line.move)
+        }
+        row = row + 1
+    }
+    var at = 0
+    for (at < mappings.len()) {
+        let call = mappings.get(at)
+        let evaluation = mappings.get(at + 1)
+        let slot = mappings.get(at + 2)
+        let line = "ARG " + location(ast, call, bases) + " " + from_int(slot) + " " + location(ast, evaluation, bases) + "\n"
+        output.push(line.move)
+        at = at + call_mapping_stride()
+    }
+    at = 0
+    for (at < initializers.len()) {
+        let name = decl_name(declarations, initializers.get(at))
+        let line = "INIT " + spelling(src, ast, name) + " " + location(ast, name, bases) + "\n"
+        output.push(line.move)
+        at = at + 1
+    }
+    return join_rows(output, output.len())
+}
+
+pub fn type_report(ast List<int>, bases List<int>, facts List<int>, types List<int>) Str {
+    var result = List<Str>.new()
+    result.push("aac.type-report/1\n")
+    var index = 1
+    for (index < types.len() / type_stride()) {
+        let line = "TYPE " + from_int(index) + " " + from_int(type_kind(types, index)) + " " + from_int(type_first(types, index)) + " " + from_int(type_second(types, index)) + "\n"
+        result.push(line.move)
+        index = index + 1
+    }
+    index = 0
+    for (index < facts.len()) {
+        let fact = facts.get(index)
+        if (fact > 0) {
+            let line = "TY " + from_int(index) + " " + location(ast, index, bases) + " " + from_int(fact) + "\n"
+            result.push(line.move)
+        }
+        index = index + 1
+    }
+    return join_rows(result, result.len())
+}
+
+pub fn globals_report(ast List<int>, src List<int>, bases List<int>, modules List<int>, declarations List<int>, layouts List<int>, accesses List<int>) Str {
+    if (layouts.len() == 0) { return "" }
+    var result = List<Str>.new()
+    result.push("aac.globals/1\n")
+    var at = 0
+    for (at < layouts.len()) {
+        let definition = layouts.get(at)
+        let symbol = global_symbol(ast, src, modules, declarations, definition)
+        let line = "GLOBAL " + symbol + " " + from_int(definition) + " " + from_int(layouts.get(at + 1)) + " " + from_int(layouts.get(at + 2)) + " " + location(ast, layouts.get(at + 3), bases) + "\n"
+        result.push(line.move)
+        at = at + global_layout_stride()
+    }
+    at = 0
+    for (at < accesses.len()) {
+        let line = "GLOBAL-USE " + from_int(accesses.get(at)) + " " + from_int(accesses.get(at + 1)) + " " + from_int(accesses.get(at + 3)) + " " + location(ast, accesses.get(at + 2), bases) + "\n"
+        result.push(line.move)
+        at = at + global_access_stride()
+    }
+    return join_rows(result, result.len())
+}
+
+pub fn declaration_report(ast List<int>, src List<int>, bases List<int>, annotations List<int>, pending List<int>) Str {
+    var lines = List<Str>.new()
+    if (pending.len() > 0) { lines.push("aac.pending-work/1\n") }
+    var at = 0
+    for (at < pending.len()) {
+        let row = pending.get(at + 1)
+        let line = "PENDING " + from_int(pending.get(at)) + " " + from_int(pending.get(at + 2)) + " " + location(ast, row, bases) + "\n"
+        lines.push(line.move)
+        at = at + deferred_stride()
+    }
+    at = 0
+    for (at < annotations.len()) {
+        let owner = annotations.get(at)
+        let entry = annotations.get(at + 1)
+        let text = spelling(src, ast, annotations.get(at + 2))
+        let line = "ANNOTATION " + text + " " + location(ast, owner, bases) + " " + location(ast, entry, bases) + "\n"
+        lines.push(line.move)
+        at = at + annotation_stride()
+    }
+    return join_rows(lines, lines.len())
+}
+
+// The consumers receive bytes rather than references into the inference
+// work tables. Module spans disambiguate the joined source bytes.
+pub fn semantic_facts(src List<int>, bases List<int>, modules List<int>, authority Str, report Str, fuel List<int>, deadline i64) Str {
+    if (!take_step(fuel, deadline) || fuel.get(0) < src.len()) { return "" }
+    fuel.set(0, fuel.get(0) - src.len())
+    let digest = blake3_hex_bytes(src)
+    if (!take_step(fuel, deadline)) { return "" }
+    var rows = List<Str>.new()
+    rows.push("aac.semantic-facts/1\n")
+    let source_identity = "SOURCE " + from_int(src.len()) + " " + digest + "\n"
+    rows.push(source_identity.move)
+    if (authority.len() > 0) {
+        let provider_identity = "FOREIGN-AUTHORITY " + authority + "\n"
+        rows.push(provider_identity.move)
+    }
+    var module_id = 0
+    for (module_id < bases.len()) {
+        if (!take_step(fuel, deadline)) { return "" }
+        let start = bases.get(module_id)
+        var end = src.len()
+        if (module_id + 1 < bases.len()) { end = bases.get(module_id + 1) }
+        let line = "MODULE " + from_int(module_id) + " " + module_name_at(modules, module_id) + " " + from_int(start) + ".." + from_int(end) + "\n"
+        rows.push(line.move)
+        module_id = module_id + 1
+    }
+    return join_rows(rows, rows.len()) + report
+}

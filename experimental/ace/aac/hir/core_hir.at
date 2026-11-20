@@ -1445,7 +1445,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var blocks = List<int>.new()
     var statements = List<int>.new()
     var records = List<int>.new()
-    let shaped = source_record_shapes(ast, declarations, facts, types, records, fuel, deadline)
+    let shaped = source_record_shapes(pg, ast, declarations, facts, types, records, fuel, deadline)
     if (shaped != 0) {
         failed(errors, 0, shaped)
         return ""
@@ -1502,22 +1502,22 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status == hir_global_authority_error()) { return status }
+    if (status == 0) {
+        var errors = List<int>.new()
+        let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, records, layouts, rows, fuel, deadline, errors)
+        is verified {
+            Some(_) -> {}
+            None -> { return errors.get(1) }
+        }
+    }
     var schema = core_schema()
     if (text_record) { schema = global_schema() }
     let shaped = validate_transport_arena(str_to_bytes(schema), bytes, parser_error, tokens, nodes, fields, items, root)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (!shaped) { return hir_shape_error() }
     if (status != 0) { return status }
-    var errors = List<int>.new()
-    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, records, layouts, rows, fuel, deadline, errors)
-    is verified {
-        Some(_) -> {
-            if (text_record) { return 1 }
-            return 0
-        }
-        None -> {}
-    }
-    return errors.get(1)
+    if (text_record) { return 1 }
+    return 0
 }
 
 pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {

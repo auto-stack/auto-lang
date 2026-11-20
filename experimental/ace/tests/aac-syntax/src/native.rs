@@ -73,6 +73,18 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/hir/core_records.at").into(),
         ),
         (
+            "patterns.at".into(),
+            include_str!("../../../aac/semantics/patterns.at").into(),
+        ),
+        (
+            "nominal_layout.at".into(),
+            include_str!("../../../aac/semantics/nominal_layout.at").into(),
+        ),
+        (
+            "facts_report.at".into(),
+            include_str!("../../../aac/semantics/facts_report.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),

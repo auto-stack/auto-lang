@@ -24,6 +24,8 @@ pub fn global_var_decl() int { return 6 }
 pub fn type_decl() int { return 7 }
 pub fn field_decl() int { return 8 }
 pub fn method_decl() int { return 9 }
+pub fn variant_decl() int { return 10 }
+pub fn pattern_binding_decl() int { return 11 }
 
 pub fn bind_duplicate() int { return -10 }
 pub fn bind_unresolved() int { return -11 }
@@ -49,8 +51,10 @@ fn category(node_kind Str) int {
     if (node_kind == "var-stmt") { return local_var_decl() }
     if (node_kind == "const-item" || node_kind == "age-let-item") { return constant_decl() }
     if (node_kind == "var-item" || node_kind == "auto-var-item") { return global_var_decl() }
-    if (node_kind == "type-item") { return type_decl() }
+    if (node_kind == "type-item" || node_kind == "enum-item") { return type_decl() }
     if (node_kind == "field-member") { return field_decl() }
+    if (node_kind == "enum-arm") { return variant_decl() }
+    if (node_kind == "arm-payload") { return pattern_binding_decl() }
     return 0
 }
 
@@ -113,7 +117,9 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
         if (outer >= 0) {
             let outer_tag = kind(pg, ast, outer)
             var scope = scopes.get(outer)
-            if (outer_tag == "program" || outer_tag == "block" || outer_tag == "type-item") { scope = outer }
+            let type_scope = outer_tag == "type-item" || outer_tag == "enum-item"
+            let match_scope = outer_tag == "match-arm" || outer_tag == "agg-match-arm"
+            if (outer_tag == "program" || outer_tag == "block" || type_scope || match_scope) { scope = outer }
             scopes.set(row, scope)
         }
         let tag_name = kind(pg, ast, row)
@@ -127,7 +133,8 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
             node_kind = function_decl()
         }
         if (node_kind != 0) {
-            let name = child_with_role(pg, ast, links, row, "name")
+            var name = child_with_role(pg, ast, links, row, "name")
+            if (node_kind == pattern_binding_decl()) { name = child_with_role(pg, ast, links, row, "binding") }
             if (name >= 0) {
                 let scope = decl_scope(pg, ast, links, scopes, row, node_kind)
                 var index = -1
@@ -460,8 +467,11 @@ fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>,
             let outer = parent(ast, row)
             let node_kind = kind(pg, ast, outer)
             let write = node_kind == "assign-stmt" && role(pg, ast, row) == "name"
-            let type_name = role(pg, ast, row) == "word" && (node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner")
-            if (node_kind == "atom-expr" || node_kind == "condition-atom" || write || type_name) {
+            let node_role = role(pg, ast, row)
+            let type_word = node_role == "word" && (node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner")
+            let type_name = type_word || (node_kind == "arm-qual" && node_role == "qual")
+            let scrutinee = node_kind == "is-stmt" && node_role == "scrutinee"
+            if (node_kind == "atom-expr" || node_kind == "condition-atom" || write || type_name || scrutinee) {
                 target = lookup(src, ast, scopes, heads, declarations, row, fuel, deadline)
                 if (target == bind_unresolved()) {
                     let local_name = module_alias(src, ast, imports, source_id(ast, row), row, fuel, deadline)

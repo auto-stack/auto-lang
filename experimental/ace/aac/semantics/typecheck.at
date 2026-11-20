@@ -30,8 +30,11 @@ use app.foreign_contract.foreign_layout_error
 use app.foreign_contract.foreign_pending_lane
 use app.foreign_contract.foreign_record_index
 use app.foreign_contract.foreign_signature_error
+use app.nominal_layout.verify_source_layouts
 use app.numeric_literal.numeric_literal_type
 use app.numeric_literal.negative_source_literal
+use app.patterns.enum_member_type
+use app.patterns.match_source_patterns
 use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
@@ -86,6 +89,7 @@ fn function_category(category int) bool {
 }
 
 fn annotation_of(pg List<int>, ast List<int>, links List<int>, row int) int {
+    if (kind(pg, ast, row) == "enum-arm") { return child_with_role(pg, ast, links, row, "payload") }
     let annotation = child_with_role(pg, ast, links, row, "ty")
     if (annotation >= 0) { return annotation }
     return child_with_role(pg, ast, links, row, "ann")
@@ -291,6 +295,10 @@ fn postfix_type(pg List<int>, ast List<int>, links List<int>, src List<int>, dec
         let token = child_with_role(pg, ast, links, step, "member")
         if (token < 0 || type_kind(types, current) != nominal_kind()) { return 0 }
         let owner = type_first(types, current)
+        if (static_receiver && kind(pg, ast, owner) == "enum-item") {
+            if (next_sibling(links, step) >= 0) { return type_member() }
+            return enum_member_type(pg, ast, links, src, declarations, uses, facts, types, current, token, fuel, deadline)
+        }
         let member = member_definition(pg, ast, src, declarations, owner, token, static_receiver, fuel, deadline)
         if (member < 0) { return member }
         uses.set(token, member)
@@ -406,7 +414,9 @@ pub fn record_constructor(pg List<int>, ast List<int>, links List<int>, declarat
     if (target < 0 || decl_category(declarations, target) != type_decl()) { return -1 }
     let lane = facts.get(target)
     if (lane <= 0 || type_kind(types, lane) != nominal_kind()) { return -1 }
-    return type_first(types, lane)
+    let owner = type_first(types, lane)
+    if (kind(pg, ast, owner) != "type-item") { return -1 }
+    return owner
 }
 
 fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, external List<int>, foreign_layouts List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
@@ -856,10 +866,17 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
         }
         let calls = seed_call_types(pg, ast, links, declarations, uses, mappings, facts, errors, fuel, deadline)
         if (calls < 0) { return calls }
+        let patterns = match_source_patterns(pg, ast, links, src, declarations, uses, facts, types, false, errors, fuel, deadline)
+        if (patterns < 0) { return patterns }
         let bodies = seed_body_types(pg, ast, links, declarations, uses, implicit_results, facts, errors, fuel, deadline)
         if (bodies < 0) { return bodies }
-        if (calls != 0 || bodies != 0) { changed = true }
+        if (calls != 0 || bodies != 0 || patterns != 0) { changed = true }
     }
+    let patterns = match_source_patterns(pg, ast, links, src, declarations, uses, facts, types, true, errors, fuel, deadline)
+    if (patterns < 0) { return patterns }
+    let layouts = verify_source_layouts(ast, declarations, facts, types, errors, fuel, deadline)
+    if (layouts == bind_budget()) { return failure(errors, 0, layouts) }
+    if (layouts != 0) { return layouts }
     let calls = map_deferred_calls(pg, ast, links, src, declarations, uses, facts, types, mappings, errors, fuel, deadline)
     if (calls != 0) { return calls }
     let checked = validate(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)

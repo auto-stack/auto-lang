@@ -191,6 +191,121 @@ fn verifies_nominal_record_construction_and_nested_field_reads() {
 }
 
 #[test]
+fn binds_variant_payloads_and_checks_match_exhaustiveness() {
+    let source = concat!(
+        "enum Packet { Data(int)\n Done }\n",
+        "fn make_packet(value int) Packet { return Packet.Data(value) }\n",
+        "fn main() int {\n",
+        " let packet = make_packet(42)\n",
+        " is packet {\n",
+        "  Data(number) -> { return number }\n",
+        "  Done -> { return 0 }\n",
+        " }\n}\n",
+    );
+    let accepted = type_report(source);
+    assert!(accepted.starts_with("aac.type-report/1\n"), "{accepted}");
+    let unknown = source.replace("Data(number)", "Other(number)");
+    let site = unknown.find("Other(number)").unwrap();
+    assert_eq!(
+        type_report(&unknown),
+        format!("ERROR type.pattern 0 {site}..{}\n", site + 5)
+    );
+    let escaped = source.replace("Done -> { return 0 }", "Done -> { return number }");
+    let site = escaped.rfind("number").unwrap();
+    assert_eq!(
+        type_report(&escaped),
+        format!("ERROR bind.unresolved 0 {site}..{}\n", site + 6)
+    );
+}
+
+#[test]
+fn distinguishes_fallthrough_statements_from_match_expressions() {
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/patterns/nested-match.case.ad"
+    );
+    let case = |title: &str| {
+        let heading = format!("## Case: {title}\n");
+        corpus
+            .split_once(&heading)
+            .expect("canonical case")
+            .1
+            .split_once("```auto\n")
+            .expect("source block")
+            .1
+            .split_once("```")
+            .expect("source end")
+            .0
+    };
+    for title in ["statement-fallthrough", "guard-arm", "or-arm"] {
+        let report = type_report(case(title));
+        assert!(
+            report.starts_with("aac.type-report/1\n"),
+            "{title}: {report}"
+        );
+    }
+    let invalid = case("nonexhaustive-expr-rejects");
+    let start = invalid.find("is 1").unwrap();
+    let stop = start + "is 1 { 1 -> 40 }".len();
+    assert_eq!(
+        type_report(invalid),
+        format!("ERROR type.match-exhaustive 0 {start}..{stop}\n")
+    );
+}
+
+#[test]
+fn rejects_inline_recursive_layout_but_accepts_list_indirection() {
+    let cycle = "enum Packet { Data(Packet) }\nfn main() int { return 0 }";
+    let site = cycle.find("Data(Packet)").unwrap();
+    assert_eq!(
+        type_report(cycle),
+        format!(
+            "ERROR type.recursive-layout 0 {site}..{}\n",
+            site + "Data(Packet)".len()
+        )
+    );
+    let indirect = cycle.replace("Data(Packet)", "Data(List<Packet>)");
+    let observed = type_report(&indirect);
+    assert!(observed.starts_with("aac.type-report/1\n"), "{observed}");
+}
+
+#[test]
+fn checks_scalar_pattern_value_and_optional_payload_scope() {
+    let literal = "fn main() int { let number = 0\n is number { -0 -> { return 7 }\n else -> { return 0 } } }";
+    let accepted = type_report(literal);
+    assert!(accepted.starts_with("aac.type-report/1\n"), "{accepted}");
+    let duplicate = literal.replace("else ->", "0 -> { return 1 }\n else ->");
+    let site = duplicate.find("0 -> { return 1 }").unwrap();
+    assert_eq!(
+        type_report(&duplicate),
+        format!("ERROR type.pattern 0 {site}..{}\n", site + 1)
+    );
+    let optional = "fn unwrap_or_zero(value ?int) int {\n is value { Some(number) -> { return number }\n None -> { return 0 } }\n}";
+    let accepted = type_report(optional);
+    assert!(accepted.starts_with("aac.type-report/1\n"), "{accepted}");
+}
+
+#[test]
+fn freezes_versioned_facts_bound_to_the_exact_source() {
+    let initial = "fn answer() int { return 41 }\nfn main() int { return answer() }\n";
+    let edited = initial.replace("41", "42");
+    let freeze =
+        |source: &str| run_core_hir_case(source.as_bytes(), "facts").expect("Auto semantic facts");
+    let first = freeze(initial);
+    assert_eq!(first, freeze(initial));
+    for (source, frozen) in [(initial, first), (&edited, freeze(&edited))] {
+        let expected = format!(
+            "aac.semantic-facts/1\nSOURCE {} {}\nMODULE 0 app.main 0..{}\naac.type-report/1\n",
+            source.len(),
+            blake3::hash(source.as_bytes()),
+            source.len()
+        );
+        assert!(frozen.starts_with(&expected), "{frozen}");
+        assert!(frozen.contains("\naac.binding-report/1\n"));
+        assert!(frozen.contains("\nUSE "));
+    }
+}
+
+#[test]
 fn block_shadowing_initializer_sees_previous_scope() {
     let source = concat!(
         "fn f(x int) int {\n",

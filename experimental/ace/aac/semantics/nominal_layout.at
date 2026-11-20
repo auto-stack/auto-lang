@@ -1,0 +1,103 @@
+use app.binding.bind_budget
+use app.binding.decl_category
+use app.binding.field_decl
+use app.binding.field_owner
+use app.binding.take_step
+use app.binding.type_decl
+use app.binding.variant_decl
+use app.semantic_tree.parent
+use app.semantic_tree.row_count
+use app.types.nominal_kind
+use app.types.option_kind
+use app.types.result_kind
+use app.types.tuple_kind
+use app.types.type_first
+use app.types.type_kind
+use app.types.type_second
+
+pub fn type_recursive_layout_error() int { return -50 }
+
+fn layout_dependencies(types List<int>, lane int, owner int, site int, edges List<int>, fuel List<int>, deadline i64) int {
+    var pending = List<int>.new()
+    pending.push(lane)
+    for (pending.len() > 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let child = pending.remove(pending.len() - 1)
+        let form = type_kind(types, child)
+        if (form == nominal_kind()) {
+            edges.push(owner)
+            edges.push(type_first(types, child))
+            edges.push(site)
+        }
+        if (form == option_kind() || form == result_kind()) {
+            pending.push(type_first(types, child))
+            if (form == result_kind()) { pending.push(type_second(types, child)) }
+        }
+        if (form == tuple_kind()) {
+            var use_id = type_first(types, child)
+            for (use_id > 0) {
+                if (!take_step(fuel, deadline)) { return bind_budget() }
+                pending.push(type_first(types, use_id))
+                use_id = type_second(types, use_id)
+            }
+        }
+    }
+    return 0
+}
+
+pub fn verify_source_layouts(ast List<int>, declarations List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var complete = List<int>.new()
+    var edges = List<int>.new()
+    var remaining = 0
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let category = decl_category(declarations, row)
+        let lane = facts.get(row)
+        var ready = 1
+        if (category == type_decl() && lane > 0 && type_kind(types, lane) == nominal_kind() && type_first(types, lane) == row) {
+            ready = 0
+            remaining = remaining + 1
+        }
+        complete.push(ready)
+        var owner = -1
+        if (category == field_decl()) { owner = field_owner(ast, row) }
+        if (category == variant_decl()) { owner = parent(ast, parent(ast, row)) }
+        if (owner >= 0 && lane > 0) {
+            let gathered = layout_dependencies(types, lane, owner, row, edges, fuel, deadline)
+            if (gathered != 0) { return gathered }
+        }
+        row = row + 1
+    }
+    for (remaining > 0) {
+        let before = remaining
+        var recursive_site = 0
+        row = 0
+        for (row < complete.len()) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            if (complete.get(row) == 0) {
+                var at = 0
+                var blocked = false
+                for (at < edges.len()) {
+                    if (!take_step(fuel, deadline)) { return bind_budget() }
+                    if (edges.get(at) == row && complete.get(edges.get(at + 1)) == 0) {
+                        recursive_site = edges.get(at + 2)
+                        blocked = true
+                        break
+                    }
+                    at = at + 3
+                }
+                if (!blocked) {
+                    complete.set(row, 1)
+                    remaining = remaining - 1
+                }
+            }
+            row = row + 1
+        }
+        if (remaining == before) {
+            errors.push(recursive_site)
+            return type_recursive_layout_error()
+        }
+    }
+    return 0
+}

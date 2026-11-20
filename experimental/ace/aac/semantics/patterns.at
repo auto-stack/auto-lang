@@ -1,0 +1,277 @@
+use app.binding.bind_budget
+use app.binding.decl_name
+use app.binding.take_step
+use app.numeric_literal.decode_i32_literal
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.end_of
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.types.boolean_type
+use app.types.function_kind
+use app.types.intern_sequence
+use app.types.intern_type
+use app.types.integer_type
+use app.types.nominal_kind
+use app.types.option_kind
+use app.types.result_kind
+use app.types.type_first
+use app.types.type_kind
+use app.types.type_second
+
+pub fn type_pattern_error() int { return -48 }
+pub fn type_exhaustive_error() int { return -49 }
+pub fn type_match_branch_error() int { return -51 }
+
+fn fail(errors List<int>, row int, code int) int {
+    errors.push(row)
+    return code
+}
+
+fn declaration_variants(pg List<int>, ast List<int>, links List<int>, owner int, variants List<int>, fuel List<int>, deadline i64) int {
+    var part = first_child(links, owner)
+    for (part >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let variant = child_with_role(pg, ast, links, part, "arm")
+        if (variant >= 0) { variants.push(variant) }
+        part = next_sibling(links, part)
+    }
+    return 0
+}
+
+fn variant_slot(ast List<int>, src List<int>, declarations List<int>, variants List<int>, name Str, fuel List<int>, deadline i64) int {
+    var at = 0
+    for (at < variants.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (spelling(src, ast, decl_name(declarations, variants.get(at))) == name) { return at }
+        at = at + 1
+    }
+    return type_pattern_error()
+}
+
+pub fn enum_member_type(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, lane int, member int, fuel List<int>, deadline i64) int {
+    let owner = type_first(types, lane)
+    var variants = List<int>.new()
+    let indexed = declaration_variants(pg, ast, links, owner, variants, fuel, deadline)
+    if (indexed != 0) { return indexed }
+    let at = variant_slot(ast, src, declarations, variants, spelling(src, ast, member), fuel, deadline)
+    if (at < 0) { return at }
+    let variant = variants.get(at)
+    uses.set(member, variant)
+    if (child_with_role(pg, ast, links, variant, "payload") < 0) { return lane }
+    let payload = facts.get(variant)
+    if (payload == 0) { return 0 }
+    var parameters = List<int>.new()
+    parameters.push(payload)
+    let sequence = intern_sequence(types, parameters, fuel, deadline)
+    if (sequence < 0) { return bind_budget() }
+    let signature = intern_type(types, function_kind(), lane, sequence, fuel, deadline)
+    if (signature < 0) { return bind_budget() }
+    return signature
+}
+
+fn builtin_pattern(kind_id int, name Str) int {
+    if (kind_id == option_kind()) {
+        if (name == "None") { return 0 }
+        if (name == "Some") { return 1 }
+    }
+    if (kind_id == result_kind()) {
+        if (name == "Ok") { return 0 }
+        if (name == "Err") { return 1 }
+    }
+    return type_pattern_error()
+}
+
+fn match_pattern(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, types List<int>, facts List<int>, variants List<int>, covered List<int>, lane int, arm int, pattern int, final_pass bool, state List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    if (pattern < 0 || state.get(0) != 0) { return fail(errors, arm, type_pattern_error()) }
+    let guard = child_with_role(pg, ast, links, arm, "guard")
+    let keyword = child_with_role(pg, ast, links, pattern, "kw")
+    let literal = child_with_role(pg, ast, links, pattern, "lit")
+    var slot = -1
+    var payload = 0
+    let name = child_with_role(pg, ast, links, pattern, "pattern")
+    var wildcard = false
+    if (name >= 0) { wildcard = spelling(src, ast, name) == "_" }
+    if (wildcard || keyword >= 0) {
+        var form = "else"
+        if (keyword >= 0) { form = kind(pg, ast, keyword) }
+        if (form == "else") {
+            if (guard < 0) { state.set(0, 1) }
+        } else {
+            if (lane != boolean_type()) { return fail(errors, keyword, type_pattern_error()) }
+            if (form == "false-kw") { slot = 0 }
+            if (form == "true-kw") { slot = 1 }
+        }
+    } else {
+        if (literal >= 0) {
+            if (lane != integer_type()) { return fail(errors, literal, type_pattern_error()) }
+            var decoded = List<int>.new()
+            decoded.push(0)
+            let negative = child_with_kind(pg, ast, links, pattern, "minus") >= 0
+            let status = decode_i32_literal(src, start_of(ast, literal), end_of(ast, literal), negative, decoded, fuel, deadline)
+            if (status == bind_budget()) { return fail(errors, literal, status) }
+            if (status != integer_type()) { return fail(errors, literal, type_pattern_error()) }
+            var index = 0
+            for (index < covered.len()) {
+                if (!take_step(fuel, deadline)) { return fail(errors, literal, bind_budget()) }
+                if (covered.get(index) == decoded.get(0)) { return fail(errors, literal, type_pattern_error()) }
+                index = index + 1
+            }
+            if (guard < 0) { covered.push(decoded.get(0)) }
+        } else {
+            if (name < 0) { return fail(errors, pattern, type_pattern_error()) }
+            let written = spelling(src, ast, name)
+            let family = type_kind(types, lane)
+            let qualifier = child_with_role(pg, ast, links, pattern, "qual")
+            if (qualifier >= 0) {
+                let token = child_with_role(pg, ast, links, qualifier, "qual")
+                if (token < 0) { return fail(errors, qualifier, type_pattern_error()) }
+                if (family == nominal_kind()) {
+                    let definition = uses.get(token)
+                    if (definition < 0 || facts.get(definition) != lane) { return fail(errors, token, type_pattern_error()) }
+                } else {
+                    let owner = spelling(src, ast, token)
+                    let optional = family == option_kind() && owner == "Option"
+                    let result = family == result_kind() && owner == "Result"
+                    if (!optional && !result) { return fail(errors, token, type_pattern_error()) }
+                }
+            }
+            if (family == nominal_kind()) {
+                slot = variant_slot(ast, src, declarations, variants, written.clone(), fuel, deadline)
+                if (slot < 0) { return fail(errors, name, slot) }
+                let declaration = variants.get(slot)
+                uses.set(name, declaration)
+                payload = facts.get(declaration)
+            } else {
+                slot = builtin_pattern(family, written)
+                if (slot < 0) { return fail(errors, name, slot) }
+                if (family == option_kind() && slot == 1) { payload = type_first(types, lane) }
+                if (family == result_kind()) {
+                    if (slot == 0) { payload = type_first(types, lane) } else { payload = type_second(types, lane) }
+                }
+            }
+        }
+    }
+    let binding = child_with_role(pg, ast, links, pattern, "payload")
+    if (binding >= 0 && payload <= 0) { return fail(errors, pattern, type_pattern_error()) }
+    if (binding >= 0 && facts.get(binding) == 0) {
+        facts.set(binding, payload)
+        state.set(1, 1)
+    }
+    if (guard >= 0 && final_pass) {
+        let condition = child_with_role(pg, ast, links, guard, "cond")
+        if (condition < 0 || facts.get(condition) != boolean_type()) { return fail(errors, guard, type_pattern_error()) }
+    }
+    if (slot >= 0) {
+        if (covered.get(slot) != 0) { return fail(errors, pattern, type_pattern_error()) }
+        if (guard < 0) { covered.set(slot, 1) }
+    }
+    return 0
+}
+
+fn match_arm(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, types List<int>, facts List<int>, variants List<int>, covered List<int>, lane int, arm int, final_pass bool, state List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var head = child_with_role(pg, ast, links, arm, "pat")
+    if (kind(pg, ast, arm) == "match-arm") { head = arm }
+    let checked = match_pattern(pg, ast, links, src, declarations, uses, types, facts, variants, covered, lane, arm, head, final_pass, state, errors, fuel, deadline)
+    if (checked != 0) { return checked }
+    var tail = first_child(links, arm)
+    for (tail >= 0) {
+        if (!take_step(fuel, deadline)) { return fail(errors, arm, bind_budget()) }
+        if (kind(pg, ast, tail) == "agg-or-arm-tail") {
+            let alternative = child_with_kind(pg, ast, links, tail, "agg-arm-pat")
+            if (alternative < 0 || child_with_role(pg, ast, links, head, "payload") >= 0 || child_with_role(pg, ast, links, alternative, "payload") >= 0) {
+                return fail(errors, tail, type_pattern_error())
+            }
+            let result = match_pattern(pg, ast, links, src, declarations, uses, types, facts, variants, covered, lane, arm, alternative, final_pass, state, errors, fuel, deadline)
+            if (result != 0) { return result }
+        }
+        tail = next_sibling(links, tail)
+    }
+    return 0
+}
+
+pub fn match_source_patterns(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, final_pass bool, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    var changed = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+        let form = kind(pg, ast, row)
+        let expression = form == "is-expr"
+        if (form == "is-stmt" || form == "agg-is-stmt" || expression) {
+            let operand = child_with_role(pg, ast, links, row, "scrutinee")
+            if (operand < 0) { return fail(errors, row, type_pattern_error()) }
+            let lane = facts.get(operand)
+            if (lane == 0) {
+                if (final_pass) { return fail(errors, operand, type_pattern_error()) }
+            } else {
+                var variants = List<int>.new()
+                let family = type_kind(types, lane)
+                var slots = 2
+                if (lane == integer_type()) { slots = 0 }
+                if (family == nominal_kind()) {
+                    let owner = type_first(types, lane)
+                    if (kind(pg, ast, owner) != "enum-item") { return fail(errors, operand, type_pattern_error()) }
+                    let indexed = declaration_variants(pg, ast, links, owner, variants, fuel, deadline)
+                    if (indexed != 0) { return fail(errors, row, indexed) }
+                    slots = variants.len()
+                } else {
+                    let scalar = lane == boolean_type() || lane == integer_type()
+                    if (!scalar && family != option_kind() && family != result_kind()) { return fail(errors, operand, type_pattern_error()) }
+                }
+                var covered = List<int>.new()
+                var index = 0
+                for (index < slots) {
+                    if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+                    covered.push(0)
+                    index = index + 1
+                }
+                var state = List<int>.new()
+                state.push(0)
+                state.push(0)
+                var arm_type = 0
+                var missing_arm_type = false
+                var arm = first_child(links, row)
+                for (arm >= 0) {
+                    if (!take_step(fuel, deadline)) { return fail(errors, arm, bind_budget()) }
+                    let form = kind(pg, ast, arm)
+                    if (form == "match-arm" || form == "agg-match-arm") {
+                        let result = match_arm(pg, ast, links, src, declarations, uses, types, facts, variants, covered, lane, arm, final_pass, state, errors, fuel, deadline)
+                        if (result != 0) { return result }
+                        if (expression) {
+                            let body = child_with_role(pg, ast, links, arm, "rhs")
+                            let value = child_with_role(pg, ast, links, body, "expr")
+                            if (value < 0) { return fail(errors, arm, type_pattern_error()) }
+                            let answer = facts.get(value)
+                            if (answer == 0) {
+                                missing_arm_type = true
+                            } else {
+                                if (arm_type > 0 && arm_type != answer) { return fail(errors, value, type_match_branch_error()) }
+                                arm_type = answer
+                            }
+                        }
+                    }
+                    arm = next_sibling(links, arm)
+                }
+                if (state.get(1) != 0) { changed = 1 }
+                if (expression && arm_type > 0 && !missing_arm_type && facts.get(row) == 0) {
+                    facts.set(row, arm_type)
+                    changed = 1
+                }
+                if (expression && final_pass && state.get(0) == 0) {
+                    if (lane == integer_type()) { return fail(errors, row, type_exhaustive_error()) }
+                    index = 0
+                    for (index < covered.len()) {
+                        if (covered.get(index) == 0) { return fail(errors, row, type_exhaustive_error()) }
+                        index = index + 1
+                    }
+                }
+            }
+        }
+        row = row + 1
+    }
+    return changed
+}
