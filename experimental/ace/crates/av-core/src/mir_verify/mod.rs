@@ -1042,16 +1042,24 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             } else if self.is_data {
+                // PLAN-105 T-02（U03 真语料 013）：collections 家族要承载组件面的
+                // **文本状态函数**（`__age_state_0_<field>() str`）——参数仍冻结为标量，
+                // 结果在标量之外放行 **owned `Str`**（host 侧接收 owned 文本、单次释放；
+                // 视图与 record 仍不跨 entry 边界）。
                 let scalar_ok = |t: &FnSig| -> bool {
                     t.params
                         .iter()
                         .all(|p| self.module.type_shape(*p).is_some())
-                        && self.module.type_shape(t.result).is_some()
+                        && (self.module.type_shape(t.result).is_some()
+                            || matches!(
+                                self.module.types.get(t.result as usize),
+                                Some(MirType::Str)
+                            ))
                 };
                 if !scalar_ok(entry_sig) {
                     return Err(MirVerifyError::inv(
                         "mir.entry-sig",
-                        "data-profile module entry params/result must be scalar (records do not cross the entry boundary)"
+                        "data-profile module entry params must be scalar; result may additionally be owned Str (records/views do not cross the entry boundary)"
                             .to_string(),
                     ));
                 }

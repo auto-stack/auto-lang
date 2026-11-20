@@ -1137,6 +1137,10 @@ pub struct CollTables {
     /// PLAN-105 T-02（U03 真语料 013）：AGE 组件面子集开关——元素视图
     /// （`xs[i].f` / `xs.get(i).f`）放行；其余域保持冻结语义。
     pub elem_view_admission: bool,
+    /// PLAN-105 T-02（U03 真语料 013）：AGE 组件面的**整局部隐式转移**——组件
+    /// 状态列表（`var todos []Todo = []`）由组件自身拥有，`push(t)` 视为所有者
+    /// 转移（作者面不写 `.move`；其它 profile 仍要求显式 `.move`）。
+    pub implicit_push_transfer: bool,
     /// PLAN-962 (L-15): structural tuple shapes (element VT lists,
     /// interned/deduplicated; `VT::Tuple(i)` indexes here).
     pub tuples: Vec<Vec<VT>>,
@@ -2379,7 +2383,8 @@ fn resolve_detailed_inner(
     coll.aggregates_admission = surface.is_aggregates();
     // AGE 组件面（`compile_program_parts_age`）声明的能力：元素视图放行。
     coll.elem_view_admission = elem_view;
-
+    coll.implicit_push_transfer = elem_view;
+    coll.ordinary_auto = surface.is_auto_language();
     let is_coll = surface.is_collections();
 
     // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
@@ -13223,11 +13228,17 @@ F:{d}
                 value.vt = *elem;
             }
             RExprKind::ReadLocal(_) => {
-                self.bind_err(
-                    "source.move-required",
-                    "pushing an owned element requires `.move` (or a fresh value); an implicit transfer is rejected".to_string(),
-                    span,
-                );
+                if self.coll.implicit_push_transfer {
+                    // PLAN-105 T-02：AGE 组件面——整局部入组件状态列表按所有者
+                    // 转移接受（与「组件自持状态」口径一致）。
+                    value.vt = *elem;
+                } else {
+                    self.bind_err(
+                        "source.move-required",
+                        "pushing an owned element requires `.move` (or a fresh value); an implicit transfer is rejected".to_string(),
+                        span,
+                    );
+                }
             }
             _ => {
                 self.bind_err(
