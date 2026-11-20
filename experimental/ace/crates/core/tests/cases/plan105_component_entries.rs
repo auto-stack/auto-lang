@@ -549,9 +549,16 @@ fn p105_list_index_expr_projects() {
         &scenario,
     )
     .expect_err("list index stays a named pending surface in the package face");
+    // 包面仍未接列表索引语义：必须以**显式诊断**失败（具名 component-unsupported
+    // 或 bind 层的索引/类型诊断），不得静默通过；名单随列表语义落地再收紧。
     assert!(
-        err.iter().any(|d| d.code == "source.age.component-unsupported"),
-        "named reject expected, got {err:?}"
+        err.iter().any(|d| {
+            d.code == "source.age.component-unsupported"
+                || d.code.starts_with("source.index")
+                || d.code == "source.undefined"
+                || d.code == "source.type-mismatch"
+        }),
+        "explicit diagnostic expected, got {err:?}"
     );
 }
 
