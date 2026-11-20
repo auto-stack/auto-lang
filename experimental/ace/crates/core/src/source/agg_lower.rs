@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 
 pub(super) const FOREIGN_INDEX_SENTINEL: usize = 1_000_000_000;
+const GENERATOR_DISPATCH_LOOP: LoopRef = LoopRef(usize::MAX);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct VariantUnwrapInfo {
@@ -1765,7 +1766,11 @@ impl<'a> StateBuilder<'a> {
                         let sp = *span;
                         out.push(self.set_state_stmt(after, sp));
                         out.push(RStmt::Continue {
-                            target: Some(LoopRef(0)),
+                            target: Some(if self.coll.ordinary_auto {
+                                GENERATOR_DISPATCH_LOOP
+                            } else {
+                                LoopRef(0)
+                            }),
                             span: sp,
                         });
                         return;
@@ -1780,7 +1785,11 @@ impl<'a> StateBuilder<'a> {
                         let sp = *span;
                         out.push(self.set_state_stmt(head, sp));
                         out.push(RStmt::Continue {
-                            target: Some(LoopRef(0)),
+                            target: Some(if self.coll.ordinary_auto {
+                                GENERATOR_DISPATCH_LOOP
+                            } else {
+                                LoopRef(0)
+                            }),
                             span: sp,
                         });
                         return;
@@ -2594,6 +2603,7 @@ fn build_next_fn(
         span,
     }];
     let disp_loop = LoopRef(0);
+    let mut loop_count = 1;
     let none_expr = ResolvedExpr {
         span,
         vt: meta.opt_vt,
@@ -2660,6 +2670,15 @@ fn build_next_fn(
             let mut stmts = sb.stmts.clone();
             if step_offset > 0 {
                 offset_step_locals_stmts(&mut stmts, step_offset);
+            }
+            if ordinary_auto {
+                // Each generator's source loops are local to its body. The
+                // shared next function owns a fresh namespace per state.
+                renumber_replay_loops(
+                    &mut stmts,
+                    &mut loop_count,
+                    &mut BTreeMap::from([(GENERATOR_DISPATCH_LOOP.0, disp_loop)]),
+                );
             }
             match &sb.term {
                 GenStateTerm::Goto(next_id) => {
@@ -2839,7 +2858,7 @@ fn build_next_fn(
             ],
             span,
         },
-        loop_count: 1,
+        loop_count,
         used_intrinsics: BTreeSet::new(),
         receiver: ast::Receiver::Free,
         owner_rec: None,

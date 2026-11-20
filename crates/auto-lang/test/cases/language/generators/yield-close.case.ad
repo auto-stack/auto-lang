@@ -861,3 +861,69 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: nested-close-errors-from-calls
+id: "av.parity.1089.nested-close-errors-from-calls"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf(events List<int>) int { events.push(2); fail("inner-call") }
+fn seq(events List<int>) ~Iter<int> {
+    try {
+        try { yield 42; yield 99 } finally { leaf(events) }
+    } finally { events.push(3); fail("outer-wins") }
+}
+fn main() int {
+    var events = List<int>.new()
+    var it = seq(events)
+    let n = it.next() ?? 0
+    try { it.close(); return -1 }
+    catch e { if e != "outer-wins" { return -2 } }
+    it.close()
+    if events.len() != 2 || events[0] != 2 || events[1] != 3 { return -3 }
+    if (it.next() ?? -1) != -1 { return -4 }
+    return n
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: two-finally-producers-interleaved
+id: "av.parity.1089.two-finally-producers-interleaved"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn one(events List<int>) ~Iter<int> {
+    try { yield 19; yield 99 } finally { events.push(1) }
+}
+fn two(events List<int>) ~Iter<int> {
+    try { yield 23; yield 98 } finally { events.push(2) }
+}
+fn main() int {
+    var events = List<int>.new()
+    var a = one(events)
+    var b = two(events)
+    let x = a.next() ?? 0
+    let y = b.next() ?? 0
+    a.close()
+    b.close()
+    if events.len() != 2 || events[0] != 1 || events[1] != 2 { return -1 }
+    return x + y
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
