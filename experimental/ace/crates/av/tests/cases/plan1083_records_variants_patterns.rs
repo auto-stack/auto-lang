@@ -1172,6 +1172,72 @@ fn t01_bisect_faces() {
             "fn main() int { let a = Some(42)\n let b = None\n is b { Some(v) -> { return v }; None -> { return 1 } } }\n".into(),
         ),
         (
+            "B36 guard on unmatched arm not evaluated",
+            concat!(
+                "enum Reg {\n",
+                "    Yes(int)\n",
+                "    No\n",
+                "}\n",
+                "fn side() bool { print(\"g\")\n return true }\n",
+                "fn main() {\n",
+                "    let r = Reg.No\n",
+                "    is r {\n",
+                "        Reg.Yes(v) if side() -> { print(\"y\") }\n",
+                "        Reg.No -> { print(\"n\") }\n",
+                "    }\n",
+                "}\n",
+            )
+            .into(),
+        ),
+        (
+            "B34b guard dup verify diag",
+            concat!(
+                "enum Reg {
+",
+                "    Yes(int)
+",
+                "    No
+",
+                "}
+",
+                "fn main() int {
+",
+                "    let r = Reg.Yes(42)
+",
+                "    is r {
+",
+                "        Reg.Yes(v) if v > 100 -> { return 1 }
+",
+                "        Reg.Yes(v) -> { return v }
+",
+                "        Reg.No -> { return 0 }
+",
+                "    }
+",
+                "}
+",
+            )
+            .into(),
+        ),
+        (
+            "B37 nonexhaustive is-expr rejection",
+            "fn main() int { return is 1 { 1 -> 40 } }\n".into(),
+        ),
+        (
+            "B38 nonexhaustive int statement fall-through",
+            concat!(
+                "fn main() int {\n",
+                "    var hit = 0\n",
+                "    let x = 5\n",
+                "    is x {\n",
+                "        1 -> { hit = 1 }\n",
+                "    }\n",
+                "    return hit\n",
+                "}\n",
+            )
+            .into(),
+        ),
+        (
             "B32 v08 union/tag through ORDINARY entry",
             concat!(
                 "tag Mark { Hit(int); Miss(int) }\n",
@@ -1256,6 +1322,35 @@ fn t02_infra_diag() {
                 "        }\n",
                 "    }\n",
                 "}\n",
+            ),
+        ),
+        (
+            "B34b guard dup verify diag",
+            concat!(
+                "enum Reg {
+",
+                "    Yes(int)
+",
+                "    No
+",
+                "}
+",
+                "fn main() int {
+",
+                "    let r = Reg.Yes(42)
+",
+                "    is r {
+",
+                "        Reg.Yes(v) if v > 100 -> { return 1 }
+",
+                "        Reg.Yes(v) -> { return v }
+",
+                "        Reg.No -> { return 0 }
+",
+                "    }
+",
+                "}
+",
             ),
         ),
         (

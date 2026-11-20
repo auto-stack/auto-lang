@@ -9291,6 +9291,7 @@ F:{d}
         expect: Option<VT>,
         is_expr_mode: bool,
         span: Span,
+        has_following: bool,
     ) -> (Vec<RStmt>, Option<ResolvedExpr>) {
         let mut out_stmts = Vec::new();
         if !self.profile.is_aggregates() {
@@ -9871,10 +9872,12 @@ F:{d}
             && !has_else
             && !compiled.is_empty()
             && compiled.iter().all(|ca| rblock_all_return(&ca.block.stmts))
-            // PLAN-1083: the auto face's fall-through statement `is` never
-            // adds the synthetic return filler — code after the statement
-            // stays reachable (the legacy enum-method spelling).
-            && !self.profile.is_auto_language()
+            // PLAN-1083: the auto face's fall-through statement `is` adds
+            // the synthetic return filler ONLY when nothing follows the
+            // statement (a trailing filler would strand later code
+            // unreachable; without it an all-arms-return tail has its
+            // Returned spine).
+            && !(self.profile.is_auto_language() && has_following)
         {
             let mut filler_stmts = Vec::new();
             if self.is_generator {
@@ -9923,7 +9926,10 @@ F:{d}
             let mut then_stmts = ca.prefix;
             match guard {
                 Some(g) => {
-                    let els = chain.take();
+                    // The guard's else and the pattern test's else BOTH
+                    // continue to the next arm — clone for the guard (the
+                    // pattern wrap below consumes the original).
+                    let els = chain.clone();
                     then_stmts.push(RStmt::If {
                         cond: g,
                         then: ca.block,
@@ -11085,7 +11091,7 @@ F:{d}
                 }
                 ExprKind::IsExpr { scrutinee, arms } => {
                     let (stmts, expr_opt) =
-                        self.resolve_agg_is(scrutinee, arms, expect, true, v.span);
+                        self.resolve_agg_is(scrutinee, arms, expect, true, v.span, false);
                     for s in stmts {
                         self.emit_stmt(s);
                     }
@@ -11594,7 +11600,17 @@ F:{d}
                     span,
                 } => {
                     if self.profile.is_aggregates() {
-                        let (stmts, _) = self.resolve_agg_is(scrutinee, arms, None, false, *span);
+                        let has_following = stack
+                            .last()
+                            .is_some_and(|f| f.idx < f.src.stmts.len());
+                        let (stmts, _) = self.resolve_agg_is(
+                            scrutinee,
+                            arms,
+                            None,
+                            false,
+                            *span,
+                            has_following,
+                        );
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
                     } else {
                         self.bind_err(
@@ -13581,7 +13597,7 @@ F:{d}
             ExprKind::IsExpr { scrutinee, arms } => {
                 if self.profile.is_aggregates() {
                     let (stmts, expr_opt) =
-                        self.resolve_agg_is(scrutinee, arms, None, true, e.span);
+                        self.resolve_agg_is(scrutinee, arms, None, true, e.span, false);
                     for s in stmts {
                         self.emit_stmt(s);
                     }
@@ -15840,7 +15856,7 @@ F:{d}
                     } else if let ExprKind::IsExpr { scrutinee, arms } = &node.kind {
                         if self.profile.is_aggregates() {
                             let (stmts, expr_opt) =
-                                self.resolve_agg_is(scrutinee, arms, None, true, node.span);
+                                self.resolve_agg_is(scrutinee, arms, None, true, node.span, false);
                             for s in stmts {
                                 self.emit_stmt(s);
                             }
