@@ -329,6 +329,10 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
         return cases;
     }
 
+    let canonical = test_vm_dir
+        .parent()
+        .map(crate::legacy_doc_for_trans::CanonicalVmCases::new);
+
     // Walk category directories: 01_basics, 09_functions, etc.
     if let Ok(entries) = std::fs::read_dir(test_vm_dir) {
         let mut cat_entries: Vec<_> = entries.flatten().collect();
@@ -358,7 +362,11 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
 
                     // PLAN-1066 T-03[B]: the document decides selection and
                     // the oracle channels; a doc-only tree still discovers.
-                    let facts = entry_doc_facts(&case_path, &stem, "vm");
+                    let facts = crate::legacy_doc_for_trans::read_doc_facts(
+                        &case_path,
+                        &stem,
+                        canonical.as_ref(),
+                    );
                     let (source_file, expected_out, expected_result, expected_error) = match facts {
                         Ok(Some(facts)) => (
                             case_path.join(&facts.source_path),

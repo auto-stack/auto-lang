@@ -40,6 +40,7 @@ pub fn parent_contract_inventory() -> serde_json::Value {
 /// Production file discoverers shared with entry.rs and sys_env.rs. Discovery
 /// never claims that a Rust wrapper selected or executed the returned cases.
 pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
+    use crate::legacy_doc_for_trans::{self, CanonicalVmCases};
     use crate::test_runner;
     use auto_test_case::sha256::{hex, sha256};
     fn file(path: &Path) -> Result<serde_json::Value, String> {
@@ -62,9 +63,10 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
         stem: &str,
         family: &str,
         id: &str,
+        canonical: Option<&CanonicalVmCases>,
     ) -> Result<serde_json::Value, String> {
         let (doc_path, source_path, checks) =
-            match crate::legacy_doc_for_trans::load_case(case_dir, stem) {
+            match legacy_doc_for_trans::read_case(case_dir, stem, canonical) {
                 Ok(doc) => {
                     let source_path = doc.source_path().to_string();
                     let checks = doc
@@ -75,7 +77,7 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
                     (doc.document_path, source_path, checks)
                 }
                 Err(_) => (
-                    crate::legacy_doc_for_trans::doc_path(case_dir, stem),
+                    legacy_doc_for_trans::doc_path(case_dir, stem),
                     format!("{stem}.at"),
                     Vec::new(),
                 ),
@@ -102,10 +104,11 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
         }))
     }
     let mut rows = Vec::new();
+    let canonical = CanonicalVmCases::new(test_root);
     for case in test_runner::discover_vm_tests(&test_root.join("vm")) {
         let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
             .ok_or_else(|| format!("{}: no case stem", case.name))?;
-        let mut row = document_entry(&case.dir, &stem, "vm", &case.name)?;
+        let mut row = document_entry(&case.dir, &stem, "vm", &case.name, Some(&canonical))?;
         row["bootstrap"] = serde_json::json!(case.is_bootstrap);
         rows.push(row);
     }
@@ -113,18 +116,18 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
         for case in test_runner::discover_a2r_tests(&test_root.join(dir), name) {
             let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
                 .ok_or_else(|| format!("{}: no case stem", case.name))?;
-            rows.push(document_entry(&case.dir, &stem, name, &case.name)?);
+            rows.push(document_entry(&case.dir, &stem, name, &case.name, None)?);
         }
     }
     for case in test_runner::discover_a2c_tests(&test_root.join("a2c")) {
         let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
             .ok_or_else(|| format!("{}: no case stem", case.name))?;
-        rows.push(document_entry(&case.dir, &stem, "a2c", &case.name)?);
+        rows.push(document_entry(&case.dir, &stem, "a2c", &case.name, None)?);
     }
     for case in test_runner::discover_a2ts_tests(&test_root.join("a2ts")) {
         let stem = crate::legacy_doc_for_trans::case_stem(&case.dir)
             .ok_or_else(|| format!("{}: no case stem", case.name))?;
-        rows.push(document_entry(&case.dir, &stem, "a2ts", &case.name)?);
+        rows.push(document_entry(&case.dir, &stem, "a2ts", &case.name, None)?);
     }
     rows.sort_by_key(|r| {
         (

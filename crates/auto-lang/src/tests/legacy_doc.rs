@@ -8,6 +8,9 @@
 //! sidecars.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use auto_lang_core::legacy_doc_for_trans::CanonicalVmCases;
 
 use auto_test_case::admission::Limits;
 use auto_test_case::author::{decode_document, AuthorCase};
@@ -29,7 +32,10 @@ pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
 /// PLAN-1066 T-05: read an explicitly named author document (e.g.
 /// `main.project.case.ad`) and return its single decoded case.
 pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
-    if let Some(canonical) = auto_lang_core::legacy_doc_for_trans::canonical_vm_case(doc_path)? {
+    static VM_CASES: OnceLock<CanonicalVmCases> = OnceLock::new();
+    let canonical = VM_CASES
+        .get_or_init(|| CanonicalVmCases::new(&Path::new(env!("CARGO_MANIFEST_DIR")).join("test")));
+    if let Some(canonical) = canonical.find(doc_path)? {
         return Ok(LegacyDoc {
             case: canonical.case,
             document_path: canonical.document_path,
