@@ -308,28 +308,66 @@ fn aac1046_parse_parity_battery() {
 // the content identity change/restore under an undo edit.
 // ---------------------------------------------------------------------------
 
-// D-1046-03 (supersedes D-1046-02's cost diagnosis): the SPLICE is proven
-// byte-exact (stage S29: n2=58/phys=58/mism=0 vs a fresh lex of the edited
-// bytes) and the graft candidates/token ranges verify; but the GRAFT-ACTIVE
-// parse explodes one list past the lane's 65536-element cap (graft-disabled
-// parses of the same spliced stream pass; 9 machine arenas watched at
-// 128-step windows never trip — the growing list is outside the watched
-// set). Ignored pending the named diagnostic in plan §10.
 #[test]
-#[ignore = "D-1046-03 graft-active parse list-cap explosion"]
 fn aac1046_edit_incremental_equality() {
-    // V-02: the incremental (spliced+graft) tree from one AV run must
-    // equal the fresh parse of the same edited bytes from another run.
-    let esc = "fn a(x int) int { return x }\nfn b(y int) int { return y }\nfn c(z int) int { return z }";
-    let incr_run = obs("edit", "edit_case", &format!("edit_case(\"scalar\", \"{}\", 25, 25, \"1 + \")", esc));
-    let ref_run = obs("ref", "edit_ref_case", &format!("edit_ref_case(\"scalar\", \"{}\", 25, 25, \"1 + \")", esc));
-    let incr = incr_run.split("SPLICE").nth(0).unwrap().strip_prefix("INCR|").unwrap();
-    let refr = ref_run.split("REFEND").nth(0).unwrap().strip_prefix("REF|").unwrap();
-    assert_eq!(incr, refr, "incremental tree must equal fresh tree");
-    let facts = incr_run.split("SPLICE").nth(1).unwrap();
-    assert!(facts.contains("ok=1"), "splice must converge: {facts}");
-    assert!(facts.contains("grafted=2"), "two untouched trailing fns grafted: {facts}");
+    use ace_syntax_runtime::{
+        edit::incremental_reparse,
+        lexer::CompiledScanner,
+        parse::parse_snapshot,
+        program::Budget,
+        snapshot::{Edit, PageStore, Snapshot},
+    };
+
+    let original = "fn a(x int) int { return x }\nfn b(y int) int { return y }\nfn c(z int) int { return z }";
+    let mut edited = original.to_owned();
+    edited.insert_str(25, "1 + ");
+    let grammar = ace_syntax_grammar::compile_profile(
+        include_str!("../../../grammars/auto-source.at"),
+        "scalar",
+    )
+    .unwrap();
+    let scanner = CompiledScanner::compile(&grammar).unwrap();
+    let pages = std::rc::Rc::new(PageStore::new());
+    let old = Snapshot::from_text(&pages, original);
+    let new = Snapshot::from_text(&pages, &edited);
+    let budget = Budget::default();
+    let old_parse = parse_snapshot(&grammar, &scanner, &old, &budget).unwrap();
+    let splice = incremental_reparse(
+        &grammar,
+        &scanner,
+        &old_parse,
+        &old,
+        &new,
+        &[Edit {
+            start: 25,
+            end: 25,
+            insert: b"1 + ".to_vec(),
+        }],
+        &budget,
+    )
+    .unwrap();
+    assert!(splice.fallback.is_none());
+    assert!(splice.reused_decls > 0, "fixture must exercise actual grafting");
+
+    let incr_run = obs(
+        "edit",
+        "edit_case",
+        &format!("edit_case(\"scalar\", {original:?}, 25, 25, \"1 + \")"),
+    );
+    let (tree, facts) = incr_run
+        .split_once("SPLICE")
+        .unwrap_or_else(|| panic!("missing splice result: {incr_run}"));
+    let tree = tree
+        .strip_prefix("INCR|")
+        .unwrap_or_else(|| panic!("missing incremental tree: {tree}"));
+    assert_eq!(tree, rust_oracle("scalar", &edited), "incremental vs fresh");
+    assert!(facts.contains("ok=1 fb=0"), "splice must converge: {facts}");
+    assert!(
+        facts.ends_with(&format!("grafted={}", splice.reused_decls)),
+        "reuse count must match the Rust incremental parser: {facts}",
+    );
 }
+
 
 #[test]
 fn aac1046_identity_change_restore() {

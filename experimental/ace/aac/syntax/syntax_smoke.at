@@ -499,7 +499,7 @@ fn build_gcand(decls1 List<int>, t1 List<int>, ef1 List<int>, toks1 List<int>, s
         let ds = base + t1.get(dnode * 8 + 1)
         let de2 = ds + t1.get(dnode * 8 + 2)
         var intersects = 0
-        if (de2 > start && ds < end + 1) {
+        if (de2 > start && ds < end) {
             intersects = 1
         }
         var has_err = 0
@@ -557,6 +557,7 @@ fn edit_converged(pg List<int>, cs2 List<int>, firsts List<int>, nullable List<i
     ginfo2.push(spl.get(3))
     ginfo2.push(spl.get(4))
     ginfo2.push(spl.get(5))
+    ginfo2.push(0)
     var t2 = List<int>.new()
     var ef2 = List<int>.new()
     var decls2 = List<int>.new()
@@ -566,14 +567,14 @@ fn edit_converged(pg List<int>, cs2 List<int>, firsts List<int>, nullable List<i
         return "INCR_ERR " + itoa(-r2) + " " + render_diag(pg, d2)
     }
     if (stage == 29 || stage == 30) {
-        return "S" + itoa(stage) + " graftroot=" + itoa(r2) + " nodes=" + itoa(t2.len() / 8) + " gs=" + itoa(gshift.len())
+        return "S" + itoa(stage) + " root=" + itoa(r2) + " nodes=" + itoa(t2.len() / 8) + " grafted=" + itoa(ginfo2.get(4)) + " diags=" + itoa(d2.len() / 4)
     }
     if (stage == 36) {
         var cs36 = canonical(t2, ef2, decls2, r2)
         return "S36 canon-len " + itoa(cs36.len())
     }
     if (stage == 0) {
-        return "INCR|" + canonical(t2, ef2, decls2, r2) + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(gshift.len() / 2 - 1)
+        return "INCR|CANON\n" + canonical(t2, ef2, decls2, r2) + "DIAGS\n" + render_diag(pg, d2) + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(ginfo2.get(4))
     }
     // fresh reference parse over the edited bytes
     var toksX = List<int>.new()
@@ -618,7 +619,7 @@ fn edit_converged(pg List<int>, cs2 List<int>, firsts List<int>, nullable List<i
     if (incr == refr) {
         eqv = 1
     }
-    return "EQ=" + itoa(eqv) + " INCR|" + incr + "REF|" + refr + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(gshift.len() / 2 - 1)
+    return "EQ=" + itoa(eqv) + " INCR|" + incr + "REF|" + refr + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(ginfo2.get(4))
 }
 fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str, stage int) Str {
     var pg = decode_program_parts(fetch_parts(profile))
@@ -708,7 +709,22 @@ fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str, sta
     if (spl.get(1) != 0) {
         return fb_fresh(pg, cs2, firsts, nullable, snap, cold, spl.get(1), spl.get(2), stage)
     }
-    var gcand = build_gcand(decls1, t1, ef1, toks1, start, end)
+    var affected_lo = start
+    var affected_hi = srcb.len()
+    let old_count = toks1.len() / 5
+    if (spl.get(5) < old_count) {
+        let checkpoint = tok_start(toks1, spl.get(5))
+        if (checkpoint < affected_lo) {
+            affected_lo = checkpoint
+        }
+    }
+    if (spl.get(4) < old_count) {
+        affected_hi = tok_start(toks1, spl.get(4))
+    }
+    if (affected_hi < end) {
+        affected_hi = end
+    }
+    var gcand = build_gcand(decls1, t1, ef1, toks1, affected_lo, affected_hi)
     var gshift = List<int>.new()
     gshift.push(end)
     gshift.push(delta)

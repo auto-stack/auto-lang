@@ -155,6 +155,7 @@ fn ps_close() int { return 3 }
 fn ps_done() int { return 4 }
 
 fn gi_active() int { return 0 }
+fn gi_grafted() int { return 4 }
 
 // ---------------------------------------------------------------------------
 // FirstSets
@@ -323,6 +324,9 @@ pub fn parse_tokens_n(pg List<int>, cs List<int>, firsts List<int>, nullable Lis
         return -r
     }
     parse_finish(pg, toks, t, ef, mc, pending, dmsg, hints)
+    if (ginfo.get(gi_active()) != 0) {
+        ginfo.set(gi_grafted(), mc.get(m_graftcnt()))
+    }
     return mc.get(m_root())
 }
 
@@ -1082,8 +1086,8 @@ fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
         }
     }
     if (is_decl == 1) {
-        if (ginfo.get(gi_active()) != 0) {
-            if (try_graft(pg, toks, t, ef, decls, mc, pending, fr, ginfo, gcand, gshift, ot, oef, odecls, field) != 0) {
+        if (ginfo.get(gi_active()) != 0 && fg(fr, 0, fs_wait()) == w_rep()) {
+            if (try_graft(toks, t, ef, decls, mc, pending, fr, ginfo, gcand, gshift, ot, oef, odecls, field) != 0) {
                 ar_pop(mc)
                 return 0
             }
@@ -2755,15 +2759,13 @@ fn merge_hints(hints List<int>, dmsg List<int>) int {
 // Graft: copy-adopt an unchanged old declaration and skip its tokens
 // ---------------------------------------------------------------------------
 
-// ginfo: [0]=active,[1]=new_base,[2]=old_base,[3]=prefix_len
+// ginfo: [0]=active,[1]=new_base,[2]=old_base,[3]=prefix_len,
+//        [4]=number of adopted declarations (output on success).
 // gcand: flat [old_tok_idx, decl_idx, tok_lo, tok_hi] stride 4, sorted by
-//        old_tok_idx (built by the incremental module)
-// gshift: flat [end, delta] stride 2
+//        old_tok_idx (built by the incremental module).
+// gshift: read-only [end, delta] pairs.
 
-fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, ginfo List<int>, gcand List<int>, gshift List<int>, ot List<int>, oef List<int>, odecls List<int>, field int) int {
-    if (mc.get(m_graftcnt()) >= 16) {
-        return 0
-    }
+fn try_graft(toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, ginfo List<int>, gcand List<int>, gshift List<int>, ot List<int>, oef List<int>, odecls List<int>, field int) int {
     var cur_new = mc.get(m_i())
     if (mc.get(m_plen()) > 0) {
         cur_new = pending.get(0)
@@ -2772,120 +2774,32 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
     if (old_idx < 0) {
         return 0
     }
-    var lo = 0
-    var hi = gcand.len() / 4
-    var found = -1
-    var probing = 1
-    for (probing == 1) {
-        if (lo >= hi) {
-            probing = 0
-        } else {
-            let mid = (lo + hi) / 2
-            let key = gcand.get(mid * 4)
-            if (key == old_idx) {
-                found = mid
-                probing = 0
-            } else {
-                if (key < old_idx) {
-                    lo = mid + 1
-                } else {
-                    hi = mid
-                }
-            }
-        }
-    }
+    let found = graft_candidate(gcand, old_idx)
     if (found < 0) {
         return 0
     }
     let decl_idx = gcand.get(found * 4 + 1)
     let tok_lo = gcand.get(found * 4 + 2)
     let tok_hi = gcand.get(found * 4 + 3)
-    // copy the old subtree range [node_lo..node]
-    let onode = odecls.get(decl_idx * 3 + 1)
-    let olo = odecls.get(decl_idx * 3 + 2)
-    if (onode * 8 + 7 >= ot.len() || olo < 0 || olo > onode) {
-        if (gshift.len() < 200) { gshift.push(97) }
-        gshift.push(decl_idx)
-        gshift.push(onode)
-        gshift.push(olo)
-        gshift.push(ot.len() / 8)
+    let ni = cur_new + tok_hi - tok_lo
+    if (ni <= mc.get(m_i()) || ni > mc.get(m_ntoks())) {
         return 0
     }
-    let delta = (t.len() / 8) - olo
-    var n = olo
-    for (n <= onode) {
-        var k = 0
-        for (k < 8) {
-            if (k == 3 || k == 4) {
-                // fc/cc remapped below
-                if (k == 3) {
-                    t.push(0)
-                } else {
-                    t.push(0)
-                }
-            } else {
-                t.push(ot.get(n * 8 + k))
-            }
-        }
-        n = n + 1
+    if (cur_new < ginfo.get(3) && tok_hi > ginfo.get(3)) {
+        return 0
     }
-    // remap edges and decl ordinal inside the copied range
-    n = olo
-    for (n <= onode) {
-        let nn = delta + n
-        if (n * 8 + 4 >= ot.len()) {
-            if (gshift.len() < 200) {
-                if (gshift.len() < 200) { gshift.push(96) }
-            }
-            gshift.push(n)
-            gshift.push(ot.len())
-            gshift.push(onode)
-            return 0
-        }
-        let ofc = ot.get(n * 8 + 3)
-        let occ = ot.get(n * 8 + 4)
-        if ((ofc + occ) * 2 > oef.len()) {
-            // Graft bounds sentinel (defensive): the copied range references
-            // edges beyond the old arena — record the site facts on gshift
-            // (the driver owns it) and skip the graft (reparsing instead,
-            // which preserves the canonical result).
-            if (gshift.len() < 200) {
-                if (gshift.len() < 200) { gshift.push(98) }
-            }
-            gshift.push(n)
-            gshift.push(ofc)
-            gshift.push(occ)
-            gshift.push(oef.len())
-            return 0
-        }
-        t.set(nn * 8 + 3, ef.len() / 2)
-        t.set(nn * 8 + 4, occ)
-        var k = 0
-        for (k < occ) {
-            if ((ofc + k) * 2 + 1 >= oef.len()) {
-                if (gshift.len() < 200) {
-                if (gshift.len() < 200) { gshift.push(95) }
-            }
-                gshift.push(ofc)
-                gshift.push(k)
-                gshift.push(oef.len())
-                return 0
-            }
-            ef.push(ofc + k + delta)
-            ef.push(oef.get((ofc + k) * 2 + 1))
-            k = k + 1
-        }
-        n = n + 1
+    let onode = odecls.get(decl_idx * 3 + 1)
+    let olo = odecls.get(decl_idx * 3 + 2)
+    if (!graft_range_valid(ot, oef, olo, onode)) {
+        return 0
     }
-    if (ef.len() / 2 > mc.get(m_efhi())) {
-        mc.set(m_efhi(), ef.len() / 2)
-    }
-    // register the new decl unit first (ordinal), then stamp the copied nodes
-    let oorigin = odecls.get(decl_idx * 3)
-    let shift = graft_shift_for(gshift, oorigin)
-    let new_origin = oorigin + shift
+
+    let delta = t.len() / 8 - olo
     let d = mc.get(m_ndecls())
-    let ordinal = d + 1
+    graft_copy_range(t, ef, ot, oef, olo, onode, delta, d + 1)
+    mc.set(m_efhi(), ef.len() / 2)
+    let oorigin = odecls.get(decl_idx * 3)
+    let new_origin = oorigin + graft_shift_for(gshift, oorigin)
     if (d * 3 == decls.len()) {
         decls.push(new_origin)
         decls.push(delta + onode)
@@ -2896,30 +2810,87 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
         decls.set(d * 3 + 2, delta + olo)
     }
     mc.set(m_ndecls(), d + 1)
-    n = olo
-    for (n <= onode) {
-        t.set((delta + n) * 8 + 7, ordinal)
-        n = n + 1
-    }
-    // skip the unit's tokens
-    let skip = tok_hi - tok_lo
-    var ni = cur_new + skip
-    if (ni > mc.get(m_ntoks())) {
-        ni = mc.get(m_ntoks())
-    }
+
     mc.set(m_i(), ni)
     mc.set(m_plen(), 0)
-    if (ni > 0) {
-        mc.set(m_lastline(), tok_line(toks, ni - 1))
-    }
+    mc.set(m_lastline(), tok_line(toks, ni - 1))
     let top = mc.get(m_nframes()) - 1
     child_push(ef, fr, top, delta + onode, field, mc)
+    fset(fr, top, fs_wait(), w_none())
     fset(fr, top, fs_liststarted(), 1)
     fset(fr, top, fs_consumed(), 1)
     mc.set(m_graftcnt(), mc.get(m_graftcnt()) + 1)
-    gshift.push(mc.get(m_graftcnt()))
-    gshift.push(ni)
     return 1
+}
+
+fn graft_candidate(gcand List<int>, old_idx int) int {
+    var lo = 0
+    var hi = gcand.len() / 4
+    for (lo < hi) {
+        let mid = (lo + hi) / 2
+        let key = gcand.get(mid * 4)
+        if (key == old_idx) {
+            return mid
+        }
+        if (key < old_idx) {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    }
+    return -1
+}
+
+// Check the full range before changing either destination arena. Within a
+// declaration, every child must have been allocated before its parent.
+fn graft_range_valid(ot List<int>, oef List<int>, lo int, root int) bool {
+    if (lo < 0 || lo > root || root >= ot.len() / 8) {
+        return false
+    }
+    var n = lo
+    for (n <= root) {
+        let first = ot.get(n * 8 + 3)
+        let count = ot.get(n * 8 + 4)
+        if (first < 0 || count < 0 || first > oef.len() / 2 - count) {
+            return false
+        }
+        var k = 0
+        for (k < count) {
+            let child = oef.get((first + k) * 2)
+            if (child < lo || child >= n) {
+                return false
+            }
+            k = k + 1
+        }
+        n = n + 1
+    }
+    return true
+}
+
+fn graft_copy_range(t List<int>, ef List<int>, ot List<int>, oef List<int>, lo int, root int, delta int, ordinal int) int {
+    var n = lo
+    for (n <= root) {
+        let base = n * 8
+        let first = ot.get(base + 3)
+        let count = ot.get(base + 4)
+        t.push(ot.get(base))
+        t.push(ot.get(base + 1))
+        t.push(ot.get(base + 2))
+        t.push(ef.len() / 2)
+        t.push(count)
+        t.push(ot.get(base + 5))
+        t.push(ot.get(base + 6))
+        t.push(ordinal)
+        var k = 0
+        for (k < count) {
+            let edge = (first + k) * 2
+            ef.push(oef.get(edge) + delta)
+            ef.push(oef.get(edge + 1))
+            k = k + 1
+        }
+        n = n + 1
+    }
+    return 0
 }
 
 fn graft_old_index(ginfo List<int>, cur_new int) int {
