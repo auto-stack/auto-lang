@@ -86,7 +86,7 @@ AVP-00新增`SourceProfile::Auto`（拟名）、源码准入键`ac.source.langua
 | AVP-04 | [PLAN-1082](../../plans/1082-av-parity-collections-and-places.md) | AV数组、集合语法与嵌套place补齐 | AVP-00, AVP-01, AVP-02, AVP-03 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-COLLECTION` |
 | AVP-05 | [PLAN-1083](../../plans/1083-av-parity-records-variants-and-patterns.md) | AV名义类型、枚举与模式组合补齐 | AVP-00, AVP-01, AVP-02 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-TYPE` |
 | AVP-06 | [PLAN-1084](../../plans/1084-av-parity-dynamic-objects-and-null.md) | AV动态值、对象键与null语义补齐 | AVP-00, AVP-01, AVP-04, AVP-05 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-DYNAMIC` |
-| AVP-07 | [PLAN-1085](../../plans/1085-av-parity-modules-and-global-state.md) | AV模块、全局状态与初始化补齐 | AVP-00, AVP-03, AVP-05 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-MODULE` |
+| AVP-07 | [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md) | AV模块、全局状态与初始化补齐 | AVP-00, AVP-03, AVP-05 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-MODULE` |
 | AVP-08 | [PLAN-1086](../../plans/1086-av-parity-borrows-moves-and-storage.md) | AV借用、move与资源值组合补齐 | AVP-00, AVP-03, AVP-04, AVP-05, AVP-07 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-OWNERSHIP` |
 | AVP-09 | [PLAN-1087](../../plans/1087-av-parity-errors-and-unwinding.md) | AV跨调用语言错误与控制流展开补齐 | AVP-00, AVP-04, AVP-05, AVP-06, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-ERROR` |
 | AVP-10 | [PLAN-1088](../../plans/1088-av-parity-generics-specs-and-methods.md) | AV泛型、spec与方法决议组合补齐 | AVP-00, AVP-02, AVP-03, AVP-05, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERIC` |
