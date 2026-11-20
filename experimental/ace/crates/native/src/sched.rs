@@ -179,7 +179,10 @@ pub fn sched_callees(module: &MirModule) -> Result<lower::SchedCtx, SchedDiag> {
             result_text,
         });
     }
-    Ok(lower::SchedCtx { callees })
+    Ok(lower::SchedCtx {
+        callees,
+        report_spans: false,
+    })
 }
 
 fn has_host_call(module: &MirModule) -> bool {
@@ -197,6 +200,14 @@ fn has_host_call(module: &MirModule) -> bool {
 /// the wrapper (never guest code), so every scheduler program exits through
 /// the orderly close exactly once.
 pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
+    emit_wrapper(entry_symbol, false, false)
+}
+
+fn emit_wrapper(
+    entry_symbol: &str,
+    uses_platform: bool,
+    uses_net: bool,
+) -> Result<Vec<u8>, MnError> {
     let isa = emit::make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn8-sched-start", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("object builder: {e}")))?;
@@ -229,6 +240,26 @@ pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
     let drain_id = om
         .declare_function("mn_sched_drain", Linkage::Import, &drain_sig)
         .map_err(|e| MnError::Backend(format!("declare mn_sched_drain: {e}")))?;
+    let net_drain = if uses_net {
+        Some(
+            om.declare_function("mn_sched_net_drain", Linkage::Import, &drain_sig)
+                .map_err(|e| MnError::Backend(format!("declare net drain: {e}")))?,
+        )
+    } else {
+        None
+    };
+    let platform_audit = if uses_platform {
+        Some(
+            om.declare_function(
+                crate::platform_io::LIVE_RESOURCES,
+                Linkage::Import,
+                &drain_sig,
+            )
+            .map_err(|e| MnError::Backend(format!("declare platform audit: {e}")))?,
+        )
+    } else {
+        None
+    };
     let exit_sig = Signature {
         call_conv: conv,
         params: vec![AbiParam::new(cranelift_codegen::ir::types::I32)],
@@ -262,7 +293,19 @@ pub fn emit_sched_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
         let call = fb.ins().call(entry_ref, &[]);
         let result = fb.inst_results(call)[0];
         let drain = fb.ins().call(drain_ref, &[]);
-        let live = fb.inst_results(drain)[0];
+        let mut live = fb.inst_results(drain)[0];
+        if let Some(net_drain) = net_drain {
+            let net = om.declare_func_in_func(net_drain, fb.func);
+            let call = fb.ins().call(net, &[]);
+            let net_live = fb.inst_results(call)[0];
+            live = fb.ins().bor(live, net_live);
+        }
+        if let Some(platform_audit) = platform_audit {
+            let audit = om.declare_func_in_func(platform_audit, fb.func);
+            let call = fb.ins().call(audit, &[]);
+            let platform_live = fb.inst_results(call)[0];
+            live = fb.ins().bor(live, platform_live);
+        }
         let zero = fb.ins().iconst(cranelift_codegen::ir::types::I32, 0);
         let leaked = fb.ins().icmp(
             cranelift_codegen::ir::condcodes::IntCC::NotEqual,
@@ -364,6 +407,21 @@ pub fn emit_sched_program_objects(
     module: &MirModule,
     entry: &str,
 ) -> Result<SchedProgramObjects, MnError> {
+    emit_objects(module, entry, false)
+}
+
+pub fn emit_sched_service_objects(
+    module: &MirModule,
+    entry: &str,
+) -> Result<SchedProgramObjects, MnError> {
+    emit_objects(module, entry, true)
+}
+
+fn emit_objects(
+    module: &MirModule,
+    entry: &str,
+    report_spans: bool,
+) -> Result<SchedProgramObjects, MnError> {
     ace_av_core::verify_mir(module)
         .map_err(|error| MnError::Unsupported("sched.mir", format!("{error:?}")))?;
     let entry_unit = module
@@ -376,9 +434,22 @@ pub fn emit_sched_program_objects(
             format!("entry unit `{}` is not `{entry}`", entry_unit.name),
         ));
     }
+    if !module.sig_of(entry_unit.sig).is_some_and(|sig| {
+        sig.params.is_empty()
+            && matches!(
+                module.types.get(sig.result as usize),
+                Some(MirType::I32 | MirType::Bool | MirType::Char)
+            )
+    }) {
+        return Err(MnError::Unsupported(
+            "sched.entry-abi",
+            "scheduler startup requires a zero-argument i32-family entry".into(),
+        ));
+    }
     let entry_symbol = symbols::function_symbol(&module.owner, entry);
-    let callees = sched_callees(module)
+    let mut callees = sched_callees(module)
         .map_err(|d| MnError::Unsupported("sched.value", format!("{}: {}", d.code, d.message)))?;
+    callees.report_spans = report_spans;
     let units = ace_av::cache::split_units(module)
         .map_err(|e| MnError::Backend(format!("scheduler split: {e}")))?;
     for unit in &units {
@@ -396,21 +467,26 @@ pub fn emit_sched_program_objects(
             bytes: crate::console::emit_console_shim_coff()?,
         });
     }
-    let uses_platform = module.funcs.iter().any(|function| {
-        function
-            .blocks
-            .iter()
-            .flat_map(|block| &block.instrs)
-            .any(|instruction| matches!(instruction, MirInstr::PlatformCall { .. }))
-    });
+    let platform_calls = module
+        .funcs
+        .iter()
+        .flat_map(|function| function.blocks.iter().flat_map(|block| &block.instrs))
+        .filter_map(|instruction| match instruction {
+            MirInstr::PlatformCall { host, .. } => module.host_imports.get(*host as usize),
+            _ => None,
+        });
+    let uses_platform = platform_calls.clone().next().is_some();
+    let uses_net = platform_calls
+        .into_iter()
+        .any(|decl| decl.category == ace_av_core::platform_io::CATEGORY_NET);
     if uses_platform {
         objects.push(emit::UnitObject {
             symbol: "mn-platform-shim".into(),
             imports: Vec::new(),
-            bytes: crate::platform_io::emit_platform_shim_coff()?,
+            bytes: crate::platform_io::emit_platform_shim_with_net(uses_net)?,
         });
     }
-    let wrapper = emit_sched_wrapper_coff(&entry_symbol)?;
+    let wrapper = emit_wrapper(&entry_symbol, uses_platform, uses_net)?;
     Ok(SchedProgramObjects {
         entry_symbol,
         units: objects,

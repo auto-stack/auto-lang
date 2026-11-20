@@ -78,7 +78,11 @@ impl ForeignPermit {
         Ok(Self { config, hash })
     }
 
-    pub(crate) fn admit(&self, module: &MirModule) -> Result<AdmittedForeign, Failure> {
+    pub(crate) fn admit(
+        &self,
+        module: &MirModule,
+        compile_time: bool,
+    ) -> Result<AdmittedForeign, Failure> {
         let manifest = &self.config.manifest;
         if manifest.target != TARGET || !self.config.library.is_absolute() {
             return Err(Failure::admission(
@@ -121,6 +125,9 @@ impl ForeignPermit {
                     ),
                 ));
             }
+            if !compile_time {
+                continue;
+            }
             let pure = format!("pure:{}", decl.function.symbol);
             if !matches!(
                 decl.resource(),
@@ -143,11 +150,7 @@ impl ForeignPermit {
     }
 
     #[cfg(windows)]
-    pub(crate) fn load(&self, module: &MirModule) -> Result<Provider, Failure> {
-        use libloading::os::windows::{
-            Library, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
-        };
-
+    pub(crate) fn verified_image(&self) -> Result<(PathBuf, std::fs::File), Failure> {
         let path = self
             .config
             .library
@@ -166,6 +169,16 @@ impl ForeignPermit {
                 "prepared provider image differs from the SDK receipt",
             ));
         }
+        Ok((path, image))
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn load(&self, module: &MirModule) -> Result<Provider, Failure> {
+        use libloading::os::windows::{
+            Library, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+        };
+        let (path, _image) = self.verified_image()?;
+        let found = self.config.library_hash;
         // Exact declaration and carrier checks are complete before LoadLibrary
         // can run the installed DLL's initialization.
         let library: libloading::Library = unsafe {
@@ -203,6 +216,14 @@ impl ForeignPermit {
                 blake3::Hash::from(found)
             ),
         })
+    }
+
+    #[cfg(not(windows))]
+    pub(crate) fn verified_image(&self) -> Result<(PathBuf, std::fs::File), Failure> {
+        Err(Failure::admission(
+            "bridge.foreign-host-domain",
+            "native providers require Windows x64",
+        ))
     }
 
     #[cfg(not(windows))]

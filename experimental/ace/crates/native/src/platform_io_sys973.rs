@@ -1056,6 +1056,13 @@ fn emit_file_open_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resul
 
             let ac = fb.ins().call(alloc, &[_t50, h, _t51, _t52, z]);
             let hd = fb.inst_results(ac)[0];
+            let no_slot = fb.ins().icmp_imm(IntCC::SignedLessThan, hd, 0);
+            let (rollback, committed) = branch2(fb, no_slot);
+            fb.switch_to_block(rollback);
+            let close = fref(om, fb, ctx.ids.close_handle);
+            fb.ins().call(close, &[h]);
+            fb.ins().return_(&[hd]);
+            fb.switch_to_block(committed);
             let base = state_ptr(om, ctx.state, fb);
             fb.ins().store(flags, z, base, H_LAST_OS_ERROR);
             fb.ins().return_(&[hd]);

@@ -313,8 +313,8 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
 /// surface are the closures lane's; the additions are the scheduler
 /// intrinsics (lowered to SCHED_* operations, so their declared import
 /// entries are inert) and console/1 host imports (scheduler modules print
-/// from main and from task drivers). Selected stateless Win32 platform calls
-/// can be linked into the same product without sharing platform ledger state.
+/// from main and from task drivers). Selected Win32 file and memory calls
+/// share one serialized platform ledger.
 pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
     if unit.profile != ace_av_core::contract::AV_CLOSURES_PROFILE {
         return Err(MnError::Unsupported(
@@ -355,7 +355,7 @@ pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
                     }
                 }
                 ace_av_core::mir::MirInstr::PlatformCall { host, args, .. } => {
-                    use ace_av_core::platform_io::{self, PlatformOpKind};
+                    use ace_av_core::platform_io;
                     let decl = unit.host_imports.get(*host as usize).ok_or_else(|| {
                         MnError::Unsupported(
                             "native.sched-platform",
@@ -368,12 +368,8 @@ pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
                             format!("unknown platform symbol {}", decl.symbol),
                         )
                     })?;
-                    if !matches!(
-                        spec.kind,
-                        PlatformOpKind::MemPageSize
-                            | PlatformOpKind::MemAllocGranularity
-                            | PlatformOpKind::SleepMs
-                    ) || args.len() != spec.params.len()
+                    if !crate::platform_io::scheduler_supports(spec.kind)
+                        || args.len() != spec.params.len()
                         || !unit.capabilities.iter().any(|cap| cap == spec.capability)
                     {
                         return Err(MnError::Unsupported(

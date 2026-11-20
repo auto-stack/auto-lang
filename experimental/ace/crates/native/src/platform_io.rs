@@ -97,6 +97,48 @@ const SYSINFO_BYTES: u32 = 48;
 const SYSINFO_PAGE_SIZE_OFF: i32 = 4;
 const SYSINFO_GRANULARITY_OFF: i32 = 40;
 
+/// File and memory operations use the single native platform ledger. The
+/// scheduler serializes their calls so helper scratch and origin checks
+/// remain coherent across task chains.
+pub(crate) fn scheduler_supports(kind: PlatformOpKind) -> bool {
+    use PlatformOpKind::*;
+    matches!(
+        kind,
+        MemPageSize
+            | MemAllocGranularity
+            | MemAlloc
+            | MemFree
+            | MemLogicalLen
+            | MemMappedLen
+            | MemBorrow
+            | MemUnborrow
+            | MemReadU8
+            | MemWriteU8
+            | FileOpenW16
+            | FileReadSome
+            | FileWriteSome
+            | FileSeek
+            | FileTell
+            | FileHi
+            | FileSize
+            | FileMtimeMs
+            | FileFlush
+            | FileClose
+            | PathAttrsW16
+            | FileDeleteW16
+            | SleepMs
+            | IoLastError
+            | NetTcpConnect
+            | NetTcpWriteSome
+            | NetTcpWriteRegion
+            | NetTcpReadInto
+            | NetTcpClose
+            | NetTcpListen
+            | NetTcpAccept
+            | NetTcpLocalPort
+    )
+}
+
 pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
     match kind {
         PlatformOpKind::IoStdout => "mn_pio_stdout",
@@ -121,17 +163,14 @@ pub fn shim_symbol_for(kind: PlatformOpKind) -> &'static str {
         // PLAN-1041 Windows text-console classification + Unicode write.
         PlatformOpKind::IoConsoleKind => "mn_pio_console_kind",
         PlatformOpKind::IoConsoleWrite16 => "mn_pio_console_write16",
-        // PLAN-974: rejected by name before lowering — these arms are
-        // unreachable; the match stays exhaustive so a new platform
-        // category can never silently fall through.
-        PlatformOpKind::NetTcpConnect
-        | PlatformOpKind::NetTcpWriteSome
-        | PlatformOpKind::NetTcpWriteRegion
-        | PlatformOpKind::NetTcpReadInto
-        | PlatformOpKind::NetTcpClose
-        | PlatformOpKind::NetTcpListen
-        | PlatformOpKind::NetTcpAccept
-        | PlatformOpKind::NetTcpLocalPort => "mn_pio_net_unsupported",
+        PlatformOpKind::NetTcpConnect => "mn_pio_net_connect",
+        PlatformOpKind::NetTcpWriteSome => "mn_pio_net_write_some",
+        PlatformOpKind::NetTcpWriteRegion => "mn_pio_net_write_region",
+        PlatformOpKind::NetTcpReadInto => "mn_pio_net_read_into",
+        PlatformOpKind::NetTcpClose => "mn_pio_net_close",
+        PlatformOpKind::NetTcpListen => "mn_pio_net_listen",
+        PlatformOpKind::NetTcpAccept => "mn_pio_net_accept",
+        PlatformOpKind::NetTcpLocalPort => "mn_pio_net_local_port",
         // PLAN-973 system-resource ops (symbol = mn_pio_<callee>).
         PlatformOpKind::IoStdin => "mn_pio_stdin",
         PlatformOpKind::FileOpenW16 => "mn_pio_file_open_w16",
@@ -415,7 +454,7 @@ pub fn cranelift_shim_sig_for(
         | PlatformOpKind::NetTcpClose
         | PlatformOpKind::NetTcpListen
         | PlatformOpKind::NetTcpAccept
-        | PlatformOpKind::NetTcpLocalPort => vec![],
+        | PlatformOpKind::NetTcpLocalPort => sys973_shim_sig(kind, conv).params,
         PlatformOpKind::MemWriteU8 => vec![
             AbiParam::new(types::I32),
             AbiParam::new(types::I32),
@@ -524,6 +563,10 @@ pub(crate) fn declare_fn(
 /// Emit the standalone checked Win64 platform shim COFF (`mn-platform-shim`).
 /// Zero C runtime, zero `msvcrt`/`ucrtbase`, zero `malloc`/`free`, zero `std::io`.
 pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
+    emit_platform_shim_with_net(false)
+}
+
+pub(crate) fn emit_platform_shim_with_net(uses_net: bool) -> Result<Vec<u8>, MnError> {
     let isa = make_isa()?;
     let builder = ObjectBuilder::new(isa, "mn-platform-shim", default_libcall_names())
         .map_err(|e| MnError::Backend(format!("platform shim builder: {e}")))?;
@@ -534,6 +577,7 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         .map_err(|e| MnError::Backend(format!("declare mn_pio_state: {e}")))?;
     let mut dd = DataDescription::new();
     dd.define_zeroinit(STATE_TOTAL_BYTES);
+    dd.set_align(8);
     om.define_data(state, &dd)
         .map_err(|e| MnError::Backend(format!("define mn_pio_state: {e}")))?;
 
@@ -608,6 +652,11 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         Some(types::I32),
     );
 
+    let ledger_linkage = if uses_net {
+        Linkage::Export
+    } else {
+        Linkage::Local
+    };
     let loc = LocalIds {
         state_sysinfo: declare_fn(
             &mut om,
@@ -618,13 +667,13 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         find_slot: declare_fn(
             &mut om,
             "mn_pio_local_find_slot",
-            Linkage::Local,
+            ledger_linkage,
             &find_slot_sig,
         )?,
         alloc_slot: declare_fn(
             &mut om,
             "mn_pio_local_alloc_slot",
-            Linkage::Local,
+            ledger_linkage,
             &alloc_slot_sig,
         )?,
         write_slice: declare_fn(
@@ -1569,12 +1618,69 @@ pub fn emit_platform_shim_coff() -> Result<Vec<u8>, MnError> {
         emit_sys973_stub(&mut om, *kind, WINCALL)?;
     }
     crate::platform_io_sys973::emit_sys973_win_bodies(&mut om, state, &loc, WINCALL)?;
+    if uses_net {
+        let state_sig = sig(&[], Some(types::I64));
+        let state_address =
+            declare_fn(&mut om, "mn_pio_state_address", Linkage::Export, &state_sig)?;
+        define_fn(&mut om, state_address, state_sig, |om, fb, _| {
+            let ptr = state_ptr(om, state, fb);
+            fb.ins().return_(&[ptr]);
+        })?;
+    }
+    emit_live_resources(&mut om, state)?;
 
     let product = om.finish();
     let bytes = product
         .emit()
         .map_err(|e| MnError::Backend(format!("emit platform shim coff: {e}")))?;
     Ok(bytes)
+}
+
+pub(crate) const LIVE_RESOURCES: &str = "mn_pio_has_live_resources";
+
+fn emit_live_resources(om: &mut ObjectModule, state: DataId) -> Result<(), MnError> {
+    let signature = sig(&[], Some(types::I32));
+    let function = declare_fn(om, LIVE_RESOURCES, Linkage::Export, &signature)?;
+    define_fn(om, function, signature, |om, fb, _| {
+        let flags = MemFlags::trusted();
+        let base = state_ptr(om, state, fb);
+        let slots = fb.ins().load(types::I32, flags, base, H_NUM_SLOTS);
+        let first = fb.ins().iadd_imm(base, STATE_HEADER_BYTES as i64);
+        let zero = fb.ins().iconst(types::I32, 0);
+
+        let scan = fb.create_block();
+        fb.append_block_param(scan, types::I32);
+        fb.ins().jump(scan, &[zero.into()]);
+        fb.switch_to_block(scan);
+        let index = fb.block_params(scan)[0];
+        let finished = fb.ins().icmp(IntCC::Equal, index, slots);
+        let inspect = fb.create_block();
+        let done = fb.create_block();
+        fb.ins().brif(finished, done, &[], inspect, &[]);
+        fb.seal_block(inspect);
+        fb.switch_to_block(inspect);
+        let wide_index = fb.ins().uextend(types::I64, index);
+        let offset = fb.ins().imul_imm(wide_index, SLOT_BYTES as i64);
+        let slot = fb.ins().iadd(first, offset);
+        let kind = fb.ins().load(types::I32, flags, slot, S_KIND);
+        let owned = fb
+            .ins()
+            .icmp_imm(IntCC::UnsignedGreaterThan, kind, KIND_STREAM);
+        let released = fb.ins().load(types::I32, flags, slot, S_RELEASED);
+        let open = fb.ins().icmp_imm(IntCC::Equal, released, 0);
+        let live = fb.ins().band(owned, open);
+        let report = fb.create_block();
+        let next = fb.ins().iadd_imm(index, 1);
+        fb.ins().brif(live, report, &[], scan, &[next.into()]);
+        fb.seal_block(scan);
+        fb.seal_block(report);
+        fb.seal_block(done);
+
+        fb.switch_to_block(report);
+        ret_err(fb, 1);
+        fb.switch_to_block(done);
+        ret_err(fb, 0);
+    })
 }
 
 /// PLAN-1040: the shared slot-lookup body (identical ledger semantics on

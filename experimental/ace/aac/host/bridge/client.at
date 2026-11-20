@@ -18,10 +18,11 @@ use std.process.spawn5
 type BridgeReply {
     status int
     frame List<int>
+    outcome_offset int
 }
 
 fn failure(status int) BridgeReply {
-    return BridgeReply { status: status, frame: List<int>.new() }
+    return BridgeReply { status: status, frame: List<int>.new(), outcome_offset: 0 }
 }
 
 fn append_u32(out List<int>, value int) int {
@@ -69,7 +70,7 @@ fn read_response(path Str, cap int) BridgeReply {
     let closed = pf_close(handle)
     if (freed < 0 || closed < 0) { return failure(-5) }
     if (status != 0) { return failure(status) }
-    return BridgeReply { status: 0, frame: data.move }
+    return BridgeReply { status: 0, frame: data.move, outcome_offset: 0 }
 }
 
 fn append_range(dst List<int>, src List<int>, start int, stop int) int {
@@ -123,35 +124,42 @@ fn make_request(metadata List<int>, abc List<int>) List<int> {
     return out
 }
 
-fn matches_response(frame List<int>, request List<int>) bool {
-    if (frame.len() < 44 || equal_at(frame, 0, utf8_bytes("AR01")) == false) { return false }
+fn response_outcome_offset(frame List<int>, request List<int>) int {
+    if (frame.len() < 44 || equal_at(frame, 0, utf8_bytes("AR01")) == false) { return -1 }
     let metadata_len = read_length(frame, 4)
     let payload_len = read_length(frame, 8)
-    if (metadata_len < 0 || metadata_len > 65536 || metadata_len > frame.len() - 44) { return false }
-    if (payload_len != frame.len() - 44 - metadata_len) { return false }
+    if (metadata_len < 0 || metadata_len > 65536 || metadata_len > frame.len() - 44) { return -1 }
+    if (payload_len != frame.len() - 44 - metadata_len) { return -1 }
 
     let body = List<int>.new()
     append_range(body, frame, 4, 12)
     append_range(body, frame, 44, frame.len())
-    if (equal_at(frame, 12, blake3_bytes(body)) == false) { return false }
+    if (equal_at(frame, 12, blake3_bytes(body)) == false) { return -1 }
 
     // Canonical Rust response metadata starts with the request ID and the
     // exact request digest. An earlier response must fail this comparison.
     let begin = 44
     let end = begin + metadata_len
     let id_prefix = utf8_bytes("{\"id\":[")
-    if (end - begin < id_prefix.len() || equal_at(frame, begin, id_prefix) == false) { return false }
-    var pos = begin + id_prefix.len()
-    for (pos < end && frame.get(pos) != 93) {
+    if (end - begin < id_prefix.len() || equal_at(frame, begin, id_prefix) == false) { return -1 }
+    // The request producer uses the same canonical field order. Verify
+    // the exact ID bytes as well as the BLAKE3 binding of the whole request.
+    let request_end = 44 + read_length(request, 4)
+    if (request_end - begin < id_prefix.len() || equal_at(request, begin, id_prefix) == false) { return -1 }
+    let id_start = begin + id_prefix.len()
+    var pos = id_start
+    for (pos < end && pos < request_end && frame.get(pos) != 93) {
         let b = frame.get(pos)
-        if ((b < 48 || b > 57) && b != 44) { return false }
+        if (((b < 48 || b > 57) && b != 44) || b != request.get(pos)) { return -1 }
         pos = pos + 1
     }
+    if (pos == id_start || pos >= request_end || request.get(pos) != 93) { return -1 }
     let binding = utf8_bytes("],\"request_hash\":")
     append_json_digest(binding, request)
     let outcome_key = utf8_bytes(",\"outcome\":")
     append_range(binding, outcome_key, 0, outcome_key.len())
-    return binding.len() <= end - pos && equal_at(frame, pos, binding)
+    if (binding.len() > end - pos || equal_at(frame, pos, binding) == false) { return -1 }
+    return pos + binding.len()
 }
 
 // Status 0 means the checked response frame is available. Negative values
@@ -177,6 +185,50 @@ pub fn exchange(tool Str, input_path Str, output_path Str, metadata Str, abc Lis
     let removed_response = delete(output_path.move)
     if (removed_request != 0 || removed_response != 0) { return failure(-5) }
     if (response.status != 0) { return response.move }
-    if (matches_response(response.frame, request) == false) { return failure(-4) }
-    return response.move
+    let offset = response_outcome_offset(response.frame, request)
+    if (offset < 0) { return failure(-4) }
+    let bytes = response.frame
+    return BridgeReply { status: 0, frame: bytes.move, outcome_offset: offset }
+}
+
+type CtIntReply {
+    status int
+    value int
+}
+
+// Read the canonical envelope of an already admitted AR01 frame. Anchor
+// the value to the outcome variant and carrier instead of scanning for an
+// integer inside diagnostics, facts or a binary payload.
+pub fn ct_i32(response BridgeReply) CtIntReply {
+    if (response.status != 0) { return CtIntReply { status: response.status, value: 0 } }
+    let frame = response.frame
+    let end = 44 + read_length(frame, 4)
+    let value_key = utf8_bytes("{\"status\":\"value\",\"value\":{\"i32\":")
+    var pos = response.outcome_offset
+    if (value_key.len() > end - pos || equal_at(frame, pos, value_key) == false) {
+        return CtIntReply { status: -6, value: 0 }
+    }
+    pos = pos + value_key.len()
+    var negative = false
+    if (pos < end && frame.get(pos) == 45) {
+        negative = true
+        pos = pos + 1
+    }
+    let first = pos
+    var result = 0
+    for (pos < end && frame.get(pos) >= 48 && frame.get(pos) <= 57) {
+        let digit = frame.get(pos) - 48
+        var min_digit = 7
+        if (negative) { min_digit = 8 }
+        if (result < -214748364 || (result == -214748364 && digit > min_digit)) {
+            return CtIntReply { status: -6, value: 0 }
+        }
+        result = result * 10 - digit
+        pos = pos + 1
+    }
+    if (pos == first || pos >= end || frame.get(pos) != 125) {
+        return CtIntReply { status: -6, value: 0 }
+    }
+    if (negative) { return CtIntReply { status: 0, value: result } }
+    return CtIntReply { status: 0, value: 0 - result }
 }

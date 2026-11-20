@@ -79,7 +79,8 @@ pub extern "system" fn ac_rt_install_allocator(
     free: Option<FreeHook>,
     poll: Option<PollHook>,
 ) -> i32 {
-    if alloc.is_none() != free.is_none() || c().live != 0 || led_state().1 != 0 {
+    let mut ledger = LedgerGuard::lock();
+    if alloc.is_none() != free.is_none() || ledger.counters().live != 0 || led_state().1 != 0 {
         return ERR_SHIM;
     }
     unsafe {
@@ -92,28 +93,30 @@ pub extern "system" fn ac_rt_install_allocator(
 unsafe fn memory_alloc(bytes: usize) -> *mut core::ffi::c_void {
     match ALLOC_HOOK {
         Some(f) => f(bytes),
-        None => HeapAlloc(process_heap(), 0, bytes),
+        None => HeapAlloc(GetProcessHeap(), 0, bytes),
     }
 }
 unsafe fn memory_free(ptr: *mut core::ffi::c_void) -> i32 {
     match FREE_HOOK {
         Some(f) => f(ptr),
-        None => HeapFree(process_heap(), 0, ptr),
+        None => HeapFree(GetProcessHeap(), 0, ptr),
     }
 }
 #[no_mangle]
 pub extern "system" fn ac_rt_metadata_bytes() -> usize {
+    let _ledger = LedgerGuard::lock();
     led_state().1 * core::mem::size_of::<LedgerEntry>()
 }
 #[no_mangle]
 pub extern "system" fn ac_rt_release_idle_metadata() -> i32 {
+    let mut ledger = LedgerGuard::lock();
     let (base, _, len) = led_state();
-    if len != 0 || c().live != 0 {
+    if len != 0 || ledger.counters().live != 0 {
         return ERR_SHIM;
     }
     unsafe {
         if !base.is_null() && memory_free(base.cast()) == 0 {
-            c().invalid_frees += 1;
+            ledger.counters().invalid_frees += 1;
             return ERR_SHIM;
         }
         LEDGER = core::ptr::null_mut();
@@ -126,7 +129,11 @@ unsafe fn copy_poll(dst: *mut u8, src: *const u8, len: usize) -> bool {
     let mut start = 0;
     while start < len {
         let end = (start + 4096).min(len);
-        if let Some(poll) = POLL_HOOK {
+        let poll = {
+            let _ledger = LedgerGuard::lock();
+            POLL_HOOK
+        };
+        if let Some(poll) = poll {
             if poll((end - start) as u64) != 0 {
                 owned_free(dst);
                 return false;
@@ -141,7 +148,7 @@ unsafe fn copy_poll(dst: *mut u8, src: *const u8, len: usize) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// counters + fault injection state (single-threaded PE state)
+// Shared counters and fault injection state
 //
 // Review r1 (P774-R1-01/05) counting contract: `frees` counts SUCCESSFUL
 // releases only (ledger-validated, HeapFree returned nonzero); free calls on
@@ -151,6 +158,7 @@ unsafe fn copy_poll(dst: *mut u8, src: *const u8, len: usize) -> bool {
 // below, so a release always restores the budget allowance.
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
 struct Counters {
     attempts: u32,   // HeapAlloc invocations (after len/budget checks)
     allocs: u32,     // successful allocations
@@ -186,18 +194,39 @@ static mut C: Counters = Counters {
     ledger_seq: 0,
 };
 
-fn c() -> &'static mut Counters {
-    unsafe { &mut *addr_of_mut!(C) }
+// The producer and receiver may allocate or release text concurrently.
+// One lock covers the ledger, the accounting transaction and allocator hooks.
+static LEDGER_LOCK: AtomicBool = AtomicBool::new(false);
+
+struct LedgerGuard;
+
+impl LedgerGuard {
+    fn lock() -> Self {
+        while LEDGER_LOCK
+            .compare_exchange_weak(
+                false,
+                true,
+                AtomicOrdering::Acquire,
+                AtomicOrdering::Relaxed,
+            )
+            .is_err()
+        {
+            while LEDGER_LOCK.load(AtomicOrdering::Relaxed) {
+                core::hint::spin_loop();
+            }
+        }
+        Self
+    }
+
+    fn counters(&mut self) -> &mut Counters {
+        // Every access holds LEDGER_LOCK for the lifetime of the reference.
+        unsafe { &mut *addr_of_mut!(C) }
+    }
 }
 
-fn process_heap() -> isize {
-    static mut HEAP: isize = 0;
-    unsafe {
-        let h = &mut *addr_of_mut!(HEAP);
-        if *h == 0 {
-            *h = GetProcessHeap();
-        }
-        *h
+impl Drop for LedgerGuard {
+    fn drop(&mut self) {
+        LEDGER_LOCK.store(false, AtomicOrdering::Release);
     }
 }
 
@@ -239,15 +268,14 @@ fn led_state() -> (*mut LedgerEntry, usize, usize) {
 // which count USER resource requests only. Their failures have a dedicated
 // injection knob (`ac_rt_fail_ledger_nth`) and surface as env-oom for the
 // user request after a full rollback.
-fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
+fn ledger_insert(ptr: *mut u8, len: u32, id: u32, counters: &mut Counters) -> bool {
     unsafe {
         let (base, cap, len_n) = led_state();
         if len_n == cap {
             let new_cap = if cap == 0 { 16 } else { cap * 2 };
             let nbytes = new_cap * core::mem::size_of::<LedgerEntry>();
-            let c0 = c();
-            c0.ledger_seq += 1;
-            if c0.fail_ledger_nth != 0 && c0.ledger_seq == c0.fail_ledger_nth {
+            counters.ledger_seq += 1;
+            if counters.fail_ledger_nth != 0 && counters.ledger_seq == counters.fail_ledger_nth {
                 return false; // injected metadata failure (first or growth)
             }
             let fresh = memory_alloc(nbytes) as *mut LedgerEntry;
@@ -262,7 +290,7 @@ fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
                 if freed == 0 {
                     // the old table release failed: surface through the
                     // invalid-release counter (wired; not injectable)
-                    c().invalid_frees += 1;
+                    counters.invalid_frees += 1;
                     trace_line(|l| {
                         l.s("FREE-INVALID");
                     });
@@ -305,10 +333,11 @@ fn ledger_take(ptr: *mut u8) -> Option<(u32, u32)> {
 /// budget rejection makes NO allocator call; the injected nth failure and
 /// real HeapAlloc null both count as attempts and return ERR_ENV_OOM.
 fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
-    let c = c();
     if len == 0 {
         return Ok((core::ptr::null_mut(), 0));
     }
+    let mut ledger = LedgerGuard::lock();
+    let c = ledger.counters();
     if let Some(budget) = c.budget {
         // u64 arithmetic on both sides: the budget keeps its full i64 value
         // and the live-byte sum cannot wrap before the comparison (r3).
@@ -327,7 +356,7 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     }
     c.next_id += 1;
     let id = c.next_id;
-    if !ledger_insert(p, len, id) {
+    if !ledger_insert(p, len, id, c) {
         // ledger failure: roll the user buffer back so accounting stays
         // complete; a refused rollback surfaces through invalid_frees
         let freed = unsafe { memory_free(p as *mut core::ffi::c_void) };
@@ -356,10 +385,11 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
 /// read); a hit is released via HeapFree and only counted as a successful
 /// free when the OS call returns nonzero.
 fn owned_free(ptr: *mut u8) {
-    let c = c();
     if ptr.is_null() {
         return;
     }
+    let mut ledger = LedgerGuard::lock();
+    let c = ledger.counters();
     c.free_attempts += 1;
     let Some((len, id)) = ledger_take(ptr) else {
         c.invalid_frees += 1;
@@ -385,6 +415,7 @@ fn owned_free(ptr: *mut u8) {
     // exact release: the ledger-backed length is always <= live_bytes;
     // subtract plainly so no discrepancy can hide behind a floor
     c.live_bytes -= len as u64;
+    drop(ledger);
     trace_line(|l| {
         l.s("FREE id=");
         l.u(id);
@@ -1179,19 +1210,19 @@ pub extern "system" fn ac_rt_set_budget(bytes: i64) {
     // byte budget where 0 is a real ZERO-byte budget; a negative value
     // clears the ceiling (unlimited). The i64 channel is stored as u64 —
     // NEVER silently truncated to u32 (4 GiB budgets must stay 4 GiB).
-    c().budget = if bytes < 0 { None } else { Some(bytes as u64) };
+    LedgerGuard::lock().counters().budget = if bytes < 0 { None } else { Some(bytes as u64) };
 }
 
 #[no_mangle]
 pub extern "system" fn ac_rt_fail_nth_alloc(n: i32) {
-    c().fail_nth = if n < 0 { 0 } else { n as u32 };
+    LedgerGuard::lock().counters().fail_nth = if n < 0 { 0 } else { n as u32 };
 }
 
 #[no_mangle]
 pub extern "system" fn ac_rt_fail_ledger_nth(n: i32) {
     // r2 P774-R2-03: dedicated injection for the LEDGER's own metadata
     // allocations (first table + growth), independent of user AP-1..4.
-    c().fail_ledger_nth = if n < 0 { 0 } else { n as u32 };
+    LedgerGuard::lock().counters().fail_ledger_nth = if n < 0 { 0 } else { n as u32 };
 }
 
 #[no_mangle]
@@ -1199,8 +1230,7 @@ pub extern "system" fn ac_rt_shim_error() -> i32 {
     ERR_SHIM
 }
 
-fn emit_summary() {
-    let c = c();
+fn emit_summary(c: Counters) {
     trace_line(|l| {
         l.s("SUMMARY attempts=");
         l.u(c.attempts);
@@ -1227,18 +1257,15 @@ fn emit_summary() {
 
 #[no_mangle]
 pub extern "system" fn ac_rt_summary() {
-    emit_summary();
+    let counters = *LedgerGuard::lock().counters();
+    emit_summary(counters);
 }
 
 #[no_mangle]
 pub extern "system" fn ac_rt_check_invariant() -> i32 {
-    emit_summary();
-    let c = c();
-    if c.allocs == c.frees && c.live == 0 && c.live_bytes == 0 && c.invalid_frees == 0 {
-        0
-    } else {
-        1
-    }
+    let counters = *LedgerGuard::lock().counters();
+    emit_summary(counters);
+    audit(counters)
 }
 
 /// PLAN-1067: switch the probe trace channel on/off. Default on; the native
@@ -1258,7 +1285,10 @@ pub extern "system" fn ac_rt_trace_switch(on: i32) {
 /// scheduler PE's exit instead of hiding behind a successful run.
 #[no_mangle]
 pub extern "system" fn ac_rt_owned_audit() -> i32 {
-    let c = c();
+    audit(*LedgerGuard::lock().counters())
+}
+
+fn audit(c: Counters) -> i32 {
     if c.allocs == c.frees && c.live == 0 && c.live_bytes == 0 && c.invalid_frees == 0 {
         0
     } else {
@@ -1275,7 +1305,7 @@ pub extern "system" fn ac_rt_trap_after_alloc(len: i32) -> ! {
     let _ = p; // the allocation stays live on purpose: OS reclaim boundary
     trace_line(|l| {
         l.s("TRAP-PRE live=");
-        l.u(c().live);
+        l.u(LedgerGuard::lock().counters().live);
     });
     // Deliberate access violation: a volatile write to null is emitted as a
     // real store, so the process dies with 0xC0000005 (not a ud2 trap).
@@ -1294,7 +1324,7 @@ pub extern "system" fn ac_rt_hang_after_alloc(len: i32) -> ! {
     let _ = p;
     trace_line(|l| {
         l.s("HANG-PRE live=");
-        l.u(c().live);
+        l.u(LedgerGuard::lock().counters().live);
     });
     loop {
         core::hint::spin_loop();

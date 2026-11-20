@@ -153,6 +153,7 @@ pub struct SchedCallee {
 #[derive(Clone, Debug, Default)]
 pub struct SchedCtx {
     pub callees: Vec<SchedCallee>,
+    pub report_spans: bool,
 }
 
 /// Emit the single function of `unit` into `ctx.func`, declaring callees
@@ -369,6 +370,7 @@ pub fn emit_function(
         console_scratch: None,
         console_reject_block: None,
         sched_ctx: sched,
+        sched_span: None,
         sched_refs: BTreeMap::new(),
         sched_callee_refs: BTreeMap::new(),
         blocks,
@@ -472,6 +474,9 @@ pub fn emit_function(
         "the delivered adapter emits entry-first functions"
     );
     let mut on_entry = true;
+    let report_spans = fx.sched_ctx.is_some_and(|ctx| ctx.report_spans);
+    let mut spans = f.spans.iter().peekable();
+    let mut flat = 0;
     for (bi, b) in f.blocks.iter().enumerate() {
         if !sealed[bi] && remaining[bi] == 0 {
             fx.fb.seal_block(fx.blocks[bi]);
@@ -483,6 +488,14 @@ pub fn emit_function(
             fx.fb.switch_to_block(fx.blocks[bi]);
         }
         for instr in &b.instrs {
+            if report_spans {
+                fx.sched_span = if spans.peek().is_some_and(|entry| entry.0 == flat) {
+                    spans.next().map(|entry| entry.1)
+                } else {
+                    None
+                };
+                flat += 1;
+            }
             fx.emit_instr(instr)
                 .map_err(|e| format!("`{}`: {e}", f.name))?;
         }
@@ -697,6 +710,7 @@ struct FnLowerer<'a, 'b> {
     console_reject_block: Option<cranelift_codegen::ir::Block>,
     /// PLAN-1067: the scheduler lane's callee table + runtime helper refs.
     sched_ctx: Option<&'a SchedCtx>,
+    sched_span: Option<ace_av_core::SpanInfo>,
     sched_refs: BTreeMap<&'static str, FuncRef>,
     sched_callee_refs: BTreeMap<u32, FuncRef>,
     blocks: Vec<cranelift_codegen::ir::Block>,
@@ -807,6 +821,12 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         self.fb.def_var(p, ptr);
         self.fb.def_var(l, len);
         Ok(())
+    }
+
+    fn replace_owned_text(&mut self, slot: u32, ptr: Value, len: Value) -> Result<(), String> {
+        let old = self.use_ptr(slot)?;
+        self.rt_free(old);
+        self.def_pair(slot, ptr, len)
     }
 
     fn zero_pair(&mut self, slot: u32) -> Result<(), String> {
@@ -1305,7 +1325,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         };
         // PLAN-974: platform.net/1 is outside the native lane's original
         // support domain — a NAMED rejection, never a silent shim.
-        if spec.category == ace_av_core::platform_io::CATEGORY_NET {
+        let net = spec.category == ace_av_core::platform_io::CATEGORY_NET;
+        if net && self.sched_ctx.is_none() {
             return Err(format!(
                 "native.sched-unsupported-style: platform.net `{}` is outside the native support domain",
                 h.symbol
@@ -1334,7 +1355,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         };
 
         let mut clif_args: Vec<Value> = Vec::with_capacity(args.len() + 1);
-        if crate::platform_io::is_sys973_kind(spec.kind) {
+        if crate::platform_io::is_sys973_kind(spec.kind) || net {
             // PLAN-973: sys973 marshalling derives from the frozen op
             // table (StrView -> pointer + byte length; scalars as-is).
             let mut arg_i = 0;
@@ -1373,17 +1394,6 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 | PlatformOpKind::MemBorrow
                 | PlatformOpKind::MemUnborrow => {
                     clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
-                }
-                // PLAN-974: rejected by name before lowering (unreachable).
-                PlatformOpKind::NetTcpConnect
-                | PlatformOpKind::NetTcpWriteSome
-                | PlatformOpKind::NetTcpWriteRegion
-                | PlatformOpKind::NetTcpReadInto
-                | PlatformOpKind::NetTcpClose
-                | PlatformOpKind::NetTcpListen
-                | PlatformOpKind::NetTcpAccept
-                | PlatformOpKind::NetTcpLocalPort => {
-                    return Err("native.net-unsupported".into());
                 }
                 PlatformOpKind::IoConsoleKind => {
                     clif_args.push(self.fb.use_var(self.v_scalar(args[0])?));
@@ -1432,8 +1442,17 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 }
             }
         } // PLAN-973 sys973 else-arm
+        let serialized = self.sched_ctx.is_some() && spec.kind != PlatformOpKind::SleepMs;
+        if serialized {
+            let acquire = self.sched_helper("mn_sched_platform_acquire")?;
+            self.fb.ins().call(acquire, &[]);
+        }
         let call = self.fb.ins().call(callee, &clif_args);
         let res = self.fb.inst_results(call)[0];
+        if serialized {
+            let release = self.sched_helper("mn_sched_platform_release")?;
+            self.fb.ins().call(release, &[]);
+        }
         self.def_scalar(dst, res)?;
         Ok(())
     }
@@ -2529,7 +2548,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                                 &[addr, len],
                             )?;
                             self.negative_guard(l)?;
-                            self.def_pair(*dst, p, l)?;
+                            self.replace_owned_text(*dst, p, l)?;
                         }
                         MirType::StrView => {
                             let addr = self.lit_addr(*value)?;
@@ -2772,6 +2791,12 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         }
                     }
                 }
+                // Owned text arguments transfer to the callee. Clear their
+                // slots before storing the result, including when it reuses
+                // an argument slot. Record storage transfers in place.
+                for a in str_args {
+                    self.zero_pair(a)?;
+                }
                 // Result marshalling (the record case appends the hidden
                 // out-aggregate address).
                 let result = self.mir_type(sig.result)?.clone();
@@ -2793,7 +2818,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         let call = self.fb.ins().call(r, &argv);
                         let p = self.fb.inst_results(call)[0];
                         let l = self.fb.inst_results(call)[1];
-                        self.def_pair(*dst, p, l)?;
+                        if matches!(result, MirType::Str) {
+                            self.replace_owned_text(*dst, p, l)?;
+                        } else {
+                            self.def_pair(*dst, p, l)?;
+                        }
                     }
                     MirType::Record(_) | MirType::RecordView(_) => {
                         let out = self.agg_addr(*dst)?;
@@ -2806,14 +2835,6 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                             "call result type outside the mn data/owned ABI",
                         )
                     }
-                }
-                // Str move-args transfer to the callee (freeze §2): zero
-                // the caller's temp so its own exit sweep cannot double
-                // free. Record args are NOT zeroed here — the callee's
-                // consuming instruction zeroes through the pointer, and an
-                // unconsumed arg frees at the caller sweep (AV parity).
-                for a in str_args {
-                    self.zero_pair(a)?;
                 }
             }
             MirInstr::Trace { event } => {
@@ -3023,7 +3044,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         let (np, nl) =
                             self.abic_call("ac_rt_own_clone", &[types::I64, types::I32], &[p, l])?;
                         self.negative_guard(nl)?;
-                        self.def_pair(*dst, np, nl)?;
+                        self.replace_owned_text(*dst, np, nl)?;
                     }
                     MirType::Record(_) => {
                         let size = self.record_size_of(ty)?;
@@ -3076,11 +3097,12 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     // Whole-root transfer: bytes to dst (its old buffers
                     // free here — null-safe), source zeroed.
                     MirType::Str => {
-                        let old = self.use_ptr(*dst)?;
+                        if dst == src {
+                            return Ok(());
+                        }
                         let p = self.use_ptr(*src)?;
                         let l = self.use_len(*src)?;
-                        self.rt_free(old);
-                        self.def_pair(*dst, p, l)?;
+                        self.replace_owned_text(*dst, p, l)?;
                         self.zero_pair(*src)?;
                     }
                     MirType::Record(_) => {
@@ -3169,7 +3191,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     MirType::Str => {
                         let p = self.fb.ins().load(types::I64, flags, addr, off);
                         let l = self.fb.ins().load(types::I32, flags, addr, off + 8);
-                        self.def_pair(*dst, p, l)?;
+                        self.replace_owned_text(*dst, p, l)?;
                         let zero = self.fb.ins().iconst(types::I64, 0);
                         self.fb.ins().store(flags, zero, addr, off);
                     }
@@ -3233,7 +3255,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     &[p, l, s, e],
                 )?;
                 self.negative_guard(nl)?;
-                self.def_pair(*dst, np, nl)?;
+                self.replace_owned_text(*dst, np, nl)?;
             }
             MirInstr::StrConcat { dst, lhs, rhs } => {
                 let ap = self.use_ptr(*lhs)?;
@@ -3246,7 +3268,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     &[ap, al, bp, bl],
                 )?;
                 self.negative_guard(nl)?;
-                self.def_pair(*dst, np, nl)?;
+                self.replace_owned_text(*dst, np, nl)?;
             }
             MirInstr::StrToOwned { dst, view } => {
                 // The view's byte range is exact — a fresh copy of it is
@@ -3256,7 +3278,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 let (np, nl) =
                     self.abic_call("ac_rt_own_from_lit", &[types::I64, types::I32], &[p, l])?;
                 self.negative_guard(nl)?;
-                self.def_pair(*dst, np, nl)?;
+                self.replace_owned_text(*dst, np, nl)?;
             }
             MirInstr::StrFromChar { dst, ch } => {
                 // PLAN-975 B1: char (scalar on the I32 channel) -> fresh
@@ -3265,7 +3287,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 let x = self.fb.use_var(v);
                 let (np, nl) = self.abic_call("ac_rt_own_from_char", &[types::I32], &[x])?;
                 self.negative_guard(nl)?;
-                self.def_pair(*dst, np, nl)?;
+                self.replace_owned_text(*dst, np, nl)?;
             }
             // PLAN-964 (L-22/FStr): I32 → decimal owned Str (the mn FStr
             // leg; the general format algorithms belong to 972).
@@ -3274,7 +3296,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 let x = self.fb.use_var(v);
                 let (np, nl) = self.abic_call("ac_rt_own_display_i32", &[types::I32], &[x])?;
                 self.negative_guard(nl)?;
-                self.def_pair(*dst, np, nl)?;
+                self.replace_owned_text(*dst, np, nl)?;
             }
             MirInstr::StrCmp { eq, dst, lhs, rhs } => {
                 let ap = self.use_ptr(*lhs)?;
@@ -3706,6 +3728,8 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             "mn_sched_await" => (&[types::I32, types::I64], true),
             "mn_sched_recv" => (&[types::I64], true),
             "mn_sched_port" => (&[], true),
+            "mn_sched_platform_acquire" | "mn_sched_platform_release" => (&[], false),
+            "mn_sched_fail_span" => (&[types::I32, types::I32, types::I32, types::I32], false),
             "mn_sched_stopping" => (&[], true),
             "mn_sched_stop" => (&[types::I32], true),
             "mn_sched_sleep" => (&[types::I32], true),
@@ -3756,18 +3780,30 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         self.fb.seal_block(fail);
         self.fb.seal_block(cont);
         self.fb.switch_to_block(fail);
-        let helper = self.sched_helper("mn_sched_fail")?;
-        self.fb.ins().call(helper, &[status]);
-        self.fb
-            .ins()
-            .trap(TrapCode::user(2).expect("valid user trap code"));
+        self.sched_failure(status)?;
         self.fb.switch_to_block(cont);
         Ok(())
     }
 
-    /// The scheduler value kind a slot crosses the handoff as. Owned text is
-    /// named out of this cut: the runtime must materialize it through the
-    /// text runtime's own allocator shape (PLAN-1067 T-03).
+    fn sched_failure(&mut self, status: Value) -> Result<(), String> {
+        if let Some(span) = self.sched_span {
+            let function = self.fb.ins().iconst(types::I32, i64::from(span.func));
+            let start = self.fb.ins().iconst(types::I32, i64::from(span.start));
+            let end = self.fb.ins().iconst(types::I32, i64::from(span.end));
+            let fail = self.sched_helper("mn_sched_fail_span")?;
+            self.fb.ins().call(fail, &[status, function, start, end]);
+        } else {
+            let fail = self.sched_helper("mn_sched_fail")?;
+            self.fb.ins().call(fail, &[status]);
+        }
+        self.fb
+            .ins()
+            .trap(TrapCode::user(2).expect("valid user trap code"));
+        Ok(())
+    }
+
+    /// The scheduler value kind a slot crosses the handoff as. The runtime
+    /// materializes text with its own allocator before taking ownership.
     fn sched_arg_kind_of(&self, slot: u32) -> Result<SchedArgKind, String> {
         match self.unit.types.get(self.slot_ty(slot) as usize) {
             Some(MirType::I32) | Some(MirType::Char) => Ok(SchedArgKind::I32),
@@ -3829,13 +3865,56 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
         Ok(())
     }
 
-    fn sched_load_val(&mut self, base: Value, offset: i32, dst: u32) -> Result<(), String> {
+    fn sched_load_val(
+        &mut self,
+        base: Value,
+        dst: u32,
+        closed: Option<Value>,
+    ) -> Result<(), String> {
+        let expected_tag = match self.unit.types.get(self.slot_ty(dst) as usize) {
+            Some(MirType::I32 | MirType::Char) => 0,
+            Some(MirType::Bool) => 1,
+            Some(MirType::Str) => 2,
+            other => {
+                return Err(format!(
+                    "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
+                ));
+            }
+        };
+        let actual_tag = self.fb.ins().load(types::I64, MemFlags::trusted(), base, 0);
+        let tag_matches = self
+            .fb
+            .ins()
+            .icmp_imm(IntCC::Equal, actual_tag, expected_tag);
+        // RECV returns a zero placeholder on stop. The driver observes the
+        // terminal state separately; the placeholder inhabits its slot type.
+        let matches = if let Some(closed) = closed {
+            let stopped = self.fb.ins().icmp_imm(IntCC::Equal, closed, 1);
+            self.fb.ins().bor(tag_matches, stopped)
+        } else {
+            tag_matches
+        };
+        let valid = self.fb.create_block();
+        let mismatch = self.fb.create_block();
+        self.fb.ins().brif(matches, valid, &[], mismatch, &[]);
+        self.fb.seal_block(mismatch);
+        self.fb.switch_to_block(mismatch);
+
+        // The receive already removed this value from its queue or port.
+        // Retire a discarded text buffer before reporting the type error.
+        let owned = self.fb.ins().icmp_imm(IntCC::Equal, actual_tag, 2);
+        let word = self.fb.ins().load(types::I64, MemFlags::trusted(), base, 8);
+        let null = self.fb.ins().iconst(types::I64, 0);
+        let discarded = self.fb.ins().select(owned, word, null);
+        self.rt_free(discarded);
+        let status = self.fb.ins().iconst(types::I32, -8); // mn.sched.runtime/1 E_VALUE
+        self.sched_failure(status)?;
+
+        self.fb.seal_block(valid);
+        self.fb.switch_to_block(valid);
         match self.unit.types.get(self.slot_ty(dst) as usize) {
             Some(MirType::I32) | Some(MirType::Char) | Some(MirType::Bool) => {
-                let wide = self
-                    .fb
-                    .ins()
-                    .load(types::I64, MemFlags::trusted(), base, offset + 8);
+                let wide = self.fb.ins().load(types::I64, MemFlags::trusted(), base, 8);
                 let value = self.fb.ins().ireduce(types::I32, wide);
                 self.def_scalar(dst, value)
             }
@@ -3843,18 +3922,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 // The received owned buffer becomes the slot's value (the
                 // enclosing sweep frees it at the driver's exit); a slot that
                 // already held a value frees it first, exactly like MOVE.
-                let old = self.use_ptr(dst)?;
-                let ptr = self
+                let ptr = self.fb.ins().load(types::I64, MemFlags::trusted(), base, 8);
+                let wide_len = self
                     .fb
                     .ins()
-                    .load(types::I64, MemFlags::trusted(), base, offset + 8);
-                let wide_len =
-                    self.fb
-                        .ins()
-                        .load(types::I64, MemFlags::trusted(), base, offset + 16);
+                    .load(types::I64, MemFlags::trusted(), base, 16);
                 let len = self.fb.ins().ireduce(types::I32, wide_len);
-                self.rt_free(old);
-                self.def_pair(dst, ptr, len)
+                self.replace_owned_text(dst, ptr, len)
             }
             other => Err(format!(
                 "native.sched-value: slot type {other:?} cannot cross the scheduler handoff"
@@ -4069,13 +4143,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 let (_, base) = self.sched_val_slot(1);
                 let status = self.sched_call("mn_sched_await", &[port, base])?;
                 self.sched_guard(status, false)?;
-                self.sched_load_val(base, 0, *dst)
+                self.sched_load_val(base, *dst, None)
             }
             I::SchedRecv { dst } => {
                 let (_, base) = self.sched_val_slot(1);
                 let status = self.sched_call("mn_sched_recv", &[base])?;
                 self.sched_guard(status, false)?;
-                self.sched_load_val(base, 0, *dst)
+                self.sched_load_val(base, *dst, Some(status))
             }
             I::SchedPort { dst } => {
                 let port = self.sched_call("mn_sched_port", &[])?;

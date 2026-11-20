@@ -911,10 +911,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             | crate::platform_io::CAP_WRITE
                             | crate::platform_io::CAP_MEM
                             | crate::platform_io::CAP_PROBE
-                            // PLAN-974: the platform.net/1 caps (the
-                            // host-console platform profile carries the
-                            // same admission discipline as io/mem).
-                            | crate::platform_io::CAP_NET_CONNECT
+                    ))
+                // Scheduler units share the closures family and may carry
+                // these capabilities transitively. Individual calls still
+                // require the precise declaration and capability.
+                || ((self.module.is_host_console_profile()
+                    || self.module.profile == crate::contract::AV_CLOSURES_PROFILE)
+                    && matches!(
+                        c.as_str(),
+                        crate::platform_io::CAP_NET_CONNECT
                             | crate::platform_io::CAP_NET_WRITE
                             | crate::platform_io::CAP_NET_READ
                             | crate::platform_io::CAP_NET_CLOSE

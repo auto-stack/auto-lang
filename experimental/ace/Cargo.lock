@@ -414,6 +414,7 @@ name = "ace-sched-runtime"
 version = "0.1.0"
 dependencies = [
  "ace-text-runtime",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

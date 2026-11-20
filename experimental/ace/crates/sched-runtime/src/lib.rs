@@ -29,6 +29,9 @@
 #![no_std]
 #![allow(non_snake_case)]
 
+#[cfg(windows)]
+mod net;
+
 use core::ffi::c_void;
 use core::ptr::{addr_of_mut, null_mut};
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
@@ -66,6 +69,20 @@ const HEAP_ZERO_MEMORY: u32 = 0x0000_0008;
 const INFINITE: u32 = 0xFFFF_FFFF;
 const STD_ERROR_HANDLE: i32 = -12;
 const EXIT_TRAP: u32 = 70;
+
+// Separate from the scheduler registry. A guest may do platform I/O while
+// another task is parked in the scheduler, without holding a mailbox lock.
+static mut PLATFORM_LOCK: SrwLock = SrwLock { ptr: 0 };
+
+#[no_mangle]
+pub extern "system" fn mn_sched_platform_acquire() {
+    unsafe { AcquireSRWLockExclusive(addr_of_mut!(PLATFORM_LOCK)) };
+}
+
+#[no_mangle]
+pub extern "system" fn mn_sched_platform_release() {
+    unsafe { ReleaseSRWLockExclusive(addr_of_mut!(PLATFORM_LOCK)) };
+}
 
 #[repr(C)]
 pub struct SrwLock {
@@ -1215,24 +1232,64 @@ pub extern "system" fn mn_sched_drain() -> i32 {
         residue + unjoined_residue
     }
 }
-/// The language-error transport: write the frozen message to stderr and
-/// exit with the native trap code. The lane's lowering calls this exactly
-/// where AV reports `ExecOutcome::Error`.
+unsafe fn write_diagnostic(handle: isize, message: &[u8]) {
+    let mut written = 0;
+    WriteFile(
+        handle,
+        message.as_ptr(),
+        message.len() as u32,
+        &mut written,
+        null_mut(),
+    );
+}
+
+/// The scheduler's language-error transport. Its legacy stderr stays
+/// byte-identical when the caller has no source position.
 #[no_mangle]
 pub extern "system" fn mn_sched_fail(code: i32) -> ! {
     unsafe {
-        let message = fail_message(code);
         let handle = GetStdHandle(STD_ERROR_HANDLE);
         if handle != 0 && handle != -1 {
-            let mut written: u32 = 0;
-            WriteFile(
-                handle,
-                message.as_ptr(),
-                message.len() as u32,
-                &mut written,
-                null_mut(),
-            );
+            write_diagnostic(handle, fail_message(code));
         }
         ExitProcess(EXIT_TRAP);
     }
+}
+
+#[no_mangle]
+pub extern "system" fn mn_sched_fail_span(code: i32, function: u32, start: u32, end: u32) -> ! {
+    unsafe {
+        let handle = GetStdHandle(STD_ERROR_HANDLE);
+        if handle != 0 && handle != -1 {
+            write_diagnostic(handle, fail_message(code));
+            write_diagnostic(handle, b"sched: source function ");
+            write_number(handle, function);
+            write_diagnostic(handle, b" bytes ");
+            write_number(handle, start);
+            write_diagnostic(handle, b"..");
+            write_number(handle, end);
+            write_diagnostic(handle, b"\n");
+        }
+        ExitProcess(EXIT_TRAP);
+    }
+}
+
+unsafe fn write_number(handle: isize, mut value: u32) {
+    let mut digits = [0u8; 10];
+    let mut begin = digits.len();
+    loop {
+        begin -= 1;
+        digits
+            .as_mut_ptr()
+            .add(begin)
+            .write(b'0' + (value % 10) as u8);
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    write_diagnostic(
+        handle,
+        core::slice::from_raw_parts(digits.as_ptr().add(begin), digits.len() - begin),
+    );
 }

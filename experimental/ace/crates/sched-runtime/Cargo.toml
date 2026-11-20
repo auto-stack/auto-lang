@@ -23,3 +23,5 @@ name = "ac_sched_runtime"
 # needs) are embedded in this one staticlib — two Rust staticlibs in one
 # link would collide on the panic/unwind runtime symbols.
 ace-text-runtime = { path = "../text-runtime" }
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }

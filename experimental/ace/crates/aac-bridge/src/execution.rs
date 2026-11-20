@@ -67,7 +67,7 @@ pub(crate) fn run(
         ));
     }
     let foreign = match request.external_provider {
-        Some(hash) if request.mode == Mode::CompileTime => {
+        Some(hash) if matches!(request.mode, Mode::CompileTime | Mode::NativeObjects) => {
             Some(permit.filter(|permit| permit.hash == hash).ok_or_else(|| {
                 Failure::admission(
                     "bridge.foreign-authority",
@@ -78,7 +78,7 @@ pub(crate) fn run(
         Some(_) => {
             return Err(Failure::admission(
                 "bridge.foreign-domain",
-                "foreign provider binding is a CT host capability",
+                "foreign provider binding requires the native-object or CT execution domain",
             ))
         }
         None => None,
@@ -111,6 +111,21 @@ pub(crate) fn run(
         schema: request.mir_schema.clone(),
         module: request.owner.clone(),
     };
+    if let (Mode::NativeObjects, Some(permit)) = (request.mode, foreign) {
+        if !module.globals.is_empty() || !module.init.is_empty() {
+            return Err(Failure::admission(
+                "bridge.foreign-program-state",
+                "native foreign emission requires a stateless closure",
+            ));
+        }
+        let authority = permit.admit(module, false)?;
+        let checked =
+            ace_av_core::abc_verify::verify_abc_native_foreign(decoded, &owner, &authority)
+                .map_err(abc_admission_failure)?;
+        let _provider = permit.verified_image()?;
+        remaining(&request, started)?;
+        return native_objects(checked.module(), Mode::NativeObjects, Some(&authority));
+    }
     let (loaded, provider) = if let Some(permit) = foreign {
         if !module.globals.is_empty() || !module.init.is_empty() {
             return Err(Failure::admission(
@@ -118,7 +133,7 @@ pub(crate) fn run(
                 "foreign CT runs in one checked stateless closure",
             ));
         }
-        permit.admit(module)?;
+        permit.admit(module, true)?;
         module.owner = owner.clone();
         for function in &mut module.funcs {
             function.owner = owner.clone();
@@ -143,9 +158,11 @@ pub(crate) fn run(
         ));
     }
     let budget = remaining(&request, started)?;
+    #[cfg(test)]
+    EXECUTION_ENTRIES.with(|entries| entries.set(entries.get() + 1));
     match request.mode {
         Mode::NativeObjects | Mode::NativeCollections => {
-            native_objects(loaded.module(), request.mode)
+            native_objects(loaded.module(), request.mode, None)
         }
         Mode::NativeScheduler => native_scheduler(loaded.module()),
         Mode::CompileTime => ct(&loaded, budget, provider),
@@ -306,7 +323,11 @@ fn append_object(object: emit::UnitObject, payload: &mut Vec<u8>) -> Result<Obje
     })
 }
 
-fn native_objects(module: &MirModule, mode: Mode) -> Result<(Outcome, Vec<u8>), Failure> {
+fn native_objects(
+    module: &MirModule,
+    mode: Mode,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+) -> Result<(Outcome, Vec<u8>), Failure> {
     let collections = mode == Mode::NativeCollections;
     let stateful = !module.globals.is_empty() || !module.init.is_empty();
     if collections && stateful {
@@ -334,18 +355,22 @@ fn native_objects(module: &MirModule, mode: Mode) -> Result<(Outcome, Vec<u8>), 
     let entry = ace_native::symbols::function_symbol(&module.owner, &entry.name);
     let units = ace_av::cache::split_units(module)
         .map_err(|message| Failure::admission("bridge.native-units", message))?;
-    for unit in &units {
-        (if collections {
-            ace_native::collections_lower::admit_unit(unit)
-        } else {
-            emit::admit_unit(unit)
-        })
-        .map_err(native_failure)?;
+    if foreign.is_none() {
+        for unit in &units {
+            (if collections {
+                ace_native::collections_lower::admit_unit(unit)
+            } else {
+                emit::admit_unit(unit)
+            })
+            .map_err(native_failure)?;
+        }
     }
     let mut payload = Vec::new();
     let mut objects = Vec::with_capacity(units.len());
     for unit in &units {
-        let object = if collections {
+        let object = if let Some(foreign) = foreign {
+            emit::emit_foreign_unit_coff(unit, foreign)
+        } else if collections {
             ace_native::collections_lower::emit_unit_coff(unit)
         } else if stateful {
             emit::emit_program_unit_coff(unit)
@@ -401,7 +426,7 @@ fn native_scheduler(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
     }
     let entry = &module.funcs[module.entry as usize].name;
     let program =
-        ace_native::sched::emit_sched_program_objects(module, entry).map_err(native_failure)?;
+        ace_native::sched::emit_sched_service_objects(module, entry).map_err(native_failure)?;
     let mut payload = Vec::new();
     let units = program
         .units
@@ -600,4 +625,9 @@ fn portable(value: AvValue) -> Result<(Value, Vec<u8>), Failure> {
         }
     };
     Ok((value, Vec::new()))
+}
+
+#[cfg(test)]
+std::thread_local! {
+    pub(crate) static EXECUTION_ENTRIES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }

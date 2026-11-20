@@ -239,48 +239,56 @@ impl Client {
                 "worker did not produce a response stream",
             )
         })?;
-        let frame = read_frame::<Response>(stdout.as_slice(), RESPONSE_MAGIC, RESPONSE_CAP)?;
-        if request.id != frame.metadata.id || hash != frame.metadata.request_hash {
-            return Err(Failure::admission(
-                "bridge.response-identity",
-                "response belongs to a different request",
-            ));
-        }
-        use crate::{Mode, NativeRuntime};
-        match (&frame.metadata.outcome, request.mode) {
-            (Outcome::Failure { .. }, _)
-            | (
-                Outcome::Objects {
-                    runtime: NativeRuntime::None | NativeRuntime::Text,
-                    ..
-                },
-                Mode::NativeObjects,
-            )
-            | (
-                Outcome::Objects {
-                    runtime: NativeRuntime::Collections,
-                    ..
-                },
-                Mode::NativeCollections,
-            )
-            | (
-                Outcome::Objects {
-                    runtime: NativeRuntime::Scheduler,
-                    ..
-                },
-                Mode::NativeScheduler,
-            )
-            | (Outcome::Value { .. }, Mode::CompileTime) => {}
-            _ => {
-                return Err(Failure::admission(
-                    "bridge.response-mode",
-                    "response belongs to a different operation",
-                ))
-            }
-        }
-        frame.metadata.outcome.verify_payload(&frame.bytes)?;
-        Ok((frame.metadata, frame.bytes))
+        accept_response(request, hash, &stdout)
     }
+}
+
+fn accept_response(
+    request: &Request,
+    hash: [u8; 32],
+    stdout: &[u8],
+) -> Result<(Response, Vec<u8>), Failure> {
+    let frame = read_frame::<Response>(stdout, RESPONSE_MAGIC, RESPONSE_CAP)?;
+    if request.id != frame.metadata.id || hash != frame.metadata.request_hash {
+        return Err(Failure::admission(
+            "bridge.response-identity",
+            "response belongs to a different request",
+        ));
+    }
+    use crate::{Mode, NativeRuntime};
+    match (&frame.metadata.outcome, request.mode) {
+        (Outcome::Failure { .. }, _)
+        | (
+            Outcome::Objects {
+                runtime: NativeRuntime::None | NativeRuntime::Text,
+                ..
+            },
+            Mode::NativeObjects,
+        )
+        | (
+            Outcome::Objects {
+                runtime: NativeRuntime::Collections,
+                ..
+            },
+            Mode::NativeCollections,
+        )
+        | (
+            Outcome::Objects {
+                runtime: NativeRuntime::Scheduler,
+                ..
+            },
+            Mode::NativeScheduler,
+        )
+        | (Outcome::Value { .. }, Mode::CompileTime) => {}
+        _ => {
+            return Err(Failure::admission(
+                "bridge.response-mode",
+                "response belongs to a different operation",
+            ))
+        }
+    }
+    frame.metadata.outcome.verify_payload(&frame.bytes)?;
+    Ok((frame.metadata, frame.bytes))
 }
 
 fn transport_failure(error: BoundedError) -> Failure {
@@ -292,5 +300,202 @@ fn transport_failure(error: BoundedError) -> Failure {
             Failure::resource("bridge.output", error.to_string())
         }
         _ => Failure::tool("bridge.worker", error.to_string()),
+    }
+}
+
+#[cfg(all(test, windows, target_arch = "x86_64", target_env = "msvc"))]
+mod tests {
+    use super::*;
+    use crate::execution::EXECUTION_ENTRIES;
+    use crate::{Domains, InputIdentity, Mode, Options, Value};
+    use ace_av_core::contract::MIR_SCHEMA;
+    use ace_av_core::mir::{
+        FnSig, MirBlock, MirConst, MirFunction, MirInstr, MirModule, MirSlot, MirType, OwnerScope,
+        SlotKind, Terminator,
+    };
+
+    fn fixture(mode: Mode) -> (Request, MirModule) {
+        let owner = OwnerScope {
+            schema: MIR_SCHEMA.into(),
+            module: "framing".into(),
+        };
+        let mut mir = MirModule::new(owner.clone());
+        let scalar = mir.intern_type(MirType::I32);
+        let sig = mir.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: scalar,
+        }));
+        mir.consts.push(MirConst::I32(7));
+        mir.funcs.push(MirFunction {
+            owner: owner.clone(),
+            name: "main".into(),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Temp,
+                ty: scalar,
+                name: None,
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: 0 }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+            env: None,
+        });
+        let request = Request {
+            id: [1; 16],
+            mode,
+            domains: Domains::windows(mode),
+            inputs: InputIdentity {
+                source: [1; 32],
+                grammar: [2; 32],
+                passes: [3; 32],
+                stdlib: [4; 32],
+                dependencies: [5; 32],
+            },
+            owner: owner.module,
+            mir_schema: owner.schema,
+            options: Options { remaining_ms: 2000 },
+            capabilities: vec![],
+            external_provider: None,
+            globals: vec![],
+            initializers: vec![],
+        };
+        (request, mir)
+    }
+
+    fn frame(request: &Request, mir: &MirModule) -> (Vec<u8>, [u8; 32]) {
+        let abc = ace_av_core::encode_abc(mir).unwrap().to_flat();
+        let mut encoded = Vec::new();
+        let hash = write_frame(&mut encoded, REQUEST_MAGIC, REQUEST_CAP, request, &abc).unwrap();
+        (encoded, hash)
+    }
+
+    #[test]
+    fn gate_rejects_bad_frames_and_owner_reference_before_either_executor() {
+        let start = Instant::now();
+        for mode in [Mode::CompileTime, Mode::NativeObjects] {
+            EXECUTION_ENTRIES.set(0);
+            let (req, mut original) = fixture(mode);
+            let (valid, hash) = frame(&req, &original);
+
+            let mut wrong_version = valid.clone();
+            wrong_version[3] = b'0';
+            let mut oversize = valid.clone();
+            oversize[8..12].copy_from_slice(&(REQUEST_CAP as u32 + 1).to_le_bytes());
+            let mut bad_digest = valid.clone();
+            bad_digest[12] ^= 1;
+            let mut extra = valid.clone();
+            extra.push(0);
+            let mut forged_metadata = serde_json::to_value(&req).unwrap();
+            forged_metadata["checked"] = true.into();
+            let abc = ace_av_core::encode_abc(&original).unwrap().to_flat();
+            let mut forged = Vec::new();
+            write_frame(
+                &mut forged,
+                REQUEST_MAGIC,
+                REQUEST_CAP,
+                &forged_metadata,
+                &abc,
+            )
+            .unwrap();
+
+            for (bytes, code) in [
+                (&wrong_version[..], "bridge.frame-version"),
+                (&oversize, "bridge.frame-size"),
+                (&bad_digest, "bridge.frame-checksum"),
+                (&extra, "bridge.frame-trailing"),
+                (&forged, "bridge.frame-metadata"),
+            ] {
+                let mut out = Vec::new();
+                assert_eq!(serve(bytes, &mut out).unwrap_err().code, code);
+                assert!(out.is_empty());
+                assert_eq!(EXECUTION_ENTRIES.get(), 0);
+            }
+
+            let mut out = Vec::new();
+            serve(valid.as_slice(), &mut out).unwrap();
+            let (response, payload) = accept_response(&req, hash, &out).unwrap();
+            assert_executor_output(mode, response.outcome, payload);
+            assert_eq!(EXECUTION_ENTRIES.get(), 1);
+
+            original.funcs[0].blocks[0].instrs[0] = MirInstr::Const { dst: 0, value: 63 };
+            let (bad_ref, bad_hash) = frame(&req, &original);
+            out.clear();
+            serve(bad_ref.as_slice(), &mut out).unwrap();
+            let (response, payload) = accept_response(&req, bad_hash, &out).unwrap();
+            assert!(
+                matches!(response.outcome, Outcome::Failure { error } if error.code == "mir.const-ref")
+            );
+            assert!(payload.is_empty());
+            assert_eq!(EXECUTION_ENTRIES.get(), 1);
+
+            out.clear();
+            serve(valid.as_slice(), &mut out).unwrap();
+            let (response, payload) = accept_response(&req, hash, &out).unwrap();
+            assert_executor_output(mode, response.outcome, payload);
+            assert_eq!(EXECUTION_ENTRIES.get(), 2);
+        }
+        eprintln!(
+            "gate_rejects_bad_frames_and_owner_reference_before_either_executor {:?}",
+            start.elapsed()
+        );
+    }
+
+    fn assert_executor_output(mode: Mode, outcome: Outcome, payload: Vec<u8>) {
+        if mode == Mode::CompileTime {
+            assert!(
+                matches!(outcome, Outcome::Value { value: Value::I32(7), facts } if facts.root_frames == 1 && facts.live_text == 0)
+            );
+            assert!(payload.is_empty());
+        } else {
+            assert!(matches!(outcome, Outcome::Objects { .. }));
+            assert_eq!(payload.get(..2), Some(&[0x64, 0x86][..]));
+        }
+    }
+
+    #[test]
+    fn a_previous_valid_response_cannot_bind_to_a_new_id_or_request_digest() {
+        let start = Instant::now();
+        let (mut req, mir) = fixture(Mode::CompileTime);
+        let (original, hash) = frame(&req, &mir);
+        let mut response = Vec::new();
+        serve(original.as_slice(), &mut response).unwrap();
+        assert_executor_output(
+            req.mode,
+            accept_response(&req, hash, &response).unwrap().0.outcome,
+            vec![],
+        );
+        req.id[0] ^= 1;
+        assert_eq!(
+            accept_response(&req, hash, &response).unwrap_err().code,
+            "bridge.response-identity"
+        );
+        req.id[0] ^= 1;
+        req.inputs.source[0] ^= 1;
+        let (next, next_hash) = frame(&req, &mir);
+        assert_ne!(hash, next_hash);
+        assert_eq!(
+            accept_response(&req, next_hash, &response)
+                .unwrap_err()
+                .code,
+            "bridge.response-identity"
+        );
+        response.clear();
+        serve(next.as_slice(), &mut response).unwrap();
+        assert_executor_output(
+            req.mode,
+            accept_response(&req, next_hash, &response)
+                .unwrap()
+                .0
+                .outcome,
+            vec![],
+        );
+        eprintln!(
+            "a_previous_valid_response_cannot_bind_to_a_new_id_or_request_digest {:?}",
+            start.elapsed()
+        );
     }
 }

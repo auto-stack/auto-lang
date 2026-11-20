@@ -1,14 +1,30 @@
-//! Prepare the official 967 F0 fixture outside the test process.
+//! Prepare the official 967 F0 or PLAN-975 SQLite fixture before testing.
 //! Output is a caller-owned scratch directory, such as plan-artifacts.
 
 use ace_aac_bridge::{Domains, ForeignConfig, InputIdentity, Mode, Options, Request};
-use ace_foreign_contract::{manual::SOURCE_CAP, resource::RESOURCE_CAP};
-use std::path::PathBuf;
+use ace_foreign_contract::{
+    manual::{AdmittedForeign, SOURCE_CAP},
+    resource::RESOURCE_CAP,
+};
+use std::path::{Path, PathBuf};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let output = PathBuf::from(std::env::args_os().nth(1).ok_or("expected scratch path")?);
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+fn main() -> Result<()> {
+    let mut args = std::env::args_os().skip(1);
+    let output = PathBuf::from(args.next().ok_or("expected scratch path")?);
     std::fs::create_dir_all(&output)?;
-    let build = ace_abi::rust_provider::build_f0(&output)?;
+    if let Some(profile) = args.next() {
+        if profile == "sqlite" {
+            return prepare_sqlite(&output);
+        }
+        return Err("unknown foreign fixture profile".into());
+    }
+    prepare_f0(&output)
+}
+
+fn prepare_f0(output: &Path) -> Result<()> {
+    let build = ace_abi::rust_provider::build_f0(output)?;
     let authority = ace_abi::rust_provider::f0_authority(&build, 1);
     let admitted = build.manual.clone().admit(&authority)?;
     let declaration = admitted
@@ -29,15 +45,99 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         exports: [declaration.function.symbol.clone()].into_iter().collect(),
         manifest: build.manual,
     };
-    let config_bytes = serde_json::to_vec(&config)?;
-    let config_hash = blake3::hash(&config_bytes);
-
     let source = "use.rs f0_text\nfn main() int { return text_byte_len(\"A中😀\\0\") }";
+    write_fixture(
+        output,
+        "module",
+        source,
+        Mode::CompileTime,
+        &config,
+        admitted,
+    )
+}
+
+fn prepare_sqlite(output: &Path) -> Result<()> {
+    use ace_abi::rust_provider::{
+        build_c_dll_with, c_authority, compile_c_unit, locate_pinned_sqlite, open_c_provider,
+        p967_sqlite_header, p967_sqlite_source, sdk_include_dirs, stage_pinned_sqlite,
+    };
+
+    let sqlite = locate_pinned_sqlite("3.46.0")?;
+    let project = output.join("project");
+    std::fs::create_dir_all(&project)?;
+    std::fs::write(project.join("p967_sqlite.h"), p967_sqlite_header())?;
+    std::fs::write(project.join("p967_sqlite.c"), p967_sqlite_source())?;
+    stage_pinned_sqlite(&project, &sqlite)?;
+    let provider = open_c_provider(&project, "p967_sqlite")?;
+    let sqlite_obj = compile_c_unit(output, &project.join("sqlite3.c"))?;
+    let dll = build_c_dll_with(
+        &provider,
+        output,
+        &[sqlite_obj, project.join("sqlite3.h")],
+        &sdk_include_dirs(),
+    )?;
+    let authority = c_authority(&provider, 1);
+    let admitted = provider.manifest.clone().admit(&authority)?;
+    let config = ForeignConfig {
+        library_hash: *blake3::hash(&std::fs::read(&dll)?).as_bytes(),
+        library: dll,
+        contract_digest: authority.contract_digest,
+        provider_digest: authority.provider_digest,
+        exports: admitted
+            .source_declarations_ref()
+            .iter()
+            .map(|declaration| declaration.function.symbol.clone())
+            .collect(),
+        manifest: provider.manifest,
+    };
+    let library = include_str!("../../../../../stdlib/ace/std/sqlite.at");
+    let main = r#"
+fn main() int {
+    if sqlite_open_memory() != 1 { return 101 }
+    if sqlite_exec("CREATE TABLE t(a INTEGER); INSERT INTO t VALUES (4); INSERT INTO t VALUES (5);") != 1 { return 102 }
+    if sqlite_exec("BEGIN; INSERT INTO t VALUES (100); ROLLBACK;") != 1 { return 103 }
+    let sum = sqlite_query_int("SELECT SUM(a) FROM t")
+    if sqlite_close() != 1 { return 104 }
+    return sum
+}
+"#;
+    let source = format!("use.c p967_sqlite\n{library}\n{main}");
+    let rejected = format!(
+        "use.c p967_sqlite\n{library}\nfn main() int {{ return sqlite_exec(\"SELECT 1\") }}"
+    );
+    write_fixture(
+        output,
+        "reject",
+        &rejected,
+        Mode::NativeObjects,
+        &config,
+        admitted.clone(),
+    )?;
+    write_fixture(
+        output,
+        "module",
+        &source,
+        Mode::NativeObjects,
+        &config,
+        admitted,
+    )
+}
+
+fn write_fixture(
+    output: &Path,
+    case: &str,
+    source: &str,
+    mode: Mode,
+    config: &ForeignConfig,
+    admitted: AdmittedForeign,
+) -> Result<()> {
+    let config_bytes = serde_json::to_vec(config)?;
+    let config_hash = blake3::hash(&config_bytes);
     let mut query = ace_source_query::SourceQuerySession::new("p1051", "m1051");
     query.set_foreign(Some(admitted));
     let product = ace_source_query::compile_text_record_product(
         source,
-        "f0-at-1051",
+        "foreign-fixture-1051",
         &[SOURCE_CAP.into(), RESOURCE_CAP.into()],
         "p1051",
         "m1051",
@@ -52,8 +152,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_flat();
     let request = Request {
         id: [107; 16],
-        mode: Mode::CompileTime,
-        domains: Domains::windows(Mode::CompileTime),
+        mode,
+        domains: Domains::windows(mode),
         inputs: InputIdentity {
             source: *blake3::hash(source.as_bytes()).as_bytes(),
             grammar: [2; 32],
@@ -70,10 +170,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         initializers: vec![],
     };
     std::fs::write(output.join("provider.json"), config_bytes)?;
-    std::fs::write(output.join("request.json"), serde_json::to_vec(&request)?)?;
-    std::fs::write(output.join("module.abc"), abc)?;
-    std::fs::write(output.join("input.at"), source)?;
-    println!("DLL {} BLAKE3={lib_hash}", build.cdylib.display());
+    let request_name = if case == "module" {
+        "request.json".into()
+    } else {
+        format!("{case}.json")
+    };
+    std::fs::write(output.join(request_name), serde_json::to_vec(&request)?)?;
+    std::fs::write(output.join(format!("{case}.abc")), abc)?;
+    std::fs::write(output.join(format!("{case}.at")), source)?;
+    println!(
+        "DLL {} BLAKE3={}",
+        config.library.display(),
+        blake3::Hash::from(config.library_hash)
+    );
     println!("provider.json BLAKE3={config_hash}");
     Ok(())
 }

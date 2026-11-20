@@ -89,13 +89,63 @@ pub fn verify_abc_foreign(
     expected_owner: &crate::mir::OwnerScope,
     stubs: &crate::foreign_exec::ForeignStubTable,
 ) -> Result<LoadedModule, AbcAdmissionError> {
-    verify_abc_with(decoded, expected_owner, Some(stubs))
+    verify_abc_with(decoded, expected_owner, Some(ForeignAdmission::Av(stubs)))
+}
+
+/// Admit a complete ABC closure for native code generation with the SDK's
+/// reviewed foreign declaration grant. This returns checked IR, with no AV
+/// execution credential or live DLL function pointers.
+pub fn verify_abc_native_foreign(
+    decoded: DecodedAbc,
+    expected_owner: &crate::mir::OwnerScope,
+    authority: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CheckedMir, AbcAdmissionError> {
+    let loaded = verify_abc_with(
+        decoded,
+        expected_owner,
+        Some(ForeignAdmission::Native(authority)),
+    )?;
+    if loaded.executable {
+        Ok(loaded.checked)
+    } else {
+        Err(AbcAdmissionError::Identity(
+            "foreign.closure: native foreign emission requires a resolved closure".into(),
+        ))
+    }
+}
+
+enum ForeignAdmission<'a> {
+    Av(&'a crate::foreign_exec::ForeignStubTable),
+    Native(&'a ace_foreign_contract::manual::AdmittedForeign),
+}
+
+impl ForeignAdmission<'_> {
+    fn check(
+        &self,
+        declaration: &ace_foreign_contract::manual::SourceDecl,
+    ) -> Result<(), AbcAdmissionError> {
+        let accepted = match self {
+            Self::Av(stubs) => stubs.admits_declaration(declaration),
+            Self::Native(authority) => authority.admits_declaration(declaration),
+        };
+        if accepted {
+            return Ok(());
+        }
+        let scope = match self {
+            Self::Av(stubs) => format!("generation {}", stubs.generation()),
+            Self::Native(_) => "native code generation".into(),
+        };
+        Err(AbcAdmissionError::Identity(format!(
+            "foreign.unauthorized: `{}` is not admitted at {scope}",
+            declaration.function.symbol
+        )))
+    }
 }
 
 fn verify_abc_with(
     decoded: DecodedAbc,
     expected_owner: &crate::mir::OwnerScope,
-    foreign: Option<&crate::foreign_exec::ForeignStubTable>,
+    foreign: Option<ForeignAdmission<'_>>,
 ) -> Result<LoadedModule, AbcAdmissionError> {
     let has_foreign_call = decoded.module.funcs.iter().any(|f| {
         f.blocks.iter().any(|b| {
@@ -116,7 +166,7 @@ fn verify_abc_with(
             "foreign.unsupported: AV does not execute source foreign calls".into(),
         ));
     }
-    if let Some(stubs) = foreign {
+    if let Some(admission) = &foreign {
         // NOTE (PLAN-967 F0): resource-domain foreign modules travel on the
         // OWNED wire family (PLAN-939 shape) and scalar-domain ones on the
         // foreign family; admission is the stub-table coverage of every
@@ -125,13 +175,7 @@ fn verify_abc_with(
             for b in &f.blocks {
                 for i in &b.instrs {
                     if let crate::mir::MirInstr::ForeignCall { declaration, .. } = i {
-                        if !stubs.admits_declaration(declaration) {
-                            return Err(AbcAdmissionError::Identity(format!(
-                                "foreign.unauthorized: `{}` is not admitted at generation {}",
-                                declaration.function.symbol,
-                                stubs.generation()
-                            )));
-                        }
+                        admission.check(declaration)?;
                     }
                 }
             }

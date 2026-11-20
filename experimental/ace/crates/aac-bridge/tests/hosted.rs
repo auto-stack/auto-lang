@@ -6,6 +6,10 @@
 mod support;
 
 use ace_aac_bridge::{Client, Mode, Outcome};
+use ace_av_core::mir::{
+    BinOp, FnSig, MirBlock, MirConst, MirHostImport, MirInstr, MirModule, MirSlot, MirType,
+    SlotKind, Terminator,
+};
 use auto_tool_execution::{run_bounded, BoundedPolicy, ExecutionSpec, ExitKind, TreeScope};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -48,7 +52,7 @@ fn gen0_native_auto_client_executes_ct_and_releases_its_exchange() {
     let mut main = String::from(
         r#"
 use app.client.exchange
-use app.digest.utf8_bytes
+use app.client.ct_i32
 
 fn main() int {
     let abc = List<int>.new()
@@ -65,21 +69,9 @@ fn main() int {
     ));
     main.push_str(
         r#"
-    if (response.status != 0) { return response.status }
-    let value = utf8_bytes("\"value\":{\"i32\":7}")
-    let bytes = response.frame
-    var i = 44
-    for (i <= bytes.len() - value.len()) {
-        var matched = true
-        var j = 0
-        for (j < value.len()) {
-            if (bytes.get(i + j) != value.get(j)) { matched = false }
-            j = j + 1
-        }
-        if (matched) { return 7 }
-        i = i + 1
-    }
-    return -6
+    let value = ct_i32(response.move)
+    if (value.status != 0) { return value.status }
+    return value.value
 }
 "#,
     );
@@ -298,25 +290,17 @@ fn native_object_image(
         _ => panic!("expected a runtime-bound native mode"),
     };
     assert_eq!(runtime, expected_runtime);
-    let mut remaining = data.as_slice();
-    let mut objects = Vec::new();
-    for unit in units {
-        let (bytes, next) = remaining.split_at(unit.len as usize);
-        objects.push(ace_native::link_driver::ObjectInput {
-            name: unit.symbol,
-            bytes: bytes.to_vec(),
-        });
-        remaining = next;
-    }
-    let linked = ace_native::link_driver::link_only(
-        &objects,
-        remaining,
-        &wrapper.symbol,
-        out,
-        &[library.to_path_buf()],
-        "aac-collections",
-    )
-    .unwrap();
+    run_object_bundle(units, wrapper, &data, &[library.to_path_buf()], out)
+}
+
+fn run_object_bundle(
+    units: Vec<ace_aac_bridge::Object>,
+    wrapper: ace_aac_bridge::Object,
+    data: &[u8],
+    libraries: &[PathBuf],
+    out: &Path,
+) -> auto_tool_execution::BoundedResult {
+    let linked = link_object_bundle(units, wrapper, data, libraries, out);
     let mut spec = ExecutionSpec::new([linked.exe_path.as_os_str()]);
     spec.tree_scope = TreeScope::ProcessTree;
     run_bounded(
@@ -327,6 +311,34 @@ fn native_object_image(
             stdout_cap: Some(4096),
             stderr_cap: Some(64 * 1024),
         },
+    )
+    .unwrap()
+}
+
+fn link_object_bundle(
+    units: Vec<ace_aac_bridge::Object>,
+    wrapper: ace_aac_bridge::Object,
+    data: &[u8],
+    libraries: &[PathBuf],
+    out: &Path,
+) -> ace_native::link_driver::PeLink {
+    let mut remaining = data;
+    let mut objects = Vec::new();
+    for unit in units {
+        let (bytes, next) = remaining.split_at(unit.len as usize);
+        objects.push(ace_native::link_driver::ObjectInput {
+            name: unit.symbol,
+            bytes: bytes.to_vec(),
+        });
+        remaining = next;
+    }
+    ace_native::link_driver::link_only(
+        &objects,
+        remaining,
+        &wrapper.symbol,
+        out,
+        libraries,
+        "aac-bridge",
     )
     .unwrap()
 }
@@ -806,6 +818,738 @@ fn ct_calls_a_prepared_967_provider_only_with_matching_host_authority() {
     );
     eprintln!(
         "ct_calls_a_prepared_967_provider_only_with_matching_host_authority {:?}",
+        started.elapsed()
+    );
+}
+
+fn owned_scheduler_fixture(mismatch: bool) -> ace_av_core::mir::MirModule {
+    use ace_av_core::contract::{MIR_CLOSURES_SCHEMA, TEXT_RUNTIME_CAPABILITY};
+    use ace_av_core::mir::*;
+
+    let owner = OwnerScope {
+        schema: MIR_CLOSURES_SCHEMA.into(),
+        module: "aac1051_sched".into(),
+    };
+    let mut mir = MirModule::new_closures(owner.clone());
+    let i32_ty = mir.intern_type(MirType::I32);
+    let bool_ty = mir.intern_type(MirType::Bool);
+    let str_ty = mir.intern_type(MirType::Str);
+    let view_ty = mir.intern_type(MirType::StrView);
+    let sig = mir.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: i32_ty,
+    }));
+    mir.capabilities.push(TEXT_RUNTIME_CAPABILITY.into());
+    mir.consts = vec![
+        MirConst::I32(0),
+        MirConst::I32(1),
+        MirConst::Str("a\0界🇨".as_bytes().into()),
+        MirConst::Str(b"late".as_slice().into()),
+    ];
+    let slots = |types: &[u32]| {
+        types
+            .iter()
+            .map(|ty| MirSlot {
+                kind: SlotKind::Temp,
+                ty: *ty,
+                name: None,
+            })
+            .collect()
+    };
+    mir.funcs.push(MirFunction {
+        owner: owner.clone(),
+        name: "main".into(),
+        sig,
+        slots: slots(&[i32_ty, i32_ty, str_ty, i32_ty, str_ty, view_ty, i32_ty]),
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Const { dst: 0, value: 1 },
+                MirInstr::SchedSpawn {
+                    callee: 1,
+                    capacity: 0,
+                    args: vec![],
+                    dst: 1,
+                },
+                MirInstr::Const { dst: 2, value: 2 },
+                MirInstr::SchedSend {
+                    handle: 1,
+                    msg: if mismatch { 0 } else { 2 },
+                },
+                MirInstr::SchedAsk {
+                    handle: 1,
+                    msg: 2,
+                    dst: 3,
+                },
+                MirInstr::Drop { slot: 2 },
+                MirInstr::SchedAwait { future: 3, dst: 4 },
+                MirInstr::View { dst: 5, src: 4 },
+                MirInstr::StrLenBytes { dst: 6, view: 5 },
+                MirInstr::BorrowEnd { token: 5 },
+                MirInstr::Drop { slot: 4 },
+            ],
+            term: Terminator::Return { value: 6 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+        env: None,
+    });
+    mir.funcs.push(MirFunction {
+        owner,
+        name: "driver".into(),
+        sig,
+        slots: slots(&[str_ty, i32_ty, i32_ty, bool_ty, str_ty]),
+        blocks: vec![
+            MirBlock {
+                instrs: vec![MirInstr::Const { dst: 2, value: 0 }],
+                term: Terminator::Jump { target: 1 },
+            },
+            MirBlock {
+                instrs: vec![
+                    MirInstr::SchedRecv { dst: 0 },
+                    MirInstr::SchedPort { dst: 1 },
+                    MirInstr::Bin {
+                        dst: 3,
+                        op: BinOp::EqI32,
+                        lhs: 1,
+                        rhs: 2,
+                    },
+                ],
+                term: Terminator::Branch {
+                    cond: 3,
+                    then: 2,
+                    else_: 3,
+                },
+            },
+            MirBlock {
+                instrs: vec![MirInstr::Drop { slot: 0 }],
+                term: Terminator::Jump { target: 1 },
+            },
+            MirBlock {
+                instrs: vec![
+                    MirInstr::SchedReply { value: 0 },
+                    MirInstr::Drop { slot: 0 },
+                    MirInstr::Const { dst: 4, value: 3 },
+                    MirInstr::SchedReply { value: 4 },
+                    MirInstr::Drop { slot: 4 },
+                ],
+                term: Terminator::Return { value: 2 },
+            },
+        ],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![(
+            1,
+            ace_av_core::SpanInfo {
+                func: 1,
+                start: 54,
+                end: 61,
+            },
+        )],
+        env: None,
+    });
+    mir
+}
+
+#[test]
+fn scheduler_owned_text_loop_awaits_one_reply_and_recovers_after_type_failure() {
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    for (id, mismatch) in [(100, false), (101, true), (102, true), (103, false)] {
+        let module = owned_scheduler_fixture(mismatch);
+        ace_av_core::verify_mir(&module).unwrap();
+        let stage = stage();
+        let observed =
+            native_object_image(&module, id, Mode::NativeScheduler, &runtime, stage.path());
+        assert_eq!(observed.stdout.as_deref(), Some(&b""[..]));
+        if mismatch {
+            assert_eq!(observed.kind, ExitKind::Failure(70));
+            assert_eq!(
+                observed.stderr.as_deref(),
+                Some(&b"sched: unsupported scheduler message value\nsched: source function 1 bytes 54..61\n"[..])
+            );
+        } else {
+            // The drain changes this exit to 72 if any mailbox, port or
+            // owned allocation remains. The first reply contains 9 bytes.
+            assert_eq!(observed.kind, ExitKind::Failure(9));
+            assert_eq!(observed.stderr.as_deref(), Some(&b""[..]));
+        }
+        stage.close().unwrap();
+    }
+    eprintln!(
+        "scheduler_owned_text_loop_awaits_one_reply_and_recovers_after_type_failure {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn gen0_scheduler_reclaims_interpolated_text_on_each_iteration() {
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    let source = r#"
+task Counter {
+    on { n int -> {
+        print(f"a=${n}")
+    } }
+}
+fn main() int {
+    let h = Task.spawn("Counter", 4)
+    h.send(1)
+    h.send(2)
+    return 0
+}
+"#;
+    let module = ace_native::sched::sched_compile(source, "d_main").unwrap();
+    let stage = stage();
+    let observed = native_object_image(&module, 104, Mode::NativeScheduler, &runtime, stage.path());
+    assert_eq!(observed.kind, ExitKind::Success);
+    assert_eq!(observed.stdout.as_deref(), Some(&b"a=1\na=2\n"[..]));
+    assert_eq!(observed.stderr.as_deref(), Some(&b""[..]));
+    stage.close().unwrap();
+    eprintln!(
+        "gen0_scheduler_reclaims_interpolated_text_on_each_iteration {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn scheduler_and_file_io_share_one_native_product_and_audit_closed_handles() {
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    let stage = stage();
+    let file = stage.path().join("文件.bin");
+    std::fs::write(&file, [7, 0, 255]).unwrap();
+    let utf16: Vec<u16> = file.to_str().unwrap().encode_utf16().collect();
+    for (id, close) in [(105, true), (106, false)] {
+        let module = scheduler_file_fixture(&utf16, close);
+        let product_stage = tempfile::tempdir_in(stage.path()).unwrap();
+        let result = native_object_image(
+            &module,
+            id,
+            Mode::NativeScheduler,
+            &runtime,
+            product_stage.path(),
+        );
+        assert_eq!(result.kind, ExitKind::Failure(if close { 7 } else { 72 }));
+        assert_eq!(result.stdout.as_deref(), Some(&b"go:\n7\n"[..]));
+        assert_eq!(result.stderr.as_deref(), Some(&b""[..]));
+        product_stage.close().unwrap();
+    }
+    assert_eq!(std::fs::read(&file).unwrap(), [7, 0, 255]);
+    stage.close().unwrap();
+    eprintln!(
+        "scheduler_and_file_io_share_one_native_product_and_audit_closed_handles {:?}",
+        started.elapsed()
+    );
+}
+
+fn scheduler_file_fixture(path: &[u16], close: bool) -> MirModule {
+    let mut module = platform_scheduler();
+    let scalar = module.intern_type(MirType::I32);
+    let zero = platform_literal(&mut module, scalar, 0);
+    let one = platform_literal(&mut module, scalar, 1);
+    let two = platform_literal(&mut module, scalar, 2);
+    let three = platform_literal(&mut module, scalar, 3);
+    let max_byte = platform_literal(&mut module, scalar, 255);
+    let units = platform_literal(&mut module, scalar, path.len() as i32);
+    let len_bytes = platform_literal(&mut module, scalar, path.len() as i32 * 2);
+    let path_memory = platform_call(&mut module, scalar, "mem.alloc", &[len_bytes]);
+    for (i, byte) in path.iter().flat_map(|ch| ch.to_le_bytes()).enumerate() {
+        let offset = platform_literal(&mut module, scalar, i as i32);
+        let byte = platform_literal(&mut module, scalar, i32::from(byte));
+        platform_call(
+            &mut module,
+            scalar,
+            "mem.write_u8",
+            &[path_memory, offset, byte],
+        );
+    }
+
+    let file = platform_call(
+        &mut module,
+        scalar,
+        "file.open_w16",
+        &[path_memory, zero, units, one],
+    );
+    let freed_path = platform_call(&mut module, scalar, "mem.free", &[path_memory]);
+    let data = platform_call(&mut module, scalar, "mem.alloc", &[three]);
+    let read = platform_call(
+        &mut module,
+        scalar,
+        "file.read_some",
+        &[file, data, zero, three],
+    );
+    let value = platform_call(&mut module, scalar, "mem.read_u8", &[data, zero]);
+    let nul = platform_call(&mut module, scalar, "mem.read_u8", &[data, one]);
+    let high = platform_call(&mut module, scalar, "mem.read_u8", &[data, two]);
+    let freed_data = platform_call(&mut module, scalar, "mem.free", &[data]);
+    let mut assertions = vec![
+        (read, three),
+        (nul, zero),
+        (high, max_byte),
+        (freed_path, zero),
+        (freed_data, zero),
+    ];
+    if close {
+        let closed = platform_call(&mut module, scalar, "file.close", &[file]);
+        assertions.push((closed, zero));
+    }
+    finish_platform_case(module, scalar, value, assertions)
+}
+
+fn platform_scheduler() -> MirModule {
+    ace_native::sched::sched_compile(
+        r#"
+fn worker(n int) {
+    print("go:")
+    print(n)
+}
+fn main() int {
+    go worker(7)
+    return 0
+}
+"#,
+        "d_main",
+    )
+    .unwrap()
+}
+fn platform_slot(module: &mut MirModule, ty: u32) -> u32 {
+    let entry = &mut module.funcs[module.entry as usize];
+    let index = entry.slots.len() as u32;
+    entry.slots.push(MirSlot {
+        kind: SlotKind::Temp,
+        ty,
+        name: None,
+    });
+    index
+}
+
+fn platform_literal(module: &mut MirModule, scalar: u32, value: i32) -> u32 {
+    let dst = platform_slot(module, scalar);
+    let index = module.consts.len() as u32;
+    module.consts.push(MirConst::I32(value));
+    module.funcs[module.entry as usize].blocks[0]
+        .instrs
+        .push(MirInstr::Const { dst, value: index });
+    dst
+}
+
+fn platform_call(module: &mut MirModule, scalar: u32, symbol: &str, args: &[u32]) -> u32 {
+    let symbol = format!("auto.platform.{symbol}.v1");
+    let spec = ace_av_core::platform_io::lookup_symbol(&symbol).unwrap();
+    let host = if let Some(index) = module
+        .host_imports
+        .iter()
+        .position(|decl| decl.symbol == symbol)
+    {
+        index as u32
+    } else {
+        let sig = module.intern_type(MirType::Fn(FnSig {
+            params: args
+                .iter()
+                .map(|arg| module.funcs[module.entry as usize].slots[*arg as usize].ty)
+                .collect(),
+            result: scalar,
+        }));
+        let decl = MirHostImport {
+            category: spec.category.into(),
+            symbol,
+            sig,
+            capability: spec.capability.into(),
+            max_call_bytes: spec.max_call_bytes,
+        };
+        if !module.capabilities.contains(&decl.capability) {
+            module.capabilities.push(decl.capability.clone());
+        }
+        let index = module.host_imports.len() as u32;
+        module.host_imports.push(decl);
+        index
+    };
+    let dst = platform_slot(module, scalar);
+    module.funcs[module.entry as usize].blocks[0]
+        .instrs
+        .push(MirInstr::PlatformCall {
+            dst,
+            host,
+            args: args.to_vec(),
+        });
+    dst
+}
+
+fn finish_platform_case(
+    mut module: MirModule,
+    scalar: u32,
+    value: u32,
+    assertions: Vec<(u32, u32)>,
+) -> MirModule {
+    let failed = platform_literal(&mut module, scalar, -17);
+    let boolean = module.intern_type(MirType::Bool);
+    let entry = &mut module.funcs[module.entry as usize];
+    let return_block = assertions.len() as u32;
+    let failure_block = return_block + 1;
+    for (index, (got, expected)) in assertions.into_iter().enumerate() {
+        let condition = entry.slots.len() as u32;
+        entry.slots.push(MirSlot {
+            kind: SlotKind::Temp,
+            ty: boolean,
+            name: None,
+        });
+        if index > 0 {
+            entry.blocks.push(MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value },
+            });
+        }
+        let block = &mut entry.blocks[index];
+        block.instrs.push(MirInstr::Bin {
+            dst: condition,
+            op: BinOp::EqI32,
+            lhs: got,
+            rhs: expected,
+        });
+        block.term = Terminator::Branch {
+            cond: condition,
+            then: index as u32 + 1,
+            else_: failure_block,
+        };
+    }
+    entry.blocks.push(MirBlock {
+        instrs: vec![],
+        term: Terminator::Return { value },
+    });
+    entry.blocks.push(MirBlock {
+        instrs: vec![],
+        term: Terminator::Return { value: failed },
+    });
+    ace_av_core::verify_mir(&module).unwrap();
+    module
+}
+
+#[test]
+fn native_objects_call_the_admitted_967_provider() {
+    let started = Instant::now();
+    let scope = PathBuf::from(
+        std::env::var_os("ACE_AAC_FOREIGN_FIXTURE").expect("prepare ACE_AAC_FOREIGN_FIXTURE"),
+    );
+    let config_path = scope.join("provider.json");
+    let config_bytes = std::fs::read(&config_path).unwrap();
+    let config: ace_aac_bridge::ForeignConfig = serde_json::from_slice(&config_bytes).unwrap();
+    let config_hash = *blake3::hash(&config_bytes).as_bytes();
+    let mut request: ace_aac_bridge::Request =
+        serde_json::from_slice(&std::fs::read(scope.join("request.json")).unwrap()).unwrap();
+    request.id = [111; 16];
+    request.mode = Mode::NativeObjects;
+    request.domains = ace_aac_bridge::Domains::windows(Mode::NativeObjects);
+    let abc = std::fs::read(scope.join("module.abc")).unwrap();
+    let bridge = Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"));
+    let (response, data) = Client::new(bridge).unwrap().run(&request, &abc).unwrap();
+    assert!(data.is_empty());
+    assert!(
+        matches!(response.outcome, Outcome::Failure { error } if error.code == "bridge.foreign-authority")
+    );
+
+    let client = Client::new(bridge)
+        .unwrap()
+        .with_foreign_provider(&config_path, config_hash)
+        .unwrap();
+    let (response, data) = client.run(&request, &abc).unwrap();
+    let Outcome::Objects {
+        units,
+        wrapper,
+        runtime,
+        ..
+    } = response.outcome
+    else {
+        panic!(
+            "native foreign code generation refused the authorized request: {:?}",
+            response.outcome
+        );
+    };
+    assert!(units
+        .iter()
+        .flat_map(|unit| &unit.imports)
+        .any(|(_, export)| export == "f0_text_byte_len_v1"));
+    let stage = stage();
+    let dll = config.library.file_name().unwrap();
+    std::fs::copy(&config.library, stage.path().join(dll)).unwrap();
+    let mut libraries = vec![config.library.with_extension("dll.lib")];
+    if runtime == ace_aac_bridge::NativeRuntime::Text {
+        libraries.push(PathBuf::from(
+            std::env::var_os("ACE_AAC_TEXT_LIB").expect("prepare ACE_AAC_TEXT_LIB"),
+        ));
+    }
+    let result = run_object_bundle(units, wrapper, &data, &libraries, stage.path());
+    assert_eq!(result.kind, ExitKind::Failure(9));
+    stage.close().unwrap();
+    eprintln!(
+        "native_objects_call_the_admitted_967_provider {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn native_sqlite_executes_the_canonical_api_and_preserves_rollback() {
+    let started = Instant::now();
+    let scope = PathBuf::from(
+        std::env::var_os("ACE_AAC_SQLITE_FIXTURE").expect("prepare ACE_AAC_SQLITE_FIXTURE"),
+    );
+    let config_path = scope.join("provider.json");
+    let config_bytes = std::fs::read(&config_path).unwrap();
+    let config: ace_aac_bridge::ForeignConfig = serde_json::from_slice(&config_bytes).unwrap();
+    let config_hash = *blake3::hash(&config_bytes).as_bytes();
+    let bridge = Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"));
+    let client = Client::new(bridge)
+        .unwrap()
+        .with_foreign_provider(&config_path, config_hash)
+        .unwrap();
+    for (request_name, abc_name, code) in [
+        ("request.json", "module.abc", 9),
+        ("reject.json", "reject.abc", 70),
+    ] {
+        let mut request: ace_aac_bridge::Request =
+            serde_json::from_slice(&std::fs::read(scope.join(request_name)).unwrap()).unwrap();
+        let abc = std::fs::read(scope.join(abc_name)).unwrap();
+        let (response, data) = client.run(&request, &abc).unwrap();
+        let Outcome::Objects {
+            units,
+            wrapper,
+            runtime,
+            ..
+        } = response.outcome
+        else {
+            panic!(
+                "expected native SQLite object bundle: {:?}",
+                response.outcome
+            );
+        };
+        assert!(units
+            .iter()
+            .flat_map(|unit| &unit.imports)
+            .any(|(_, export)| export.starts_with("p967_")));
+        let stage = stage();
+        std::fs::copy(
+            &config.library,
+            stage.path().join(config.library.file_name().unwrap()),
+        )
+        .unwrap();
+        let mut libraries = vec![config.library.with_extension("lib")];
+        if runtime == ace_aac_bridge::NativeRuntime::Text {
+            libraries.push(PathBuf::from(
+                std::env::var_os("ACE_AAC_TEXT_LIB").expect("prepare ACE_AAC_TEXT_LIB"),
+            ));
+        }
+        let result = run_object_bundle(units, wrapper, &data, &libraries, stage.path());
+        assert_eq!(result.kind, ExitKind::Failure(code));
+        stage.close().unwrap();
+
+        request.mode = Mode::CompileTime;
+        request.domains = ace_aac_bridge::Domains::windows(Mode::CompileTime);
+        let (response, data) = client.run(&request, &abc).unwrap();
+        assert!(data.is_empty());
+        assert!(
+            matches!(response.outcome, Outcome::Failure { error } if error.code == "bridge.foreign-call-frame")
+        );
+    }
+    eprintln!(
+        "native_sqlite_executes_the_canonical_api_and_preserves_rollback {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn scheduler_native_tcp_uses_real_loopback_and_closes_both_streams() {
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    let mut module = platform_scheduler();
+    let scalar = module.intern_type(MirType::I32);
+    let text = module.intern_type(MirType::StrView);
+    let entry = module.entry as usize;
+    let host = platform_slot(&mut module, text);
+    let host_literal = module.consts.len() as u32;
+    module
+        .consts
+        .push(MirConst::Str(b"127.0.0.1".as_slice().into()));
+    module.funcs[entry].blocks[0].instrs.push(MirInstr::Const {
+        dst: host,
+        value: host_literal,
+    });
+    let payload = platform_slot(&mut module, text);
+    let text_literal = module.consts.len() as u32;
+    module
+        .consts
+        .push(MirConst::Str(b"\0\xe4\xb8\xad".as_slice().into()));
+    module.funcs[entry].blocks[0].instrs.push(MirInstr::Const {
+        dst: payload,
+        value: text_literal,
+    });
+    let zero = platform_literal(&mut module, scalar, 0);
+    let one = platform_literal(&mut module, scalar, 1);
+    let two = platform_literal(&mut module, scalar, 2);
+    let three = platform_literal(&mut module, scalar, 3);
+    let four = platform_literal(&mut module, scalar, 4);
+    let seven = platform_literal(&mut module, scalar, 7);
+    let byte = platform_literal(&mut module, scalar, 255);
+    let retry = platform_literal(&mut module, scalar, -10);
+    let closed = platform_literal(&mut module, scalar, -6);
+    let wrong_origin = platform_literal(&mut module, scalar, -3);
+
+    let listener = platform_call(&mut module, scalar, "net.tcp_listen", &[zero]);
+    let quiet = platform_call(&mut module, scalar, "net.tcp_accept", &[listener]);
+    let port = platform_call(&mut module, scalar, "net.tcp_local_port", &[listener]);
+    let client = platform_call(&mut module, scalar, "net.tcp_connect", &[host, port]);
+    let server = platform_call(&mut module, scalar, "net.tcp_accept", &[listener]);
+    let region = platform_call(&mut module, scalar, "mem.alloc", &[four]);
+    let wrote = platform_call(
+        &mut module,
+        scalar,
+        "net.tcp_write_some",
+        &[client, payload],
+    );
+    let read = platform_call(
+        &mut module,
+        scalar,
+        "net.tcp_read_into",
+        &[server, region, zero, four],
+    );
+    let nul = platform_call(&mut module, scalar, "mem.read_u8", &[region, zero]);
+    let tail = platform_call(&mut module, scalar, "mem.read_u8", &[region, three]);
+    let expected_tail = platform_literal(&mut module, scalar, 173);
+    let staged1 = platform_call(&mut module, scalar, "mem.write_u8", &[region, zero, seven]);
+    let staged2 = platform_call(&mut module, scalar, "mem.write_u8", &[region, one, zero]);
+    let staged3 = platform_call(&mut module, scalar, "mem.write_u8", &[region, two, byte]);
+    let raw_wrote = platform_call(
+        &mut module,
+        scalar,
+        "net.tcp_write_region",
+        &[server, region, zero, three],
+    );
+    let cleared_first = platform_call(&mut module, scalar, "mem.write_u8", &[region, zero, zero]);
+    let cleared_last = platform_call(&mut module, scalar, "mem.write_u8", &[region, two, zero]);
+    let raw_read = platform_call(
+        &mut module,
+        scalar,
+        "net.tcp_read_into",
+        &[client, region, zero, three],
+    );
+    let received = platform_call(&mut module, scalar, "mem.read_u8", &[region, zero]);
+    let high = platform_call(&mut module, scalar, "mem.read_u8", &[region, two]);
+    let wrong_close = platform_call(&mut module, scalar, "net.tcp_close", &[listener]);
+    let client_closed = platform_call(&mut module, scalar, "net.tcp_close", &[client]);
+    let again = platform_call(&mut module, scalar, "net.tcp_close", &[client]);
+    let server_closed = platform_call(&mut module, scalar, "net.tcp_close", &[server]);
+    let freed = platform_call(&mut module, scalar, "mem.free", &[region]);
+    let module = finish_platform_case(
+        module,
+        scalar,
+        received,
+        vec![
+            (quiet, retry),
+            (wrote, four),
+            (read, four),
+            (nul, zero),
+            (tail, expected_tail),
+            (staged1, zero),
+            (staged2, zero),
+            (staged3, zero),
+            (raw_wrote, three),
+            (cleared_first, zero),
+            (cleared_last, zero),
+            (raw_read, three),
+            (high, byte),
+            (wrong_close, wrong_origin),
+            (client_closed, zero),
+            (again, closed),
+            (server_closed, zero),
+            (freed, zero),
+        ],
+    );
+    let stage = stage();
+    let result = native_object_image(&module, 120, Mode::NativeScheduler, &runtime, stage.path());
+    assert_eq!(result.kind, ExitKind::Failure(7), "{result:?}");
+    assert_eq!(result.stdout.as_deref(), Some(&b"go:\n7\n"[..]));
+    assert_eq!(result.stderr.as_deref(), Some(&b""[..]));
+    stage.close().unwrap();
+    eprintln!(
+        "scheduler_native_tcp_uses_real_loopback_and_closes_both_streams {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn cancelling_a_live_scheduler_reaps_the_product_before_a_late_reply() {
+    use std::io::BufRead;
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    let stage = stage();
+    let module = ace_native::sched::sched_compile(
+        r#"
+task Delay {
+    on { n int -> {
+        print("handling ask")
+        sleep(8000)
+        print("publishing")
+        reply(n)
+    } }
+}
+fn main() int {
+    let h = Task.spawn("Delay", 2)
+    return await h.ask(7)
+}
+"#,
+        "d_main",
+    )
+    .unwrap();
+    let needs_cancellation = request(Mode::NativeScheduler, &module, 125);
+    let abc = ace_av_core::encode_abc(&module).unwrap().to_flat();
+    let client = Client::new(Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"))).unwrap();
+    let (response, data) = client.run(&needs_cancellation, &abc).unwrap();
+    let Outcome::Objects { units, wrapper, .. } = response.outcome else {
+        panic!("expected native scheduler");
+    };
+    let linked = link_object_bundle(units, wrapper, &data, &[runtime], stage.path());
+    ace_native::sched::audit_sched_pe_imports(&std::fs::read(&linked.exe_path).unwrap()).unwrap();
+    let mut spec = ExecutionSpec::new([linked.exe_path.as_os_str()]);
+    spec.tree_scope = TreeScope::ProcessTree;
+    let mut product = auto_tool_execution::spawn(&spec).unwrap();
+    let stdout = product.take_stdout().unwrap();
+    let (observed, read) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut stdout = std::io::BufReader::new(stdout);
+        let mut line = Vec::new();
+        stdout.read_until(b'\n', &mut line).unwrap();
+        let _ = observed.send(line);
+        let mut late = Vec::new();
+        stdout.read_until(b'\n', &mut late).unwrap();
+        late
+    });
+    let entered = read.recv_timeout(Duration::from_secs(2));
+    assert!(product.try_wait().unwrap().is_none());
+    assert!(!product
+        .cancel_within(Duration::from_millis(750))
+        .unwrap()
+        .success());
+    assert_eq!(entered.unwrap(), b"handling ask\n");
+    assert!(reader.join().unwrap().is_empty());
+    stage.close().unwrap();
+
+    let next = fixture(false);
+    let input = request(Mode::CompileTime, &next, 126);
+    let abc = ace_av_core::encode_abc(&next).unwrap().to_flat();
+    let (response, _) = client.run(&input, &abc).unwrap();
+    assert!(matches!(
+        response.outcome,
+        Outcome::Value {
+            value: ace_aac_bridge::Value::I32(7),
+            ..
+        }
+    ));
+    eprintln!(
+        "cancelling_a_live_scheduler_reaps_the_product_before_a_late_reply {:?}",
         started.elapsed()
     );
 }
