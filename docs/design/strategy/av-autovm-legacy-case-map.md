@@ -16,7 +16,7 @@
 | [PLAN-1083](../../plans/1083-av-parity-records-variants-and-patterns.md) | 52 | 待AVP-00核角色，未执行 |
 | [PLAN-1084](../../plans/1084-av-parity-dynamic-objects-and-null.md) | 11 | 待AVP-00核角色，未执行 |
 | [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md) | 9 | AV 9/9，原 VM 检查保留为阶段 #ignore |
-| [PLAN-1086](../../plans/1086-av-parity-borrows-moves-and-storage.md) | 28 | 待AVP-00核角色，未执行 |
+| [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md) | 28 | 主承接 28 条与接续 11 条原例已通过 AV。VM 检查保留为阶段 SKIP |
 | [PLAN-1087](../../plans/1087-av-parity-errors-and-unwinding.md) | 25 | 待AVP-00核角色，未执行 |
 | [PLAN-1088](../../plans/1088-av-parity-generics-specs-and-methods.md) | 7 | 待AVP-00核角色，未执行 |
 | [PLAN-1089](../../plans/1089-av-parity-generators-and-stream-lifetimes.md) | 4 | 待AVP-00核角色，未执行 |

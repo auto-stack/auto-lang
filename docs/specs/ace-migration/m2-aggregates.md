@@ -95,3 +95,9 @@ object；tuple 递归），source/HIR/MIR/layout 四层一致（旧 Str-only 走
 - **裸臂构造**：`E.A` 无调用路径经 `try_resolve_variant_arm` 构造（payload 臂报 argument 错）。
 - **诊断**：`source.pattern-bindings`、`source.enum-mixed-arms`、既有 `pattern-duplicate/nonexhaustive/argument` 边界保持；oracle 手写 parser 构造器随 EnumArm/EnumItem 扩展字段补齐（差分 oracle 面不变）。
 - 证据：`cargo t case-av-language-parity`（本包 35 例，111 AV 绿/41 隔离）+ `plan1083_records_variants_patterns`（O/B 矩阵）；§6 冻结并集见计划 1083 §9（ace-source 931/ace-syntax/ace-lowering 绿；继承红 3 项具名分账：host_console×2、sema-boundary×1，与 1082 base 证据相同）。
+
+## PLAN-1086 增量（拥有文本和 AV 文本扫描）
+
+`av.collections/1` 承载 owned `Str` 的元素、状态位及最小文本值操作，借用 `StrView` 仍不能作为拥有元素。普通 Auto 可用校验的 list place 读取后复制文本，或针对获准的旧式只读记录绑定复制独立记录。验证入口按 profile 保持窄面拒绝。记录列表的末项移出沿已有 `LIST_REMOVE`，空列表保具名越界。记录与文本写回和视图作用域沿已有 MIR 资源规则验证。
+
+普通 AV 的 `av.text.scan/1` 能力控制 `STR_FIND`（0x4E）和 `STR_TRIM`（0x4F）准入。前者在两个 UTF-8 视图上按标量起点搜索，返回标量索引或 -1。后者修剪两端由空格、制表符、CR、LF 组成的边界，可返回独立拥有文本或标量长度。短路 ASCII 扫描按访问字节计费，通用 UTF-8 扫描按输入字节预扣，拥有结果按复制字节计费。执行器继续使用现有指令、墙钟、取消与分配预算。常量 split 只预求分隔边界，执行时仍建立独立拥有列表及文本。来源与验收见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。

@@ -129,3 +129,7 @@
   （事件打印/环境读取）被 IN 旗标排除。
 - 历史边界记录：R03-static 旧前端门不静态拒迭代中变异（发射产物由
   rustc 编译期拒），typed stale 面经 reference helper 面交付。
+
+## PLAN-1086 增量（普通 AV 所有权退出）
+
+普通 Auto 的资源见证经过共享源码检查、MIR、ABC 重准入与 AV 执行。测试在每个实际分配路径对齐 alloc/free ID，并检查 frame 与 live 均归零。覆盖两轮循环的 continue、break、return，捕获后继续、未捕获错误、已进入 stdout provider 后取消、预算拒绝及重试，以及挂起文本的显式 close 和 finally 错误传播。文本扫描的低燃料拒绝和默认预算成功由独立输入对照。旧 VM 检查状态保留为阶段 SKIP。具体输入、时间和结果见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。

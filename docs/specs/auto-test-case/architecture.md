@@ -512,3 +512,4 @@ CT机制的父侧证据可消费原服务公开的计数与执行边界日志：
 - **错误身份**：父侧对协议 IO/EOF/编码、请求/源/输出限额、交换期限、身份失配的拒绝一律
   Status::Error（Infra，保 Resource 子因），永不充当语言负例或语法不支持判定。
 
+普通 AV 所有权语料以 [特性组织语料](feature-organized-corpus.md) 为作者入口，退出与释放断言见 [资源生命周期观察](resource-lifecycle-observations.md)。验收来源见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。

@@ -15,3 +15,5 @@ PLAN-863 增加实验性 [av.host-console/1](host-import-and-console.md)：类�
 PLAN-889增加显式[native集合/变体消费者](../auto-mir/native-collections-variants.md)：
 原864合法源码→同一shared MIR→真实COFF/PE，owned全帧清理/物理预算、真实source单体候选/坐标与深验恢复。
 AV opcode/wire/执行语义及旧whole-source差额不改，typed/wide与native在线帧不冒领。
+
+普通 AV 的借用、写回、移动与文本存储规则见 [语言齐平合同](language-parity.md)。验收来源见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。

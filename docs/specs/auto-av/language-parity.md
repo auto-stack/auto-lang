@@ -107,8 +107,6 @@
 |---|---|---|---|
 | 复合赋值语句 `x += …` | `source.syntax`（`expected expression, found =`）；Auto 语句面只收 `=`，同一 checked 加法经 `x = x + 1` 已验 | statement-surface 批（未排号；PLAN-1080 r3 合同不含 `+=` 语句面——1079 原标注修正） | 语句面接纳该形后按原 case oracle 重跑 |
 | `char.to(Str)`（char→owned Str 装箱） | CST 前门拒绝（回退到 legacy 解析器报 `fn is not part of this source profile`） | PLAN-975 后续批次 | 该形可编译后按 `len`/`len_bytes` 断言 |
-| 计算借用视图局部量 `let t = s.slice(1,3)` | `verify.local-type`（aggregates 面局部量只收 owned `Str`） | PLAN-1086 | 借用视图局部量准入后按 `slice` 原 oracle 重跑 |
-| `str` 形参收 owned `Str` 实参 | `source.type-mismatch`（`expected str, found Str`） | PLAN-1086 | 形参视图/自有转换准入后重跑 |
 | `~` 位非、raw string 字面量 | 不在冻结算符表 / 无此形（`text.invalid-escape`） | — | 语言不定义该构造，旧义务记 `no-such-shape` |
 
 ### 5.4 AVP-01 承接的 L 行验收状态（AC-04 映射）
@@ -267,7 +265,7 @@ after`（d01 静默失效债闭） | PASS |
 | `av.parity.1083.nested-is-shadowing` / `guard-arm` / `guard-not-evaluated` / `or-arm` / `nonexhaustive-expr-rejects` / `statement-fallthrough` / `exhaustiveness-else` / `fn-tail-is-value` / `script-tail-is-value` | PATTERN-BIND 五面 + 尾值族（O54/B34/B36/O53/B37/B38/else/30/42） | PASS |
 | `av.parity.1083.record-method-reads` / `positional-ctor-family` / `list-elem-method` / `method-value-family` / `str-field-record` / `record-array-fields` / `nested-type-instance` | `chain=6`、`build=9/origin=0`、`total=6/idx1=2`、`7/8/12`、`title ok/id ok/from fn ok`、`array field ok/second id ok`、exit 10（m03-m06/034-036/008 读面） | PASS |
 
-冻结边界：record 方法字段写（`&mut self` 接收者可变性）与经元素 Str 字段读归 AVP-08 borrows（PLAN-1086；m01/m08/m09 写腿与 10.036 title 腿 research-hold）；泛型 enum 归 AVP-10（PLAN-1088；28.005 hold）；`use auto.result` stdlib Result 方法归 modules/stdlib owner（28.006 hold）；fstr record display 归文本面（10.013 display oracle 留 map）；未类型尾调用未类型函数的推导缺口为 1080 既有（wildcard helper 内联规避）。复跑入口：`cargo t case-av-language-parity`（111 AV 绿/41 NOT_RUN）与 `cargo test -p ace-av --test conformance plan1083_canonical_verify`（35 例孪生）。
+后续交付：record 方法字段写（`&mut self` 接收者可变性）与经元素 Str 字段读由 AVP-08 验收，含 m01/m08/m09 写腿与 10.036 title 腿。其余冻结边界：泛型 enum 归 AVP-10（PLAN-1088；28.005 hold）；`use auto.result` stdlib Result 方法归 modules/stdlib owner（28.006 hold）；fstr record display 归文本面（10.013 display oracle 留 map）；未类型尾调用未类型函数的推导缺口为 1080 既有（wildcard helper 内联规避）。复跑入口：`cargo t case-av-language-parity`（111 AV 绿/41 NOT_RUN）与 `cargo test -p ace-av --test conformance plan1083_canonical_verify`（35 例孪生）。
 
 ## PLAN-1084 增量（AVP-06，动态对象与 null）
 
@@ -284,3 +282,13 @@ after`（d01 静默失效债闭） | PASS |
 程序代持有各自的全局单元，覆盖 `Str`、List、record、variant、带 owned 捕获的闭包和异构对象。整格赋值替换旧值。显式移动清空源格，未回填前读取给 `av.trap.global-moved`。依赖初始化按受检顺序执行，钻石叶只运行一次。初始化完成前的错误、预算耗尽或取消保持未发布，释放已写入的 owned 值。重试、关闭、新会话与从源码收据冷恢复都使用各自代的单元。配置文档保持 `IF-982-CONFIG-ACE` 的已有 producer。
 
 `language/modules/imports-globals.case.ad` 收录本包 AV 观察及九条原检查，分母、原预期和 owner 见 `language/migration/legacy-map.tsv`。Parser/emit 的 bootstrap 组合仍由 PLAN-1095 承接。交付接口为 `IF-AV-PARITY-MODULE`，冻结工具身份与结果见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
+
+## PLAN-1086 增量（AVP-08，借用、移动与存储）
+
+普通 Auto AV 可给拥有文本建立有界 `.view`，可将计算出的 `.slice` 绑定到局部量，也可把 `Str` 借给 `str` 形参。返回视图可指向静态文本或保留调用者的有效根，当前帧根逃逸由 `mir.borrow-escape` 拒绝。活跃借用与冲突的写回或移动由 `mir.mut-conflict` 拒绝。移后读在执行前以 `mir.use-after-move` 拒绝并报告源位置。记录方法和参数的可变传递写回原 owner，文本 `.mut` 的 `append` 在原绑定写回。
+
+旧拥有型记录字段、列表元素及 Option 载荷的 `str` 拼写归一为 `Str`。普通参数和结果位置的单独 `str` 保留借用。直接发布的脚本列表结果可复制其中的借用文本。声明为显式 `List<Str>` 的拥有元素传递保留 `.move` 或新值要求。旧式无类型只读 `let` 从含旧 `str` 字段的列表记录获取独立副本。记录列表 `.pop()` 移出末项，空列表以 `av.trap.list-index` 拒绝。
+
+`language/ownership/borrows-moves.case.ad` 是本包共享作者。文本 `.mut` 原 VM 预期 `hello`，AV 写回预期 `hello world`。两个 SSE 原源码分别打印 `events: 1` 与原各自完成行。原 aggregates 探针 `str_slice_len_bytes` 在相同源码上检查第一标量 ASCII `A` 的字节长度为 1。普通 AV 的文本搜索与修剪通过 `av.text.scan/1` 受检执行。原样 2,000 轮字符串池用例在默认预算下返回 50000。
+
+交付接口为 `IF-AV-PARITY-OWNERSHIP`。原源码、检查身份、分析范围和观察来源见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。

@@ -86,3 +86,7 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 ## PLAN-1085 增量（modules 家族）
 
 `language/modules/imports-globals.case.ad` 是本包统一作者，含 `03_variables` 八个原例与 `17_modules/001_use_fn` 的原 case/check、源和原 VM oracle。单独的 AV probe 共享工程文件闭包。原 VM 文档按 1066 保留为历史，生产清单与 Rust 包装读者沿迁移映射访问 canonical 文档。阶段 `#ignore` 仅作用于原 VM 检查。AV 切片用 `--target av` 按动作和 recipe 选择。工程依赖文件内容变化使旧证据陈旧，坏公共结构和缺必需 AV 检查使 AV 门失败。来源见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
+
+## PLAN-1086 增量（ownership 家族）
+
+`crates/auto-lang/test/cases/language/ownership/borrows-moves.case.ad` 组织借用、写回、移动和资源值的同源语料。28 条主承接与 11 条接续保留原 Auto 字节、原检查身份和 VM 预期。原 VM 检查按阶段 `#ignore`，生产包装器按 `legacy-map.tsv` 读取唯一作者，旧文档作为冻结历史保留。普通 AV 按目标与 recipe 独立判定，新增 22 个具名检查覆盖视图、记录与文本写回、诊断、发布和复制。源身份对账和有意判错的控制见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。
