@@ -16435,6 +16435,21 @@ F:{d}
                         } else {
                             recv_class
                         };
+                        // An explicitly typed constructor needs no element
+                        // inference for its legacy empty initializer.
+                        if self.profile.is_auto_language()
+                            && name.name == "new"
+                            && matches!(args.as_slice(), [Arg::Pos(e)] if matches!(&e.kind, ExprKind::ArrayLit(elements) if elements.is_empty()))
+                        {
+                            if let RecvClass::ListCtor(list) = recv_class {
+                                out[slot] = ResolvedExpr {
+                                    span: node.span,
+                                    vt: VT::List(list),
+                                    kind: RExprKind::ListNew { list },
+                                };
+                                continue;
+                            }
+                        }
                         let recv_slot = match recv_class {
                             RecvClass::Value => Some(out.len()),
                             RecvClass::ElemViewLen { .. } => None,
