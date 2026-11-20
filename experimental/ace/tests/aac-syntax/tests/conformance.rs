@@ -666,6 +666,75 @@ fn aac1046_module_catalog_missing_duplicate_and_import_cycle() {
     assert!(accepted.starts_with("CATALOG\n"), "{accepted}");
 }
 
+fn catalog_uses(report: &str) -> Vec<&str> {
+    report.lines().filter(|line| line.starts_with("USE ")).collect()
+}
+
+#[test]
+fn aac1046_symbol_list_members_follow_source_order() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+
+    let beta = ("beta.at", "pub fn y() int { return 2 }\npub fn z() int { return 3 }");
+    for (import, expected) in [
+        ("use beta: y, z", ["USE 0 -1 beta.y", "USE 0 -1 beta.z"]),
+        ("use app.beta: y, z", ["USE 0 -1 app.beta.y", "USE 0 -1 app.beta.z"]),
+        ("use other.beta: z, y", ["USE 0 -1 other.beta.z", "USE 0 -1 other.beta.y"]),
+    ] {
+        let alpha = format!("{import}\npub fn x() int {{ return 1 }}");
+        assert!(rust_oracle("aac", &alpha).ends_with("DIAGS\n"), "{alpha}");
+        let files = [("alpha.at", alpha.as_str()), beta];
+        let supplied = if import.starts_with("use other.") {
+            (&files[..1], &["alpha.at"][..])
+        } else {
+            (&files[..], &["alpha.at", "beta.at"][..])
+        };
+        let report = run_native_catalog("aac", "app", supplied.0, supplied.1).unwrap();
+        assert!(report.starts_with("CATALOG\n"), "{report}");
+        assert_eq!(catalog_uses(&report), expected);
+    }
+}
+
+#[test]
+fn aac1046_symbol_list_imports_reject_missing_public_module_and_cycle() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+
+    let beta = ("beta.at", "use alpha.x\npub fn y() int { return 2 }\npub fn z() int { return 3 }");
+    for import in ["use beta: y, z", "use app.beta: y, z"] {
+        let alpha = format!("{import}\npub fn x() int {{ return 1 }}");
+        let entry = ("alpha.at", alpha.as_str());
+        assert_eq!(
+            run_native_catalog("aac", "app", &[entry], &["alpha.at"]).unwrap(),
+            "MODULE_ERR MISSING beta",
+        );
+        assert_eq!(
+            run_native_catalog("aac", "app", &[entry, beta], &["alpha.at", "beta.at"]).unwrap(),
+            "MODULE_ERR IMPORT_CYCLE",
+        );
+    }
+}
+
+#[test]
+fn aac1046_symbol_list_imports_keep_provider_and_conditional_candidates() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+
+    let entry = (
+        "alpha.at",
+        "#in sys is current {\n Windows -> use app.win: y, z\n Linux -> use app.lnx: z, y\n}\npub spec fn x() int",
+    );
+    let provider = ("alpha.at.at", "use missing: y, z\nfn x() int { return 1 }");
+    let report = run_native_catalog("aac", "app", &[entry, provider], &["alpha.at", "alpha.at.at"]).unwrap();
+    assert!(report.starts_with("CATALOG\n"), "{report}");
+    let uses = catalog_uses(&report);
+    let [win_y, win_z, lnx_z, lnx_y, provider_y, provider_z] = uses.as_slice() else { panic!("{report}") };
+    let (guard, win_y_path) = win_y.rsplit_once(' ').unwrap();
+    assert!(guard.strip_prefix("USE 0 ").unwrap().parse::<usize>().is_ok(), "{report}");
+    assert_eq!(win_y_path, "app.win.y");
+    assert_eq!(*win_z, format!("{guard} app.win.z"));
+    assert_eq!(*lnx_z, format!("{guard} app.lnx.z"));
+    assert_eq!(*lnx_y, format!("{guard} app.lnx.y"));
+    assert_eq!([*provider_y, *provider_z], ["USE 1 -1 missing.y", "USE 1 -1 missing.z"]);
+}
+
 #[test]
 fn aac1046_catalog_distinguishes_body_and_initializer_edges() {
     use ace_aac_syntax_conformance::run_native_catalog;

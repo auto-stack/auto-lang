@@ -130,23 +130,67 @@ fn local_target(path Str, package Str) Str {
     return ""
 }
 
+fn import_paths(pg List<int>, ast List<int>, src List<int>, row int, grammar_kind Str) List<Str> {
+    var paths = List<Str>.new()
+    if (grammar_kind == "use-path") {
+        let at = row * ast_stride()
+        let parent = ast.get(at + ast_parent()) * ast_stride()
+        if (ast_kind_name(pg, ast.get(parent + ast_kind())) != "in-use") {
+            let path = byte_text(src, ast.get(at + ast_start()), ast.get(at + ast_end()))
+            paths.push(path.move)
+        }
+        return paths
+    }
+
+    // The symbol-list productions store the prefix and members in separate
+    // AST fields. Emit the same paths as the equivalent dotted imports.
+    let qualified = grammar_kind == "age-use-module-item"
+    let conditional = grammar_kind == "in-use"
+    var prefix = ""
+    var child = row + 1
+    for (child < ast.len() / ast_stride()) {
+        let at = child * ast_stride()
+        let parent = ast.get(at + ast_parent())
+        if (parent < row) { break }
+        let field = row_role(pg, ast, child)
+        if (parent == row && (field == "module" || field == "path" || (qualified && field == "name"))) {
+            let part = byte_text(src, ast.get(at + ast_start()), ast.get(at + ast_end()))
+            if (prefix.len() == 0) { prefix = part.move } else { prefix = prefix + "." + part }
+        }
+        let member_head = field == "head" && (parent == row || (conditional && ast_kind_name(pg, ast.get(parent * ast_stride() + ast_kind())) == "in-use-syms"))
+        if (field == "import" || field == "sym" || member_head) {
+            let member = byte_text(src, ast.get(at + ast_start()), ast.get(at + ast_end()))
+            let path = prefix.clone() + "." + member
+            paths.push(path.move)
+        }
+        child = child + 1
+    }
+    if (conditional && paths.len() == 0) { paths.push(prefix.move) }
+    return paths
+}
+
 fn import_report(pg List<int>, ast List<int>, src List<int>, source_id int, kind int, package Str, inventory Str, graph List<int>) Str {
     var out = ""
     var row = 0
     for (row < ast.len() / ast_stride()) {
         let at = row * ast_stride()
         let grammar_kind = ast_kind_name(pg, ast.get(at + ast_kind()))
-        if (grammar_kind == "use-path") {
-            let path = byte_text(src, ast.get(at + ast_start()), ast.get(at + ast_end()))
+        if (grammar_kind == "use-path" || grammar_kind == "in-use" || grammar_kind == "age-use-sym-item" || grammar_kind == "age-use-module-item") {
+            var paths = import_paths(pg, ast, src, row, grammar_kind)
             let guard = import_guard(pg, ast, row)
-            let module = local_target(path.clone(), package.clone())
-            if (module.len() > 0 && kind == 0 && guard < 0) {
-                let target = inventory_id(inventory.clone(), module.clone() + ".at")
-                if (target < 0) { return "MODULE_ERR MISSING " + module }
-                graph.push(source_id)
-                graph.push(target)
+            for (paths.len() > 0) {
+                let path = paths.remove(0)
+                if (kind == 0 && guard < 0) {
+                    let module = local_target(path.clone(), package.clone())
+                    if (module.len() > 0) {
+                        let target = inventory_id(inventory.clone(), module.clone() + ".at")
+                        if (target < 0) { return "MODULE_ERR MISSING " + module }
+                        graph.push(source_id)
+                        graph.push(target)
+                    }
+                }
+                out = out + "USE " + from_int(source_id) + " " + from_int(guard) + " " + path + "\n"
             }
-            out = out + "USE " + from_int(source_id) + " " + from_int(guard) + " " + path + "\n"
         }
         row = row + 1
     }
