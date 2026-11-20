@@ -84,3 +84,9 @@ mn 车道 CRT stub 为净改善；ace-a2x meter infra flake）。
 ## PLAN-1081 增量（2026-11-20，Auto 面函数值）
 
 普通 Auto 面命名自由函数项可作为受检值（零捕获 `CreateClosure`：let/实参/返回/容器槽、同 fn 多点引用、递归/互递归无捕获；入口 `main` 与嵌套项仍拒）；lambda 进入 Auto 面（块体/捕获/多次调用/borrow 直调-vs-逃逸拒/退出 live=0）；嵌套 fn 项 mangled 提升 + Rust no-capture 语义（`bind/source.nested-fn-no-capture`）。下游：空 env 例外两条 lambda MIR 不变量；`MirType::Closure` 入 collections 元素域；`check_push_value` 认闭包/克隆 rvalue；Unit 普通调用 dst=Unit（D-04 后 void-fn-被调缺口）。冻结窄面行为逐字节不变。规范事实详见 `docs/specs/auto-av/language-parity.md` §6.5。
+
+## PLAN-1084 增量（普通 Auto 面）
+
+普通 Auto 对象字段和异构列表元素经 Checked HIR 及 MIR 的 DynPack、DynIs、DynTake 保存和恢复实际类型。该形状经 AV 的 `av.language-values/1` 准入。对象的文本、int、bool 键在查找、顺序和便携表示中保持身份；已存在的键以原位置替换值。可达引用环在写入前具名拒绝，共享无环引用仍可观察同一单元。深复制为每次出现建立独立单元，并按原遍历预算和取消路径停止。
+
+便携 v1 保原始文本键布局。含 int 或 bool 键的纯值对象树使用 v2，恢复时检查键域、顺序与重复键。便携域保纯值树约束，共享图、活 provider、嵌套 Dyn 包装给具名拒绝。普通源的运行时标签恢复走 DynTake。配额预检与错误退出的生命周期经实际 AV 验证，详见 [PLAN-1084](../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。

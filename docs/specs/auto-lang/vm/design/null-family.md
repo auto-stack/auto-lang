@@ -75,3 +75,9 @@ AutoVM 对 null 家族（`null`/`nil`/`None` 三拼写）在算术、拼接、�
 - `null.len()` 随 ARRAY_LEN 臂顺带翻转（P550-D5）。
 - 越界/TYPE_TO 翻转是计划内行为变更：存量依赖 0/-1 哨兵的仓外语料属预期
   翻案面（P550-D1）。
+
+## 普通 AV（PLAN-1084）
+
+普通 AV 的 `null` 与 `nil` 共用独立的 Nil 标签，整数按自己的标签判等。`None` 属于类型化 Option，由判别分支和 Option 解包路径识别。Nil 为假，对装箱 Nil 的判空先查标签。`??` 在 Nil 或相应 Option 分支才求值右侧。Nil 的显示为 `None`。
+
+普通静态算术判定在绑定阶段给 `source.nil-op`。`.as` 已支持的 nil 算术、下标、调用、迭代和转换错误经语言 TypeError 进入 catch。运算对装箱 nil 先查标签，再走所需的数值取回。错误输出携带虚拟入口的原始字节区间；宿主故障、资源门和取消沿各自终态传递。见 [PLAN-1084](../../../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。

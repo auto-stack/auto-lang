@@ -29,8 +29,8 @@
 - 唯一活跃作者根：`crates/auto-lang/test/cases/language/`；公共总选择
   `crates/auto-lang/test/cases/language.suite.ad`。同一 Case 一份 Auto 源，
   AV/AC/A2R 各自追加目标检查与独立实际结果，不复制源码。
-- 固定组 `case-av-language-parity` = 公共语料 **AV 视图**（`--check av`，
-  按已注册目标/动作选择；legacy-reference 等旧对照只经显式 avm 选择，不重建旧引擎）。
+- 固定组 `case-av-language-parity` 通过 `--target av` 选择已注册的 AV run 检查。
+  legacy-reference 等旧对照由各自的显式选择入口处理。
 - 迁移表 `language/migration/legacy-map.tsv`（数据映射，不作注册器）；旧义务
   保原 ID/条件/oracle，合并不删义务。
 
@@ -268,3 +268,11 @@ after`（d01 静默失效债闭） | PASS |
 | `av.parity.1083.record-method-reads` / `positional-ctor-family` / `list-elem-method` / `method-value-family` / `str-field-record` / `record-array-fields` / `nested-type-instance` | `chain=6`、`build=9/origin=0`、`total=6/idx1=2`、`7/8/12`、`title ok/id ok/from fn ok`、`array field ok/second id ok`、exit 10（m03-m06/034-036/008 读面） | PASS |
 
 冻结边界：record 方法字段写（`&mut self` 接收者可变性）与经元素 Str 字段读归 AVP-08 borrows（PLAN-1086；m01/m08/m09 写腿与 10.036 title 腿 research-hold）；泛型 enum 归 AVP-10（PLAN-1088；28.005 hold）；`use auto.result` stdlib Result 方法归 modules/stdlib owner（28.006 hold）；fstr record display 归文本面（10.013 display oracle 留 map）；未类型尾调用未类型函数的推导缺口为 1080 既有（wildcard helper 内联规避）。复跑入口：`cargo t case-av-language-parity`（111 AV 绿/41 NOT_RUN）与 `cargo test -p ace-av --test conformance plan1083_canonical_verify`（35 例孪生）。
+
+## PLAN-1084 增量（AVP-06，动态对象与 null）
+
+普通 Auto 源的对象支持异构值。点访问和下标访问共享同一键查找和就地写入路径。键的域是文本、`int` 与 `bool`，标签参与身份。重复字面键在绑定时诊断，更新已有键保原位置，新增键追加。缺键、错误的值标签及环分别产生 `av.dyn.object-missing`、`av.trap.dyn-type` 与 `av.dyn.object-cycle`。
+
+异构列表使用逐元素 Dyn 标签。对象与列表可嵌套并共享引用，跨别名的写入可见。执行出口记录 int、unit、文本或对象通道，父端独立比较结果和两股输出。编译和运行诊断绑定虚拟入口文件与原字节区间。`.as` 的 nil 类型错误进入语言 catch，资源耗尽和取消保各自的终态。
+
+`language/dynamic/objects-null.case.ad` 收录本包 42 个实际 AV Case，含 11 个旧对象主用例及 1082 移交的 8 个混合集合用例。对应的老检查、预期和 owner 见 `legacy-map.tsv`。旧脚本中的 Python/宿主组合由 PLAN-1094 承接，HashMap/HashSet API 行保现有标准库容器职责。验收来源见 [PLAN-1084](../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。

@@ -11,10 +11,8 @@
   不以 AV/AC/A2R、M1/M2 或计划号划分）。公共总选择 `language.suite.ad`。
 - 每个公共 Case 一份 `### Auto` 源码（或多文件工程闭包）；各后端在 Case 内
   声明检查。suite/固定组只引用、选择，不复制 Case 形成后端视图。
-- 固定组 `case-av-language-parity`（domain=ace、显式选择）＝公共语料 **AV 视图**：
-  runner 按 `check` 字段（`--check av`）只选 AV 检查；旧 AVM 对照只经显式
-  avm 选择；`NOT_RUN`（未选中）不充 PASS，AV 视图门只看选中行（选中行 FAIL
-  仍红）。
+- 固定组 `case-av-language-parity` 使用 `--target av` 选择已注册 AV recipe 的 run 检查。
+  AV 视图按所选检查判定退出状态，报告记录目标，SKIP 和 NOT_RUN 各自保留。
 
 ## 2. 检查级 `#ignore`（交付）
 
@@ -78,3 +76,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/collections/list-places.c
 ## PLAN-1083 增量（2026-11-20，types/patterns 家族）
 
 canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`（23 case：§6 合同 1 例 + 016-019 全 oracle 迁移 + 标量枚举/int 码臂 + 28_enum 方法四例 + Option/Result 族 + idiom2 读面/034-036/008）与 `crates/auto-lang/test/cases/language/patterns/nested-match.case.ad`（12 case：§6 合同 2/3/4 例 + PATTERN-BIND 五面 + 尾值族），`language.suite.ad` 追加两 include（新 types/patterns 目录）。legacy-map.tsv 本包 52 行（45 mapped 含 7 具名拒映射 / 7 research-hold：AVP-08×4（m01/m02/m08/m09 方法字段写腿）+ 10.036 Str-through-element 腿 + AVP-10（28.005 泛型）+ stdlib/modules（28.006））；跨批 1 行（15_nested_mutation.015）owner 由本包改 AVP-08（读面已落、写缝归借用批）。具名审计规范化：fn-local enum 提升、fstr 包裹去包裹、display oracle 留 map、整 owned 元素绑定→经元素投影、`.helper(3)`→`self.helper(3)`、str 词臂→int 码、wildcard helper 内联（1080 未类型尾调用缺口）。`test/vm` 零改动（具名冻结历史）；SHA16=整文件字节前 16 hex 对账。故意红元控制：单 oracle 变异 exit 42→43 → 套件 FAIL exit=1，复原复绿。AV-ONLY 阶段非 AV 检查 `#ignore`/NOT_RUN 不充 PASS（111 AV 绿/41 NOT_RUN）。
+
+## PLAN-1084 增量（dynamic 家族）
+
+`language/dynamic/objects-null.case.ad` 是对象、混合集合与 null 的活跃作者。19 份迁入源字节和原检查 ID 均保留；AV 与旧 VM 参考共用作者源。原纸本路径保历史签章；普通 legacy 文档读者按精确迁移行读取活跃作者。
+
+固定组 `case-av-language-parity` 以运行目标和 recipe 家族选择实际检查。显式阶段忽略报告 SKIP，其他未选报告 NOT_RUN。具 AV required 标签的 Case 必须有活跃的 AV run 检查。源码变更使旧 AV 结果陈旧，陈旧性检查按普通 AV worker 的实际身份对账。控制与复现摘要见 [PLAN-1084](../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。
