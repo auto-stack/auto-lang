@@ -96,3 +96,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 `language/errors/catch-finally.case.ad` 是跨调用错误、展开和相邻控制流的唯一活跃作者。25 份原源和 27 条原 VM 检查在 `language/migration/legacy-map.tsv` 逐项保留原 SHA16、检查 ID、预期和执行条件。原 VM 检查阶段标记为 `#ignore`。具名差异各有独立的 AV 诊断检查，同一个 Auto 源继续承接旧 VM 预期。
 
 普通 AV worker 向父端报告处理器进入计数和最近的错误类型、虚拟文件和字节区间。父端验证该位置属于提交源码，并独立判定 AV 的值、双流和诊断。语料控制与运行证据见 [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md)。
+
+## PLAN-1089 增量（generators 家族）
+
+[generators/yield-close.case.ad](../../../crates/auto-lang/test/cases/language/generators/yield-close.case.ad) 是生成器挂起、取项、耗尽和关闭的活跃作者。四份旧 VM 文档的源码字节、case/check、输出和末尾换行通过 legacy-map.tsv 保留。旧 VM 生产发现和包装读者按映射读 canonical 文档，原文档供历史核对。原 VM 检查与新增间接返回的旧参考均应用阶段 #ignore。AV 实际检查按运行目标选择并独立比较。
+
+三项父端资源观察重用同一 AutoDown 作者的源。实验分别从 AV 记录早停后的 Str/List/Variant、挂起期间的宿主取消以及关闭错误捕获后的释放。选择、oracle 与来源反控见 [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md)。

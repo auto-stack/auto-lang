@@ -302,3 +302,11 @@ after`（d01 静默失效债闭） | PASS |
 值位 `is` 要求穷尽，非穷尽语句 `is` 可继续。Option `.?` 在 Option 返回边界传播 None，默认值和 `??` 均按需计算右侧。在列表构造 `[a, if cond { b }]` 中，条件按源序求值，条件成立才求值并加入对应元素。范围仅准入迭代位置。旧例 04.006、16.007、16.008、16.010 和 05.003 保留各自 VM 预期和同源 AV 诊断。生成器跨挂起与关闭的生命周期由 PLAN-1089 承接。
 
 公共作者为 `language/errors/catch-finally.case.ad`。交付接口为 `IF-AV-PARITY-ERROR`。路径、输入、工具与 provider 证据见 [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md)。
+
+## PLAN-1089 增量（AVP-11，生成器与迭代生命周期）
+
+普通 AV 源码面支持 [生成器同源语料](../../../crates/auto-lang/test/cases/language/generators/yield-close.case.ad) 覆盖的 ~Iter<T>。普通函数可间接返回流，工程模块可生产含枚举和泛型记录载荷的流，迭代器保存挂起后要用的局部。连续 next 按源序产生项，耗尽返回 None。拥有型 Str、List 和枚举载荷经受检转移。旧 ~Iter<str> 以拥有型文本承载项，int.to_str() 复用普通显示操作。四份旧生成器的实际 stdout 为 6、10,20,30,、abc、6（均有换行）。
+
+带借用输入的生成器由直接 for-in 消费。首次取项时，挂起前的公用前段经普通受检形参读取或写回调用者的 owner。状态只保存前段留下的标量和拥有值。仍在挂起后使用借用时报告 bind/source.generator-borrow-param。返回或存放带借用的流报告 bind/source.generator-borrow-escape。
+
+提前 break、正常耗尽和显式 close 会终结流。未启动即 close 不执行生成器体；悬挂 finally 从内到外执行，每个作用域一次。关闭释放后的终态在捕获关闭错误后仍可见，后续 close 无副作用、next 为 None。宿主取消与程序错误的分类沿用普通 AV 合同。父端分别观测取消、两项后的资源释放和关闭错误恢复。接口和复跑见 [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md)。
