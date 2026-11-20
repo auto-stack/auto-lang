@@ -231,8 +231,14 @@ def run_rust(group, output, env, ignored=False, discover_only=False, archive=Non
     env = dict(env)
     env.pop('CARGO_TARGET_DIR', None)
     cwd = ROOT / group['workspace']
+    # A Rustup Cargo shim inserts RUSTUP_TOOLCHAIN before invoking nextest.
+    # In debug prepared mode, keep the same compiler environment used by the
+    # runtime warm-up, which also runs directly without a Cargo parent.
+    nextest = ['cargo', 'nextest']
+    if archive is not None and env.get('ACE_FIXED_TEST_RUNTIME_MODE') == 'run-debug':
+        nextest = ['cargo-nextest', 'nextest']
     if archive is not None:
-        listing_argv = ['cargo', 'nextest', 'list', '--archive-file', archive['path'],
+        listing_argv = [*nextest, 'list', '--archive-file', archive['path'],
                         '--workspace-remap', str(cwd), '--ignore-default-filter',
                         '-E', group['expression'], '--run-ignored', 'all', '--message-format', 'json']
     else:
@@ -267,7 +273,7 @@ def run_rust(group, output, env, ignored=False, discover_only=False, archive=Non
     if archive is not None:
         # Prepared run: no build inputs are supplied to nextest, only the
         # source-bound archive plus the run-time expression.
-        argv = ['cargo', 'nextest', 'run', '--archive-file', archive['path'],
+        argv = [*nextest, 'run', '--archive-file', archive['path'],
                 '--workspace-remap', str(cwd), '--archive-format', 'tar-zst',
                 '--ignore-default-filter', '-E', group['expression'],
                 '--no-fail-fast', '--no-tests', 'fail',

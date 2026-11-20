@@ -9,29 +9,60 @@ fn grants() -> Vec<String> {
 }
 
 #[test]
-fn av_console_entry_selection_cannot_bypass_main_policy() {
-    let error = compile(
-        "fn helper() int { return 1 }\nfn main() int { return 2 }\n",
-        "d_helper",
+fn av_console_entry_selection_executes_named_entry_and_checks_signature() {
+    let src = "fn helper() int { print(99); return 1 }\nfn main() int { return 2 }\n";
+    let program = compile(src, "d_helper").unwrap();
+    let mut cap = ConsoleCapture::default();
+    let (out, _) = program
+        .run(
+            &grants(),
+            &ExecLimits::default(),
+            &CancelFlag::new(false),
+            &mut cap,
+        )
+        .unwrap();
+    assert!(matches!(
+        out,
+        ExecOutcome::Success {
+            value: Value::I32(1),
+            ..
+        }
+    ));
+    assert_eq!(cap.stdout, b"99\n");
+
+    let missing = compile(src, "d_missing").err().expect("missing entry");
+    assert_eq!(
+        (missing.stage.as_str(), missing.code.as_str()),
+        ("lower", "lower.entry")
+    );
+    let invalid = compile(
+        "fn wrong(x int) int { return x }\nfn main() int { return 2 }",
+        "d_wrong",
     )
     .err()
-    .unwrap();
-    assert_eq!(error.code, "lower.entry");
+    .expect("integer arguments are invalid for a console entry");
+    assert_eq!(
+        (invalid.stage.as_str(), invalid.code.as_str()),
+        ("verify", "mir.entry-sig")
+    );
 }
 
 #[test]
-fn av_console_owned_front_door_enforces_console_entry_only() {
+fn av_console_owned_front_door_runs_named_main_and_script_entries() {
     let src = "fn helper() int { print(99); return 11 }\nfn main() int { print(7); return 42 }";
-    let c = ace_core::source::compile_host_console_source(src, "entry.at", &[]).unwrap();
-    assert_eq!(
-        ace_lowering::lower_checked_owned(&c.checked, "d_helper", 1)
-            .unwrap_err()
-            .code(),
-        "lower.entry"
-    );
-    for src in [src, "print(7)", "fn main() void { print(7); 42 }"] {
+    for (src, entry, stdout, value) in [
+        (src, "d_helper", b"99\n".as_slice(), Value::I32(11)),
+        (src, "d_main", b"7\n".as_slice(), Value::I32(42)),
+        ("print(7)", "d_main", b"7\n".as_slice(), Value::Unit),
+        (
+            "fn main() void { print(7); 42 }",
+            "d_main",
+            b"7\n".as_slice(),
+            Value::Unit,
+        ),
+    ] {
         let c = ace_core::source::compile_host_console_source(src, "entry.at", &[]).unwrap();
-        let m = ace_lowering::lower_checked_owned(&c.checked, "d_main", 1).unwrap();
+        let m = ace_lowering::lower_checked_owned(&c.checked, entry, 1).unwrap();
         let loaded = ace_av_core::verify_abc_bytes(
             &ace_av_core::encode_abc(&m).unwrap().to_flat(),
             &m.owner,
@@ -46,8 +77,11 @@ fn av_console_owned_front_door_enforces_console_entry_only() {
             &mut cap,
         )
         .unwrap();
-        assert!(matches!(out, ExecOutcome::Success { .. }));
-        assert_eq!(cap.stdout, b"7\n");
+        assert!(
+            matches!(out, ExecOutcome::Success { value: ref actual, .. } if *actual == value),
+            "{out:?}, expected {value:?}"
+        );
+        assert_eq!(cap.stdout, stdout);
     }
     // The inherited text/owned API still lets its callers choose a helper.
     let c = ace_core::source::compile_text_source(

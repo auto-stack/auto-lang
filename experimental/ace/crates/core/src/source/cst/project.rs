@@ -13314,7 +13314,18 @@ impl GenericExpand {
         }
     }
 
-    fn resolve_typed_ctors_in_expr(&mut self, e: &mut Expr) {
+    fn resolve_typed_ctors_in_expr(&mut self, mut e: &mut Expr) {
+        // Prefix chains have no depth bound. A unary node has no
+        // constructor of its own, so descend without a Rust stack frame.
+        let e = loop {
+            match e {
+                Expr {
+                    kind: ExprKind::Unary { operand, .. },
+                    ..
+                } => e = operand,
+                other => break other,
+            }
+        };
         self.resolve_typed_ctor(e);
         match &mut e.kind {
             ExprKind::TupleLit(xs) | ExprKind::ArrayLit(xs) => {
@@ -13358,7 +13369,6 @@ impl GenericExpand {
                 self.resolve_typed_ctors_in_expr(lhs);
                 self.resolve_typed_ctors_in_expr(rhs);
             }
-            ExprKind::Unary { operand, .. } => self.resolve_typed_ctors_in_expr(operand),
             ExprKind::CtorNamed { fields, .. } => {
                 for f in fields.iter_mut() {
                     self.resolve_typed_ctors_in_expr(&mut f.value);
