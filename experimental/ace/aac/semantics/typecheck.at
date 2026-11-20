@@ -33,6 +33,7 @@ use app.types.alias_target
 use app.types.annotation_types
 use app.types.boolean_type
 use app.types.char_type
+use app.types.f32_type
 use app.types.f64_type
 use app.types.function_kind
 use app.types.i8_type
@@ -41,6 +42,7 @@ use app.types.init_types
 use app.types.integer_type
 use app.types.intern_type
 use app.types.intern_sequence
+use app.types.owned_text_type
 use app.types.text_view_type
 use app.types.tuple_type
 use app.types.type_first
@@ -138,6 +140,9 @@ fn binary_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, ro
     let left = facts.get(lhs)
     let right = facts.get(rhs)
     if (left == 0 || right == 0) { return 0 }
+    let left_text = left == owned_text_type() || left == text_view_type()
+    let right_text = right == owned_text_type() || right == text_view_type()
+    if (op == "plus" && left_text && right_text) { return owned_text_type() }
     if (left != right) { return type_operator() }
     if (op == "eq" || op == "ne") { return boolean_type() }
     if (op == "andand" || op == "oror") {
@@ -145,6 +150,8 @@ fn binary_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, ro
         return boolean_type()
     }
     if (!numeric_type(left)) { return type_operator() }
+    let bitwise = op == "amp" || op == "vbar" || op == "caret" || op == "shl" || op == "shr"
+    if (bitwise && left >= f32_type()) { return type_operator() }
     if (op == "lt" || op == "gt" || op == "le" || op == "ge") { return boolean_type() }
     return left
 }

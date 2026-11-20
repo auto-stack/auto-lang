@@ -443,6 +443,53 @@ fn checks_integer_width_and_radix_before_type_publication() {
 }
 
 #[test]
+fn checks_float_width_and_ties_at_the_overflow_boundary() {
+    let f32_limit = "340282356779733661637539395458142568448";
+    let f32_neighbor = "340282356779733661637539395458142568447";
+    let lower = format!("{f32_neighbor}.999");
+    let upper = format!("{f32_limit}.0");
+    assert_eq!(lower.parse::<f32>().unwrap(), f32::MAX);
+    assert!(upper.parse::<f32>().unwrap().is_infinite());
+    let source = format!("fn read() float {{ return 000_{}f32 }}", lower);
+    assert!(type_report(&source).starts_with("aac.type-report/1\n"));
+    let source = format!("fn read() float {{ return {upper}f32 }}");
+    let start = source.find(&upper).unwrap();
+    assert_eq!(
+        type_report(&source),
+        format!(
+            "ERROR type.literal-range 0 {start}..{}\n",
+            start + upper.len() + 3
+        )
+    );
+    let source = format!("fn read() double {{ return {upper}f64 }}");
+    assert!(type_report(&source).starts_with("aac.type-report/1\n"));
+
+    let huge = format!("1{}.0", "0".repeat(309));
+    assert!(huge.parse::<f64>().unwrap().is_infinite());
+    let source = format!("fn read() double {{ return {huge}f64 }}");
+    let start = source.find(&huge).unwrap();
+    assert_eq!(
+        type_report(&source),
+        format!(
+            "ERROR type.literal-range 0 {start}..{}\n",
+            start + huge.len() + 3
+        )
+    );
+}
+
+#[test]
+fn checks_text_concatenation_and_rejects_float_bit_operators() {
+    let good = "fn join(a str, b Str) Str { return a + b }";
+    assert!(type_report(good).starts_with("aac.type-report/1\n"));
+    let bad = "fn join(a float, b float) float { return a & b }";
+    let start = bad.find("a & b").unwrap();
+    assert_eq!(
+        type_report(bad),
+        format!("ERROR type.operator 0 {start}..{}\n", start + 5)
+    );
+}
+
+#[test]
 fn stable_annotations_point_to_their_declaration_and_reject_a_field_owner() {
     let good = "#[api(method = \"GET\", path = \"/read\")]\npub fn read() int { return 1 }";
     let report = type_report(good);
@@ -577,7 +624,13 @@ fn completes_implicit_signatures_and_rejects_a_conflicting_call() {
         "../../../../../crates/auto-lang/test/cases/language/calls/binding-pipeline.case.ad"
     );
     let section = document.split_once("## Case: untyped-old-form").unwrap().1;
-    let source = section.split_once("```auto").unwrap().1.split_once("```").unwrap().0;
+    let source = section
+        .split_once("```auto")
+        .unwrap()
+        .1
+        .split_once("```")
+        .unwrap()
+        .0;
     let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto source HIR");
     let bundle = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
         .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
@@ -599,6 +652,9 @@ fn normalizes_forward_type_aliases_and_rejects_a_cycle() {
     let start = bad.find("Width").unwrap();
     assert_eq!(
         type_report(bad),
-        format!("ERROR type.unresolved 0 {start}..{}\n", start + "Width".len())
+        format!(
+            "ERROR type.unresolved 0 {start}..{}\n",
+            start + "Width".len()
+        )
     );
 }

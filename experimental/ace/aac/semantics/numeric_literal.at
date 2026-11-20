@@ -1,6 +1,7 @@
 use app.binding.bind_budget
 use app.binding.take_step
 use app.semantic_tree.span_text
+use app.syntax_frontend.str_to_bytes
 use app.types.f32_type
 use app.types.f64_type
 use app.types.i8_type
@@ -51,6 +52,36 @@ fn magnitude_limit(type_id int, negative bool) u64 {
     return 18446744073709551615u64
 }
 
+// The first value that rounds to infinity under round-to-nearest-even is
+// MAX plus half its last place: 2^128 - 2^103 or 2^1024 - 2^970.
+// Both thresholds are whole numbers, so comparing just the integral
+// decimal digits also handles an arbitrary number of fractional digits.
+fn float_range(src List<int>, start int, end int, significant int, lanes int, fuel List<int>, deadline i64) int {
+    var width = 39
+    if (lanes == f64_type()) { width = 309 }
+    if (significant < width) { return lanes }
+    if (significant > width) { return literal_range() }
+    var bound = "340282356779733661637539395458142568448"
+    if (lanes == f64_type()) {
+        bound = "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792"
+    }
+    let border = str_to_bytes(bound)
+    var at = start
+    var digit = 0
+    for (at < end) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let value = src.get(at)
+        if (value != 95) {
+            let limit = border.get(digit)
+            if (value < limit) { return lanes }
+            if (value > limit) { return literal_range() }
+            digit = digit + 1
+        }
+        at = at + 1
+    }
+    return literal_range()
+}
+
 // Recognize the numeric body before interpreting the suffix. In hexadecimal,
 // letters a..f belong to the magnitude, including trailing "f32"/"f64".
 pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fuel List<int>, deadline i64) int {
@@ -65,15 +96,23 @@ pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fu
     var offset = digits_start
     var dots = 0
     var digits = 0
+    var significant = 0
+    var first_significant = digits_start
+    var decimal_point = -1
     for (offset < end) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
         let byte_value = src.get(offset)
         if (byte_value == 46) {
             dots = dots + 1
+            decimal_point = offset
         } else {
             if (byte_value != 95) {
                 if (radix_digit(byte_value, radix) < 0) { break }
                 digits = digits + 1
+                if (dots == 0 && (significant > 0 || byte_value != 48)) {
+                    if (significant == 0) { first_significant = offset }
+                    significant = significant + 1
+                }
             }
         }
         offset = offset + 1
@@ -81,8 +120,12 @@ pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fu
     if (digits == 0 || dots > 1 || (dots > 0 && radix != 10)) { return literal_syntax() }
     let suffix = span_text(src, offset, end)
     if (dots == 1) {
-        if (suffix == "" || suffix == "f" || suffix == "f32") { return f32_type() }
-        if (suffix == "d" || suffix == "f64") { return f64_type() }
+        if (suffix == "" || suffix == "f" || suffix == "f32") {
+            return float_range(src, first_significant, decimal_point, significant, f32_type(), fuel, deadline)
+        }
+        if (suffix == "d" || suffix == "f64") {
+            return float_range(src, first_significant, decimal_point, significant, f64_type(), fuel, deadline)
+        }
         return literal_syntax()
     }
     let type_id = integer_suffix(suffix)
