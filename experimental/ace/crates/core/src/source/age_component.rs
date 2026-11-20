@@ -3117,6 +3117,15 @@ pub(crate) fn handler_check_fn(
             Ok(v) => v,
             Err(ds) => return Some(Err(ds)),
         };
+        // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
+        let init = match (&ann.kind, &init.kind) {
+            (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
+                if name.name == "List" && !args.is_empty() =>
+            {
+                list_new_from_array(init, &args[0])
+            }
+            _ => init,
+        };
         stmts.push(Stmt::Let {
             kw: f.span,
             name: Ident {
@@ -3270,6 +3279,15 @@ pub(crate) fn lambda_value_fn(
         let init = match rename_expr(&f.init, FieldBinding::Local(inst), &node.fields) {
             Ok(v) => v,
             Err(ds) => return Some(Err(ds)),
+        };
+        // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
+        let init = match (&ann.kind, &init.kind) {
+            (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
+                if name.name == "List" && !args.is_empty() =>
+            {
+                list_new_from_array(init, &args[0])
+            }
+            _ => init,
         };
         stmts.push(Stmt::Let {
             kw: f.span,
