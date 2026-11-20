@@ -25,6 +25,58 @@ fn checked_aggregates(src: &str) -> CheckedModule {
         .checked
 }
 
+#[test]
+fn ordinary_object_growth_keeps_resource_stop_outside_script_catch() {
+    use ace_av_core::contract::ResourceKind;
+    use ace_av_core::owned_text::StrArena;
+    use std::fmt::Write as _;
+
+    let mut src = String::from("fn main() int {\ntry {\nvar obj = { seed: \"owned\" }\n");
+    for i in 0..80 {
+        writeln!(src, "obj[{i}] = {i}").unwrap();
+    }
+    src.push_str("return obj[79]\n} catch err { return -1 }\n}");
+    let caps = ["ac.source.language.av/v1".to_owned()];
+    let checked = ace_core::source::compile_language_source(&src, "growth.as", &caps)
+        .expect("ordinary source compiles")
+        .checked;
+    let mir = ace_lowering::lower_checked_auto_language(&checked, "d_main", 0)
+        .expect("ordinary lowering");
+    let wire = encode_abc(&mir).expect("ordinary encode").to_flat();
+    let loaded = abc_verify::verify_abc_bytes(&wire, &mir.owner).expect("ordinary admission");
+    let limits = ExecLimits {
+        max_slot_bytes: 13_640,
+        ..ExecLimits::default()
+    };
+    let arena = StrArena::new();
+    let (outcome, trace) = ace_av_core::av::execute_with_arena(
+        &loaded,
+        &limits,
+        &CancelFlag::new(false),
+        arena.clone(),
+    );
+    assert!(
+        matches!(
+            outcome, ExecOutcome::Resource { kind: ResourceKind::SlotBytes, ref message }
+            if message.contains("object write")
+        ),
+        "expected the object write preflight to stop growth, got {outcome:?}"
+    );
+    assert_eq!(trace.frames_remaining, 0);
+    assert_eq!(arena.live(), 0);
+    assert_eq!(
+        execute(&loaded, &ExecLimits::default(), &CancelFlag::new(true)).0,
+        ExecOutcome::Cancelled,
+    );
+    assert!(matches!(
+        execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false)).0,
+        ExecOutcome::Success {
+            value: Value::I32(79),
+            ..
+        }
+    ));
+}
+
 fn checked_closures(src: &str) -> CheckedModule {
     compile_closures_source(src, "p964-closures.at", &[])
         .expect("closures source compiles")

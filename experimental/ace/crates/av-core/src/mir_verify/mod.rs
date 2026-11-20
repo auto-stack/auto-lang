@@ -1437,6 +1437,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
             // nested container itself join the element closure.
             Some(MirType::I8 | MirType::U8 | MirType::U32) if aggregates => true,
             Some(MirType::List(_)) if aggregates => true,
+            Some(MirType::Dyn) if code == "mir.type.list-elem" && self.language_values() => true,
             // PLAN-964: an OBJECT element rides the collections family (the
             // closures profile represents a shared object capture as a
             // List<Object> env cell).
@@ -1524,7 +1525,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     .fields
                     .iter()
                     .all(|f| go(m, language_values, f.ty, depth + 1, path, memo)),
-                Some(MirType::List(l)) => go(m, language_values, l.elem, depth + 1, path, memo),
+                Some(MirType::List(l)) => {
+                    (language_values && matches!(m.types.get(l.elem as usize), Some(MirType::Dyn)))
+                        || go(m, language_values, l.elem, depth + 1, path, memo)
+                }
                 Some(MirType::Variant(v)) => v.arms.iter().all(|a| match a.payload {
                     Some(p) => go(m, language_values, p, depth + 1, path, memo),
                     None => true,

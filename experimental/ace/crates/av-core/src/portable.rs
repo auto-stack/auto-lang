@@ -558,6 +558,11 @@ fn write_tydesc(
         }
         DynType::Nil => out.push(TY_NIL),
         DynType::Object => out.push(TY_OBJECT),
+        DynType::Dyn => {
+            return Err(PortableError::Unsupported {
+                category: "nested-dyn",
+            })
+        }
         DynType::Callable => out.push(TY_CALLABLE),
         // A live external never reaches the wire (the value match rejects
         // it first); this arm keeps the writer total and explicit.

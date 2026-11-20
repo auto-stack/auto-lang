@@ -2796,6 +2796,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 数值目标同形经 r-to + 类型词承载）。
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { dot(same-line: true) r-as(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
+            alt(profiles: [auto]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) ident(field: "word") rparen() {} }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，

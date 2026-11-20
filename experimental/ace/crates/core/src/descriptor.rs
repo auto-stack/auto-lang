@@ -3175,11 +3175,12 @@ impl<'d> Binder<'d> {
                 hir::ExprKind::ObjectSet { base, key, value }
             }
             "nil_lit" => hir::ExprKind::NilLit,
-            "dyn_cast" => {
+            "dyn_cast" | "dyn_is_nil" => {
                 let (name, span) = self.text_ref(&fields, "operand")?;
                 let operand = self.resolve_in(&name, span, "ExprRef", &body.exprs, expr_sibs)?;
                 hir::ExprKind::DynCast {
                     operand: hir::ExprId(operand),
+                    test_nil: kind_word == "dyn_is_nil",
                 }
             }
             "text_display" => {
@@ -4161,6 +4162,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::VariantProject { .. } => "variant_project",
         // -- PLAN-964 object/nil/FStr surface ----------------------------
         hir::ExprKind::NilLit => "nil_lit",
+        hir::ExprKind::DynCast { test_nil: true, .. } => "dyn_is_nil",
         hir::ExprKind::DynCast { .. } => "dyn_cast",
         hir::ExprKind::ObjectCtor { .. } => "object_ctor",
         hir::ExprKind::ObjectGet { .. } => "object_get",
@@ -4526,7 +4528,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 quote(&b.exprs[value.0 as usize].id_text)
             ));
         }
-        hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+        hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
             body_fields.push(format!(
                 "operand: {}",
                 quote(&b.exprs[operand.0 as usize].id_text)

@@ -334,7 +334,7 @@ impl<'a> Walker<'a> {
             E::ObjectCtor { eval_args, .. } => eval_args.clone(),
             E::ObjectGet { base, key } => vec![*base, *key],
             E::ObjectSet { base, key, value } => vec![*base, *key, *value],
-            E::TextDisplay { operand } | E::DynCast { operand } => vec![*operand],
+            E::TextDisplay { operand } | E::DynCast { operand, .. } => vec![*operand],
             E::ReadLocal { .. }
             | E::Constant { .. }
             | E::Unit
@@ -719,7 +719,7 @@ impl<'a> Walker<'a> {
                 self.expr(key);
                 self.owned_value_child(value);
             }
-            E::TextDisplay { operand } | E::DynCast { operand } => self.expr(operand),
+            E::TextDisplay { operand } | E::DynCast { operand, .. } => self.expr(operand),
         }
     }
 
@@ -1192,8 +1192,8 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.u32(key.0);
             h.u32(value.0);
         }
-        E::DynCast { operand } => {
-            h.str("dyn-cast");
+        E::DynCast { operand, test_nil } => {
+            h.str(if *test_nil { "dyn-is-nil" } else { "dyn-cast" });
             h.u32(operand.0);
         }
         E::TextDisplay { operand } => {

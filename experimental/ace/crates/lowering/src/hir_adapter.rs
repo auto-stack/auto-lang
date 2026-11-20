@@ -6747,12 +6747,17 @@ k 0
             // -- PLAN-964 object/nil/FStr surface (av.dynamic/1 expansion) --
             // The nil literal is a zero-width value: materialize the Nil
             // const into a Nil-typed temp.
-            hir::ExprKind::DynCast { operand } if self.collections() => {
+            hir::ExprKind::DynCast { operand, test_nil } if self.collections() => {
                 let src = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
-                let instr = match self.out.types.get(ty as usize) {
-                    Some(MirType::Dyn) => MirInstr::DynPack { dst, src },
-                    _ => MirInstr::DynTake { dst, src, ty },
+                let instr = if *test_nil {
+                    let ty = self.out.intern_type(MirType::Nil);
+                    MirInstr::DynIs { dst, src, ty }
+                } else {
+                    match self.out.types.get(ty as usize) {
+                        Some(MirType::Dyn) => MirInstr::DynPack { dst, src },
+                        _ => MirInstr::DynTake { dst, src, ty },
+                    }
                 };
                 self.emit(instr, sp)?;
                 Ok(dst)

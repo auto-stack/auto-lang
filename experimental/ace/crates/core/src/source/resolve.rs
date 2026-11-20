@@ -554,6 +554,7 @@ pub enum RExprKind {
     NilLit,
     DynCast {
         operand: Box<ResolvedExpr>,
+        test_nil: bool,
     },
     /// I32 → decimal owned Str (FStr interpolation display).
     TextDisplay {
@@ -787,7 +788,7 @@ impl Drop for ResolvedExpr {
                     stack.push(e);
                 }
             }
-            RExprKind::TextDisplay { operand } | RExprKind::DynCast { operand } => {
+            RExprKind::TextDisplay { operand } | RExprKind::DynCast { operand, .. } => {
                 let e = std::mem::replace(operand.as_mut(), dummy());
                 stack.push(e);
             }
@@ -1074,6 +1075,7 @@ pub struct SchedTaskType {
 
 #[derive(Default)]
 pub struct CollTables {
+    script_errors: bool,
     /// PLAN-968: the scheduler task type table (scheduler face only).
     pub sched_tasks: Vec<SchedTaskType>,
     pub lists: Vec<VT>,
@@ -1615,8 +1617,24 @@ pub fn resolve_with(
     capabilities: &[String],
     surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) =
-        resolve_detailed(program, capabilities, surface, None, None, None)?;
+    resolve_with_source_mode(program, capabilities, surface, false)
+}
+
+pub(crate) fn resolve_with_source_mode(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    script_errors: bool,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let (fns, records, coll, _) = resolve_detailed_in_mode(
+        program,
+        capabilities,
+        surface,
+        None,
+        None,
+        None,
+        script_errors,
+    )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
         foreign_slots: Vec::new(),
@@ -2123,9 +2141,29 @@ fn resolve_detailed(
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
+    warm: Option<&mut WarmIo<'_>>,
+    supply: Option<&dyn TypeSupply>,
+    sched: Option<&super::sched_desugar::SchedSurface>,
+) -> Result<
+    (
+        Vec<ResolvedFn>,
+        Vec<ResolvedRecord>,
+        CollTables,
+        DeclIndexes,
+    ),
+    Vec<Diagnostic>,
+> {
+    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false)
+}
+
+fn resolve_detailed_in_mode(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
     mut warm: Option<&mut WarmIo<'_>>,
     supply: Option<&dyn TypeSupply>,
     sched: Option<&super::sched_desugar::SchedSurface>,
+    script_errors: bool,
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -2151,6 +2189,7 @@ fn resolve_detailed(
             .any(|c| c == super::packages::IN_CAPABILITY);
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
+    coll.script_errors = script_errors;
     // PLAN-962: the aggregates surface widens the collections admission.
     coll.aggregates_admission = surface.is_aggregates();
     let is_coll = surface.is_collections();
@@ -3395,7 +3434,7 @@ fn patch_foreign_sentinels(fns: &mut [ResolvedFn], sigs: &mut BTreeMap<String, F
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
-            | RExprKind::DynCast { operand }
+            | RExprKind::DynCast { operand, .. }
             | RExprKind::TupleGet { base: operand, .. }
             | RExprKind::FieldGet { base: operand, .. } => patch_expr(operand, patch_idx),
             RExprKind::CtorPos { args, .. } => {
@@ -8326,13 +8365,214 @@ F:{d}
         e: &ast::Expr,
         expect: Option<VT>,
     ) -> (Vec<RStmt>, ResolvedExpr, bool) {
+        self.resolve_in_branch(|resolver| resolver.expr_with_expect(e, expect))
+    }
+
+    fn resolve_in_branch(
+        &mut self,
+        resolve: impl FnOnce(&mut Self) -> ResolvedExpr,
+    ) -> (Vec<RStmt>, ResolvedExpr, bool) {
         self.push_sink();
         self.expr_diverged = false;
-        let val = self.expr_with_expect(e, expect);
+        let val = resolve(self);
         let div = self.expr_diverged;
         self.expr_diverged = false;
         let stmts = self.pop_sink();
         (stmts, val, div)
+    }
+
+    fn resolve_condition(&mut self, expression: &ast::Expr) -> ResolvedExpr {
+        let expect = (!self.profile.is_auto_language()).then_some(VT::Bool);
+        let value = self.expr_with_expect(expression, expect);
+        self.condition_value(value)
+    }
+
+    fn condition_value(&mut self, value: ResolvedExpr) -> ResolvedExpr {
+        if !self.profile.is_auto_language() {
+            return value;
+        }
+        let span = value.span;
+        let false_value = ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::BoolLit(false),
+        };
+        match value.vt {
+            VT::Nil => {
+                self.eval_for_effect(value);
+                false_value
+            }
+            VT::Dyn => self.resolve_dyn_coalesce(value, Vec::new(), false_value, false, span),
+            _ => value,
+        }
+    }
+
+    fn eval_for_effect(&mut self, value: ResolvedExpr) {
+        let span = value.span;
+        if matches!(value.kind, RExprKind::NilLit | RExprKind::ReadLocal(_)) {
+            return;
+        }
+        if value.vt == VT::Unit {
+            self.emit_stmt(RStmt::ExprStmt { value, span });
+        } else {
+            let value = Self::own_dynamic_text(value);
+            let local = self.agg_temp("effect", value.vt, false, span);
+            self.emit_stmt(RStmt::Let { local, value, span });
+        }
+    }
+
+    fn script_type_error(&mut self, message: String, vt: VT, span: Span) -> ResolvedExpr {
+        self.script_error_value(
+            ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::StrLit(message),
+            },
+            vt,
+            span,
+        )
+    }
+
+    fn script_error_value(&mut self, message: ResolvedExpr, vt: VT, span: Span) -> ResolvedExpr {
+        let mut stmts = Vec::new();
+        self.emit_fail_to_out(message, span, &mut stmts);
+        for stmt in stmts {
+            self.emit_stmt(stmt);
+        }
+        self.expr_diverged = true;
+        self.dummy_of(vt, span)
+    }
+
+    fn script_type_name(vt: VT) -> &'static str {
+        match vt {
+            VT::Nil => "NoneType",
+            VT::Bool => "bool",
+            VT::F32 | VT::F64 => "float",
+            vt if vt.is_text() => "str",
+            vt if vt_is_numeric(vt) => "int",
+            vt => vt.as_str(),
+        }
+    }
+
+    fn dynamic_nil_test(value: ResolvedExpr, span: Span) -> ResolvedExpr {
+        ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::DynCast {
+                operand: Box::new(value),
+                test_nil: true,
+            },
+        }
+    }
+
+    fn resolve_dyn_coalesce(
+        &mut self,
+        lhs: ResolvedExpr,
+        mut fallback_stmts: Vec<RStmt>,
+        fallback: ResolvedExpr,
+        fallback_diverges: bool,
+        span: Span,
+    ) -> ResolvedExpr {
+        let scrutinee = self.agg_temp("dyn_coalesce", VT::Dyn, false, span);
+        self.emit_stmt(RStmt::Let {
+            local: scrutinee,
+            value: lhs,
+            span,
+        });
+        let fallback = Self::own_dynamic_text(fallback);
+        let vt = fallback.vt;
+        let result = self.agg_temp("dyn_coalesce_result", vt, true, span);
+        let initial = self.dummy_of(vt, span);
+        self.emit_stmt(RStmt::Let {
+            local: result,
+            value: initial,
+            span,
+        });
+        if !fallback_diverges {
+            fallback_stmts.push(RStmt::Assign {
+                local: result,
+                path: Vec::new(),
+                span: fallback.span,
+                value: fallback,
+            });
+        }
+        let read = || ResolvedExpr {
+            span,
+            vt: VT::Dyn,
+            kind: RExprKind::ReadLocal(scrutinee),
+        };
+        self.emit_stmt(RStmt::If {
+            cond: Self::dynamic_nil_test(read(), span),
+            then: RBlock {
+                stmts: fallback_stmts,
+                span,
+            },
+            els: Some(RBlock {
+                stmts: vec![RStmt::Assign {
+                    local: result,
+                    path: Vec::new(),
+                    value: Self::coerce_dynamic(read(), vt),
+                    span,
+                }],
+                span,
+            }),
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::ReadLocal(result),
+        }
+    }
+
+    fn compare_null(
+        &mut self,
+        lhs: ResolvedExpr,
+        rhs: ResolvedExpr,
+        op: BinOp,
+        span: Span,
+    ) -> ResolvedExpr {
+        let query = if lhs.vt == VT::Dyn {
+            let tmp = self.agg_temp("null_cmp", VT::Dyn, false, lhs.span);
+            self.emit_stmt(RStmt::Let {
+                local: tmp,
+                span: lhs.span,
+                value: lhs,
+            });
+            self.eval_for_effect(rhs);
+            Self::dynamic_nil_test(
+                ResolvedExpr {
+                    span,
+                    vt: VT::Dyn,
+                    kind: RExprKind::ReadLocal(tmp),
+                },
+                span,
+            )
+        } else if rhs.vt == VT::Dyn {
+            self.eval_for_effect(lhs);
+            Self::dynamic_nil_test(rhs, span)
+        } else {
+            let both_nil = lhs.vt == VT::Nil && rhs.vt == VT::Nil;
+            self.eval_for_effect(lhs);
+            self.eval_for_effect(rhs);
+            return ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::BoolLit(both_nil == (op == BinOp::Eq)),
+            };
+        };
+        if op == BinOp::Eq {
+            query
+        } else {
+            ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Unary {
+                    op: UnaryOp::Not,
+                    operand: Box::new(query),
+                },
+            }
+        }
     }
 
     /// PLAN-1082 (T-03, D-1082-05): the legacy `List.new(e1, ..., en)`
@@ -8629,6 +8869,7 @@ F:{d}
             },
             kind: RExprKind::DynCast {
                 operand: Box::new(value),
+                test_nil: false,
             },
         }
     }
@@ -9203,7 +9444,17 @@ F:{d}
             );
             VT::Variant(vi)
         });
-        let lhs = self.expr_with_expect(lhs_ast, opt_expect);
+        let lhs = self.expr_with_context(lhs_ast, opt_expect, false);
+        if self.profile.is_auto_language() {
+            if lhs.vt == VT::Nil {
+                self.eval_for_effect(lhs);
+                return self.expr_with_expect(rhs_ast, expect);
+            }
+            if lhs.vt == VT::Dyn {
+                let (stmts, fallback, diverges) = self.resolve_expr_in_branch(rhs_ast, expect);
+                return self.resolve_dyn_coalesce(lhs, stmts, fallback, diverges, span);
+            }
+        }
         let Some(info) = agg_lower::variant_unwrap_info(lhs.vt, self.coll) else {
             self.bind_err(
                 "source.type-mismatch",
@@ -9517,13 +9768,15 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         let lhs = self.expr_iterative(lhs_ast);
+        let lhs = self.condition_value(lhs);
         let sc_l = self.agg_temp("sc", VT::Bool, true, span);
         self.emit_stmt(RStmt::Let {
             local: sc_l,
             value: lhs,
             span,
         });
-        let (mut r_stmts, rhs, _) = self.resolve_expr_in_branch(rhs_ast, Some(VT::Bool));
+        let (mut r_stmts, rhs, _) =
+            self.resolve_in_branch(|resolver| resolver.resolve_condition(rhs_ast));
         r_stmts.push(RStmt::Assign {
             local: sc_l,
             path: Vec::new(),
@@ -10025,7 +10278,7 @@ F:{d}
             // PLAN-1083: the guard resolves INSIDE the arm scope (the
             // pattern bindings are visible) and must be bool-typed.
             let guard = arm.guard.as_ref().map(|g| {
-                let cond = self.expr_with_expect(g, Some(VT::Bool));
+                let cond = self.resolve_condition(g);
                 if cond.vt != VT::Bool {
                     self.bind_err(
                         "source.type-mismatch",
@@ -11343,6 +11596,15 @@ F:{d}
     /// constructor, with the context's expected type. Everything else
     /// resolves bottom-up unchanged.
     fn expr_with_expect(&mut self, v: &ast::Expr, expect: Option<VT>) -> ResolvedExpr {
+        self.expr_with_context(v, expect, true)
+    }
+
+    fn expr_with_context(
+        &mut self,
+        v: &ast::Expr,
+        expect: Option<VT>,
+        recover_dynamic: bool,
+    ) -> ResolvedExpr {
         self.expr_diverged = false;
         if let Some(se) = self.try_resolve_scalar_enum(v, expect) {
             return se;
@@ -11414,7 +11676,9 @@ F:{d}
                 let value = self.expr_iterative(v);
                 match expect {
                     Some(expected)
-                        if self.profile == SourceProfile::Auto && expected != VT::Unit =>
+                        if recover_dynamic
+                            && self.profile == SourceProfile::Auto
+                            && expected != VT::Unit =>
                     {
                         Self::coerce_dynamic(value, expected)
                     }
@@ -11674,11 +11938,41 @@ F:{d}
     /// PLAN-864: push/insert/set values of owned element type must be a
     /// move-source (`.move` local or a fresh rvalue); Copy elements pass
     /// by value.
+    fn array_element_type(&mut self, elements: &[ResolvedExpr]) -> VT {
+        let first = elements[0].vt;
+        for element in elements {
+            self.reject_elem_view_use(element, "the literal element");
+        }
+        if self.profile.is_auto_language() && elements.iter().any(|element| element.vt != first) {
+            return VT::Dyn;
+        }
+        for element in elements.iter().filter(|element| element.vt != first) {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "array literal elements must share one type; first is `{}`, found `{}`",
+                    first.as_str(),
+                    element.vt.as_str()
+                ),
+                element.span,
+            );
+        }
+        first
+    }
+
     fn check_push_value(&mut self, elem: &VT, value: &mut ResolvedExpr, span: Span) {
         let _ = span;
         // PLAN-962: storing a whole-element view would alias an owned
         // element into another container.
         self.reject_elem_view_use(value, "the stored value");
+        if *elem == VT::Dyn && value.vt != VT::Dyn {
+            let placeholder = ResolvedExpr {
+                span,
+                vt: VT::Nil,
+                kind: RExprKind::NilLit,
+            };
+            *value = Self::coerce_dynamic(std::mem::replace(value, placeholder), VT::Dyn);
+        }
         if !self.vt_is_coll_owned(*elem) {
             return;
         }
@@ -12582,21 +12876,7 @@ F:{d}
                         for e in elems_ast {
                             elems.push(self.expr_iterative(e));
                         }
-                        let elem_vt = elems[0].vt;
-                        for (e, ast_e) in elems.iter().zip(elems_ast.iter()) {
-                            if e.vt != elem_vt {
-                                self.bind_err(
-                                    "source.type-mismatch",
-                                    format!(
-                                        "array literal elements must share one type; first is `{}`, found `{}`",
-                                        elem_vt.as_str(),
-                                        e.vt.as_str()
-                                    ),
-                                    ast_e.span,
-                                );
-                            }
-                            self.reject_elem_view_use(e, "the literal element");
-                        }
+                        let elem_vt = self.array_element_type(&elems);
                         let li = self.coll.intern_list(elem_vt);
                         if self.scopes.last().unwrap().names.contains_key(&name.name) {
                             self.bind_err(
@@ -12699,6 +12979,11 @@ F:{d}
                         None => None,
                     };
                     let mut value = self.expr_with_expect(value, ann_vt);
+                    if self.coll.script_errors && self.expr_diverged {
+                        let frame = stack.last_mut().expect("resolve frame");
+                        frame.idx = frame.src.stmts.len();
+                        continue;
+                    }
                     self.reject_elem_view_use(&value, "the bound value");
                     let mut rule = match ann_vt {
                         Some(v) => v,
@@ -12960,6 +13245,10 @@ F:{d}
                         self.expr_diverged = false;
                         let mut value = self.expr_with_expect(value, Some(self.fn_result));
                         if self.expr_diverged {
+                            if self.coll.script_errors {
+                                let frame = stack.last_mut().expect("resolve frame");
+                                frame.idx = frame.src.stmts.len();
+                            }
                             continue;
                         }
                         self.reject_elem_view_use(&value, "the returned value");
@@ -13012,6 +13301,10 @@ F:{d}
                         continue;
                     }
                     if self.profile.is_aggregates() && self.expr_diverged {
+                        if self.coll.script_errors {
+                            let frame = stack.last_mut().expect("resolve frame");
+                            frame.idx = frame.src.stmts.len();
+                        }
                         continue;
                     }
                     let is_iter_close = self.profile.is_aggregates()
@@ -13062,7 +13355,7 @@ F:{d}
                     els,
                     span,
                 } => {
-                    let cond = self.expr_with_expect(cond, Some(VT::Bool));
+                    let cond = self.resolve_condition(cond);
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
@@ -13086,7 +13379,7 @@ F:{d}
                     self.loop_stack.push(target);
                     if self.profile.is_aggregates() {
                         let (mut cond_stmts, cond_val, _) =
-                            self.resolve_expr_in_branch(cond, Some(VT::Bool));
+                            self.resolve_in_branch(|resolver| resolver.resolve_condition(cond));
                         let negated = ResolvedExpr {
                             span: cond.span,
                             vt: VT::Bool,
@@ -13122,7 +13415,7 @@ F:{d}
                             },
                         });
                     } else {
-                        let cond = self.expr_with_expect(cond, Some(VT::Bool));
+                        let cond = self.resolve_condition(cond);
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
@@ -13587,6 +13880,17 @@ F:{d}
                     let is_list_var = matches!(&iter.kind, ast::ExprKind::Var(id) if matches!(self.lookup(&id.name).map(|l| self.locals[l.0].vt), Some(VT::List(_))));
                     if self.profile.is_aggregates() && !is_list_var {
                         let iter_val = self.expr_iterative(iter);
+                        if self.coll.script_errors && iter_val.vt == VT::Nil {
+                            self.eval_for_effect(iter_val);
+                            self.script_type_error(
+                                "TypeError: 'NoneType' object is not iterable".to_string(),
+                                VT::Unit,
+                                *span,
+                            );
+                            let frame = stack.last_mut().expect("resolve frame");
+                            frame.idx = frame.src.stmts.len();
+                            continue;
+                        }
                         if let VT::Rec(ri) = iter_val.vt {
                             if self.iter_info.contains_key(&ri) {
                                 let stmts =
@@ -13990,21 +14294,7 @@ F:{d}
                 for el in elems {
                     rs.push(self.expr_iterative(el));
                 }
-                let elem_vt = rs[0].vt;
-                for (r, ast_el) in rs.iter().zip(elems.iter()) {
-                    if r.vt != elem_vt {
-                        self.bind_err(
-                            "source.type-mismatch",
-                            format!(
-                                "array literal elements must share one type; first is `{}`, found `{}`",
-                                elem_vt.as_str(),
-                                r.vt.as_str()
-                            ),
-                            ast_el.span,
-                        );
-                    }
-                    self.reject_elem_view_use(r, "the literal element");
-                }
+                let elem_vt = self.array_element_type(&rs);
                 let li = self.coll.intern_list(elem_vt);
                 let temp = self.agg_temp("arr_lit", VT::List(li), false, e.span);
                 self.emit_stmt(RStmt::Let {
@@ -14088,6 +14378,15 @@ F:{d}
             ExprKind::Index { base, index } => {
                 let recv = self.expr_iterative(base);
                 let idx = self.expr_iterative(index);
+                if self.coll.script_errors && recv.vt == VT::Nil {
+                    self.eval_for_effect(recv);
+                    self.eval_for_effect(idx);
+                    return self.script_type_error(
+                        "TypeError: 'NoneType' object is not subscriptable".to_string(),
+                        VT::I32,
+                        e.span,
+                    );
+                }
                 // PLAN-1026: integer indexing on a Python object —
                 // py_getitem(receiver, index); the result is a Python
                 // object.
@@ -16747,6 +17046,31 @@ F:{d}
                 } => {
                     let mut l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let mut r = std::mem::replace(&mut out[rslot], dummy_resolved());
+                    if self.profile.is_auto_language()
+                        && matches!(op, BinOp::Eq | BinOp::Ne)
+                        && (l.vt == VT::Nil || r.vt == VT::Nil)
+                    {
+                        out[dest] = self.compare_null(l, r, op, span);
+                        continue;
+                    }
+                    if self.coll.script_errors
+                        && (l.vt == VT::Nil || r.vt == VT::Nil)
+                        && matches!(
+                            op,
+                            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
+                        )
+                    {
+                        let message = format!(
+                            "TypeError: unsupported operand type(s) for {}: '{}' and '{}'",
+                            op.as_str(),
+                            Self::script_type_name(l.vt),
+                            Self::script_type_name(r.vt),
+                        );
+                        self.eval_for_effect(l);
+                        self.eval_for_effect(r);
+                        out[dest] = self.script_type_error(message, VT::I32, span);
+                        continue;
+                    }
                     if l.vt == VT::Dyn && r.vt == VT::Dyn {
                         let ty = if matches!(op, BinOp::And | BinOp::Or) {
                             VT::Bool
@@ -16961,6 +17285,29 @@ F:{d}
                     dest,
                 } => {
                     let o = std::mem::replace(&mut out[oslot], dummy_resolved());
+                    if op == UnaryOp::Neg && o.vt == VT::Nil && self.profile.is_auto_language() {
+                        if self.coll.script_errors {
+                            self.eval_for_effect(o);
+                            out[dest] = self.script_type_error(
+                                "TypeError: bad operand type for unary -: 'NoneType'".to_string(),
+                                VT::I32,
+                                span,
+                            );
+                        } else {
+                            self.bind_err(
+                                "source.nil-op",
+                                "unary `-` is not defined for nil",
+                                span,
+                            );
+                            out[dest] = self.dummy_of(VT::I32, span);
+                        }
+                        continue;
+                    }
+                    let o = if op == UnaryOp::Not {
+                        self.condition_value(o)
+                    } else {
+                        o
+                    };
                     // PLAN-961: typed negation — signed checked / float
                     // sign-flip; `-lit` folds into the payload bits (an
                     // in-range positive literal never overflows on fold;
@@ -17045,6 +17392,59 @@ F:{d}
         to_word: Option<TypeWord>,
         span: Span,
     ) -> ResolvedExpr {
+        if self.profile.is_auto_language() {
+            if recv.vt == VT::I32
+                && name.name == "to"
+                && to_word.is_some_and(|word| vt_of_word(word).is_text())
+            {
+                return ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::TextDisplay {
+                        operand: Box::new(recv),
+                    },
+                };
+            }
+            if recv.vt == VT::Dyn && matches!(name.name.as_str(), "as" | "to") {
+                if let Some(word) = to_word {
+                    return Self::coerce_dynamic(recv, vt_of_word(word));
+                }
+            }
+            if recv.vt == VT::Nil && matches!(name.name.as_str(), "as" | "to") {
+                if let Some(word) = to_word {
+                    let target = vt_of_word(word);
+                    if target.is_text() {
+                        self.eval_for_effect(recv);
+                        return ResolvedExpr {
+                            span,
+                            vt: target,
+                            kind: RExprKind::StrLit("None".into()),
+                        };
+                    }
+                    if self.coll.script_errors && matches!(target, VT::I32 | VT::F32 | VT::F64) {
+                        let name = Self::script_type_name(target);
+                        self.eval_for_effect(recv);
+                        return self.script_type_error(
+                            format!("TypeError: {name}() argument must be a string or a real number, not 'NoneType'"),
+                            target,
+                            span,
+                        );
+                    }
+                }
+            }
+            if self.coll.script_errors
+                && recv.vt == VT::Nil
+                && name.name == "len"
+                && args.is_empty()
+            {
+                self.eval_for_effect(recv);
+                return self.script_type_error(
+                    "TypeError: 'NoneType' object is not iterable".to_string(),
+                    VT::I32,
+                    span,
+                );
+            }
+        }
         // PLAN-1026: every method-position operation on a Python object
         // routes through the frozen op set — `.to(T)` is the explicit
         // scalar/text extraction; any other name is a member call.
@@ -17953,6 +18353,15 @@ F:{d}
                 };
             }
             let mut arg = rargs.remove(0).value;
+            if self.profile.is_auto_language() && arg.vt == VT::Nil {
+                let span = arg.span;
+                self.eval_for_effect(arg);
+                arg = ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit("None".into()),
+                };
+            }
             // PLAN-1026: a Python object prints through the adapter's
             // display channel (stage + word-wise readback → Str), never
             // the raw i32 token.
@@ -18127,7 +18536,10 @@ F:{d}
         }
         // Locals shadow functions and intrinsics in callee position.
         if let Some(local) = self.lookup(&callee.name) {
-            if matches!(self.locals[local.0].vt, VT::Function(_)) {
+            let vt = self.locals[local.0].vt;
+            if matches!(vt, VT::Function(_))
+                || (self.coll.script_errors && matches!(vt, VT::Nil | VT::Dyn))
+            {
                 if self.moved_locals.contains(&local) {
                     self.bind_err(
                         "source.closure-use-after-move",
@@ -18140,7 +18552,7 @@ F:{d}
                 }
                 let callee_value = ResolvedExpr {
                     span: callee.span,
-                    vt: self.locals[local.0].vt,
+                    vt,
                     kind: RExprKind::ReadLocal(local),
                 };
                 return self.resolve_closure_call(callee_value, rargs, call_span);
@@ -18703,6 +19115,74 @@ F:{d}
         mut args: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        if self.coll.script_errors && matches!(callee.vt, VT::Nil | VT::Dyn) {
+            let query = if callee.vt == VT::Dyn {
+                let local = self.agg_temp("script_callee", VT::Dyn, false, callee.span);
+                self.emit_stmt(RStmt::Let {
+                    local,
+                    span: callee.span,
+                    value: callee,
+                });
+                Some(Self::dynamic_nil_test(
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: VT::Dyn,
+                        kind: RExprKind::ReadLocal(local),
+                    },
+                    call_span,
+                ))
+            } else {
+                self.eval_for_effect(callee);
+                None
+            };
+            for arg in args {
+                self.eval_for_effect(arg.value);
+            }
+            let nil_message = "TypeError: 'NoneType' object is not callable";
+            if let Some(cond) = query {
+                let local = self.agg_temp("script_error", VT::StrOwned, true, call_span);
+                let message = |text: &str| ResolvedExpr {
+                    span: call_span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit(text.to_owned()),
+                };
+                self.emit_stmt(RStmt::Let {
+                    local,
+                    value: message("TypeError: dynamic value is not callable"),
+                    span: call_span,
+                });
+                self.emit_stmt(RStmt::If {
+                    cond,
+                    then: RBlock {
+                        stmts: vec![RStmt::Assign {
+                            local,
+                            path: Vec::new(),
+                            value: message(nil_message),
+                            span: call_span,
+                        }],
+                        span: call_span,
+                    },
+                    els: None,
+                    span: call_span,
+                });
+                return self.script_error_value(
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span: call_span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(local),
+                            }),
+                        },
+                    },
+                    VT::I32,
+                    call_span,
+                );
+            }
+            return self.script_type_error(nil_message.to_string(), VT::I32, call_span);
+        }
         for arg in &args {
             if matches!(
                 &arg.value.kind,

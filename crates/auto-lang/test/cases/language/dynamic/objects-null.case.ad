@@ -741,3 +741,512 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 stage: "run"
 code: "av.dyn.object-missing"
+
+## Case: null-check
+id: "av.parity.1084.null-check"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+fn main() int {
+ let a = null
+ if a == null { return 42 }
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: heterogeneous-list
+id: "av.parity.1084.heterogeneous-list"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var xs = [19, "twenty", true]
+    let label Str = xs[1]
+    if label != "twenty" || xs[2] != true { return 0 }
+    xs[1] = 23
+    return xs[0] + xs[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: list-object-nesting
+id: "av.parity.1084.list-object-nesting"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var obj = { items: [19, "twenty", { amount: 20 }] }
+    var vals = obj.items
+    vals[1] = false
+    obj.items[2].amount = 23
+    if obj.items[1] != false { return 0 }
+    return vals[0] + vals[2].amount
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: list-object-cycle
+id: "av.parity.1084.list-object-cycle"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var obj = { items: [19, "twenty"] }
+    obj.items[1] = obj
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.dyn.object-cycle"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: wrong-object-key-type
+id: "av.parity.1084.wrong-object-key-type"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let obj = { amount: 42 }
+    return obj[2.5]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.object-key"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: nil-truth-and-boxed-coalesce
+id: "av.parity.1084.nil-truth-and-boxed-coalesce"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let values = { unset: nil, amount: 19, yes: true }
+    if values.unset != null || null == values.amount { return 0 }
+    if values.unset || !values.yes || !(!nil) { return 0 }
+    return (values.unset ?? 23) + values.amount
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: direct-coalesce-lazy-and-option-none
+id: "av.parity.1084.direct-coalesce-lazy-and-option-none"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn unwanted() int { fail("fallback evaluated") }
+fn main() int {
+    let values = { amount: 19, unset: null }
+    let absent ?int = None
+    let some ?int = Some(13)
+    let first = values.amount ?? unwanted()
+    let second = absent ?? 6
+    let third = some ?? unwanted()
+    if -1 == null { return 0 }
+    return first + second + third + (nil ?? 4)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: nil-arithmetic-static
+id: "av.parity.1084.nil-arithmetic-static"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return null + 1 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.nil-op"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: nil-arithmetic-script
+id: "av.parity.1084.nil-arithmetic-script"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+fn main() int { return null + 1 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: nil-error-script-catch
+id: "av.parity.1084.nil-error-script-catch"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+fn main() int {
+    try {
+        let unused = null + 1
+        return 0
+    } catch err {
+        if err == "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'" { return 42 }
+    }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: null-boxed-callee
+id: "av.parity.1084.null-boxed-callee"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "p4c_call_dyn_null.as"
+syntax: "auto-script"
+
+```auto
+// P-550-04c: 动态值调用 null callee（对象字段/容器元素中转）
+fn main() {
+    var m = {"f": null}
+    var h = m["f"]
+    print("got")
+    print(h(1))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "TypeError: 'NoneType' object is not callable"
+
+#### stdout
+
+```text
+got
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Original Auto text from test/null-family/p4c_call_dyn_null.at. The virtual .as entry exercises the script error contract.
+
+## Case: null-iteration-catch
+id: "av.parity.1084.null-iteration-catch"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "p5b_foreach_null_catch.as"
+syntax: "auto-script"
+
+```auto
+// P-550-05b (T04 验证): for-in null 可 try-catch 捕获
+fn main() {
+    var xs = null
+    try {
+        for x in xs {
+            print(x)
+        }
+        print("no-throw")
+    } catch e {
+        print("caught")
+        print(e)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+caught
+TypeError: 'NoneType' object is not iterable
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Original Auto text from test/null-family/p5b_foreach_null_catch.at. The virtual .as entry exercises the script error contract.
+
+## Case: null-display
+id: "av.parity.1084.null-display"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "p7_print_null.as"
+syntax: "auto-script"
+
+```auto
+// P-550-07: print(null) 与 null.to(str)（print/TYPE_TO_STR null 形态）
+fn main() {
+    print(null)
+    var x = null
+    print(x.to(str))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+None
+None
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Original Auto text from test/null-family/p7_print_null.at. The virtual .as entry exercises the script error contract.
+
+## Case: null-arithmetic-catch-stream
+id: "av.parity.1084.null-arithmetic-catch-stream"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "p9_trycatch_baseline.as"
+syntax: "auto-script"
+
+```auto
+// P-550-09: try-catch 基线（现状 null+1 不抛错 → catch 不触发）
+fn main() {
+    try {
+        var x = null
+        print((x + 1).to(str))
+        print("no-throw")
+    } catch e {
+        print("caught")
+        print(e)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+caught
+TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Original Auto text from test/null-family/p9_trycatch_baseline.at. The virtual .as entry exercises the script error contract.

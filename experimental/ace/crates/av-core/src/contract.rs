@@ -904,6 +904,12 @@ impl Value {
     /// the last reference (the source still holds each), so no free event
     /// can fire here.
     pub fn deep_size(&self, visited: &mut u64) -> usize {
+        self.deep_size_capped(visited, usize::MAX)
+            .expect("a saturating byte count fits usize")
+    }
+
+    pub(crate) fn deep_size_capped(&self, visited: &mut u64, limit: usize) -> Option<usize> {
+        let cell_bytes = std::mem::size_of::<Value>();
         let mut total = 0usize;
         let mut stack: Vec<Value> = vec![self.clone()];
         while let Some(x) = stack.pop() {
@@ -972,9 +978,12 @@ impl Value {
                 }
                 _ => {}
             }
-            total += b;
+            total = total.saturating_add(b);
+            if total.saturating_add(stack.len().saturating_mul(cell_bytes)) > limit {
+                return None;
+            }
         }
-        total
+        Some(total)
     }
 }
 

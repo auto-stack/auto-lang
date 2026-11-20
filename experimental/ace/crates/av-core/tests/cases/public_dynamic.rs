@@ -34,6 +34,45 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
+    fn boxed_list_clone_keeps_each_tag_and_detaches_nested_cells() {
+        use crate::contract::{ObjectData, ObjectKey};
+        use std::cell::RefCell;
+
+        let child = Rc::new(RefCell::new(ObjectData {
+            entries: vec![(ObjectKey::Bool(true), Value::I32(42))],
+        }));
+        let entry = DynValue::pack(Value::Object(child.clone()), DynType::Object).unwrap();
+        let mut value = DynValue::pack(
+            listv(vec![Value::Dyn(Rc::new(entry))]),
+            DynType::list(DynType::Dyn),
+        )
+        .unwrap();
+        let copy = value.deep_clone(&TraversalOptions::default()).unwrap();
+        let wrong = value.take_as(&DynType::list(DynType::I32)).unwrap_err();
+        value = wrong.into_source();
+        assert!(value.is(&DynType::list(DynType::Dyn)));
+        let Value::List(copied) = copy.take_as(&DynType::list(DynType::Dyn)).unwrap() else {
+            panic!("a boxed list must recover as a list");
+        };
+        let buffer = copied.rc.borrow();
+        let Value::Dyn(boxed) = &buffer.elems[0] else {
+            panic!("cloning must preserve the element tag");
+        };
+        let Some(Value::Object(detached)) = boxed.borrow_as(&DynType::Object) else {
+            panic!("element must recover under its original object tag");
+        };
+        child.borrow_mut().entries[0].1 = Value::I32(0);
+        assert!(!Rc::ptr_eq(detached, &child));
+        assert_eq!(detached.borrow().entries[0].1, Value::I32(42));
+        assert!(matches!(
+            freeze(&value, &TraversalOptions::default()),
+            Err(PortableError::Unsupported {
+                category: "nested-dyn"
+            })
+        ));
+    }
+
+    #[test]
     fn object_keys_preserve_tags_order_and_nested_values_on_restore() {
         use crate::contract::{ObjectData, ObjectKey};
         use std::cell::RefCell;
@@ -743,6 +782,7 @@ mod tests {
                 DynType::Object => "object",
                 DynType::External { .. } => "external",
                 DynType::Callable => "callable",
+                DynType::Dyn => "Dyn",
             }
         }
         assert_eq!(kind(&DynType::Str), "scalar");
@@ -913,6 +953,7 @@ mod tests {
                 DynType::Object => out.push(12),
                 DynType::Callable => out.push(13),
                 DynType::External { .. } => panic!("external never writes a descriptor"),
+                DynType::Dyn => panic!("boxed elements are outside the portable wire"),
             }
         }
         let mut out = Vec::new();

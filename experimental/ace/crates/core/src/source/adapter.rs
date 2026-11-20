@@ -1394,6 +1394,9 @@ fn compile_program_observed_with_age(
         (SourceProfile::Aggregates, Some(env)) => {
             super::resolve::resolve_aggregates_with_foreign(program, capabilities, env)
         }
+        (SourceProfile::Auto, _) if module_path.ends_with(".as") => {
+            super::resolve::resolve_with_source_mode(program, capabilities, profile, true)
+        }
         _ => super::resolve_with(program, capabilities, profile),
     };
     let resolved = match resolved_in {
@@ -1897,6 +1900,7 @@ enum EKind {
     NilLit,
     DynCast {
         operand: usize,
+        test_nil: bool,
     },
     TextDisplay {
         operand: usize,
@@ -3599,10 +3603,13 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::DynCast { operand } => {
+            RExprKind::DynCast { operand, test_nil } => {
                 let operand = self.plan_expr(plan, f, operand);
                 plan.exprs.push(ENode {
-                    kind: EKind::DynCast { operand },
+                    kind: EKind::DynCast {
+                        operand,
+                        test_nil: *test_nil,
+                    },
                     vt: e.vt,
                     span: e.span,
                 });
@@ -5574,10 +5581,11 @@ impl<'p> Emitter<'p> {
                         EKind::NilLit => {
                             format!("expr e{} nil_lit {{ type: t_nil }}", ei)
                         }
-                        EKind::DynCast { operand } => {
+                        EKind::DynCast { operand, test_nil } => {
+                            let op = if *test_nil { "dyn_is_nil" } else { "dyn_cast" };
                             format!(
-                                "expr e{} dyn_cast {{ type: {}; operand: e{} }}",
-                                ei, ty, operand
+                                "expr e{} {} {{ type: {}; operand: e{} }}",
+                                ei, op, ty, operand
                             )
                         }
                         EKind::TextDisplay { operand } => {

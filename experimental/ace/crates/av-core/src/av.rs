@@ -2584,7 +2584,8 @@ fn dyn_type_equal(
             | (DynType::Char, DynType::Char)
             | (DynType::Str, DynType::Str)
             | (DynType::Nil, DynType::Nil)
-            | (DynType::Object, DynType::Object) => {}
+            | (DynType::Object, DynType::Object)
+            | (DynType::Dyn, DynType::Dyn) => {}
             _ => return Ok(false),
         }
     }
@@ -2669,6 +2670,7 @@ fn resolve_dyn_type<V: ModuleView>(
             MirType::Str => Some(DynType::Str),
             MirType::Nil => Some(DynType::Nil),
             MirType::Object { .. } => Some(DynType::Object),
+            MirType::Dyn if depth > 1 => Some(DynType::Dyn),
             MirType::List(l) => match go(
                 v,
                 func,
@@ -2811,9 +2813,17 @@ fn commit_slot_write(
 ) -> Result<(), ExecOutcome> {
     let mut visited = 0u64;
     let fr = st.frames.last_mut().expect("frame present");
-    let old = fr.slots[slot].deep_size(&mut visited);
-    let new = val.deep_size(&mut visited);
+    let old = fr.slots[slot].deep_size_capped(&mut visited, limits.max_slot_bytes);
+    let new = val.deep_size_capped(&mut visited, limits.max_slot_bytes);
     st.steps += visited;
+    let new = new.ok_or_else(|| ExecOutcome::Resource {
+        kind: ResourceKind::SlotBytes,
+        message: format!(
+            "value exceeds the live byte budget {}",
+            limits.max_slot_bytes
+        ),
+    })?;
+    let old = old.unwrap_or(limits.max_slot_bytes);
     fr.gens[slot] = fr.gens[slot].wrapping_add(1);
     if new > old {
         // V-07 fault seam: the Nth allocation fails WITHOUT applying the
@@ -3193,6 +3203,13 @@ impl ObjectKeyOperand {
         match self {
             Self::Owned(owned) => owned == key,
             Self::BorrowedText(bytes) => key.text_bytes() == Some(bytes.as_slice()),
+        }
+    }
+
+    fn text_len(&self) -> usize {
+        match self {
+            Self::Owned(key) => key.text_bytes().map_or(0, <[u8]>::len),
+            Self::BorrowedText(bytes) => bytes.len(),
         }
     }
 }
@@ -7100,12 +7117,16 @@ fn dispatch_with_host<V: ModuleView>(
                                 };
                                 let value = buf.elems[index].clone();
                                 drop(buf);
-                                let value = Value::Dyn(std::rc::Rc::new(
-                                    crate::dynamic::DynValue::from_parts(
-                                        value,
-                                        (**element_type).clone(),
-                                    ),
-                                ));
+                                let value = if **element_type == crate::dynamic::DynType::Dyn {
+                                    value
+                                } else {
+                                    Value::Dyn(std::rc::Rc::new(
+                                        crate::dynamic::DynValue::from_parts(
+                                            value,
+                                            (**element_type).clone(),
+                                        ),
+                                    ))
+                                };
                                 if let Err(out) =
                                     commit_slot_write(st, *dst as usize, value, limits)
                                 {
@@ -7198,24 +7219,27 @@ fn dispatch_with_host<V: ModuleView>(
                                         "dynamic index write expected a packed value".into(),
                                     ));
                                 };
-                                match dyn_type_equal(
-                                    boxed.ty(),
-                                    element_type,
-                                    st,
-                                    limits,
-                                    cancel,
-                                    started,
-                                ) {
-                                    Ok(true) => {}
-                                    Ok(false) => {
-                                        return Some(ExecOutcome::Trap {
-                                            kind: TrapKind::DynTypeMismatch,
-                                            span: at(),
-                                        })
+                                let value = if **element_type == crate::dynamic::DynType::Dyn {
+                                    vv.clone()
+                                } else {
+                                    match dyn_type_equal(
+                                        boxed.ty(),
+                                        element_type,
+                                        st,
+                                        limits,
+                                        cancel,
+                                        started,
+                                    ) {
+                                        Ok(true) => boxed.as_value().clone(),
+                                        Ok(false) => {
+                                            return Some(ExecOutcome::Trap {
+                                                kind: TrapKind::DynTypeMismatch,
+                                                span: at(),
+                                            })
+                                        }
+                                        Err(out) => return Some(out),
                                     }
-                                    Err(out) => return Some(out),
-                                }
-                                let value = boxed.as_value().clone();
+                                };
                                 if let Err(out) = check_container_cycle(
                                     list_value, &value, st, limits, cancel, started, at,
                                 ) {
@@ -7223,9 +7247,21 @@ fn dispatch_with_host<V: ModuleView>(
                                 }
                                 let old = list.rc.borrow().elems[index].clone();
                                 let mut visited = 0;
-                                let new_bytes = value.deep_size(&mut visited);
-                                let old_bytes = old.deep_size(&mut visited);
-                                st.steps += visited;
+                                let new_bytes =
+                                    value.deep_size_capped(&mut visited, limits.max_slot_bytes);
+                                let old_bytes =
+                                    old.deep_size_capped(&mut visited, limits.max_slot_bytes);
+                                st.steps = st.steps.saturating_add(visited);
+                                if let Err(out) = dyn_exec_work(st, limits, cancel, started) {
+                                    return Some(out);
+                                }
+                                let (Some(new_bytes), Some(old_bytes)) = (new_bytes, old_bytes)
+                                else {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::SlotBytes,
+                                        message: "list entry exceeds the live byte budget".into(),
+                                    });
+                                };
                                 let candidate = st
                                     .slot_bytes
                                     .saturating_sub(old_bytes)
@@ -7275,13 +7311,48 @@ fn dispatch_with_host<V: ModuleView>(
                         Ok(key) => key,
                         Err(out) => return Some(out),
                     };
-                    let mut c = cell.borrow_mut();
-                    match c.entries.iter_mut().find(|(k, _)| key.matches(k)) {
-                        Some((_k, slot)) => {
-                            *slot = vv;
+                    let prior = cell
+                        .borrow()
+                        .entries
+                        .iter()
+                        .position(|(k, _)| key.matches(k));
+                    let growth = if matches!(&vv, Value::Dyn(_)) {
+                        let mut visited = 0;
+                        let new = vv.deep_size_capped(&mut visited, limits.max_slot_bytes);
+                        let old = prior.map_or(Some(0), |index| {
+                            cell.borrow().entries[index]
+                                .1
+                                .deep_size_capped(&mut visited, limits.max_slot_bytes)
+                        });
+                        let key_bytes = if prior.is_none() { key.text_len() } else { 0 };
+                        st.steps = st.steps.saturating_add(visited);
+                        if let Err(out) = dyn_exec_work(st, limits, cancel, started) {
+                            return Some(out);
+                        }
+                        let (Some(new), Some(old)) = (new, old) else {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "object entry exceeds the live byte budget".into(),
+                            });
+                        };
+                        let growth = new.saturating_add(key_bytes).saturating_sub(old);
+                        if st.slot_bytes.saturating_add(growth) > limits.max_slot_bytes {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "object write would exceed the live byte budget".into(),
+                            });
+                        }
+                        growth
+                    } else {
+                        0
+                    };
+                    match prior {
+                        Some(index) => {
+                            let dying =
+                                std::mem::replace(&mut cell.borrow_mut().entries[index].1, vv);
+                            drop_owned_reverse(st, dying);
                         }
                         None => {
-                            drop(c);
                             // The cell owns its keys: a borrow view key is
                             // cloned to owned so the entry outlives the view.
                             // The precheck walks the object slot (deep size),
@@ -7310,6 +7381,8 @@ fn dispatch_with_host<V: ModuleView>(
                             cell.borrow_mut().entries.push((owned, vv));
                         }
                     }
+                    st.slot_bytes += growth;
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     st.steps += 1;
                 }
                 MirInstr::TextDisplay { dst, src } => {

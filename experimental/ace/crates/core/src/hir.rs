@@ -738,6 +738,7 @@ pub enum ExprKind {
     /// Pack a value into Dyn or recover its checked declared type.
     DynCast {
         operand: ExprId,
+        test_nil: bool,
     },
     /// PLAN-964 (L-16/L-20): object literal construction. `eval_args` is
     /// the source-order evaluation list (side effects left-to-right as

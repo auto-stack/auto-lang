@@ -596,7 +596,7 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 stack.push((*key, mode));
                 stack.push((*base, mode));
             }
-            hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+            hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
                 scan.has_owned_producing = true;
                 stack.push((*operand, mode));
             }

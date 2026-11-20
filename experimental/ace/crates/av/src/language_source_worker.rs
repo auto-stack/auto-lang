@@ -25,6 +25,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "nonce",
         "request_hash",
         "source_b64",
+        "source_path",
         "entry",
         "steps",
         // Present-but-inert optional fields of the shared request builder.
@@ -53,6 +54,15 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         .decode(request["source_b64"].as_str().ok_or("missing source")?)
         .map_err(|e| e.to_string())?;
     let source = String::from_utf8(source).map_err(|e| e.to_string())?;
+    let path = match object.get("source_path") {
+        None => "probe.at",
+        Some(path) => path
+            .as_str()
+            .filter(|path| {
+                !path.is_empty() && path.len() <= 4096 && !path.chars().any(char::is_control)
+            })
+            .ok_or("invalid language-source path")?,
+    };
     // PLAN-1078: the declared caps enter the source admission/identity axis
     // (e.g. `ac.source.language.av/v1`); unknown/unadmitted capabilities are
     // rejected by the compile front door, never silently dropped.
@@ -68,10 +78,13 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut step = json!({"op":"run", "outcome":"infra", "value":null, "trap":null, "diag":null,
         "source_hash":format!("{:016x}",fnv1a64(source.as_bytes())), "wall_ms":0.0});
 
-    let (result, capture) = run_chain(&source, &caps);
+    let (result, capture) = run_chain(&source, path, &caps);
     match result {
         Err(diag) => {
             step["outcome"] = json!("diag");
+            if let Some(span) = diag.get("span") {
+                step["source_span"] = span.clone();
+            }
             step["diag"] = diag;
         }
         Ok(outcome) => match outcome {
@@ -109,9 +122,12 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                     }
                 }
             }
-            ExecOutcome::Trap { kind, .. } => {
+            ExecOutcome::Trap { kind, span } => {
                 step["outcome"] = json!("trap");
                 step["trap"] = json!(kind.code());
+                if let Some(span) = span {
+                    step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
+                }
             }
             ExecOutcome::Resource { kind, message } => {
                 step["outcome"] = json!("resource");
@@ -122,9 +138,12 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                 step["diag"] =
                     json!({"stage":"run","code":"cancelled","message":"execution cancelled"});
             }
-            ExecOutcome::Error { message, .. } => {
+            ExecOutcome::Error { message, span } => {
                 step["outcome"] = json!("diag");
                 step["diag"] = json!({"stage":"run","code":"lang.error","message":message});
+                if let Some(span) = span {
+                    step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
+                }
             }
             ExecOutcome::Infra(message) => {
                 step["outcome"] = json!("infra");
@@ -212,16 +231,21 @@ fn display_result(value: &Value) -> Option<String> {
 /// lowering → MIR verify → ABC admit → AV execute with console capture.
 /// Compile-stage diagnostics map to the diag outcome (frontend codes)
 /// exactly like the other source producers.
-fn run_chain(source: &str, caps: &[String]) -> (Result<ExecOutcome, Json>, ConsoleCapture) {
+fn run_chain(
+    source: &str,
+    path: &str,
+    caps: &[String],
+) -> (Result<ExecOutcome, Json>, ConsoleCapture) {
     let mut capture = ConsoleCapture::default();
     let outcome = (|| -> Result<ExecOutcome, Json> {
-        let compiled = ace_core::source::compile_language_source(source, "probe.at", caps)
-            .map_err(|ds| {
+        let compiled =
+            ace_core::source::compile_language_source(source, path, caps).map_err(|ds| {
                 let d = ds.first();
                 json!({
                     "stage": d.map(|x| format!("{:?}", x.stage).to_lowercase()).unwrap_or_default(),
                     "code": d.map(|x| x.code.clone()).unwrap_or_default(),
-                    "message": d.map(|x| x.message.clone()).unwrap_or_default()
+                    "message": d.map(|x| x.message.clone()).unwrap_or_default(),
+                    "span": d.map(|x| json!({"path":path, "start":x.span.start, "end":x.span.end})),
                 })
             })?;
         // PLAN-1080: the ordinary language face lowers through the same

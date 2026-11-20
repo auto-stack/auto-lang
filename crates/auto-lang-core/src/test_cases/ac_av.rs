@@ -692,6 +692,14 @@ struct TypedOut {
     bits: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct SourceSpan {
+    path: String,
+    start: usize,
+    end: usize,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StepOut {
@@ -701,6 +709,8 @@ struct StepOut {
     value: Option<i32>,
     #[serde(default)]
     value_text: Option<String>,
+    #[serde(default)]
+    source_span: Option<SourceSpan>,
     #[serde(default)]
     typed: Option<TypedOut>,
     #[serde(default)]
@@ -1967,10 +1977,15 @@ fn run_check_with_transport(
     let mut parent_clock = parent_observations::Clock::new();
     let started = Instant::now();
     let recipe = family.recipe();
-    if case.spec.source.syntax != auto_test_case::contract::Syntax::Auto {
+    use auto_test_case::contract::Syntax;
+    let script_source = family == RecipeFamily::LanguageSource
+        && case.spec.source.syntax == Syntax::AutoScript
+        && case.entry_path.ends_with(".as");
+    if case.spec.source.syntax != Syntax::Auto && !script_source {
         return Err(format!(
-            "{recipe} consumes .at sources; syntax {:?} is not accepted by this recipe",
-            case.spec.source.syntax.as_str()
+            "{recipe} does not accept syntax {:?} for entry {:?}",
+            case.spec.source.syntax.as_str(),
+            case.entry_path,
         ));
     }
     if family == RecipeFamily::Console
@@ -2376,6 +2391,9 @@ fn run_check_with_transport(
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "steps": steps_json,
     });
+    if family == RecipeFamily::LanguageSource {
+        request["source_path"] = serde_json::json!(&case.entry_path);
+    }
     if let Some(id) = &typed_fixture {
         request["typed_fixture"] = serde_json::json!(id);
     }
@@ -2487,6 +2505,30 @@ fn run_check_with_transport(
             if let Some(step) = ok.steps.first() {
                 // Preserve raw observations for resource/infra diagnostics too; no PASS is trusted.
                 std::fs::write(artifact_dir.join("console-observation.json"), serde_json::to_vec_pretty(&serde_json::json!({"outcome":step.outcome,"value":step.value,"channel":step.channel,"trap":step.trap,"diag":step.diag,"console":step.console})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            }
+        }
+        for step in &ok.steps {
+            let source_error = step.outcome == "trap"
+                || (step.outcome == "diag"
+                    && step.diag.as_ref().is_some_and(|diag| {
+                        matches!(diag["stage"].as_str(), Some("text" | "bind" | "run"))
+                    }));
+            if family == RecipeFamily::LanguageSource && source_error && step.source_span.is_none()
+            {
+                infra_detail = Some("missing original source span for language error".to_owned());
+                break 'admit;
+            }
+            if let Some(span) = &step.source_span {
+                if family != RecipeFamily::LanguageSource
+                    || span.path != case.entry_path
+                    || span.start > span.end
+                    || span.end > input_bytes.len()
+                    || !matches!(step.outcome.as_str(), "diag" | "trap")
+                {
+                    infra_detail =
+                        Some("invalid worker source span for the submitted entry".to_owned());
+                    break 'admit;
+                }
             }
         }
         if let Some(error) = console_admission(family, &ok.steps) {
@@ -2916,10 +2958,12 @@ fn run_check_with_transport(
             "op": step.op,
             "outcome": step.outcome,
             "value": step.value,
+            "value_text": step.value_text,
             "channel": step.channel,
             "console": step.console,
             "trap": step.trap,
             "diag": step.diag,
+            "source_span": step.source_span,
             "owned": step.owned,
             "closures_source": step.closures_source,
         "recovery": step.recovery,
@@ -5414,6 +5458,7 @@ mod judge_tests {
             outcome: "success".into(),
             value,
             value_text: None,
+            source_span: None,
             typed,
             trap: None,
             diag: None,
@@ -5725,6 +5770,7 @@ mod closures_judge_tests {
             outcome: "success".into(),
             value: None,
             value_text: None,
+            source_span: None,
             typed: None,
             trap: None,
             diag: None,
@@ -5810,6 +5856,7 @@ mod closures_source_judge_tests {
             outcome: "success".into(),
             value,
             value_text: None,
+            source_span: None,
             typed: None,
             trap: None,
             diag: None,
@@ -6474,6 +6521,7 @@ mod resource_915_tests {
             outcome: "success".into(),
             value: None,
             value_text: None,
+            source_span: None,
             typed: None,
             trap: None,
             diag: None,

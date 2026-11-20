@@ -223,6 +223,9 @@ pub enum DynType {
     /// Structural — any object cell (entry content is compared by the
     /// value's own equality, not the descriptor).
     Object,
+    /// Element representation of an ordinary heterogeneous list. Each
+    /// element carries its own checked descriptor and payload.
+    Dyn,
     /// PLAN-964 (INT-1026/IF-VAL): a neutral external value/callable
     /// reference, identified by provider + kind label. External identity
     /// is the provider-owned cell; no portable freeze is admitted while
@@ -276,6 +279,7 @@ impl DynType {
             }
             DynType::Nil => "nil".into(),
             DynType::Object => "object".into(),
+            DynType::Dyn => "Dyn".into(),
             DynType::External { provider, kind } => {
                 format!("external {provider}[{kind}]")
             }
@@ -381,6 +385,7 @@ fn copy_type(ty: &DynType, t: &mut Traversal, embedded: bool) -> Result<DynType,
         DynType::Str => DynType::Str,
         DynType::Nil => DynType::Nil,
         DynType::Object => DynType::Object,
+        DynType::Dyn => DynType::Dyn,
         DynType::External { provider, kind } => {
             t.charge_bytes(provider.len())?;
             DynType::External {
@@ -444,11 +449,6 @@ fn copy_type(ty: &DynType, t: &mut Traversal, embedded: bool) -> Result<DynType,
         }
     })
 }
-
-/// PLAN-964: stable structural descriptor for object-entry children (the
-/// object's DynType is the unit `Object`; a static avoids a dangling
-/// temporary reference in the rebuild walk).
-static OBJECT_DYN: DynType = DynType::Object;
 
 impl DynValue {
     /// Explicit type erasure with full recursive admission (§2): the value
@@ -526,225 +526,113 @@ impl DynValue {
     /// Str/List handles (id 0, no arena) — in-execution clones route
     /// through the real arena at T-02+.
     pub fn deep_clone(&self, opts: &TraversalOptions) -> Result<DynValue, TraversalStop> {
-        let mut t = Traversal::new(opts, MAX_DYN_BYTES);
-        let cloned_ty = copy_type(&self.ty, &mut t, false)?;
-        let mut root: Option<Value> = None;
-
-        match (&self.value, &self.ty) {
-            // A container root seeds the build stack.
-            (Value::Record(_), DynType::Record { .. })
-            | (Value::List(_), DynType::List(_))
-            | (Value::Variant(_), DynType::Variant { .. })
-            | (Value::Object(_), DynType::Object) => {}
-            // PLAN-964: a Nil root is a zero-node leaf like any scalar.
-            // Inconsistent pairing is unreachable for a packed DynValue;
-            // refuse rather than clone across kinds.
-            (Value::Record(_), _)
-            | (Value::List(_), _)
-            | (Value::Variant(_), _)
-            | (Value::Object(_), _)
-            | (_, DynType::Record { .. })
-            | (_, DynType::List(_))
-            | (_, DynType::Variant { .. })
-            | (_, DynType::Object) => {
-                return Err(TraversalStop::Nodes);
-            }
-            // The root is a leaf: one node, done.
-            (leaf, _) => {
-                t.enter_node(1)?;
-                t.charge_bytes(leaf_cost(leaf))?;
-                root = Some(clone_leaf(leaf));
-            }
-        }
-
-        // Explicit post-order build stack: a frame opens by materializing
-        // SHALLOW-owned child values (handle bumps — a ListBuf RefCell is
-        // read exactly once at open, never re-borrowed mid-build),
-        // accumulates finished children, and pops into a fresh container.
-        struct Frame<'a> {
-            kids: Vec<Value>,
-            kid_tys: Vec<&'a DynType>,
-            rebuild: Rebuild,
-            enter_cost: usize,
-            vals: Vec<Value>,
-            next: usize,
-            depth: u32,
-            entered: bool,
-        }
         enum Rebuild {
-            Record {
-                ty_index: u32,
-            },
+            Record(u32),
             List,
-            Variant {
-                disc: u32,
-                ty_index: u32,
-            },
-            /// PLAN-964: the entry keys are stashed at open (source cell
-            /// borrow) and fresh key buffers are minted at rebuild (the
-            /// deep copy breaks every shared buffer).
-            Object {
-                keys: Vec<ObjectKey>,
-            },
-        }
-        fn open_frame<'a>(
-            val: &Value,
-            ty: &'a DynType,
-            depth: u32,
-        ) -> Option<(Vec<Value>, Vec<&'a DynType>, Rebuild, usize)> {
-            let _ = depth;
-            match (val, ty) {
-                (Value::Record(rec), DynType::Record { fields, .. }) => {
-                    let kids: Vec<Value> = rec.fields.iter().cloned().collect();
-                    let kid_tys: Vec<&DynType> = fields.iter().map(|f| &f.ty).collect();
-                    Some((
-                        kids,
-                        kid_tys,
-                        Rebuild::Record { ty_index: rec.ty },
-                        byte_cost_cell() + byte_cost_record_extra(),
-                    ))
-                }
-                (Value::List(h), DynType::List(elem)) => {
-                    let kids: Vec<Value> = h.rc.borrow().elems.clone();
-                    let kid_tys: Vec<&DynType> = kids.iter().map(|_| elem.as_ref()).collect();
-                    Some((
-                        kids,
-                        kid_tys,
-                        Rebuild::List,
-                        byte_cost_cell() + byte_cost_list_extra(),
-                    ))
-                }
-                (Value::Variant(v), DynType::Variant { arms, .. }) => {
-                    let mut kids = Vec::new();
-                    let mut kid_tys: Vec<&DynType> = Vec::new();
-                    if let (Some(p), Some(Some(pt))) = (
-                        v.payload.as_deref(),
-                        arms.get(v.disc as usize).map(|a| &a.payload),
-                    ) {
-                        kids.push(p.clone());
-                        kid_tys.push(pt);
-                    }
-                    Some((
-                        kids,
-                        kid_tys,
-                        Rebuild::Variant {
-                            disc: v.disc,
-                            ty_index: v.ty,
-                        },
-                        byte_cost_cell(),
-                    ))
-                }
-                (Value::Object(o), DynType::Object) => {
-                    let cell = o.borrow();
-                    let entries: Vec<(ObjectKey, Value)> = cell.entries.clone();
-                    let kids: Vec<Value> = entries.iter().map(|(_, v)| v.clone()).collect();
-                    let kid_tys: Vec<&DynType> = kids.iter().map(|_| &OBJECT_DYN).collect();
-                    let keys: Vec<ObjectKey> = entries.into_iter().map(|(k, _)| k).collect();
-                    Some((
-                        kids,
-                        kid_tys,
-                        Rebuild::Object { keys },
-                        byte_cost_cell() + byte_cost_record_extra(),
-                    ))
-                }
-                _ => None,
-            }
+            Variant { ty: u32, disc: u32 },
+            Object(Vec<ObjectKey>),
+            Dyn(DynType),
         }
 
-        let mut stack: Vec<Frame<'_>> = Vec::new();
-        if root.is_none() {
-            match open_frame(&self.value, &self.ty, 1) {
-                Some((kids, kid_tys, rebuild, enter_cost)) => stack.push(Frame {
-                    kids,
-                    kid_tys,
-                    rebuild,
-                    enter_cost,
-                    vals: Vec::new(),
-                    next: 0,
-                    depth: 1,
-                    entered: false,
-                }),
-                None => return Err(TraversalStop::Nodes),
-            }
+        enum Work {
+            Enter(Value, u32),
+            Exit(Rebuild, usize),
         }
 
-        while !stack.is_empty() {
-            let idx = stack.len() - 1;
-            if !stack[idx].entered {
-                stack[idx].entered = true;
-                let depth = stack[idx].depth;
-                let cost = stack[idx].enter_cost;
-                t.enter_node(depth)?;
-                t.charge_bytes(cost)?;
-            }
-            let nkids = stack[idx].kids.len();
-            if stack[idx].next < nkids {
-                let i = stack[idx].next;
-                stack[idx].next += 1;
-                let cv = stack[idx].kids[i].clone();
-                let ct = stack[idx].kid_tys[i];
-                match &cv {
-                    Value::Record(_) | Value::List(_) | Value::Variant(_) => {
-                        let depth = stack[idx].depth + 1;
-                        match open_frame(&cv, ct, depth) {
-                            Some((kids, kid_tys, rebuild, enter_cost)) => stack.push(Frame {
-                                kids,
-                                kid_tys,
-                                rebuild,
-                                enter_cost,
-                                vals: Vec::new(),
-                                next: 0,
-                                depth,
-                                entered: false,
-                            }),
-                            None => return Err(TraversalStop::Nodes),
+        let mut traversal = Traversal::new(opts, MAX_DYN_BYTES);
+        let ty = copy_type(&self.ty, &mut traversal, false)?;
+        let mut work = vec![Work::Enter(self.value.clone(), 1)];
+        let mut values = Vec::new();
+        while let Some(task) = work.pop() {
+            match task {
+                Work::Enter(value, depth) => {
+                    traversal.enter_node(depth)?;
+                    let child_depth = depth + 1;
+                    let base = values.len();
+                    match value {
+                        Value::Record(record) => {
+                            traversal.charge_bytes(byte_cost_cell() + byte_cost_record_extra())?;
+                            work.push(Work::Exit(Rebuild::Record(record.ty), base));
+                            for child in record.fields.iter().rev() {
+                                work.push(Work::Enter(child.clone(), child_depth));
+                            }
+                        }
+                        Value::List(list) => {
+                            traversal.charge_bytes(byte_cost_cell() + byte_cost_list_extra())?;
+                            work.push(Work::Exit(Rebuild::List, base));
+                            for child in list.rc.borrow().elems.iter().rev() {
+                                work.push(Work::Enter(child.clone(), child_depth));
+                            }
+                        }
+                        Value::Variant(variant) => {
+                            traversal.charge_bytes(byte_cost_cell())?;
+                            work.push(Work::Exit(
+                                Rebuild::Variant {
+                                    ty: variant.ty,
+                                    disc: variant.disc,
+                                },
+                                base,
+                            ));
+                            if let Some(payload) = variant.payload {
+                                work.push(Work::Enter(payload.as_ref().clone(), child_depth));
+                            }
+                        }
+                        Value::Object(object) => {
+                            traversal.charge_bytes(byte_cost_cell() + byte_cost_record_extra())?;
+                            let object = object.borrow();
+                            let mut keys = Vec::new();
+                            for (key, _) in &object.entries {
+                                traversal.charge_steps(1)?;
+                                traversal.charge_bytes(key.text_bytes().map_or(0, <[u8]>::len))?;
+                                keys.push(key.clone().detached());
+                            }
+                            work.push(Work::Exit(Rebuild::Object(keys), base));
+                            for (_, child) in object.entries.iter().rev() {
+                                work.push(Work::Enter(child.clone(), child_depth));
+                            }
+                        }
+                        Value::Dyn(dynamic) => {
+                            traversal.charge_bytes(byte_cost_cell())?;
+                            let ty = copy_type(dynamic.ty(), &mut traversal, false)?;
+                            work.push(Work::Exit(Rebuild::Dyn(ty), base));
+                            work.push(Work::Enter(dynamic.as_value().clone(), child_depth));
+                        }
+                        leaf => {
+                            traversal.charge_bytes(leaf_cost(&leaf))?;
+                            values.push(clone_leaf(&leaf));
                         }
                     }
-                    leaf => {
-                        let d = stack[idx].depth + 1;
-                        t.enter_node(d)?;
-                        t.charge_bytes(leaf_cost(leaf))?;
-                        stack[idx].vals.push(clone_leaf(leaf));
-                    }
                 }
-            } else {
-                // All children finished: rebuild with FRESH allocations —
-                // sharing is deliberately broken (deep copy expands DAGs).
-                let mut done = stack.pop().unwrap();
-                let value = match done.rebuild {
-                    Rebuild::Record { ty_index, .. } => Value::Record(Rc::new(RecordValue {
-                        ty: ty_index,
-                        fields: done.vals,
-                    })),
-                    Rebuild::List => Value::List(ListHandle::detached(done.vals)),
-                    Rebuild::Variant { disc, ty_index, .. } => Value::Variant(VariantValue {
-                        ty: ty_index,
-                        disc,
-                        payload: done.vals.pop().map(Rc::new),
-                    }),
-                    // PLAN-964: fresh entry buffers and a fresh cell — the
-                    // copy is fully independent of the source object.
-                    Rebuild::Object { keys } => {
-                        let entries = keys
-                            .into_iter()
-                            .zip(done.vals.into_iter())
-                            .map(|(key, value)| (key.detached(), value))
-                            .collect();
-                        Value::Object(std::rc::Rc::new(std::cell::RefCell::new(ObjectData {
-                            entries,
-                        })))
-                    }
-                };
-                match stack.last_mut() {
-                    Some(parent) => {
-                        parent.vals.push(value);
-                    }
-                    None => root = Some(value),
+                Work::Exit(rebuild, base) => {
+                    let mut children = values.split_off(base);
+                    let value = match rebuild {
+                        Rebuild::Record(ty) => Value::Record(Rc::new(RecordValue {
+                            ty,
+                            fields: children,
+                        })),
+                        Rebuild::List => Value::List(ListHandle::detached(children)),
+                        Rebuild::Variant { ty, disc } => Value::Variant(VariantValue {
+                            ty,
+                            disc,
+                            payload: children.pop().map(Rc::new),
+                        }),
+                        Rebuild::Object(keys) => {
+                            Value::Object(Rc::new(std::cell::RefCell::new(ObjectData {
+                                entries: keys.into_iter().zip(children).collect(),
+                            })))
+                        }
+                        Rebuild::Dyn(ty) => Value::Dyn(Rc::new(DynValue::from_parts(
+                            children.pop().expect("box has one child"),
+                            ty,
+                        ))),
+                    };
+                    values.push(value);
                 }
             }
         }
-
-        root.map(|value| DynValue::from_parts(value, cloned_ty))
+        values
+            .pop()
+            .map(|value| DynValue::from_parts(value, ty))
             .ok_or(TraversalStop::Nodes)
     }
 }
@@ -977,6 +865,10 @@ fn check_shape(
                 })
             }
             (Value::Nil, T::Nil) => true,
+            (Value::Dyn(value), T::Dyn) if depth > 1 => {
+                check_whitelist(value.as_value(), work, depth + 1)?;
+                true
+            }
             (Value::Object(o), T::Object) => {
                 let cell = o.borrow();
                 let entries: Vec<(ObjectKey, Value)> = cell.entries.clone();
@@ -1038,7 +930,6 @@ fn check_whitelist(
     work: &mut dyn FnMut() -> bool,
     depth: u32,
 ) -> Result<(), DynPackError> {
-    use crate::contract::StrHandle;
     let mut stack: Vec<(Value, u32)> = vec![(value.clone(), depth)];
     while let Some((v, d)) = stack.pop() {
         if !work() {

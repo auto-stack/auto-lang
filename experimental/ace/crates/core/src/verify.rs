@@ -3317,7 +3317,7 @@ impl Verifier {
                 E::ObjectCtor { eval_args, .. } => eval_args.clone(),
                 E::ObjectGet { base, key } => vec![*base, *key],
                 E::ObjectSet { base, key, value } => vec![*base, *key, *value],
-                E::TextDisplay { operand } | E::DynCast { operand } => vec![*operand],
+                E::TextDisplay { operand } | E::DynCast { operand, .. } => vec![*operand],
             }
         }
 
@@ -4675,7 +4675,7 @@ impl Verifier {
                     children.push(key.0);
                     children.push(value.0);
                 }
-                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
                     children.push(operand.0)
                 }
                 // text kinds never appear in a record module (profile
@@ -5216,7 +5216,7 @@ impl Verifier {
                         }
                     }
                 }
-                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
                     if (operand.0 as usize) >= n_exprs {
                         bad("expression", operand.0, n_exprs, e.span);
                     }
@@ -5983,7 +5983,7 @@ impl Verifier {
                             stack.push(Visit::Enter(*value));
                         }
                         hir::ExprKind::TextDisplay { operand }
-                        | hir::ExprKind::DynCast { operand } => {
+                        | hir::ExprKind::DynCast { operand, .. } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*operand));
                         }
@@ -5993,7 +5993,7 @@ impl Verifier {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     let computed = match &e.kind {
-                        hir::ExprKind::DynCast { operand } => {
+                        hir::ExprKind::DynCast { operand, test_nil } => {
                             let source = operand_type(
                                 tm,
                                 *operand,
@@ -6004,7 +6004,16 @@ impl Verifier {
                             } else {
                                 (declared == ValueType::Dyn, source)
                             };
-                            if !erased
+                            if *test_nil {
+                                if source != ValueType::Dyn || declared != ValueType::Bool {
+                                    self.error(
+                                        "verify.dyn-cast",
+                                        "a dynamic null test requires Dyn and returns bool"
+                                            .to_string(),
+                                        e.span,
+                                    );
+                                }
+                            } else if !erased
                                 || matches!(
                                     concrete,
                                     ValueType::Dyn
@@ -7495,7 +7504,7 @@ impl Verifier {
                     targets.push(key.0);
                     targets.push(value.0);
                 }
-                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
                     targets.push(operand.0);
                 }
                 _ => {}
@@ -8273,7 +8282,7 @@ impl Verifier {
                     stack.push(*key);
                     stack.push(*base);
                 }
-                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand, .. } => {
                     stack.push(*operand);
                 }
             }
