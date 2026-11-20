@@ -5,7 +5,7 @@
 
 #![cfg(all(windows, target_arch = "x86_64"))]
 
-use ace_aac_syntax_conformance::run_native_case;
+use ace_aac_syntax_conformance::{run_native_case, SYNTAX_PROFILES};
 
 fn obs(case: &str, profile: &str, source: &str) -> String {
     run_native_case(case, profile, source, None).expect("prepared AAC native run")
@@ -18,7 +18,7 @@ fn aac1046_grammar_data_identity_binding() {
     let src = include_str!("../../../grammars/auto-source.at");
     // Rebuild the full hex from the chunk literals in the data module and
     // compare byte-for-byte with a fresh compile of the repository grammar.
-    for name in ["auto", "age-package", "packages-ct", "packages-modules", "text-record-instances", "scalar"] {
+    for name in SYNTAX_PROFILES {
         let fresh = ace_syntax_grammar::compile_profile(src, name)
             .expect("compile")
             .canonical_bytes();
@@ -35,14 +35,7 @@ fn aac1046_grammar_data_identity_binding() {
 
 #[test]
 fn aac1046_decode_all_profiles() {
-    for name in [
-        "auto",
-        "age-package",
-        "packages-ct",
-        "packages-modules",
-        "text-record-instances",
-        "scalar",
-    ] {
+    for name in SYNTAX_PROFILES {
         let out = obs("decode", name, "");
         // Independent expected values: recompile here and count the tables.
         let p = ace_syntax_grammar::compile_profile(
@@ -428,12 +421,16 @@ fn aac1046_midexpr_eof() {
 }
 
 #[test]
-fn aac1046_typed_and_age_profile_parity() {
+fn aac1046_typed_age_and_scheduler_profile_parity() {
     let cases = [
         ("auto", "fn adapt(a ?int, b ~Iter<int>) !?int { return a }"),
         (
             "age-package",
             "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n",
+        ),
+        (
+            "scheduler",
+            "task Worker { on { _ -> { reply(1) } } }\nfn worker() int { yield 1\nreturn 1 }\nfn entry()! int { go worker()\nreturn await worker() }",
         ),
     ];
     for (profile, source) in cases {

@@ -35,6 +35,7 @@ use app.syntax_grammar_data.packages_ct_parts
 use app.syntax_grammar_data.packages_modules_parts
 use app.syntax_grammar_data.text_record_instances_parts
 use app.syntax_grammar_data.scalar_parts
+use app.syntax_grammar_data.scheduler_parts
 use app.syntax_program.hex_to_bytes
 use app.syntax_program.hex_to_bytes_parts
 use app.syntax_program.rule_name
@@ -96,7 +97,13 @@ pub fn fetch_parts(name Str) List<Str> {
     if (name == "text-record-instances") {
         return text_record_instances_parts()
     }
-    return scalar_parts()
+    if (name == "scalar") {
+        return scalar_parts()
+    }
+    if (name == "scheduler") {
+        return scheduler_parts()
+    }
+    return List<Str>.new()
 }
 
 pub fn decode_case(name Str) Str {

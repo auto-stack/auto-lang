@@ -36,6 +36,16 @@ pub use native::{
     native_fingerprint, run_native_case, DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE,
 };
 
+pub const SYNTAX_PROFILES: [&str; 7] = [
+    "auto",
+    "age-package",
+    "packages-ct",
+    "packages-modules",
+    "text-record-instances",
+    "scalar",
+    "scheduler",
+];
+
 pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
 
 // The Auto module set (file name -> embedded source). `syntax_smoke.at` is
