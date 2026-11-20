@@ -98,7 +98,7 @@ pub fn use_count_pass(pg List<int>) int {
 }
 
 /// Compile the CSR bucket index and token trivia table:
-/// [257 bucket offsets][rule ids][one trivia flag per token]. Rules with
+/// [257 bucket offsets][rule ids][one trivia flag per token][range-token flag]. Rules with
 /// empty literal/comment starts cannot occur (the Rust compiler rejects
 /// them); non-ASCII charsets are refused (ASCII-only language surface).
 pub fn compile_scanner(pg List<int>) List<int> {
@@ -238,10 +238,16 @@ pub fn compile_scanner(pg List<int>) List<int> {
         i = i + 1
     }
     ri = 0
+    var has_range_token = 0
     for (ri < n_scan(pg)) {
         if (scan_trivia(pg, ri)) { out.set(trivia + scan_token(pg, ri), 2) }
+        if (scan_mtag(pg, ri) == mtag_lit() && scan_b(pg, ri) == 2) {
+            let off = scan_a(pg, ri)
+            if (pool_byte(pg, off) == 46 && pool_byte(pg, off + 1) == 46) { has_range_token = 1 }
+        }
         ri = ri + 1
     }
+    out.push(has_range_token)
     return out
 }
 
@@ -339,7 +345,7 @@ fn try_literal(b List<int>, st List<int>, at int, pg List<int>, off int, len int
     return true
 }
 
-fn try_charset(b List<int>, st List<int>, at int, pg List<int>, ri int) int {
+fn try_charset(b List<int>, st List<int>, at int, pg List<int>, ri int, split_range bool) int {
     // Returns matched length or -1.
     let ftab = scan_a(pg, ri)
     let f_na = scan_b(pg, ri)
@@ -358,6 +364,8 @@ fn try_charset(b List<int>, st List<int>, at int, pg List<int>, ri int) int {
     var probing = 1
     for (probing == 1) {
         let c = byte_at(b, st, n)
+        // Keep adjacent range punctuation available to the next token.
+        if (split_range && c == 46 && byte_at(b, st, n + 1) == 46) { break }
         if (c < 0) {
             probing = 0
         } else {
@@ -520,6 +528,7 @@ fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m Lis
     if (first < 0) {
         return 0
     }
+    let split_range = first >= 48 && first <= 57 && cs.get(cs.len() - 1) == 1
     let lo = cs.get(first)
     let hi = cs.get(first + 1)
     var best_len = -1
@@ -531,7 +540,7 @@ fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m Lis
         if (scan_mode(pg, ri) != st.get(2)) {
             k = k + 1
         } else {
-            let r = try_rule(pg, b, st, ri, at)
+            let r = try_rule(pg, b, st, ri, at, split_range)
             if (r >= 0) {
                 let len = r / 2
                 let err = r % 2
@@ -564,7 +573,7 @@ fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m Lis
     return 1
 }
 
-fn try_rule(pg List<int>, b List<int>, st List<int>, ri int, at int) int {
+fn try_rule(pg List<int>, b List<int>, st List<int>, ri int, at int, split_range bool) int {
     // Returns packed len<<1|err, or -1 = no match.
     let mtag = scan_mtag(pg, ri)
     if (mtag == mtag_lit()) {
@@ -574,7 +583,7 @@ fn try_rule(pg List<int>, b List<int>, st List<int>, ri int, at int) int {
         return -1
     }
     if (mtag == mtag_charset()) {
-        let l = try_charset(b, st, at, pg, ri)
+        let l = try_charset(b, st, at, pg, ri, split_range)
         if (l < 0) {
             return -1
         }

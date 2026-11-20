@@ -736,6 +736,16 @@ fn aac1046_symbol_list_imports_keep_provider_and_conditional_candidates() {
 }
 
 #[test]
+fn aac1046_adjacent_numeric_slice_bounds_match_shared_lexer() {
+    let sample = "fn slice(s Str) Str { return s[1..3] }\nfn decimal() Float { return 1.25 }";
+    for profile in ["auto", "aac"] {
+        let expected = rust_oracle(profile, sample);
+        assert!(expected.ends_with("DIAGS\n"), "{profile}: {expected}");
+        assert_eq!(obs("parse", profile, sample), expected);
+    }
+}
+
+#[test]
 fn aac1046_catalog_distinguishes_body_and_initializer_edges() {
     use ace_aac_syntax_conformance::run_native_catalog;
     use std::collections::BTreeMap;
