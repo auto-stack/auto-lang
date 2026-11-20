@@ -7566,7 +7566,11 @@ impl<'a> Engine<'a> {
         if let Some(l) = self.cx.field_child(node, "list") {
             let span = self.cx.span_of(l);
             let elem_node = self.cx.field_child(l, "elem").unwrap_or(l);
-            let elem = self.classify_word(elem_node, false, false);
+            let mut elem = self.classify_word(elem_node, false, false);
+            // 元素位用 owned 文本（`[]str` → `List<Str>`；822 元素域不收借用 str）。
+            if matches!(elem.kind, TypeRef::Builtin(crate::source::ast::TypeWord::Str)) {
+                elem.kind = TypeRef::Builtin(crate::source::ast::TypeWord::StrOwned);
+            }
             return TypeAnn {
                 kind: TypeRef::Generic {
                     name: Ident {

@@ -45,3 +45,11 @@ fn p105_c_style_for_executes_as_while() {
     let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
     assert!(n.contains('3'), "C-style for ran three times: {n}");
 }
+
+#[test]
+fn p105_local_list_binding_pushes_and_reads_back() {
+    let src = "widget App {\n    msg { M }\n    model { var n int = 0 }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            var rows []str = []\n            rows.push(\"a\")\n            rows.push(\"b\")\n            .n = rows.len()\n        }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(n.contains('2'), "local list push/len works: {n}");
+}

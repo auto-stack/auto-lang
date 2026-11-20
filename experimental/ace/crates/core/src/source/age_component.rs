@@ -3745,12 +3745,19 @@ fn hook_stmts_lower(
                 let k = *counter;
                 *counter += 1;
                 let local = hook_local_name(inst, seq, k, &name.name);
-                let bound = rename_expr_with_params(
+                let mut bound = rename_expr_with_params(
                     value,
                     FieldBinding::Local(inst),
                     &node.fields,
                     &scope,
                 )?;
+                if let Some(ann) = ann {
+                    if let TypeRef::Generic { name, args } = &ann.kind {
+                        if name.name == "List" && !args.is_empty() {
+                            bound = list_new_from_array(bound, &args[0]);
+                        }
+                    }
+                }
                 out.push(Stmt::Let {
                     kw: *span,
                     name: Ident {
@@ -4160,6 +4167,15 @@ pub(crate) fn instance_stmts(
             Some(v) => initial_literal(v, f.span),
             None => rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
         };
+        // 列表字段的数组初值规范化为 `List<T>.new(…)`（元素类型取自注解）。
+        let init = match (&ann.kind, &init.kind) {
+            (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
+                if name.name == "List" && !args.is_empty() =>
+            {
+                list_new_from_array(init, &args[0])
+            }
+            _ => init,
+        };
         stmts.push(Stmt::Let {
             kw: f.span,
             name: Ident {
@@ -4476,6 +4492,41 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
 /// PLAN-105 T-02（U03 真语料 013/015）：模型字段的**完整类型注解**——列表字段
 /// `[]T` / `[N]T` 映射为 `List<T>`（collections 域），其余回落内建/记录类型。
 /// 列表元素为记录名时要求该记录已在模块类型表（prep 内联 `type` 声明）。
+/// PLAN-105 T-02（U03 真语料 012）：列表初始值规范化——`[]` / 数组字面量在
+/// 列表类型位包成 `List<T>.new()`（共享 resolver 要求空字面量带元素类型）。
+fn list_new_from_array(value: Expr, elem: &TypeAnn) -> Expr {
+    let span = value.span;
+    let empty = matches!(&value.kind, ExprKind::ArrayLit(e) if e.is_empty());
+    if !matches!(&value.kind, ExprKind::ArrayLit(_)) {
+        return value;
+    }
+    let recv = Expr {
+        span,
+        kind: ExprKind::GenericType {
+            name: Ident {
+                name: "List".to_string(),
+                span,
+            },
+            args: vec![elem.clone()],
+        },
+    };
+    let args = if empty {
+        Vec::new()
+    } else {
+        vec![crate::source::ast::Arg::Pos(value)]
+    };
+    Expr {
+        span,
+        kind: ExprKind::MethodCall {
+            recv: Box::new(recv),
+            name: Ident {
+                name: "new".to_string(),
+                span,
+            },
+            args,
+        },
+    }
+}
 pub(crate) fn field_ann(f: &ComponentField) -> Option<TypeAnn> {
     let ty = f.ty.trim();
     let elem = ty
