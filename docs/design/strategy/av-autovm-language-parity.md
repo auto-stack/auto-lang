@@ -89,7 +89,7 @@ AVP-00新增`SourceProfile::Auto`（拟名）、源码准入键`ac.source.langua
 | AVP-07 | [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md) | AV模块、全局状态与初始化补齐 | AVP-00, AVP-03, AVP-05 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-MODULE` |
 | AVP-08 | [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md) | AV借用、move与资源值组合补齐 | AVP-00, AVP-03, AVP-04, AVP-05, AVP-07 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-OWNERSHIP` |
 | AVP-09 | [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md) | AV跨调用语言错误与控制流展开补齐 | AVP-00, AVP-04, AVP-05, AVP-06, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-ERROR` |
-| AVP-10 | [PLAN-1088](../../plans/1088-av-parity-generics-specs-and-methods.md) | AV泛型、spec与方法决议组合补齐 | AVP-00, AVP-02, AVP-03, AVP-05, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERIC` |
+| AVP-10 | [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md) | AV泛型、spec与方法决议组合补齐 | AVP-00, AVP-02, AVP-03, AVP-05, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERIC` |
 | AVP-11 | [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md) | AV生成器与迭代生命周期补齐 | AVP-00, AVP-05, AVP-08, AVP-09 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERATOR` |
 | AVP-12 | [PLAN-1090](../../plans/1090-av-parity-tasks-async-and-actors.md) | AV任务、异步块与Actor语言补齐 | AVP-00, AVP-03, AVP-05, AVP-07, AVP-08, AVP-09, AVP-11 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-SCHEDULER` |
 | AVP-13 | [PLAN-1091](../../plans/1091-av-parity-comptime-and-macros.md) | AV编译期执行与宏兼容补齐 | AVP-00, AVP-01, AVP-02, AVP-07, AVP-10 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-CT` |
