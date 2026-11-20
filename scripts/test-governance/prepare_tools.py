@@ -104,14 +104,26 @@ def pin_artifacts(target, identity, name, paths):
     return pinned
 
 
-def prepare(root, names, output, prepared, source_state=None):
-    document=load(root/"scripts/test-governance/toolchains.json")
-    if document.get("schema")!="test-module-tools/1":
+def configured_tools(root, debug_tools=False):
+    document = load(root / "scripts/test-governance/toolchains.json")
+    if document.get("schema") != "test-module-tools/1":
         raise ValueError("unsupported test toolchain schema")
+    tools = document["tools"]
+    if debug_tools:
+        profiles = {"release": "debug", "runtime-release": "runtime-dev"}
+        for tool in tools.values():
+            tool["profile"] = profiles.get(tool["profile"], tool["profile"])
+        tools["native-runtimes"]["warm_env"] = {"ACE_FIXED_TEST_RUNTIME_MODE": "prepare-debug"}
+    return tools
+
+
+def prepare(root, names, output, prepared, source_state=None, *, tools=None):
+    if tools is None:
+        tools = configured_tools(root)
     env={}
     receipts=[]
     for name in names:
-        tool=document["tools"][name]
+        tool=tools[name]
         cwd=(root/tool["workspace"]).resolve()
         target=(root/tool["target"]).resolve()
         if not cwd.is_relative_to(root) or not target.is_relative_to(root):
@@ -168,6 +180,7 @@ def prepare(root, names, output, prepared, source_state=None):
             warm_log = output/(name+"-warm.log")
             warm_env = dict(os.environ)
             warm_env.pop('CARGO_TARGET_DIR', None)
+            warm_env.update(tool.get("warm_env", {}))
             warm_result = capture([str(binary), *[str(a) for a in warm[1:]]], cwd=cwd,
                                   env=warm_env, timeout=1800, compiler_auxiliary_cleanup=True)
             warm_log.write_bytes(warm_result.stdout + warm_result.stderr)

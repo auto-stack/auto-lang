@@ -160,13 +160,15 @@ impl Drop for CrossProcessLock {
 pub fn prepare() -> Result<Prepared, MnError> {
     static SERIAL: Mutex<()> = Mutex::new(());
     let _guard = SERIAL.lock().map_err(|_| io("runtime lock poisoned"))?;
+    let (profile, may_build) = config::native_runtime_build()?;
     let root = workspace()?;
     // The lock protects the published staticlib; take it BEFORE any hashing or
     // rebuild so concurrent processes cannot observe a half-written artifact.
     let library = root
         .join("target")
         .join(config::MN_TARGET)
-        .join("runtime-release/ac_sched_runtime.lib");
+        .join(profile)
+        .join("ac_sched_runtime.lib");
     // PLAN-1067 review2 N-1067-4: the lock lives next to the artifact cargo
     // will build, so its directory may not exist yet on a cold target tree
     // (`cargo clean`, fresh clone, CI). Create it before locking; the build
@@ -219,6 +221,9 @@ pub fn prepare() -> Result<Prepared, MnError> {
     let mut h = blake3::Hasher::new();
     h.update(b"mn.sched.runtime-build/1");
     h.update(config::MN_TARGET.as_bytes());
+    if profile == "runtime-dev" {
+        h.update(profile.as_bytes());
+    }
     h.update(&compiler.stdout);
     for key in [
         "RUSTFLAGS",
@@ -241,6 +246,9 @@ pub fn prepare() -> Result<Prepared, MnError> {
         .filter(|(key, _)| {
             key.starts_with("CARGO_PROFILE_RELEASE_")
                 || key.starts_with("CARGO_PROFILE_RUNTIME_RELEASE_")
+                || (profile == "runtime-dev"
+                    && (key.starts_with("CARGO_PROFILE_DEV_")
+                        || key.starts_with("CARGO_PROFILE_RUNTIME_DEV_")))
                 || key.starts_with("CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_")
         })
         .collect();
@@ -280,6 +288,12 @@ pub fn prepare() -> Result<Prepared, MnError> {
         }
         old
     } else {
+        if !may_build {
+            return Err(io(format!(
+                "PREPARATION_REQUIRED: missing or stale {profile} runtime: {}",
+                library.display()
+            )));
+        }
         if library.is_file() {
             std::fs::remove_file(&library).map_err(io)?;
         }
@@ -289,7 +303,7 @@ pub fn prepare() -> Result<Prepared, MnError> {
             .args([
                 "build",
                 "--profile",
-                "runtime-release",
+                profile,
                 "--locked",
                 "--target",
                 config::MN_TARGET,

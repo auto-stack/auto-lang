@@ -514,6 +514,8 @@ def find_matching_manifest(names):
     for path in candidates:
         try:
             manifest = json.loads(path.read_text(encoding='utf-8'))
+            if manifest.get('debug_tools'):
+                continue
             verify_prepared(manifest)
         except (ValueError, OSError):
             continue
@@ -551,18 +553,17 @@ def build_archive(group, output, env, index):
 
 def prepare_plan(plan, output, summary, args):
     """Explicit preparation: build every selected configuration once, run nothing."""
-    from prepare_tools import prepare, tool_identity, toolchain_marker
+    from prepare_tools import configured_tools, prepare, tool_identity, toolchain_marker
     before = checkout_state()
     summary['source_state'] = before
     output.mkdir(parents=True, exist_ok=True)
     write(output / 'selection.json', summary)
-    tool_document = json.loads((ROOT / 'scripts/test-governance/toolchains.json').read_text(encoding='utf-8'))
-    tools = tool_document['tools']
+    tools = configured_tools(ROOT, args.debug_tools)
     prepared = set()
     manifest = {'schema': PREPARED_SCHEMA, 'driver': 'scripts/fixed-tests.py',
                 'config_sha256': summary['config_sha256'], 'source_state': before,
                 'toolchain': toolchain_marker(), 'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
-                'invocations': []}
+                'debug_tools': args.debug_tools, 'invocations': []}
     started = time.monotonic()
     entries = []
     # Phase 1 — archives. `cargo nextest archive` builds with nextest's `test`
@@ -592,7 +593,7 @@ def prepare_plan(plan, output, summary, args):
         remaining = entry['tools']
         if entry['runner'] == 'case' and entry.get('target'):
             from prepare_tools import case_tools
-            parent_env, parent_receipts = prepare(ROOT, ['case-parent'], destination / 'tools', prepared, before)
+            parent_env, parent_receipts = prepare(ROOT, ['case-parent'], destination / 'tools', prepared, before, tools=tools)
             extra.update(parent_env)
             receipts.extend(parent_receipts)
             env = {**os.environ, **extra, 'AUTO_TEST_DOMAIN': entry['domain']}
@@ -600,8 +601,10 @@ def prepare_plan(plan, output, summary, args):
             entry['tools'] = case_tools([{'adapter': r['adapter'], 'case_recipe': r['recipe']}
                                          for r in checks if r['state'] == 'RUN'])
             remaining = [name for name in entry['tools'] if name != 'case-parent']
-        tool_env, tool_receipts = prepare(ROOT, remaining, destination / 'tools', prepared, before)
+        tool_env, tool_receipts = prepare(ROOT, remaining, destination / 'tools', prepared, before, tools=tools)
         extra.update(tool_env)
+        if args.debug_tools:
+            extra['ACE_FIXED_TEST_RUNTIME_MODE'] = 'run-debug'
         receipts.extend(tool_receipts)
         entry['tool_env'] = extra
         entry['receipts'] = receipts
@@ -617,7 +620,7 @@ def prepare_plan(plan, output, summary, args):
 
 def verify_prepared(manifest):
     """Fail closed with a named preparation error; never rebuild or fall back."""
-    from prepare_tools import tool_identity, toolchain_marker
+    from prepare_tools import configured_tools, tool_identity, toolchain_marker
     value, _groups = configuration()
     if manifest.get('schema') != PREPARED_SCHEMA:
         raise ValueError('PREPARATION_REQUIRED: unsupported prepared manifest schema')
@@ -628,8 +631,13 @@ def verify_prepared(manifest):
         raise ValueError('PREPARATION_REQUIRED: source/input state changed since preparation')
     if manifest.get('toolchain') != toolchain_marker():
         raise ValueError('PREPARATION_REQUIRED: rustc toolchain changed since preparation')
-    tools = json.loads((ROOT / 'scripts/test-governance/toolchains.json').read_text(encoding='utf-8'))['tools']
+    debug_tools = manifest.get('debug_tools', False)
+    if not isinstance(debug_tools, bool):
+        raise ValueError('PREPARATION_REQUIRED: invalid prepared tool mode')
+    tools = configured_tools(ROOT, debug_tools)
     for entry in manifest.get('invocations', []):
+        if debug_tools and entry.get('tool_env', {}).get('ACE_FIXED_TEST_RUNTIME_MODE') != 'run-debug':
+            raise ValueError('PREPARATION_REQUIRED: debug run requires prepared-only runtime mode')
         identities = entry.get('tool_identity') or {}
         for name in entry.get('tools', []):
             expected = identities.get(name)
@@ -638,6 +646,7 @@ def verify_prepared(manifest):
             target = (ROOT / tools[name]['target']).resolve()
             if tool_identity(tools[name], target, current) != expected:
                 raise ValueError('PREPARATION_REQUIRED: tool configuration changed: ' + name)
+        artifacts = {}
         for row in entry.get('receipts', []):
             if not row.get('path'):
                 # warm-up receipts carry no artifact path; the builder's own
@@ -646,6 +655,13 @@ def verify_prepared(manifest):
             path = Path(row['path'])
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != row['sha256']:
                 raise ValueError('PREPARATION_REQUIRED: tool artifact missing or tampered: ' + str(path))
+            if debug_tools:
+                artifacts.setdefault(row.get('tool'), row['path'])
+        if debug_tools:
+            for name in entry['tools']:
+                binding = tools[name].get('env')
+                if binding and (name not in artifacts or entry['tool_env'].get(binding) != artifacts[name]):
+                    raise ValueError('PREPARATION_REQUIRED: unbound debug tool environment: ' + name)
         archive = entry.get('archive')
         if archive:
             path = Path(archive['path'])
@@ -682,9 +698,13 @@ def main(argv=None):
     ap.add_argument('--test-name', help='optional native test navigation inside the selected groups')
     ap.add_argument('--prepare-only', action='store_true',
                     help='build the selected configurations/tools into a prepared manifest; execute no bodies')
+    ap.add_argument('--debug-tools', action='store_true',
+                    help='prepare debug workers and runtime-dev static libraries for explicit --run-prepared')
     ap.add_argument('--run-prepared', type=Path,
                     help='execute only, consuming a prepared manifest; never builds (named failure on drift)')
     args = ap.parse_args(argv)
+    if args.debug_tools and not args.prepare_only:
+        ap.error('--debug-tools requires --prepare-only')
     if args.prepare_only and args.run_prepared:
         ap.error('--prepare-only and --run-prepared are mutually exclusive')
     if args.prepare_only or args.run_prepared:
@@ -727,7 +747,8 @@ def main(argv=None):
     (ROOT / 'target/test-groups').mkdir(parents=True, exist_ok=True)
     if args.prepare_only and not args.out:
         # Canonical per-tree preparation home, so the ordinary entry can find it.
-        prepared_home = PREPARED_ROOT / checkout_state()[:16]
+        suffix = '-debug' if args.debug_tools else ''
+        prepared_home = PREPARED_ROOT / (checkout_state()[:16] + suffix)
         prepared_home.mkdir(parents=True, exist_ok=True)
         output = prepared_home
     else:
@@ -775,6 +796,7 @@ def main(argv=None):
         if manifest is not None:
             summary['prepared_from'] = str(manifest_path)
             summary['prepared_source_state'] = manifest['source_state']
+            summary['debug_tools'] = manifest.get('debug_tools', False)
             summary['selected_groups'] = [name for entry in manifest['invocations'] for name in entry['groups']]
         return execute_plan(plan, output, summary, args, prepared_by_index)
 

@@ -110,6 +110,7 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
     let _guard = SERIAL
         .lock()
         .map_err(|_| io("runtime preparation lock poisoned"))?;
+    let (profile, may_build) = config::native_runtime_build()?;
     let root = workspace()?;
     let runtime = root.join("crates/typed-entry-runtime");
     let mut files = vec![
@@ -151,6 +152,9 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
     let mut h = blake3::Hasher::new();
     h.update(b"mn.typed-entry.runtime-build/1");
     h.update(config::MN_TARGET.as_bytes());
+    if profile == "runtime-dev" {
+        h.update(profile.as_bytes());
+    }
     h.update(&compiler.stdout);
     for key in [
         "RUSTFLAGS",
@@ -173,6 +177,9 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
         .filter(|(key, _)| {
             key.starts_with("CARGO_PROFILE_RELEASE_")
                 || key.starts_with("CARGO_PROFILE_RUNTIME_RELEASE_")
+                || (profile == "runtime-dev"
+                    && (key.starts_with("CARGO_PROFILE_DEV_")
+                        || key.starts_with("CARGO_PROFILE_RUNTIME_DEV_")))
                 || key.starts_with("CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_")
         })
         .collect();
@@ -196,7 +203,8 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
     let library = root
         .join("target")
         .join(config::MN_TARGET)
-        .join("runtime-release/ace_typed_entry_runtime.lib");
+        .join(profile)
+        .join("ace_typed_entry_runtime.lib");
     let stamp = library.with_extension("identity.json");
     let old: Option<Identity> = std::fs::read(&stamp)
         .ok()
@@ -216,6 +224,12 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
         }
         old
     } else {
+        if !may_build {
+            return Err(io(format!(
+                "PREPARATION_REQUIRED: missing or stale {profile} runtime: {}",
+                library.display()
+            )));
+        }
         if library.is_file() {
             std::fs::remove_file(&library).map_err(io)?;
         }
@@ -225,7 +239,7 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
             .args([
                 "build",
                 "--profile",
-                "runtime-release",
+                profile,
                 "--locked",
                 "--target",
                 config::MN_TARGET,

@@ -139,6 +139,19 @@ class PrepareReceiptTests(unittest.TestCase):
         expected = hashlib.sha256(self.binary.read_bytes()).hexdigest()
         self.assertIn(expected, [row['sha256'] for row in artifact_rows])
 
+    def test_debug_configuration_selects_runtime_dev_and_separates_identity(self):
+        root = Path(__file__).resolve().parents[2]
+        regular = tools.configured_tools(root)
+        debug = tools.configured_tools(root, debug_tools=True)
+        self.assertEqual('debug', debug['a2x']['profile'])
+        self.assertEqual('runtime-dev', debug['text-runtime']['profile'])
+        self.assertEqual('prepare-debug', debug['native-runtimes']['warm_env']['ACE_FIXED_TEST_RUNTIME_MODE'])
+        for name in ['a2x', 'text-runtime', 'native-runtimes']:
+            self.assertNotEqual(
+                tools.tool_identity(regular[name], self.root, 'source'),
+                tools.tool_identity(debug[name], self.root, 'source'),
+            )
+
 
 if __name__ == '__main__':
     unittest.main()

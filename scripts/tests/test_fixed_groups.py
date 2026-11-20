@@ -1147,6 +1147,29 @@ class PreparedRunGate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             fixed.verify_prepared(self._manifest(temp))
 
+    def test_debug_manifest_checks_prepared_only_runtime_and_worker_binding(self):
+        from prepare_tools import configured_tools, tool_identity
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = self._manifest(temp, debug_tools=True)
+            entry = manifest['invocations'][0]
+            worker = Path(temp) / 'a2x-worker.exe'
+            worker.write_bytes(b'debug-worker')
+            config = configured_tools(fixed.ROOT, True)['a2x']
+            entry['tools'] = ['a2x']
+            entry['tool_identity'] = {'a2x': tool_identity(
+                config, (fixed.ROOT / config['target']).resolve(), manifest['source_state'])}
+            entry['receipts'] = [{'tool': 'a2x', 'path': str(worker),
+                                  'sha256': hashlib.sha256(worker.read_bytes()).hexdigest()}]
+            entry['tool_env'] = {'ACE_FIXED_TEST_RUNTIME_MODE': 'run-debug',
+                                 'AC_A2X_HIR_WORKER': str(worker)}
+            fixed.verify_prepared(manifest)
+            entry['tool_env']['AC_A2X_HIR_WORKER'] += '.other'
+            with self.assertRaisesRegex(ValueError, 'unbound debug tool'):
+                fixed.verify_prepared(manifest)
+            entry['tool_env']['ACE_FIXED_TEST_RUNTIME_MODE'] = 'prepare-debug'
+            with self.assertRaisesRegex(ValueError, 'prepared-only runtime mode'):
+                fixed.verify_prepared(manifest)
+
     def test_config_source_and_toolchain_drift_are_named_failures(self):
         from prepare_tools import toolchain_marker
         with tempfile.TemporaryDirectory() as temp:

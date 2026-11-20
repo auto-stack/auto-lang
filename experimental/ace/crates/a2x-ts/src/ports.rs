@@ -1353,10 +1353,11 @@ mod tests {
 
         // Parity tripwire: the table is the target-neutral shared table.
         let mut ids: Vec<&str> = a.ports.iter().map(|p| p.operation_id).collect();
-        assert_eq!(ids.len(), 71, "port table must keep a2x parity");
+        assert_eq!(ids.len(), 72, "port table must keep a2x parity");
+        assert!(ids.contains(&"process.run_argv_w16"));
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), 71, "operation ids must be unique");
+        assert_eq!(ids.len(), 72, "operation ids must be unique");
     }
 
     #[test]

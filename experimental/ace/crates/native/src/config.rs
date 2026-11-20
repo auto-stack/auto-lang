@@ -15,6 +15,19 @@ pub const LINK_SCHEMA: &str = "ac818/a10-link/v1";
 
 /// The ONE admitted target triple — never the host triple silently.
 pub const MN_TARGET: &str = "x86_64-pc-windows-msvc";
+
+/// The fixed-test driver warms dev artifacts explicitly, then consumes them read-only.
+pub(crate) fn native_runtime_build() -> Result<(&'static str, bool), crate::MnError> {
+    match std::env::var("ACE_FIXED_TEST_RUNTIME_MODE").as_deref() {
+        Ok("prepare-debug") => Ok(("runtime-dev", true)),
+        Ok("run-debug") => Ok(("runtime-dev", false)),
+        Err(std::env::VarError::NotPresent) => Ok(("runtime-release", true)),
+        _ => Err(crate::MnError::Infra(
+            "invalid ACE_FIXED_TEST_RUNTIME_MODE".into(),
+        )),
+    }
+}
+
 /// Private test ABI tag (NOT the PLAN-797 public AutoABI).
 pub const MN_ABI: &str = "msvc-x64/priv-i32-bool-v1";
 /// Backend identity tag (Cranelift family; the workspace lock pins the
