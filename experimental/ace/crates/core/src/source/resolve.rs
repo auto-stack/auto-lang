@@ -1110,7 +1110,9 @@ pub struct CollTables {
     /// record (`Arm { f T, .. }`) — a single binding destructures the one
     /// field (an anonymous record-typed payload keeps the whole-value
     /// binding, e.g. `Msg.Move(p)`).
-    pub named_field_arms: BTreeSet<(usize, u32)>,}
+    pub named_field_arms: BTreeSet<(usize, u32)>,
+    scoped_iter_fns: BTreeSet<usize>,
+}
 
 impl CollTables {
     fn intern_function(&mut self, signature: ClosureFnType) -> usize {
@@ -2707,7 +2709,7 @@ fn resolve_detailed_in_mode(
     // Pass 1b (PLAN-965 M2-A): Pre-register synthesized generator iterator records
     // before function signatures resolve so `~Iter<T>` / `Iter<T>` map to `VT::Rec(ri)`.
     let mut agg_iter_reg = if surface.is_aggregates() {
-        agg_lower::collect_agg_iter_records(program, &mut records, &mut rec_index, &mut coll)
+        agg_lower::collect_agg_iter_records(program, &flat, &mut records, &mut rec_index, &mut coll)
     } else {
         agg_lower::AggIterRegistry::default()
     };
@@ -2777,6 +2779,16 @@ fn resolve_detailed_in_mode(
             i,
             is_coll,
         );
+        if coll.ordinary_auto
+            && fn_receiver[i] == ast::Receiver::Free
+            && agg_iter_reg.gen_fns.contains_key(&i)
+            && f.params
+                .iter()
+                .zip(&sig.params)
+                .any(|(param, &vt)| agg_lower::generator_borrow_param(param.mode, vt))
+        {
+            coll.scoped_iter_fns.insert(i);
+        }
         sigs.insert(sig_key.clone(), sig);
         // PLAN-1083: method-side registry on the owning enum variant.
         if let Some(vi) = fn_vowner[i] {
@@ -2818,15 +2830,27 @@ fn resolve_detailed_in_mode(
     }
 
     if surface.is_aggregates() && !agg_iter_reg.by_elem.is_empty() {
-        agg_lower::register_agg_iter_sigs(&mut agg_iter_reg, &mut sigs, &records, flat.len());
+        agg_lower::register_agg_iter_sigs(
+            &mut agg_iter_reg,
+            &mut sigs,
+            &records,
+            flat.len(),
+            coll.ordinary_auto,
+        );
     }
-    let iter_info: BTreeMap<usize, (VT, VT, usize, usize)> = agg_iter_reg
+    let iter_info: BTreeMap<usize, (VT, VT, usize, usize, Option<usize>)> = agg_iter_reg
         .by_elem
         .iter()
         .map(|m| {
             (
                 m.rec_idx,
-                (m.elem_vt, m.opt_vt, m.next_fn_index, m.close_fn_index),
+                (
+                    m.elem_vt,
+                    m.opt_vt,
+                    m.next_fn_index,
+                    m.close_fn_index,
+                    m.retired_fn_index,
+                ),
             )
         })
         .collect();
@@ -3050,37 +3074,29 @@ fn resolve_detailed_in_mode(
             sched,
             nested_ctx,
         );
-        // PLAN-965 (V-03, M2-A): a generator body is lowered to a state
-        // record that stores every live parameter BY VALUE and runs in
-        // `__ace_iter_next` / `__ace_iter_close`, long after the creating
-        // call returned. Borrowed parameters therefore cannot be carried
-        // across a yield: a `mut` borrow would lose its writes (its owner may
-        // be reassigned/dropped meanwhile) and a view/`str` slice would
-        // outlive its owner. Both are named rejections instead of a MIR
-        // verification failure or silently-dropped write. Owned values —
-        // scalars, `List`/`Object`/`Variant` handles, owned `Str` — stay
-        // supported and are how a generator observes its close effect.
+        // A scoped constructor may execute the pre-suspension prefix
+        // for a direct for-in consumer. No borrowed formal may enter the
+        // persistent iterator record. Frozen profiles keep their rejection.
+        let mut prefix = None;
         if gen_meta.is_some() {
-            let param_count = resolved.params.len();
-            for decl in resolved.locals.iter().take(param_count) {
-                let borrowed_view = matches!(decl.vt, VT::Rec(_) | VT::Str);
-                if decl.mode == ast::ParamMode::Mut || borrowed_view {
-                    let what = if decl.mode == ast::ParamMode::Mut {
-                        "`mut` parameter"
-                    } else {
-                        "borrowed parameter"
-                    };
-                    diags.push(Diagnostic::new(
-                        Stage::Bind,
-                        "source.generator-borrow-param",
-                        format!(
-                            "{what} `{}` cannot be held by a `~Iter<T>` generator: the suspended \
-                             state record stores parameters by value, so a borrow cannot cross a \
-                             `yield`; pass an owned value or a `List` handle instead",
-                            decl.name
-                        ),
-                        decl.span,
-                    ));
+            let scoped = coll.scoped_iter_fns.contains(&i);
+            if scoped {
+                prefix = agg_lower::extract_scoped_prefix(&mut resolved, &mut diags);
+            } else {
+                for decl in resolved.locals.iter().take(resolved.params.len()) {
+                    if agg_lower::generator_borrow_param(decl.mode, decl.vt)
+                        || (!coll.ordinary_auto && matches!(decl.vt, VT::Rec(_)))
+                    {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.generator-borrow-param",
+                            format!(
+                                "borrowed parameter {} cannot enter a suspended iterator",
+                                decl.name
+                            ),
+                            decl.span,
+                        ));
+                    }
                 }
             }
         }
@@ -3090,6 +3106,7 @@ fn resolve_detailed_in_mode(
                 meta_idx,
                 gen_id,
                 &gen_try_finals,
+                prefix,
                 &mut agg_iter_reg,
                 &mut records,
                 &mut coll,
@@ -4704,6 +4721,7 @@ pub(crate) fn resolve_lambda_in_context(
             is_generator: false,
             is_script: false,
             iter_info: &EMPTY_ITER_INFO,
+            scoped_iter_site: None,
             agg_tmp_counter: 0,
             expr_diverged: false,
             gen_try_finals: Vec::new(),
@@ -6167,13 +6185,14 @@ struct FnResolver<'a, 's> {
     catch_err_locals: Vec<LocalRef>,
     is_generator: bool,
     is_script: bool,
-    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize)>,
+    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize, Option<usize>)>,
+    scoped_iter_site: Option<Span>,
     agg_tmp_counter: usize,
     expr_diverged: bool,
     gen_try_finals: Vec<(LoopRef, LoopRef)>,
 }
 
-static EMPTY_ITER_INFO: BTreeMap<usize, (VT, VT, usize, usize)> = BTreeMap::new();
+static EMPTY_ITER_INFO: BTreeMap<usize, (VT, VT, usize, usize, Option<usize>)> = BTreeMap::new();
 
 #[derive(Clone, Copy, Debug)]
 struct AggCtrlLocals {
@@ -6221,7 +6240,7 @@ fn resolve_fn_agg(
     closure_base: usize,
     supply: Option<&dyn TypeSupply>,
     is_generator: bool,
-    iter_info: &BTreeMap<usize, (VT, VT, usize, usize)>,
+    iter_info: &BTreeMap<usize, (VT, VT, usize, usize, Option<usize>)>,
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&super::sched_desugar::SchedSurface>,
     nested: NestedCtx,
@@ -6327,7 +6346,7 @@ fn resolve_fn_reuse<'a, 's>(
     reuse: Option<&'a mut LambdaReuse<'s>>,
     supply: Option<&'a dyn TypeSupply>,
     is_generator: bool,
-    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize)>,
+    iter_info: &'a BTreeMap<usize, (VT, VT, usize, usize, Option<usize>)>,
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&'a super::sched_desugar::SchedSurface>,
     nested: NestedCtx,
@@ -6407,6 +6426,7 @@ fn resolve_fn_reuse<'a, 's>(
         // PLAN-968: the scheduler surface side-table (scheduler face only).
         sched,
         iter_info,
+        scoped_iter_site: None,
         agg_tmp_counter: 0,
         expr_diverged: false,
         gen_try_finals: Vec::new(),
@@ -8043,31 +8063,99 @@ F:{d}
             || !self.loop_stack.is_empty()
     }
 
-    fn close_for_iter_stmt(
+    fn close_for_iter_stmts(
         &mut self,
         close_fn_index: usize,
         iter_local: LocalRef,
         span: Span,
-    ) -> RStmt {
+    ) -> Vec<RStmt> {
+        let mut stmts = Vec::new();
+        let iter_vt = self.locals[iter_local.0].vt;
+        let iter_local = self.prepare_iterator_call(iter_local, span, &mut stmts);
         let local = self.agg_temp("it_close", VT::I32, false, span);
-        let value = ResolvedExpr {
-            span,
-            vt: VT::I32,
-            kind: RExprKind::CallFn {
-                fn_index: close_fn_index,
-                args: vec![ResolvedArg {
-                    span,
-                    name: None,
-                    moved: false,
-                    value: ResolvedExpr {
+        stmts.push(RStmt::Let {
+            local,
+            value: ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::CallFn {
+                    fn_index: close_fn_index,
+                    args: vec![ResolvedArg {
                         span,
-                        vt: self.locals[iter_local.0].vt,
-                        kind: RExprKind::BorrowMut { local: iter_local },
-                    },
-                }],
+                        name: None,
+                        moved: false,
+                        value: ResolvedExpr {
+                            span,
+                            vt: iter_vt,
+                            kind: RExprKind::BorrowMut { local: iter_local },
+                        },
+                    }],
+                },
             },
+            span,
+        });
+        stmts
+    }
+
+    /// An owned iterator passed to a mut-record call returns through the
+    /// successful write-back edge. Preserve a terminal iterator in the
+    /// source slot when a language error can be caught by this frame.
+    fn prepare_iterator_call(
+        &mut self,
+        source: LocalRef,
+        span: Span,
+        stmts: &mut Vec<RStmt>,
+    ) -> LocalRef {
+        let vt = self.locals[source.0].vt;
+        let VT::Rec(record) = vt else {
+            return source;
         };
-        RStmt::Let { local, value, span }
+        let Some(retired) = self.iter_info[&record]
+            .4
+            .filter(|_| self.has_enclosing_try())
+        else {
+            return source;
+        };
+        let terminal = self.agg_temp("it_terminal", vt, false, span);
+        let displaced = self.agg_temp("it_active", vt, true, span);
+        stmts.push(RStmt::Let {
+            local: terminal,
+            value: ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::CallFn {
+                    fn_index: retired,
+                    args: Vec::new(),
+                },
+            },
+            span,
+        });
+        stmts.push(RStmt::Let {
+            local: displaced,
+            value: ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::Move {
+                    inner: Box::new(ResolvedExpr {
+                        span,
+                        vt,
+                        kind: RExprKind::ReadLocal(source),
+                    }),
+                },
+            },
+            span,
+        });
+        stmts.push(RStmt::Assign {
+            local: source,
+            path: Vec::new(),
+            value: ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::ReadLocal(terminal),
+            },
+            span,
+        });
+        displaced
     }
 
     fn emit_close_active_iters_to_out(&mut self, out: &mut Vec<RStmt>, span: Span) {
@@ -8085,7 +8173,7 @@ F:{d}
             })
             .collect();
         for (close_fn_index, iter_local) in to_close {
-            out.push(self.close_for_iter_stmt(close_fn_index, iter_local, span));
+            out.extend(self.close_for_iter_stmts(close_fn_index, iter_local, span));
         }
     }
 
@@ -11319,7 +11407,7 @@ F:{d}
         span: Span,
     ) -> Vec<RStmt> {
         let mut out = Vec::new();
-        let (elem_vt, _opt_vt, next_fn_index, close_fn_index) = self.iter_info[&iter_rec_idx];
+        let (elem_vt, _opt_vt, next_fn_index, close_fn_index, _) = self.iter_info[&iter_rec_idx];
         let iter_vt = VT::Rec(iter_rec_idx);
         let opt_vi = self.coll.intern_variant(
             "Option",
@@ -11459,7 +11547,7 @@ F:{d}
             target,
             unwind,
         });
-        out.push(self.close_for_iter_stmt(close_fn_index, it_local, span));
+        out.extend(self.close_for_iter_stmts(close_fn_index, it_local, span));
         if self.has_outer_ctrl_barrier() {
             self.emit_post_frame_dispatch(span, &mut out);
         }
@@ -11474,7 +11562,7 @@ F:{d}
         arg_count: usize,
         span: Span,
     ) -> Option<ResolvedExpr> {
-        let &(_elem_vt, opt_vt, next_fn_index, close_fn_index) = self.iter_info.get(&ri)?;
+        let &(_elem_vt, opt_vt, next_fn_index, close_fn_index, _) = self.iter_info.get(&ri)?;
         if arg_count != 0 {
             self.bind_err(
                 "source.argument",
@@ -11499,6 +11587,16 @@ F:{d}
                 });
                 tmp
             }
+        };
+        let it_local = if fn_index == close_fn_index {
+            let mut stmts = Vec::new();
+            let local = self.prepare_iterator_call(it_local, span, &mut stmts);
+            for stmt in stmts {
+                self.emit_stmt(stmt);
+            }
+            local
+        } else {
+            it_local
         };
         Some(ResolvedExpr {
             span,
@@ -12872,7 +12970,14 @@ F:{d}
                         } else {
                             None
                         };
-                        let val = self.expr_with_expect(value, elem_vt);
+                        let mut val = self.expr_with_expect(value, elem_vt);
+                        if self.profile.is_auto_language() {
+                            if elem_vt == Some(VT::StrOwned) {
+                                val = Self::own_dynamic_text(val);
+                            } else if let Some(elem) = elem_vt {
+                                retag_literal(&mut val, elem);
+                            }
+                        }
                         let yield_expr = ResolvedExpr {
                             span: *span,
                             vt: VT::Unit,
@@ -14615,7 +14720,11 @@ F:{d}
                     }
                     let is_list_var = matches!(&iter.kind, ast::ExprKind::Var(id) if matches!(self.lookup(&id.name).map(|l| self.locals[l.0].vt), Some(VT::List(_))));
                     if self.profile.is_aggregates() && !is_list_var {
+                        let old_site = self.scoped_iter_site;
+                        self.scoped_iter_site =
+                            matches!(&iter.kind, ast::ExprKind::Call { .. }).then_some(iter.span);
                         let iter_val = self.expr_iterative(iter);
+                        self.scoped_iter_site = old_site;
                         if self.coll.script_errors && iter_val.vt == VT::Nil {
                             self.eval_for_effect(iter_val);
                             self.script_type_error(
@@ -18455,8 +18564,8 @@ F:{d}
                 );
             }
             if recv.vt == VT::I32
-                && name.name == "to"
-                && to_word.is_some_and(|word| vt_of_word(word).is_text())
+                && ((name.name == "to" && to_word.is_some_and(|word| vt_of_word(word).is_text()))
+                    || (name.name == "to_str" && args.is_empty() && to_word.is_none()))
             {
                 return ResolvedExpr {
                     span,
@@ -19708,6 +19817,15 @@ F:{d}
             .cloned()
             .or_else(|| self.sigs.get(&callee.name).cloned());
         if let Some(sig) = callee_sig {
+            if self.coll.scoped_iter_fns.contains(&sig.index)
+                && self.scoped_iter_site != Some(call_span)
+            {
+                self.bind_err(
+                    "source.generator-borrow-escape",
+                    "an iterator with borrowed inputs requires a direct for-in consumer",
+                    call_span,
+                );
+            }
             // PLAN-963（T-08，L-24）：缺席实参在调用者作用域补默认值（每调用一次）。
             self.fill_default_args(
                 &sig.param_names,

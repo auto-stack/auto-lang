@@ -7699,9 +7699,11 @@ impl<'a> Engine<'a> {
                 self.cx.k.type_arg.unwrap_or(u32::MAX),
                 "type-arg-tail",
             ) {
-                let arg = if name.name == "List" && self.cx.profile.is_auto_language() {
-                    // Keep the legacy spelling until binding can distinguish
-                    // inferred legacy storage from explicit List<Str>.
+                let arg = if matches!(name.name.as_str(), "List" | "Iter")
+                    && self.cx.profile.is_auto_language()
+                {
+                    // Collection and stream payloads are owned. Keep the
+                    // legacy spelling for storage normalization in binding.
                     self.classify_word(a, false, true)
                 } else {
                     self.classify_ty_arg(a)
@@ -13595,6 +13597,10 @@ impl GenericExpand {
                 kind: TypeRef::Optional(Box::new(self.ann(inner))),
                 span: a.span,
             },
+            TypeRef::Stream(inner) => TypeAnn {
+                kind: TypeRef::Stream(Box::new(self.ann(inner))),
+                span: a.span,
+            },
             TypeRef::Tuple(elems) => TypeAnn {
                 kind: TypeRef::Tuple(elems.iter().map(|x| self.ann(x)).collect()),
                 span: a.span,
@@ -13815,6 +13821,10 @@ fn subst_ty(a: &TypeAnn, subst: &BTreeMap<String, TypeAnn>) -> TypeAnn {
                 name: name.clone(),
                 args: args.iter().map(|x| subst_ty(x, subst)).collect(),
             },
+            span: a.span,
+        },
+        TypeRef::Stream(inner) => TypeAnn {
+            kind: TypeRef::Stream(Box::new(subst_ty(inner, subst))),
             span: a.span,
         },
         TypeRef::Tuple(elems) => TypeAnn {

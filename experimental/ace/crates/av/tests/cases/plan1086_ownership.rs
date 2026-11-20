@@ -265,3 +265,120 @@ fn main() int {
     );
     assert_released(trace, 2);
 }
+
+// PLAN-1089 uses the same authored AutoDown input for the AV check
+// and the in-process lifecycle observer.
+fn generator_source(case: &str) -> &'static str {
+    let document = include_str!(
+        "../../../../../../crates/auto-lang/test/cases/language/generators/yield-close.case.ad"
+    );
+    let heading = format!("\n## Case: {case}\n");
+    let (_, section) = document.split_once(&heading).expect("generator case");
+    let (_, source) = section.split_once("\n```auto\n").expect("Auto source");
+    source.split_once("\n```").expect("source fence").0
+}
+
+#[test]
+fn plan1089_releases_owned_variants_and_lists_after_two_items() {
+    use ace_av_core::lifecycle::{Act, OwnVia, OwnerKind};
+
+    let module = load(generator_source("payload-owner-early-stop"));
+    let (outcome, trace) =
+        execute_observed(&module, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            outcome,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+    let events = trace.lifecycle.events();
+    for kind in [OwnerKind::Str, OwnerKind::List, OwnerKind::Variant] {
+        let created = events
+            .iter()
+            .filter(|event| {
+                event.act == Act::Own
+                    && event.kind == Some(kind)
+                    && event.via_owned == Some(OwnVia::Created)
+            })
+            .count();
+        assert!(
+            created >= 2,
+            "two independently created {kind:?} owners: {created}"
+        );
+    }
+    assert!(events.iter().any(|event| event.act == Act::End));
+    assert_released(trace, 2);
+}
+
+#[test]
+fn plan1089_provider_cancel_releases_a_suspended_iterator() {
+    #[derive(Default)]
+    struct CancelAfterSecondItem {
+        writes: Vec<Vec<u8>>,
+    }
+
+    impl ConsoleHost for CancelAfterSecondItem {
+        fn retained_bytes(&self) -> usize {
+            0
+        }
+
+        fn write(
+            &mut self,
+            stream: Stream,
+            bytes: &[u8],
+            cancel: &CancelFlag,
+        ) -> Result<(), HostError> {
+            assert_eq!(stream, Stream::Stdout);
+            self.writes.push(bytes.to_vec());
+            if self.writes.len() == 2 {
+                cancel.store(true, Ordering::Relaxed);
+                return Err(HostError::Cancelled);
+            }
+            Ok(())
+        }
+    }
+
+    let module = load_with_caps(
+        generator_source("cancel-during-suspension"),
+        &["console.stdout".into()],
+    );
+    let mut host = CancelAfterSecondItem::default();
+    let (outcome, trace) = execute_sched(
+        &module,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        &mut host,
+    );
+    assert!(matches!(outcome, ExecOutcome::Cancelled), "{outcome:?}");
+    assert_eq!(
+        host.writes,
+        [b"twenty\n".to_vec(), b"twenty-two\n".to_vec()]
+    );
+    assert_eq!(trace.handled_language_errors, 0);
+    assert_released(trace, 2);
+}
+
+#[test]
+fn plan1089_caught_close_error_releases_the_displaced_iterator() {
+    let module = load(generator_source("close-throws-then-terminal"));
+    let (outcome, trace) =
+        execute_observed(&module, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(
+            outcome,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+    // The close driver receives the cleanup error, then the source catch
+    // receives the rethrow. The second close does not reenter a handler.
+    assert_eq!(trace.handled_language_errors, 2);
+    assert_released(trace, 2);
+}

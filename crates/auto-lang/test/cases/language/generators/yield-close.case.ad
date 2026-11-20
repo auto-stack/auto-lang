@@ -1,0 +1,863 @@
+# Generator yield, ownership and close
+
+The AV run checks use the ordinary language source entry. The original VM checks retain their oracles and conditions.
+
+## Case: legacy-22-generator-001-sum
+id: "legacy.22_generator.001_sum"
+entry-mode: "program"
+
+### Auto
+path: "sum.at"
+```auto
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+fn main() {
+    var sum = 0
+    for n in counter() {
+        sum = sum + n
+    }
+    print(sum)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+6
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+6
+```
+
+## Case: legacy-22-generator-002-no-dup
+id: "legacy.22_generator.002_no_dup"
+entry-mode: "program"
+
+### Auto
+path: "no_dup.at"
+```auto
+fn three() ~Iter<int> {
+    yield 10
+    yield 20
+    yield 30
+}
+fn main() {
+    var seen = ""
+    for n in three() {
+        seen = seen + n.to_str() + ","
+    }
+    print(seen)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+10,20,30,
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+10,20,30,
+```
+
+## Case: legacy-22-generator-003-string-yields
+id: "legacy.22_generator.003_string_yields"
+entry-mode: "program"
+
+### Auto
+path: "string_yields.at"
+```auto
+fn words() ~Iter<str> {
+    yield "a"
+    yield "b"
+    yield "c"
+}
+fn main() {
+    var acc = ""
+    for w in words() {
+        acc = acc + w
+    }
+    print(acc)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+abc
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+abc
+```
+
+## Case: legacy-22-generator-004-indirect-return
+id: "legacy.22_generator.004_indirect_return"
+entry-mode: "program"
+
+### Auto
+path: "indirect_return.at"
+```auto
+fn counter() ~Iter<int> {
+    yield 1
+    yield 2
+    yield 3
+}
+
+fn get_counter() ~Iter<int> {
+    return counter()
+}
+
+fn main() {
+    var sum = 0
+    for n in get_counter() {
+        sum = sum + n
+    }
+    print(sum)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+6
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+6
+```
+
+## Case: indirect-generator
+id: "av.parity.1089.indirect-generator"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn counter() ~Iter<int> { yield 1; yield 2; yield 3 }
+fn make() ~Iter<int> { return counter() }
+fn main() int { var n = 0; for x in make() { n = n + x }; return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 6
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+6
+```
+
+## Case: close-finally-once
+id: "av.parity.1089.close-finally-once"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var closed = 0
+fn values() ~Iter<int> {
+ try { yield 19; yield 23 } finally { closed = closed + 1 }
+}
+fn main() int {
+ for n in values() { break }
+ if closed == 1 { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: no-borrow-across-yield
+id: "av.parity.1089.no-borrow-across-yield"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type P { v int }
+fn values(p P) ~Iter<int> { let n = p.v; yield n }
+fn main() int { let p = P(42); var sum = 0; for n in values(p) { sum += n }; return sum }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: yield-neighbor
+id: "av.parity.1089.yield-neighbor"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { yield 42; return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.yield-outside-generator"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: close-throws-then-terminal
+id: "av.parity.1089.close-throws-then-terminal"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(events List<int>) ~Iter<int> {
+ try { yield 40; yield 41 } finally { events.push(2); fail("close!") }
+}
+fn main() int {
+ var events = List<int>.new()
+ var g = seq(events)
+ let initial = g.next() ?? 0
+ try { g.close(); return -1 } catch e { if e != "close!" { return -2 } }
+ try { g.close() } catch e { return -3 }
+ if (g.next() ?? -1) != -1 { return -4 }
+ if events.len() != 1 { return -5 }
+ return initial + events.get(0)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: closed-before-first-next
+id: "av.parity.1089.closed-before-first-next"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(events List<int>) ~Iter<int> {
+ events.push(20)
+ try { yield 40; yield 41 } finally { events.push(2) }
+}
+fn main() int {
+ var events = List<int>.new()
+ var g = seq(events)
+ g.close(); g.close()
+ if (g.next() ?? -1) != -1 || events.len() != 0 { return 0 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: owned-string-drain
+id: "av.parity.1089.owned-string-drain"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn words() ~Iter<Str> { yield "20"; yield "22" }
+fn main() int {
+ var trace = ""
+ for word in words() { trace = trace + word }
+ if trace == "2022" { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: nested-close
+id: "av.parity.1089.nested-close"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(events List<int>) ~Iter<int> {
+ try {
+  try { yield 42 } finally { events.push(1); fail("inner") }
+ } finally { events.push(2) }
+}
+fn main() int {
+ var events = List<int>.new()
+ var g = seq(events)
+ let n = g.next() ?? 0
+ try { g.close(); return -1 } catch e { if e != "inner" { return -2 } }
+ if events.len() != 2 || events.get(0) != 1 || events.get(1) != 2 { return -3 }
+ return n
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: loop-local
+id: "av.parity.1089.loop-local"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq() ~Iter<int> {
+ var i = 0
+ for i < 10 {
+  yield i * 2
+  i += 1
+  if i == 3 { break }
+  if i == 1 { continue }
+  yield i * 3
+ }
+}
+fn main() int {
+ var n = 0
+ for e in seq() { n = n + e }
+ return n + 30
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: module-owned-variant-list
+id: "av.parity.1089.module-owned-variant-list"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.series
+fn main() int {
+ var n = 0
+ for packet in series() {
+  is packet {
+   Values(xs) -> { n = n + xs.get(0) }
+   Empty -> { return -1 }
+  }
+ }
+ return n
+}
+```
+
+#### lib.at
+
+```auto
+enum Packet { Values(List<int>), Empty }
+pub fn series() ~Iter<Packet> {
+ var xs = List<int>.new()
+ xs.push(20)
+ yield Packet.Values(xs)
+ var ys = List<int>.new()
+ ys.push(22)
+ yield Packet.Values(ys)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: borrow-mut-prefix
+id: "av.parity.1089.borrow-mut-prefix"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Tally { value int }
+fn series(mut tally Tally, limit int) ~Iter<int> {
+    tally.value = tally.value + 2
+    let n = tally.value
+    yield n
+    yield limit
+}
+fn main() int {
+    var tally = Tally(18)
+    var sum = 0
+    for n in series(tally.mut, 2) {
+        sum += n
+        if tally.value != 20 { return -1 }
+    }
+    return sum + tally.value
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+
+## Case: borrow-crosses-yield
+id: "av.parity.1089.borrow-crosses-yield"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box { value int }
+fn series(box Box) ~Iter<int> {
+    yield 20
+    yield box.value
+}
+fn main() int {
+    let box = Box(22)
+    for n in series(box) { return n }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.generator-borrow-param"
+message-contains: "used after suspension"
+
+
+## Case: borrow-escapes-frame
+id: "av.parity.1089.borrow-escapes-frame"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box { value int }
+fn series(box Box) ~Iter<int> { yield box.value }
+fn make() ~Iter<int> {
+    let box = Box(42)
+    return series(box)
+}
+fn main() int { return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.generator-borrow-escape"
+message-contains: "direct for-in consumer"
+
+
+## Case: owned-list-items
+id: "av.parity.1089.owned-list-items"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn values() ~Iter<List<Str>> {
+    var first = List<Str>.new()
+    first.push("twenty".clone())
+    yield first
+    var second = List<Str>.new()
+    second.push("twenty-two".clone())
+    yield second
+}
+fn main() int {
+    var it = values()
+    let a = it.next()
+    let b = it.next()
+    let c = it.next()
+    let d = it.next()
+    it.close()
+    let first = is a { Some(xs) -> xs.remove(0) == "twenty"; None -> false }
+    let second = is b { Some(xs) -> xs.remove(0) == "twenty-two"; None -> false }
+    let empty = is c { Some(xs) -> false; None -> true }
+    let empty_again = is d { Some(xs) -> false; None -> true }
+    if first && second && empty && empty_again { return 42 }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+
+## Case: early-break-outer-finally
+id: "av.parity.1089.early-break-outer-finally"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(events List<int>) ~Iter<Str> {
+    try {
+        let before = "kept".clone()
+        yield before.clone()
+        yield before + "!"
+        yield before + "?"
+    } finally {
+        events.push(2)
+    }
+}
+fn main() int {
+    var events = List<int>.new()
+    var n = 0
+    for word in seq(events) {
+        n += word.len()
+        if n == 9 { break }
+    }
+    if n == 9 && events.len() == 1 && events[0] == 2 { return 42 }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+
+## Case: drain-finally-once
+id: "av.parity.1089.drain-finally-once"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(events List<int>) ~Iter<int> {
+    try { yield 19; yield 23 } finally { events.push(9) }
+}
+fn main() int {
+    var events = List<int>.new()
+    var it = seq(events)
+    var n = 0
+    for v in it { n = n + v }
+    it.close()
+    let extra = it.next() ?? 0
+    if events.len() != 1 || events[0] != 9 { return 0 }
+    return n + extra
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: cancel-during-suspension
+id: "av.parity.1089.cancel-during-suspension"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq() ~Iter<Str> {
+    var retained = List<Str>.new()
+    retained.push("twenty".clone())
+    retained.push("twenty-two".clone())
+    yield retained.remove(0)
+    yield retained.remove(0)
+    yield "unexpected-after-cancel".clone()
+}
+fn main() int {
+    var count = 0
+    for text in seq() {
+        print(text)
+        count += 1
+        if count == 2 { break }
+    }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+twenty
+twenty-two
+```
+
+## Case: borrow-before-loop-suspension
+id: "av.parity.1089.borrow-before-loop-suspension"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Number { value int }
+fn series(n Number) ~Iter<int> {
+    let initial = n.value
+    var i = 0
+    for i < 2 {
+        yield initial + i * 2
+        i += 1
+    }
+}
+fn main() int {
+    let n = Number(20)
+    var result = 0
+    for value in series(n) { result += value }
+    return result
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: branch-forwarded-iterator
+id: "av.parity.1089.branch-forwarded-iterator"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn seq(value int) ~Iter<int> {
+    let marker = "x".clone()
+    yield value + marker.len() - 1
+}
+fn choose(move it ~Iter<int>, yes bool) ~Iter<int> {
+    if yes { return it.move }
+    return seq(0)
+}
+fn main() int {
+    let first = seq(42)
+    var var_it = choose(first.move, true)
+    return var_it.next() ?? 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: module-generic-record-items
+id: "av.parity.1089.module-generic-record-items"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.series
+fn main() int {
+    var result = 0
+    for part in series() { result += part.value }
+    return result
+}
+```
+
+#### lib.at
+
+```auto
+type Part<T> { value T }
+pub fn series() ~Iter<Part<int>> {
+    yield Part<int> { value: 19 }
+    yield Part<int> { value: 23 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: payload-owner-early-stop
+id: "av.parity.1089.payload-owner-early-stop"
+tags: ["av-language-parity", "plan-1089"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Entry {
+    Row(List<Str>),
+    Other,
+}
+fn records() ~Iter<Entry> {
+    var first = List<Str>.new()
+    first.push("first".clone())
+    yield Entry.Row(first)
+    var second = List<Str>.new()
+    second.push("second".clone())
+    yield Entry.Row(second)
+    fail("third-next-must-not-run")
+}
+fn main() int {
+    var visits = 0
+    for entry in records() {
+        let word = is entry {
+            Entry.Row(xs) -> xs.remove(0),
+            Entry.Other -> "".clone(),
+        }
+        if visits == 0 && word != "first" { return -1 }
+        if visits == 1 && word != "second" { return -2 }
+        visits += 1
+        if visits == 2 { break }
+    }
+    return 40 + visits
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

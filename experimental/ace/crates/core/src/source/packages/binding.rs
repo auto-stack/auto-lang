@@ -868,6 +868,7 @@ fn bind_package_syntax_inner(
                         t.name.span,
                     ));
                 }
+                Item::Enum(en) if face == Faces::Auto => (en.name.clone(), en.name.span),
                 Item::Enum(en) => {
                     return Err(fail(
                         key,
@@ -894,10 +895,10 @@ fn bind_package_syntax_inner(
             }
             match item {
                 Item::Fn(_) => d.fns.insert(name.name, span),
-                Item::Type(_) => d.types.insert(name.name, span),
+                Item::Type(_) | Item::Enum(_) => d.types.insert(name.name, span),
                 Item::Const(_) => d.consts.insert(name.name, span),
                 Item::Store(_) => d.stores.insert(name.name, span),
-                Item::Enum(_) | Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => unreachable!(),
+                Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => unreachable!(),
             };
         }
         decls.insert(key.clone(), d);
@@ -1372,7 +1373,44 @@ fn bind_package_syntax_inner(
                     item.span.end += offset;
                     program_items.push(Item::Store(item));
                 }
-                Item::Enum(_) => unreachable!("enum rejected above"),
+                Item::Enum(original) => {
+                    let owner = type_symbol(pkg, module, &original.name.name);
+                    let mut item = original.clone();
+                    walker.current_owner.clone_from(&owner);
+                    for arm in &mut item.arms {
+                        if let Some(payload) = &mut arm.payload {
+                            walker.walk_ann(payload)?;
+                            shift_ann(payload, offset);
+                        }
+                        for (name, annotation) in &mut arm.fields {
+                            walker.walk_ann(annotation)?;
+                            sh(&mut name.span, offset);
+                            shift_ann(annotation, offset);
+                        }
+                        sh(&mut arm.name.span, offset);
+                        sh(&mut arm.span, offset);
+                    }
+                    for method in &mut item.methods {
+                        let symbol = format!("{owner}.{}", method.name.name);
+                        walker.current_owner.clone_from(&symbol);
+                        walker.walk_fn(method)?;
+                        binding_walks.insert(symbol.clone());
+                        origins.insert(
+                            symbol,
+                            (pkg.into(), module.into(), format!("{}.{}", original.name.name, method.name.name)),
+                        );
+                        method.owner = Some(Ident {
+                            name: owner.clone(),
+                            span: original.name.span,
+                        });
+                        shift_fn(method, offset);
+                    }
+                    type_origins.insert(owner.clone(), (pkg.into(), module.into(), original.name.name.clone()));
+                    item.name.name = owner;
+                    sh(&mut item.name.span, offset);
+                    sh(&mut item.span, offset);
+                    program_items.push(Item::Enum(item));
+                }
             }
         }
         drop(walker);
@@ -2335,6 +2373,7 @@ impl<'a> Walker<'a> {
                 self.walk_ann(result)?;
                 Ok(())
             }
+            TypeRef::Stream(inner) if self.auto_language => self.walk_ann(inner),
             TypeRef::Optional(_)
             | TypeRef::ResultBang(_)
             | TypeRef::Stream(_)
@@ -2352,7 +2391,9 @@ impl<'a> Walker<'a> {
         // PLAN-946（T-02）：aggregates 面的内建参数化名义类型（`List`/
         // `Result`，PLAN-928 域）不是模块符号——保持原名交 resolver（其
         // 域校验在后；plain/ct 面仍不可达，Generic 在 walk 层已具名拒）。
-        if self.aggregates && matches!(name.name.as_str(), "List" | "Result") {
+        if (self.aggregates && matches!(name.name.as_str(), "List" | "Result"))
+            || (self.auto_language && name.name == "Iter")
+        {
             return Ok(name.name.clone());
         }
         if self.my_decls().types.contains_key(&name.name) {
@@ -2653,6 +2694,24 @@ impl<'a> Walker<'a> {
                         locals: next_locals,
                     });
                     continue;
+                }
+                Stmt::Yield { value, .. } if self.auto_language => {
+                    self.walk_expr(value, &locals)?;
+                }
+                Stmt::AggIsMatch {
+                    scrutinee, arms, ..
+                } if self.auto_language => {
+                    self.walk_expr(scrutinee, &locals)?;
+                    for arm in arms {
+                        let arm_locals = self.walk_match_pattern(&mut arm.pat, &locals)?;
+                        if let Some(guard) = &mut arm.guard {
+                            self.walk_expr(guard, &arm_locals)?;
+                        }
+                        match &mut arm.body {
+                            AggArmBody::Expr(value) => self.walk_expr(value, &arm_locals)?,
+                            AggArmBody::Block(block) => self.walk_block(block, arm_locals)?,
+                        }
+                    }
                 }
                 Stmt::IsMatch { span, .. }
                 | Stmt::ForIn { span, .. }
@@ -3076,12 +3135,17 @@ impl<'a> Walker<'a> {
             ExprKind::IsExpr { scrutinee, arms } => {
                 self.walk_expr(scrutinee, locals)?;
                 for a in arms {
-                    let mut inner_locals = locals.clone();
-                    if let MatchPattern::Variant { bindings, .. } = &a.pat
-                    {
-                        for b in bindings {
-                            inner_locals.insert(b.name.clone());
+                    let inner_locals = if self.auto_language {
+                        self.walk_match_pattern(&mut a.pat, locals)?
+                    } else {
+                        let mut names = locals.clone();
+                        if let MatchPattern::Variant { bindings, .. } = &a.pat {
+                            names.extend(bindings.iter().map(|binding| binding.name.clone()));
                         }
+                        names
+                    };
+                    if let Some(guard) = &mut a.guard {
+                        self.walk_expr(guard, &inner_locals)?;
                     }
                     match &mut a.body {
                         AggArmBody::Block(b) => self.walk_block(b, inner_locals)?,
@@ -3091,6 +3155,21 @@ impl<'a> Walker<'a> {
                 Ok(())
             }
         }
+    }
+
+    fn walk_match_pattern(
+        &self,
+        pattern: &mut MatchPattern,
+        locals: &BTreeSet<String>,
+    ) -> Result<BTreeSet<String>, PackageDiagnostic> {
+        let mut arm_locals = locals.clone();
+        if let MatchPattern::Variant { qual, bindings, .. } = pattern {
+            if let Some(qualifier) = qual {
+                qualifier.name = self.type_name(qualifier)?;
+            }
+            arm_locals.extend(bindings.iter().map(|binding| binding.name.clone()));
+        }
+        Ok(arm_locals)
     }
 
     /// 识别模块前缀形状：`Var(mod)`（同包）或 `Field{Var(pkg), mod}`（跨包）。

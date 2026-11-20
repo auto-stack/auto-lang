@@ -16,5 +16,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/modules/imports-globals.case.ad",
   "language/ownership/borrows-moves.case.ad",
   "language/errors/catch-finally.case.ad",
+  "language/generators/yield-close.case.ad",
 ] }
 ```

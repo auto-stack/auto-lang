@@ -5240,6 +5240,7 @@ impl<'p> Emitter<'p> {
                                         self.profile,
                                         super::SourceProfile::TextRecord
                                             | super::SourceProfile::AgePackage
+                                            | super::SourceProfile::Auto
                                     ) =>
                                 {
                                     "move"

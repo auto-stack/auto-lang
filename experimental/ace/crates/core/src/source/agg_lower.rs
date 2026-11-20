@@ -23,6 +23,7 @@ pub(super) struct GenElemMeta {
     pub rec_idx: usize,
     pub next_fn_index: usize,
     pub close_fn_index: usize,
+    pub retired_fn_index: Option<usize>,
     pub instances: Vec<GenInstanceData>,
 }
 
@@ -39,7 +40,8 @@ pub(super) struct GenInstanceData {
     pub field_map: BTreeMap<usize, (usize, VT, Option<(usize, VT)>)>,
     /// `(suspended_state_id -> index into close_cleanup_blocks)`
     pub close_finally_map: Vec<(i32, usize)>,
-    pub close_cleanup_blocks: Vec<Vec<RStmt>>,
+    pub close_cleanup_blocks: Vec<Vec<RBlock>>,
+    prefix: Option<ScopedPrefix>,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +65,7 @@ pub(super) enum GenStateTerm {
         span: Span,
     },
     Done,
+    Terminated,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -78,7 +81,10 @@ pub(super) struct AggIterRegistry {
 
 impl AggIterRegistry {
     pub fn synth_fn_count(&self) -> usize {
-        self.by_elem.len() * 2
+        self.by_elem
+            .iter()
+            .map(|meta| 2 + usize::from(meta.retired_fn_index.is_some()))
+            .sum()
     }
 }
 
@@ -341,12 +347,57 @@ fn block_returns_iter_value(b: &ast::Block, iter_fns: &BTreeSet<String>) -> bool
     )
 }
 
+fn block_returns_value(body: &ast::Block) -> bool {
+    let mut pending = vec![body];
+    while let Some(block) = pending.pop() {
+        for stmt in &block.stmts {
+            match stmt {
+                ast::Stmt::Return { value, .. } => {
+                    let empty = matches!(&value.kind, ast::ExprKind::TupleLit(items) if items.is_empty())
+                        || matches!(&value.kind, ast::ExprKind::Var(name) if name.name == "None");
+                    if !empty {
+                        return true;
+                    }
+                }
+                ast::Stmt::If { then, els, .. } => {
+                    pending.push(then);
+                    pending.extend(els);
+                }
+                ast::Stmt::While { body, .. }
+                | ast::Stmt::Loop { body, .. }
+                | ast::Stmt::ForIn { body, .. }
+                | ast::Stmt::Hold { body, .. } => pending.push(body),
+                ast::Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } => {
+                    pending.push(body);
+                    pending.extend(catch.iter().map(|clause| &clause.body));
+                    pending.extend(finally);
+                }
+                ast::Stmt::AggIsMatch { arms, .. } => {
+                    pending.extend(arms.iter().filter_map(|arm| match &arm.body {
+                        ast::AggArmBody::Block(body) => Some(body),
+                        ast::AggArmBody::Expr(_) => None,
+                    }));
+                }
+                ast::Stmt::IsMatch { arms, .. } => pending.extend(arms.iter().map(|arm| &arm.body)),
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
 fn expr_is_iter_call(e: &ast::Expr, iter_fns: &BTreeSet<String>) -> bool {
     matches!(&e.kind, ast::ExprKind::Call { callee, .. } if iter_fns.contains(&callee.name))
 }
 
 pub(super) fn collect_agg_iter_records(
     program: &ast::Program,
+    flat: &[&ast::FnItem],
     records: &mut Vec<ResolvedRecord>,
     rec_index: &mut BTreeMap<String, usize>,
     coll: &mut CollTables,
@@ -387,12 +438,22 @@ pub(super) fn collect_agg_iter_records(
                     if let Some(p) = &a.payload {
                         anns.push(p);
                     }
+                    for (_, ty) in &a.fields {
+                        anns.push(ty);
+                    }
                 }
             }
             ast::Item::Const(c) => anns.push(&c.ty),
             ast::Item::Store(s) => anns.push(&s.ty),
             // PLAN-967 `use.rs` frontdoor: no `~Iter<T>` surface in this item.
             ast::Item::UseRs(_) => {}
+        }
+    }
+
+    if coll.ordinary_auto {
+        // Also visit nested functions and enum methods flattened by the resolver.
+        for f in flat {
+            collect_fn_anns(f, &mut anns);
         }
     }
 
@@ -480,78 +541,36 @@ pub(super) fn collect_agg_iter_records(
             rec_idx: ri,
             next_fn_index: 0,
             close_fn_index: 0,
+            retired_fn_index: None,
             instances: Vec::new(),
         });
     }
 
-    // Track generator function indices in `flat` order. Names of every
-    // `~Iter<T>`-returning function/method are collected first so a
-    // yield-less passthrough (`return g()`, legacy `004_indirect_return`) can
-    // be told apart from a real state machine.
-    let mut iter_fns: BTreeSet<String> = BTreeSet::new();
-    for item in &program.items {
-        match item {
-            ast::Item::Fn(f) if stream_elem_type_ann(&f.ret).is_some() => {
-                iter_fns.insert(f.name.name.clone());
-            }
-            ast::Item::Type(t) => {
-                for m in &t.methods {
-                    if stream_elem_type_ann(&m.ret).is_some() {
-                        iter_fns.insert(m.name.name.clone());
-                    }
-                }
-            }
-            _ => {}
+    let iter_fns: BTreeSet<_> = flat
+        .iter()
+        .filter(|f| stream_elem_type_ann(&f.ret).is_some())
+        .map(|f| f.name.name.clone())
+        .collect();
+    for (index, f) in flat.iter().enumerate() {
+        let Some(inner) = stream_elem_type_ann(&f.ret) else {
+            continue;
+        };
+        if !block_has_yield(&f.body)
+            && (block_returns_iter_value(&f.body, &iter_fns)
+                || (coll.ordinary_auto && block_returns_value(&f.body)))
+        {
+            continue;
         }
-    }
-    let mut flat_idx = 0usize;
-    for item in &program.items {
-        match item {
-            ast::Item::Fn(f) => {
-                if let Some(inner) = stream_elem_type_ann(&f.ret) {
-                    let passthrough =
-                        !block_has_yield(&f.body) && block_returns_iter_value(&f.body, &iter_fns);
-                    if !passthrough {
-                        let mut dummy_diags = Vec::new();
-                        let ev = vt_of_ann_coll(
-                            inner,
-                            rec_index,
-                            coll,
-                            &mut dummy_diags,
-                            TypePos::ContainerPayload,
-                        );
-                        if let Some(&meta_idx) = reg.elem_to_meta.get(&ev) {
-                            reg.next_gen_id += 1;
-                            reg.gen_fns.insert(flat_idx, (meta_idx, reg.next_gen_id));
-                        }
-                    }
-                }
-                flat_idx += 1;
-            }
-            ast::Item::Type(t) => {
-                for m in &t.methods {
-                    if let Some(inner) = stream_elem_type_ann(&m.ret) {
-                        let passthrough = !block_has_yield(&m.body)
-                            && block_returns_iter_value(&m.body, &iter_fns);
-                        if !passthrough {
-                            let mut dummy_diags = Vec::new();
-                            let ev = vt_of_ann_coll(
-                                inner,
-                                rec_index,
-                                coll,
-                                &mut dummy_diags,
-                                TypePos::ContainerPayload,
-                            );
-                            if let Some(&meta_idx) = reg.elem_to_meta.get(&ev) {
-                                reg.next_gen_id += 1;
-                                reg.gen_fns.insert(flat_idx, (meta_idx, reg.next_gen_id));
-                            }
-                        }
-                    }
-                    flat_idx += 1;
-                }
-            }
-            _ => {}
+        let elem = vt_of_ann_coll(
+            inner,
+            rec_index,
+            coll,
+            &mut Vec::new(),
+            TypePos::ContainerPayload,
+        );
+        if let Some(&meta_idx) = reg.elem_to_meta.get(&elem) {
+            reg.next_gen_id += 1;
+            reg.gen_fns.insert(index, (meta_idx, reg.next_gen_id));
         }
     }
 
@@ -563,6 +582,7 @@ pub(super) fn register_agg_iter_sigs(
     sigs: &mut BTreeMap<String, FnSig>,
     records: &[ResolvedRecord],
     flat_len: usize,
+    ordinary_auto: bool,
 ) {
     let mut next_idx = flat_len;
     for meta in &mut reg.by_elem {
@@ -573,6 +593,10 @@ pub(super) fn register_agg_iter_sigs(
         next_idx += 1;
         meta.close_fn_index = next_idx;
         next_idx += 1;
+        if ordinary_auto {
+            meta.retired_fn_index = Some(next_idx);
+            next_idx += 1;
+        }
 
         sigs.insert(
             next_name,
@@ -1216,7 +1240,7 @@ fn collect_guard_locals_expr(e: &ResolvedExpr, exclude: &mut BTreeSet<usize>) {
     }
 }
 
-fn remap_locals_expr(e: &mut ResolvedExpr, map: &BTreeMap<usize, LocalRef>) {
+fn visit_local_refs_expr(e: &mut ResolvedExpr, visit: &mut impl FnMut(&mut LocalRef)) {
     let mut stack: Vec<*mut ResolvedExpr> = vec![e as *mut ResolvedExpr];
     while let Some(ptr) = stack.pop() {
         // SAFETY: each AST node pointer is owned exclusively and visited once.
@@ -1226,8 +1250,11 @@ fn remap_locals_expr(e: &mut ResolvedExpr, map: &BTreeMap<usize, LocalRef>) {
             | RExprKind::VariantGuardTest { local: lref, .. }
             | RExprKind::VariantProject { local: lref, .. }
             | RExprKind::BorrowMut { local: lref } => {
-                if let Some(&new_l) = map.get(&lref.0) {
-                    *lref = new_l;
+                visit(lref);
+            }
+            RExprKind::CreateClosure { captures, .. } => {
+                for (local, _) in captures {
+                    visit(local);
                 }
             }
             RExprKind::Binary { lhs, rhs, .. } => {
@@ -1236,6 +1263,7 @@ fn remap_locals_expr(e: &mut ResolvedExpr, map: &BTreeMap<usize, LocalRef>) {
             }
             RExprKind::Unary { operand, .. }
             | RExprKind::Move { inner: operand }
+            | RExprKind::HashExpr { inner: operand, .. }
             | RExprKind::RecordClone { base: operand }
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
@@ -1319,25 +1347,23 @@ fn remap_locals_expr(e: &mut ResolvedExpr, map: &BTreeMap<usize, LocalRef>) {
     }
 }
 
-fn remap_locals_stmts(stmts: &mut [RStmt], map: &BTreeMap<usize, LocalRef>) {
+fn visit_local_refs_stmts(stmts: &mut [RStmt], visit: &mut impl FnMut(&mut LocalRef)) {
     let mut stack: Vec<*mut RStmt> = stmts.iter_mut().map(|s| s as *mut RStmt).collect();
     while let Some(ptr) = stack.pop() {
         // SAFETY: disjoint statement pointers.
         let s = unsafe { &mut *ptr };
         match s {
             RStmt::Let { local, value, .. } | RStmt::Assign { local, value, .. } => {
-                if let Some(&new_l) = map.get(&local.0) {
-                    *local = new_l;
-                }
-                remap_locals_expr(value, map);
+                visit(local);
+                visit_local_refs_expr(value, visit);
             }
             RStmt::Return { value, .. }
             | RStmt::ExprStmt { value, .. }
-            | RStmt::Fail { value, .. } => remap_locals_expr(value, map),
+            | RStmt::Fail { value, .. } => visit_local_refs_expr(value, visit),
             RStmt::If {
                 cond, then, els, ..
             } => {
-                remap_locals_expr(cond, map);
+                visit_local_refs_expr(cond, visit);
                 for ts in &mut then.stmts {
                     stack.push(ts);
                 }
@@ -1348,21 +1374,21 @@ fn remap_locals_stmts(stmts: &mut [RStmt], map: &BTreeMap<usize, LocalRef>) {
                 }
             }
             RStmt::While { cond, body, .. } => {
-                remap_locals_expr(cond, map);
+                visit_local_refs_expr(cond, visit);
                 for bs in &mut body.stmts {
                     stack.push(bs);
                 }
             }
-            RStmt::Loop { body, .. } => {
+            RStmt::Loop { body, unwind, .. } => {
+                if let Some((kind, error)) = unwind {
+                    visit(kind);
+                    visit(error);
+                }
                 for bs in &mut body.stmts {
                     stack.push(bs);
                 }
             }
-            RStmt::EndView { local, .. } => {
-                if let Some(&mapped) = map.get(&local.0) {
-                    *local = mapped;
-                }
-            }
+            RStmt::EndView { local, .. } => visit(local),
             RStmt::Break { .. } | RStmt::Continue { .. } => {}
         }
     }
@@ -1531,7 +1557,7 @@ struct StateBuilder<'a> {
     try_finally_pairs: &'a [(LoopRef, LoopRef)],
     active_fin_loops: Vec<LoopRef>,
     suspended_fin_loops: BTreeMap<i32, Vec<LoopRef>>,
-    fin_loop_stmts: BTreeMap<usize, Vec<RStmt>>,
+    fin_loop_stmts: BTreeMap<usize, RBlock>,
     /// PLAN-965 (F-965-R1-03): the resolver's control-state locals
     /// (`__agg_ck_*` kind / `__agg_ce_*` message). A `fail` inside a `finally`
     /// is lowered to `kind=4` + message, so a replayed close MUST dispatch that
@@ -1713,6 +1739,9 @@ impl<'a> StateBuilder<'a> {
             }
             RStmt::Return { span, .. } => {
                 let sp = *span;
+                if self.coll.ordinary_auto {
+                    out.extend(clear_generator_fields(self.rec_idx, self.records, sp));
+                }
                 out.push(self.set_state_stmt(-1, sp));
                 out.push(RStmt::Return {
                     value: ResolvedExpr {
@@ -1813,6 +1842,56 @@ impl<'a> StateBuilder<'a> {
         out.push(s);
     }
 
+    // Replay a language error recorded by the generator's structured control
+    // lowering. The close driver handles it independently of resource exits.
+    fn emit_close_error(&mut self, span: Span, out: &mut Vec<RStmt>) {
+        if let Some((ck, ce)) = self.ctrl_locals {
+            if self.field_map.contains_key(&ck.0) && self.field_map.contains_key(&ce.0) {
+                let cond = ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: ast::BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(ck),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(4),
+                        }),
+                    },
+                };
+                let fail = RStmt::Fail {
+                    value: ResolvedExpr {
+                        span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(ce),
+                            }),
+                        },
+                    },
+                    span,
+                };
+                let dispatch = RStmt::If {
+                    cond,
+                    then: RBlock {
+                        stmts: vec![fail],
+                        span,
+                    },
+                    els: None,
+                    span,
+                };
+                self.rewrite_non_yield_stmt(dispatch, out);
+            }
+        }
+    }
+
     fn lower_block(
         &mut self,
         cur_idx: usize,
@@ -1827,72 +1906,46 @@ impl<'a> StateBuilder<'a> {
                 } = &stmt
                 {
                     if self.try_finally_pairs.iter().any(|&(_, f)| f == *fl) {
-                        let mut fin_stmts = body.stmts.clone();
-                        if matches!(
-                            fin_stmts.last(),
-                            Some(RStmt::Break { target: Some(t), .. }) if *t == *fl
-                        ) {
-                            fin_stmts.pop();
-                        }
                         let mut fstmts = Vec::new();
-                        for fs in fin_stmts {
-                            self.rewrite_non_yield_stmt(fs, &mut fstmts);
-                        }
-                        // PLAN-965 (F-965-R1-03): a `fail`/`rethrow` raised by
-                        // the finally itself is recorded as control state
-                        // (kind=4 + message) and its trailing `Break` was
-                        // stripped above. Replay the pending-error dispatch so
-                        // the close/explicit-close path propagates it instead
-                        // of silently dropping it.
-                        if let Some((ck, ce)) = self.ctrl_locals {
-                            if self.field_map.contains_key(&ck.0)
-                                && self.field_map.contains_key(&ce.0)
-                            {
-                                let span = body.span;
-                                let cond = ResolvedExpr {
-                                    span,
-                                    vt: VT::Bool,
-                                    kind: RExprKind::Binary {
-                                        op: ast::BinOp::Eq,
-                                        lhs: Box::new(ResolvedExpr {
-                                            span,
+                        if self.coll.ordinary_auto {
+                            // Keep the finally's loop: an explicit fail may
+                            // break out before its last statement.
+                            if let Some((kind, _)) = self.ctrl_locals {
+                                self.rewrite_non_yield_stmt(
+                                    RStmt::Assign {
+                                        local: kind,
+                                        path: Vec::new(),
+                                        value: ResolvedExpr {
+                                            span: body.span,
                                             vt: VT::I32,
-                                            kind: RExprKind::ReadLocal(ck),
-                                        }),
-                                        rhs: Box::new(ResolvedExpr {
-                                            span,
-                                            vt: VT::I32,
-                                            kind: RExprKind::IntLit(4),
-                                        }),
-                                    },
-                                };
-                                let fail = RStmt::Fail {
-                                    value: ResolvedExpr {
-                                        span,
-                                        vt: VT::StrOwned,
-                                        kind: RExprKind::Move {
-                                            inner: Box::new(ResolvedExpr {
-                                                span,
-                                                vt: VT::StrOwned,
-                                                kind: RExprKind::ReadLocal(ce),
-                                            }),
+                                            kind: RExprKind::IntLit(0),
                                         },
+                                        span: body.span,
                                     },
-                                    span,
-                                };
-                                let dispatch = RStmt::If {
-                                    cond,
-                                    then: RBlock {
-                                        stmts: vec![fail],
-                                        span,
-                                    },
-                                    els: None,
-                                    span,
-                                };
-                                self.rewrite_non_yield_stmt(dispatch, &mut fstmts);
+                                    &mut fstmts,
+                                );
+                            }
+                            self.rewrite_non_yield_stmt(stmt.clone(), &mut fstmts);
+                        } else {
+                            let mut fin_stmts = body.stmts.clone();
+                            if matches!(
+                                fin_stmts.last(),
+                                Some(RStmt::Break { target: Some(t), .. }) if *t == *fl
+                            ) {
+                                fin_stmts.pop();
+                            }
+                            for fs in fin_stmts {
+                                self.rewrite_non_yield_stmt(fs, &mut fstmts);
                             }
                         }
-                        self.fin_loop_stmts.insert(fl.0, fstmts);
+                        self.emit_close_error(body.span, &mut fstmts);
+                        self.fin_loop_stmts.insert(
+                            fl.0,
+                            RBlock {
+                                stmts: fstmts,
+                                span: body.span,
+                            },
+                        );
                     }
                 }
                 match &stmt {
@@ -1901,14 +1954,14 @@ impl<'a> StateBuilder<'a> {
                         self.rewrite_non_yield_stmt(stmt, &mut tmp);
                         // rewrite_non_yield_stmt produces `[set_state(-1), return None]`
                         self.states[cur].stmts.extend(tmp);
-                        self.states[cur].term = GenStateTerm::Done;
+                        self.states[cur].term = GenStateTerm::Terminated;
                         return cur;
                     }
                     RStmt::Fail { .. } => {
                         let mut tmp = Vec::new();
                         self.rewrite_non_yield_stmt(stmt, &mut tmp);
                         self.states[cur].stmts.extend(tmp);
-                        self.states[cur].term = GenStateTerm::Done;
+                        self.states[cur].term = GenStateTerm::Terminated;
                         return cur;
                     }
                     RStmt::Break {
@@ -2031,7 +2084,12 @@ impl<'a> StateBuilder<'a> {
                     }
                     cur = after_s;
                 }
-                RStmt::While { mut cond, body, .. } => {
+                RStmt::While {
+                    mut cond,
+                    body,
+                    target,
+                    ..
+                } => {
                     let head_s = self.new_state();
                     let body_s = self.new_state();
                     let after_s = self.new_state();
@@ -2053,13 +2111,8 @@ impl<'a> StateBuilder<'a> {
                         then_state: body_s as i32,
                         else_state: after_s as i32,
                     };
-                    // `While` loops back to `head_s`
-                    self.yield_loops.push((
-                        // Dummy target won't collide because RStmt::While doesn't use target for inner breaks if we check loop_ref; Wait: RStmt::While HAS target!
-                        LoopRef(usize::MAX),
-                        head_s as i32,
-                        after_s as i32,
-                    ));
+                    self.yield_loops
+                        .push((target, head_s as i32, after_s as i32));
                     self.lower_block(body_s, body, Some(head_s as i32));
                     self.yield_loops.pop();
                     cur = after_s;
@@ -2076,6 +2129,146 @@ impl<'a> StateBuilder<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct ScopedPrefix {
+    body: Vec<RStmt>,
+    inputs: BTreeSet<usize>,
+    initialized: BTreeSet<usize>,
+}
+
+pub(super) fn generator_borrow_param(mode: ast::ParamMode, vt: VT) -> bool {
+    mode == ast::ParamMode::Mut
+        || vt == VT::Str
+        || (mode != ast::ParamMode::Move && matches!(vt, VT::Rec(_)))
+}
+
+/// Split the pre-suspension prefix from a scoped generator. Its direct
+/// for-in consumer calls it exactly when it is ready to request the first
+/// item. The resumed state carries only owned values computed by the prefix.
+pub(super) fn extract_scoped_prefix(
+    resolved: &mut ResolvedFn,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<ScopedPrefix> {
+    let inputs: BTreeSet<_> = resolved
+        .locals
+        .iter()
+        .take(resolved.params.len())
+        .enumerate()
+        .filter_map(|(index, decl)| generator_borrow_param(decl.mode, decl.vt).then_some(index))
+        .collect();
+    let name_span = resolved.name_span;
+    let error = |span, message| {
+        Diagnostic::new(Stage::Bind, "source.generator-borrow-param", message, span)
+    };
+    let Some(first_yield) = resolved.body.stmts.iter().position(rstmt_has_yield) else {
+        diags.push(error(name_span, "a scoped generator requires a yield"));
+        return None;
+    };
+    // A direct first yield computes its operand in the borrowed prefix.
+    // A compound step still runs lazily through the ordinary state machine;
+    // only its preceding, suspension-free statements can access the input.
+    let yielded = match &mut resolved.body.stmts[first_yield] {
+        RStmt::ExprStmt {
+            value:
+                ResolvedExpr {
+                    kind: RExprKind::CallIntrinsic { args, .. },
+                    ..
+                },
+            ..
+        } if args.len() == 1 => args.pop(),
+        _ => None,
+    };
+
+    let mut continued = BTreeSet::new();
+    visit_local_refs_stmts(&mut resolved.body.stmts[first_yield..], &mut |local| {
+        continued.insert(local.0);
+    });
+    if let Some(&local) = inputs.intersection(&continued).next() {
+        diags.push(error(
+            resolved.locals[local].span,
+            "borrowed input is used after suspension",
+        ));
+    }
+
+    let mut prefix = ScopedPrefix {
+        body: Vec::new(),
+        inputs,
+        initialized: BTreeSet::new(),
+    };
+    for stmt in &mut resolved.body.stmts[..first_yield] {
+        if let RStmt::Let { local, value, .. } = stmt {
+            if continued.contains(&local.0) {
+                let mut derived_borrow = false;
+                visit_local_refs_expr(value, &mut |local| {
+                    derived_borrow |= prefix.inputs.contains(&local.0)
+                });
+                let borrowed_ty = matches!(value.vt, VT::Str | VT::Rec(_) | VT::Function(_));
+                let explicit_clone = matches!(value.kind, RExprKind::RecordClone { .. });
+                if value.vt == VT::Str || (derived_borrow && borrowed_ty && !explicit_clone) {
+                    diags.push(error(
+                        value.span,
+                        "a view computed from a borrowed input crosses suspension",
+                    ));
+                }
+                prefix.initialized.insert(local.0);
+            }
+        }
+    }
+    prefix.body.extend(resolved.body.stmts.drain(..first_yield));
+    if let Some(mut yielded) = yielded {
+        if matches!(yielded.vt, VT::Str | VT::Rec(_) | VT::Function(_)) {
+            let mut derived_borrow = false;
+            visit_local_refs_expr(&mut yielded, &mut |local| {
+                derived_borrow |= prefix.inputs.contains(&local.0)
+            });
+            if derived_borrow && !matches!(yielded.kind, RExprKind::RecordClone { .. }) {
+                diags.push(error(
+                    yielded.span,
+                    "a borrowed input cannot be yielded as an owner",
+                ));
+            }
+        }
+        let local = LocalRef(resolved.locals.len());
+        let span = yielded.span;
+        let vt = yielded.vt;
+        resolved.locals.push(LocalDecl {
+            name: "__scoped_yield".into(),
+            vt,
+            span,
+            mutable: false,
+            is_param: false,
+            param_index: None,
+            capture_index: None,
+            cell: false,
+            is_capture: false,
+            mode: ast::ParamMode::Default,
+        });
+        let RStmt::ExprStmt {
+            value:
+                ResolvedExpr {
+                    kind: RExprKind::CallIntrinsic { args, .. },
+                    ..
+                },
+            ..
+        } = &mut resolved.body.stmts[0]
+        else {
+            unreachable!("yield checked above")
+        };
+        args.push(ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::ReadLocal(local),
+        });
+        prefix.body.push(RStmt::Let {
+            local,
+            value: yielded,
+            span,
+        });
+        prefix.initialized.insert(local.0);
+    }
+    Some(prefix)
+}
+
 /// Transform a resolved generator `ResolvedFn` into its constructor (`return __ace_iter_T { ... }`),
 /// appending persistent local fields to `records[iter_rec_idx]` and recording its states for
 /// `__ace_iter_next` / `__ace_iter_close`.
@@ -2084,6 +2277,7 @@ pub(super) fn finalize_one_generator(
     meta_idx: usize,
     gen_id: i32,
     try_finally_pairs: &[(LoopRef, LoopRef)],
+    prefix: Option<ScopedPrefix>,
     reg: &mut AggIterRegistry,
     records: &mut [ResolvedRecord],
     coll: &mut CollTables,
@@ -2100,6 +2294,12 @@ pub(super) fn finalize_one_generator(
     let mut field_map: BTreeMap<usize, (usize, VT, Option<(usize, VT)>)> = BTreeMap::new();
     let param_count = resolved_fn.params.len();
     for (li, decl) in resolved_fn.locals.iter().enumerate() {
+        if prefix
+            .as_ref()
+            .is_some_and(|prefix| prefix.inputs.contains(&li))
+        {
+            continue;
+        }
         // Keep guard/mut locals local to each step if they are NOT parameters,
         // otherwise params & ordinary user/control locals persist across yields.
         if li >= param_count && excluded_from_record.contains(&li) {
@@ -2152,6 +2352,13 @@ pub(super) fn finalize_one_generator(
         span: resolved_fn.item_span,
     }];
     let mut step_remap: BTreeMap<usize, LocalRef> = BTreeMap::new();
+    // Reserve a separate index range for the synthetic step locals while
+    // rewriting the source body. A new step-local ID must never be mistaken
+    // for a source local stored in the iterator record.
+    let persistent_base = resolved_fn.locals.len() + 1;
+    for &li in field_map.keys() {
+        step_remap.insert(li, LocalRef(persistent_base + li));
+    }
     for (li, decl) in resolved_fn.locals.iter().enumerate() {
         if !field_map.contains_key(&li) && decl.vt != VT::Unit {
             let new_idx = step_locals.len();
@@ -2176,7 +2383,7 @@ pub(super) fn finalize_one_generator(
             .iter()
             .position(|d| d.name.starts_with("__agg_ce_"));
         match (kind, err) {
-            (Some(k), Some(e)) => Some((LocalRef(k), LocalRef(e))),
+            (Some(k), Some(e)) => step_remap.get(&k).copied().zip(step_remap.get(&e).copied()),
             _ => None,
         }
     };
@@ -2189,15 +2396,23 @@ pub(super) fn finalize_one_generator(
         },
     );
     if !step_remap.is_empty() {
-        remap_locals_stmts(&mut orig_body.stmts, &step_remap);
+        visit_local_refs_stmts(&mut orig_body.stmts, &mut |local| {
+            if let Some(&mapped) = step_remap.get(&local.0) {
+                *local = mapped;
+            }
+        });
     }
 
+    let persistent_fields = field_map
+        .iter()
+        .map(|(&local, &field)| (persistent_base + local, field))
+        .collect();
     let mut builder = StateBuilder {
         st_local,
         rec_idx,
         opt_vt,
         opt_vi,
-        field_map: &field_map,
+        field_map: &persistent_fields,
         coll,
         records,
         temp_locals: &mut step_locals,
@@ -2218,7 +2433,7 @@ pub(super) fn finalize_one_generator(
         let mut cstmts = Vec::new();
         for fl in fin_lrs {
             if let Some(fs) = builder.fin_loop_stmts.get(&fl.0) {
-                cstmts.extend(fs.iter().cloned());
+                cstmts.push(fs.clone());
             }
         }
         if !cstmts.is_empty() {
@@ -2236,6 +2451,7 @@ pub(super) fn finalize_one_generator(
         field_map,
         close_finally_map,
         close_cleanup_blocks,
+        prefix,
     });
 }
 
@@ -2277,7 +2493,12 @@ pub(super) fn build_all_generator_fns(
             } else if let Some((&li, &(_, _, opt_wrap))) =
                 inst.field_map.iter().find(|(_, &(mfi, _, _))| mfi == fi)
             {
-                if li < param_count {
+                if li < param_count
+                    || inst
+                        .prefix
+                        .as_ref()
+                        .is_some_and(|prefix| prefix.initialized.contains(&li))
+                {
                     let read_p = ResolvedExpr {
                         span,
                         vt: gen_fn.locals[li].vt,
@@ -2305,22 +2526,24 @@ pub(super) fn build_all_generator_fns(
             fields.push((rf.name.clone(), val));
         }
         gen_fn.result = VT::Rec(rec_idx);
-        // Keep only params in gen_fn.locals so no unused local slots leak!
-        gen_fn.locals.truncate(param_count);
-        gen_fn.body = RBlock {
-            stmts: vec![RStmt::Return {
-                value: ResolvedExpr {
-                    span,
-                    vt: VT::Rec(rec_idx),
-                    kind: RExprKind::CtorNamed {
-                        rec: rec_idx,
-                        fields,
-                    },
-                },
-                span,
-            }],
-            span,
+        let mut stmts = if let Some(prefix) = &inst.prefix {
+            prefix.body.clone()
+        } else {
+            gen_fn.locals.truncate(param_count);
+            Vec::new()
         };
+        stmts.push(RStmt::Return {
+            value: ResolvedExpr {
+                span,
+                vt: VT::Rec(rec_idx),
+                kind: RExprKind::CtorNamed {
+                    rec: rec_idx,
+                    fields,
+                },
+            },
+            span,
+        });
+        gen_fn.body = RBlock { stmts, span };
     }
 
     // Step 2: Emit `__ace_iter_next` and `__ace_iter_close` per element type in index order
@@ -2331,12 +2554,16 @@ pub(super) fn build_all_generator_fns(
         let rec_name = records[rec_idx].name.clone();
 
         // Build `__ace_iter_next`
-        let next_fn = build_next_fn(meta, &rec_name, rec_vt, records, coll, span);
-        let close_fn = build_close_fn(meta, &rec_name, rec_vt, records, coll, span);
+        let next_fn = build_next_fn(meta, &rec_name, rec_vt, records, coll.ordinary_auto, span);
+        let close_fn = build_close_fn(meta, &rec_name, rec_vt, records, coll.ordinary_auto, span);
         debug_assert_eq!(fns.len(), meta.next_fn_index);
         fns.push(next_fn);
         debug_assert_eq!(fns.len(), meta.close_fn_index);
         fns.push(close_fn);
+        if let Some(index) = meta.retired_fn_index {
+            debug_assert_eq!(fns.len(), index);
+            fns.push(build_retired_fn(meta, &rec_name, records, coll, span));
+        }
     }
 }
 
@@ -2345,7 +2572,7 @@ fn build_next_fn(
     rec_name: &str,
     rec_vt: VT,
     records: &[ResolvedRecord],
-    coll: &mut CollTables,
+    ordinary_auto: bool,
     span: Span,
 ) -> ResolvedFn {
     let rec_idx = meta.rec_idx;
@@ -2523,7 +2750,11 @@ fn build_next_fn(
                         span: *yspan,
                     });
                 }
+                GenStateTerm::Terminated => {}
                 GenStateTerm::Done => {
+                    if ordinary_auto {
+                        stmts.extend(clear_generator_fields(rec_idx, records, span));
+                    }
                     stmts.push(set_state(-1));
                     stmts.push(RStmt::Return {
                         value: none_expr.clone(),
@@ -2581,7 +2812,6 @@ fn build_next_fn(
         }];
     }
 
-    let _ = dummy_expr_for_vt(VT::I32, records, coll, span, 0);
     ResolvedFn {
         name: format!("{rec_name}__next"),
         name_span: span,
@@ -2617,12 +2847,138 @@ fn build_next_fn(
     }
 }
 
+fn iter_field(rec_idx: usize, field: usize, vt: VT, span: Span) -> ResolvedExpr {
+    ResolvedExpr {
+        span,
+        vt,
+        kind: RExprKind::FieldGet {
+            base: Box::new(ResolvedExpr {
+                span,
+                vt: VT::Rec(rec_idx),
+                kind: RExprKind::ReadLocal(LocalRef(0)),
+            }),
+            path: vec![(rec_idx, field)],
+        },
+    }
+}
+
+fn clear_generator_fields(
+    rec_idx: usize,
+    records: &[ResolvedRecord],
+    span: Span,
+) -> impl Iterator<Item = RStmt> + '_ {
+    records[rec_idx]
+        .fields
+        .iter()
+        .enumerate()
+        .skip(2)
+        .filter_map(move |(field_index, field)| {
+            let VT::Variant(option) = field.vt else {
+                return None;
+            };
+            Some(RStmt::Assign {
+                local: LocalRef(0),
+                path: vec![(rec_idx, field_index)],
+                value: ResolvedExpr {
+                    span,
+                    vt: field.vt,
+                    kind: RExprKind::VariantCtor {
+                        variant: option,
+                        disc: 1,
+                        payload: None,
+                    },
+                },
+                span,
+            })
+        })
+}
+
+fn close_state(rec_idx: usize, span: Span) -> RStmt {
+    RStmt::Assign {
+        local: LocalRef(0),
+        path: vec![(rec_idx, 0)],
+        value: ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::IntLit(-1),
+        },
+        span,
+    }
+}
+
+fn close_local(
+    locals: &mut Vec<LocalDecl>,
+    name: &str,
+    vt: VT,
+    mutable: bool,
+    span: Span,
+) -> LocalRef {
+    let local = LocalRef(locals.len());
+    locals.push(LocalDecl {
+        name: name.into(),
+        vt,
+        mutable,
+        is_param: false,
+        param_index: None,
+        capture_index: None,
+        cell: false,
+        is_capture: false,
+        mode: ast::ParamMode::Default,
+        span,
+    });
+    local
+}
+
+/// A finally body may be replayed from more than one suspended state. Give
+/// each replay its own loop IDs while retaining the original break targets.
+fn renumber_replay_loops(
+    stmts: &mut [RStmt],
+    next_loop: &mut usize,
+    active: &mut BTreeMap<usize, LoopRef>,
+) {
+    for stmt in stmts {
+        match stmt {
+            RStmt::Loop { target, body, .. } | RStmt::While { target, body, .. } => {
+                let original = target.0;
+                *target = LoopRef(*next_loop);
+                *next_loop += 1;
+                let outer = active.insert(original, *target);
+                renumber_replay_loops(&mut body.stmts, next_loop, active);
+                if let Some(outer) = outer {
+                    active.insert(original, outer);
+                } else {
+                    active.remove(&original);
+                }
+            }
+            RStmt::If { then, els, .. } => {
+                renumber_replay_loops(&mut then.stmts, next_loop, active);
+                if let Some(els) = els {
+                    renumber_replay_loops(&mut els.stmts, next_loop, active);
+                }
+            }
+            RStmt::Break {
+                target: Some(target),
+                ..
+            }
+            | RStmt::Continue {
+                target: Some(target),
+                ..
+            } => {
+                if let Some(&mapped) = active.get(&target.0) {
+                    *target = mapped;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn build_close_fn(
     meta: &GenElemMeta,
     rec_name: &str,
     rec_vt: VT,
     records: &[ResolvedRecord],
-    _coll: &CollTables,
+    ordinary_auto: bool,
     span: Span,
 ) -> ResolvedFn {
     let rec_idx = meta.rec_idx;
@@ -2641,6 +2997,49 @@ fn build_close_fn(
     }];
     let mut close_stmts: Vec<RStmt> = Vec::new();
     let mut gen_chain: Vec<RStmt> = Vec::new();
+    let mut loop_count = 0;
+    let stored_state = iter_field(rec_idx, 0, VT::I32, span);
+    let (state, unwind) = if ordinary_auto {
+        let previous = close_local(&mut locals, "__closed_state", VT::I32, false, span);
+        let kind = close_local(&mut locals, "__close_kind", VT::I32, true, span);
+        let message = close_local(&mut locals, "__close_message", VT::StrOwned, true, span);
+        close_stmts.extend([
+            RStmt::Let {
+                local: previous,
+                value: stored_state.clone(),
+                span,
+            },
+            RStmt::Let {
+                local: kind,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(0),
+                },
+                span,
+            },
+            RStmt::Let {
+                local: message,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit(String::new()),
+                },
+                span,
+            },
+            close_state(rec_idx, span),
+        ]);
+        (
+            ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::ReadLocal(previous),
+            },
+            Some((kind, message)),
+        )
+    } else {
+        (stored_state.clone(), None)
+    };
     for inst in meta.instances.iter().rev() {
         if inst.close_finally_map.is_empty() {
             continue;
@@ -2651,27 +3050,34 @@ fn build_close_fn(
         }
         let mut state_chain: Vec<RStmt> = Vec::new();
         for &(state_id, bidx) in inst.close_finally_map.iter().rev() {
-            let mut cstmts = inst.close_cleanup_blocks[bidx].clone();
-            if step_offset > 0 {
-                offset_step_locals_stmts(&mut cstmts, step_offset);
+            let mut cstmts = Vec::new();
+            for block in &inst.close_cleanup_blocks[bidx] {
+                let mut body = block.clone();
+                offset_step_locals_stmts(&mut body.stmts, step_offset);
+                if let Some(unwind) = unwind {
+                    renumber_replay_loops(&mut body.stmts, &mut loop_count, &mut BTreeMap::new());
+                    let target = LoopRef(loop_count);
+                    loop_count += 1;
+                    body.stmts.push(RStmt::Break {
+                        target: Some(target),
+                        span: body.span,
+                    });
+                    cstmts.push(RStmt::Loop {
+                        span: body.span,
+                        body,
+                        target,
+                        unwind: Some(unwind),
+                    });
+                } else {
+                    cstmts.append(&mut body.stmts);
+                }
             }
             let cond = ResolvedExpr {
                 span,
                 vt: VT::Bool,
                 kind: RExprKind::Binary {
                     op: ast::BinOp::Eq,
-                    lhs: Box::new(ResolvedExpr {
-                        span,
-                        vt: VT::I32,
-                        kind: RExprKind::FieldGet {
-                            base: Box::new(ResolvedExpr {
-                                span,
-                                vt: rec_vt,
-                                kind: RExprKind::ReadLocal(st_local),
-                            }),
-                            path: vec![(rec_idx, 0)],
-                        },
-                    }),
+                    lhs: Box::new(state.clone()),
                     rhs: Box::new(ResolvedExpr {
                         span,
                         vt: VT::I32,
@@ -2740,53 +3146,49 @@ fn build_close_fn(
         }
     }
     close_stmts.extend(gen_chain);
-    for (fi, rf) in records[rec_idx].fields.iter().enumerate() {
-        if fi >= 2 {
-            if let VT::Variant(opt_vi) = rf.vt {
-                close_stmts.push(RStmt::Assign {
-                    local: st_local,
-                    path: vec![(rec_idx, fi)],
+    close_stmts.extend(clear_generator_fields(rec_idx, records, span));
+    if let Some((kind, message)) = unwind {
+        close_stmts.push(RStmt::If {
+            cond: ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Binary {
+                    op: ast::BinOp::Eq,
+                    lhs: Box::new(ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(kind),
+                    }),
+                    rhs: Box::new(ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(4),
+                    }),
+                },
+            },
+            then: RBlock {
+                span,
+                stmts: vec![RStmt::Fail {
                     value: ResolvedExpr {
                         span,
-                        vt: rf.vt,
-                        kind: RExprKind::VariantCtor {
-                            variant: opt_vi,
-                            disc: 1,
-                            payload: None,
-                        },
+                        vt: VT::StrOwned,
+                        kind: RExprKind::ReadLocal(message),
                     },
                     span,
-                });
-            }
-        }
-    }
-    close_stmts.push(RStmt::Assign {
-        local: st_local,
-        path: vec![(rec_idx, 0)],
-        value: ResolvedExpr {
+                }],
+            },
+            els: None,
             span,
-            vt: VT::I32,
-            kind: RExprKind::IntLit(-1),
-        },
-        span,
-    });
+        });
+    } else {
+        close_stmts.push(close_state(rec_idx, span));
+    }
     let already_closed = ResolvedExpr {
         span,
         vt: VT::Bool,
         kind: RExprKind::Binary {
             op: ast::BinOp::Ne,
-            lhs: Box::new(ResolvedExpr {
-                span,
-                vt: VT::I32,
-                kind: RExprKind::FieldGet {
-                    base: Box::new(ResolvedExpr {
-                        span,
-                        vt: rec_vt,
-                        kind: RExprKind::ReadLocal(st_local),
-                    }),
-                    path: vec![(rec_idx, 0)],
-                },
-            }),
+            lhs: Box::new(stored_state),
             rhs: Box::new(ResolvedExpr {
                 span,
                 vt: VT::I32,
@@ -2823,6 +3225,62 @@ fn build_close_fn(
                     span,
                 },
             ],
+            span,
+        },
+        loop_count,
+        used_intrinsics: BTreeSet::new(),
+        receiver: ast::Receiver::Free,
+        owner_rec: None,
+        owner_var: None,
+    }
+}
+
+/// The terminal value installed in the caller before a fallible operation
+/// on an owned iterator that may unwind across a write-back call.
+fn build_retired_fn(
+    meta: &GenElemMeta,
+    name: &str,
+    records: &[ResolvedRecord],
+    coll: &CollTables,
+    span: Span,
+) -> ResolvedFn {
+    let rec = meta.rec_idx;
+    let vt = VT::Rec(rec);
+    let fields = records[rec]
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let value = if index == 0 {
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::IntLit(-1),
+                }
+            } else {
+                dummy_expr_for_vt(field.vt, records, coll, span, 0)
+            };
+            (field.name.clone(), value)
+        })
+        .collect();
+    ResolvedFn {
+        name: format!("{name}__retired"),
+        name_span: span,
+        item_span: span,
+        params: Vec::new(),
+        param_names: Vec::new(),
+        param_modes: Vec::new(),
+        result: vt,
+        locals: Vec::new(),
+        body: RBlock {
+            stmts: vec![RStmt::Return {
+                value: ResolvedExpr {
+                    span,
+                    vt,
+                    kind: RExprKind::CtorNamed { rec, fields },
+                },
+                span,
+            }],
             span,
         },
         loop_count: 0,
