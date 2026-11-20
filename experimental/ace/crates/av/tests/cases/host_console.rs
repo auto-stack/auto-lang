@@ -51,14 +51,14 @@ fn av_console_entry_selection_executes_named_entry_and_checks_signature() {
 fn av_console_owned_front_door_runs_named_main_and_script_entries() {
     let src = "fn helper() int { print(99); return 11 }\nfn main() int { print(7); return 42 }";
     for (src, entry, stdout, value) in [
-        (src, "d_helper", b"99\n".as_slice(), Value::I32(11)),
-        (src, "d_main", b"7\n".as_slice(), Value::I32(42)),
-        ("print(7)", "d_main", b"7\n".as_slice(), Value::Unit),
+        (src, "d_helper", b"99\n".as_slice(), Some(11)),
+        (src, "d_main", b"7\n".as_slice(), Some(42)),
+        ("print(7)", "d_main", b"7\n".as_slice(), None),
         (
             "fn main() void { print(7); 42 }",
             "d_main",
             b"7\n".as_slice(),
-            Value::Unit,
+            None,
         ),
     ] {
         let c = ace_core::source::compile_host_console_source(src, "entry.at", &[]).unwrap();
@@ -77,10 +77,14 @@ fn av_console_owned_front_door_runs_named_main_and_script_entries() {
             &mut cap,
         )
         .unwrap();
-        assert!(
-            matches!(out, ExecOutcome::Success { value: ref actual, .. } if *actual == value),
-            "{out:?}, expected {value:?}"
-        );
+        let ExecOutcome::Success { value: actual, .. } = out else {
+            panic!("expected successful execution, got {out:?}");
+        };
+        match (actual, value) {
+            (Value::Unit, None) => {}
+            (Value::I32(actual), Some(expected)) => assert_eq!(actual, expected),
+            (actual, expected) => panic!("got {actual:?}, expected {expected:?}"),
+        }
         assert_eq!(cap.stdout, stdout);
     }
     // The inherited text/owned API still lets its callers choose a helper.

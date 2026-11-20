@@ -8,6 +8,14 @@ use crate::atom_text::Span;
 
 use super::ast::{self, AggArmBody, Arg, ClosureBody, Expr, ExprKind, MatchPattern, Stmt};
 
+// A unary chain introduces no scope or capture before its innermost operand.
+fn innermost_unary_operand(mut expr: &Expr) -> &Expr {
+    while let ExprKind::Unary { operand, .. } = &expr.kind {
+        expr = operand;
+    }
+    expr
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct CaptureUse {
     pub name: String,
@@ -137,7 +145,13 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(rhs, outer_locals, scopes, uses, by_name);
             }
             ExprKind::Unary { operand, .. } => {
-                visit_expr(operand, outer_locals, scopes, uses, by_name)
+                visit_expr(
+                    innermost_unary_operand(operand),
+                    outer_locals,
+                    scopes,
+                    uses,
+                    by_name,
+                )
             }
             ExprKind::Field { base, .. } => visit_expr(base, outer_locals, scopes, uses, by_name),
             ExprKind::CtorNamed { fields, .. } => {
@@ -514,7 +528,9 @@ pub(crate) fn scan_shared_capture_cells(
                 visit_expr(lhs, scopes, shared);
                 visit_expr(rhs, scopes, shared);
             }
-            ExprKind::Unary { operand, .. } => visit_expr(operand, scopes, shared),
+            ExprKind::Unary { operand, .. } => {
+                visit_expr(innermost_unary_operand(operand), scopes, shared)
+            }
             ExprKind::Field { base, .. } => visit_expr(base, scopes, shared),
             ExprKind::CtorNamed { fields, .. } => {
                 for field in fields {
