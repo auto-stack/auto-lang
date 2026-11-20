@@ -3142,6 +3142,16 @@ impl Verifier {
                     hir::ExprKind::TextLen { operand } => {
                         len_consumed.insert(operand.0);
                     }
+                    hir::ExprKind::TextClone { operand } => {
+                        // Lowering can copy a whole text element directly from
+                        // its checked list place into an independent owner.
+                        if matches!(
+                            body.exprs[operand.0 as usize].kind,
+                            hir::ExprKind::ListGet { .. }
+                        ) {
+                            len_consumed.insert(operand.0);
+                        }
+                    }
                     _ => {}
                 }
             }

@@ -198,8 +198,30 @@ pub fn compile_language_source(
     // method surface dispatches to these REAL public functions (same
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
-    let grafted = graft_stdlib_list(src);
-    let parts = compile_parts_with(&grafted, module_path, capabilities, SourceProfile::Auto)?;
+    let grafted = graft_stdlib_text(src, graft_stdlib_list(src));
+    let profile = SourceProfile::Auto;
+    let parts = if grafted.len() == src.len() {
+        compile_parts_with(src, module_path, capabilities, profile)?
+    } else {
+        // A script consumes its top-level statement tail. Project the
+        // appended declarations separately, preserving user source spans.
+        let mut program = super::parse_program_with(src, profile).map_err(|d| vec![d])?;
+        let helpers =
+            super::parse_program_with(&grafted[src.len()..], profile).map_err(|mut d| {
+                d.span.start += src.len();
+                d.span.end += src.len();
+                vec![d]
+            })?;
+        for mut item in helpers.items {
+            let super::ast::Item::Fn(helper) = &mut item else {
+                unreachable!("ordinary standard library graft contains only functions");
+            };
+            super::cst::shift_fn_item(helper, src.len());
+            program.items.push(item);
+        }
+        super::infer::complete(&mut program)?;
+        compile_program_parts(&program, &grafted, module_path, capabilities, profile)?
+    };
     let checked = crate::verify::verify_closures(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::AUTO_SOURCE_PROFILE,
@@ -254,6 +276,10 @@ fn needs_stdlib_list_graft(src: &str) -> bool {
 /// check) into the mangled namespace. Pure text transform over frozen
 /// bytes — verified byte-stable by the 1082 unit test.
 fn mangle_stdlib_list(src: &str) -> String {
+    mangle_stdlib_functions(src, STDLIB_LIST_FNS, STDLIB_LIST_MANGLE)
+}
+
+fn mangle_stdlib_functions(src: &str, functions: &[&str], prefix: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len() + 256);
     let mut i = 0usize;
@@ -278,13 +304,14 @@ fn mangle_stdlib_list(src: &str) -> String {
                 // in a single module) — drop the marker from the graft.
                 continue;
             }
-            if call_shaped && !prev_dot && !prev_word && STDLIB_LIST_FNS.contains(&word) {
-                out.push_str(STDLIB_LIST_MANGLE);
+            if call_shaped && !prev_dot && !prev_word && functions.contains(&word) {
+                out.push_str(prefix);
             }
             out.push_str(word);
         } else {
-            out.push(b as char);
-            i += 1;
+            let ch = src[i..].chars().next().expect("character boundary");
+            out.push(ch);
+            i += ch.len_utf8();
         }
     }
     out
@@ -297,7 +324,36 @@ fn graft_stdlib_list(src: &str) -> String {
     let mangled = mangle_stdlib_list(STDLIB_ASM_LIST_AT);
     format!("{src}
 {mangled}
-")
+"
+    )
+}
+
+const STDLIB_ASM_TEXT_AT: &str = include_str!("../../../../../../stdlib/ace/asm/text.at");
+pub(super) const STDLIB_TEXT_MANGLE: &str = "__std_text_";
+pub(super) const STDLIB_TEXT_FIND: &str = "__std_text_find";
+
+fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
+    if [".find(", ".trim(", ".split(", ".substr("]
+        .iter()
+        .any(|name| user_source.contains(name))
+    {
+        let functions: Vec<_> = STDLIB_ASM_TEXT_AT
+            .lines()
+            .filter_map(|line| {
+                line.trim_start_matches("pub ")
+                    .strip_prefix("fn ")?
+                    .split_once('(')
+                    .map(|(name, _)| name)
+            })
+            .collect();
+        src.push('\n');
+        src.push_str(&mangle_stdlib_functions(
+            STDLIB_ASM_TEXT_AT,
+            &functions,
+            STDLIB_TEXT_MANGLE,
+        ));
+    }
+    src
 }
 
 #[cfg(test)]

@@ -7181,6 +7181,20 @@ impl<'a> Engine<'a> {
     /// `pos`：Ret 位在 record 面收**任意** ident（含 str/Str/char——旧
     /// fn_item_tail 的名义分支）；param/field/let 注解位先做文本词拒绝。
     fn classify_word(&mut self, node: u32, ret_pos: bool, param_pos: bool) -> TypeAnn {
+        self.classify_word_at(node, ret_pos, param_pos, false)
+    }
+
+    fn classify_storage_word(&mut self, node: u32) -> TypeAnn {
+        self.classify_word_at(node, false, false, true)
+    }
+
+    fn classify_word_at(
+        &mut self,
+        node: u32,
+        ret_pos: bool,
+        param_pos: bool,
+        stored: bool,
+    ) -> TypeAnn {
         // PLAN-962（L-15）：tuple 类型（ann 位的 tuple-ty 子节点承载）。
         if let Some(tt) = self.cx.field_child(node, "tuple") {
             let span = self.cx.span_of(tt);
@@ -7309,6 +7323,11 @@ impl<'a> Engine<'a> {
                     return int(TypeWord::Str)
                 }
                 "str" if param_pos && self.cx.profile.is_aggregates() => return int(TypeWord::Str),
+                // The ordinary face accepts the legacy spelling at owned
+                // storage positions. Plain parameter/result str still borrows.
+                "str" if stored && self.cx.profile.is_auto_language() => {
+                    return int(TypeWord::StrOwned)
+                }
                 "Str" => return int(TypeWord::StrOwned),
                 "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
                 "str" | "char" => {
@@ -7678,7 +7697,14 @@ impl<'a> Engine<'a> {
                 self.cx.k.type_arg.unwrap_or(u32::MAX),
                 "type-arg-tail",
             ) {
-                args.push(self.classify_ty_arg(a));
+                let arg = if name.name == "List" && self.cx.profile.is_auto_language() {
+                    // Keep the legacy spelling until binding can distinguish
+                    // inferred legacy storage from explicit List<Str>.
+                    self.classify_word(a, false, true)
+                } else {
+                    self.classify_ty_arg(a)
+                };
+                args.push(arg);
             }
         }
         TypeAnn {
@@ -7690,7 +7716,7 @@ impl<'a> Engine<'a> {
     /// PLAN-928（T-03）：`?T` 可选糖 → `TypeRef::Optional`。
     fn project_optional_ty(&mut self, node: u32) -> TypeAnn {
         let inner = match self.cx.field_child(node, "inner") {
-            Some(i) => self.classify_ty_arg(i),
+            Some(i) => self.classify_storage_word(i),
             None => self.classify_word(node, false, false),
         };
         TypeAnn {
@@ -7837,11 +7863,8 @@ impl<'a> Engine<'a> {
                         )
                     });
                 }
-                let ty = self.classify_word(
-                    self.cx.field_child(c, "ty").expect("field ty"),
-                    false,
-                    false,
-                );
+                let ty =
+                    self.classify_storage_word(self.cx.field_child(c, "ty").expect("field ty"));
                 let span = fname.span.join(ty.span);
                 if seen.contains(&fname.name) {
                     let (f, t) = (fname.name.clone(), name.name.clone());
@@ -10228,6 +10251,32 @@ impl<'a> Engine<'a> {
                 span,
                 kind: ExprKind::Propagate {
                     inner: Box::new(recv),
+                },
+            };
+        }
+        if let Some(range) = self.cx.field_child(step, "slice_range") {
+            let range_span = self.cx.span_of(range);
+            let start = self
+                .cx
+                .field_child(step, "slice_start")
+                .map(|node| self.project_expr_sync(node))
+                .unwrap_or(Expr {
+                    span: range_span,
+                    kind: ExprKind::IntLit(0),
+                });
+            let mut args = vec![Arg::Pos(start)];
+            if let Some(end) = self.cx.field_child(step, "slice_end") {
+                args.push(Arg::Pos(self.project_expr_sync(end)));
+            }
+            return Expr {
+                span: recv.span.join(self.cx.span_of(step)),
+                kind: ExprKind::MethodCall {
+                    recv: Box::new(recv),
+                    name: Ident {
+                        name: "slice".into(),
+                        span: range_span,
+                    },
+                    args,
                 },
             };
         }

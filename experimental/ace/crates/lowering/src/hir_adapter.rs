@@ -3593,7 +3593,8 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
             hir::TypeUse::Builtin(_) => false,
             hir::TypeUse::Ref(e) => {
                 match self.hir_module.types.get(e.0 as usize).map(|t| &t.kind) {
-                    Some(hir::TypeKind::Variant { .. })
+                    Some(hir::TypeKind::StrOwned)
+                    | Some(hir::TypeKind::Variant { .. })
                     | Some(hir::TypeKind::Closure(_))
                     | Some(hir::TypeKind::Function(_))
                     | Some(hir::TypeKind::Object { .. }) => true,

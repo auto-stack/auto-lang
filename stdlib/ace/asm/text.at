@@ -169,6 +169,19 @@ fn find_at(s Str, sub Str, i int) ?int {
     return find_at(s, sub, i + 1)
 }
 
+// Legacy substr uses a length, clamped to the remaining scalar count.
+pub fn substr(s Str, start int, count int) Str {
+    let n = s.len()
+    if (start < 0 || start >= n || count <= 0) {
+        return ""
+    }
+    let remaining = n - start
+    if (count > remaining) {
+        return s.slice(start, n).clone()
+    }
+    return s.slice(start, start + count).clone()
+}
+
 pub fn reverse(s Str) Str {
     return rev_at(s, 0, "")
 }

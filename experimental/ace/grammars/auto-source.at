@@ -2803,6 +2803,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
             // PLAN-982：配置文档也要能读对象字段 `k["heap"]`（物化层把它发射成
             // `cfg_super_put`，不需要 Str 返回面）。
+            alt(profiles: [auto, auto-packages]) {
+                lbracket(same-line: true)
+                opt(profiles: [auto, auto-packages]) { expr(field: "slice_start") }
+                dotdot(field: "slice_range")
+                opt(profiles: [auto, auto-packages]) { expr(field: "slice_end") }
+                rbracket() {}
+            }
             alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }

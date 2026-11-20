@@ -1081,6 +1081,7 @@ pub struct SchedTaskType {
 
 #[derive(Default)]
 pub struct CollTables {
+    ordinary_auto: bool,
     script_errors: bool,
     /// PLAN-968: the scheduler task type table (scheduler face only).
     pub sched_tasks: Vec<SchedTaskType>,
@@ -2199,6 +2200,7 @@ fn resolve_detailed_in_mode(
     coll.script_errors = script_errors;
     // PLAN-962: the aggregates surface widens the collections admission.
     coll.aggregates_admission = surface.is_aggregates();
+    coll.ordinary_auto = surface.is_auto_language();
     let is_coll = surface.is_collections();
 
     // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
@@ -4418,6 +4420,7 @@ pub(crate) fn recheck_swap_with_supply(
         let mut c2 = CollTables::default();
         c2.lists = env.program.lists.clone();
         c2.aggregates_admission = env.profile.is_aggregates();
+        c2.ordinary_auto = env.profile.is_auto_language();
         let names2: Vec<(String, usize)> = env
             .program
             .variants
@@ -4486,6 +4489,7 @@ pub(crate) fn recheck_swap_with_supply(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.ordinary_auto = env.profile.is_auto_language();
     coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
@@ -4596,6 +4600,7 @@ pub(crate) fn resolve_lambda_in_context(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.ordinary_auto = env.profile.is_auto_language();
     coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
@@ -4639,9 +4644,13 @@ pub(crate) fn resolve_lambda_in_context(
             scopes: vec![Scope {
                 names: BTreeMap::new(),
                 views: BTreeMap::new(),
+                text_mut_aliases: BTreeMap::new(),
             }],
             declared_names: BTreeSet::new(),
             fn_result: site.result,
+            legacy_text_result: false,
+            legacy_text_lists: BTreeSet::new(),
+            legacy_text_find_results: BTreeSet::new(),
             loop_stack: Vec::new(),
             loop_count: 0,
             used_intrinsics: BTreeSet::new(),
@@ -4828,6 +4837,7 @@ pub(crate) fn resolve_owner_in_env(
     coll.lists = env.program.lists.clone();
     coll.function_types = env.program.function_types.clone();
     coll.aggregates_admission = env.profile.is_aggregates();
+    coll.ordinary_auto = env.profile.is_auto_language();
     coll.tuples = env.program.tuples.clone();
     let names: Vec<(String, usize)> = env
         .program
@@ -5556,6 +5566,12 @@ pub(crate) enum TypePos {
 /// [`TypePos`].
 pub(crate) const INFERRED_OBJECT_TYPE: &str = "<inferred-object>";
 
+fn is_legacy_text_list(ann: &ast::TypeAnn) -> bool {
+    matches!(&ann.kind, ast::TypeRef::Generic { name, args }
+        if name.name == "List"
+            && matches!(args.as_slice(), [ast::TypeAnn { kind: ast::TypeRef::Builtin(TypeWord::Str), .. }]))
+}
+
 fn vt_of_ann_coll(
     ann: &ast::TypeAnn,
     rec_index: &BTreeMap<String, usize>,
@@ -5716,6 +5732,11 @@ fn vt_of_ann_coll(
                         );
                 }
                 let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                let elem = if coll.ordinary_auto && elem == VT::Str {
+                    VT::StrOwned
+                } else {
+                    elem
+                };
                 match elem {
                     // PLAN-962: the aggregates surface admits nested List
                     // (the arena node graph is depth-free); the frozen 822
@@ -5974,6 +5995,8 @@ struct Scope {
     /// misses; any use other than a field path / `.len()` is
     /// `source.view-escape`.
     views: BTreeMap<String, ViewBinding>,
+    /// A text writeback target, resolved lexically and never stored as a value.
+    text_mut_aliases: BTreeMap<String, LocalRef>,
 }
 
 /// One owned-element iteration binding (PLAN-864 contract C7).
@@ -6049,6 +6072,9 @@ struct FnResolver<'a, 's> {
     declared_names: BTreeSet<String>,
     /// Result type of the function being resolved (retag context).
     fn_result: VT,
+    legacy_text_result: bool,
+    legacy_text_lists: BTreeSet<LocalRef>,
+    legacy_text_find_results: BTreeSet<LocalRef>,
     /// PLAN-968: the scheduler surface side-table (scheduler face only).
     sched: Option<&'a super::sched_desugar::SchedSurface>,
     loop_stack: Vec<LoopRef>,
@@ -6303,9 +6329,13 @@ fn resolve_fn_reuse<'a, 's>(
         scopes: vec![Scope {
             names: BTreeMap::new(),
             views: BTreeMap::new(),
+            text_mut_aliases: BTreeMap::new(),
         }],
         declared_names: BTreeSet::new(),
         fn_result,
+        legacy_text_result: surface.is_auto_language() && is_legacy_text_list(&f.ret),
+        legacy_text_lists: BTreeSet::new(),
+        legacy_text_find_results: BTreeSet::new(),
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
@@ -7027,8 +7057,102 @@ F:{d}
             if let Some(l) = scope.names.get(name) {
                 return Some(*l);
             }
+            if scope.text_mut_aliases.contains_key(name) {
+                return None;
+            }
         }
         None
+    }
+
+    fn lookup_text_mut_alias(&self, name: &str) -> Option<LocalRef> {
+        for scope in self.scopes.iter().rev() {
+            if scope.names.contains_key(name) || scope.views.contains_key(name) {
+                return None;
+            }
+            if let Some(root) = scope.text_mut_aliases.get(name) {
+                return Some(*root);
+            }
+        }
+        None
+    }
+
+    fn bind_text_mut_alias(&mut self, alias: &ast::Ident, root: LocalRef, span: Span) {
+        if !self.locals[root.0].mutable {
+            self.bind_err("source.immutable", "text .mut needs a mutable owner", span);
+            return;
+        }
+        let scope = self.scopes.last_mut().expect("binding scope");
+        if scope.names.contains_key(&alias.name) || scope.text_mut_aliases.contains_key(&alias.name)
+        {
+            self.bind_err(
+                "source.duplicate",
+                format!(
+                    "local {} is declared more than once in this block",
+                    alias.name
+                ),
+                alias.span,
+            );
+            return;
+        }
+        scope.text_mut_aliases.insert(alias.name.clone(), root);
+        self.declared_names.insert(alias.name.clone());
+    }
+
+    fn resolve_text_append(
+        &mut self,
+        root: LocalRef,
+        recv: &Expr,
+        args: &[Arg],
+        span: Span,
+    ) -> ResolvedExpr {
+        let [Arg::Pos(arg)] = args else {
+            self.bind_err(
+                "source.type-mismatch",
+                "text append expects one positional text argument",
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            };
+        };
+        let value = self.expr_iterative(arg);
+        if !value.vt.is_text() {
+            self.bind_err(
+                "source.type-mismatch",
+                "text append expects a text argument",
+                value.span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            };
+        }
+        self.emit_stmt(RStmt::Assign {
+            local: root,
+            path: Vec::new(),
+            value: ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(ResolvedExpr {
+                        span: recv.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::ReadLocal(root),
+                    }),
+                    rhs: Box::new(value),
+                },
+            },
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::Unit,
+            kind: RExprKind::Unit,
+        }
     }
 
     /// PLAN-864: view-binding lookup (owned-element for-in bindings).
@@ -7472,6 +7596,7 @@ F:{d}
             vec![Scope {
                 names: BTreeMap::new(),
                 views: BTreeMap::new(),
+                text_mut_aliases: BTreeMap::new(),
             }],
         );
         let old_declared = std::mem::replace(&mut self.declared_names, BTreeSet::new());
@@ -8423,16 +8548,19 @@ F:{d}
             return None;
         };
         let RExprKind::VariantCtor {
-            variant,
+            variant: empty_variant,
             disc,
             payload: None,
         } = empty.kind
         else {
             return None;
         };
-        let declaration = &self.coll.variants[variant];
-        if value.vt != VT::Variant(variant)
-            || declaration.name != "Option"
+        let VT::Variant(variant) = value.vt else {
+            return None;
+        };
+        let declaration = &self.coll.variants[empty_variant];
+        if declaration.name != "Option"
+            || self.coll.variants[variant].name != "Option"
             || declaration
                 .arms
                 .get(disc as usize)
@@ -10199,6 +10327,7 @@ F:{d}
             self.scopes.push(Scope {
                 names: BTreeMap::new(),
                 views: BTreeMap::new(),
+                text_mut_aliases: BTreeMap::new(),
             });
             let mut prefix_stmts = Vec::new();
             // PLAN-1083: multi-binding destructuring — the payload projects
@@ -10789,6 +10918,7 @@ F:{d}
             self.scopes.push(Scope {
                 names: BTreeMap::new(),
                 views: BTreeMap::new(),
+                text_mut_aliases: BTreeMap::new(),
             });
             let mut rethrow_local = err_l;
             if let Some(bind_ident) = &cc.bind {
@@ -11152,6 +11282,7 @@ F:{d}
         self.scopes.push(Scope {
             names: BTreeMap::new(),
             views: BTreeMap::new(),
+            text_mut_aliases: BTreeMap::new(),
         });
         let elem_l = LocalRef(self.locals.len());
         self.locals.push(LocalDecl {
@@ -11367,6 +11498,26 @@ F:{d}
     /// binding, argument, return, store) is a view escape.
     fn is_whole_elem_view(e: &ResolvedExpr) -> bool {
         matches!(&e.kind, RExprKind::ElemView { path, .. } if path.is_empty())
+    }
+
+    fn clone_text_element(value: ResolvedExpr) -> ResolvedExpr {
+        if value.vt == VT::StrOwned && Self::is_whole_elem_view(&value) {
+            return Self::clone_owned_text(value);
+        }
+        value
+    }
+
+    fn clone_owned_text(value: ResolvedExpr) -> ResolvedExpr {
+        ResolvedExpr {
+            span: value.span,
+            vt: VT::StrOwned,
+            kind: RExprKind::Method {
+                recv: Box::new(value),
+                method: BuiltinMethod::Clone,
+                to: None,
+                args: Vec::new(),
+            },
+        }
     }
 
     fn reject_elem_view_use(&mut self, e: &ResolvedExpr, what: &str) {
@@ -11881,6 +12032,19 @@ F:{d}
         match name.name.as_str() {
             "push" if rargs.len() == 1 => {
                 let mut value = rargs.remove(0).value;
+                // A legacy text storage list copies the source string at
+                // this store. The explicit List<Str> path retains its move rule.
+                if elem == VT::StrOwned
+                    && matches!(list.kind, RExprKind::ReadLocal(local) if self.legacy_text_lists.contains(&local))
+                {
+                    value = match value.vt {
+                        VT::Str => Self::own_dynamic_text(value),
+                        VT::StrOwned if matches!(value.kind, RExprKind::ReadLocal(_)) => {
+                            Self::clone_owned_text(value)
+                        }
+                        _ => value,
+                    };
+                }
                 self.check_push_value(&elem, &mut value, name.span);
                 mk(
                     VT::Unit,
@@ -12049,12 +12213,127 @@ F:{d}
         }
     }
 
+    fn resolve_array_literal(
+        &mut self,
+        elems: &[Expr],
+        span: Span,
+        // Text views become independent owners only in the list being
+        // directly published as the interactive script result.
+        publish_script_result: bool,
+    ) -> ResolvedExpr {
+        // PLAN-1082: rvalue admission is the ORDINARY (auto) face
+        // only; the frozen narrow profiles keep the 962 init-only
+        // contract (`source.array-lit-position`).
+        if !self.profile.is_auto_language() {
+            self.bind_err(
+                "source.array-lit-position",
+                "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
+                    .to_string(),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        }
+        if elems.is_empty() {
+            self.bind_err(
+                "source.array-lit-empty",
+                "an empty array literal has no element type; write List<T>.new() instead"
+                    .to_string(),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        }
+        let mut rs = Vec::with_capacity(elems.len());
+        for el in elems {
+            let value = self.expr_iterative(el);
+            let value = if publish_script_result {
+                Self::own_dynamic_text(value)
+            } else {
+                value
+            };
+            rs.push(value);
+        }
+        let elem_vt = self.array_element_type(&mut rs);
+        let li = self.coll.intern_list(elem_vt);
+        let temp = self.agg_temp("arr_lit", VT::List(li), false, span);
+        self.emit_stmt(RStmt::Let {
+            local: temp,
+            value: ResolvedExpr {
+                span,
+                vt: VT::List(li),
+                kind: RExprKind::ListNew { list: li },
+            },
+            span,
+        });
+        for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
+            // PLAN-1082: a NESTED array-literal element resolves to a
+            // synthetic temp read; wrapping it in `Move` spells the
+            // whole-fresh-rvalue transfer the push admission wants
+            // (user-local reads keep the implicit-move rejection).
+            if self.profile.is_auto_language()
+                && matches!(ast_el.kind, ExprKind::ArrayLit(_))
+                && matches!(r.kind, RExprKind::ReadLocal(_))
+                && self.vt_is_coll_owned(r.vt)
+            {
+                let inner_vt = r.vt;
+                let span0 = r.span;
+                let taken = std::mem::replace(&mut r.kind, RExprKind::IntLit(0));
+                r = ResolvedExpr {
+                    span: span0,
+                    vt: inner_vt,
+                    kind: RExprKind::Move {
+                        inner: Box::new(ResolvedExpr {
+                            span: span0,
+                            vt: inner_vt,
+                            kind: taken,
+                        }),
+                    },
+                };
+            }
+            self.check_push_value(&elem_vt, &mut r, ast_el.span);
+            self.emit_stmt(RStmt::ExprStmt {
+                value: ResolvedExpr {
+                    span: ast_el.span,
+                    vt: VT::Unit,
+                    kind: RExprKind::ListPush {
+                        list: Box::new(ResolvedExpr {
+                            span: ast_el.span,
+                            vt: VT::List(li),
+                            kind: RExprKind::ReadLocal(temp),
+                        }),
+                        value: Box::new(r),
+                    },
+                },
+                span: ast_el.span,
+            });
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::List(li),
+            kind: RExprKind::ReadLocal(temp),
+        }
+    }
+
     /// PLAN-864: push/insert/set values of owned element type must be a
     /// move-source (`.move` local or a fresh rvalue); Copy elements pass
     /// by value.
-    fn array_element_type(&mut self, elements: &[ResolvedExpr]) -> VT {
+    fn array_element_type(&mut self, elements: &mut [ResolvedExpr]) -> VT {
+        if self.profile.is_auto_language() {
+            // String literals in constructed lists allocate owned elements.
+            // Computed views retain their borrowing type.
+            for element in elements.iter_mut() {
+                retag_literal(element, VT::StrOwned);
+            }
+        }
         let first = elements[0].vt;
-        for element in elements {
+        for element in elements.iter() {
             self.reject_elem_view_use(element, "the literal element");
         }
         if self.profile.is_auto_language() && elements.iter().any(|element| element.vt != first) {
@@ -12105,6 +12384,15 @@ F:{d}
                     }
                 }
             }
+            RExprKind::Method {
+                method: BuiltinMethod::Clone,
+                ..
+            }
+            | RExprKind::Method {
+                method: BuiltinMethod::To,
+                to: Some(VT::StrOwned),
+                ..
+            } if value.vt == VT::StrOwned => {}
             RExprKind::StrLit(_) | RExprKind::VariantCtor { .. } => {
                 // a fresh rvalue transfers at commit
                 value.vt = *elem;
@@ -12200,6 +12488,7 @@ F:{d}
         self.scopes.push(Scope {
             names: BTreeMap::new(),
             views: BTreeMap::new(),
+            text_mut_aliases: BTreeMap::new(),
         });
         let mut stack: Vec<RFrame> = vec![RFrame {
             src: root,
@@ -12248,6 +12537,7 @@ F:{d}
                             self.scopes.push(Scope {
                                 names: BTreeMap::new(),
                                 views: BTreeMap::new(),
+                                text_mut_aliases: BTreeMap::new(),
                             });
                             stack.push(RFrame {
                                 src: eb,
@@ -12472,6 +12762,7 @@ F:{d}
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
+                        text_mut_aliases: BTreeMap::new(),
                     });
                     self.scopes
                         .last_mut()
@@ -12736,6 +13027,17 @@ F:{d}
                     span,
                     ..
                 } => {
+                    if let ExprKind::MutArg { name: owner } = &value.kind {
+                        if self.profile.is_auto_language() && ann.is_none() {
+                            if let Some(root) = self
+                                .lookup(&owner.name)
+                                .filter(|root| self.locals[root.0].vt == VT::StrOwned)
+                            {
+                                self.bind_text_mut_alias(name, root, value.span);
+                                continue;
+                            }
+                        }
+                    }
                     // PLAN-962 (L-16): a NON-EMPTY array literal in the
                     // let/var initializer position desugars at the
                     // statement level — bind the target to List<T>.new()
@@ -13006,21 +13308,47 @@ F:{d}
                         continue;
                     }
                     if let ExprKind::ArrayLit(elems_ast) = &value.kind {
-                        if elems_ast.is_empty() {
-                            self.bind_err(
-                                "source.array-lit-empty",
-                                "an empty array literal has no element type; write List<T>.new() instead"
-                                    .to_string(),
-                                value.span,
-                            );
-                            continue;
-                        }
                         let mut elems = Vec::with_capacity(elems_ast.len());
                         for e in elems_ast {
                             elems.push(self.expr_iterative(e));
                         }
-                        let elem_vt = self.array_element_type(&elems);
-                        let li = self.coll.intern_list(elem_vt);
+                        let mut legacy_text = ann.as_ref().is_some_and(is_legacy_text_list);
+                        let li = if elems.is_empty() {
+                            let explicit = ann.as_ref().map(|ann| {
+                                vt_of_ann_coll(
+                                    ann,
+                                    self.rec_index,
+                                    self.coll,
+                                    self.diags,
+                                    TypePos::Local,
+                                )
+                            });
+                            let returns_binding = matches!(
+                                root.stmts.last(),
+                                Some(Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. })
+                                    if matches!(&value.kind, ExprKind::Var(id) if id.name == name.name)
+                            ) && stack.len() == 1;
+                            legacy_text |=
+                                explicit.is_none() && returns_binding && self.legacy_text_result;
+                            let expected =
+                                explicit.or_else(|| returns_binding.then_some(self.fn_result));
+                            if let (true, Some(VT::List(li))) =
+                                (self.profile.is_auto_language(), expected)
+                            {
+                                li
+                            } else {
+                                self.bind_err(
+                                    "source.array-lit-empty",
+                                    "an empty array literal needs an expected List type; write List<T>.new() instead",
+                                    value.span,
+                                );
+                                continue;
+                            }
+                        } else {
+                            let elem_vt = self.array_element_type(&mut elems);
+                            self.coll.intern_list(elem_vt)
+                        };
+                        let elem_vt = self.coll.lists[li];
                         if self.scopes.last().unwrap().names.contains_key(&name.name) {
                             self.bind_err(
                                 "source.duplicate",
@@ -13033,6 +13361,9 @@ F:{d}
                         }
                         self.declared_names.insert(name.name.clone());
                         let lref = self.fresh_local(&name.name, VT::List(li), *mutable);
+                        if self.profile.is_auto_language() && legacy_text {
+                            self.legacy_text_lists.insert(lref);
+                        }
                         self.scopes
                             .last_mut()
                             .unwrap()
@@ -13174,6 +13505,9 @@ F:{d}
                         );
                     }
                     let lref = LocalRef(self.locals.len());
+                    if ann.is_none() && !*mutable && self.is_text_find_call(&value) {
+                        self.legacy_text_find_results.insert(lref);
+                    }
                     // PLAN-1026: a binding whose initializer is a Python
                     // OBJECT (hoisted member import or an object-returning
                     // op) carries the py-op domain discipline.
@@ -13440,7 +13774,22 @@ F:{d}
                 }
                 Stmt::ExprStmt { value, span } => {
                     self.expr_diverged = false;
-                    let value = self.expr_iterative(value);
+                    let is_root_tail = {
+                        let frame = stack.last().expect("resolve frame");
+                        value_context
+                            && matches!(frame.cont, RCont::FnBody)
+                            && frame.idx == frame.src.stmts.len()
+                    };
+                    let value = match &value.kind {
+                        ExprKind::ArrayLit(elems)
+                            if self.profile.is_auto_language()
+                                && self.is_script
+                                && is_root_tail =>
+                        {
+                            self.resolve_array_literal(elems, value.span, true)
+                        }
+                        _ => self.expr_iterative(value),
+                    };
                     if self.profile == SourceProfile::Auto && matches!(value.kind, RExprKind::Unit)
                     {
                         continue;
@@ -13465,12 +13814,6 @@ F:{d}
                     // value bound to a discarded temp — PLAN-965
                     // (F-965-R1-01): the old silent drop lost calls (and a
                     // callee's language error) entirely.
-                    let is_root_tail = {
-                        let frame = stack.last().expect("resolve frame");
-                        value_context
-                            && matches!(frame.cont, RCont::FnBody)
-                            && frame.idx == frame.src.stmts.len()
-                    };
                     let stmt = if is_iter_close {
                         let local = self.agg_temp("it_close", VT::I32, false, *span);
                         RStmt::Let {
@@ -13504,6 +13847,7 @@ F:{d}
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
+                        text_mut_aliases: BTreeMap::new(),
                     });
                     stack.push(RFrame {
                         src: then,
@@ -13549,6 +13893,7 @@ F:{d}
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
                         });
                         stack.push(RFrame {
                             src: body,
@@ -13564,6 +13909,7 @@ F:{d}
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
                         });
                         stack.push(RFrame {
                             src: body,
@@ -13587,6 +13933,7 @@ F:{d}
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
+                        text_mut_aliases: BTreeMap::new(),
                     });
                     stack.push(RFrame {
                         src: body,
@@ -13734,6 +14081,7 @@ F:{d}
                                 self.scopes.push(Scope {
                                     names: BTreeMap::new(),
                                     views: BTreeMap::new(),
+                                    text_mut_aliases: BTreeMap::new(),
                                 });
                                 let lref = self.fresh_local(&b.name, pvt, false);
                                 self.scopes
@@ -13910,6 +14258,7 @@ F:{d}
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
                         });
                         self.scopes
                             .last_mut()
@@ -14181,6 +14530,7 @@ F:{d}
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
                         });
                         self.scopes.last_mut().unwrap().views.insert(
                             var.name.clone(),
@@ -14198,6 +14548,7 @@ F:{d}
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
                         });
                         let blref = self.fresh_local(&var.name, elem, false);
                         self.scopes
@@ -14427,100 +14778,7 @@ F:{d}
             // fast path (the Let arm intercepts first) is unchanged. An
             // EMPTY literal keeps its named rejection: no element type is
             // inferable on this face (write `List<T>.new()`).
-            ExprKind::ArrayLit(elems) => {
-                // PLAN-1082: rvalue admission is the ORDINARY (auto) face
-                // only; the frozen narrow profiles keep the 962 init-only
-                // contract (`source.array-lit-position`).
-                if !self.profile.is_auto_language() {
-                    self.bind_err(
-                        "source.array-lit-position",
-                        "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
-                            .to_string(),
-                        e.span,
-                    );
-                    return ResolvedExpr {
-                        span: e.span,
-                        vt: VT::I32,
-                        kind: RExprKind::IntLit(0),
-                    };
-                }
-                if elems.is_empty() {
-                    self.bind_err(
-                        "source.array-lit-empty",
-                        "an empty array literal has no element type; write List<T>.new() instead"
-                            .to_string(),
-                        e.span,
-                    );
-                    return ResolvedExpr {
-                        span: e.span,
-                        vt: VT::I32,
-                        kind: RExprKind::IntLit(0),
-                    };
-                }
-                let mut rs = Vec::with_capacity(elems.len());
-                for el in elems {
-                    rs.push(self.expr_iterative(el));
-                }
-                let elem_vt = self.array_element_type(&rs);
-                let li = self.coll.intern_list(elem_vt);
-                let temp = self.agg_temp("arr_lit", VT::List(li), false, e.span);
-                self.emit_stmt(RStmt::Let {
-                    local: temp,
-                    value: ResolvedExpr {
-                        span: e.span,
-                        vt: VT::List(li),
-                        kind: RExprKind::ListNew { list: li },
-                    },
-                    span: e.span,
-                });
-                for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
-                    // PLAN-1082: a NESTED array-literal element resolves to a
-                    // synthetic temp read; wrapping it in `Move` spells the
-                    // whole-fresh-rvalue transfer the push admission wants
-                    // (user-local reads keep the implicit-move rejection).
-                    if self.profile.is_auto_language()
-                        && matches!(ast_el.kind, ExprKind::ArrayLit(_))
-                        && matches!(r.kind, RExprKind::ReadLocal(_))
-                        && self.vt_is_coll_owned(r.vt)
-                    {
-                        let inner_vt = r.vt;
-                        let span0 = r.span;
-                        let taken = std::mem::replace(&mut r.kind, RExprKind::IntLit(0));
-                        r = ResolvedExpr {
-                            span: span0,
-                            vt: inner_vt,
-                            kind: RExprKind::Move {
-                                inner: Box::new(ResolvedExpr {
-                                    span: span0,
-                                    vt: inner_vt,
-                                    kind: taken,
-                                }),
-                            },
-                        };
-                    }
-                    self.check_push_value(&elem_vt, &mut r, ast_el.span);
-                    self.emit_stmt(RStmt::ExprStmt {
-                        value: ResolvedExpr {
-                            span: ast_el.span,
-                            vt: VT::Unit,
-                            kind: RExprKind::ListPush {
-                                list: Box::new(ResolvedExpr {
-                                    span: ast_el.span,
-                                    vt: VT::List(li),
-                                    kind: RExprKind::ReadLocal(temp),
-                                }),
-                                value: Box::new(r),
-                            },
-                        },
-                        span: ast_el.span,
-                    });
-                }
-                ResolvedExpr {
-                    span: e.span,
-                    vt: VT::List(li),
-                    kind: RExprKind::ReadLocal(temp),
-                }
-            }
+            ExprKind::ArrayLit(elems) => self.resolve_array_literal(elems, e.span, false),
             // PLAN-963（T-04）：`rep<2>(21)` 必经实例层重绑成具体实例的普通
             // 调用；到达 resolve = 模板未被实例化（具名拒，不猜）。
             ExprKind::ConstCall { callee, .. } => {
@@ -14872,6 +15130,18 @@ F:{d}
                     }
                 }
                 None => {
+                    if self.lookup_text_mut_alias(&id.name).is_some() {
+                        self.bind_err(
+                            "source.view-escape",
+                            "a mutable text binding cannot be used as a value",
+                            id.span,
+                        );
+                        return ResolvedExpr {
+                            span: e.span,
+                            vt: VT::Unit,
+                            kind: RExprKind::Unit,
+                        };
+                    }
                     // PLAN-939 S06 callback-by-name: on the text-record
                     // resource lane a bare SOURCE fn name whose (params,
                     // result) exactly match an interned closure type is a
@@ -15501,6 +15771,18 @@ F:{d}
                 };
             }
         }
+        if let Some(ri) = static_rec {
+            if self.profile.is_auto_language()
+                && name.name == "new"
+                && !self.records[ri].methods.iter().any(|m| m.name == name.name)
+            {
+                let ty = ast::Ident {
+                    name: self.records[ri].name.clone(),
+                    span: name.span,
+                };
+                return self.ctor_positional(ri, &ty, rargs, span);
+            }
+        }
         // distinguish "no such method at all" from "exists but is an
         // instance method" (V-08: exact resolution diagnostics)
         if self.records.iter().any(|rec| {
@@ -15826,6 +16108,7 @@ F:{d}
                 vec![Scope {
                     names: BTreeMap::new(),
                     views: BTreeMap::new(),
+                    text_mut_aliases: BTreeMap::new(),
                 }],
             );
             let mut value = self.expr(default);
@@ -16290,6 +16573,22 @@ F:{d}
                             slot: bslot,
                         });
                     } else if let ExprKind::MethodCall { recv, name, args } = &node.kind {
+                        let text_alias = match &recv.kind {
+                            ExprKind::Var(alias) => self.lookup_text_mut_alias(&alias.name),
+                            _ => None,
+                        };
+                        if let Some(root) = text_alias {
+                            if name.name == "append" {
+                                out[slot] = self.resolve_text_append(root, recv, args, node.span);
+                            } else {
+                                self.bind_err(
+                                    "source.view-escape",
+                                    "a mutable text binding can only be used as the receiver of append",
+                                    recv.span,
+                                );
+                            }
+                            continue;
+                        }
                         if self.profile.is_aggregates() {
                             if let Some(se) = self.try_resolve_scalar_enum(node, None) {
                                 out[slot] = se;
@@ -17224,6 +17523,29 @@ F:{d}
                             continue;
                         }
                     }
+                    if self.profile.is_auto_language()
+                        && matches!(
+                            op,
+                            BinOp::Add
+                                | BinOp::Sub
+                                | BinOp::Mul
+                                | BinOp::Div
+                                | BinOp::Rem
+                                | BinOp::Lt
+                                | BinOp::Le
+                                | BinOp::Gt
+                                | BinOp::Ge
+                                | BinOp::Eq
+                                | BinOp::Ne
+                        )
+                    {
+                        if r.vt == VT::I32 {
+                            l = self.legacy_text_find_index(l);
+                        }
+                        if l.vt == VT::I32 {
+                            r = self.legacy_text_find_index(r);
+                        }
+                    }
                     let script_arithmetic = self.coll.script_errors
                         && matches!(
                             op,
@@ -17396,6 +17718,14 @@ F:{d}
                             );
                         }
                     }
+                    if self.profile.is_auto_language()
+                        && op == BinOp::Add
+                        && l.vt.is_text()
+                        && r.vt.is_text()
+                    {
+                        l = Self::clone_text_element(l);
+                        r = Self::clone_text_element(r);
+                    }
                     let vt = bin_op_vt(op);
                     // PLAN-961: the typed numeric surface — same-type
                     // operands (no implicit promotion), comparisons → bool,
@@ -17567,6 +17897,160 @@ F:{d}
     /// conversion, and the bare `.move` wrapper. User names never shadow
     /// the builtin table and the builtins never hijack user functions
     /// (distinct namespaces).
+    fn is_text_find_call(&self, value: &ResolvedExpr) -> bool {
+        match value.kind {
+            RExprKind::CallFn { fn_index, .. } => self
+                .sigs
+                .get(super::adapter::STDLIB_TEXT_FIND)
+                .is_some_and(|sig| sig.index == fn_index),
+            _ => false,
+        }
+    }
+
+    /// Old text find returns -1 in integer expressions. The same result
+    /// remains an Option for explicit pattern matching or typed storage.
+    fn legacy_text_find_index(&mut self, value: ResolvedExpr) -> ResolvedExpr {
+        let ResolvedExpr {
+            span,
+            vt: VT::Variant(variant),
+            ..
+        } = value
+        else {
+            return value;
+        };
+        let RExprKind::ReadLocal(source) = value.kind else {
+            return value;
+        };
+        if !self.legacy_text_find_results.contains(&source) {
+            return value;
+        }
+        let result = self.agg_temp("find_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: result,
+            value: ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(-1),
+            },
+            span,
+        });
+        let project = ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::VariantProject {
+                local: source,
+                variant,
+                disc: 0,
+            },
+        };
+        self.emit_stmt(RStmt::If {
+            cond: ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::VariantGuardTest {
+                    local: source,
+                    variant,
+                    disc: 0,
+                },
+            },
+            then: RBlock {
+                stmts: vec![RStmt::Assign {
+                    local: result,
+                    path: Vec::new(),
+                    value: project,
+                    span,
+                }],
+                span,
+            },
+            els: None,
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::ReadLocal(result),
+        }
+    }
+
+    fn resolve_std_text_method(
+        &mut self,
+        name: &ast::Ident,
+        recv: ResolvedExpr,
+        args: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let mangled = format!("{}{}", super::adapter::STDLIB_TEXT_MANGLE, name.name);
+        let Some(sig) = self.sigs.get(&mangled) else {
+            self.bind_err(
+                "source.undefined",
+                "the stdlib text method is not linked",
+                name.span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            };
+        };
+        let fn_index = sig.index;
+        let result = sig.result;
+        if args.len() + 1 != sig.params.len()
+            || args
+                .iter()
+                .zip(sig.params.iter().skip(1))
+                .any(|(arg, expected)| {
+                    arg.moved
+                        || arg.name.is_some()
+                        || (arg.value.vt != *expected
+                            && !(expected.is_text() && arg.value.vt.is_text()))
+                })
+        {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "text method {} expects {} positional argument(s)",
+                    name.name,
+                    sig.params.len() - 1
+                ),
+                span,
+            );
+        }
+        let recv = ResolvedArg {
+            span: recv.span,
+            value: recv,
+            name: None,
+            moved: false,
+        };
+        let args = std::iter::once(recv)
+            .chain(args)
+            .map(|mut arg| {
+                // These methods read their inputs. The assembled helpers take
+                // ownership, so local owners and element views supply copies.
+                let value = arg.value;
+                arg.value = match value.vt {
+                    VT::Str => Self::own_dynamic_text(value),
+                    VT::StrOwned
+                        if matches!(
+                            value.kind,
+                            RExprKind::ReadLocal(_)
+                                | RExprKind::FieldGet { .. }
+                                | RExprKind::ElemView { .. }
+                        ) =>
+                    {
+                        Self::clone_owned_text(value)
+                    }
+                    _ => value,
+                };
+                arg
+            })
+            .collect();
+        ResolvedExpr {
+            span,
+            vt: result,
+            kind: RExprKind::CallFn { fn_index, args },
+        }
+    }
+
     fn resolve_method(
         &mut self,
         name: &ast::Ident,
@@ -17576,6 +18060,43 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         if self.profile.is_auto_language() {
+            if recv.vt.is_text() && to_word.is_none() {
+                if matches!(name.name.as_str(), "find" | "trim" | "split" | "substr") {
+                    return self.resolve_std_text_method(name, recv, args, span);
+                }
+                let suffix = name.name == "slice" && args.len() == 1;
+                if name.name == "sub" || suffix {
+                    let (recv, args) = if suffix {
+                        let recv = self.eval_once(recv);
+                        let len = ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::Method {
+                                recv: Box::new(recv.clone()),
+                                method: BuiltinMethod::Len,
+                                to: None,
+                                args: Vec::new(),
+                            },
+                        };
+                        let mut args = args;
+                        args.push(ResolvedArg {
+                            span,
+                            value: len,
+                            name: None,
+                            moved: false,
+                        });
+                        (recv, args)
+                    } else {
+                        (recv, args)
+                    };
+                    let slice = ast::Ident {
+                        name: "slice".into(),
+                        span: name.span,
+                    };
+                    let value = self.resolve_method(&slice, recv, args, None, span);
+                    return Self::own_dynamic_text(value);
+                }
+            }
             if recv.vt == VT::I32
                 && name.name == "to"
                 && to_word.is_some_and(|word| vt_of_word(word).is_text())

@@ -1473,3 +1473,379 @@ channel: "unit"
 ```text
 3
 ```
+
+## Case: legacy-14-borrow-003-mut-basic
+id: "legacy.14_borrow.003_mut_basic"
+entry-mode: "program"
+
+### Auto
+path: "mut_basic.at"
+```auto
+var s = "hello"
+var m = s.mut
+m.append(" world")
+s
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "hello world"
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-14-borrow-015-str-slice-in-array
+id: "legacy.14_borrow.015_str_slice_in_array"
+entry-mode: "program"
+
+### Auto
+path: "str_slice_in_array.at"
+```auto
+let s1 = "hello"
+let s2 = "world"
+[s1.view, s2.view]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+["hello", "world"]
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "[\"hello\", \"world\"]"
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-99-plan231-001-nested-mutfn
+id: "legacy.99_plan231.001_nested_mutfn"
+entry-mode: "program"
+
+### Auto
+path: "nested_mutfn.at"
+```auto
+type SseParser {
+    buffer str
+
+    static fn new() SseParser {
+        return SseParser("")
+    }
+
+    mut fn push(chunk str) List<str> {
+        self.buffer = self.buffer + chunk
+        return self.drain_frames()
+    }
+
+    mut fn drain_frames() List<str> {
+        var events = []
+        var frame = self.next_frame()
+        for frame != None {
+            is frame {
+                Some(f) -> events.push(f),
+                None -> {}
+            }
+            frame = self.next_frame()
+        }
+        return events
+    }
+
+    mut fn next_frame() ?str {
+        let pos = self.buffer.find("\n\n")
+        is pos {
+            Some(p) -> {
+                let frame = self.buffer.sub(0, p)
+                self.buffer = self.buffer.slice(p + 2)
+                return Some(frame)
+            },
+            None -> {}
+        }
+        return None
+    }
+}
+
+fn main() {
+    var parser = SseParser.new()
+    let events = parser.push("event: ping\n\n")
+    print(f"events: ${events.len()}")
+    print("SSE parser OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+events: 1
+SSE parser OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+events: 1
+SSE parser OK
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-99-plan231-002-direct-drain
+id: "legacy.99_plan231.002_direct_drain"
+entry-mode: "program"
+
+### Auto
+path: "direct_drain.at"
+```auto
+type SseParser {
+    buffer str
+
+    static fn new() SseParser {
+        return SseParser("")
+    }
+
+    mut fn drain_frames() List<str> {
+        var events = []
+        var frame = self.next_frame()
+        for frame != None {
+            is frame {
+                Some(f) -> events.push(f),
+                None -> {}
+            }
+            frame = self.next_frame()
+        }
+        return events
+    }
+
+    mut fn next_frame() ?str {
+        let pos = self.buffer.find("\n\n")
+        is pos {
+            Some(p) -> {
+                let frame = self.buffer.sub(0, p)
+                self.buffer = self.buffer.slice(p + 2)
+                return Some(frame)
+            },
+            None -> {}
+        }
+        return None
+    }
+}
+
+fn main() {
+    var parser = SseParser.new()
+    parser.buffer = "event: ping\n\n"
+    let events = parser.drain_frames()
+    print(f"events: ${events.len()}")
+    print("direct drain OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+events: 1
+direct drain OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+events: 1
+direct drain OK
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-08-strings-017-sub-semantics-sub-semantics
+id: "legacy.08_strings.017_sub_semantics.sub_semantics"
+entry-mode: "program"
+
+### Auto
+path: "sub_semantics.at"
+```auto
+// 017_sub_semantics — Plan 583 T6：锁定三方法语义分界（引擎/语料/a2r 三方
+// 一致；str.at 旧 (start,LEN) 注记为残文已修）。
+// .sub/.slice = [start, end) 排他端点；.substr = (start, LEN)。
+print("hello".sub(1, 3))
+print("hello".substr(1, 3))
+print("hello".slice(1, 3))
+print("hello".sub(0, 0))
+print("hello".substr(4, 99))
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+From the frozen `017_sub_semantics.expected.result` bytes (five printed lines;
+the file name says `.result` but the payload is the stdout channel).
+
+```text
+el
+ell
+el
+
+o
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+el
+ell
+el
+
+o
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-08-strings-018-loop-concat-churn
+id: "legacy.08_strings.018_loop_concat_churn"
+entry-mode: "program"
+
+### Auto
+path: "loop_concat_churn.at"
+```auto
+// Plan 585: 循环内拼接链 + trim + found 累加——字符串池 churn 形态回归。
+// 下游 ash stale-copy 缺陷(Plan 585)在单发路径本就不可见(load_strings pinned
+// 正确);本语料锁定拼接链在该形态下的输出稳定性(每代内容不交叠)。
+var patterns = ["*.tmp", "*.bak", "*.log"]
+var found = ""
+for p in patterns {
+    var r = "res " + p + " \n "
+    if r.trim().len() > 0 { found = found + r.trim() + "|" }
+}
+print(found)
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+res *.tmp|res *.bak|res *.log|
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+res *.tmp|res *.bak|res *.log|
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-99-slice-001-slice
+id: "legacy.99_slice.001_slice"
+entry-mode: "program"
+
+### Auto
+path: "slice.at"
+```auto
+fn main() {
+    let s = "hello world"
+
+    // Full range
+    let s1 = s[0..5]
+    assert_eq(s1, "hello")
+
+    let s2 = s[6..11]
+    assert_eq(s2, "world")
+
+    // Open-start: [..pos]
+    let s3 = s[..5]
+    assert_eq(s3, "hello")
+
+    // Open-end: [pos..]
+    let s4 = s[6..]
+    assert_eq(s4, "world")
+
+    print("99_slice: all assertions passed")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+99_slice: all assertions passed
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+99_slice: all assertions passed
+```
+
+#### stderr
+
+```text
+```

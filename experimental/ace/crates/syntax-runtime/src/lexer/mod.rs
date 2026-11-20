@@ -68,6 +68,7 @@ pub struct LexOutput {
 pub struct CompiledScanner {
     /// first_byte(0..=255) -> 规则索引（literal 按长度降序在前，其余声明序）。
     buckets: Vec<Vec<u32>>,
+    has_range_token: bool,
 }
 
 impl CompiledScanner {
@@ -136,7 +137,15 @@ impl CompiledScanner {
                 ly.cmp(&lx).then(x.cmp(&y))
             });
         }
-        Ok(CompiledScanner { buckets })
+        let has_range_token = p
+            .scanner
+            .rules
+            .iter()
+            .any(|rule| matches!(&rule.matcher, Matcher::Literal(literal) if literal == ".."));
+        Ok(CompiledScanner {
+            buckets,
+            has_range_token,
+        })
     }
 }
 
@@ -432,9 +441,15 @@ impl<'p, 's> Scanner<'p, 's> {
             Some(b) if first.contains(b) || (b >= 0x80 && first.non_ascii) => b,
             _ => return Ok(None),
         };
+        let number_before_range = f.is_ascii_digit() && self.cs.has_range_token;
         let mut n = 1u64;
         loop {
             match self.w.byte(at + n)? {
+                // The number's decimal point is a single dot. Leave
+                // adjacent range punctuation for the next scanner step.
+                Some(b'.') if number_before_range && self.w.byte(at + n + 1)? == Some(b'.') => {
+                    break
+                }
                 Some(b) if cont.contains(b) || (b >= 0x80 && cont.non_ascii) => n += 1,
                 Some(_) | None => break,
             }
