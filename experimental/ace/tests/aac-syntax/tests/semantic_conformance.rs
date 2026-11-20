@@ -495,6 +495,39 @@ fn emits_core_arithmetic_traps_and_rejects_an_erased_overflow_policy() {
 }
 
 #[test]
+fn verifies_terminating_branches_and_rejects_a_back_edge() {
+    let source = b"fn choose(flag bool) int { if flag { return 13 } else { return 7 } }";
+    let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify(bound).expect("independent reference verifies both returns");
+    assert_eq!(
+        run_core_hir_case(atom.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ADMITTED core-i32-draft\n"
+    );
+    let field = |prefix: &str| {
+        atom.split_once(prefix)
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap()
+    };
+    let root = field("entry: \"");
+    let then = field("then: \"");
+    assert_ne!(root, then);
+    let corrupt = atom.replacen(
+        &format!("then: \"{then}\""),
+        &format!("then: \"{root}\""),
+        1,
+    );
+    assert_eq!(
+        run_core_hir_case(corrupt.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ERROR hir.reference\n"
+    );
+}
+
+#[test]
 fn preserves_tuple_order_and_checks_indirect_signature() {
     let source = concat!(
         "fn invoke(f fn(int) -> bool) bool { return f(7) }\n",

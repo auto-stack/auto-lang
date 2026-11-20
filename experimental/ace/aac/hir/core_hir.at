@@ -22,6 +22,7 @@ use app.syntax_cst.join_rows
 use app.syntax_frontend.str_to_bytes
 use app.types.boolean_type
 use app.types.integer_type
+use std.bytes.decode_utf8
 use std.conv.from_int
 use std.conv.to_int
 
@@ -41,10 +42,11 @@ fn supported_type(t int) bool { return t == integer_type() || t == boolean_type(
 
 // Definition IDs and expression IDs are distinct even when they share an
 // origin row. Each table carries its own owner and exact source-row identity.
-// Definitions: (id, result type, body owner, return expr)
+// Definitions: (id, result type, body owner, entry block)
 // Params:      (owner, id, type, formal position)
 // Expressions: (id, owner, op, result type, value/ref)
 // Args:        (call expr, evaluation expr, formal position)
+// Blocks:      (id, owner, condition, then block, else block, return expr)
 type VerifiedCore {
     definitions int
 }
@@ -174,8 +176,9 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                     pos = pos + call_mapping_stride()
                 }
             }
-            let wrapper = node_kind == "expr" || node_kind == "unary-expr" || node_kind == "atom-expr" || node_kind == "postfix-expr"
-            if (wrapper) {
+            let expr_wrapper = node_kind == "expr" || node_kind == "unary-expr" || node_kind == "atom-expr" || node_kind == "postfix-expr"
+            let cond_wrapper = node_kind == "if-cond" || node_kind == "condition-expr" || node_kind == "condition-unary" || node_kind == "condition-postfix" || node_kind == "condition-atom"
+            if (expr_wrapper || cond_wrapper) {
                 let child = first_child(links, row)
                 if (child >= 0 && next_sibling(links, child) < 0) {
                     expressions.set(row, expressions.get(child))
@@ -187,22 +190,62 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
     return 0
 }
 
-fn return_value(pg List<int>, ast List<int>, links List<int>, body int) int {
+fn terminal_statement(pg List<int>, ast List<int>, links List<int>, body int) int {
     var child = first_child(links, body)
     var result = -1
     for (child >= 0) {
         let node_kind = kind(pg, ast, child)
         if (node_kind == "stmt") {
             let stmt = first_child(links, child)
-            if (result >= 0 || stmt < 0 || kind(pg, ast, stmt) != "return-stmt") { return -1 }
-            result = child_with_role(pg, ast, links, stmt, "value")
+            if (result >= 0 || stmt < 0) { return -1 }
+            result = stmt
         }
         child = next_sibling(links, child)
     }
     return result
 }
 
-fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_blocks(pg List<int>, ast List<int>, links List<int>, expression_ids List<int>, body int, owner int, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var pending = List<int>.new()
+    pending.push(body)
+    for (pending.len() > 0) {
+        let block = pending.remove(pending.len() - 1)
+        if (!take_step(fuel, deadline)) { return failed(errors, block, bind_budget()) }
+        let statement = terminal_statement(pg, ast, links, block)
+        if (statement < 0) { return failed(errors, block, hir_unsupported()) }
+        let form = kind(pg, ast, statement)
+        var condition = -1
+        var yes = -1
+        var no = -1
+        var value = -1
+        if (form == "return-stmt") {
+            let result = child_with_role(pg, ast, links, statement, "value")
+            if (result < 0 || expression_ids.get(result) < 0) { return failed(errors, statement, hir_unsupported()) }
+            value = expression_ids.get(result)
+        } else {
+            if (form != "if-stmt") { return failed(errors, statement, hir_unsupported()) }
+            let test = child_with_role(pg, ast, links, statement, "cond")
+            yes = child_with_role(pg, ast, links, statement, "then")
+            let alternative = child_with_kind(pg, ast, links, statement, "else-block")
+            if (alternative >= 0) { no = child_with_kind(pg, ast, links, alternative, "block") }
+            if (test < 0 || yes < 0 || no < 0 || expression_ids.get(test) < 0) {
+                return failed(errors, statement, hir_unsupported())
+            }
+            condition = expression_ids.get(test)
+            pending.push(no)
+            pending.push(yes)
+        }
+        blocks.push(block)
+        blocks.push(owner)
+        blocks.push(condition)
+        blocks.push(yes)
+        blocks.push(no)
+        blocks.push(value)
+    }
+    return 0
+}
+
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var expressions = List<int>.new()
     let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, exprs, args, expressions, fuel, deadline, errors)
     if (lowered != 0) { return lowered }
@@ -213,12 +256,12 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
         if (category == function_decl()) {
             let body = child_with_role(pg, ast, links, row, "body")
             if (body < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
-            let returning = return_value(pg, ast, links, body)
-            if (returning < 0 || expressions.get(returning) < 0) { return failed(errors, row, hir_unsupported()) }
+            let result = lower_blocks(pg, ast, links, expressions, body, row, blocks, fuel, deadline, errors)
+            if (result != 0) { return result }
             defs.push(row)
             defs.push(facts.get(row))
             defs.push(row)
-            defs.push(expressions.get(returning))
+            defs.push(body)
             let params = call_parameter_slots(pg, ast, links, row)
             var slot = 0
             for (slot < params.len()) {
@@ -323,11 +366,65 @@ fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel Lis
     return 0
 }
 
-fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var outcomes = List<int>.new()
+    var position = 0
+    for (position < blocks.len()) {
+        let row = blocks.get(position)
+        let owner = blocks.get(position + 1)
+        let condition = blocks.get(position + 2)
+        if (!has_budget(fuel, deadline, defs.len() / 4 + exprs.len() / 5)) { return failed(errors, row, bind_budget()) }
+        let def = find_row(defs, 4, owner, 0)
+        if (def < 0) { return failed(errors, row, hir_owner_error()) }
+        var use_expr = condition
+        var expected = boolean_type()
+        var exits = 0
+        if (condition < 0) {
+            use_expr = blocks.get(position + 5)
+            expected = defs.get(def + 1)
+            exits = 1
+        }
+        let expression = find_row(exprs, 5, use_expr, 0)
+        if (expression < 0) { return failed(errors, row, hir_reference_error()) }
+        if (exprs.get(expression + 1) != owner) { return failed(errors, row, hir_owner_error()) }
+        if (exprs.get(expression + 3) != expected) { return failed(errors, row, hir_type_error()) }
+        outcomes.push(exits)
+        position = position + 6
+    }
+    var changed = true
+    for (changed) {
+        changed = false
+        position = 0
+        for (position < blocks.len()) {
+            if (outcomes.get(position / 6) == 0) {
+                let row = blocks.get(position)
+                let owner = blocks.get(position + 1)
+                if (!has_budget(fuel, deadline, blocks.len() / 3)) { return failed(errors, row, bind_budget()) }
+                let yes = find_row(blocks, 6, blocks.get(position + 3), 0)
+                let no = find_row(blocks, 6, blocks.get(position + 4), 0)
+                if (yes < 0 || no < 0) { return failed(errors, row, hir_reference_error()) }
+                if (blocks.get(yes + 1) != owner || blocks.get(no + 1) != owner) { return failed(errors, row, hir_owner_error()) }
+                if (outcomes.get(yes / 6) != 0 && outcomes.get(no / 6) != 0) {
+                    outcomes.set(position / 6, 1)
+                    changed = true
+                }
+            }
+            position = position + 6
+        }
+    }
+    position = 0
+    for (position < outcomes.len()) {
+        if (outcomes.get(position) == 0) { return failed(errors, blocks.get(position * 6), hir_reference_error()) }
+        position = position + 1
+    }
+    return 0
+}
+
+fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
     var position = 0
     for (position < defs.len()) {
         let id = defs.get(position)
-        if (!has_budget(fuel, deadline, exprs.len() / 5)) {
+        if (!has_budget(fuel, deadline, blocks.len() / 6)) {
             failed(errors, id, bind_budget())
             return None
         }
@@ -335,13 +432,9 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             failed(errors, id, hir_owner_error())
             return None
         }
-        let returning = find_row(exprs, 5, defs.get(position + 3), 0)
-        if (returning < 0 || exprs.get(returning + 1) != id) {
+        let entry = find_row(blocks, 6, defs.get(position + 3), 0)
+        if (entry < 0 || blocks.get(entry + 1) != id) {
             failed(errors, id, hir_reference_error())
-            return None
-        }
-        if (defs.get(position + 1) != exprs.get(returning + 3)) {
-            failed(errors, id, hir_type_error())
             return None
         }
         position = position + 4
@@ -383,6 +476,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         }
         position = position + 5
     }
+    if (verify_blocks(defs, exprs, blocks, fuel, deadline, errors) != 0) { return None }
     return Some(VerifiedCore { definitions: defs.len() / 4 })
 }
 
@@ -425,7 +519,7 @@ fn write_binary(args List<int>, expression int, op int) Str {
     return "op: " + operation + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
 }
 
-fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, ast List<int>, src List<int>, declarations List<int>) Str {
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, ast List<int>, src List<int>, declarations List<int>) Str {
     var output = List<Str>.new()
     output.push("hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {\n module m {\n path: \"app.core\"\n types {\n type t1 i32 {}\n type t2 bool {}\n")
     var def_at = 0
@@ -457,7 +551,7 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     def_at = 0
     for (def_at < checked.definitions * 4) {
         let def = defs.get(def_at)
-        let start = " body " + id("b", def) + " { owner: " + ref_text("d", def) + "; entry: \"k\"\n locals {\n"
+        let start = " body " + id("b", def) + " { owner: " + ref_text("d", def) + "; entry: " + ref_text("k", defs.get(def_at + 3)) + "\n locals {\n"
         output.push(start.move)
         var param_at = 0
         for (param_at < parameters.len()) {
@@ -496,8 +590,24 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
             }
             expr_at = expr_at + 5
         }
-        let tail = " }\n blocks { block k { return(value: " + ref_text("e", defs.get(def_at + 3)) + ") {} } }\n }\n"
-        output.push(tail.move)
+        output.push(" }\n blocks {\n")
+        var block_at = 0
+        for (block_at < blocks.len()) {
+            if (blocks.get(block_at + 1) == def) {
+                let block = id("k", blocks.get(block_at))
+                let condition = blocks.get(block_at + 2)
+                var statement = ""
+                if (condition < 0) {
+                    statement = "return(value: " + ref_text("e", blocks.get(block_at + 5)) + ") {}"
+                } else {
+                    statement = "if(cond: " + ref_text("e", condition) + ", then: " + ref_text("k", blocks.get(block_at + 3)) + ", else: " + ref_text("k", blocks.get(block_at + 4)) + ") {}"
+                }
+                let line = " block " + block + " { " + statement + " }\n"
+                output.push(line.move)
+            }
+            block_at = block_at + 6
+        }
+        output.push(" }\n }\n")
         def_at = def_at + 4
     }
     output.push(" }\n }\n}\n")
@@ -531,7 +641,8 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var parameters = List<int>.new()
     var exprs = List<int>.new()
     var args = List<int>.new()
-    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, defs, parameters, exprs, args, fuel, deadline, errors)
+    var blocks = List<int>.new()
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, defs, parameters, exprs, args, blocks, fuel, deadline, errors)
     if (status != 0) { return "" }
     if (control == 1) { defs.set(2, row_count(ast)) }
     if (control == 2) {
@@ -544,15 +655,20 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
             position = position + 5
         }
     }
-    let verified = verify(defs, parameters, exprs, args, fuel, deadline, errors)
+    let verified = verify(defs, parameters, exprs, args, blocks, fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, ast, src, declarations) }
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, ast, src, declarations) }
         None -> {}
     }
     return ""
 }
 
 pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
+    let utf8 = decode_utf8(bytes)
+    is utf8 {
+        Some(_) -> {}
+        None -> { return hir_shape_error() }
+    }
     var tokens = List<int>.new()
     var values = List<int>.new()
     var nodes = List<int>.new()
@@ -568,11 +684,12 @@ pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
     var parameters = List<int>.new()
     var expressions = List<int>.new()
     var arguments = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, definitions, parameters, expressions, arguments)
+    var blocks = List<int>.new()
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, definitions, parameters, expressions, arguments, blocks)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status != 0) { return status }
     var errors = List<int>.new()
-    let verified = verify(definitions, parameters, expressions, arguments, fuel, deadline, errors)
+    let verified = verify(definitions, parameters, expressions, arguments, blocks, fuel, deadline, errors)
     is verified {
         Some(_) -> { return 0 }
         None -> {}

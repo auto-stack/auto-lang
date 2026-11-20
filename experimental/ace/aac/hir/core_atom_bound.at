@@ -156,28 +156,66 @@ fn bind_arguments(bytes List<int>, tokens List<int>, values List<int>, nodes Lis
     return true
 }
 
-fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, defs List<int>, params List<int>, expressions List<int>, args List<int>) int {
+fn bind_blocks(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, owner int, expr_group int, block_group int, blocks List<int>) int {
+    var at = nodes.get(block_group * 8 + 5)
+    let limit = at + nodes.get(block_group * 8 + 6)
+    for (at < limit) {
+        if (items.get(at * 2) == 1) {
+            let block = items.get(at * 2 + 1)
+            if (atom_tag(bytes, tokens, nodes, block) != "block" || count_children(nodes, items, block) != 1) { return -30 }
+            let name = value_text(bytes, tokens, values, slot(nodes, sequence, block, 0), 0)
+            if (by_id(bytes, tokens, values, nodes, sequence, items, block_group, name) != block) { return -32 }
+            var value = -1
+            var cond = -1
+            var yes = -1
+            var no = -1
+            let returning = child(bytes, tokens, nodes, items, block, "return")
+            if (returning >= 0) {
+                if (nodes.get(returning * 8 + 4) != 1 || count_children(nodes, items, returning) != 0) { return -30 }
+                let return_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, returning, "value"), 1)
+                value = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, return_name)
+                if (value < 0) { return -32 }
+            } else {
+                let branching = child(bytes, tokens, nodes, items, block, "if")
+                if (branching < 0 || nodes.get(branching * 8 + 4) != 3 || count_children(nodes, items, branching) != 0) { return -30 }
+                let condition_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "cond"), 1)
+                let then_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "then"), 1)
+                let else_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "else"), 1)
+                cond = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, condition_name)
+                yes = by_id(bytes, tokens, values, nodes, sequence, items, block_group, then_name)
+                no = by_id(bytes, tokens, values, nodes, sequence, items, block_group, else_name)
+                if (cond < 0 || yes < 0 || no < 0) { return -32 }
+            }
+            blocks.push(block)
+            blocks.push(owner)
+            blocks.push(cond)
+            blocks.push(yes)
+            blocks.push(no)
+            blocks.push(value)
+        }
+        at = at + 1
+    }
+    return 0
+}
+
+fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>) int {
     let local_group = child(bytes, tokens, nodes, items, body, "locals")
     let expr_group = child(bytes, tokens, nodes, items, body, "expressions")
     let block_group = child(bytes, tokens, nodes, items, body, "blocks")
-    if (expr_group < 0 || block_group < 0 || count_children(nodes, items, block_group) != 1) { return -30 }
+    if (expr_group < 0 || block_group < 0 || count_children(nodes, items, block_group) == 0) { return -30 }
     var groups = 2
     if (local_group >= 0) { groups = 3 }
     if (groups != count_children(nodes, items, body) || nodes.get(body * 8 + 4) != 2) { return -30 }
     let entry_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, body, "entry"), 1)
     let entry = by_id(bytes, tokens, values, nodes, sequence, items, block_group, entry_name)
-    if (atom_tag(bytes, tokens, nodes, entry) != "block" || count_children(nodes, items, entry) != 1) { return -30 }
-    let returning = child(bytes, tokens, nodes, items, entry, "return")
-    let return_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, returning, "value"), 1)
-    let returned = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, return_name)
-    if (returned < 0) { return -32 }
+    if (atom_tag(bytes, tokens, nodes, entry) != "block") { return -32 }
     let result = primitive(bytes, tokens, values, nodes, sequence, items, type_group, field(bytes, tokens, nodes, fields, signature, "result"))
     if (result == 0) { return -33 }
     defs.push(owner)
     defs.push(result)
     let owner_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, body, "owner"), 1)
     defs.push(by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, owner_name))
-    defs.push(returned)
+    defs.push(entry)
 
     let sig_params = field(bytes, tokens, nodes, fields, signature, "params")
     let expected = list_size(values, sig_params)
@@ -282,10 +320,10 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
         }
         at = at + 1
     }
-    return 0
+    return bind_blocks(bytes, tokens, values, nodes, sequence, fields, items, owner, expr_group, block_group, blocks)
 }
 
-pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, defs List<int>, params List<int>, expressions List<int>, args List<int>) int {
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>) int {
     let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
     let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
     let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
@@ -323,7 +361,7 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
                 i = i + 1
             }
             claimed.push(body)
-            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, function, signature, defs, params, expressions, args)
+            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, function, signature, defs, params, expressions, args, blocks)
             if (status != 0) { return status }
         }
         at = at + 1
