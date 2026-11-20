@@ -90,3 +90,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 ## PLAN-1086 增量（ownership 家族）
 
 `crates/auto-lang/test/cases/language/ownership/borrows-moves.case.ad` 组织借用、写回、移动和资源值的同源语料。28 条主承接与 11 条接续保留原 Auto 字节、原检查身份和 VM 预期。原 VM 检查按阶段 `#ignore`，生产包装器按 `legacy-map.tsv` 读取唯一作者，旧文档作为冻结历史保留。普通 AV 按目标与 recipe 独立判定，新增 22 个具名检查覆盖视图、记录与文本写回、诊断、发布和复制。源身份对账和有意判错的控制见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。
+
+## PLAN-1087 增量（errors 家族）
+
+`language/errors/catch-finally.case.ad` 是跨调用错误、展开和相邻控制流的唯一活跃作者。25 份原源和 27 条原 VM 检查在 `language/migration/legacy-map.tsv` 逐项保留原 SHA16、检查 ID、预期和执行条件。原 VM 检查阶段标记为 `#ignore`。具名差异各有独立的 AV 诊断检查，同一个 Auto 源继续承接旧 VM 预期。
+
+普通 AV worker 向父端报告处理器进入计数和最近的错误类型、虚拟文件和字节区间。父端验证该位置属于提交源码，并独立判定 AV 的值、双流和诊断。语料控制与运行证据见 [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md)。

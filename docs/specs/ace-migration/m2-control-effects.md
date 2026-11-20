@@ -95,3 +95,9 @@
 - **语句 fall-through**（auto 面独占）：非穷尽语句 `is` 无匹配继续后续语句（穷尽检查与 return filler 按 `has_following` 门控——尾 filler 会使后继代码不可达）；值位（is 表达式）与冻结面语句穷尽合同不变。
 - **尾值规范化**（infer::complete，parse→resolve 间纯 AST 改写）：fn 尾 `is` → `Return(IsExpr)`（return 臂尾保持语句形）、script 尾 `is` → 尾值 ExprStmt；`!T` 全枚举 Err 载荷 → 显式 `Result<T, E>` + 尾 `Ok` 归一 `return Ok(v)`。
 - 证据：`plan1083_canonical_verify`（patterns 12 例）/`plan1083_records_variants_patterns`（B34/B36/B37/B38/O53）；重放 `cargo t case-av-language-parity`。
+
+## PLAN-1087 增量（普通 Auto AV）
+
+普通 Auto 的受检 HIR 标出异常可退出的循环作用域及其控制状态与拥有型消息槽。MIR 与固定 ABC 的 `INVOKE` 区分调用成功和错误两条控制边，验证器分别核对调用结果所在的成功边和消息所在的错误边。`RAISE` 向当前激活的处理器交付错误并标记实际源码位置。`LANG_FAIL_AT` 将未处理错误移交给调用者，保留最早的来源信息。运行时在错误边结束该作用域的借用并释放穿过的调用帧。窄 profile 继续使用其既有控制流和 artifact 契约。
+
+catch 与 finally 使用统一的退出状态。跨调用的程序错误可触发 finally 并到达外层 catch。预算、授权、取消和宿主基础设施失败使用各自的终态。编译和运行观测均用虚拟源码路径和 UTF-8 字节区间定位。复现见 [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md)。

@@ -81,3 +81,7 @@ AutoVM 对 null 家族（`null`/`nil`/`None` 三拼写）在算术、拼接、�
 普通 AV 的 `null` 与 `nil` 共用独立的 Nil 标签，整数按自己的标签判等。`None` 属于类型化 Option，由判别分支和 Option 解包路径识别。Nil 为假，对装箱 Nil 的判空先查标签。`??` 在 Nil 或相应 Option 分支才求值右侧。Nil 的显示为 `None`。
 
 普通静态算术判定在绑定阶段给 `source.nil-op`。`.as` 已支持的 nil 算术、下标、调用、迭代和转换错误经语言 TypeError 进入 catch。运算对装箱 nil 先查标签，再走所需的数值取回。错误输出携带虚拟入口的原始字节区间；宿主故障、资源门和取消沿各自终态传递。见 [PLAN-1084](../../../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。
+
+## 普通 AV 跨调用（PLAN-1087）
+
+`.as` 产生的语言 TypeError 可随调用展开进入上层的 catch，保留原始文本和字节位置。普通 AV 列表的读下标越界在受保护的路径上生成 `IndexError: index N out of range`，其中 N 为原下标。无参重抛继续携带原诊断位置。宿主取消和资源拒绝仍保留各自的执行终态。见 [PLAN-1087](../../../../plans/archive/1087-av-parity-errors-and-unwinding.md)。

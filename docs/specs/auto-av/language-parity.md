@@ -292,3 +292,13 @@ after`（d01 静默失效债闭） | PASS |
 `language/ownership/borrows-moves.case.ad` 是本包共享作者。文本 `.mut` 原 VM 预期 `hello`，AV 写回预期 `hello world`。两个 SSE 原源码分别打印 `events: 1` 与原各自完成行。原 aggregates 探针 `str_slice_len_bytes` 在相同源码上检查第一标量 ASCII `A` 的字节长度为 1。普通 AV 的文本搜索与修剪通过 `av.text.scan/1` 受检执行。原样 2,000 轮字符串池用例在默认预算下返回 50000。
 
 交付接口为 `IF-AV-PARITY-OWNERSHIP`。原源码、检查身份、分析范围和观察来源见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。
+
+## PLAN-1087 增量（AVP-09，错误与控制流）
+
+普通 Auto AV 的直接调用、闭包调用和模块调用共享语言错误的展开路径。每个受保护的调用有独立的成功与错误出口。错误出口提供拥有型消息，不读取未生成的调用结果。展开释放被退出的调用帧，保留接收处理器的调用帧与局部量。跨作用域的 return、break、continue 和语言错误经过各自的 finally。finally 自身失败时，新的语言错误覆盖待完成的退出。无参 `rethrow()` 保留原消息、类别和源码位置。
+
+列表读下标失败可沿受保护调用传播 `IndexError: index N out of range`。普通 `.as` 已接通的 null TypeError 可穿过调用传播。显式以受准入 Python provider 启动的普通入口，可捕获受审 Python 异常类别与消息。宿主授权、I/O、资源拒绝和取消沿原执行边界传递。旧 `.as` 与 Python 的组合协议由 PLAN-1094 承接。
+
+值位 `is` 要求穷尽，非穷尽语句 `is` 可继续。Option `.?` 在 Option 返回边界传播 None，默认值和 `??` 均按需计算右侧。在列表构造 `[a, if cond { b }]` 中，条件按源序求值，条件成立才求值并加入对应元素。范围仅准入迭代位置。旧例 04.006、16.007、16.008、16.010 和 05.003 保留各自 VM 预期和同源 AV 诊断。生成器跨挂起与关闭的生命周期由 PLAN-1089 承接。
+
+公共作者为 `language/errors/catch-finally.case.ad`。交付接口为 `IF-AV-PARITY-ERROR`。路径、输入、工具与 provider 证据见 [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md)。
