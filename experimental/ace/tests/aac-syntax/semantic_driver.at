@@ -483,6 +483,7 @@ fn admit_document(path Str, steps int) Str {
             if (started < 0i64) { return "ERROR os.clock\n" }
             let result = verify_core_document(bytes, fuel, started + 5000i64)
             if (result == 0) { return "ADMITTED core-i32-draft\n" }
+            if (result == 1) { return "ADMITTED text-record-i32-draft\n" }
             return "ERROR " + diagnostic_name(result) + "\n"
         }
         None -> {}

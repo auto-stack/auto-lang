@@ -85,6 +85,62 @@ fn rechecks_global_effects_against_the_source_layout() {
 }
 
 #[test]
+fn verifies_borrowed_text_lifetime_and_scalar_length() {
+    let source = concat!(
+        "fn length(text str) int { return text.len() }\n",
+        "fn main() int { let sample = \"A中😀\\n\"\n return length(sample) }\n",
+    );
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::text_record_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_text_record(bound).expect("reference verifies borrowed text HIR");
+    assert!(
+        atom.contains("requires: [\"ac.runtime.text.v1\"]"),
+        "{atom}"
+    );
+    assert!(atom.contains("text: \"A中😀\\n\""), "{atom}");
+    assert!(atom.contains("mode: view"), "{atom}");
+    let admit = |candidate: &str| {
+        run_core_hir_case(candidate.as_bytes(), "descriptor").expect("Auto HIR admission")
+    };
+    assert_eq!(admit(&atom), "ADMITTED text-record-i32-draft\n");
+    let without_runtime = atom.replace(" requires: [\"ac.runtime.text.v1\"]\n", "");
+    assert_eq!(admit(&without_runtime), "ERROR hir.unsupported\n");
+    let moved_view = atom.replace("mode: view", "mode: move");
+    assert_ne!(moved_view, atom);
+    assert_eq!(admit(&moved_view), "ERROR hir.type\n");
+    let bad_arity = source.replace("text.len()", "text.len(1)");
+    let rejected = run_core_hir_case(bad_arity.as_bytes(), "verify").expect("Auto type check");
+    assert!(rejected.starts_with("ERROR type.argument 0 "), "{rejected}");
+}
+
+#[test]
+fn rejects_a_detached_expression_cycle() {
+    let source = b"fn main() int { return 42 }";
+    let document = run_core_hir_case(source, "verify").expect("Auto HIR");
+    assert_eq!(
+        run_core_hir_case(document.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ADMITTED core-i32-draft\n"
+    );
+    let candidate = document.replacen(
+        " expressions {\n",
+        concat!(
+            " expressions {\n",
+            " expr a binary { type: \"t1\"; op: add_i32; lhs: \"b\"; rhs: \"x\"; overflow: trap }\n",
+            " expr b binary { type: \"t1\"; op: add_i32; lhs: \"a\"; rhs: \"y\"; overflow: trap }\n",
+            " expr x constant { type: \"t1\"; value: 1i32 }\n",
+            " expr y constant { type: \"t1\"; value: 2i32 }\n",
+        ),
+        1,
+    );
+    assert_ne!(candidate, document);
+    assert_eq!(
+        run_core_hir_case(candidate.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ERROR hir.reference\n"
+    );
+}
+
+#[test]
 fn block_shadowing_initializer_sees_previous_scope() {
     let source = concat!(
         "fn f(x int) int {\n",

@@ -5,6 +5,7 @@ use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.setter_mode
 use app.semantic_tree.span_text
+use app.types.text_view_type
 use std.conv.from_int
 use std.conv.to_int
 
@@ -141,6 +142,7 @@ fn number(bytes List<int>, tokens List<int>, values List<int>, value int, ending
 }
 
 fn primitive(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, types int, value int) int {
+    if (value_text(bytes, tokens, values, value, 0) == "str") { return text_view_type() }
     let type_name = value_text(bytes, tokens, values, value, 1)
     let type_node = by_id(bytes, tokens, values, nodes, sequence, items, types, type_name)
     let shape = value_text(bytes, tokens, values, slot(nodes, sequence, type_node, 1), 0)
@@ -291,7 +293,9 @@ fn validate_places(bytes List<int>, tokens List<int>, values List<int>, nodes Li
             let local_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, place, "local"), 1)
             let local = by_id(bytes, tokens, values, nodes, sequence, items, local_group, local_name)
             if (local < 0) { return -32 }
-            let lane = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, place, "type"), 1)
+            let type_field = field(bytes, tokens, nodes, fields, place, "type")
+            var lane = value_text(bytes, tokens, values, type_field, 1)
+            if (value_text(bytes, tokens, values, type_field, 0) == "str") { lane = "str" }
             if (lane != value_text(bytes, tokens, values, slot(nodes, sequence, local, 1), 0)) { return -33 }
             if (value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, place, "access"), 0) != "mutable") { return -41 }
         }
@@ -351,20 +355,26 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
                 let shape = value_text(bytes, tokens, values, local_role, 0)
                 var type_id = 0
                 if (shape == "param") {
-                    if (nodes.get(local * 8 + 4) != 3 || !number(bytes, tokens, values, index_value, "u32", parsed)) { return -33 }
+                    if (!number(bytes, tokens, values, index_value, "u32", parsed)) { return -33 }
                     index = parsed.get(0)
                     if (index < 0 || index >= expected || seen.get(index) != 0) { return -33 }
                     seen.set(index, 1)
                     formal_count = formal_count + 1
                     let expected_type = list_entry(values, sequence, sig_params, index)
-                    if (type_name != value_text(bytes, tokens, values, expected_type, 1)) { return -33 }
                     type_id = primitive(bytes, tokens, values, nodes, sequence, items, type_group, expected_type)
+                    if (type_id == text_view_type()) {
+                        let mode = field(bytes, tokens, nodes, fields, local, "mode")
+                        if (type_name != "str" || nodes.get(local * 8 + 4) != 4 || value_text(bytes, tokens, values, mode, 0) != "view") { return -33 }
+                    } else {
+                        if (nodes.get(local * 8 + 4) != 3 || type_name != value_text(bytes, tokens, values, expected_type, 1)) { return -33 }
+                    }
                 } else {
                     if (shape != "binding" || index_value >= 0) { return -30 }
                     let binding_type = by_id(bytes, tokens, values, nodes, sequence, items, type_group, type_name)
                     let lane = value_text(bytes, tokens, values, slot(nodes, sequence, binding_type, 1), 0)
                     if (lane == "i32") { type_id = 1 }
                     if (lane == "bool") { type_id = 2 }
+                    if (type_name == "str") { type_id = text_view_type() }
                     let mutability = field(bytes, tokens, nodes, fields, local, "mutable")
                     index = -1
                     if (mutability >= 0) {
@@ -439,6 +449,22 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
                 args.push(by_id(bytes, tokens, values, nodes, sequence, items, expr_group, right_name))
                 args.push(1)
             }
+            if (form == "str_lit") {
+                let value = field(bytes, tokens, nodes, fields, expression, "text")
+                if (field_count != 2 || value < 0 || values.get(value * 4) != 1) { return -30 }
+                operation = 7
+                payload = expression
+            }
+            if (form == "text_len") {
+                if (field_count != 2) { return -30 }
+                let operand = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "operand"), 1)
+                payload = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, operand)
+                if (payload < 0) { return -32 }
+                operation = 8
+                args.push(expression)
+                args.push(payload)
+                args.push(0)
+            }
             if (operation == 0) { return -30 }
             expressions.push(expression)
             expressions.push(owner)
@@ -486,19 +512,31 @@ fn bind_global_intrinsic(bytes List<int>, tokens List<int>, values List<int>, no
     return 0
 }
 
-pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
+pub fn text_record_transport(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, fields List<int>, root int) bool {
+    let profile = field(bytes, tokens, nodes, fields, root, "profile")
+    return value_text(bytes, tokens, values, profile, 1) == "text-record-i32-draft"
+}
+
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, text_record bool, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
     let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
     let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
     let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
     var expected_schema = "auto.hir.core.draft"
     var expected_profile = "core-i32-draft"
-    if (rows > 0) {
+    if (text_record) {
         expected_schema = "auto.hir.text-record.draft"
         expected_profile = "text-record-i32-draft"
     }
     if (schema != expected_schema || profile != expected_profile || revision != "1u32") { return -34 }
     let capabilities = field(bytes, tokens, nodes, fields, root, "requires")
-    if (nodes.get(root * 8 + 2) != 0 || (capabilities >= 0 && list_size(values, capabilities) != 0)) { return -30 }
+    if (nodes.get(root * 8 + 2) != 0) { return -30 }
+    var text_runtime = false
+    if (capabilities >= 0 && list_size(values, capabilities) != 0) {
+        if (!text_record || list_size(values, capabilities) != 1) { return -30 }
+        let contract = list_entry(values, sequence, capabilities, 0)
+        if (value_text(bytes, tokens, values, contract, 1) != "ac.runtime.text.v1") { return -30 }
+        text_runtime = true
+    }
     let module_node = child(bytes, tokens, nodes, items, root, "module")
     if (module_node < 0 || count_children(nodes, items, root) != 1) { return -30 }
     if (rows > 0) {
@@ -528,6 +566,7 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
             let signature = by_id(bytes, tokens, values, nodes, sequence, items, types, sig_name)
             if (value_text(bytes, tokens, values, slot(nodes, sequence, signature, 1), 0) != "function") { return -33 }
             if (form == "intrinsic") {
+                if (rows <= 0) { return -43 }
                 let admitted = bind_global_intrinsic(bytes, tokens, values, nodes, sequence, fields, items, types, function, identity, signature, rows, global_names, defs, params)
                 if (admitted != 0) { return admitted }
                 at = at + 1
@@ -555,5 +594,22 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
         at = at + 1
     }
     if (claimed.len() != body_count) { return -31 }
+    if (!text_runtime) {
+        var i = 0
+        for (i < defs.len()) {
+            if (defs.get(i + 1) == text_view_type()) { return -30 }
+            i = i + 4
+        }
+        i = 0
+        for (i < params.len()) {
+            if (params.get(i + 2) == text_view_type()) { return -30 }
+            i = i + 4
+        }
+        i = 0
+        for (i < expressions.len()) {
+            if (expressions.get(i + 3) == text_view_type()) { return -30 }
+            i = i + 5
+        }
+    }
     return 0
 }

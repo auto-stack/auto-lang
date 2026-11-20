@@ -1803,15 +1803,10 @@ fn build_canonical(bs List<int>, errs List<int>) List<int> {
     return emit_document(bs, toks, vals, nodes, seq, flds, items, root)
 }
 
-/// Real-schema driven mode over byte vectors: read the descriptor document into
-/// a tag/field table, then parse, validate and emit the document with the SAME
-/// writer.
-// The versioned descriptor supplies allowed shapes. The returned arenas
-// remain untrusted semantic data and retain document byte locations.
-pub fn bind_document_shape(sbs List<int>, dbs List<int>, errs List<int>, toks List<int>, vals List<int>, nodes List<int>, seq List<int>, flds List<int>, items List<int>) int {
-    if (sbs.len() > 262144 || dbs.len() > 262144) {
+fn prepare_shape_table(sbs List<int>, errs List<int>, meta List<int>, fspan List<int>, pool List<int>) bool {
+    if (sbs.len() > 262144) {
         errs.set(0, 6)
-        return -1
+        return false
     }
     var stoks = List<int>.new()
     var svals = List<int>.new()
@@ -1821,26 +1816,33 @@ pub fn bind_document_shape(sbs List<int>, dbs List<int>, errs List<int>, toks Li
     var sitems = List<int>.new()
     let sroot = parse_root(sbs, errs, stoks, svals, snodes, sseq, sflds, sitems)
     if (sroot < 0) {
-        return -1
+        return false
     }
-    var meta = List<int>.new()
-    var fspan = List<int>.new()
-    var pool = List<int>.new()
     let tc = build_schema_table(
         sbs, stoks, svals, snodes, sseq, sflds, sitems, sroot, meta, fspan, pool
     )
     if (tc != 0) {
         errs.set(0, tc)
+        return false
+    }
+    return true
+}
+
+// Parse once for a consumer that selects its descriptor from the header.
+// The arena is still untrusted. Validate it before semantic admission.
+pub fn parse_transport_arena(dbs List<int>, errs List<int>, toks List<int>, vals List<int>, nodes List<int>, seq List<int>, flds List<int>, items List<int>) int {
+    if (dbs.len() > 262144) {
+        errs.set(0, 6)
         return -1
     }
-    let root = parse_root(dbs, errs, toks, vals, nodes, seq, flds, items)
-    if (root < 0) {
-        return -1
-    }
+    return parse_root(dbs, errs, toks, vals, nodes, seq, flds, items)
+}
+
+fn check_prepared_shape(dbs List<int>, errs List<int>, toks List<int>, nodes List<int>, flds List<int>, items List<int>, root int, meta List<int>, fspan List<int>, pool List<int>) bool {
     let vc = schema_doc_check(dbs, toks, nodes, flds, items, root, meta, fspan, pool)
     if (vc != 0) {
         errs.set(0, vc)
-        return -1
+        return false
     }
     // A repeated field is 8 in BOTH modes, including inside an INLINE node
     // (`{ k: 1, k: 2 }`). `schema_doc_check` walks tagged nodes only (an inline
@@ -1851,8 +1853,32 @@ pub fn bind_document_shape(sbs List<int>, dbs List<int>, errs List<int>, toks Li
     let dc = dup_all(dbs, toks, nodes, flds)
     if (dc != 0) {
         errs.set(0, dc)
+        return false
+    }
+    return true
+}
+
+pub fn validate_transport_arena(sbs List<int>, dbs List<int>, errs List<int>, toks List<int>, nodes List<int>, flds List<int>, items List<int>, root int) bool {
+    var meta = List<int>.new()
+    var fspan = List<int>.new()
+    var pool = List<int>.new()
+    if (!prepare_shape_table(sbs, errs, meta, fspan, pool)) { return false }
+    return check_prepared_shape(dbs, errs, toks, nodes, flds, items, root, meta, fspan, pool)
+}
+
+/// Parse a document and validate its tags and fields against the descriptor.
+/// The returned arenas retain byte locations. Semantic admission is separate.
+pub fn bind_document_shape(sbs List<int>, dbs List<int>, errs List<int>, toks List<int>, vals List<int>, nodes List<int>, seq List<int>, flds List<int>, items List<int>) int {
+    if (sbs.len() > 262144 || dbs.len() > 262144) {
+        errs.set(0, 6)
         return -1
     }
+    var meta = List<int>.new()
+    var fspan = List<int>.new()
+    var pool = List<int>.new()
+    if (!prepare_shape_table(sbs, errs, meta, fspan, pool)) { return -1 }
+    let root = parse_transport_arena(dbs, errs, toks, vals, nodes, seq, flds, items)
+    if (root < 0 || !check_prepared_shape(dbs, errs, toks, nodes, flds, items, root, meta, fspan, pool)) { return -1 }
     return root
 }
 

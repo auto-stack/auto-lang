@@ -1,4 +1,5 @@
-use app.atom_data.bind_document_shape
+use app.atom_data.parse_transport_arena
+use app.atom_data.validate_transport_arena
 use app.binding.bind_budget
 use app.binding.call_mapping_stride
 use app.binding.call_parameter_slots
@@ -13,6 +14,7 @@ use app.binding.parameter_decl
 use app.binding.resolved_function
 use app.binding.take_step
 use app.core_atom_bound.bind_core_atom
+use app.core_atom_bound.text_record_transport
 use app.core_globals.add_global_intrinsics
 use app.core_globals.build_global_names
 use app.core_globals.getter_mode
@@ -44,8 +46,10 @@ use app.semantic_tree.spelling
 use app.semantic_tree.start_of
 use app.syntax_cst.join_rows
 use app.syntax_frontend.str_to_bytes
+use app.typecheck.text_length_receiver
 use app.types.boolean_type
 use app.types.integer_type
+use app.types.text_view_type
 use std.bytes.decode_utf8
 use std.conv.from_int
 
@@ -64,11 +68,34 @@ fn call_op() int { return 3 }
 fn less_than_op() int { return 4 }
 fn add_op() int { return 5 }
 fn multiply_op() int { return 6 }
+fn text_literal_op() int { return 7 }
+fn text_length_op() int { return 8 }
 fn initialize_op() int { return 1 }
 fn assign_op() int { return 2 }
 fn immutable_slot() int { return -1 }
 fn mutable_slot() int { return -2 }
-fn supported_type(t int) bool { return t == integer_type() || t == boolean_type() }
+fn supported_type(t int) bool { return t == integer_type() || t == boolean_type() || t == text_view_type() }
+
+// Atom and Auto share these four escapes. Preserve exact UTF-8 source bytes
+// for this subset, and reject other spellings before issuing verified HIR.
+fn transport_text(src List<int>, start int, limit int, deadline i64, fuel List<int>) int {
+    if (limit - start < 2 || src.get(start) != 34 || src.get(limit - 1) != 34) { return hir_unsupported() }
+    var at = start + 1
+    for (at < limit - 1) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let octet = src.get(at)
+        if (octet == 92) {
+            at = at + 1
+            if (at >= limit - 1) { return hir_unsupported() }
+            let escape = src.get(at)
+            if (escape != 34 && escape != 92 && escape != 110 && escape != 116) { return hir_unsupported() }
+        } else {
+            if (octet < 32 || octet == 34) { return hir_unsupported() }
+        }
+        at = at + 1
+    }
+    return 0
+}
 
 // Definition IDs and expression IDs are distinct even when they share an
 // origin row. Each table carries its own owner and exact source-row identity.
@@ -202,6 +229,11 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 let token = child_with_role(pg, ast, links, row, "value")
                 if (token >= 0) { expressions.set(row, expressions.get(token)) }
             }
+            if (node_kind == "str-lit") {
+                let valid = transport_text(src, start_of(ast, row), end_of(ast, row), deadline, fuel)
+                if (valid != 0) { return failed(errors, row, valid) }
+                add_expression(exprs, expressions, row, owner, text_literal_op(), t, row)
+            }
             if (node_kind == "ident") {
                 let target = uses.get(row)
                 let write = role(pg, ast, row) == "name" && kind(pg, ast, parent(ast, row)) == "assign-stmt"
@@ -214,6 +246,17 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 }
             }
             if (node_kind == "call") {
+                let receiver = text_length_receiver(pg, ast, links, src, facts, row)
+                if (receiver >= 0) {
+                    let operand = expressions.get(receiver)
+                    if (operand < 0) { return failed(errors, row, hir_unsupported()) }
+                    add_expression(exprs, expressions, row, owner, text_length_op(), t, operand)
+                    args.push(row)
+                    args.push(operand)
+                    args.push(0)
+                    row = row - 1
+                    continue
+                }
                 let target = resolved_function(pg, ast, links, declarations, uses, row)
                 if (target < 0) { return failed(errors, row, hir_unsupported()) }
                 add_expression(exprs, expressions, row, owner, call_op(), t, target)
@@ -571,6 +614,26 @@ fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, fuel List<in
     return 0
 }
 
+fn verify_text_length(exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, exprs.len() / 5 + args.len() / 3)) { return bind_budget() }
+    let id = exprs.get(position)
+    let operand = exprs.get(position + 4)
+    let input = find_row(exprs, 5, operand, 0)
+    if (input < 0 || input == position || exprs.get(input + 1) != exprs.get(position + 1)) { return hir_reference_error() }
+    if (exprs.get(input + 3) != text_view_type() || exprs.get(position + 3) != integer_type()) { return hir_type_error() }
+    var matched = false
+    var at = 0
+    for (at < args.len()) {
+        if (args.get(at) == id) {
+            if (matched || args.get(at + 1) != operand || args.get(at + 2) != 0) { return hir_reference_error() }
+            matched = true
+        }
+        at = at + 3
+    }
+    if (!matched) { return hir_reference_error() }
+    return 0
+}
+
 fn claim_node(table List<int>, stride int, claimed List<int>, node int, fuel List<int>, deadline i64) int {
     if (!has_budget(fuel, deadline, table.len() / stride)) { return bind_budget() }
     let slot = find_row(table, stride, node, 0)
@@ -595,6 +658,7 @@ fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int
     if (!has_budget(fuel, deadline, exprs.len() / 5 + blocks.len() / 6)) { return failed(errors, 0, bind_budget()) }
     var expressions = List<int>.new()
     var block_claims = List<int>.new()
+    var pending = List<int>.new()
     var at = 0
     for (at < exprs.len()) {
         expressions.push(0)
@@ -606,15 +670,8 @@ fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int
         at = at + 6
     }
     at = 0
-    for (at < args.len()) {
-        let code = claim_node(exprs, 5, expressions, args.get(at + 1), fuel, deadline)
-        if (code != 0) { return failed(errors, args.get(at), code) }
-        at = at + 3
-    }
-    at = 0
     for (at < statements.len()) {
-        let code = claim_node(exprs, 5, expressions, statements.get(at + 3), fuel, deadline)
-        if (code != 0) { return failed(errors, statements.get(at), code) }
+        pending.push(statements.get(at + 3))
         at = at + 4
     }
     at = 0
@@ -636,9 +693,19 @@ fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int
             if (no != 0) { return failed(errors, blocks.get(at), no) }
             evaluated = condition
         }
-        let code = claim_node(exprs, 5, expressions, evaluated, fuel, deadline)
-        if (code != 0) { return failed(errors, blocks.get(at), code) }
+        pending.push(evaluated)
         at = at + 6
+    }
+    for (pending.len() > 0) {
+        let id = pending.remove(pending.len() - 1)
+        let code = claim_node(exprs, 5, expressions, id, fuel, deadline)
+        if (code != 0) { return failed(errors, id, code) }
+        if (!has_budget(fuel, deadline, args.len() / 3)) { return failed(errors, id, bind_budget()) }
+        at = 0
+        for (at < args.len()) {
+            if (args.get(at) == id) { pending.push(args.get(at + 1)) }
+            at = at + 3
+        }
     }
     let unused = unclaimed_node(exprs, 5, expressions)
     if (unused >= 0) { return failed(errors, unused, hir_reference_error()) }
@@ -861,6 +928,11 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             }
         }
         if (op == constant_op() && type_id != integer_type()) { status = hir_type_error() }
+        if (op == text_literal_op()) {
+            status = hir_type_error()
+            if (type_id == text_view_type() && data >= 0) { status = 0 }
+        }
+        if (op == text_length_op()) { status = verify_text_length(exprs, args, position, fuel, deadline) }
         if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, layouts, rows, fuel, deadline) }
         if (op == less_than_op() || op == add_op() || op == multiply_op()) {
             status = verify_binary(exprs, args, position, op, fuel, deadline)
@@ -880,6 +952,18 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
 
 fn id(prefix Str, row int) Str { return prefix + from_int(row) }
 fn ref_text(prefix Str, row int) Str { return "\"" + id(prefix, row) + "\"" }
+
+fn type_id_text(t int, quoted bool) Str {
+    if (t == text_view_type()) { return "str" }
+    if (quoted) { return ref_text("t", t) }
+    return id("t", t)
+}
+
+fn has_text(defs List<int>, parameters List<int>, exprs List<int>) bool {
+    if (find_row(defs, 4, text_view_type(), 1) >= 0) { return true }
+    if (find_row(parameters, 4, text_view_type(), 2) >= 0) { return true }
+    return find_row(exprs, 5, text_view_type(), 3) >= 0
+}
 
 fn write_call(args List<int>, call int, target int) Str {
     var evaluation = ""
@@ -933,7 +1017,7 @@ fn local_places(locals List<int>, statements List<int>, owner int) Str {
         if (locals.get(at) == owner && locals.get(at + 3) == mutable_slot()) {
             let local = locals.get(at + 1)
             if (assigned(statements, local)) {
-                let line = " place " + id("p", local) + " local { local: " + ref_text("l", local) + "; type: " + ref_text("t", locals.get(at + 2)) + "; access: mutable }\n"
+                let line = " place " + id("p", local) + " local { local: " + ref_text("l", local) + "; type: " + type_id_text(locals.get(at + 2), true) + "; access: mutable }\n"
                 output.push(line.move)
             }
         }
@@ -987,11 +1071,14 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     var output = List<Str>.new()
     var schema = "auto.hir.core.draft"
     var profile = "core-i32-draft"
-    if (has_globals) {
+    let text_domain = has_text(defs, parameters, exprs)
+    if (has_globals || text_domain) {
         schema = "auto.hir.text-record.draft"
         profile = "text-record-i32-draft"
     }
-    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
+    var capabilities = ""
+    if (text_domain) { capabilities = " requires: [\"ac.runtime.text.v1\"]\n" }
+    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
     output.push(opening.move)
     var def_at = 0
     for (def_at < checked.definitions * 4) {
@@ -1001,11 +1088,11 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
         for (param_at < parameters.len()) {
             if (parameters.get(param_at) == def && parameters.get(param_at + 3) >= 0) {
                 if (param_list.len() > 0) { param_list = param_list + ", " }
-                param_list = param_list + ref_text("t", parameters.get(param_at + 2))
+                param_list = param_list + type_id_text(parameters.get(param_at + 2), true)
             }
             param_at = param_at + 4
         }
-        let line = " type " + id("s", def) + " function { params: [" + param_list + "]; result: " + ref_text("t", defs.get(def_at + 1)) + " }\n"
+        let line = " type " + id("s", def) + " function { params: [" + param_list + "]; result: " + type_id_text(defs.get(def_at + 1), true) + " }\n"
         output.push(line.move)
         def_at = def_at + 4
     }
@@ -1037,7 +1124,9 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 var entries = "binding; mutable: false"
                 if (slot == mutable_slot()) { entries = "binding; mutable: true" }
                 if (slot >= 0) { entries = "param; index: " + from_int(slot) + "u32" }
-                let line = " local " + id("l", param) + " " + id("t", parameters.get(param_at + 2)) + " { name: \"" + name + "\"; role: " + entries + " }\n"
+                let lane = parameters.get(param_at + 2)
+                if (slot >= 0 && lane == text_view_type()) { entries = entries + "; mode: view" }
+                let line = " local " + id("l", param) + " " + type_id_text(lane, false) + " { name: \"" + name + "\"; role: " + entries + " }\n"
                 output.push(line.move)
             }
             param_at = param_at + 4
@@ -1051,7 +1140,7 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
             if (exprs.get(expr_at + 1) == def) {
                 let expr = exprs.get(expr_at)
                 let op = exprs.get(expr_at + 2)
-                let t = ref_text("t", exprs.get(expr_at + 3))
+                let t = type_id_text(exprs.get(expr_at + 3), true)
                 let data = exprs.get(expr_at + 4)
                 var form = "constant"
                 var fields = "value: " + from_int(data) + "i32"
@@ -1066,6 +1155,14 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 if (op == less_than_op() || op == add_op() || op == multiply_op()) {
                     form = "binary"
                     fields = write_binary(args, expr, op)
+                }
+                if (op == text_literal_op()) {
+                    form = "str_lit"
+                    fields = "text: " + spelling(src, ast, data)
+                }
+                if (op == text_length_op()) {
+                    form = "text_len"
+                    fields = "operand: " + ref_text("e", data)
                 }
                 let line = " expr " + id("e", expr) + " " + form + " { type: " + t + "; " + fields + " }\n"
                 output.push(line.move)
@@ -1196,24 +1293,33 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     var items = List<int>.new()
     var parser_error = List<int>.new()
     parser_error.push(0)
-    var schema = core_schema()
-    if (rows > 0) { schema = global_schema() }
-    let root = bind_document_shape(str_to_bytes(schema), bytes, parser_error, tokens, values, nodes, sequence, fields, items)
+    let root = parse_transport_arena(bytes, parser_error, tokens, values, nodes, sequence, fields, items)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (root < 0) { return hir_shape_error() }
+    let text_record = text_record_transport(bytes, tokens, values, nodes, fields, root)
+    if (rows > 0 && !text_record) { return hir_shape_error() }
     var definitions = List<int>.new()
     var parameters = List<int>.new()
     var expressions = List<int>.new()
     var arguments = List<int>.new()
     var blocks = List<int>.new()
     var statements = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, names, module_path, definitions, parameters, expressions, arguments, blocks, statements)
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, names, module_path, definitions, parameters, expressions, arguments, blocks, statements)
     if (!take_step(fuel, deadline)) { return bind_budget() }
+    if (status == hir_global_authority_error()) { return status }
+    var schema = core_schema()
+    if (text_record) { schema = global_schema() }
+    let shaped = validate_transport_arena(str_to_bytes(schema), bytes, parser_error, tokens, nodes, fields, items, root)
+    if (!take_step(fuel, deadline)) { return bind_budget() }
+    if (!shaped) { return hir_shape_error() }
     if (status != 0) { return status }
     var errors = List<int>.new()
     let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, layouts, rows, fuel, deadline, errors)
     is verified {
-        Some(_) -> { return 0 }
+        Some(_) -> {
+            if (text_record) { return 1 }
+            return 0
+        }
         None -> {}
     }
     return errors.get(1)
@@ -1230,5 +1336,7 @@ pub fn verify_global_document(bytes List<int>, ast List<int>, src List<int>, mod
     var names = List<int>.new()
     let loaded = build_global_names(ast, src, modules, declarations, layouts, names, fuel, deadline)
     if (loaded != 0) { return loaded }
-    return verify_transport(bytes, layouts, names, row_count(ast), module_name_at(modules, 0), fuel, deadline)
+    let old_domain_result = verify_transport(bytes, layouts, names, row_count(ast), module_name_at(modules, 0), fuel, deadline)
+    if (old_domain_result == 1) { return 0 }
+    return old_domain_result
 }

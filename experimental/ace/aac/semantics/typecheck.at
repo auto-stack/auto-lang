@@ -311,6 +311,20 @@ fn foreign_callable(external List<int>, at int, types List<int>, fuel List<int>,
     return callable
 }
 
+pub fn text_length_receiver(pg List<int>, ast List<int>, links List<int>, src List<int>, facts List<int>, call int) int {
+    let postfix = call_postfix(pg, ast, links, call)
+    if (postfix < 0) { return -1 }
+    let receiver = first_child(links, postfix)
+    if (receiver < 0) { return -1 }
+    let input = facts.get(receiver)
+    if (input != text_view_type() && input != owned_text_type()) { return -1 }
+    let step = next_sibling(links, receiver)
+    if (step < 0 || next_sibling(links, step) >= 0) { return -1 }
+    let member = child_with_role(pg, ast, links, step, "member")
+    if (member < 0 || spelling(src, ast, member) != "len") { return -1 }
+    return receiver
+}
+
 fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, external List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
     let node_kind = kind(pg, ast, row)
     let category = decl_category(declarations, row)
@@ -330,6 +344,7 @@ fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarati
         return facts.get(target)
     }
     if (node_kind == "call") {
+        if (text_length_receiver(pg, ast, links, src, facts, row) >= 0) { return integer_type() }
         let callee = direct_callee(pg, ast, links, row)
         if (callee < 0) { return 0 }
         let postfix = call_postfix(pg, ast, links, row)
@@ -495,7 +510,7 @@ fn validate_indirect(pg List<int>, ast List<int>, links List<int>, facts List<in
     return 0
 }
 
-fn validate(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn validate(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
@@ -528,8 +543,15 @@ fn validate(pg List<int>, ast List<int>, links List<int>, declarations List<int>
         }
         if (node_kind == "expr-stmt" && facts.get(row) == 0) { return failure(errors, row, type_unknown()) }
         if (node_kind == "call" && resolved_function(pg, ast, links, declarations, uses, row) < 0) {
-            let status = validate_indirect(pg, ast, links, facts, types, row, errors, fuel, deadline)
-            if (status != 0) { return status }
+            if (text_length_receiver(pg, ast, links, src, facts, row) >= 0) {
+                let arguments = call_args(pg, ast, links, row)
+                if (arguments < 0 || child_with_kind(pg, ast, links, arguments, "arg") >= 0 || child_with_kind(pg, ast, links, arguments, "arg-tail") >= 0) {
+                    return failure(errors, row, type_argument())
+                }
+            } else {
+                let status = validate_indirect(pg, ast, links, facts, types, row, errors, fuel, deadline)
+                if (status != 0) { return status }
+            }
         }
         row = row + 1
     }
@@ -640,5 +662,5 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
     }
     let methods = map_methods(pg, ast, links, src, declarations, uses, mappings, errors, fuel, deadline)
     if (methods != 0) { return methods }
-    return validate(pg, ast, links, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+    return validate(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
 }
