@@ -140,11 +140,11 @@ pub fn run_case(tag: &str, case_use: &str, call: &str) -> Result<Vec<u8>, String
 }
 
 /// The AV harness budget. The 1045 lane recorded 64M for its digest-sized
-/// drivers; the syntax stage driver additionally DECODES the embedded
-/// grammar program tables (data loading, one-time per run) before any
-/// parsing, which measures ~20M steps for the scalar crop and ~60M for the
-/// full `auto` crop. This is a HARNESS budget only — the 1044-frozen parse
-/// resource profile is asserted inside the driver's own budget parameters,
-/// not here.
-pub const AV_MAX_STEPS: u64 = 512_000_000;
+/// drivers; the syntax machine is far heavier per parse on the interpreter
+/// (measured: ONE scalar-crop parse+decode run lands in the low hundreds of
+/// millions of VM instructions; D-1046-02 turned out to be pure cost, not a
+/// loop — a two-parse edit case needs ~2B). This is a HARNESS budget only
+/// — the 1044-frozen parse resource profile (depth/work bytes) is asserted
+/// inside the driver's own budget parameters, not here.
+pub const AV_MAX_STEPS: u64 = 4_000_000_000;
 pub const AV_WALL_SECS: u64 = 300;

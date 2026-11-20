@@ -9,6 +9,7 @@ use app.syntax_program.decode_program_parts
 use app.syntax_snapshot.apply_edit
 use app.syntax_snapshot.snapshot_id
 use app.syntax_incremental.incremental_lex
+use app.syntax_incremental.incremental_lex_p
 use app.syntax_parse.parse_tokens_n
 use app.syntax_parse.first_sets_into
 use app.syntax_lexer.compile_scanner
@@ -189,6 +190,9 @@ fn render_diag(pg List<int>, dmsg List<int>) Str {
         if (kind == 5) {
             out = out + "trailing unparsed tokens"
         }
+        if (kind == 99) {
+            out = out + "LISTCAP which=" + itoa(st) + " len=" + itoa(en)
+        }
         if (kind == 6) {
             out = out + "rule `" + rule_name(pg, param) + "` recurses without consuming input (left recursion)"
         }
@@ -200,6 +204,9 @@ fn render_diag(pg List<int>, dmsg List<int>) Str {
         }
         if (kind == 9) {
             out = out + "unexpected token in " + rule_expect(pg, param)
+        }
+        if (kind == 90) {
+            out = out + "GATE ls=" + itoa(st) + " br=" + itoa(en) + " sep=" + itoa(param)
         }
         if (kind == 99) {
             out = out + "STEP_CAP i=" + itoa(st) + " frames=" + itoa(en) + " rule=" + itoa(param)
@@ -228,7 +235,7 @@ pub fn raw_case(profile Str) Str {
         return "DECODE_ERR"
     }
     let ns = n_scan(pg)
-    var out = "nscan=" + itoa(ns)
+    var out = "nscan=" + itoa(ns) + " nl=" + itoa(pg.get(11)) + " start=" + itoa(pg.get(10))
     if (ns > 0) {
         var off = pg.get(32)
         out = out + " pool=" + itoa(off) + " poollen=" + itoa(pg.len() - off)
@@ -396,7 +403,12 @@ fn parse_bytes(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>,
     lex_all(pg, cs, srcb, -1, toks, lexd)
     var g0 = List<int>.new()
     g0.push(0)
-    return parse_tokens_n(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), g0, 1048576, 67108864, toks.len() / 5)
+    var p_ot = List<int>.new()
+    var p_oef = List<int>.new()
+    var p_odecls = List<int>.new()
+    var p_gc = List<int>.new()
+    var p_gs = List<int>.new()
+    return parse_tokens_n(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, p_ot, p_oef, p_odecls, p_gc, p_gs, g0, 1048576, 67108864, toks.len() / 5)
 }
 
 
@@ -418,7 +430,12 @@ fn fb_fresh(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, sn
     var decls2 = List<int>.new()
     var g0 = List<int>.new()
     g0.push(0)
-    let r2 = parse_tokens_n(pg, cs, firsts, nullable, toks3, snap, t2, ef2, decls2, d2, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), g0, 1048576, 4000000, toks3.len() / 5)
+    var f_ot = List<int>.new()
+    var f_oef = List<int>.new()
+    var f_odecls = List<int>.new()
+    var f_gc = List<int>.new()
+    var f_gs = List<int>.new()
+    let r2 = parse_tokens_n(pg, cs, firsts, nullable, toks3, snap, t2, ef2, decls2, d2, f_ot, f_oef, f_odecls, f_gc, f_gs, g0, 1048576, 4000000, toks3.len() / 5)
     if (stage == 9) {
         return "S9 fb-parsed r2=" + itoa(r2)
     }
@@ -433,6 +450,10 @@ fn copy_ints(src List<int>) List<int> {
         i = i + 1
     }
     return out
+}
+
+pub fn edit_case_ph(profile Str, sample Str, start int, end int, insert Str, phase int) Str {
+    return edit_case_staged(profile, sample, start, end, insert, phase)
 }
 
 pub fn edit_case(profile Str, sample Str, start int, end int, insert Str) Str {
@@ -464,57 +485,8 @@ pub fn edit_fresh_lex_case(profile Str, sample Str, start int, end int, insert S
     return out
 }
 
-pub fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str, stage int) Str {
-    var pg = decode_program_parts(fetch_parts(profile))
-    if (!pg_ok(pg)) {
-        return "DECODE_ERR"
-    }
-    let cs2 = compile_scanner(pg)
-    var firsts = List<int>.new()
-    var nullable = List<int>.new()
-    first_sets_into(pg, firsts, nullable)
-    let srcb = str_to_bytes(sample)
-    var t1 = List<int>.new()
-    var ef1 = List<int>.new()
-    var d1 = List<int>.new()
-    var decls1 = List<int>.new()
-    let r1 = parse_bytes(pg, cs2, firsts, nullable, srcb, t1, ef1, decls1, d1)
-    if (r1 < 0) {
-        return "COLD_ERR " + itoa(-r1)
-    }
-    var toks1 = List<int>.new()
-    var lexd1 = List<int>.new()
-    lex_all(pg, cs2, srcb, -1, toks1, lexd1)
-    var snap = copy_ints(srcb)
-    var nl = List<int>.new()
-    nl.push(0)
-    let delta = insert.len() - (end - start)
-    let rc = apply_edit(snap, snap.len(), start, end, insert, nl)
-    if (rc != 0) {
-        return "EDIT_REFUSED " + itoa(rc)
-    }
-    if (stage == 1) {
-        return "S1 ok toks1=" + itoa(toks1.len() / 5)
-    }
-    if (stage == 5) {
-        return "S5 cold+canon len=" + itoa(canonical(t1, ef1, decls1, r1).len())
-    }
-    var toks2 = List<int>.new()
-    var spl = List<int>.new()
-    incremental_lex(pg, cs2, toks1, snap, nl.get(0), start, end, delta, toks2, spl)
-    if (stage == 2) {
-        return "S2 ok fb=" + itoa(spl.get(1)) + " n2=" + itoa(spl.get(6))
-    }
-    if (stage == 6) {
-        return "S6 post-inclex fb=" + itoa(spl.get(1))
-    }
-    let cold = canonical(t1, ef1, decls1, r1)
-    if (stage == 7) {
-        return "S7 canon-ok len=" + itoa(cold.len())
-    }
-    if (spl.get(1) != 0) {
-        return fb_fresh(pg, cs2, firsts, nullable, snap, cold, spl.get(1), spl.get(2), stage)
-    }
+pub 
+fn build_gcand(decls1 List<int>, t1 List<int>, ef1 List<int>, toks1 List<int>, start int, end int) List<int> {
     var gcand = List<int>.new()
     var di = 0
     for (di < decls1.len() / 3) {
@@ -535,11 +507,11 @@ pub fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str,
             has_err = subtree_has_error(t1, ef1, dnode)
         }
         if (intersects == 0 && has_err == 0) {
+            var otc2 = toks1.len() / 5
             var lo2 = 0
-            var otc = toks1.len() / 5
             var probing = 1
             for (probing == 1) {
-                if (lo2 >= otc) {
+                if (lo2 >= otc2) {
                     probing = 0
                 } else {
                     if (tok_start(toks1, lo2) >= decl_origin(decls1, di)) {
@@ -552,7 +524,7 @@ pub fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str,
             var hi2 = 0
             probing = 1
             for (probing == 1) {
-                if (hi2 >= otc) {
+                if (hi2 >= otc2) {
                     probing = 0
                 } else {
                     if (tok_start(toks1, hi2) >= de2) {
@@ -569,29 +541,178 @@ pub fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str,
         }
         di = di + 1
     }
-    if (stage == 3) {
-        return "S3 ok cand=" + itoa(gcand.len() / 4)
+    return gcand
+}
+
+fn edit_converged(pg List<int>, cs2 List<int>, firsts List<int>, nullable List<int>, snap List<int>, srcb List<int>, toks2 List<int>, spl List<int>, cold Str, t1 List<int>, ef1 List<int>, decls1 List<int>, gshift List<int>, gcand List<int>, stage int) Str {
+    if (stage == 28) {
+        return "S28 gcand=" + itoa(gcand.len() / 4) + " ntoks=" + itoa(spl.get(6))
     }
+    var ginfo2 = List<int>.new()
+    if (stage == 30) {
+        ginfo2.push(0)
+    } else {
+        ginfo2.push(1)
+    }
+    ginfo2.push(spl.get(3))
+    ginfo2.push(spl.get(4))
+    ginfo2.push(spl.get(5))
+    var t2 = List<int>.new()
+    var ef2 = List<int>.new()
+    var decls2 = List<int>.new()
+    var d2 = List<int>.new()
+    var r2 = parse_tokens_n(pg, cs2, firsts, nullable, toks2, snap, t2, ef2, decls2, d2, t1, ef1, decls1, gcand, gshift, ginfo2, 1048576, 67108864, spl.get(6))
+    if (r2 < 0) {
+        return "INCR_ERR " + itoa(-r2) + " " + render_diag(pg, d2)
+    }
+    if (stage == 29 || stage == 30) {
+        return "S" + itoa(stage) + " graftroot=" + itoa(r2) + " nodes=" + itoa(t2.len() / 8) + " gs=" + itoa(gshift.len())
+    }
+    if (stage == 36) {
+        var cs36 = canonical(t2, ef2, decls2, r2)
+        return "S36 canon-len " + itoa(cs36.len())
+    }
+    if (stage == 0) {
+        return "INCR|" + canonical(t2, ef2, decls2, r2) + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(gshift.len() / 2 - 1)
+    }
+    // fresh reference parse over the edited bytes
+    var toksX = List<int>.new()
+    var lexdX = List<int>.new()
+    if (stage == 34) {
+        var csB = compile_scanner(pg)
+        lex_all(pg, csB, snap, -1, toksX, lexdX)
+        return "S34 ref-lex-fresh-scanner n=" + itoa(toksX.len() / 5)
+    }
+    if (stage == 33) {
+        lex_all(pg, cs2, srcb, -1, toksX, lexdX)
+        return "S33 lex-original n=" + itoa(toksX.len() / 5)
+    }
+    lex_all(pg, cs2, snap, -1, toksX, lexdX)
+    if (stage == 35) {
+        return "S35 ref-lexed-edited n=" + itoa(toksX.len() / 5)
+    }
+    var t3 = List<int>.new()
+    var ef3 = List<int>.new()
+    var decls3 = List<int>.new()
+    var d3 = List<int>.new()
+    var gX = List<int>.new()
+    gX.push(0)
+    var r_ot = List<int>.new()
+    var r_oef = List<int>.new()
+    var r_odecls = List<int>.new()
+    var r_gc = List<int>.new()
+    var r_gs = List<int>.new()
+    let r3 = parse_tokens_n(pg, cs2, firsts, nullable, toksX, snap, t3, ef3, decls3, d3, r_ot, r_oef, r_odecls, r_gc, r_gs, gX, 1048576, 67108864, toksX.len() / 5)
+    if (r3 < 0) {
+        return "REF_ERR " + itoa(-r3)
+    }
+    if (stage == 31) {
+        return "S31 ref-ok root=" + itoa(r3) + " nodes=" + itoa(t3.len() / 8)
+    }
+    let incr = canonical(t2, ef2, decls2, r2)
+    let refr = canonical(t3, ef3, decls3, r3)
+    if (stage == 32) {
+        return "S32 canon-ok ilen=" + itoa(incr.len()) + " rlen=" + itoa(refr.len())
+    }
+    var eqv = 0
+    if (incr == refr) {
+        eqv = 1
+    }
+    return "EQ=" + itoa(eqv) + " INCR|" + incr + "REF|" + refr + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " grafted=" + itoa(gshift.len() / 2 - 1)
+}
+fn edit_case_staged(profile Str, sample Str, start int, end int, insert Str, stage int) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let cs2 = compile_scanner(pg)
+    var firsts = List<int>.new()
+    var nullable List<int> = List<int>.new()
+    first_sets_into(pg, firsts, nullable)
+    let srcb = str_to_bytes(sample)
+    var t1 = List<int>.new()
+    var ef1 = List<int>.new()
+    var d1 = List<int>.new()
+    var decls1 = List<int>.new()
+    let r1 = parse_bytes(pg, cs2, firsts, nullable, srcb, t1, ef1, decls1, d1)
+    if (r1 < 0) {
+        return "COLD_ERR " + itoa(-r1)
+    }
+    var toks1 = List<int>.new()
+    var lexd1 = List<int>.new()
+    lex_all(pg, cs2, srcb, -1, toks1, lexd1)
+    if (stage == 1) {
+        return "S1 ok toks1=" + itoa(toks1.len() / 5)
+    }
+    if (stage == 5) {
+        return "S5 cold+canon len=" + itoa(canonical(t1, ef1, decls1, r1).len())
+    }
+    var snap = copy_ints(srcb)
+    var nl = List<int>.new()
+    nl.push(0)
+    let delta = insert.len() - (end - start)
+    let rc = apply_edit(snap, snap.len(), start, end, insert, nl)
+    if (rc != 0) {
+        return "EDIT_REFUSED " + itoa(rc)
+    }
+    if (stage == 29) {
+        // splice-vs-fresh token comparison (post-fix diagnostic)
+        var fx = List<int>.new()
+        var fxd = List<int>.new()
+        lex_all(pg, cs2, snap, -1, fx, fxd)
+        var toks2x = List<int>.new()
+        var splx = List<int>.new()
+        var zz = 0
+        for (zz < 10) {
+            splx.push(0)
+            zz = zz + 1
+        }
+        incremental_lex_p(pg, cs2, toks1, snap, nl.get(0), start, end, delta, toks2x, splx, 9)
+        var n2 = splx.get(6)
+        var mism = 0
+        var kk = 0
+        for (kk < n2) {
+            if (kk * 5 >= toks2x.len() || kk * 5 >= fx.len()) {
+                mism = mism + 1000000
+            } else {
+                var q = 0
+                for (q < 5) {
+                    if (toks2x.get(kk * 5 + q) != fx.get(kk * 5 + q)) {
+                        mism = mism + 1
+                    }
+                    q = q + 1
+                }
+            }
+            kk = kk + 1
+        }
+        return "S29 n2=" + itoa(n2) + " phys2=" + itoa(toks2x.len() / 5) + " fresh=" + itoa(fx.len() / 5) + " mism=" + itoa(mism)
+    }
+    var toks2 = List<int>.new()
+    var spl = List<int>.new()
+    var zz = 0
+    for (zz < 10) {
+        spl.push(0)
+        zz = zz + 1
+    }
+    incremental_lex_p(pg, cs2, toks1, snap, nl.get(0), start, end, delta, toks2, spl, stage)
+    if (stage == 2) {
+        return "S2 ok fb=" + itoa(spl.get(1)) + " n2=" + itoa(spl.get(6))
+    }
+    if (stage == 6) {
+        return "S6 post-inclex fb=" + itoa(spl.get(1))
+    }
+    let cold = canonical(t1, ef1, decls1, r1)
+    if (stage == 7) {
+        return "S7 canon-ok len=" + itoa(cold.len())
+    }
+    if (spl.get(1) != 0) {
+        return fb_fresh(pg, cs2, firsts, nullable, snap, cold, spl.get(1), spl.get(2), stage)
+    }
+    var gcand = build_gcand(decls1, t1, ef1, toks1, start, end)
     var gshift = List<int>.new()
     gshift.push(end)
     gshift.push(delta)
-    var ginfo = List<int>.new()
-    ginfo.push(1)
-    ginfo.push(spl.get(3))
-    ginfo.push(spl.get(4))
-    ginfo.push(spl.get(5))
-    var t2 = List<int>.new()
-    var ef2 = List<int>.new()
-    var d2 = List<int>.new()
-    var decls2 = List<int>.new()
-    if (stage == 4) {
-        return "S4 ok"
-    }
-    var r2 = parse_tokens_n(pg, cs2, firsts, nullable, toks2, snap, t2, ef2, decls2, d2, t1, ef1, decls1, gcand, gshift, ginfo, 1048576, 67108864, spl.get(6))
-    if (r2 < 0) {
-        return "INCR_ERR " + itoa(-r2)
-    }
-    return "COLD|" + cold + "INCR|" + canonical(t2, ef2, decls2, r2) + "SPLICE ok=1 fb=0 rescan=" + itoa(spl.get(2)) + " reused=" + itoa(gcand.len() / 4)
+    return edit_converged(pg, cs2, firsts, nullable, snap, srcb, toks2, spl, cold, t1, ef1, decls1, gshift, gcand, stage)
 }
 
 fn subtree_has_error(t List<int>, ef List<int>, node int) int {
@@ -659,4 +780,140 @@ pub fn identity_case(sample Str, alpha_at int) Str {
     }
     out = out + " pfx=" + id0.slice(0, 8).clone() + "/" + id1.slice(0, 8).clone() + "/" + id2.slice(0, 8).clone() + " len2=" + itoa(nl2.get(0)) + " bytes=" + itoa(sum0)
     return out
+}
+
+/// D-1046-02 probe: parse-then-lex composition. mode 0 = same cs;
+/// mode 1 = fresh compile_scanner before the second lex; mode 2 = two lexes
+/// without any parse (control).
+pub fn parse_then_lex_case(profile Str, sample Str, mode int) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    var cs2 = compile_scanner(pg)
+    let srcb = str_to_bytes(sample)
+    if (mode == 2) {
+        var t0 = List<int>.new()
+        var l0 = List<int>.new()
+        lex_all(pg, cs2, srcb, -1, t0, l0)
+        var t0b = List<int>.new()
+        var l0b = List<int>.new()
+        lex_all(pg, cs2, srcb, -1, t0b, l0b)
+        return "M2 two-lex ok " + itoa(t0.len() / 5) + "/" + itoa(t0b.len() / 5)
+    }
+    var firsts = List<int>.new()
+    var nullable = List<int>.new()
+    first_sets_into(pg, firsts, nullable)
+    var toks = List<int>.new()
+    var lexd = List<int>.new()
+    lex_all(pg, cs2, srcb, -1, toks, lexd)
+    var t = List<int>.new()
+    var ef = List<int>.new()
+    var decls = List<int>.new()
+    var dmsg = List<int>.new()
+    var g0 = List<int>.new()
+    g0.push(0)
+    let root = parse_tokens_n(pg, cs2, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), g0, 1048576, 4000000, toks.len() / 5)
+    if (root < 0) {
+        return "PARSE_ERR " + itoa(-root)
+    }
+    if (mode == 1) {
+        cs2 = compile_scanner(pg)
+    }
+    var t2 = List<int>.new()
+    var l2 = List<int>.new()
+    if (mode == 3) {
+        var snap = copy_ints(srcb)
+        var nl = List<int>.new()
+        nl.push(0)
+        let rc = apply_edit(snap, snap.len(), 51, 51, "2 * ", nl)
+        if (rc != 0) {
+            return "M3 edit-refused " + itoa(rc)
+        }
+        lex_all(pg, cs2, snap, -1, t2, l2)
+        return "M3 parse+edit+lex ok n2=" + itoa(t2.len() / 5)
+    }
+    if (mode == 4) {
+        lex_all(pg, cs2, srcb, -1, t2, l2)
+        var t3 = List<int>.new()
+        var ef3 = List<int>.new()
+        var decls3 = List<int>.new()
+        var dmsg3 = List<int>.new()
+        var g1 = List<int>.new()
+        g1.push(0)
+        let root2 = parse_tokens_n(pg, cs2, firsts, nullable, t2, srcb, t3, ef3, decls3, dmsg3, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), g1, 1048576, 4000000, t2.len() / 5)
+        return "M4 two-parse ok " + itoa(root) + "/" + itoa(root2)
+    }
+    if (mode == 5) {
+        let c1 = canonical(t, ef, decls, root)
+        return "M5 canon-len " + itoa(c1.len()) + " tail=" + c1.slice(c1.len() - 6, c1.len()).clone()
+    }
+    lex_all(pg, cs2, srcb, -1, t2, l2)
+    return "M" + itoa(mode) + " ok root=" + itoa(root) + " n2=" + itoa(t2.len() / 5)
+}
+
+/// The fresh reference leg (run in its own AV execution; V-02's oracle is
+/// the equality of this tree with the incremental tree from edit_case).
+pub fn many_lists_case() Str {
+    var total = 0
+    var k = 0
+    for (k < 100) {
+        var xs = List<int>.new()
+        var i = 0
+        for (i < 700) {
+            xs.push(i)
+            i = i + 1
+        }
+        total = total + xs.len()
+        k = k + 1
+    }
+    return "total=" + itoa(total)
+}
+
+pub fn one_big_list_case() Str {
+    var xs = List<int>.new()
+    var i = 0
+    for (i < 70000) {
+        xs.push(i)
+        i = i + 1
+    }
+    return "len=" + itoa(xs.len())
+}
+
+pub fn edit_ref_case(profile Str, sample Str, start int, end int, insert Str) Str {
+    var pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR"
+    }
+    let cs2 = compile_scanner(pg)
+    var firsts = List<int>.new()
+    var nullable List<int> = List<int>.new()
+    first_sets_into(pg, firsts, nullable)
+    let srcb = str_to_bytes(sample)
+    var snap = copy_ints(srcb)
+    var nl = List<int>.new()
+    nl.push(0)
+    let rc = apply_edit(snap, snap.len(), start, end, insert, nl)
+    if (rc != 0) {
+        return "REF_EDIT_REFUSED " + itoa(rc)
+    }
+    var toksX = List<int>.new()
+    var lexdX = List<int>.new()
+    lex_all(pg, cs2, snap, -1, toksX, lexdX)
+    var t3 = List<int>.new()
+    var ef3 = List<int>.new()
+    var decls3 = List<int>.new()
+    var d3 = List<int>.new()
+    var gX = List<int>.new()
+    gX.push(0)
+    var r_ot = List<int>.new()
+    var r_oef = List<int>.new()
+    var r_odecls = List<int>.new()
+    var r_gc = List<int>.new()
+    var r_gs = List<int>.new()
+    let r3 = parse_tokens_n(pg, cs2, firsts, nullable, toksX, snap, t3, ef3, decls3, d3, r_ot, r_oef, r_odecls, r_gc, r_gs, gX, 1048576, 67108864, toksX.len() / 5)
+    if (r3 < 0) {
+        return "REF_ERR " + itoa(-r3)
+    }
+    return "REF|" + canonical(t3, ef3, decls3, r3) + "REFEND"
 }

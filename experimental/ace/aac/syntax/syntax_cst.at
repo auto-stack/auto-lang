@@ -244,7 +244,13 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
     sn.push(root)
     sd.push(0)
     var depth = 1
+    var visited = 0
+    var limit = (t.len() / 8) * 4 + 16
     for (depth > 0) {
+        visited = visited + 1
+        if (visited > limit) {
+            return "CYCLE nodes=" + dig(t.len() / 8) + " visited=" + dig(visited)
+        }
         let node = sn.get(depth - 1)
         let d = sd.get(depth - 1)
         depth = depth - 1
@@ -284,7 +290,11 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
             k = k + 1
         }
         out = out + "]\n"
-        var c = ncc(t, node) - 1
+        var ccx = ncc(t, node)
+        if (ccx > 1000) {
+            return "BADCC node=" + dig(node) + " cc=" + dig(ccx) + " fc=" + dig(t.get(node * 8 + 3))
+        }
+        var c = ccx - 1
         for (c >= 0) {
             let e = nfc(t, node) + c
             let cn = ef.get(e * 2)

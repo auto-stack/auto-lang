@@ -373,9 +373,74 @@ fn machine_run(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>,
             dmsg.push(fg(fr, mc.get(m_nframes()) - 1, fs_rule()))
             return 4
         }
-        if (steps == 1 || steps % 65536 == 0) {
+        if (steps == 1 || steps % 128 == 0) {
             if (mem_estimate(t, ef, toks) > mc.get(m_workbytes())) {
                 return 3
+            }
+            // list-cap sentinels (the lane caps lists at 65536 elements):
+            // return the diagnostic code with the offender in dmsg
+            if (saves.len() > 50000) {
+                dmsg.push(99)
+                dmsg.push(1)
+                dmsg.push(saves.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (fr.len() > 50000) {
+                dmsg.push(99)
+                dmsg.push(2)
+                dmsg.push(fr.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (hints.len() > 50000) {
+                dmsg.push(99)
+                dmsg.push(3)
+                dmsg.push(hints.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (t.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(4)
+                dmsg.push(t.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (ef.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(5)
+                dmsg.push(ef.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (pvals.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(6)
+                dmsg.push(pvals.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (pops.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(7)
+                dmsg.push(pops.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (optriv.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(8)
+                dmsg.push(optriv.len())
+                dmsg.push(0)
+                return 5
+            }
+            if (dmsg.len() > 60000) {
+                dmsg.push(99)
+                dmsg.push(9)
+                dmsg.push(dmsg.len())
+                dmsg.push(0)
+                return 5
             }
         }
         if (mc.get(m_nframes()) > mc.get(m_maxdepth())) {
@@ -1235,8 +1300,14 @@ fn rule_list(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
     let top = mc.get(m_nframes()) - 1
     let kind = step_repeat(pg, si) - 2
     if (kind >= 1) {
-        if (list_sep_and_gate(pg, toks, t, ef, mc, pending, fr, kind, top) < 0) {
+        let gate_r = list_sep_and_gate(pg, toks, t, ef, mc, pending, fr, kind, top, dmsg)
+        if (gate_r < 0) {
             fail_alt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+            return 0
+        }
+        if (gate_r > 0) {
+            // the ListNewline gate ENDED the list (same-line item refused):
+            // no item attempt this step
             return 0
         }
     }
@@ -1251,7 +1322,7 @@ fn rule_list(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
 }
 
 // sep consumption + ListNewline second-item gate; -1 = hard failure.
-fn list_sep_and_gate(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, kind int, top int) int {
+fn list_sep_and_gate(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, kind int, top int, dmsg List<int>) int {
     var consumed_sep = 0
     var probing = 1
     for (probing == 1) {
@@ -2690,6 +2761,9 @@ fn merge_hints(hints List<int>, dmsg List<int>) int {
 // gshift: flat [end, delta] stride 2
 
 fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, ginfo List<int>, gcand List<int>, gshift List<int>, ot List<int>, oef List<int>, odecls List<int>, field int) int {
+    if (mc.get(m_graftcnt()) >= 16) {
+        return 0
+    }
     var cur_new = mc.get(m_i())
     if (mc.get(m_plen()) > 0) {
         cur_new = pending.get(0)
@@ -2729,6 +2803,14 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
     // copy the old subtree range [node_lo..node]
     let onode = odecls.get(decl_idx * 3 + 1)
     let olo = odecls.get(decl_idx * 3 + 2)
+    if (onode * 8 + 7 >= ot.len() || olo < 0 || olo > onode) {
+        if (gshift.len() < 200) { gshift.push(97) }
+        gshift.push(decl_idx)
+        gshift.push(onode)
+        gshift.push(olo)
+        gshift.push(ot.len() / 8)
+        return 0
+    }
     let delta = (t.len() / 8) - olo
     var n = olo
     for (n <= onode) {
@@ -2751,11 +2833,44 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
     n = olo
     for (n <= onode) {
         let nn = delta + n
+        if (n * 8 + 4 >= ot.len()) {
+            if (gshift.len() < 200) {
+                if (gshift.len() < 200) { gshift.push(96) }
+            }
+            gshift.push(n)
+            gshift.push(ot.len())
+            gshift.push(onode)
+            return 0
+        }
         let ofc = ot.get(n * 8 + 3)
         let occ = ot.get(n * 8 + 4)
+        if ((ofc + occ) * 2 > oef.len()) {
+            // Graft bounds sentinel (defensive): the copied range references
+            // edges beyond the old arena — record the site facts on gshift
+            // (the driver owns it) and skip the graft (reparsing instead,
+            // which preserves the canonical result).
+            if (gshift.len() < 200) {
+                if (gshift.len() < 200) { gshift.push(98) }
+            }
+            gshift.push(n)
+            gshift.push(ofc)
+            gshift.push(occ)
+            gshift.push(oef.len())
+            return 0
+        }
         t.set(nn * 8 + 3, ef.len() / 2)
+        t.set(nn * 8 + 4, occ)
         var k = 0
         for (k < occ) {
+            if ((ofc + k) * 2 + 1 >= oef.len()) {
+                if (gshift.len() < 200) {
+                if (gshift.len() < 200) { gshift.push(95) }
+            }
+                gshift.push(ofc)
+                gshift.push(k)
+                gshift.push(oef.len())
+                return 0
+            }
             ef.push(ofc + k + delta)
             ef.push(oef.get((ofc + k) * 2 + 1))
             k = k + 1
@@ -2802,6 +2917,8 @@ fn try_graft(pg List<int>, toks List<int>, t List<int>, ef List<int>, decls List
     fset(fr, top, fs_liststarted(), 1)
     fset(fr, top, fs_consumed(), 1)
     mc.set(m_graftcnt(), mc.get(m_graftcnt()) + 1)
+    gshift.push(mc.get(m_graftcnt()))
+    gshift.push(ni)
     return 1
 }
 

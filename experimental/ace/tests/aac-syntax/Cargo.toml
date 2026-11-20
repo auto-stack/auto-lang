@@ -25,3 +25,7 @@ path = "tests/repro.rs"
 [[test]]
 name = "probe"
 path = "tests/probe.rs"
+
+[[test]]
+name = "rustprobe"
+path = "tests/rustprobe.rs"

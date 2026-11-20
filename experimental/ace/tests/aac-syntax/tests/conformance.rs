@@ -308,24 +308,27 @@ fn aac1046_parse_parity_battery() {
 // the content identity change/restore under an undo edit.
 // ---------------------------------------------------------------------------
 
-// KNOWN-OPEN (D-1046-02, plan §10): the full edit_case composition loops on
-// the AV executor even though every stage passes individually (S1..S9
-// markers, fresh-lex of the edited bytes, parse_case parity of the edited
-// source, V-04 identity). Ignored until the dedicated diagnostic lands.
+// D-1046-03 (supersedes D-1046-02's cost diagnosis): the SPLICE is proven
+// byte-exact (stage S29: n2=58/phys=58/mism=0 vs a fresh lex of the edited
+// bytes) and the graft candidates/token ranges verify; but the GRAFT-ACTIVE
+// parse explodes one list past the lane's 65536-element cap (graft-disabled
+// parses of the same spliced stream pass; 9 machine arenas watched at
+// 128-step windows never trip — the growing list is outside the watched
+// set). Ignored pending the named diagnostic in plan §10.
 #[test]
-#[ignore = "D-1046-02 edit_case composition loop (stages all green)"]
+#[ignore = "D-1046-03 graft-active parse list-cap explosion"]
 fn aac1046_edit_incremental_equality() {
-    // Edit inside the second fn's body: cold and incremental must agree,
-    // and the incremental reparse must reuse the untouched first fn.
-    let out = obs("edit", "edit_case", "edit_case(\"scalar\", \"fn a(x int) int { return x }\nfn b(y int) int { return y + 1 }\", 51, 51, \"2 * \")");
-    // Split the observable sections.
-    let cold = out.split("INCR|").nth(0).unwrap().strip_prefix("COLD|").unwrap();
-    let rest = out.split("INCR|").nth(1).unwrap();
-    let incr = rest.split("SPLICE").nth(0).unwrap();
-    let facts = rest.split("SPLICE").nth(1).unwrap();
-    assert_eq!(cold, incr, "cold canonical must equal incremental canonical");
+    // V-02: the incremental (spliced+graft) tree from one AV run must
+    // equal the fresh parse of the same edited bytes from another run.
+    let esc = "fn a(x int) int { return x }\nfn b(y int) int { return y }\nfn c(z int) int { return z }";
+    let incr_run = obs("edit", "edit_case", &format!("edit_case(\"scalar\", \"{}\", 25, 25, \"1 + \")", esc));
+    let ref_run = obs("ref", "edit_ref_case", &format!("edit_ref_case(\"scalar\", \"{}\", 25, 25, \"1 + \")", esc));
+    let incr = incr_run.split("SPLICE").nth(0).unwrap().strip_prefix("INCR|").unwrap();
+    let refr = ref_run.split("REFEND").nth(0).unwrap().strip_prefix("REF|").unwrap();
+    assert_eq!(incr, refr, "incremental tree must equal fresh tree");
+    let facts = incr_run.split("SPLICE").nth(1).unwrap();
     assert!(facts.contains("ok=1"), "splice must converge: {facts}");
-    assert!(facts.contains("reused=1"), "the untouched first fn must be grafted: {facts}");
+    assert!(facts.contains("grafted=2"), "two untouched trailing fns grafted: {facts}");
 }
 
 #[test]
@@ -340,4 +343,64 @@ fn aac1046_identity_change_restore() {
     println!("IDENT| {out}");
     assert!(out.starts_with("changed=1 restored=1"), "{out}");
 }
+
+
+
+
+
+
+#[test]
+fn aac1046_threefn_parity() {
+    // The edit case's cold leg: three fns, plain cold parse, byte-exact
+    // oracle parity.
+    let sample = "fn a(x int) int { return x }\nfn b(y int) int { return y }\nfn c(z int) int { return z }";
+    let call = format!("parse_case(\"scalar\", \"{}\")", sample);
+    let out = obs("t3", "parse_case", &call);
+    let expect = rust_oracle(
+        "scalar",
+        "fn a(x int) int { return x }
+fn b(y int) int { return y }
+fn c(z int) int { return z }",
+    );
+    assert_eq!(out, expect);
+}
+
+
+#[test]
+fn aac1046_truncated_stream() {
+    // A stream cut mid-decl at EOF: recovery must terminate cleanly.
+    let call = "parse_case(\"scalar\", \"fn a(x int) int { return x }
+fn b(y int) int { ret\")";
+    let out = obs("tr", "parse_case", call);
+    let head: String = out.chars().take(120).collect();
+    println!("TR| {head}");
+    let expect = rust_oracle(
+        "scalar",
+        "fn a(x int) int { return x }
+fn b(y int) int { ret",
+    );
+    assert_eq!(out, expect);
+}
+
+#[test]
+fn aac1046_singlefn_midexpr() {
+    let esc = "fn b(y int) int { y + ";
+    let out = obs("sf", "parse_case", &format!("parse_case(\"scalar\", \"{}\")", esc));
+    let expect = rust_oracle("scalar", "fn b(y int) int { y + ");
+    assert_eq!(out, expect);
+}
+
+#[test]
+fn aac1046_midexpr_eof() {
+    // EOF right after a binary operator: Pratt WantPrimary at EOF.
+    let esc = "fn a(x int) int { return x }\nfn b(y int) int { return y + ";
+    let out = obs("me", "parse_case", &format!("parse_case(\"scalar\", \"{}\")", esc));
+    let head: String = out.chars().take(100).collect();
+    println!("ME| {head}");
+    let expect = rust_oracle("scalar", "fn a(x int) int { return x }\nfn b(y int) int { return y + ");
+    assert_eq!(out, expect);
+}
+
+
+
 

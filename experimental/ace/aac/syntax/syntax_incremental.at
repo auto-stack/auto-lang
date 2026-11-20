@@ -66,6 +66,10 @@ fn is_trivia_tok(pg List<int>, t int) bool {
 /// describe the single edit in OLD coordinates. Tokens of the new stream
 /// are appended to `toks_out`; `out` receives the splice facts.
 pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List<int>, new_len int, e_start int, e_end int, delta int, toks_out List<int>, out List<int>) int {
+    return incremental_lex_p(pg, cs, old_toks, srcb, new_len, e_start, e_end, delta, toks_out, out, 0)
+}
+
+pub fn incremental_lex_p(pg List<int>, cs List<int>, old_toks List<int>, srcb List<int>, new_len int, e_start int, e_end int, delta int, toks_out List<int>, out List<int>, phase int) int {
     var i = 0
     for (i < 10) {
         out.push(0)
@@ -100,6 +104,10 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
             }
         }
         i = i + 1
+    }
+    if (phase == 21) {
+        out.set(7, affected)
+        return 1
     }
     // walk back over adjacent leading trivia
     var cp_idx = affected
@@ -142,15 +150,20 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
         }
         i = i + 1
     }
-    // bounded rescan over the new bytes
-    let scan_limit = cp.get(0) + rescan_window() * 2
-    var lim = scan_limit
-    if (lim > new_len) {
-        lim = new_len
+    if (phase == 22) {
+        out.set(7, cp_idx)
+        return 1
     }
+    // bounded rescan FROM THE CHECKPOINT (a whole-document rescan would
+    // duplicate the prefix region in the splice)
     var head = List<int>.new()
     var diags = List<int>.new()
-    let scanned = lex_all(pg, cs, srcb, lim, head, diags)
+    var st_out = List<int>.new()
+    let scanned = lex_from(pg, cs, srcb, cp, head, diags, st_out)
+    if (phase == 23) {
+        out.set(7, tok_count(head))
+        return 1
+    }
     // stream K-run alignment
     let shifted_end = e_end + delta
     var run_new = 0
@@ -259,6 +272,11 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
         }
     }
     out.set(2, scanned)
+    if (phase == 24) {
+        out.set(7, j)
+        out.set(8, align_new)
+        return 1
+    }
     if (align_new < 0) {
         out.set(1, fb_no_convergence())
         return 0
@@ -271,40 +289,39 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
         toks_out.set(k2 * 5, 0)
         k2 = k2 - 1
     }
-    // splice the old tail from align_old with delta/line shift
+    if (phase == 25) {
+        out.set(7, keep)
+        out.set(8, phys)
+        return 1
+    }
+    // splice the old tail from align_old with delta/line shift: the head
+    // region was truncated to `keep` (zeroed), so the tail APPENDS on the
+    // physical end (no in-place reuse needed).
     var head_newlines = 0
     let a = align_new - 1
     let b = align_old - 1
     if (a >= 0 && b >= 0) {
         head_newlines = tok_line(head, a) - tok_line(old_toks, b)
     }
-    // mark the logical token count via out[6]; append tail into fresh region
     out.set(6, keep)
     var w = keep
     i = align_old
     for (i < otc) {
-        var rec = List<int>.new()
-        rec.push(tok_token(old_toks, i))
-        rec.push(tok_start(old_toks, i) + delta)
-        rec.push(tok_end(old_toks, i) + delta)
-        rec.push(tok_line(old_toks, i) + head_newlines)
+        toks_out.push(tok_token(old_toks, i))
+        toks_out.push(tok_start(old_toks, i) + delta)
+        toks_out.push(tok_end(old_toks, i) + delta)
+        toks_out.push(tok_line(old_toks, i) + head_newlines)
         if (tok_error(old_toks, i)) {
-            rec.push(1)
+            toks_out.push(1)
         } else {
-            rec.push(0)
-        }
-        var q = 0
-        for (q < 5) {
-            if (w == phys) {
-                toks_out.push(rec.get(q))
-                phys = phys + 1
-            } else {
-                toks_out.set(w * 5 + q, rec.get(q))
-            }
-            q = q + 1
+            toks_out.push(0)
         }
         w = w + 1
         i = i + 1
+    }
+    if (phase == 26) {
+        out.set(7, w)
+        return 1
     }
     out.set(6, w)
     out.set(0, 1)
