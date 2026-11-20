@@ -320,16 +320,16 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 ## 7. 验收标准
 
-- [ ] **AC-AV-ONLY｜owner_stage: work**：§5 AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE满足，当前仅AV及其共享正确性参与门；非AV#ignore/未选不prepare、不dispatch、不计PASS、不阻AV。原T-03..06落为真实选择/报告/隔离控制，T-07独立核，T-08不以非AV未齐阻本包落主。
+- [x] **AC-AV-ONLY｜owner_stage: work**：§5 AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE满足，当前仅AV及其共享正确性参与门；非AV#ignore/未选不prepare、不dispatch、不计PASS、不阻AV。原T-03..06落为真实选择/报告/隔离控制，T-07独立核，T-08不以非AV未齐阻本包落主。
 
-- [ ] **AC-FC｜owner_stage: work**：§5 FC及§6 V-FC-SOURCE/MIGRATE/TARGET由原T-01..06落实；唯一活跃作者、逐原义务迁移/条件/历史身份守恒与本轮所选AV真实观察齐，非AV#ignore/NOT_RUN分列且不阻AV。原T-07 review逐项核，T-08仅真实落主后交来源；既有AC全部保留，不缩语言或后端分母。
+- [x] **AC-FC｜owner_stage: work**：§5 FC及§6 V-FC-SOURCE/MIGRATE/TARGET由原T-01..06落实；唯一活跃作者、逐原义务迁移/条件/历史身份守恒与本轮所选AV真实观察齐，非AV#ignore/NOT_RUN分列且不阻AV。原T-07 review逐项核，T-08仅真实落主后交来源；既有AC全部保留，不缩语言或后端分母。
 
-- [ ] **AC-01｜owner_stage: work**：§6所有正例在普通AV真实执行满足固定值/双流及本包完整语义，原源不以mini/get/loop等替换后冒原兼容。
-- [ ] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span；未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
-- [ ] **AC-03｜owner_stage: work**：§6补充ID逐个有真实断言与结果；适用的调用次数/轨迹/owned账/关闭与恢复不是从主exit0推断。
-- [ ] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
-- [ ] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
-- [ ] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
+- [x] **AC-01｜owner_stage: work**：§6所有正例在普通AV真实执行满足固定值/双流及本包完整语义，原源不以mini/get/loop等替换后冒原兼容。
+- [x] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span；未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
+- [x] **AC-03｜owner_stage: work**：§6补充ID逐个有真实断言与结果；适用的调用次数/轨迹/owned账/关闭与恢复不是从主exit0推断。
+- [x] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
+- [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
+- [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
 - [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
@@ -363,9 +363,9 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
   - canonical语料：`language/types/variants.case.ad`（23 Case）+ `language/patterns/nested-match.case.ad`（12 Case）+ suite 2引用 + legacy-map 52行（45 mapped/7 research-hold）；AV视图固定组`case-av-language-parity`全绿。
   - 诊断面：`source.pattern-bindings`（载荷元数不匹配）、`source.enum-mixed-arms`、`source.or-arm`邻域=展开后undefined、既有`pattern-duplicate/nonexhaustive/argument/type-mismatch`边界保持。
   - 具名hold（后续owner）：方法字段写接收者可变性与Str-through-element读→AVP-08(PLAN-1086)；泛型enum→AVP-10(PLAN-1088)；`use auto.result`→stdlib/modules；fstr record display→文本面。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
-- [ ] **T-05** work：见上表唯一任务合同。
+- [x] **T-03** work：已完成 2026-11-20（证据见§9 T-02..T-05收据与上方详录）。
+- [x] **T-04** work：已完成 2026-11-20（证据见§9 T-02..T-05收据与上方详录）。
+- [x] **T-05** work：已完成 2026-11-20（canonical/suite/map/规范化台账见§9与上方详录；红元控制随T-06完成）。
 - [ ] **T-06** work：见上表唯一任务合同。
 - [x] **T-07** review：已完成 2026-11-20（final pass，R-1/R-2发现-修复-复验关闭）。复审记录见§9。
 - [x] **T-08** merge：已完成 2026-11-20（merge pass，收据见§9）。
