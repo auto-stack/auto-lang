@@ -130,6 +130,8 @@ pub struct SourceKinds {
     /// PLAN-1083: or-arm tail `| pat` and the `pat if cond ->` guard.
     pub agg_or_arm_tail: Option<u32>,
     pub arm_guard: Option<u32>,
+    /// PLAN-1083: implicit-self field write `.f = v`.
+    pub self_place_assign_stmt: Option<u32>,
     pub is_stmt: Option<u32>,
     pub for_in_stmt: Option<u32>,
     pub for_range_stmt: Option<u32>,
@@ -510,6 +512,7 @@ impl SourceKinds {
             arm_binding_tail: rk_opt(p, "arm-binding-tail"),
             agg_or_arm_tail: rk_opt(p, "agg-or-arm-tail"),
             arm_guard: rk_opt(p, "arm-guard"),
+            self_place_assign_stmt: rk_opt(p, "self-place-assign-stmt"),
             is_stmt: rk_opt(p, "is-stmt"),
             for_in_stmt: rk_opt(p, "for-in-stmt"),
             for_range_stmt: rk_opt(p, "for-range-stmt"),

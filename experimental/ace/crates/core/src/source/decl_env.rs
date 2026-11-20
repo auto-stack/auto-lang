@@ -681,6 +681,7 @@ pub fn decl_env_restore_with_foreign(
                         ))
                     })
                     .collect::<Result<_, DeclEnvError>>()?,
+                methods: Vec::new(),
             })
         })
         .collect::<Result<_, _>>()?;
@@ -786,6 +787,7 @@ pub fn decl_env_restore_with_foreign(
                 used_intrinsics: Default::default(),
                 receiver: receiver_parse(&f.receiver)?,
                 owner_rec: f.owner_rec,
+                owner_var: None,
             })
         })
         .collect::<Result<_, _>>()?;

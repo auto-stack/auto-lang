@@ -3689,14 +3689,20 @@ impl PlanCtx<'_> {
                 let mut moved: Vec<bool> = Vec::new();
                 if let Some(r) = recv {
                     // instance: the receiver is evaluated EXACTLY ONCE,
-                    // first, as a view borrow (param 0)
+                    // first, as a view borrow (param 0). PLAN-1083: a
+                    // VARIANT receiver passes by value — composites are
+                    // never view-borrowed on this surface (verify 864).
                     let rs = self.plan_expr(plan, f, r);
-                    plan.exprs.push(ENode {
-                        kind: EKind::BorrowView { base: rs },
-                        vt: r.vt,
-                        span: r.span,
-                    });
-                    eval.push(plan.exprs.len() - 1);
+                    if matches!(r.vt, VT::Variant(_)) {
+                        eval.push(rs);
+                    } else {
+                        plan.exprs.push(ENode {
+                            kind: EKind::BorrowView { base: rs },
+                            vt: r.vt,
+                            span: r.span,
+                        });
+                        eval.push(plan.exprs.len() - 1);
+                    }
                     bindings.push((0u32, 0u32));
                     moved.push(false);
                 }
@@ -4771,6 +4777,11 @@ impl<'p> Emitter<'p> {
             let rec_name = f
                 .owner_rec
                 .map(|ri| self.program.records[ri].name.clone())
+                // PLAN-1083: an enum instance method's owner unit.
+                .or_else(|| {
+                    f.owner_var
+                        .and_then(|vi| self.program.variants.get(vi).map(|v| v.name.clone()))
+                })
                 .unwrap_or_default();
             let recv_word = match f.receiver {
                 crate::source::ast::Receiver::Static => "static",
@@ -4795,9 +4806,16 @@ impl<'p> Emitter<'p> {
             } else {
                 f.item_span
             };
+            // PLAN-1083: an enum instance method's owner unit references
+            // the VARIANT type (no record exists for the enum).
+            let owner_ty_atom = if let Some(vi) = f.owner_var {
+                format!("t_variant_{}", self.program.variants[vi].name)
+            } else {
+                format!("t_rec_{}", rec_name)
+            };
             frag!(
                 &format!(
-                    "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"{}; record: t_rec_{}; receiver: {} }}",
+                    "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"{}; record: {}; receiver: {} }}",
                     fi,
                     f.name,
                     fi,
@@ -4805,7 +4823,7 @@ impl<'p> Emitter<'p> {
                     rec_name,
                     f.name,
                     body_field,
-                    rec_name,
+                    owner_ty_atom,
                     recv_word
                 ),
                 m_span

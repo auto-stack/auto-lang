@@ -8476,6 +8476,27 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::IndexAssignFinish { name, span });
             self.stack.push(Frame::ExprEnter(value_n));
             self.stack.push(Frame::ExprEnter(index_n));
+        } else if kind == self.cx.k.self_place_assign_stmt.unwrap_or(u32::MAX) {
+            // PLAN-1083（auto 面）：隐式 self 字段写 `.f .. (op)= v`——与
+            // place 链同构，base = 合成 `self` 局部，首字段是第一步。
+            let dot_span = self
+                .cx
+                .children(inner)
+                .into_iter()
+                .find(|&l| self.cx.tree.kind(l) == self.cx.k.tok_dot)
+                .map(|l| self.cx.span_of(l))
+                .unwrap_or_else(|| self.cx.span_of(inner));
+            let name = Ident {
+                name: "self".to_string(),
+                span: dot_span,
+            };
+            let field_leaf = self
+                .cx
+                .field_child(inner, "field")
+                .expect("self place first field");
+            let first = PlaceStep::Field(ident_of(&mut self.cx, field_leaf));
+            self.enter_place_assign_like(inner, name, Some(first));
+            return;
         } else if kind == self.cx.k.place_assign_stmt.unwrap_or(u32::MAX) {
             // PLAN-1082（T-02）：place 链 `base (.f | [e])* (op)= v`——步骤
             // 节点按绝对区间排序；field 步直接取 ident，index 步的子表达式
@@ -8485,79 +8506,8 @@ impl<'a> Engine<'a> {
                 .field_child(inner, "name")
                 .expect("place assign name");
             let name = ident_of(&mut self.cx, name_leaf);
-            let step_kind = self.cx.k.place_step.unwrap_or(u32::MAX);
-            let mut step_nodes: Vec<u32> = self
-                .cx
-                .children(inner)
-                .into_iter()
-                .filter(|&c| self.cx.tree.kind(c) == step_kind)
-                .collect();
-            step_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
-            let k = &self.cx.k;
-            // the compound operators live under the `place-assign-op`
-            // rule child (plain `=` renders as the bare assign token).
-            let op_node = self
-                .cx
-                .child_of_kind(inner, k.place_assign_op.unwrap_or(u32::MAX));
-            let op = op_node
-                .and_then(|on| {
-                    if self
-                        .cx
-                        .child_of_kind(on, k.plus_assign.unwrap_or(u32::MAX))
-                        .is_some()
-                    {
-                        Some(PlaceOp::Add)
-                    } else if self
-                        .cx
-                        .child_of_kind(on, k.minus_assign.unwrap_or(u32::MAX))
-                        .is_some()
-                    {
-                        Some(PlaceOp::Sub)
-                    } else if self
-                        .cx
-                        .child_of_kind(on, k.star_assign.unwrap_or(u32::MAX))
-                        .is_some()
-                    {
-                        Some(PlaceOp::Mul)
-                    } else if self
-                        .cx
-                        .child_of_kind(on, k.slash_assign.unwrap_or(u32::MAX))
-                        .is_some()
-                    {
-                        Some(PlaceOp::Div)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(PlaceOp::Set);
-            let mut steps: Vec<PlaceStep> = Vec::new();
-            let mut index_nodes: Vec<u32> = Vec::new();
-            for &sn in &step_nodes {
-                if let Some(f) = self.cx.field_child(sn, "field") {
-                    steps.push(PlaceStep::Field(ident_of(&mut self.cx, f)));
-                } else if let Some(ix) = self.cx.field_child(sn, "index") {
-                    index_nodes.push(ix);
-                    steps.push(PlaceStep::Index(Expr {
-                        span: self.cx.span_of(ix),
-                        kind: ExprKind::IntLit(0),
-                    }));
-                }
-            }
-            let value_n = self
-                .cx
-                .field_child(inner, "value")
-                .expect("place assign value");
-            let span = self.cx.span_of(inner);
-            self.stack.push(Frame::PlaceAssignFinish {
-                name,
-                steps,
-                op,
-                span,
-            });
-            self.stack.push(Frame::ExprEnter(value_n));
-            for &ix in index_nodes.iter().rev() {
-                self.stack.push(Frame::ExprEnter(ix));
-            }
+            self.enter_place_assign_like(inner, name, None);
+            return;
         } else if kind == self.cx.k.return_stmt {
             let kw = self
                 .cx
@@ -10736,6 +10686,82 @@ impl<'a> Engine<'a> {
     /// callee 链的 base atom 是否**裸 leading-dot**（`.m()` 的调用本体）。
     /// 有后缀步（`.text.len()`——调用挂在最后一步成员上）= false：
     /// 旧怪癖只覆盖 leading-dot 空 call 本体（p01 差分）。
+    fn enter_place_assign_like(&mut self, inner: u32, name: Ident, first: Option<PlaceStep>) {
+            let step_kind = self.cx.k.place_step.unwrap_or(u32::MAX);
+            let mut step_nodes: Vec<u32> = self
+                .cx
+                .children(inner)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == step_kind)
+                .collect();
+            step_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            let k = &self.cx.k;
+            // the compound operators live under the `place-assign-op`
+            // rule child (plain `=` renders as the bare assign token).
+            let op_node = self
+                .cx
+                .child_of_kind(inner, k.place_assign_op.unwrap_or(u32::MAX));
+            let op = op_node
+                .and_then(|on| {
+                    if self
+                        .cx
+                        .child_of_kind(on, k.plus_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Add)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.minus_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Sub)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.star_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Mul)
+                    } else if self
+                        .cx
+                        .child_of_kind(on, k.slash_assign.unwrap_or(u32::MAX))
+                        .is_some()
+                    {
+                        Some(PlaceOp::Div)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(PlaceOp::Set);
+            let mut steps: Vec<PlaceStep> = first.into_iter().collect();
+            let mut index_nodes: Vec<u32> = Vec::new();
+            for &sn in &step_nodes {
+                if let Some(f) = self.cx.field_child(sn, "field") {
+                    steps.push(PlaceStep::Field(ident_of(&mut self.cx, f)));
+                } else if let Some(ix) = self.cx.field_child(sn, "index") {
+                    index_nodes.push(ix);
+                    steps.push(PlaceStep::Index(Expr {
+                        span: self.cx.span_of(ix),
+                        kind: ExprKind::IntLit(0),
+                    }));
+                }
+            }
+            let value_n = self
+                .cx
+                .field_child(inner, "value")
+                .expect("place assign value");
+            let span = self.cx.span_of(inner);
+            self.stack.push(Frame::PlaceAssignFinish {
+                name,
+                steps,
+                op,
+                span,
+            });
+            self.stack.push(Frame::ExprEnter(value_n));
+            for &ix in index_nodes.iter().rev() {
+                self.stack.push(Frame::ExprEnter(ix));
+            }
+        }
+
     fn callee_base_leading_dot(&self, callee_n: u32) -> bool {
         let mut n = callee_n;
         for _ in 0..10 {

@@ -959,6 +959,9 @@ pub struct ResolvedFn {
     pub receiver: ast::Receiver,
     /// Owning record index for methods.
     pub owner_rec: Option<usize>,
+    /// PLAN-1083: owning variant index for ENUM instance methods (at most
+    /// one of owner_rec/owner_var is Some).
+    pub owner_var: Option<usize>,
 }
 
 impl ResolvedFn {
@@ -974,6 +977,12 @@ impl ResolvedFn {
                 self.name
             ),
         }
+    }
+
+    /// PLAN-1083: the enum owner name (instance methods on variants).
+    pub fn owner_var_name(&self, variants: &[ResolvedVariant]) -> Option<String> {
+        self.owner_var
+            .map(|vi| variants.get(vi).map(|v| v.name.clone()).unwrap_or_default())
     }
 }
 
@@ -1034,6 +1043,9 @@ pub struct ResolvedVariant {
     pub name: String,
     pub name_span: Span,
     pub arms: Vec<(String, Option<VT>)>,
+    /// PLAN-1083: instance methods declared inside the enum body (the
+    /// implicit receiver is the variant value; `is self` dispatches on it).
+    pub methods: Vec<ResolvedMethod>,
 }
 
 /// The mutable type tables grown while bodies resolve (PLAN-864): `List<T>`
@@ -1136,6 +1148,7 @@ impl CollTables {
             self.variants.push(ResolvedVariant {
                 name: name.to_string(),
                 name_span,
+                methods: Vec::new(),
                 arms,
             });
             return i;
@@ -1149,6 +1162,7 @@ impl CollTables {
             name: name.to_string(),
             name_span,
             arms,
+            methods: Vec::new(),
         });
         i
     }
@@ -2227,6 +2241,9 @@ fn resolve_detailed(
     // so acyclic forward references do not depend on declaration order.
     // The completed graph is checked below before any body is resolved.
     let mut enum_indices = BTreeMap::new();
+    // PLAN-1083: enum name → interned variant index (instance-method
+    // registration); scalar `= N` enums never intern.
+    let mut enum_variant_index: BTreeMap<String, usize> = BTreeMap::new();
     // PLAN-1083: scalar `= N` enums resolve as i32 constants (the enum
     // name maps each arm to its declared value; `Color.Red` IS the int).
     // Bare-only enums keep the PLAN-864 variant identity unchanged.
@@ -2274,6 +2291,7 @@ fn resolve_detailed(
                 }
                 let index = coll.intern_variant(&e.name.name, e.name.span, Vec::new());
                 enum_indices.insert(item_index, index);
+                enum_variant_index.insert(e.name.name.clone(), index);
             }
         }
     }
@@ -2453,12 +2471,16 @@ fn resolve_detailed(
     let mut sigs: BTreeMap<String, FnSig> = BTreeMap::new();
     let mut fn_receiver: Vec<ast::Receiver> = Vec::new();
     let mut fn_owner: Vec<Option<usize>> = Vec::new();
+    // PLAN-1083: the variant owner (enum instance methods) — parallel to
+    // fn_owner (record index); at most one of the two is Some.
+    let mut fn_vowner: Vec<Option<usize>> = Vec::new();
     let mut flat: Vec<&ast::FnItem> = Vec::new();
     for item in &program.items {
         match item {
             ast::Item::Fn(f) => {
                 fn_receiver.push(f.receiver);
                 fn_owner.push(None);
+                fn_vowner.push(None);
                 flat.push(f);
             }
             // PLAN-967 F0: the frontdoor declares no function.
@@ -2470,11 +2492,49 @@ fn resolve_detailed(
                 for m in &t.methods {
                     fn_receiver.push(m.receiver);
                     fn_owner.push(rec_index.get(&t.name.name).copied());
+                    fn_vowner.push(None);
                     flat.push(m);
                 }
             }
-            // PLAN-864: enums carry no functions.
-            ast::Item::Enum(_) => {}
+            // PLAN-1083: auto-face enums carry instance methods (the
+            // implicit receiver is the variant value). The frozen profiles
+            // keep the PLAN-864 rejection below through the surface gate.
+            ast::Item::Enum(e) => {
+                if !e.methods.is_empty() {
+                    if !surface.is_auto_language() {
+                        for m in &e.methods {
+                            diags.push(Diagnostic::new(
+                                Stage::Bind,
+                                "source.unsupported",
+                                format!(
+                                    "enum methods are not part of this source profile (method `{}` on `{}`)",
+                                    m.name.name, e.name.name
+                                ),
+                                m.name.span,
+                            ));
+                        }
+                    } else if let Some(&vi) = enum_variant_index.get(&e.name.name) {
+                        for m in &e.methods {
+                            fn_receiver.push(m.receiver);
+                            fn_owner.push(None);
+                            fn_vowner.push(Some(vi));
+                            flat.push(m);
+                        }
+                    } else {
+                        for m in &e.methods {
+                            diags.push(Diagnostic::new(
+                                Stage::Bind,
+                                "source.unsupported",
+                                format!(
+                                    "enum `{}` declares no variant arms here; methods need the variant surface",
+                                    e.name.name
+                                ),
+                                m.name.span,
+                            ));
+                        }
+                    }
+                }
+            }
             // PLAN-960: const/store items are consumed by the packages binder
             // (globals + synthesized init functions) before resolve; a raw
             // package unit handed to the single-module resolver is a caller
@@ -2559,6 +2619,9 @@ fn resolve_detailed(
         let _ = &f;
         let owner_ty = fn_owner[i]
             .map(|oi| records[oi].name.clone())
+            .or_else(|| {
+                fn_vowner[i].map(|vi| coll.variants[vi].name.clone())
+            })
             .unwrap_or_default();
         let sig_key = if let Some(info) = fn_nested.get(i).and_then(|n| n.as_ref()) {
             // PLAN-1081: a nested fn item registers under its mangled def
@@ -2610,6 +2673,7 @@ fn resolve_detailed(
             f,
             fn_receiver[i],
             fn_owner[i],
+            fn_vowner[i],
             &rec_index,
             &mut coll,
             &mut diags,
@@ -2617,6 +2681,18 @@ fn resolve_detailed(
             is_coll,
         );
         sigs.insert(sig_key.clone(), sig);
+        // PLAN-1083: method-side registry on the owning enum variant.
+        if let Some(vi) = fn_vowner[i] {
+            if std::env::var("P1083_DEBUG").is_ok() {
+                eprintln!("[p1083] enum method sig_key={} result={:?}", sig_key, sigs.get(&sig_key).map(|g| g.result));
+            }
+            coll.variants[vi].methods.push(ResolvedMethod {
+                name: f.name.name.clone(),
+                is_static: false,
+                fn_index: i,
+                span: f.span,
+            });
+        }
         // method-side registry on the owning record
         if let Some(oi) = fn_owner[i] {
             // PLAN-782 §6.2: on the combination surface the builtin
@@ -2860,6 +2936,7 @@ fn resolve_detailed(
             &mut diags,
             fn_receiver[i],
             fn_owner[i],
+            fn_vowner[i],
             &records,
             &rec_index,
             &mut coll,
@@ -4266,6 +4343,7 @@ pub(crate) fn recheck_swap_with_supply(
             item,
             recv,
             owner_rec,
+            None,
             &env.rec_index,
             &mut c2,
             &mut guard_diags,
@@ -4343,6 +4421,7 @@ pub(crate) fn recheck_swap_with_supply(
         &mut diags,
         recv,
         owner_rec,
+        None,
         &env.program.records,
         &env.rec_index,
         &mut coll,
@@ -4545,6 +4624,7 @@ pub(crate) fn resolve_lambda_in_context(
         used_intrinsics: lb.used_intrinsics,
         receiver: ast::Receiver::Free,
         owner_rec: None,
+        owner_var: None,
     };
     Ok(BodyState {
         entry,
@@ -4629,6 +4709,7 @@ pub(crate) fn resolve_owner_in_env(
         item,
         ast::Receiver::Free,
         None,
+        None,
         &env.rec_index,
         &mut c2,
         &mut guard_diags,
@@ -4686,6 +4767,7 @@ pub(crate) fn resolve_owner_in_env(
         false,
         &mut diags,
         ast::Receiver::Free,
+        None,
         None,
         &env.program.records,
         &env.rec_index,
@@ -4991,6 +5073,7 @@ fn fn_sig_of(
         f,
         recv,
         owner_rec,
+        None,
         rec_index,
         &mut {
             let mut t = CollTables::default();
@@ -5179,6 +5262,7 @@ fn fn_sig_of_coll(
     f: &ast::FnItem,
     recv: ast::Receiver,
     owner_rec: Option<usize>,
+    owner_var: Option<usize>,
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
     diags: &mut Vec<Diagnostic>,
@@ -5208,7 +5292,12 @@ fn fn_sig_of_coll(
     let mut params: Vec<VT> = Vec::new();
     if recv == ast::Receiver::View {
         param_names.push("self".to_string());
-        params.push(VT::Rec(owner_rec.unwrap_or(usize::MAX)));
+        // PLAN-1083: an enum instance method's receiver is the VARIANT
+        // value (`is self` dispatches on it).
+        params.push(match owner_var {
+            Some(vi) => VT::Variant(vi),
+            None => VT::Rec(owner_rec.unwrap_or(usize::MAX)),
+        });
     }
     for p in &f.params {
         param_names.push(p.name.name.clone());
@@ -5962,6 +6051,7 @@ fn resolve_fn_agg(
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
+    owner_var: Option<usize>,
     records: &[ResolvedRecord],
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
@@ -5986,6 +6076,7 @@ fn resolve_fn_agg(
         diags,
         receiver,
         owner_rec,
+        owner_var,
         records,
         rec_index,
         coll,
@@ -6013,6 +6104,7 @@ fn resolve_fn(
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
+    owner_var: Option<usize>,
     records: &[ResolvedRecord],
     rec_index: &BTreeMap<String, usize>,
     coll: &mut CollTables,
@@ -6032,6 +6124,7 @@ fn resolve_fn(
         diags,
         receiver,
         owner_rec,
+        owner_var,
         records,
         rec_index,
         coll,
@@ -6063,6 +6156,7 @@ fn resolve_fn_reuse<'a, 's>(
     diags: &'a mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
+    owner_var: Option<usize>,
     records: &'a [ResolvedRecord],
     rec_index: &'a BTreeMap<String, usize>,
     coll: &'a mut CollTables,
@@ -6078,6 +6172,10 @@ fn resolve_fn_reuse<'a, 's>(
     nested: NestedCtx,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
+    // PLAN-1083: an enum instance method's owner name (precomputed —
+    // coll moves into the FnResolver below).
+    let var_owner_name: Option<String> =
+        owner_var.map(|vi| coll.variants[vi].name.clone());
     let fn_result = if is_coll {
         vt_of_ann_coll(&f.ret, rec_index, coll, diags, TypePos::Result)
     } else {
@@ -6154,11 +6252,15 @@ fn resolve_fn_reuse<'a, 's>(
     // Params live in the function's outermost scope. A view receiver is
     // the implicit `self` param 0 (PLAN-771 §5.3).
     if receiver == ast::Receiver::View {
-        let ri = owner_rec.unwrap_or(usize::MAX);
+        // PLAN-1083: an enum instance method's receiver is the VARIANT.
+        let self_vt = match owner_var {
+            Some(vi) => VT::Variant(vi),
+            None => VT::Rec(owner_rec.unwrap_or(usize::MAX)),
+        };
         let lref = LocalRef(r.locals.len());
         r.locals.push(LocalDecl {
             name: "self".to_string(),
-            vt: VT::Rec(ri),
+            vt: self_vt,
             mutable: false,
             is_param: true,
             param_index: Some(0),
@@ -6171,7 +6273,7 @@ fn resolve_fn_reuse<'a, 's>(
         r.scopes[0].names.insert("self".to_string(), lref);
         r.declared_names.insert("self".to_string());
         param_names.push("self".to_string());
-        params.push(VT::Rec(ri));
+        params.push(self_vt);
         param_modes.push(false);
     }
     for (i, p) in f.params.iter().enumerate() {
@@ -6233,6 +6335,7 @@ fn resolve_fn_reuse<'a, 's>(
     if let Some(out) = gen_try_finals {
         *out = r.gen_try_finals;
     }
+
     let sig_key = if receiver == ast::Receiver::Free {
         f.name.name.clone()
     } else {
@@ -6240,6 +6343,7 @@ fn resolve_fn_reuse<'a, 's>(
             "{}::{}",
             owner_rec
                 .map(|oi| records[oi].name.clone())
+                .or(var_owner_name)
                 .unwrap_or_default(),
             f.name.name
         )
@@ -6272,6 +6376,7 @@ fn resolve_fn_reuse<'a, 's>(
         used_intrinsics: r.used_intrinsics,
         receiver,
         owner_rec,
+        owner_var,
     }
 }
 
@@ -7235,6 +7340,7 @@ F:{d}
             used_intrinsics: lb.used_intrinsics,
             receiver: ast::Receiver::Free,
             owner_rec: None,
+            owner_var: None,
         });
         ResolvedExpr {
             span,
@@ -9710,8 +9816,13 @@ F:{d}
             });
         }
 
-        // Exhaustiveness check
-        if !seen_else {
+        // Exhaustiveness check. PLAN-1083: the ordinary auto face admits
+        // a fall-through STATEMENT `is` (no arm matched → execution
+        // continues after the statement; the legacy enum-method family
+        // spells exactly this). Value-producing positions — the is
+        // EXPRESSION and every frozen profile's statement form — keep the
+        // exhaustive contract.
+        if !seen_else && (is_expr_mode || !self.profile.is_auto_language()) {
             let ok = match scr_vt {
                 VT::Variant(vi) => seen_discs.len() == self.coll.variants[vi].arms.len(),
                 VT::Bool => seen_bools.len() == 2,
@@ -9760,6 +9871,10 @@ F:{d}
             && !has_else
             && !compiled.is_empty()
             && compiled.iter().all(|ca| rblock_all_return(&ca.block.stmts))
+            // PLAN-1083: the auto face's fall-through statement `is` never
+            // adds the synthetic return filler — code after the statement
+            // stays reachable (the legacy enum-method spelling).
+            && !self.profile.is_auto_language()
         {
             let mut filler_stmts = Vec::new();
             if self.is_generator {
@@ -14477,6 +14592,36 @@ F:{d}
             // claims method chains first, so a TEXT receiver's builtin
             // call (`t.text.len()`) arrives here — route it into the text
             // builtin table instead of rejecting.
+            // PLAN-1083: enum instance methods — the receiver is a
+            // variant-typed value (`Light.Red.is_red()`).
+            if let VT::Variant(vi) = rrecv.vt {
+                if let Some(m) = self.coll.variants[vi]
+                    .methods
+                    .iter()
+                    .find(|m| m.name == name.name)
+                {
+                    let fn_index = m.fn_index;
+                    let sig_params = self.method_sig_params(fn_index, 1);
+                    self.retag_method_args(&mut rargs, fn_index, 1);
+                    self.check_args(
+                        &name.name,
+                        &self.method_sig_names(fn_index, 1),
+                        &sig_params,
+                        &rargs,
+                        span,
+                    );
+                    let _ = &sig_params;
+                    return ResolvedExpr {
+                        span,
+                        vt: self.method_sig_result(fn_index),
+                        kind: RExprKind::MethodCall {
+                            fn_index,
+                            recv: Some(Box::new(*rrecv)),
+                            args: rargs,
+                        },
+                    };
+                }
+            }
             if !matches!(rrecv.vt, VT::Rec(_)) {
                 return self.resolve_method(name, *rrecv, rargs, None, span);
             }
@@ -16643,6 +16788,74 @@ F:{d}
         // PLAN-864: List receivers route to the collections method table.
         if let VT::List(li) = recv.vt {
             return self.resolve_list_method(li, name, recv, args, span);
+        }
+        // PLAN-1083: `opt.or(default)` — the legacy Option method with
+        // `.?(default)` semantics (Some projects, None takes the default;
+        // the default evaluates only on the None path).
+        if name.name == "or" && args.len() == 1 && self.profile.is_aggregates() {
+            if let VT::Variant(_) = recv.vt {
+                if let Some(info) = agg_lower::variant_unwrap_info(recv.vt, self.coll) {
+                    if self.coll.variants[info.vi].name == "Option" {
+                        let fallback = args[0].value.clone();
+                        let scr_l = self.agg_temp("or_scr", recv.vt, false, span);
+                        self.emit_stmt(RStmt::Let {
+                            local: scr_l,
+                            value: recv,
+                            span,
+                        });
+                        let res_l = self.agg_temp("or_res", info.success_vt, true, span);
+                        let dummy = self.dummy_of(info.success_vt, span);
+                        self.emit_stmt(RStmt::Let {
+                            local: res_l,
+                            value: dummy,
+                            span,
+                        });
+                        self.emit_stmt(RStmt::If {
+                            cond: ResolvedExpr {
+                                span,
+                                vt: VT::Bool,
+                                kind: RExprKind::VariantGuardTest {
+                                    local: scr_l,
+                                    variant: info.vi,
+                                    disc: info.success_disc,
+                                },
+                            },
+                            then: RBlock {
+                                stmts: vec![RStmt::Assign {
+                                    local: res_l,
+                                    path: Vec::new(),
+                                    value: ResolvedExpr {
+                                        span,
+                                        vt: info.success_vt,
+                                        kind: RExprKind::VariantProject {
+                                            local: scr_l,
+                                            variant: info.vi,
+                                            disc: info.success_disc,
+                                        },
+                                    },
+                                    span,
+                                }],
+                                span,
+                            },
+                            els: Some(RBlock {
+                                stmts: vec![RStmt::Assign {
+                                    local: res_l,
+                                    path: Vec::new(),
+                                    value: fallback,
+                                    span,
+                                }],
+                                span,
+                            }),
+                            span,
+                        });
+                        return ResolvedExpr {
+                            span,
+                            vt: info.success_vt,
+                            kind: RExprKind::ReadLocal(res_l),
+                        };
+                    }
+                }
+            }
         }
         if let VT::Function(signature) = recv.vt {
             if name.name == "clone" && args.is_empty() && self.profile.is_closures() {

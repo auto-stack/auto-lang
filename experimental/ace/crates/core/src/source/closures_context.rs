@@ -886,6 +886,7 @@ pub fn restore_context(
             used_intrinsics: BTreeSet::new(),
             receiver: receiver_in(f.receiver),
             owner_rec: f.owner_rec,
+            owner_var: None,
         });
     }
     let records = dump
@@ -926,6 +927,7 @@ pub fn restore_context(
                 .iter()
                 .map(|(n, p)| (n.clone(), p.map(vt_in)))
                 .collect(),
+            methods: Vec::new(),
         })
         .collect();
     let function_types = dump

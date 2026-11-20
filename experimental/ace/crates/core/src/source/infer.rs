@@ -902,27 +902,39 @@ pub(crate) fn normalize_auto_face(program: &mut Program) {
                 scrutinee, arms, span
             } = last
             {
-                let is_expr = Expr {
-                    span: *span,
-                    kind: ExprKind::IsExpr {
-                        scrutinee: Box::new(scrutinee.clone()),
-                        arms: arms.clone(),
-                    },
-                };
-                let span = *span;
-                if f.script {
-                    *last = Stmt::ExprStmt {
-                        value: is_expr,
-                        span,
+                // PLAN-1083: return-armed `is` (every arm body is a
+                // return) keeps the STATEMENT form — the arms own the
+                // control flow (a value rewrite would double-return).
+                let return_armed = !arms.is_empty()
+                    && arms.iter().all(|a| match &a.body {
+                        crate::source::ast::AggArmBody::Block(b) => {
+                            matches!(b.stmts.as_slice(), [Stmt::Return { .. }])
+                        }
+                        _ => false,
+                    });
+                if !return_armed {
+                    let is_expr = Expr {
+                        span: *span,
+                        kind: ExprKind::IsExpr {
+                            scrutinee: Box::new(scrutinee.clone()),
+                            arms: arms.clone(),
+                        },
                     };
-                } else if !matches!(
-                    f.ret.kind,
-                    TypeRef::Inferred | TypeRef::Builtin(TypeWord::Void)
-                ) {
-                    *last = Stmt::Return {
-                        value: is_expr,
-                        span,
-                    };
+                    let span = *span;
+                    if f.script {
+                        *last = Stmt::ExprStmt {
+                            value: is_expr,
+                            span,
+                        };
+                    } else if !matches!(
+                        f.ret.kind,
+                        TypeRef::Inferred | TypeRef::Builtin(TypeWord::Void)
+                    ) {
+                        *last = Stmt::Return {
+                            value: is_expr,
+                            span,
+                        };
+                    }
                 }
             }
         }
@@ -1052,15 +1064,26 @@ fn walk_expr_enums(
     match &e.kind {
         ExprKind::Call { callee, args } if callee.name == "Err" => match args.first() {
             Some(Arg::Pos(inner) | Arg::MovePos(inner)) => {
-                if let ExprKind::Field { base, .. } = &inner.kind {
-                    if let ExprKind::Var(id) = &base.kind {
-                        if enums.contains(&id.name) {
-                            names.push(id.name.clone());
-                            return;
-                        }
+                // `Err(E.A)` (bare) or `Err(E.A(args))` (constructed) — both
+                // name the enum through the qualified receiver.
+                let qual = match &inner.kind {
+                    ExprKind::Field { base, .. } => match &base.kind {
+                        ExprKind::Var(id) => Some(&id.name),
+                        _ => None,
+                    },
+                    ExprKind::MethodCall { recv, .. } => match &recv.kind {
+                        ExprKind::Var(id) => Some(&id.name),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match qual {
+                    Some(n) if enums.contains(n) => {
+                        names.push(n.clone());
+                        return;
                     }
+                    _ => *foreign = true,
                 }
-                *foreign = true;
             }
             _ => *foreign = true,
         },

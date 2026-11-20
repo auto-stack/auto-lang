@@ -2342,6 +2342,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 索引混合链、多级索引链、任意复合 op，含裸名 `a += 1`）。
             // closures 面不裁（共享单元格 `cell[k]=v` 旧形字节不动）。
             alt(profiles: [auto]) { place-assign-stmt() {} }
+            alt(profiles: [auto]) { self-place-assign-stmt() {} }
             alt { return-stmt() {} }
             // PLAN-1081 (T-03)：嵌套 fn 项（auto 面）——语句位 `fn name(..) [ret] { body }`，
             // 投影为 Stmt::NestedFn（提升为模块函数表的 mangled 单元）。
@@ -2456,6 +2457,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 变），本规则承接混合链/多级索引/复合 op。
         place-assign-stmt(profiles: [auto]) {
             ident(field: "name")
+            many { place-step() {} }
+            place-assign-op() {}
+            expr(field: "value")
+        }
+        // PLAN-1083（auto 面）：隐式 self 字段写 `.f = v` / `.f (op)= v`——
+        // 首字段经隐式 self 接收者，其余步骤与 place 链同构。
+        self-place-assign-stmt(profiles: [auto]) {
+            dot(same-line: false) {}
+            ident(field: "field")
             many { place-step() {} }
             place-assign-op() {}
             expr(field: "value")

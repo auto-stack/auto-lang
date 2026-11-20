@@ -2589,6 +2589,7 @@ fn build_next_fn(
         used_intrinsics: BTreeSet::new(),
         receiver: ast::Receiver::Free,
         owner_rec: None,
+        owner_var: None,
     }
 }
 
@@ -2804,5 +2805,6 @@ fn build_close_fn(
         used_intrinsics: BTreeSet::new(),
         receiver: ast::Receiver::Free,
         owner_rec: None,
+        owner_var: None,
     }
 }

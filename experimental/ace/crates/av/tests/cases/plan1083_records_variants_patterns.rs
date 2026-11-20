@@ -1229,6 +1229,54 @@ fn t02_infra_diag() {
             ),
         ),
         (
+            "O47 multi-error nested is",
+            concat!(
+                "enum ApiError {\n",
+                "    Http { code int, msg Str }\n",
+                "    Timeout\n",
+                "}\n",
+                "fn fetch(url Str) !int {\n",
+                "    if url == \"\" {\n",
+                "        return Err(ApiError.Http(code: 404, msg: \"not found\"))\n",
+                "    }\n",
+                "    if url == \"slow\" {\n",
+                "        return Err(ApiError.Timeout)\n",
+                "    }\n",
+                "    Ok(200)\n",
+                "}\n",
+                "fn main() {\n",
+                "    let r1 = fetch(\"\")\n",
+                "    is r1 {\n",
+                "        Ok(data) -> print(data)\n",
+                "        Err(e) -> {\n",
+                "            is e {\n",
+                "                ApiError.Http(code, msg) -> print(code)\n",
+                "                ApiError.Timeout -> print(\"timeout\")\n",
+                "            }\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+            ),
+        ),
+        (
+            "O32 enum instance method",
+            concat!(
+                "enum Light {\n",
+                "    Red\n",
+                "    Green\n",
+                "    fn is_red() bool {\n",
+                "        is self {\n",
+                "            Light.Red -> return true\n",
+                "        }\n",
+                "        return false\n",
+                "    }\n",
+                "}\n",
+                "fn main() {\n",
+                "    if Light.Red.is_red() { print(\"yes\") } else { print(\"no\") }\n",
+                "}\n",
+            ),
+        ),
+        (
             "B35 Err enum payload",
             concat!(
                 "enum ParseError {\n",
@@ -1292,6 +1340,29 @@ fn t02_infra_diag() {
         (
             "S6 named fields semi",
             "enum B { H { a int; b int } }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S9 str-field record in array literal",
+            concat!(
+                "type Note { id int; title Str }
+",
+                "fn main() int {
+",
+                "    let notes = [
+",
+                "        Note { id: 1, title: \"Welcome\" },
+",
+                "    ]
+",
+                "    let n = notes[0]
+",
+                "    if n.title == \"Welcome\" { return 1 }
+",
+                "    return 0
+",
+                "}
+",
+            ),
         ),
         (
             "S7 enum arms comma plain",
