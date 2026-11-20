@@ -2684,9 +2684,6 @@ fn resolve_detailed(
         sigs.insert(sig_key.clone(), sig);
         // PLAN-1083: method-side registry on the owning enum variant.
         if let Some(vi) = fn_vowner[i] {
-            if std::env::var("P1083_DEBUG").is_ok() {
-                eprintln!("[p1083] enum method sig_key={} result={:?}", sig_key, sigs.get(&sig_key).map(|g| g.result));
-            }
             coll.variants[vi].methods.push(ResolvedMethod {
                 name: f.name.name.clone(),
                 is_static: false,
@@ -9764,7 +9761,7 @@ F:{d}
                 cond
             });
 
-            let (mut ablock, expr_val) = match &arm.body {
+            let (ablock, expr_val) = match &arm.body {
                 ast::AggArmBody::Block(b) => {
                     let mut rb = self.resolve_body(b, true);
                     let mut val = None;
