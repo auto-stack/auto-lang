@@ -1,0 +1,251 @@
+use app.binding.bind_budget
+use app.binding.decl_category
+use app.binding.decl_name
+use app.binding.constant_decl
+use app.binding.direct_callee
+use app.binding.function_decl
+use app.binding.global_var_decl
+use app.binding.method_decl
+use app.binding.take_step
+use app.semantic_tree.kind
+use app.semantic_tree.module_name_at
+use app.semantic_tree.parent
+use app.semantic_tree.role
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use std.conv.from_int
+
+pub fn initializer_cycle() int { return -18 }
+pub fn initializer_module_order() int { return -19 }
+
+fn is_global(declarations List<int>, row int) bool {
+    let category = decl_category(declarations, row)
+    return category == constant_decl() || category == global_var_decl()
+}
+
+fn is_function(declarations List<int>, row int) bool {
+    let category = decl_category(declarations, row)
+    return category == function_decl() || category == method_decl()
+}
+
+fn collect_edges(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, edges List<int>, fuel List<int>, deadline i64) int {
+    var owners = List<int>.new()
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return row }
+        let outer = parent(ast, row)
+        var owner = -1
+        if (outer >= 0) { owner = owners.get(outer) }
+        if (is_global(declarations, row) || is_function(declarations, row)) { owner = row }
+        owners.push(owner)
+        if (owner >= 0) {
+            let target = uses.get(row)
+            if (target >= 0 && is_global(declarations, target)) {
+                let writer = kind(pg, ast, outer) == "assign-stmt" && role(pg, ast, row) == "name"
+                if (!writer) {
+                    edges.push(owner)
+                    edges.push(target)
+                }
+            }
+            if (kind(pg, ast, row) == "call") {
+                let callee = direct_callee(pg, ast, links, row)
+                if (callee >= 0) {
+                    let function = uses.get(callee)
+                    if (function >= 0 && is_function(declarations, function)) {
+                        edges.push(owner)
+                        edges.push(function)
+                    }
+                }
+            }
+        }
+        row = row + 1
+    }
+    return -1
+}
+
+fn expand_edges(start int, declarations List<int>, edges List<int>, seen List<int>, deps List<int>, waits List<int>, fuel List<int>, deadline i64) bool {
+    var follow = List<int>.new()
+    follow.push(start)
+    seen.set(start, start)
+    var recorded_self = false
+    for (follow.len() > 0) {
+        let current = follow.remove(follow.len() - 1)
+        var at = 0
+        for (at < edges.len()) {
+            if (!take_step(fuel, deadline)) { return false }
+            if (edges.get(at) == current) {
+                let target = edges.get(at + 1)
+                if (target == start) {
+                    if (!recorded_self) {
+                        deps.push(start)
+                        deps.push(start)
+                        waits.set(start, waits.get(start) + 1)
+                        recorded_self = true
+                    }
+                } else {
+                    if (seen.get(target) != start) {
+                        seen.set(target, start)
+                        if (is_global(declarations, target)) {
+                            deps.push(start)
+                            deps.push(target)
+                            waits.set(start, waits.get(start) + 1)
+                        } else {
+                            follow.push(target)
+                        }
+                    }
+                }
+            }
+            at = at + 2
+        }
+    }
+    return true
+}
+
+fn before(a Str, b Str) bool {
+    var i = 0
+    for (i < a.len() && i < b.len()) {
+        let left = a.char_at(i).to_codepoint()
+        let right = b.char_at(i).to_codepoint()
+        if (left != right) { return left < right }
+        i = i + 1
+    }
+    return a.len() < b.len()
+}
+
+fn global_key(ast List<int>, src List<int>, modules List<int>, declarations List<int>, row int) Str {
+    let module_name = module_name_at(modules, source_id(ast, row))
+    let name = spelling(src, ast, decl_name(declarations, row))
+    return from_int(module_name.len()) + "_" + module_name + "_" + name
+}
+
+fn add_global(ast List<int>, src List<int>, modules List<int>, declarations List<int>, globals List<int>, row int, fuel List<int>, deadline i64) bool {
+    let name = global_key(ast, src, modules, declarations, row)
+    var position = globals.len()
+    globals.push(row)
+    for (position > 0) {
+        if (!take_step(fuel, deadline)) { return false }
+        let above = globals.get(position - 1)
+        if (!before(name.clone(), global_key(ast, src, modules, declarations, above))) { break }
+        globals.set(position, above)
+        position = position - 1
+    }
+    globals.set(position, row)
+    return true
+}
+
+pub fn initialize_order(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, module_count int, declarations List<int>, uses List<int>, result List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var edges = List<int>.new()
+    let stopped = collect_edges(pg, ast, links, declarations, uses, edges, fuel, deadline)
+    if (stopped >= 0) {
+        errors.push(stopped)
+        return bind_budget()
+    }
+    var globals = List<int>.new()
+    var waits = List<int>.new()
+    var seen = List<int>.new()
+    var row = 0
+    for (row < row_count(ast)) {
+        waits.push(0)
+        seen.push(-1)
+        if (is_global(declarations, row) && !add_global(ast, src, modules, declarations, globals, row, fuel, deadline)) {
+            errors.push(row)
+            return bind_budget()
+        }
+        row = row + 1
+    }
+    var deps = List<int>.new()
+    var index = 0
+    for (index < globals.len()) {
+        let start = globals.get(index)
+        if (!expand_edges(start, declarations, edges, seen, deps, waits, fuel, deadline)) {
+            errors.push(start)
+            return bind_budget()
+        }
+        index = index + 1
+    }
+    var ordered = List<int>.new()
+    for (ordered.len() < globals.len()) {
+        let batch = ordered.len()
+        index = 0
+        for (index < globals.len()) {
+            let global = globals.get(index)
+            if (!take_step(fuel, deadline)) {
+                errors.push(global)
+                return bind_budget()
+            }
+            if (waits.get(global) == 0) {
+                ordered.push(global)
+                waits.set(global, -1)
+            }
+            index = index + 1
+        }
+        if (batch == ordered.len()) {
+            for (index > 0) {
+                index = index - 1
+                let global = globals.get(index)
+                if (waits.get(global) > 0) { errors.push(global) }
+            }
+            return initializer_cycle()
+        }
+        index = batch
+        for (index < ordered.len()) {
+            let initialized = ordered.get(index)
+            var edge_index = 0
+            for (edge_index < deps.len()) {
+                if (!take_step(fuel, deadline)) {
+                    errors.push(initialized)
+                    return bind_budget()
+                }
+                if (deps.get(edge_index + 1) == initialized) {
+                    let dependent = deps.get(edge_index)
+                    waits.set(dependent, waits.get(dependent) - 1)
+                }
+                edge_index = edge_index + 2
+            }
+            index = index + 1
+        }
+    }
+    var ranks = List<int>.new()
+    index = 0
+    for (index < module_count) {
+        ranks.push(-1)
+        index = index + 1
+    }
+    index = 0
+    for (index < ordered.len()) {
+        ranks.set(source_id(ast, ordered.get(index)), index)
+        index = index + 1
+    }
+    var edge_index = 0
+    for (edge_index < deps.len()) {
+        let dependent = deps.get(edge_index)
+        if (!take_step(fuel, deadline)) {
+            errors.push(dependent)
+            return bind_budget()
+        }
+        if (ranks.get(source_id(ast, dependent)) < ranks.get(source_id(ast, deps.get(edge_index + 1)))) {
+            errors.push(dependent)
+            return initializer_module_order()
+        }
+        edge_index = edge_index + 2
+    }
+    index = 0
+    for (index < ordered.len()) {
+        let active_module = source_id(ast, ordered.get(index))
+        if (ranks.get(active_module) == index) {
+            var j = 0
+            for (j <= index) {
+                let global = ordered.get(j)
+                if (!take_step(fuel, deadline)) {
+                    errors.push(global)
+                    return bind_budget()
+                }
+                if (source_id(ast, global) == active_module) { result.push(global) }
+                j = j + 1
+            }
+        }
+        index = index + 1
+    }
+    return 0
+}

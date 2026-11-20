@@ -21,3 +21,11 @@ ace-syntax-grammar = { path = "../../crates/syntax-grammar" }
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"
+
+[features]
+aac-semantics = []
+
+[[test]]
+name = "semantic_conformance"
+path = "tests/semantic_conformance.rs"
+required-features = ["aac-semantics"]

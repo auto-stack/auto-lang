@@ -10,6 +10,27 @@ use crate::{scratch, syntax_av_modules};
 pub const NATIVE_DRIVER_SOURCE: &str = include_str!("../native_driver.at");
 pub const DRIVER_EXE: &str = "aac1046-driver.exe";
 pub const DRIVER_MANIFEST: &str = "driver.manifest";
+pub const SEMANTIC_DRIVER_SOURCE: &str = include_str!("../semantic_driver.at");
+pub const SEMANTIC_DRIVER_EXE: &str = "aac1047-driver.exe";
+
+pub fn semantic_modules() -> Vec<(String, String)> {
+    let mut files = syntax_av_modules();
+    files.extend([
+        (
+            "semantic_tree.at".into(),
+            include_str!("../../../aac/semantics/semantic_tree.at").into(),
+        ),
+        (
+            "binding.at".into(),
+            include_str!("../../../aac/semantics/binding.at").into(),
+        ),
+        (
+            "initializers.at".into(),
+            include_str!("../../../aac/semantics/initializers.at").into(),
+        ),
+    ]);
+    files
+}
 
 fn fingerprint_part(hash: &mut blake3::Hasher, value: &[u8]) {
     hash.update(&(value.len() as u64).to_le_bytes());
@@ -17,10 +38,18 @@ fn fingerprint_part(hash: &mut blake3::Hasher, value: &[u8]) {
 }
 
 pub fn native_fingerprint() -> blake3::Hash {
+    driver_fingerprint(syntax_av_modules(), NATIVE_DRIVER_SOURCE)
+}
+
+pub fn semantic_fingerprint() -> blake3::Hash {
+    driver_fingerprint(semantic_modules(), SEMANTIC_DRIVER_SOURCE)
+}
+
+fn driver_fingerprint(files: Vec<(String, String)>, driver: &str) -> blake3::Hash {
     use ace_core::source::packages::{stdlib_assembled_files, stdlib_sys_files};
 
     let mut hash = blake3::Hasher::new();
-    for (name, source) in syntax_av_modules() {
+    for (name, source) in files {
         fingerprint_part(&mut hash, name.as_bytes());
         fingerprint_part(&mut hash, source.as_bytes());
     }
@@ -33,7 +62,7 @@ pub fn native_fingerprint() -> blake3::Hash {
     }
     for source in [
         "windows-x64/a2r/dev/stack-16777216/v1",
-        NATIVE_DRIVER_SOURCE,
+        driver,
         include_str!("bin/prepare-native.rs"),
         include_str!("../../../Cargo.lock"),
     ] {
@@ -43,24 +72,39 @@ pub fn native_fingerprint() -> blake3::Hash {
 }
 
 static PREPARED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+static SEMANTIC_PREPARED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 
 fn prepared_exe() -> Result<&'static Path, String> {
-    PREPARED
+    admit_driver(
+        &PREPARED,
+        "AAC1046_NATIVE_DIR",
+        DRIVER_EXE,
+        native_fingerprint,
+    )
+}
+
+fn admit_driver(
+    cache: &'static OnceLock<Result<PathBuf, String>>,
+    env: &str,
+    executable: &str,
+    fingerprint: fn() -> blake3::Hash,
+) -> Result<&'static Path, String> {
+    cache
         .get_or_init(|| {
-            let root = std::env::var_os("AAC1046_NATIVE_DIR")
+            let root = std::env::var_os(env)
                 .map(PathBuf::from)
-                .ok_or("prepare AAC native driver and set AAC1046_NATIVE_DIR")?;
+                .ok_or_else(|| format!("prepare AAC native driver and set {env}"))?;
             if !root.is_absolute() {
-                return Err("AAC1046_NATIVE_DIR must be an absolute preparation directory".into());
+                return Err(format!("{env} must be an absolute preparation directory"));
             }
             let text = std::fs::read_to_string(root.join(DRIVER_MANIFEST))
                 .map_err(|err| format!("read AAC driver manifest: {err}"))?;
             let mut fields = text.lines();
-            let expected = native_fingerprint().to_hex();
+            let expected = fingerprint().to_hex();
             if fields.next() != Some(expected.as_str()) {
                 return Err("AAC native driver preparation is stale".into());
             }
-            let exe = root.join(DRIVER_EXE);
+            let exe = root.join(executable);
             let bytes = std::fs::read(&exe).map_err(|err| format!("read AAC driver: {err}"))?;
             if fields.next() != Some(blake3::hash(&bytes).to_hex().as_str()) {
                 return Err("AAC native executable digest differs from preparation".into());
@@ -69,6 +113,58 @@ fn prepared_exe() -> Result<&'static Path, String> {
         })
         .as_deref()
         .map_err(Clone::clone)
+}
+
+fn prepared_semantic() -> Result<&'static Path, String> {
+    admit_driver(
+        &SEMANTIC_PREPARED,
+        "AAC1047_NATIVE_DIR",
+        SEMANTIC_DRIVER_EXE,
+        semantic_fingerprint,
+    )
+}
+
+pub fn run_semantic_case(sample: &[u8], steps: Option<u32>) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("semantic", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write semantic input: {err}"))?;
+        let mut cmd = Command::new(exe);
+        cmd.current_dir(root)
+            .env("AAC1047_INPUT", input)
+            .env("AAC1047_OUTPUT", &output)
+            .env_remove("AAC1047_PROJECT")
+            .env_remove("AAC1047_STEPS");
+        if let Some(steps) = steps {
+            cmd.env("AAC1047_STEPS", steps.to_string());
+        }
+        execute_report(cmd, &output, "semantic")
+    })
+}
+
+pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("semantic-project", |root| {
+        let output = root.join("report.txt");
+        let mut names = Vec::with_capacity(modules.len());
+        for (name, source) in modules {
+            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                return Err(format!("invalid fixture module name: {name}"));
+            }
+            std::fs::write(root.join(format!("{name}.at")), source)
+                .map_err(|err| err.to_string())?;
+            names.push(*name);
+        }
+        let mut cmd = Command::new(exe);
+        cmd.current_dir(root)
+            .env("AAC1047_PROJECT", root)
+            .env("AAC1047_PACKAGE", "app")
+            .env("AAC1047_INVENTORY", names.join("\n"))
+            .env("AAC1047_OUTPUT", &output)
+            .env_remove("AAC1047_STEPS");
+        execute_report(cmd, &output, "semantic-project")
+    })
 }
 
 pub fn run_native_case(

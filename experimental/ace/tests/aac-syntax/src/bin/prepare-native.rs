@@ -4,8 +4,8 @@ use std::process::Command;
 use ace_a2x_rust::RustTargetProvider;
 use ace_a2x_store::modules::packages::PackageA2xTarget;
 use ace_aac_syntax_conformance::{
-    native_fingerprint, syntax_av_modules, BUDGET, DRIVER_EXE, DRIVER_MANIFEST,
-    NATIVE_DRIVER_SOURCE,
+    native_fingerprint, semantic_fingerprint, semantic_modules, syntax_av_modules, BUDGET,
+    DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE, SEMANTIC_DRIVER_EXE, SEMANTIC_DRIVER_SOURCE,
 };
 use ace_core::source::packages::{
     AssemblyBackend, PackageAssemblyContext, ProviderChoice, TargetOs,
@@ -17,14 +17,33 @@ use ace_source_query::modules::packages::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let root = PathBuf::from(args.next().ok_or("pass a new preparation directory")?);
+    let semantic = match args.next() {
+        None => false,
+        Some(mode) if mode == "semantic" => true,
+        Some(_) => return Err("expected optional semantic driver mode".into()),
+    };
     if !root.is_absolute() || args.next().is_some() {
-        return Err("expected one absolute preparation directory".into());
+        return Err("expected an absolute preparation directory and optional mode".into());
     }
+    let (mut files, source, executable, store_key) = if semantic {
+        (
+            semantic_modules(),
+            SEMANTIC_DRIVER_SOURCE,
+            SEMANTIC_DRIVER_EXE,
+            "aac1047-native",
+        )
+    } else {
+        (
+            syntax_av_modules(),
+            NATIVE_DRIVER_SOURCE,
+            DRIVER_EXE,
+            "aac1046-native",
+        )
+    };
     std::fs::create_dir(&root)?;
     let generated = root.join("generated");
     std::fs::create_dir(&generated)?;
-    let mut files = syntax_av_modules();
-    files.push(("main.at".to_owned(), NATIVE_DRIVER_SOURCE.to_owned()));
+    files.push(("main.at".to_owned(), source.to_owned()));
     let entry = "app::main";
     let mut context = PackageAssemblyContext::new(
         AssemblyBackend::A2R,
@@ -36,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|diagnostics| format!("compile AAC driver: {diagnostics:?}"))?;
     let target = PackageA2xTarget::cold_aggregates(
         &root.join("store"),
-        "aac1046-native",
+        store_key,
         "app",
         16 << 20,
         RustTargetProvider::v1(),
@@ -48,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-    let exe = root.join(DRIVER_EXE);
+    let exe = root.join(executable);
     let output = Command::new(&rustc)
         .args(["--edition", "2021", "-C", "link-arg=/STACK:16777216"])
         .arg("main.rs")
@@ -66,7 +85,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let manifest = format!(
         "{}\n{}\n{}",
-        native_fingerprint(),
+        if semantic {
+            semantic_fingerprint()
+        } else {
+            native_fingerprint()
+        },
         blake3::hash(&std::fs::read(&exe)?),
         String::from_utf8(tool.stdout)?,
     );

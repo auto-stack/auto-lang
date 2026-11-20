@@ -1,0 +1,574 @@
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.find_module_name
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.role
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.start_of
+use app.semantic_tree.spelling
+use std.time.mono_ms
+
+pub fn function_decl() int { return 1 }
+pub fn parameter_decl() int { return 2 }
+pub fn local_let_decl() int { return 3 }
+pub fn local_var_decl() int { return 4 }
+pub fn constant_decl() int { return 5 }
+pub fn global_var_decl() int { return 6 }
+pub fn type_decl() int { return 7 }
+pub fn field_decl() int { return 8 }
+pub fn method_decl() int { return 9 }
+
+pub fn bind_duplicate() int { return -10 }
+pub fn bind_unresolved() int { return -11 }
+pub fn bind_immutable() int { return -12 }
+pub fn bind_budget() int { return -13 }
+pub fn bind_arguments() int { return -14 }
+pub fn bind_module() int { return -15 }
+pub fn bind_private() int { return -16 }
+pub fn bind_import_cycle() int { return -17 }
+
+// A declaration is indexed by the source AST row. Each lexical scope has
+// its own linked list of declarations in reverse source order. Visibility
+// of local values is gated by the end of the introducing statement.
+fn decl_stride() int { return 3 }
+pub fn decl_category(declarations List<int>, row int) int { return declarations.get(row * decl_stride()) }
+pub fn decl_name(declarations List<int>, row int) int { return declarations.get(row * decl_stride() + 1) }
+fn prev_decl(declarations List<int>, row int) int { return declarations.get(row * decl_stride() + 2) }
+
+fn category(node_kind Str) int {
+    if (node_kind == "fn-tail" || node_kind == "fn-require-p") { return function_decl() }
+    if (node_kind == "param") { return parameter_decl() }
+    if (node_kind == "let-stmt") { return local_let_decl() }
+    if (node_kind == "var-stmt") { return local_var_decl() }
+    if (node_kind == "const-item" || node_kind == "age-let-item") { return constant_decl() }
+    if (node_kind == "var-item" || node_kind == "auto-var-item") { return global_var_decl() }
+    if (node_kind == "type-item") { return type_decl() }
+    if (node_kind == "field-member") { return field_decl() }
+    return 0
+}
+
+fn same_name(src List<int>, ast List<int>, a int, b int, fuel List<int>) int {
+    let low = start_of(ast, a)
+    let high = end_of(ast, a)
+    let other = start_of(ast, b)
+    let length = high - low
+    if (length != end_of(ast, b) - other) { return 0 }
+    let remaining = fuel.get(0)
+    if (length > remaining) { return bind_budget() }
+    fuel.set(0, remaining - length)
+    var at = 0
+    for (at < length) {
+        if (src.get(low + at) != src.get(other + at)) { return 0 }
+        at = at + 1
+    }
+    return 1
+}
+
+pub fn take_step(fuel List<int>, deadline i64) bool {
+    let remaining = fuel.get(0)
+    if (remaining <= 0) { return false }
+    if (mono_ms() >= deadline) { return false }
+    fuel.set(0, remaining - 1)
+    return true
+}
+
+fn fail(errors List<int>, row int, code int) int {
+    errors.push(row)
+    return code
+}
+
+fn decl_scope(pg List<int>, ast List<int>, links List<int>, scopes List<int>, row int, node_kind int) int {
+    if (node_kind == parameter_decl()) {
+        let params_or_tail = parent(ast, row)
+        var params = params_or_tail
+        if (kind(pg, ast, params) == "param-tail") { params = parent(ast, params) }
+        let function = parent(ast, params)
+        return child_with_role(pg, ast, links, function, "body")
+    }
+    return scopes.get(row)
+}
+
+fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int>, scopes List<int>, heads List<int>, declarations List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    let count = row_count(ast)
+    var row = 0
+    for (row < count) {
+        scopes.push(-1)
+        heads.push(-1)
+        declarations.push(0)
+        declarations.push(-1)
+        declarations.push(-1)
+        row = row + 1
+    }
+    row = 0
+    for (row < count) {
+        if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+        let outer = parent(ast, row)
+        if (outer >= 0) {
+            let outer_tag = kind(pg, ast, outer)
+            var scope = scopes.get(outer)
+            if (outer_tag == "program" || outer_tag == "block" || outer_tag == "type-item") { scope = outer }
+            scopes.set(row, scope)
+        }
+        let tag_name = kind(pg, ast, row)
+        var node_kind = category(tag_name.clone())
+        if (tag_name == "fn-item" && child_with_role(pg, ast, links, row, "proto") >= 0) {
+            node_kind = function_decl()
+        }
+        if (node_kind != 0) {
+            let name = child_with_role(pg, ast, links, row, "name")
+            if (name >= 0) {
+                let scope = decl_scope(pg, ast, links, scopes, row, node_kind)
+                var index = -1
+                if (scope >= 0) {
+                    if (node_kind == function_decl() && kind(pg, ast, scope) == "type-item") { node_kind = method_decl() }
+                    index = heads.get(scope)
+                }
+                var prev = index
+                for (prev >= 0) {
+                    if (!take_step(fuel, deadline)) { return fail(errors, name, bind_budget()) }
+                    let equal = same_name(src, ast, name, decl_name(declarations, prev), fuel)
+                    if (equal < 0) { return fail(errors, name, equal) }
+                    if (equal == 1) { return fail(errors, name, bind_duplicate()) }
+                    prev = prev_decl(declarations, prev)
+                }
+                let base = row * decl_stride()
+                declarations.set(base, node_kind)
+                declarations.set(base + 1, name)
+                declarations.set(base + 2, index)
+                if (scope >= 0) { heads.set(scope, row) }
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+fn visible(ast List<int>, declarations List<int>, decl int, occurrence int) bool {
+    let category = decl_category(declarations, decl)
+    if (category == local_let_decl() || category == local_var_decl()) {
+        return end_of(ast, decl) <= start_of(ast, occurrence)
+    }
+    return true
+}
+
+fn module_of(src List<int>, ast List<int>, modules List<int>, token int) int {
+    return find_module_name(modules, spelling(src, ast, token))
+}
+
+fn publicly_declared(pg List<int>, ast List<int>, row int) bool {
+    var at = parent(ast, row)
+    for (at >= 0) {
+        let node_kind = kind(pg, ast, at)
+        if (node_kind == "public-item" || node_kind == "public-fn") { return true }
+        if (node_kind == "program" || node_kind == "block" || node_kind == "type-item") { return false }
+        at = parent(ast, at)
+    }
+    return false
+}
+
+// (owner source, local_name token, target source, exported-name token, public,
+// DefRef). Import edges are distinct from qualified call/value references.
+fn import_stride() int { return 6 }
+
+fn push_import(src List<int>, ast List<int>, imports List<int>, token int, local_name int, target int, exported int, public_name bool, fuel List<int>, deadline i64) int {
+    let owner = source_id(ast, token)
+    if (target < 0) { return bind_module() }
+    var entry = 0
+    for (entry < imports.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (imports.get(entry) == owner) {
+            let same = same_name(src, ast, local_name, imports.get(entry + 1), fuel)
+            if (same < 0) { return same }
+            if (same == 1) { return bind_duplicate() }
+        }
+        entry = entry + import_stride()
+    }
+    imports.push(owner)
+    imports.push(local_name)
+    imports.push(target)
+    imports.push(exported)
+    var exported_alias = 0
+    if (public_name) { exported_alias = 1 }
+    imports.push(exported_alias)
+    imports.push(-1)
+    return 0
+}
+
+fn collect_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, imports List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+        let node_kind = kind(pg, ast, row)
+        if (node_kind == "use-item-p" || node_kind == "use-tail-p") {
+            let path = child_with_role(pg, ast, links, row, "path")
+            let head = child_with_role(pg, ast, links, path, "head")
+            var segment = first_child(links, path)
+            var number = 0
+            var module_token = head
+            var exported = -1
+            for (segment >= 0) {
+                let part = child_with_role(pg, ast, links, segment, "seg")
+                if (part >= 0) {
+                    number = number + 1
+                    if (exported >= 0) { module_token = exported }
+                    exported = part
+                }
+                segment = next_sibling(links, segment)
+            }
+            if (number < 1 || number > 2 || (number == 2 && spelling(src, ast, head) != package)) {
+                return fail(errors, path, bind_module())
+            }
+            let target = module_of(src, ast, modules, module_token)
+            let alias_node = child_with_kind(pg, ast, links, row, "use-alias")
+            var local_name = exported
+            if (alias_node >= 0) { local_name = child_with_role(pg, ast, links, alias_node, "alias") }
+            let result = push_import(src, ast, imports, path, local_name, target, exported, publicly_declared(pg, ast, row), fuel, deadline)
+            if (result != 0) { return fail(errors, path, result) }
+        }
+        if (node_kind == "age-use-sym-item" || node_kind == "age-use-module-item") {
+            var module_token = child_with_role(pg, ast, links, row, "module")
+            if (node_kind == "age-use-module-item") {
+                if (spelling(src, ast, module_token) != package) { return fail(errors, module_token, bind_module()) }
+                module_token = child_with_role(pg, ast, links, row, "name")
+            }
+            let target = module_of(src, ast, modules, module_token)
+            var member = first_child(links, row)
+            for (member >= 0) {
+                let member_role = role(pg, ast, member)
+                var exported = -1
+                if (member_role == "head" || member_role == "import") { exported = member }
+                let wrapper = kind(pg, ast, member)
+                if (wrapper == "age-use-sym-tail") { exported = child_with_role(pg, ast, links, member, "sym") }
+                if (wrapper == "age-use-import-tail") { exported = child_with_role(pg, ast, links, member, "import") }
+                if (exported >= 0) {
+                    let result = push_import(src, ast, imports, row, exported, target, exported, false, fuel, deadline)
+                    if (result != 0) { return fail(errors, exported, result) }
+                }
+                member = next_sibling(links, member)
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+fn module_declaration(src List<int>, ast List<int>, roots List<int>, heads List<int>, declarations List<int>, owner int, name int, fuel List<int>, deadline i64) int {
+    var declaration = heads.get(roots.get(owner))
+    for (declaration >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let same = same_name(src, ast, name, decl_name(declarations, declaration), fuel)
+        if (same < 0) { return same }
+        if (same == 1) { return declaration }
+        declaration = prev_decl(declarations, declaration)
+    }
+    return bind_unresolved()
+}
+
+fn module_alias(src List<int>, ast List<int>, imports List<int>, owner int, name int, fuel List<int>, deadline i64) int {
+    var entry = 0
+    for (entry < imports.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (imports.get(entry) == owner) {
+            let same = same_name(src, ast, name, imports.get(entry + 1), fuel)
+            if (same < 0) { return same }
+            if (same == 1) { return entry }
+        }
+        entry = entry + import_stride()
+    }
+    return bind_unresolved()
+}
+
+fn exported_decl(pg List<int>, ast List<int>, src List<int>, roots List<int>, heads List<int>, declarations List<int>, imports List<int>, owner int, token int, fuel List<int>, deadline i64) int {
+    var current_module = owner
+    var name = token
+    var links = 0
+    for (links <= roots.len()) {
+        let declaration = module_declaration(src, ast, roots, heads, declarations, current_module, name, fuel, deadline)
+        if (declaration >= 0) {
+            if (!publicly_declared(pg, ast, declaration) || decl_category(declarations, declaration) == global_var_decl()) {
+                return bind_private()
+            }
+            return declaration
+        }
+        if (declaration != bind_unresolved()) { return declaration }
+        let entry = module_alias(src, ast, imports, current_module, name, fuel, deadline)
+        if (entry < 0) { return entry }
+        if (imports.get(entry + 4) == 0) { return bind_private() }
+        current_module = imports.get(entry + 2)
+        name = imports.get(entry + 3)
+        links = links + 1
+    }
+    return bind_import_cycle()
+}
+
+fn resolve_imports(pg List<int>, ast List<int>, src List<int>, roots List<int>, heads List<int>, declarations List<int>, imports List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var waits = List<int>.new()
+    var ready = List<int>.new()
+    var module_index = 0
+    for (module_index < roots.len()) {
+        waits.push(0)
+        module_index = module_index + 1
+    }
+    var entry = 0
+    for (entry < imports.len()) {
+        let owner = imports.get(entry)
+        let local_name = imports.get(entry + 1)
+        let duplicate = module_declaration(src, ast, roots, heads, declarations, owner, local_name, fuel, deadline)
+        if (duplicate != bind_unresolved()) {
+            if (duplicate < 0) { return fail(errors, local_name, duplicate) }
+            return fail(errors, local_name, bind_duplicate())
+        }
+        waits.set(owner, waits.get(owner) + 1)
+        entry = entry + import_stride()
+    }
+    module_index = 0
+    for (module_index < roots.len()) {
+        if (waits.get(module_index) == 0) { ready.push(module_index) }
+        module_index = module_index + 1
+    }
+    var head = 0
+    for (head < ready.len()) {
+        let done_module = ready.get(head)
+        entry = 0
+        for (entry < imports.len()) {
+            if (!take_step(fuel, deadline)) { return fail(errors, imports.get(entry + 1), bind_budget()) }
+            if (imports.get(entry + 2) == done_module) {
+                let owner = imports.get(entry)
+                let count = waits.get(owner) - 1
+                waits.set(owner, count)
+                if (count == 0) { ready.push(owner) }
+            }
+            entry = entry + import_stride()
+        }
+        head = head + 1
+    }
+    entry = 0
+    for (entry < imports.len()) {
+        let token = imports.get(entry + 3)
+        if (waits.get(imports.get(entry)) > 0) { return fail(errors, token, bind_import_cycle()) }
+        let resolved = exported_decl(pg, ast, src, roots, heads, declarations, imports, imports.get(entry + 2), token, fuel, deadline)
+        if (resolved < 0) { return fail(errors, token, resolved) }
+        imports.set(entry + 5, resolved)
+        entry = entry + import_stride()
+    }
+    return 0
+}
+
+fn lookup(src List<int>, ast List<int>, scopes List<int>, heads List<int>, declarations List<int>, occurrence int, fuel List<int>, deadline i64) int {
+    var scope = scopes.get(occurrence)
+    for (scope >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        var decl = heads.get(scope)
+        for (decl >= 0) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            if (visible(ast, declarations, decl, occurrence)) {
+                let equal = same_name(src, ast, decl_name(declarations, decl), occurrence, fuel)
+                if (equal < 0) { return equal }
+                if (equal == 1) { return decl }
+            }
+            decl = prev_decl(declarations, decl)
+        }
+        scope = scopes.get(scope)
+    }
+    return bind_unresolved()
+}
+
+fn qualified_ref(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, heads List<int>, declarations List<int>, imports List<int>, row int, fuel List<int>, deadline i64) int {
+    let atom = parent(ast, row)
+    let postfix = parent(ast, atom)
+    if (postfix < 0) { return bind_unresolved() }
+    let step = next_sibling(links, atom)
+    if (step < 0 || kind(pg, ast, step) != "postfix-step") { return bind_unresolved() }
+    let first_member = child_with_role(pg, ast, links, step, "member")
+    if (first_member < 0) { return bind_unresolved() }
+    var module_token = row
+    var export_token = first_member
+    if (spelling(src, ast, row) == package) {
+        let next = next_sibling(links, step)
+        if (next < 0 || kind(pg, ast, next) != "postfix-step") { return bind_unresolved() }
+        export_token = child_with_role(pg, ast, links, next, "member")
+        if (export_token < 0) { return bind_unresolved() }
+        module_token = first_member
+    }
+    let target = module_of(src, ast, modules, module_token)
+    if (target < 0) { return bind_module() }
+    return exported_decl(pg, ast, src, roots, heads, declarations, imports, target, export_token, fuel, deadline)
+}
+
+fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, scopes List<int>, heads List<int>, declarations List<int>, imports List<int>, uses List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+        var target = -1
+        if (kind(pg, ast, row) == "ident") {
+            let outer = parent(ast, row)
+            let node_kind = kind(pg, ast, outer)
+            let write = node_kind == "assign-stmt" && role(pg, ast, row) == "name"
+            if (node_kind == "atom-expr" || node_kind == "condition-atom" || write) {
+                target = lookup(src, ast, scopes, heads, declarations, row, fuel, deadline)
+                if (target == bind_unresolved()) {
+                    let local_name = module_alias(src, ast, imports, source_id(ast, row), row, fuel, deadline)
+                    target = local_name
+                    if (local_name >= 0) { target = imports.get(local_name + 5) }
+                }
+                if (target == bind_unresolved() && !write) {
+                    target = qualified_ref(pg, ast, links, src, modules, package.clone(), roots, heads, declarations, imports, row, fuel, deadline)
+                }
+                if (target < 0) { return fail(errors, row, target) }
+                let cat = decl_category(declarations, target)
+                if (write && cat != local_var_decl() && cat != global_var_decl()) {
+                    return fail(errors, row, bind_immutable())
+                }
+            }
+        }
+        uses.push(target)
+        row = row + 1
+    }
+    return 0
+}
+
+pub fn call_parameter_slots(pg List<int>, ast List<int>, links List<int>, function int) List<int> {
+    var result = List<int>.new()
+    let params = child_with_role(pg, ast, links, function, "params")
+    if (params < 0) { return result }
+    var row = first_child(links, params)
+    for (row >= 0) {
+        let node_kind = kind(pg, ast, row)
+        if (node_kind == "param") { result.push(row) }
+        if (node_kind == "param-tail") {
+            let param = child_with_kind(pg, ast, links, row, "param")
+            if (param >= 0) { result.push(param) }
+        }
+        row = next_sibling(links, row)
+    }
+    return result
+}
+
+fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
+    var child = first_child(links, call)
+    for (child >= 0) {
+        if (kind(pg, ast, child) == "args") { return child }
+        child = next_sibling(links, child)
+    }
+    return -1
+}
+
+pub fn direct_callee(pg List<int>, ast List<int>, links List<int>, call int) int {
+    let unary = first_child(links, call)
+    if (unary < 0) { return -1 }
+    var postfix = child_with_kind(pg, ast, links, unary, "postfix-expr")
+    if (postfix < 0) { postfix = child_with_kind(pg, ast, links, unary, "condition-postfix") }
+    if (postfix < 0) { return -1 }
+    let atom = first_child(links, postfix)
+    if (atom < 0) { return -1 }
+    return child_with_kind(pg, ast, links, atom, "ident")
+}
+
+fn named_slot(src List<int>, ast List<int>, declarations List<int>, params List<int>, name int, fuel List<int>, deadline i64) int {
+    var slot = 0
+    for (slot < params.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let equal = same_name(src, ast, name, decl_name(declarations, params.get(slot)), fuel)
+        if (equal < 0) { return equal }
+        if (equal == 1) { return slot }
+        slot = slot + 1
+    }
+    return bind_arguments()
+}
+
+// Each tuple is (call row, evaluation row, formal slot). The append
+// order comes from the argument list; slot assignment never reorders it.
+pub fn call_mapping_stride() int { return 3 }
+
+fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, call int, function int, declarations List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    let args = call_args(pg, ast, links, call)
+    if (args < 0) { return fail(errors, call, bind_arguments()) }
+    let params = call_parameter_slots(pg, ast, links, function)
+    var used = List<int>.new()
+    var i = 0
+    for (i < params.len()) {
+        used.push(0)
+        i = i + 1
+    }
+    var child = first_child(links, args)
+    var supplied = 0
+    var form = -1
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return fail(errors, child, bind_budget()) }
+        let node_kind = kind(pg, ast, child)
+        var arg = -1
+        if (node_kind == "arg") { arg = child }
+        if (node_kind == "arg-tail") { arg = child_with_kind(pg, ast, links, child, "arg") }
+        if (arg >= 0) {
+            let value = first_child(links, arg)
+            let named = kind(pg, ast, value) == "named-arg"
+            var shape = 0
+            var evaluation = value
+            var slot = supplied
+            if (named) {
+                shape = 1
+                let label = child_with_role(pg, ast, links, value, "label")
+                slot = named_slot(src, ast, declarations, params, label, fuel, deadline)
+                evaluation = child_with_role(pg, ast, links, value, "value")
+                if (slot < 0) { return fail(errors, label, slot) }
+            }
+            if ((form >= 0 && form != shape) || slot >= params.len() || used.get(slot) != 0) {
+                return fail(errors, arg, bind_arguments())
+            }
+            form = shape
+            used.set(slot, 1)
+            mappings.push(call)
+            mappings.push(evaluation)
+            mappings.push(slot)
+            supplied = supplied + 1
+        }
+        child = next_sibling(links, child)
+    }
+    i = 0
+    for (i < params.len()) {
+        if (used.get(i) == 0 && child_with_role(pg, ast, links, params.get(i), "default") < 0) {
+            return fail(errors, call, bind_arguments())
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    let max_steps = fuel.get(0)
+    if (max_steps <= 0 || max_steps > 1000000 || row_count(ast) > max_steps) {
+        return fail(errors, 0, bind_budget())
+    }
+    var scopes = List<int>.new()
+    var heads = List<int>.new()
+    let indexed = build_declarations(pg, ast, links, src, scopes, heads, declarations, errors, fuel, deadline)
+    if (indexed != 0) { return indexed }
+    var imports = List<int>.new()
+    let collected = collect_imports(pg, ast, links, src, modules, package.clone(), imports, errors, fuel, deadline)
+    if (collected != 0) { return collected }
+    let imported = resolve_imports(pg, ast, src, roots, heads, declarations, imports, errors, fuel, deadline)
+    if (imported != 0) { return imported }
+    let bound = bind_occurrences(pg, ast, links, src, modules, package, roots, scopes, heads, declarations, imports, uses, errors, fuel, deadline)
+    if (bound != 0) { return bound }
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
+        if (kind(pg, ast, row) == "call") {
+            let callee = direct_callee(pg, ast, links, row)
+            if (callee >= 0) {
+                let decl = uses.get(callee)
+                if (decl >= 0 && decl_category(declarations, decl) == function_decl()) {
+                    let mapped = map_call(pg, ast, links, src, row, decl, declarations, mappings, errors, fuel, deadline)
+                    if (mapped != 0) { return mapped }
+                }
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}

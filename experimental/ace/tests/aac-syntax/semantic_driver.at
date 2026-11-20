@@ -1,0 +1,188 @@
+use app.binding.bind_arguments
+use app.binding.bind_budget
+use app.binding.bind_duplicate
+use app.binding.bind_immutable
+use app.binding.bind_import_cycle
+use app.binding.bind_module
+use app.binding.bind_private
+use app.binding.bind_source
+use app.binding.bind_unresolved
+use app.binding.call_mapping_stride
+use app.binding.decl_category
+use app.binding.decl_name
+use app.initializers.initialize_order
+use app.initializers.initializer_cycle
+use app.initializers.initializer_module_order
+use app.semantic_tree.add_module_name
+use app.semantic_tree.append_source
+use app.semantic_tree.build_child_index
+use app.semantic_tree.end_of
+use app.semantic_tree.find_module_name
+use app.semantic_tree.parse_semantic_source
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.source_catalog.identifier
+use app.syntax_cst.join_rows
+use app.syntax_frontend.fetch_parts
+use app.syntax_frontend.format_mode
+use app.syntax_program.decode_program_parts
+use app.syntax_program.pg_ok
+use std.conv.from_int
+use std.conv.to_int
+use std.env.get
+use std.file.read_bytes
+use std.file.size
+use std.file.write_text
+use std.path.join
+use std.text.split
+use std.time.mono_ms
+
+fn location(ast List<int>, row int, bases List<int>) Str {
+    let id = source_id(ast, row)
+    let base = bases.get(id)
+    return from_int(id) + " " + from_int(start_of(ast, row) - base) + ".." + from_int(end_of(ast, row) - base)
+}
+
+fn diagnostic_name(code int) Str {
+    if (code == bind_duplicate()) { return "bind.duplicate" }
+    if (code == bind_unresolved()) { return "bind.unresolved" }
+    if (code == bind_immutable()) { return "bind.immutable" }
+    if (code == bind_budget()) { return "resource.semantic" }
+    if (code == bind_arguments()) { return "bind.arguments" }
+    if (code == bind_private()) { return "bind.private" }
+    if (code == bind_module()) { return "bind.module" }
+    if (code == bind_import_cycle()) { return "bind.import-cycle" }
+    if (code == initializer_cycle()) { return "bind.initializer-cycle" }
+    if (code == initializer_module_order()) { return "bind.initializer-order" }
+    return "internal.semantic"
+}
+
+fn binding_report(ast List<int>, src List<int>, bases List<int>, declarations List<int>, uses List<int>, mappings List<int>, initializers List<int>) Str {
+    var output = List<Str>.new()
+    output.push("aac.binding-report/1\n")
+    var row = 0
+    for (row < row_count(ast)) {
+        let name = decl_name(declarations, row)
+        if (name >= 0) {
+            let text = spelling(src, ast, name)
+            let line = "DECL " + from_int(row) + " " + from_int(decl_category(declarations, row)) + " " + text + " " + location(ast, name, bases) + "\n"
+            output.push(line.move)
+        }
+        let target = uses.get(row)
+        if (target >= 0) {
+            let text = spelling(src, ast, row)
+            let line = "USE " + from_int(target) + " " + text + " " + location(ast, row, bases) + "\n"
+            output.push(line.move)
+        }
+        row = row + 1
+    }
+    var at = 0
+    for (at < mappings.len()) {
+        let call = mappings.get(at)
+        let evaluation = mappings.get(at + 1)
+        let slot = mappings.get(at + 2)
+        let line = "ARG " + location(ast, call, bases) + " " + from_int(slot) + " " + location(ast, evaluation, bases) + "\n"
+        output.push(line.move)
+        at = at + call_mapping_stride()
+    }
+    at = 0
+    for (at < initializers.len()) {
+        let name = decl_name(declarations, initializers.get(at))
+        let line = "INIT " + spelling(src, ast, name) + " " + location(ast, name, bases) + "\n"
+        output.push(line.move)
+        at = at + 1
+    }
+    return join_rows(output, output.len())
+}
+
+fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package Str, steps int) Str {
+    var links = List<int>.new()
+    if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
+    var declarations = List<int>.new()
+    var uses = List<int>.new()
+    var mappings = List<int>.new()
+    var errors = List<int>.new()
+    var fuel = List<int>.new()
+    fuel.push(steps)
+    let started = mono_ms()
+    if (started < 0i64) { return "ERROR os.clock\n" }
+    let deadline = started + 5000i64
+    let status = bind_source(pg, ast, links, src, modules, package, roots, declarations, uses, mappings, errors, fuel, deadline)
+    if (status != 0) {
+        return "ERROR " + diagnostic_name(status) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    var initializers = List<int>.new()
+    let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
+    if (ordered != 0) {
+        return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    return binding_report(ast, src, bases, declarations, uses, mappings, initializers)
+}
+
+fn load_source(pg List<int>, path Str, id int, src List<int>, ast List<int>, bases List<int>, roots List<int>) Str {
+    let length = size(path.clone())
+    if (length < 0i64) { return "ERROR os.read\n" }
+    if (length > 67108864i64 - src.len().to(i64)) { return "ERROR resource.source\n" }
+    let input = read_bytes(path)
+    is input {
+        Some(bytes) -> {
+            var rows = List<int>.new()
+            var diagnostic = List<int>.new()
+            let parsed = parse_semantic_source(pg, format_mode("aac"), bytes, id, 0, rows, diagnostic)
+            if (parsed == -2 || parsed == -3) { return "ERROR resource.source\n" }
+            if (parsed == -4) { return "ERROR source.utf8\n" }
+            if (parsed == -7 && diagnostic.len() >= 3) {
+                return "ERROR source.syntax " + from_int(id) + " " + from_int(diagnostic.get(1)) + ".." + from_int(diagnostic.get(2)) + "\n"
+            }
+            if (parsed < 0) { return "ERROR source.projection\n" }
+            if (!append_source(bytes, rows, src, ast, bases, roots)) { return "ERROR resource.source\n" }
+            return ""
+        }
+        None -> {}
+    }
+    return "ERROR os.read\n"
+}
+
+fn project(steps int) Str {
+    let pg = decode_program_parts(fetch_parts("aac"))
+    if (!pg_ok(pg)) { return "ERROR internal.grammar\n" }
+    let directory = get("AAC1047_PROJECT")
+    var package = "app"
+    var names = List<int>.new()
+    var ast = List<int>.new()
+    var src = List<int>.new()
+    var roots = List<int>.new()
+    var bases = List<int>.new()
+    if (directory.len() == 0) {
+        let result = load_source(pg, get("AAC1047_INPUT"), 0, src, ast, bases, roots)
+        if (result.len() > 0) { return result }
+        add_module_name(names, "main")
+    } else {
+        package = get("AAC1047_PACKAGE")
+        if (!identifier(package.clone())) { return "ERROR source.package\n" }
+        var requested = split(get("AAC1047_INVENTORY"), "\n")
+        for (requested.len() > 0) {
+            let name = requested.remove(0)
+            if (!identifier(name.clone())) { return "ERROR source.module\n" }
+            if (find_module_name(names, name.clone()) >= 0) { return "ERROR source.module-duplicate\n" }
+            let path = join(directory.clone(), name.clone() + ".at")
+            let result = load_source(pg, path, roots.len(), src, ast, bases, roots)
+            if (result.len() > 0) { return result }
+            add_module_name(names, name)
+        }
+    }
+    return observe(pg, src, ast, bases, roots, names, package, steps)
+}
+
+fn main() int {
+    var limit = 1000000
+    let requested = to_int(get("AAC1047_STEPS"))
+    is requested {
+        Some(value) -> { limit = value }
+        None -> {}
+    }
+    let report = project(limit)
+    return write_text(get("AAC1047_OUTPUT"), report)
+}

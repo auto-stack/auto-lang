@@ -1,0 +1,181 @@
+use app.source_ast.ast_end
+use app.source_ast.ast_field
+use app.source_ast.ast_kind
+use app.source_ast.ast_kind_name
+use app.source_ast.ast_parent
+use app.source_ast.ast_source
+use app.source_ast.ast_start
+use app.source_ast.ast_stride
+use app.source_ast.project_ast
+use app.syntax_cst.assert_lossless
+use app.syntax_cst.has_error_nodes
+use app.syntax_frontend.parse_cst
+use app.syntax_frontend.str_to_bytes
+use app.syntax_program.field_name
+use std.bytes.decode_utf8
+
+pub fn row_count(ast List<int>) int { return ast.len() / ast_stride() }
+pub fn parent(ast List<int>, row int) int { return ast.get(row * ast_stride() + ast_parent()) }
+pub fn source_id(ast List<int>, row int) int { return ast.get(row * ast_stride() + ast_source()) }
+pub fn start_of(ast List<int>, row int) int { return ast.get(row * ast_stride() + ast_start()) }
+pub fn end_of(ast List<int>, row int) int { return ast.get(row * ast_stride() + ast_end()) }
+
+pub fn kind(pg List<int>, ast List<int>, row int) Str {
+    return ast_kind_name(pg, ast.get(row * ast_stride() + ast_kind()))
+}
+
+pub fn role(pg List<int>, ast List<int>, row int) Str {
+    let field = ast.get(row * ast_stride() + ast_field())
+    if (field < 0) { return "" }
+    return field_name(pg, field)
+}
+
+pub fn span_text(src List<int>, start int, end int) Str {
+    var bytes = List<int>.new()
+    var offset = start
+    for (offset < end) {
+        bytes.push(src.get(offset))
+        offset = offset + 1
+    }
+    let decoded = decode_utf8(bytes)
+    is decoded {
+        Some(text) -> { return text }
+        None -> {}
+    }
+    return ""
+}
+
+pub fn spelling(src List<int>, ast List<int>, row int) Str {
+    return span_text(src, start_of(ast, row), end_of(ast, row))
+}
+
+// Module names share a length-prefixed byte directory in source-id order.
+pub fn add_module_name(names List<int>, name Str) int {
+    let bytes = str_to_bytes(name)
+    names.push(bytes.len())
+    var i = 0
+    for (i < bytes.len()) {
+        names.push(bytes.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn find_module_name(names List<int>, name Str) int {
+    var offset = 0
+    var id = 0
+    for (offset < names.len()) {
+        let end = offset + 1 + names.get(offset)
+        if (span_text(names, offset + 1, end) == name) { return id }
+        offset = end
+        id = id + 1
+    }
+    return -1
+}
+
+pub fn module_name_at(names List<int>, id int) Str {
+    var offset = 0
+    var current = 0
+    for (offset < names.len()) {
+        let end = offset + 1 + names.get(offset)
+        if (current == id) { return span_text(names, offset + 1, end) }
+        offset = end
+        current = current + 1
+    }
+    return ""
+}
+
+// The index only contains navigation within the 1046 preorder projection.
+// Source coordinates and identity remain on the input rows.
+pub fn build_child_index(ast List<int>, links List<int>) bool {
+    let count = row_count(ast)
+    if (count == 0 || count > 1000000 || ast.len() % ast_stride() != 0 || links.len() != 0) {
+        return false
+    }
+    var row = 0
+    for (row < count) {
+        links.push(-1)
+        links.push(-1)
+        row = row + 1
+    }
+    row = count - 1
+    for (row >= 0) {
+        let owner = parent(ast, row)
+        if (owner < -1 || owner >= row || (row == 0 && owner != -1)) {
+            return false
+        }
+        if (owner >= 0) {
+            if (source_id(ast, owner) != source_id(ast, row)) { return false }
+            links.set(row * 2 + 1, links.get(owner * 2))
+            links.set(owner * 2, row)
+        }
+        row = row - 1
+    }
+    return true
+}
+
+pub fn first_child(links List<int>, row int) int { return links.get(row * 2) }
+pub fn next_sibling(links List<int>, row int) int { return links.get(row * 2 + 1) }
+
+pub fn child_with_role(pg List<int>, ast List<int>, links List<int>, row int, name Str) int {
+    var child = first_child(links, row)
+    for (child >= 0) {
+        if (role(pg, ast, child) == name) { return child }
+        child = next_sibling(links, child)
+    }
+    return -1
+}
+
+pub fn child_with_kind(pg List<int>, ast List<int>, links List<int>, row int, name Str) int {
+    var child = first_child(links, row)
+    for (child >= 0) {
+        if (kind(pg, ast, child) == name) { return child }
+        child = next_sibling(links, child)
+    }
+    return -1
+}
+
+// Strict admission for standalone staged semantic consumers. It uses the
+// existing Auto grammar executor and AST projection, leaving recovery queries
+// to the syntax surface. Negative statuses belong to the source stage.
+pub fn parse_semantic_source(pg List<int>, mode int, src List<int>, id int, origin int, ast List<int>, diagnostic List<int>) int {
+    if (src.len() > 67108864) { return -3 }
+    let decoded = decode_utf8(src)
+    is decoded {
+        Some(_) -> {}
+        None -> { return -4 }
+    }
+    var tree = List<int>.new()
+    var edges = List<int>.new()
+    var decls = List<int>.new()
+    let root = parse_cst(pg, mode, src, tree, edges, decls, diagnostic, 1048576, 67108864)
+    if (root < 0) { return root }
+    if (diagnostic.len() != 0 || has_error_nodes(tree, edges, root)) { return -7 }
+    if (assert_lossless(tree, edges, decls, root, src.len()) != 0) { return -8 }
+    return project_ast(tree, edges, decls, root, src.len(), id, origin, ast)
+}
+
+// A project uses one node index and one byte arena. Per-source offsets
+// are recovered with the corresponding byte base when reporting facts.
+pub fn append_source(src List<int>, rows List<int>, project_bytes List<int>, project_ast List<int>, bases List<int>, roots List<int>) bool {
+    let byte_base = project_bytes.len()
+    let row_base = row_count(project_ast)
+    if (src.len() > 67108864 - byte_base || row_count(rows) > 1000000 - row_base) { return false }
+    bases.push(byte_base)
+    roots.push(row_base)
+    var i = 0
+    for (i < src.len()) {
+        project_bytes.push(src.get(i))
+        i = i + 1
+    }
+    i = 0
+    for (i < rows.len()) {
+        let field = i % ast_stride()
+        var value = rows.get(i)
+        if (field == ast_parent() && value >= 0) { value = value + row_base }
+        if (field == ast_start() || field == ast_end()) { value = value + byte_base }
+        project_ast.push(value)
+        i = i + 1
+    }
+    return true
+}

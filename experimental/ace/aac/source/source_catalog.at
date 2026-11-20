@@ -51,7 +51,7 @@ fn module_name(name Str, kind int) Str {
     return name.slice(0, name.len() - suffix).clone()
 }
 
-fn identifier(name Str) bool {
+pub fn identifier(name Str) bool {
     if (name.len() == 0) { return false }
     var i = 0
     for (i < name.len()) {
