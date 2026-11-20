@@ -458,6 +458,17 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 
 ## 9. 复审记录
 
+- 2026-11-20 goal round 4（waiting×3 → **goal blocked**）：`stage: goal | plan_id: PLAN-1094
+  | plan_revision: r5 | round: 4 | from: user | to: blocked | status: executing | outcome: blocked
+  | worktree: D:/autostack/.wt/lang-1094/auto-lang（保留，clean @ 5a76167cc）| branch: plan-1094-dev
+  | commit: 7ce32d13e | next: user`。三连等待后按协议终止轮询：两次 AskUserQuestion＋两轮运行时转达
+  均未获裁定；依赖链侧无变化（1084/1087/1092/1093 仍 drafting 0/N；1083 仍 executing step 1）。
+  **阻塞问题**（=§10 条目）：T-02..T-06 消费 1084/1087/1092/1093 已交付能力，未施工，并入本包属
+  范围变更需用户批准。**解锁**：①按路线图顺序以独立 goal 完成依赖链（1083 进行中）后，以新 goal
+  恢复本包 T-02（§4 T-01 冻结记录＋§9 收据链＋worktree/分支/plan-artifacts 全部保留可无损恢复）；
+  或②用户显式修订本包解除硬依赖（同步路线图与四个活跃作者合同）。计划保持 executing/1/8，
+  本会话不再产生新写入。
+
 - 2026-11-20 goal round 3（waiting×2）：`stage: goal | plan_id: PLAN-1094 | plan_revision: r5 | round: 3
   | from: user | to: user | status: executing | outcome: waiting | worktree: 保留（clean @ 5a76167cc）
   | commit: 4438d4933 | next: user`。重读 §10/依赖链无变化（1083 仍 executing current_step 1，
