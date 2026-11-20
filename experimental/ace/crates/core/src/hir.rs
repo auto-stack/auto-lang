@@ -1013,6 +1013,12 @@ pub struct Place {
     pub span: Span,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LoopUnwind {
+    pub kind: LocalId,
+    pub message: LocalId,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Stmt {
     Let {
@@ -1030,6 +1036,9 @@ pub enum Stmt {
     Loop {
         id: LoopId,
         body: BlockId,
+        /// An ordinary Auto protected region. Exceptional operations leave
+        /// the loop via its existing control-state locals and exit.
+        unwind: Option<LoopUnwind>,
     },
     Assign {
         place: PlaceId,

@@ -353,21 +353,7 @@ fn verify_owned_function_impl(
         }
         v
     };
-    let succs: Vec<Vec<u32>> = f
-        .blocks
-        .iter()
-        .map(|b| match &b.term {
-            Terminator::Jump { target } => vec![*target],
-            Terminator::Branch { then, else_, .. } => {
-                if then == else_ {
-                    vec![*then]
-                } else {
-                    vec![*then, *else_]
-                }
-            }
-            Terminator::Return { .. } | Terminator::LangFail { .. } => vec![],
-        })
-        .collect();
+    let succs: Vec<Vec<u32>> = f.blocks.iter().map(|b| b.term.successors()).collect();
     let mut preds: Vec<Vec<u32>> = vec![Vec::new(); blocks];
     let mut reachable = vec![false; blocks];
     let mut stack = vec![f.entry];
@@ -556,7 +542,29 @@ fn verify_owned_function_impl(
         };
         let mut first_pred = true;
         for p in preds[b as usize].iter().filter(|p| reachable[**p as usize]) {
-            let po = &out_state[*p as usize];
+            let predecessor = &f.blocks[*p as usize];
+            let mut exceptional;
+            let po = match predecessor.term {
+                Terminator::Invoke {
+                    unwind, message, ..
+                } if unwind == b => {
+                    exceptional = out_state[*p as usize].clone();
+                    // A guest call consumes its arguments on dispatch. The
+                    // exceptional edge also discards the result (which was
+                    // never produced), and defines the owned message.
+                    let result = predecessor
+                        .invoke_result_slot()
+                        .expect("invoke shape checked") as usize;
+                    exceptional.init.clear(result);
+                    exceptional.tokens_live.clear(result);
+                    if let Some(roots) = exceptional.token_roots.get_mut(result) {
+                        *roots = None;
+                    }
+                    exceptional.define_slot(message as usize);
+                    &exceptional
+                }
+                _ => &out_state[*p as usize],
+            };
             if b != f.entry {
                 new_in.init.intersect_with(&po.init);
             }
@@ -1917,7 +1925,17 @@ fn verify_owned_function_impl(
                         }
                     }
                 }
-                Terminator::LangFail { message } => {
+                Terminator::Invoke { message, .. } => {
+                    let ms = *message as usize;
+                    if root_has_live_token(&st, ms) {
+                        fail = Some(err(
+                            "mir.mut-conflict",
+                            format!("invoke message slot {} is borrowed", slot_name(f, ms)),
+                            flat,
+                        ));
+                    }
+                }
+                Terminator::LangFail { message, .. } => {
                     let vs = *message as usize;
                     if !st.init.get(vs) {
                         fail = Some(err(

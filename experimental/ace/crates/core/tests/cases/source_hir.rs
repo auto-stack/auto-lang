@@ -415,7 +415,7 @@ fn while_lowering_shape() {
     assert_eq!(b.blocks.len(), 4);
     assert_eq!(b.blocks[0].stmts.len(), 3); // let, loop, return
     let (l_loop, k_test) = match &b.blocks[0].stmts[1] {
-        ace_core::hir::Stmt::Loop { id, body } => (*id, *body),
+        ace_core::hir::Stmt::Loop { id, body, .. } => (*id, *body),
         _ => panic!("expected loop"),
     };
     // the loop body is the re-test if; the cond is owned by that if, so it

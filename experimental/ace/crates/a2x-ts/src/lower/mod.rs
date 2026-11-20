@@ -424,7 +424,7 @@ impl<'v, 'a> Cx<'v, 'a> {
                     None => self.close(),
                 }
             }
-            hir::Stmt::Loop { id, body } => {
+            hir::Stmt::Loop { id, body, .. } => {
                 self.loop_stack.push(id.0);
                 self.open("while (true)");
                 self.lower_block(*body)?;

@@ -511,6 +511,11 @@ pub enum ExprKind {
     /// The resolver desugars at the statement level (`List<T>.new()` +
     /// pushes); other positions reject with a named diagnostic.
     ArrayLit(Vec<Expr>),
+    /// A list element whose value is evaluated and appended only if its condition holds.
+    ArrayConditionalElem {
+        cond: Box<Expr>,
+        value: Box<Expr>,
+    },
     /// PLAN-962 (L-48): an index suffix `base[index]` — reads desugar to
     /// the element-get path (view for owned elements); index-assign
     /// targets desugar to the list-set effect.

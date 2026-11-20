@@ -55,14 +55,14 @@ pub mod typecheck;
 pub use adapter::{
     compile_aggregates_source, compile_aggregates_source_with_foreign, compile_closures_source,
     compile_closures_source_incremental, compile_collections_source, compile_entry_unit_source,
-    compile_host_console_source, compile_language_source, compile_numeric_source, compile_parts,
-    compile_parts_with, compile_program_parts, compile_record_source, compile_scalar_source,
-    compile_scheduler_source, compile_source, compile_text_record_source, compile_text_source,
-    emit_collections_function_batch, emit_function_body, emit_resolved_module_parts,
-    emit_resolved_packages_parts, emit_resolved_packages_parts_profile, emit_resolved_parts,
-    prepare_candidate_document, prepare_function_candidate, prepare_module_candidate,
-    BodyEmitReceipt, ClosuresFrontendLedger, CompiledSource, FnCandidate, SourceParts,
-    RUNTIME_TEXT_CAPABILITY,
+    compile_host_console_source, compile_language_source, compile_language_source_with_foreign,
+    compile_numeric_source, compile_parts, compile_parts_with, compile_program_parts,
+    compile_record_source, compile_scalar_source, compile_scheduler_source, compile_source,
+    compile_text_record_source, compile_text_source, emit_collections_function_batch,
+    emit_function_body, emit_resolved_module_parts, emit_resolved_packages_parts,
+    emit_resolved_packages_parts_profile, emit_resolved_parts, prepare_candidate_document,
+    prepare_function_candidate, prepare_module_candidate, BodyEmitReceipt, ClosuresFrontendLedger,
+    CompiledSource, FnCandidate, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 /// PLAN-982（B-CONFIG-I）：配置文档前门（文档行 → 单顺序入口）。
 pub use config_document::{

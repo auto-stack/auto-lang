@@ -1909,8 +1909,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
             let term_uses: Vec<u32> = match &b.term {
                 crate::mir::Terminator::Return { value } => vec![*value],
                 crate::mir::Terminator::Branch { cond, .. } => vec![*cond],
-                crate::mir::Terminator::Jump { .. } => vec![],
-                crate::mir::Terminator::LangFail { message } => vec![*message],
+                crate::mir::Terminator::Jump { .. } | crate::mir::Terminator::Invoke { .. } => {
+                    vec![]
+                }
+                crate::mir::Terminator::LangFail { message, .. } => vec![*message],
             };
             for (slot, _) in aliases.iter() {
                 if term_uses.contains(slot) {
@@ -2058,12 +2060,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
         let mut moved_fields = std::collections::HashSet::<u32>::new();
         let mut successors = Vec::with_capacity(blocks);
         for b in &f.blocks {
-            let targets = match b.term {
-                Terminator::Jump { target } => vec![target],
-                Terminator::Branch { then, else_, .. } if then != else_ => vec![then, else_],
-                Terminator::Branch { then, .. } => vec![then],
-                Terminator::Return { .. } | Terminator::LangFail { .. } => Vec::new(),
-            };
+            let targets = b.term.successors();
             if targets.iter().any(|target| *target as usize >= blocks) {
                 return Err(MirVerifyError::inv(
                     "mir.block-ref",
@@ -4698,8 +4695,56 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         ));
                     }
                 }
-                Terminator::LangFail { message } => {
+                Terminator::Invoke {
+                    normal,
+                    unwind,
+                    message,
+                } => {
+                    if !self.is_closures {
+                        return Err(err(
+                            "mir.invoke-profile",
+                            "invoke requires the closures profile".into(),
+                        ));
+                    }
+                    let Some(result) = b.invoke_result_slot() else {
+                        return Err(err(
+                            "mir.invoke-operation",
+                            "invoke must follow a supported fallible guest operation".into(),
+                        ));
+                    };
+                    if result == *message || f.slots[result as usize].kind != SlotKind::Temp {
+                        return Err(err(
+                            "mir.invoke-result",
+                            "invoke requires a distinct temporary call result".into(),
+                        ));
+                    }
+                    let mt = slot_ty_of(f, *message, sp, "invoke message")?;
+                    if self.module.types.get(mt as usize) != Some(&MirType::Str) {
+                        return Err(err(
+                            "mir.invoke-message",
+                            "invoke message must be owned Str".into(),
+                        ));
+                    }
+                    if normal == unwind
+                        || *normal as usize >= f.blocks.len()
+                        || *unwind as usize >= f.blocks.len()
+                    {
+                        return Err(err(
+                            "mir.invoke-target",
+                            "invoke requires distinct in-range successors".into(),
+                        ));
+                    }
+                }
+                Terminator::LangFail { message, source } => {
                     let _ = slot_ty_of(f, *message, sp, "lang fail message")?;
+                    if let Some((start, end)) = source {
+                        if start > end || !self.is_closures {
+                            return Err(err(
+                                "mir.lang-fail-span",
+                                "invalid ordinary Auto failure span".into(),
+                            ));
+                        }
+                    }
                 }
             }
         }

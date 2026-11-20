@@ -450,6 +450,7 @@ pub struct ForeignStubTable {
     out_buffers: std::collections::BTreeMap<i32, OutBufferFrame>,
     out_expected_owner: String,
     out_expected_origin: String,
+    python_error_observers: Option<Box<[SourceDecl; 2]>>,
 }
 
 impl ForeignStubTable {
@@ -464,6 +465,7 @@ impl ForeignStubTable {
             out_buffers: std::collections::BTreeMap::new(),
             out_expected_owner: "av".into(),
             out_expected_origin: "guest".into(),
+            python_error_observers: None,
         }
     }
 
@@ -505,6 +507,115 @@ impl ForeignStubTable {
         self.lookup(declaration)
             .ok()
             .map(|i| self.entries[i].callable)
+    }
+
+    /// Attach the error observers of this admitted Python binding. Ordinary
+    /// AV sessions request this explicitly; generic foreign status failures
+    /// and the frozen aggregates producer retain their original classification.
+    pub fn bind_python_error_observers(
+        &mut self,
+        admitted: &ace_foreign_contract::manual::AdmittedForeign,
+    ) -> Result<(), ForeignReject> {
+        use ace_foreign_contract::py_ops::{PY_CONTRACT_LOGICAL, PY_CONTRACT_PROVIDER};
+        let find = |name: &str| {
+            admitted
+                .source_declarations_ref()
+                .iter()
+                .find(|decl| {
+                    decl.name == name
+                        && decl
+                            .logical
+                            .rsplit_once('/')
+                            .map(|(namespace, _)| namespace)
+                            == Some(PY_CONTRACT_LOGICAL)
+                        && decl.provider == PY_CONTRACT_PROVIDER
+                })
+                .ok_or_else(|| ForeignReject {
+                    code: "foreign.py-error-observer",
+                    message: format!("admitted Python binding lacks {name}"),
+                })
+        };
+        let stage = find("py_error_stage")?;
+        let word = find("py_str_word")?;
+        self.lookup(stage)?;
+        self.lookup(word)?;
+        self.python_error_observers = Some(Box::new([stage.clone(), word.clone()]));
+        Ok(())
+    }
+
+    pub(crate) fn python_exception(
+        &mut self,
+        failed: &SourceDecl,
+        cancel: &crate::av::CancelFlag,
+    ) -> Result<Option<(u8, String)>, ForeignExecError> {
+        let Some(observers) = self.python_error_observers.as_ref() else {
+            return Ok(None);
+        };
+        if failed.provider != observers[0].provider
+            || failed
+                .logical
+                .rsplit_once('/')
+                .map(|(namespace, _)| namespace)
+                != Some(ace_foreign_contract::py_ops::PY_CONTRACT_LOGICAL)
+            || failed.header_digest != observers[0].header_digest
+            || failed.physical_table_digest != observers[0].physical_table_digest
+            || failed.content_version != observers[0].content_version
+            || failed.review_id != observers[0].review_id
+        {
+            return Ok(None);
+        }
+        let [stage, word] = observers.as_ref().clone();
+        const EMPTY: &[u8] = b"p967.frame/1\nr n 0\n\np 0\nk 0\n";
+        let check_cancel = || {
+            if cancel.load(std::sync::atomic::Ordering::Acquire) {
+                Err(reject(
+                    "foreign.cancelled",
+                    "cancelled during Python error observation",
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        check_cancel()?;
+        let length = match self.dispatch_view(&stage, EMPTY)? {
+            ForeignDispatch::PureI32(value @ 0..=262) => value as usize,
+            _ => {
+                return Err(reject(
+                    "foreign.py-error-observer",
+                    "invalid staged error length",
+                ))
+            }
+        };
+        let mut bytes = Vec::with_capacity(length + 3);
+        for index in 0..length.div_ceil(4) {
+            let position = index.to_string();
+            let frame = format!(
+                "p967.frame/1\nr n 0\n\np 1\ni {}\n{position}\nk 0\n",
+                position.len()
+            );
+            check_cancel()?;
+            match self.dispatch_view(&word, frame.as_bytes())? {
+                ForeignDispatch::PureI32(value) => bytes.extend(value.to_le_bytes()),
+                _ => {
+                    return Err(reject(
+                        "foreign.py-error-observer",
+                        "invalid error text word",
+                    ))
+                }
+            }
+        }
+        bytes.truncate(length);
+        let stage = std::str::from_utf8(&bytes)
+            .map_err(|_| reject("foreign.py-error-observer", "invalid error text"))?;
+        let (class, message) = stage
+            .strip_prefix('[')
+            .and_then(|value| value.split_once("] "))
+            .and_then(|(class, message)| Some((class.parse::<u8>().ok()?, message)))
+            .ok_or_else(|| reject("foreign.py-error-observer", "invalid staged error shape"))?;
+        // The provider reserves 20 and above for transport/domain failures.
+        Ok((1..=10)
+            .contains(&class)
+            .then(|| (class, format!("PyException {message}"))))
     }
 
     /// Bind the provider's exported panic flag (the loader resolves it).

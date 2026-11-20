@@ -482,3 +482,776 @@ channel: "unit"
 ```text
 propagated error
 ```
+
+## Case: catch-callee-fail
+id: "av.parity.1087.catch-callee-fail"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn inner() int { fail("boom") }
+fn main() int {
+ try { return inner() } catch e { if e == "boom" { return 42 }; return 1 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: catch-index-error
+id: "av.parity.1087.catch-index-error"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let xs = [1]
+ try { return xs[9] } catch e { return 42 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-04-control-flow-001-if-true
+id: "legacy.04_control_flow.001_if_true"
+entry-mode: "program"
+
+### Auto
+path: "if_true.at"
+```auto
+if true { 1 } else { 2 }
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+1
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 1
+
+## Case: legacy-04-control-flow-002-if-false
+id: "legacy.04_control_flow.002_if_false"
+entry-mode: "program"
+
+### Auto
+path: "if_false.at"
+```auto
+if false { 1 } else { 2 }
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 2
+
+## Case: legacy-04-control-flow-003-if-else-if
+id: "legacy.04_control_flow.003_if_else_if"
+entry-mode: "program"
+
+### Auto
+path: "if_else_if.at"
+```auto
+if false { 1 } else if false { 2 } else { 3 }
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 3
+
+## Case: legacy-04-control-flow-004-if-with-bool
+id: "legacy.04_control_flow.004_if_with_bool"
+entry-mode: "program"
+
+### Auto
+path: "if_with_bool.at"
+```auto
+var succ = true
+if succ {
+  print("I won!")
+  "succ"
+} else {
+  print("You failed!")
+  "failed"
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+I won!
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+succ
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "succ"
+
+#### stdout
+
+```text
+I won!
+```
+
+## Case: closure
+id: "av.parity.1087.closure"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let boom = (n int) => { if n == 1 { fail("closure") }; return n }
+    try { return boom(1) } catch e { if e == "closure" { return 42 }; return 0 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: nested-finally
+id: "av.parity.1087.nested-finally"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int { fail("leaf") }
+fn middle() int {
+    try { return leaf() } finally { print("middle") }
+}
+fn main() int {
+    try { return middle() } catch e { print(e); return 42 } finally { print("outer") }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+middle
+leaf
+outer
+```
+
+## Case: override
+id: "av.parity.1087.override"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int { fail("original") }
+fn replacement() void { fail("replacement") }
+fn middle() int { try { return leaf() } finally { replacement() } }
+fn main() int {
+    try { return middle() } catch e { if e == "replacement" { return 42 }; return 0 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: rethrow
+id: "av.parity.1087.rethrow"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int { fail("origin") }
+fn main() int {
+    try { return leaf() } catch e { rethrow() }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "origin"
+
+## Case: list-index-callee
+id: "av.parity.1087.list-index-callee"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int { let xs = [1]; return xs[-1] }
+fn main() int {
+    try { return leaf() } catch e { if e == "IndexError: list index out of range" { return 42 }; return 0 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: module
+id: "av.parity.1087.module"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.fail_there
+fn main() int {
+    try { return fail_there() } catch e { if e == "imported" { return 42 }; return 0 }
+}
+```
+
+#### lib.at
+
+```auto
+pub fn fail_there() int { fail("imported") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: module-rethrow
+id: "av.parity.1087.module-rethrow"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.fail_there
+fn main() int {
+    try { return fail_there() } catch e { rethrow() }
+}
+```
+
+#### lib.at
+
+```auto
+pub fn fail_there() int { fail("imported") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "imported"
+
+## Case: legacy-04-control-flow-010-as-int-to-float
+id: "legacy.04_control_flow.010_as_int_to_float"
+entry-mode: "program"
+
+### Auto
+path: "as_int_to_float.at"
+```auto
+print(42.as(float))
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: legacy-05-loops-004-for-each-object
+id: "legacy.05_loops.004_for_each_object"
+entry-mode: "program"
+
+### Auto
+path: "for_each_object.at"
+```auto
+var items = [
+    { name: "Alice", age: 20 }
+    { name: "Bob", age: 21 }
+    { name: "Charlie", age: 22 }
+]
+for item in items {
+    print(f"Hi ${item.name}")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+Hi Alice
+Hi Bob
+Hi Charlie
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+Hi Alice
+Hi Bob
+Hi Charlie
+```
+
+## Case: local-borrow-unwind
+id: "av.parity.1087.local-borrow-unwind"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int { fail("leaf") }
+fn main() int {
+    var text = "before".clone()
+    try {
+        let held = text.view
+        let n = leaf()
+        return n + held.len()
+    } catch e { text = "after".clone() }
+    return 37 + text.len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: loop-exits
+id: "av.parity.1087.loop-exits"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var n = 0
+    var events = 0
+    loop {
+        n = n + 1
+        try {
+            if n == 1 { continue }
+            if n == 2 { break }
+            return 0
+        } finally { events = events * 10 + n }
+    }
+    return 30 + events
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: null-through-call
+id: "av.parity.1087.null-through-call"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+fn leaf() int { return null + 1 }
+fn main() int {
+    try { return leaf() } catch e {
+        if e == "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'" { return 42 }
+        return 0
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-04-control-flow-013-to-int-from-str
+id: "legacy.04_control_flow.013_to_int_from_str"
+entry-mode: "program"
+
+### Auto
+path: "to_int_from_str.at"
+```auto
+print("42".to(int))
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: lazy-defaults
+id: "av.parity.1087.lazy-defaults"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn never() int { fail("an unused default was evaluated") }
+fn main() int {
+    let left = Some(40)
+    let right = Some(2)
+    let absent ?int = None
+    let n = left.?(never())
+    let m = right ?? never()
+    return n + m + absent.?(0)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-04-control-flow-006-is-stmt
+id: "legacy.04_control_flow.006_is_stmt"
+entry-mode: "program"
+
+### Auto
+path: "is_stmt.at"
+```auto
+var x = 10
+is x {
+  10 -> {
+    print("Here is 10!")
+    x
+  }
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+Here is 10!
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.pattern-nonexhaustive"
+
+### Notes
+
+Named AV and VM difference in PLAN-1087. The AV source is unchanged; value-position is requires exhaustive arms.
+
+## Case: legacy-05-loops-003-range-literal
+id: "legacy.05_loops.003_range_literal"
+entry-mode: "program"
+
+### Auto
+path: "range_literal.at"
+```auto
+1..5
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+1..5
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "parse"
+code: "source.syntax"
+
+### Notes
+
+Named AV and VM difference in PLAN-1087. The AV source is unchanged; PLAN-962 admits range syntax in iterable position.
+
+## Case: legacy-16-option-result-007-propagate-some
+id: "legacy.16_option_result.007_propagate_some"
+entry-mode: "program"
+
+### Auto
+path: "propagate_some.at"
+```auto
+let x = Some(42)
+let y = x.?
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.propagate-incompatible"
+
+### Notes
+
+Named AV and VM difference in PLAN-1087. The AV source is unchanged; Option propagation requires an Option return type for Some.
+
+## Case: legacy-16-option-result-008-propagate-none
+id: "legacy.16_option_result.008_propagate_none"
+entry-mode: "program"
+
+### Auto
+path: "propagate_none.at"
+```auto
+let x = None
+let y = x.?
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+-1
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.propagate-incompatible"
+
+### Notes
+
+Named AV and VM difference in PLAN-1087. The AV source is unchanged; Option propagation requires an Option return type for None.
+
+## Case: legacy-04-control-flow-005-if-in-array
+id: "legacy.04_control_flow.005_if_in_array"
+entry-mode: "program"
+
+### Auto
+path: "if_in_array.at"
+```auto
+var is_lse = false
+var is_rh = true
+["osal", if is_lse {"EB"}, if is_rh {"al"}]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+["osal", "al"]
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "[\"osal\", \"al\"]"
+
+## Case: conditional-list-effects
+id: "av.parity.1087.conditional-list-effects"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn letter(label str, number int) int {
+    print(label)
+    return number
+}
+fn never() int { fail("skipped element was evaluated") }
+fn main() int {
+    let xs = [
+        letter("first", 40),
+        if false {never()},
+        if true {letter("second", 2)}
+    ]
+    let no_items = [if false {never()}]
+    return xs[0] + xs[1] + no_items.len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+first
+second
+```

@@ -645,9 +645,11 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         },
         // PLAN-962: literals/index reads are aggregates-surface forms,
         // named-unsupported on the query surface.
-        core_ast::ExprKind::ArrayLit(_) => InputExprKind::Unsupported {
-            what: "array-literal",
-        },
+        core_ast::ExprKind::ArrayLit(_) | core_ast::ExprKind::ArrayConditionalElem { .. } => {
+            InputExprKind::Unsupported {
+                what: "array-literal",
+            }
+        }
         // PLAN-962 (T-08): the grid literal.
         core_ast::ExprKind::GridLit { .. } => InputExprKind::Unsupported {
             what: "grid-literal",

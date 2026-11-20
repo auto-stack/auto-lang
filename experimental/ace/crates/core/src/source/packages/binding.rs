@@ -2034,6 +2034,10 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             shift_expr(start, offset);
             shift_expr(end, offset);
         }
+        ExprKind::ArrayConditionalElem { cond, value } => {
+            shift_expr(cond, offset);
+            shift_expr(value, offset);
+        }
         // PLAN-962：数组字面量/索引同步平移。
         ExprKind::ArrayLit(elems) => {
             for e in elems {
@@ -2618,6 +2622,38 @@ impl<'a> Walker<'a> {
                     });
                     continue;
                 }
+                Stmt::Try {
+                    body,
+                    catch,
+                    finally,
+                    ..
+                } if self.auto_language => {
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: next_locals.clone(),
+                    });
+                    if let Some(finally) = finally {
+                        stack.push(Frame {
+                            stmts: &mut finally.stmts,
+                            locals: next_locals.clone(),
+                        });
+                    }
+                    if let Some(catch) = catch {
+                        let mut locals = next_locals.clone();
+                        if let Some(bind) = &catch.bind {
+                            locals.insert(bind.name.clone());
+                        }
+                        stack.push(Frame {
+                            stmts: &mut catch.body.stmts,
+                            locals,
+                        });
+                    }
+                    stack.push(Frame {
+                        stmts: &mut body.stmts,
+                        locals: next_locals,
+                    });
+                    continue;
+                }
                 Stmt::IsMatch { span, .. }
                 | Stmt::ForIn { span, .. }
                 | Stmt::AggIsMatch { span, .. }
@@ -2686,6 +2722,10 @@ impl<'a> Walker<'a> {
             ExprKind::Range { start, end, .. } => {
                 self.walk_expr_inner(start, locals)?;
                 self.walk_expr_inner(end, locals)
+            }
+            ExprKind::ArrayConditionalElem { cond, value } => {
+                self.walk_expr_inner(cond, locals)?;
+                self.walk_expr_inner(value, locals)
             }
             // PLAN-962：数组字面量/索引递归走读。
             ExprKind::ArrayLit(elems) => {
@@ -2845,6 +2885,9 @@ impl<'a> Walker<'a> {
                         // 纪律）。
                     } else if self.auto_language && matches!(callee.name.as_str(), "mark_a" | "mark_b" | "take" | "__fstr") {
                         // Capability admission remains the shared resolver's job.
+                    } else if self.auto_language && matches!(callee.name.as_str(), "fail" | "rethrow") {
+                        // The shared resolver owns language-error binding and
+                        // checks that rethrow is inside a catch body.
                     } else if self.aggregates
                         && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
                     {

@@ -88,6 +88,10 @@ fn shift_expr(e: &mut Expr, delta: i64) {
             shift_expr(start, delta);
             shift_expr(end, delta);
         }
+        ExprKind::ArrayConditionalElem { cond, value } => {
+            shift_expr(cond, delta);
+            shift_expr(value, delta);
+        }
         // PLAN-962：数组字面量元素/索引两端 span 平移。
         ExprKind::ArrayLit(elems) => {
             for e in elems {

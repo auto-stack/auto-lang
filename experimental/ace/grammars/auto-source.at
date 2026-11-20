@@ -2646,7 +2646,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, auto, scheduler, age-package, packages-modules, config-document, auto-packages]) { condition-expr() {} }
             alt(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { expr() {} }
         }
-        else-block { else() {} block() {} }
+        else-block {
+            alt(profiles: [auto, auto-packages]) { else() {} if-stmt() {} }
+            alt { else() {} block() {} }
+        }
         while-stmt(profiles: [core]) {
             while(field: "kw")
             expr(field: "cond")
@@ -3054,8 +3057,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         grid-row(profiles: [aggregates, auto, scheduler, auto-packages]) {
             lbracket(same-line: true) {}
-            array-elems(field: "cells")
+            grid-cells(field: "cells")
             rbracket() {}
+        }
+        grid-cells(profiles: [aggregates, auto, scheduler, auto-packages]) {
+            expr(field: "head")
+            many { grid-cell-tail() {} }
+            opt(profiles: [auto, auto-packages]) { comma() {} }
+        }
+        grid-cell-tail(profiles: [aggregates, auto, scheduler, auto-packages]) {
+            alt { comma() {} expr() {} }
+            alt(profiles: [auto, auto-packages]) { expr() {} }
         }
         // PLAN-962（L-16）：`[e1, e2, ...]`——非空元素表（空字面量无元素类型，
         // 由 resolve 具名拒）。语句位脱糖 List<T>.new()+push 链（见 resolve）。
@@ -3076,14 +3088,26 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         empty-array-lit(profiles: [auto, auto-packages]) {
             lbracket() {}
             rbracket() {}
-        }        array-elems(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
-            expr(field: "head")
+        }
+        array-elems(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
+            array-elem(field: "head")
             many { array-elem-tail() {} }
             opt(profiles: [auto, auto-packages]) { comma() {} }
         }
         array-elem-tail(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
-            alt { comma() {} expr() {} }
-            alt(profiles: [auto, auto-packages]) { expr() {} }
+            alt { comma() {} array-elem() {} }
+            alt(profiles: [auto, auto-packages]) { array-elem() {} }
+        }
+        array-elem(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
+            alt { expr() {} }
+            alt(profiles: [auto, auto-packages]) { array-conditional-elem() {} }
+        }
+        array-conditional-elem(profiles: [auto, auto-packages]) {
+            if(field: "kw")
+            if-cond(field: "cond")
+            lbrace() {}
+            expr(field: "value")
+            rbrace() {}
         }
         // PLAN-962（T-08，L-09）：take 原子形（弃用 Move 别名）。
         take-atom(profiles: [aggregates, scheduler]) {

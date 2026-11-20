@@ -2600,6 +2600,7 @@ fn build_next_fn(
                     },
                     span,
                     target: disp_loop,
+                    unwind: None,
                 },
                 RStmt::Return {
                     value: none_expr,

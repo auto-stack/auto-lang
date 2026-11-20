@@ -559,7 +559,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         els: e,
                     });
                 }
-                hir::Stmt::Loop { id, body: lb } => {
+                hir::Stmt::Loop { id, body: lb, .. } => {
                     // PLAN-1036 (F35): lower the body with this loop on the
                     // stack so every `continue` into it carries the same
                     // back-edge poll.

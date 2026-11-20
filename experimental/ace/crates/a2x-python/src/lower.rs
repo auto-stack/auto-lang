@@ -929,7 +929,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 }
                 Ok(())
             }
-            hir::Stmt::Loop { id, body } => {
+            hir::Stmt::Loop { id, body, .. } => {
                 self.loop_stack.push(id.0);
                 self.emit_line("while True:");
                 self.indent += 1;

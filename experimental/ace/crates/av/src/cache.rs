@@ -885,11 +885,17 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                         c.w(&e.0.to_string());
                     }
                 }
-                hir::Stmt::Loop { id, body } => {
+                hir::Stmt::Loop { id, body, unwind } => {
                     c.w(" loop ");
                     c.w(&id.0.to_string());
                     c.w(" ");
                     c.w(&body.0.to_string());
+                    if let Some(unwind) = unwind {
+                        c.w(" unwind ");
+                        c.w(&unwind.kind.0.to_string());
+                        c.w(" ");
+                        c.w(&unwind.message.0.to_string());
+                    }
                 }
                 hir::Stmt::Assign { place, value } => {
                     c.w(" as ");

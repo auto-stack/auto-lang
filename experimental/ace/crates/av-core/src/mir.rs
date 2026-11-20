@@ -993,16 +993,50 @@ pub enum Terminator {
     Return {
         value: SlotId,
     },
+    /// Select the successor of the last fallible guest operation. The normal
+    /// edge has its result; the exceptional edge has the language-error message.
+    Invoke {
+        normal: BlockId,
+        unwind: BlockId,
+        message: SlotId,
+    },
     /// Language-level error unwind (`fail(msg)` / uncaught `.?`).
     LangFail {
         message: SlotId,
+        /// Source bytes of the original failure expression, for ordinary Auto.
+        source: Option<(u32, u32)>,
     },
+}
+
+impl Terminator {
+    pub(crate) fn successors(&self) -> Vec<BlockId> {
+        match *self {
+            Self::Jump { target } => vec![target],
+            Self::Branch { then, else_, .. } if then == else_ => vec![then],
+            Self::Branch { then, else_, .. } => vec![then, else_],
+            Self::Invoke { normal, unwind, .. } => vec![normal, unwind],
+            Self::Return { .. } | Self::LangFail { .. } => Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct MirBlock {
     pub instrs: Vec<MirInstr>,
     pub term: Terminator,
+}
+
+impl MirBlock {
+    pub(crate) fn invoke_result_slot(&self) -> Option<SlotId> {
+        match self.instrs.last()? {
+            MirInstr::Call { dst, .. }
+            | MirInstr::CallClosure { dst, .. }
+            | MirInstr::ListGet { dst, .. }
+            | MirInstr::ListPlace { dst, .. }
+            | MirInstr::ForeignCall { dst, .. } => Some(*dst),
+            _ => None,
+        }
+    }
 }
 
 /// One function body in MIR. `spans` maps FLAT instruction indices

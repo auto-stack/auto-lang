@@ -567,7 +567,7 @@ fn walk_expr<'a>(
                 span: e.span,
             });
         }
-        ExprKind::ArrayLit(_) => {
+        ExprKind::ArrayLit(_) | ExprKind::ArrayConditionalElem { .. } => {
             return Err(WalkError::Unsupported {
                 what: "array-literal",
                 span: e.span,

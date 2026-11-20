@@ -3478,7 +3478,35 @@ impl<'d> Binder<'d> {
                         &body.blocks,
                         block_sibs,
                     )?);
-                    hir::Stmt::Loop { id, body: body_id }
+                    let unwind = if sfields.get("error_kind").is_some()
+                        || sfields.get("error_message").is_some()
+                    {
+                        let (kind, kind_span) = self.text_ref(&sfields, "error_kind")?;
+                        let (message, message_span) = self.text_ref(&sfields, "error_message")?;
+                        Some(hir::LoopUnwind {
+                            kind: hir::LocalId(self.resolve_in(
+                                &kind,
+                                kind_span,
+                                "LocalRef",
+                                &body.locals,
+                                block_sibs,
+                            )?),
+                            message: hir::LocalId(self.resolve_in(
+                                &message,
+                                message_span,
+                                "LocalRef",
+                                &body.locals,
+                                block_sibs,
+                            )?),
+                        })
+                    } else {
+                        None
+                    };
+                    hir::Stmt::Loop {
+                        id,
+                        body: body_id,
+                        unwind,
+                    }
                 }
                 "assign" => {
                     let (t, span) = self.text_ref(&sfields, "place")?;
@@ -4567,11 +4595,22 @@ fn write_stmt(s: &hir::Stmt, b: &hir::Body, _m: &hir::Module) -> String {
                 els_text
             )
         }
-        hir::Stmt::Loop { id, body } => format!(
-            "loop(id: {}, body: {}) {{}}",
-            quote(&b.loops[id.0 as usize]),
-            quote(&b.blocks[body.0 as usize].id_text)
-        ),
+        hir::Stmt::Loop { id, body, unwind } => {
+            let handler = unwind
+                .map(|unwind| {
+                    format!(
+                        ", error_kind: {}, error_message: {}",
+                        quote(&b.locals[unwind.kind.0 as usize].id_text),
+                        quote(&b.locals[unwind.message.0 as usize].id_text),
+                    )
+                })
+                .unwrap_or_default();
+            format!(
+                "loop(id: {}, body: {}{handler}) {{}}",
+                quote(&b.loops[id.0 as usize]),
+                quote(&b.blocks[body.0 as usize].id_text),
+            )
+        }
         hir::Stmt::Assign { place, value } => format!(
             "assign(place: {}, value: {}) {{}}",
             quote(&b.places[place.0 as usize].id_text),

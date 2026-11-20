@@ -576,7 +576,12 @@ fn encode_stmt(w: &mut Writer, s: &Stmt) -> Result<(), CodecError> {
                 None => w.u8(0),
             }
         }
-        Stmt::Loop { id, body } => {
+        Stmt::Loop { id, body, unwind } => {
+            if unwind.is_some() {
+                return Err(CodecError::UnsupportedFeature(
+                    "protected loop (ordinary Auto surface)",
+                ));
+            }
             w.u8(3);
             w.u32(id.0);
             w.u32(body.0);
@@ -1103,6 +1108,7 @@ fn decode_stmt(r: &mut Reader) -> Result<Stmt, CodecError> {
         3 => Ok(Stmt::Loop {
             id: LoopId(r.u32("loop.id")?),
             body: BlockId(r.u32("loop.body")?),
+            unwind: None,
         }),
         4 => Ok(Stmt::Assign {
             place: PlaceId(r.u32("assign.place")?),
@@ -1299,7 +1305,7 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                                 }
                             }
                         }
-                        Stmt::Loop { id, body } => {
+                        Stmt::Loop { id, body, .. } => {
                             if id.0 as u64 >= n_loops {
                                 return Err(CodecError::IndexOutOfBounds {
                                     what: "loop",

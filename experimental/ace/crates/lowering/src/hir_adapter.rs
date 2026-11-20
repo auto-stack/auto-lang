@@ -737,7 +737,7 @@ fn lower_checked_collection_family(
         if entry_ids.contains(&name) {
             entry_idx = Some(out.funcs.len() as u32);
         }
-        let mir_fn = lower_function(
+        let mir_fn = lower_function_with_emission(
             module,
             &mut out,
             di,
@@ -749,6 +749,9 @@ fn lower_checked_collection_family(
             false,
             true,
             &BTreeMap::new(),
+            &ModuleScanFacts,
+            None,
+            auto_language,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -2297,6 +2300,7 @@ fn lower_function_unit_impl(
         mode_overrides,
         &ModuleScanFacts,
         function_port,
+        false,
     )?;
     drop(reserve_function);
     drop(def_map);
@@ -3262,8 +3266,18 @@ enum Start {
 /// One pending HIR-block segment: lower stmts from `stmt_idx` into the
 /// start block; when the segment completes without its own terminator,
 /// jump to `exit` (after-if join / loop latch / inherited continuation).
+#[derive(Clone, Copy)]
+struct UnwindTarget {
+    exit: BlockId,
+    kind: SlotId,
+    message: SlotId,
+    enclosing_views: usize,
+}
+
 struct Task {
     hir_block: hir::BlockId,
+    unwind: Option<UnwindTarget>,
+    scoped_views: Vec<SlotId>,
     stmt_idx: usize,
     mir_block: Start,
     exit: Option<Exit>,
@@ -3497,6 +3511,8 @@ struct FnLower<'a, 'budget> {
     terminated: bool,
     /// (header, exit) MIR blocks per HIR LoopId.
     loop_targets: Vec<(BlockId, BlockId)>,
+    unwind: Option<UnwindTarget>,
+    scoped_views: Vec<SlotId>,
     func_index: u32,
     /// Running flat instruction counter — emission order equals block-major
     /// order because blocks are created in order and never revisited.
@@ -3517,6 +3533,7 @@ struct FnLower<'a, 'budget> {
     /// Outstanding temporary view tokens on the current control-flow path.
     pending_temp_views: Vec<SlotId>,
     spans: Vec<(u32, SpanInfo)>,
+    block_span_pcs: Option<Vec<(BlockId, u32)>>,
     /// Whether block 0 got a real (non-placeholder) terminator.
     root_wired: bool,
     /// After-if join cells (F798-R7-05): `None` until some arm falls
@@ -4231,7 +4248,61 @@ k 0
     }
 
     fn emit(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
+        let fallible = matches!(
+            instr,
+            MirInstr::Call { .. }
+                | MirInstr::CallClosure { .. }
+                | MirInstr::ListGet { .. }
+                | MirInstr::ListPlace { .. }
+                | MirInstr::ForeignCall { .. }
+        );
+        let result = instr.def_slot();
+        self.emit_instr(instr, span)?;
+        if let Some(unwind) = self.unwind.filter(|_| fallible) {
+            let rejected = self.new_block()?;
+            let normal = self.new_block()?;
+            self.set_term(Terminator::Invoke {
+                normal,
+                unwind: rejected,
+                message: unwind.message,
+            });
+            self.cur = rejected;
+            self.terminated = false;
+            // The rejected arm never consumes the call's result or executes
+            // its success-side write-back. End the borrowed argument views
+            // before entering catch/finally.
+            let tokens = self.pending_temp_views.clone();
+            for &token in tokens.iter().rev() {
+                if Some(token) != result {
+                    self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
+                }
+            }
+            self.pending_temp_views = tokens;
+            let scoped_views = self.scoped_views.clone();
+            for &token in scoped_views.iter().skip(unwind.enclosing_views).rev() {
+                self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
+            }
+            self.scoped_views = scoped_views;
+            let value = self.const_i32(4)?;
+            self.emit_instr(
+                MirInstr::Const {
+                    dst: unwind.kind,
+                    value,
+                },
+                None,
+            )?;
+            self.set_term(Terminator::Jump {
+                target: unwind.exit,
+            });
+            self.cur = normal;
+            self.terminated = false;
+        }
+        Ok(())
+    }
+
+    fn emit_instr(&mut self, instr: MirInstr, span: Option<SpanInfo>) -> Result<(), AdapterError> {
         if let MirInstr::BorrowEnd { token } = &instr {
+            self.scoped_views.retain(|view| view != token);
             if let Some(index) = self
                 .pending_temp_views
                 .iter()
@@ -4253,6 +4324,10 @@ k 0
                 grow_emission(&mut self.spans, &mut self.emission_bytes, *reserve)?;
             }
             self.spans.push((self.flat, sp));
+            if let Some(pcs) = &mut self.block_span_pcs {
+                let ip = self.blocks[self.cur as usize].instrs.len() - 1;
+                pcs.push((self.cur, ip as u32));
+            }
         }
         self.flat += 1;
         Ok(())
@@ -7239,6 +7314,7 @@ fn lower_function_with(
         mode_overrides,
         closure_facts,
         None,
+        false,
     )
 }
 
@@ -7256,6 +7332,7 @@ fn lower_function_with_emission(
     mode_overrides: &BTreeMap<String, Vec<hir::ParamMode>>,
     closure_facts: &dyn ClosureFacts,
     mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
+    ordinary_auto: bool,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -7417,6 +7494,8 @@ fn lower_function_with_emission(
         cur: 0,
         terminated: false,
         loop_targets,
+        unwind: None,
+        scoped_views: Vec::new(),
         func_index: def_index,
         flat: 0,
         mut_wrap_ty,
@@ -7425,6 +7504,7 @@ fn lower_function_with_emission(
         sig_mode_overrides: mode_overrides.clone(),
         pending_temp_views: Vec::new(),
         spans: vec![],
+        block_span_pcs: ordinary_auto.then(Vec::new),
         root_wired: false,
         pending_joins: vec![],
         cell_locals,
@@ -7471,6 +7551,8 @@ fn lower_function_with_emission(
         &mut stack,
         Task {
             hir_block: body.entry,
+            unwind: None,
+            scoped_views: Vec::new(),
             stmt_idx: 0,
             mir_block: Start::Block(0),
             exit: None,
@@ -7496,6 +7578,8 @@ fn lower_function_with_emission(
             }
         };
         lower.cur = start_block;
+        lower.unwind = task.unwind;
+        lower.scoped_views = task.scoped_views;
         lower.terminated = false;
         loop {
             let block = body.blocks.get(task.hir_block.0 as usize).ok_or_else(|| {
@@ -7549,6 +7633,9 @@ fn lower_function_with_emission(
                         // Copy the rooted view before ending its temporary token.
                         lower.emit(MirInstr::Copy { dst, src: v }, sp)?;
                         lower.end_stmt_temp_views()?;
+                        if lower.unwind.is_some() {
+                            lower.scoped_views.push(dst);
+                        }
                         continue;
                     }
                     lower.end_stmt_temp_views()?;
@@ -7787,6 +7874,8 @@ fn lower_function_with_emission(
                                 &mut stack,
                                 Task {
                                     hir_block: task.hir_block,
+                                    unwind: task.unwind,
+                                    scoped_views: lower.scoped_views.clone(),
                                     stmt_idx: task.stmt_idx,
                                     mir_block: Start::JoinOnDemand(slot),
                                     exit: task.exit,
@@ -7796,6 +7885,8 @@ fn lower_function_with_emission(
                                 &mut stack,
                                 Task {
                                     hir_block: *else_hir,
+                                    unwind: task.unwind,
+                                    scoped_views: lower.scoped_views.clone(),
                                     stmt_idx: 0,
                                     mir_block: Start::Block(else_b),
                                     exit: Some(Exit::Join(slot)),
@@ -7816,6 +7907,8 @@ fn lower_function_with_emission(
                                 &mut stack,
                                 Task {
                                     hir_block: task.hir_block,
+                                    unwind: task.unwind,
+                                    scoped_views: lower.scoped_views.clone(),
                                     stmt_idx: task.stmt_idx,
                                     mir_block: Start::Block(join),
                                     exit: task.exit,
@@ -7827,6 +7920,8 @@ fn lower_function_with_emission(
                         &mut stack,
                         Task {
                             hir_block: *then,
+                            unwind: task.unwind,
+                            scoped_views: lower.scoped_views.clone(),
                             stmt_idx: 0,
                             mir_block: Start::Block(then_b),
                             exit: then_exit,
@@ -7837,10 +7932,19 @@ fn lower_function_with_emission(
                 hir::Stmt::Loop {
                     id,
                     body: loop_body,
+                    unwind,
                 } => {
                     let header = lower.new_block()?;
                     let body_b = lower.new_block()?;
                     let exit = lower.new_block()?;
+                    let protected = unwind
+                        .map(|unwind| UnwindTarget {
+                            exit,
+                            kind: lower.slot_of_local[unwind.kind.0 as usize],
+                            message: lower.slot_of_local[unwind.message.0 as usize],
+                            enclosing_views: lower.scoped_views.len(),
+                        })
+                        .or(task.unwind);
                     lower.loop_targets[id.0 as usize] = (header, exit);
                     lower.set_term(Terminator::Jump { target: header });
                     lower.cur = header;
@@ -7850,6 +7954,8 @@ fn lower_function_with_emission(
                         &mut stack,
                         Task {
                             hir_block: task.hir_block,
+                            unwind: task.unwind,
+                            scoped_views: lower.scoped_views.clone(),
                             stmt_idx: task.stmt_idx,
                             mir_block: Start::Block(exit),
                             exit: task.exit,
@@ -7859,6 +7965,8 @@ fn lower_function_with_emission(
                         &mut stack,
                         Task {
                             hir_block: *loop_body,
+                            unwind: protected,
+                            scoped_views: lower.scoped_views.clone(),
                             stmt_idx: 0,
                             mir_block: Start::Block(body_b),
                             exit: Some(Exit::Block(header)),
@@ -7868,6 +7976,12 @@ fn lower_function_with_emission(
                 }
                 hir::Stmt::Break { target } => {
                     let (_, exit) = lower.loop_targets[target.0 as usize];
+                    if let Some(unwind) = lower.unwind.filter(|unwind| unwind.exit == exit) {
+                        while lower.scoped_views.len() > unwind.enclosing_views {
+                            let token = lower.scoped_views.pop().expect("live scoped view");
+                            lower.emit_instr(MirInstr::BorrowEnd { token }, None)?;
+                        }
+                    }
                     lower.set_term(Terminator::Jump { target: exit });
                     break;
                 }
@@ -7915,7 +8029,15 @@ fn lower_function_with_emission(
                 hir::Stmt::Fail { value } => {
                     let msg = lower.eval_expr(*value, 0)?;
                     lower.end_stmt_temp_views()?;
-                    lower.set_term(Terminator::LangFail { message: msg });
+                    let source = if ordinary_auto {
+                        lower.span(*value).map(|span| (span.start, span.end))
+                    } else {
+                        None
+                    };
+                    lower.set_term(Terminator::LangFail {
+                        message: msg,
+                        source,
+                    });
                     break;
                 }
             }
@@ -7954,7 +8076,24 @@ fn lower_function_with_emission(
         }
     }
 
-    // Spans are appended in emission order == flat order.
+    // Ordinary Auto can split blocks during expression emission. Resolve
+    // source locations by their final block-major addresses.
+    if let Some(pcs) = lower.block_span_pcs.take() {
+        let mut next = 0u32;
+        let bases: Vec<_> = lower
+            .blocks
+            .iter()
+            .map(|block| {
+                let base = next;
+                next += block.instrs.len() as u32;
+                base
+            })
+            .collect();
+        for ((flat, _), (block, ip)) in lower.spans.iter_mut().zip(pcs) {
+            *flat = bases[block as usize] + ip;
+        }
+        lower.spans.sort_unstable_by_key(|(flat, _)| *flat);
+    }
     debug_assert!(lower.spans.windows(2).all(|w| w[0].0 < w[1].0));
 
     let owner = lower.out.owner.clone();

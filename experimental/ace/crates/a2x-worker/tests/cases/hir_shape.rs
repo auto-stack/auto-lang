@@ -86,7 +86,9 @@ fn walk_block(body: &ace_core::hir::Body, block: usize, stack: &mut Vec<u32>) ->
                     ));
                 }
             }
-            Stmt::Loop { id, body: inner } => {
+            Stmt::Loop {
+                id, body: inner, ..
+            } => {
                 stack.push(id.0);
                 issues.extend(walk_block(body, inner.0 as usize, stack));
                 stack.pop();

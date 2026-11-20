@@ -235,6 +235,8 @@ pub const TERM_RETURN: u8 = 0x12;
 /// PLAN-965: language-level error unwind (`fail`/uncaught `.?`). `0x40` is the
 /// next byte after the instruction space (`m2-dynamic` froze `0x3D`/`0x3E`/`0x3F`).
 pub const TERM_LANG_FAIL: u8 = 0x40;
+pub const TERM_INVOKE: u8 = 0x50;
+pub const TERM_LANG_FAIL_AT: u8 = 0x51;
 
 // PLAN-968: the scheduler operations — additive opcodes on the closures
 // wire family (the 965 LANG_FAIL precedent: only the scheduler lowering
@@ -2454,9 +2456,28 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     put_u8(&mut w, TERM_RETURN);
                     put_u32(&mut w, *value);
                 }
-                Terminator::LangFail { message } => {
-                    put_u8(&mut w, TERM_LANG_FAIL);
+                Terminator::Invoke {
+                    normal,
+                    unwind,
+                    message,
+                } => {
+                    put_u8(&mut w, TERM_INVOKE);
+                    put_u32(&mut w, *normal);
+                    put_u32(&mut w, *unwind);
                     put_u32(&mut w, *message);
+                }
+                Terminator::LangFail { message, source } => {
+                    let tag = if source.is_some() {
+                        TERM_LANG_FAIL_AT
+                    } else {
+                        TERM_LANG_FAIL
+                    };
+                    put_u8(&mut w, tag);
+                    put_u32(&mut w, *message);
+                    if let Some((start, end)) = source {
+                        put_u32(&mut w, *start);
+                        put_u32(&mut w, *end);
+                    }
                 }
             }
         }
@@ -4159,7 +4180,19 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                     Terminator::Branch { cond, then, else_ }
                 }
                 TERM_RETURN => Terminator::Return { value: c.u32()? },
-                TERM_LANG_FAIL => Terminator::LangFail { message: c.u32()? },
+                TERM_LANG_FAIL => Terminator::LangFail {
+                    message: c.u32()?,
+                    source: None,
+                },
+                TERM_LANG_FAIL_AT => Terminator::LangFail {
+                    message: c.u32()?,
+                    source: Some((c.u32()?, c.u32()?)),
+                },
+                TERM_INVOKE => Terminator::Invoke {
+                    normal: c.u32()?,
+                    unwind: c.u32()?,
+                    message: c.u32()?,
+                },
                 other => {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.decode.term-opcode",

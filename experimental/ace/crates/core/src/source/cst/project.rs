@@ -3674,6 +3674,9 @@ enum Frame {
         els_blk: Option<u32>,
         node: u32,
     },
+    ElseIfBlock {
+        span: Span,
+    },
     IfElse {
         cond: Expr,
         then: Block,
@@ -8445,6 +8448,25 @@ impl<'a> Engine<'a> {
         (start, end)
     }
 
+    fn enter_if(&mut self, node: u32) {
+        let cond_n = self.cx.field_child(node, "cond").expect("if cond");
+        let then_n = self.cx.field_child(node, "then").expect("if then");
+        let els_blk = self
+            .cx
+            .child_of_kind(node, self.cx.k.else_block)
+            .and_then(|branch| {
+                self.cx
+                    .child_of_kind(branch, self.cx.k.block)
+                    .or_else(|| self.cx.child_of_kind(branch, self.cx.k.if_stmt))
+            });
+        self.stack.push(Frame::IfCond {
+            then_n,
+            els_blk,
+            node,
+        });
+        self.stack.push(Frame::ExprEnter(cond_n));
+    }
+
     fn enter_stmt(&mut self, stmt_dispatch: u32, script_top: bool) {
         let inner = self
             .cx
@@ -8638,24 +8660,7 @@ impl<'a> Engine<'a> {
             self.stack.push(Frame::ScopeFinish);
             self.enter_block(inner);
         } else if kind == self.cx.k.if_stmt {
-            let kw = self
-                .cx
-                .child_of_kind(inner, self.cx.k.tok_if)
-                .map(|l| self.cx.span_of(l))
-                .unwrap_or(Span { start: 0, end: 0 });
-            let _ = kw;
-            let cond_n = self.cx.field_child(inner, "cond").expect("if cond");
-            let then_n = self.cx.field_child(inner, "then").expect("if then");
-            let els_blk = self
-                .cx
-                .child_of_kind(inner, self.cx.k.else_block)
-                .and_then(|eb| self.cx.child_of_kind(eb, self.cx.k.block));
-            self.stack.push(Frame::IfCond {
-                then_n,
-                els_blk,
-                node: inner,
-            });
-            self.stack.push(Frame::ExprEnter(cond_n));
+            self.enter_if(inner);
         } else if Some(kind) == self.cx.k.hash_if_stmt {
             // PLAN-966（T-02）：`#if <ct> { } [else { }]`——谓词域是共享 CT
             // 标量表达式（sys 事实/字面量），两臂都投影进 AST，绑定期折叠。
@@ -9483,10 +9488,27 @@ impl<'a> Engine<'a> {
                         }
                     }
                     expr_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
-                    for en in expr_nodes {
-                        let e = self.project_expr_sync(en);
-                        span = span.join(e.span);
-                        elems.push(e);
+                    let conditional = self.rule_kind_of("array-conditional-elem");
+                    for element in expr_nodes {
+                        let node = self.unwrap_child(element);
+                        let expr = if Some(self.cx.tree.kind(node)) == conditional {
+                            let cond = self
+                                .cx
+                                .field_child(node, "cond")
+                                .expect("element condition");
+                            let value = self.cx.field_child(node, "value").expect("element value");
+                            Expr {
+                                span: self.cx.span_of(node),
+                                kind: ExprKind::ArrayConditionalElem {
+                                    cond: Box::new(self.project_expr_sync(cond)),
+                                    value: Box::new(self.project_expr_sync(value)),
+                                },
+                            }
+                        } else {
+                            self.project_expr_sync(node)
+                        };
+                        span = span.join(expr.span);
+                        elems.push(expr);
                     }
                 }
                 self.vals.push(Val::E(Expr {
@@ -10306,7 +10328,12 @@ impl<'a> Engine<'a> {
                 return recv;
             };
             let index = self.project_expr_sync(idx_node);
-            let span = recv.span.join(index.span);
+            let end = if self.cx.profile.is_auto_language() {
+                self.cx.span_of(step)
+            } else {
+                index.span
+            };
+            let span = recv.span.join(end);
             return Expr {
                 span,
                 kind: ExprKind::Index {
@@ -11743,7 +11770,14 @@ impl<'a> Engine<'a> {
                 match els_blk {
                     Some(eb) => {
                         self.stack.push(Frame::IfElse { cond, then, node });
-                        self.enter_block(eb);
+                        if self.cx.tree.kind(eb) == self.cx.k.if_stmt {
+                            self.stack.push(Frame::ElseIfBlock {
+                                span: self.cx.span_of(eb),
+                            });
+                            self.enter_if(eb);
+                        } else {
+                            self.enter_block(eb);
+                        }
                     }
                     None => {
                         let kw = self
@@ -11760,6 +11794,13 @@ impl<'a> Engine<'a> {
                         }));
                     }
                 }
+            }
+            Frame::ElseIfBlock { span } => {
+                let branch = self.pop_s();
+                self.vals.push(Val::B(Block {
+                    stmts: vec![branch],
+                    span,
+                }));
             }
             Frame::IfElse { cond, then, node } => {
                 let els = self.pop_b();

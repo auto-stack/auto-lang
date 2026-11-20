@@ -504,6 +504,12 @@ fn emit_admitted(
                     }
                     lower.fb.ins().return_(&[]);
                 }
+                Terminator::Invoke { .. } => {
+                    return Err(unsupported(
+                        "mn.invoke",
+                        "language-error unwind is supported by AV",
+                    ));
+                }
                 Terminator::LangFail { .. } => {
                     if !TEST_OMIT_FRAME_FREE.with(|flag| flag.get()) {
                         lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;

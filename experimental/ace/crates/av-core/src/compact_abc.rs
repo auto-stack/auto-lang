@@ -31,6 +31,8 @@ const TERM_BRANCH: u8 = 0x11;
 const TERM_RETURN: u8 = 0x12;
 /// PLAN-965: language-level error unwind; `0x40` stays outside the instruction space.
 const TERM_LANG_FAIL: u8 = 0x40;
+const TERM_INVOKE: u8 = 0x50;
+const TERM_LANG_FAIL_AT: u8 = 0x51;
 
 #[derive(Debug)]
 pub struct DecodedCompactAbc {
@@ -223,9 +225,28 @@ fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) {
             out.push(TERM_RETURN);
             put_uleb(out, *value);
         }
-        Terminator::LangFail { message } => {
-            out.push(TERM_LANG_FAIL);
+        Terminator::Invoke {
+            normal,
+            unwind,
+            message,
+        } => {
+            out.push(TERM_INVOKE);
+            put_uleb(out, *normal);
+            put_uleb(out, *unwind);
             put_uleb(out, *message);
+        }
+        Terminator::LangFail { message, source } => {
+            let tag = if source.is_some() {
+                TERM_LANG_FAIL_AT
+            } else {
+                TERM_LANG_FAIL
+            };
+            out.push(tag);
+            put_uleb(out, *message);
+            if let Some((start, end)) = source {
+                put_uleb(out, *start);
+                put_uleb(out, *end);
+            }
         }
     }
 }
@@ -946,7 +967,19 @@ fn decode_function(
                 else_: c.uleb()?,
             },
             TERM_RETURN => Terminator::Return { value: c.uleb()? },
-            TERM_LANG_FAIL => Terminator::LangFail { message: c.uleb()? },
+            TERM_LANG_FAIL => Terminator::LangFail {
+                message: c.uleb()?,
+                source: None,
+            },
+            TERM_LANG_FAIL_AT => Terminator::LangFail {
+                message: c.uleb()?,
+                source: Some((c.uleb()?, c.uleb()?)),
+            },
+            TERM_INVOKE => Terminator::Invoke {
+                normal: c.uleb()?,
+                unwind: c.uleb()?,
+                message: c.uleb()?,
+            },
             other => {
                 return Err(format_err(
                     "compact.decode.terminator",

@@ -811,7 +811,7 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 self.out.push("}".to_string());
                 Ok(())
             }
-            hir::Stmt::Loop { id, body: lb } => {
+            hir::Stmt::Loop { id, body: lb, .. } => {
                 self.out.push("for (;;) {".to_string());
                 self.loop_stack.push((*id, *lb));
                 let lowered = self.block(*lb);

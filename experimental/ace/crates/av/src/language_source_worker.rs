@@ -212,7 +212,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             }
         },
     }
-    step["console"] = json!({"schema":"av.console-capture/1", "mir_lowering":ace_lowering::MIR_LOWERING_VERSION,
+    step["console"] = json!({"schema":"av.console-capture/1", "mir_lowering":ace_lowering::AUTO_LANGUAGE_MIR_LOWERING_VERSION,
         "stdout_present":true,"stderr_present":true,"stdout_truncated":false,"stderr_truncated":false,
         "stdout_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stdout),
         "stderr_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stderr)});

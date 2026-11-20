@@ -5360,7 +5360,18 @@ impl Verifier {
                             }
                         }
                     }
-                    hir::Stmt::Loop { id, body: b } => {
+                    hir::Stmt::Loop {
+                        id,
+                        body: b,
+                        unwind,
+                    } => {
+                        if let Some(unwind) = unwind {
+                            for local in [unwind.kind, unwind.message] {
+                                if (local.0 as usize) >= n_locals {
+                                    bad("local", local.0, n_locals, bl.span);
+                                }
+                            }
+                        }
                         if (id.0 as usize) >= n_loops {
                             bad("loop", id.0, n_loops, bl.span);
                         }
@@ -8038,7 +8049,7 @@ impl Verifier {
                                 else_slot,
                             };
                         }
-                        hir::Stmt::Loop { id, body: b } => {
+                        hir::Stmt::Loop { id, body: b, .. } => {
                             let cur_in = frame.cur.clone();
                             let parent_idx = frames.len() - 1;
                             loops.push(id);

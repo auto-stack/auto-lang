@@ -287,6 +287,15 @@ pub const EXPECTED_AV_CORE_VERSION: &str = "av.core-i32/1";
 /// every av recipe family lowers HIR→MIR through the shared crate; a
 /// lowering contract bump without a mirror update fails the identity axis.
 pub const EXPECTED_MIR_LOWERING_VERSION: &str = "5";
+const EXPECTED_AUTO_LANGUAGE_MIR_LOWERING_VERSION: &str = "6";
+
+fn expected_mir_lowering_version(family: RecipeFamily) -> &'static str {
+    if family == RecipeFamily::LanguageSource {
+        EXPECTED_AUTO_LANGUAGE_MIR_LOWERING_VERSION
+    } else {
+        EXPECTED_MIR_LOWERING_VERSION
+    }
+}
 
 /// Current av toolchain identity (the axes stale adjudication binds probe
 /// rows of THIS recipe to).
@@ -330,7 +339,10 @@ fn probe_toolchain_axes(
         // PLAN-868: the lowering contract identity shared by all av
         // families — reported per row, mandatory (old reports lacking the
         // axis adjudicate STALE by declaration).
-        ("mir-lowering".into(), EXPECTED_MIR_LOWERING_VERSION.into()),
+        (
+            "mir-lowering".into(),
+            expected_mir_lowering_version(family).into(),
+        ),
     ];
     // PLAN-862: the entry-unit generation carries its own profile id (7) and
     // source profile in the receipt — the axis names what actually ran, so a
@@ -6053,7 +6065,8 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
     let Some(c) = &step.console else {
         return Some("console capture is missing; never an empty stream".into());
     };
-    if c.schema != "av.console-capture/1" || c.mir_lowering != EXPECTED_MIR_LOWERING_VERSION {
+    if c.schema != "av.console-capture/1" || c.mir_lowering != expected_mir_lowering_version(family)
+    {
         return Some("console schema/lowering identity mismatch".into());
     }
     if !c.stdout_present || !c.stderr_present {

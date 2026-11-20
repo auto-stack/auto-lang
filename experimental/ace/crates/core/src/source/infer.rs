@@ -629,6 +629,10 @@ fn estimate(
         ExprKind::ArrayLit(values) => {
             estimate_collection("List", e.span, values.iter(), env, ctx, sites)
         }
+        ExprKind::ArrayConditionalElem { cond, value } => {
+            estimate(cond, env, ctx, sites);
+            estimate(value, env, ctx, sites)
+        }
         ExprKind::ObjectLit { fields } => {
             for field in fields {
                 estimate(&field.value, env, ctx, sites);
@@ -1037,6 +1041,52 @@ fn complete_nested_block(
     }
 }
 
+// Use the same boolean match projection as an explicit if value. Only
+// complete tails contribute a script result.
+fn normalize_script_if(block: &mut Block) {
+    let Some(last) = block.stmts.last_mut() else {
+        return;
+    };
+    let Stmt::If {
+        cond,
+        then,
+        els: Some(els),
+        span,
+    } = last
+    else {
+        return;
+    };
+    normalize_script_if(then);
+    normalize_script_if(els);
+    if block_tail(then).is_none() || block_tail(els).is_none() {
+        return;
+    }
+    use crate::source::ast::{AggArmBody, AggMatchArm, MatchPattern};
+    let take_block = |block: &mut Block| Block {
+        span: block.span,
+        stmts: std::mem::take(&mut block.stmts),
+    };
+    let arms = [(true, take_block(then)), (false, take_block(els))]
+        .into_iter()
+        .map(|(value, body)| AggMatchArm {
+            pat: MatchPattern::BoolLit(value),
+            span: body.span,
+            body: AggArmBody::Block(body),
+            guard: None,
+        })
+        .collect();
+    *last = Stmt::ExprStmt {
+        value: Expr {
+            kind: ExprKind::IsExpr {
+                scrutinee: Box::new(cond.clone()),
+                arms,
+            },
+            span: *span,
+        },
+        span: *span,
+    };
+}
+
 /// PLAN-1083 (auto face): parse→resolve normalizations for the ordinary
 /// language face — both are pure AST rewrites, never a second parser:
 ///
@@ -1062,6 +1112,9 @@ pub(crate) fn normalize_auto_face(program: &mut Program) {
         let Item::Fn(f) = item else { continue };
         if f.proto {
             continue;
+        }
+        if f.script {
+            normalize_script_if(&mut f.body);
         }
         if let Some(last) = f.body.stmts.last_mut() {
             if let Stmt::AggIsMatch {

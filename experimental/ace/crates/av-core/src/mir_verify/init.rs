@@ -38,21 +38,7 @@ pub(super) fn check_init(
         })
         .collect();
     // Successors.
-    let succs: Vec<Vec<u32>> = f
-        .blocks
-        .iter()
-        .map(|b| match &b.term {
-            Terminator::Jump { target } => vec![*target],
-            Terminator::Branch { then, else_, .. } => {
-                if then == else_ {
-                    vec![*then]
-                } else {
-                    vec![*then, *else_]
-                }
-            }
-            Terminator::Return { .. } | Terminator::LangFail { .. } => vec![],
-        })
-        .collect();
+    let succs: Vec<Vec<u32>> = f.blocks.iter().map(|b| b.term.successors()).collect();
     // Predecessors (reachable ones only, computed on the fly below).
     let mut preds: Vec<Vec<u32>> = vec![Vec::new(); blocks];
     // Reachability from entry.
@@ -109,8 +95,8 @@ pub(super) fn check_init(
             match &b.term {
                 Terminator::Branch { cond, .. } => Some((*cond, flat)),
                 Terminator::Return { value } => Some((*value, flat)),
-                Terminator::LangFail { message } => Some((*message, flat)),
-                Terminator::Jump { .. } => None,
+                Terminator::LangFail { message, .. } => Some((*message, flat)),
+                Terminator::Jump { .. } | Terminator::Invoke { .. } => None,
             }
         })
         .collect();

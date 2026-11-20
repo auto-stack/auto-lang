@@ -321,3 +321,6 @@ mod sys_d01_d06_1064;
 mod plan980_closure_av;
 #[path = "cases/plan982_c_multi.rs"]
 mod plan982_c_multi;
+
+#[path = "cases/plan1087_errors.rs"]
+mod plan1087_errors;

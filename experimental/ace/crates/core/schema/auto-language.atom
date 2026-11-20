@@ -149,7 +149,7 @@ descriptor(schema: "auto.hir.auto-language.draft", revision: 1u32, profile: "aut
         node let { fields { local: LocalRef; value: ExprRef } }
         node return { fields { value: ExprRef } }
         node if { fields { cond: ExprRef; then: BlockRef; else: BlockRef } }
-        node loop { fields { id: LoopDecl; body: BlockRef } }
+        node loop { fields { id: LoopDecl; body: BlockRef; error_kind: LocalRef; error_message: LocalRef } }
         node assign { fields { place: PlaceRef; value: ExprRef } }
         node break { fields { target: LoopRef } }
         node continue { fields { target: LoopRef } }

@@ -519,7 +519,10 @@ pub fn encode_fn_hir(a: &FnHirArtifact) -> Result<Vec<u8>, String> {
                         None => e.out.push(0),
                     }
                 }
-                hir::Stmt::Loop { id, body } => {
+                hir::Stmt::Loop { id, body, unwind } => {
+                    if unwind.is_some() {
+                        return Err("protected loop outside the scalar codec".into());
+                    }
                     e.out.push(3);
                     e.u32(id.0);
                     e.u32(body.0);
@@ -883,6 +886,7 @@ pub fn decode_fn_hir(bytes: &[u8]) -> Result<FnHirArtifact, String> {
                     hir::Stmt::Loop {
                         id: hir::LoopId(id),
                         body: hir::BlockId(body),
+                        unwind: None,
                     }
                 }
                 4 => hir::Stmt::Assign {

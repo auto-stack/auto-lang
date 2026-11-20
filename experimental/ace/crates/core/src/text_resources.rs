@@ -2271,7 +2271,7 @@ impl<'a> ResourceWalk<'a> {
                                 span: self.body.blocks[bid as usize].span,
                             };
                         }
-                        hir::Stmt::Loop { id, body: b } => {
+                        hir::Stmt::Loop { id, body: b, .. } => {
                             // Loop re-entry rule (r2 QA-07, refined by
                             // r9 R9-01): a local LIVE AT LOOP ENTRY that is
                             // moved anywhere in the body is dead for the

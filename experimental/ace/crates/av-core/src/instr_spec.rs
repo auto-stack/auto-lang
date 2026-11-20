@@ -693,6 +693,28 @@ pub const SPECS: &[InstructionSpec] = &[
         profiles: &["aggregates"],
         ownership: "Reads message slot then sweeps active frames",
     },
+    InstructionSpec {
+        opcode: 0x50,
+        name: "INVOKE",
+        family: "term",
+        operands: &[("normal", "B"), ("unwind", "B"), ("message", "Rw")],
+        type_rule: "last instruction is a fallible guest operation; failure defines an owned Str instead of its result",
+        traps: false,
+        fuel: 1,
+        profiles: &["closures"],
+        ownership: "On language error, unwind the callee and deliver the owned message",
+    },
+    InstructionSpec {
+        opcode: 0x51,
+        name: "LANG_FAIL_AT",
+        family: "term",
+        operands: &[("message", "R"), ("start", "U"), ("end", "U")],
+        type_rule: "explicit byte range attached to the language error",
+        traps: false,
+        fuel: 1,
+        profiles: &["closures"],
+        ownership: "Read message then transfer control to the caller's exceptional edge",
+    },
 ];
 
 /// The V-11 coverage gate: every instruction/terminator variant carries
@@ -782,6 +804,8 @@ pub fn coverage_check() -> Result<(), String> {
         "BRANCH",
         "RETURN",
         "LANG_FAIL",
+        "INVOKE",
+        "LANG_FAIL_AT",
     ];
     for e in expected {
         if !seen_names.contains(e) {
@@ -884,7 +908,11 @@ pub fn mnemonic_of_term(t: &Terminator) -> &'static str {
         Terminator::Jump { .. } => "JUMP",
         Terminator::Branch { .. } => "BRANCH",
         Terminator::Return { .. } => "RETURN",
-        Terminator::LangFail { .. } => "LANG_FAIL",
+        Terminator::LangFail {
+            source: Some(_), ..
+        } => "LANG_FAIL_AT",
+        Terminator::LangFail { source: None, .. } => "LANG_FAIL",
+        Terminator::Invoke { .. } => "INVOKE",
     }
 }
 

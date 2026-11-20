@@ -120,6 +120,8 @@ pub struct ExecTrace {
     pub root_frame_commits: u64,
     pub call_frame_commits: u64,
     pub frames_remaining: u64,
+    pub handled_language_errors: u64,
+    pub last_language_error: Option<crate::contract::LanguageErrorOrigin>,
     /// PLAN-915: the value-allocation ordinal the fault seam counted during
     /// THIS execution (0 when no fault seam was configured). A discovery
     /// run arms `fault_after_allocs = Some(u64::MAX)` and reads the total
@@ -311,7 +313,7 @@ pub fn execute_entry_text(
             end: scalars,
         }));
     }
-    let (outcome, mut trace) = execute_module_impl(module, limits, cancel, &args, arena, true);
+    let (outcome, trace) = execute_module_impl(module, limits, cancel, &args, arena, true);
     // 实参里持有 `StrViewSrc::Share(StrHandle)`（视图的**共享缓冲**引用）：
     // 先释放实参，再核对 arena 收支——这样"归零"校验的是**执行本身**是否泄漏。
     drop(args);
@@ -547,7 +549,7 @@ pub fn execute_entry_text_platform(
             end: scalars,
         }));
     }
-    let (outcome, mut trace) = execute_module_impl_with_host(
+    let (outcome, trace) = execute_module_impl_with_host(
         module,
         limits,
         cancel,
@@ -3991,6 +3993,123 @@ fn record_set_val(root: &Value, path: &[u16], val: Value) -> Option<Value> {
     )))
 }
 
+fn has_invoke_handler(v: &dyn ModuleView, st: &LoopState) -> bool {
+    st.frames.iter().rev().any(|frame| {
+        v.fn_at(frame.func)
+            .and_then(|function| function.blocks.get(frame.block as usize))
+            .is_some_and(|block| {
+                frame.ip == block.instrs.len() && matches!(block.term, Terminator::Invoke { .. })
+            })
+    })
+}
+
+/// Deliver a language error to the nearest suspended invoke, keeping the
+/// caller activation and its locals alive. Infrastructure and resource exits
+/// never call this path.
+fn unwind_to_invoke(
+    v: &dyn ModuleView,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    message: &str,
+    origin: crate::contract::LanguageErrorOrigin,
+    from_instruction: bool,
+) -> Result<bool, ExecOutcome> {
+    let upper = st.frames.len() - usize::from(!from_instruction);
+    let Some((depth, target, destination, result_type, result_slot)) = st.frames[..upper]
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(depth, frame)| {
+            let function = v.fn_at(frame.func)?;
+            let block = function.blocks.get(frame.block as usize)?;
+            if frame.ip != block.instrs.len() {
+                return None;
+            }
+            let Terminator::Invoke {
+                unwind, message, ..
+            } = block.term
+            else {
+                return None;
+            };
+            let result = block.invoke_result_slot().expect("invoke shape verified");
+            Some((
+                depth,
+                unwind,
+                message,
+                function.slots[result as usize].ty,
+                result,
+            ))
+        })
+    else {
+        return Ok(false);
+    };
+
+    while st.frames.len() > depth + 1 {
+        let mut frame = st.frames.pop().expect("callee frame present");
+        let mut visited = 0;
+        let bytes = frame_slots_bytes(&frame.slots, &mut visited);
+        st.steps += visited;
+        st.slot_bytes = st.slot_bytes.saturating_sub(bytes);
+        release_frame_owned_lifo(st, &mut frame);
+        if st.lifecycle_on {
+            st.trace.lifecycle.push_frame_leave(frame.seq, true);
+        }
+    }
+
+    let caller = st.frames.last().expect("handler frame present").func;
+    let zero = v.zero_of(caller, result_type);
+    owned_kill_slot(st, result_slot as usize, zero);
+    let destination = destination as usize;
+    owned_alloc_precheck(
+        st,
+        std::mem::size_of::<Value>() + message.len(),
+        destination,
+        limits,
+    )?;
+    st.steps += message.len() as u64;
+    let mut owned = st.arena.try_alloc(message.as_bytes()).map_err(|attempt| {
+        ExecOutcome::Infra(format!(
+            "fault-injected at owned allocation attempt #{attempt}"
+        ))
+    })?;
+    owned.set_error_origin(origin);
+    commit_slot_write(st, destination, Value::Str(owned), limits)?;
+    st.trace.handled_language_errors += 1;
+    st.trace.last_language_error = Some(origin);
+    let frame = st.frames.last_mut().expect("handler frame present");
+    frame.block = target;
+    frame.ip = 0;
+    Ok(true)
+}
+
+fn dispatch_list_index_error(
+    v: &dyn ModuleView,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    outcome: ExecOutcome,
+) -> Option<ExecOutcome> {
+    use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
+    let ExecOutcome::Trap { span, .. } = outcome else {
+        return Some(outcome);
+    };
+    let origin = LanguageErrorOrigin {
+        kind: LanguageErrorKind::ListIndex,
+        span,
+    };
+    match unwind_to_invoke(
+        v,
+        st,
+        limits,
+        "IndexError: list index out of range",
+        origin,
+        true,
+    ) {
+        Ok(true) => None,
+        Ok(false) => Some(outcome),
+        Err(outcome) => Some(outcome),
+    }
+}
+
 fn dispatch<V: ModuleView>(
     v: &V,
     limits: &ExecLimits,
@@ -4440,9 +4559,42 @@ fn dispatch_with_host<V: ModuleView>(
                             // for the named status (the error-model table
                             // stays the naming authority); never a normal
                             // i32 result.
+                            let span = span_of(func, flat).map(|sp| v.map_span(func_idx, sp));
+                            if has_invoke_handler(v, st) {
+                                match table.python_exception(declaration, cancel) {
+                                    Ok(Some((class, message))) => {
+                                        let origin = crate::contract::LanguageErrorOrigin {
+                                            kind: crate::contract::LanguageErrorKind::Python(class),
+                                            span,
+                                        };
+                                        match unwind_to_invoke(
+                                            v, st, limits, &message, origin, true,
+                                        ) {
+                                            Ok(true) => continue,
+                                            Ok(false) => {}
+                                            Err(outcome) => return Some(outcome),
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(crate::foreign_exec::ForeignExecError::Reject(r)) => {
+                                        if CancelCheck::poll(cancel) {
+                                            return Some(ExecOutcome::Cancelled);
+                                        }
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "{}: {}",
+                                            r.code, r.message
+                                        )));
+                                    }
+                                    Err(crate::foreign_exec::ForeignExecError::Panic(message)) => {
+                                        return Some(ExecOutcome::Infra(format!(
+                                            "foreign.panic: {message}"
+                                        )));
+                                    }
+                                }
+                            }
                             return Some(ExecOutcome::Trap {
                                 kind: crate::contract::TrapKind::ForeignStatus,
-                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                span,
                             });
                         }
                         Err(crate::foreign_exec::ForeignExecError::Reject(r)) => {
@@ -6357,20 +6509,13 @@ fn dispatch_with_host<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*index as usize].clone()
                     };
-                    let idx = match list_index_of(&iv) {
-                        Some(i) => i,
-                        None => return Some(list_index_trap(v, func_idx, func, flat)),
-                    };
+                    let index = list_index_of(&iv);
                     let elem = {
                         let fr = st.frames.last().expect("frame present");
                         match &fr.slots[*base as usize] {
                             Value::List(h) => {
                                 let buf = h.rc.borrow();
-                                if idx >= buf.elems.len() {
-                                    drop(buf);
-                                    return Some(list_index_trap(v, func_idx, func, flat));
-                                }
-                                buf.elems[idx].clone()
+                                index.and_then(|idx| buf.elems.get(idx).cloned())
                             }
                             other => {
                                 return Some(ExecOutcome::Infra(format!(
@@ -6379,6 +6524,13 @@ fn dispatch_with_host<V: ModuleView>(
                                 )))
                             }
                         }
+                    };
+                    let Some(elem) = elem else {
+                        let outcome = list_index_trap(v, func_idx, func, flat);
+                        if let Some(outcome) = dispatch_list_index_error(v, st, limits, outcome) {
+                            return Some(outcome);
+                        }
+                        continue;
                     };
                     if let Err(out) = commit_slot_write(st, *dst as usize, elem, limits) {
                         return Some(out);
@@ -7121,27 +7273,22 @@ fn dispatch_with_host<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*index as usize].clone()
                     };
-                    let idx = match list_index_of(&iv) {
-                        Some(i) => i,
-                        None => return Some(list_index_trap(v, func_idx, func, flat)),
-                    };
+                    let index = list_index_of(&iv);
                     let place = {
                         let fr = st.frames.last().expect("frame present");
                         match &fr.slots[*base as usize] {
                             Value::List(h) => {
                                 let buf = h.rc.borrow();
-                                if idx >= buf.elems.len() {
-                                    drop(buf);
-                                    return Some(list_index_trap(v, func_idx, func, flat));
-                                }
-                                crate::contract::ListPlaceV {
-                                    frame: fr.seq as u32,
-                                    slot: *base as u32,
-                                    buf_id: buf.id,
-                                    epoch: buf.epoch,
-                                    index: idx as u32,
-                                    elem_gen: buf.elem_gens[idx],
-                                }
+                                index.filter(|idx| *idx < buf.elems.len()).map(|idx| {
+                                    crate::contract::ListPlaceV {
+                                        frame: fr.seq as u32,
+                                        slot: *base as u32,
+                                        buf_id: buf.id,
+                                        epoch: buf.epoch,
+                                        index: idx as u32,
+                                        elem_gen: buf.elem_gens[idx],
+                                    }
+                                })
                             }
                             other => {
                                 return Some(ExecOutcome::Infra(format!(
@@ -7150,6 +7297,13 @@ fn dispatch_with_host<V: ModuleView>(
                                 )))
                             }
                         }
+                    };
+                    let Some(place) = place else {
+                        let outcome = list_index_trap(v, func_idx, func, flat);
+                        if let Some(outcome) = dispatch_list_index_error(v, st, limits, outcome) {
+                            return Some(outcome);
+                        }
+                        continue;
                     };
                     if let Err(out) =
                         commit_slot_write(st, *dst as usize, Value::Place(place), limits)
@@ -8632,7 +8786,12 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                 }
             }
-            Terminator::LangFail { message } => {
+            Terminator::Invoke { normal, .. } => {
+                let frame = st.frames.last_mut().expect("frame present");
+                frame.block = *normal;
+                frame.ip = 0;
+            }
+            Terminator::LangFail { message, source } => {
                 let msg_val = {
                     let fr = st.frames.last().expect("frame present");
                     fr.slots[*message as usize].clone()
@@ -8644,15 +8803,36 @@ fn dispatch_with_host<V: ModuleView>(
                         other => format!("{}", other.type_name()),
                     },
                 };
-                let sp = ip
-                    .checked_sub(1)
-                    .and_then(|last_ip| v.logical_pc(func_idx, block_idx, last_ip))
-                    .and_then(|(_, fl)| span_of(func, fl))
+                let sp = source
+                    .map(|(start, end)| SpanInfo {
+                        func: func_idx,
+                        start,
+                        end,
+                    })
+                    .or_else(|| {
+                        ip.checked_sub(1)
+                            .and_then(|last_ip| v.logical_pc(func_idx, block_idx, last_ip))
+                            .and_then(|(_, fl)| span_of(func, fl))
+                    })
                     .map(|s| v.map_span(func_idx, s));
-                cleanup_owned_frames(st);
+                use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
+                let origin = match &msg_val {
+                    Value::Str(owned) => owned.error_origin(),
+                    _ => None,
+                }
+                .unwrap_or(LanguageErrorOrigin {
+                    kind: LanguageErrorKind::Explicit,
+                    span: sp,
+                });
+                st.trace.last_language_error = Some(origin);
+                match unwind_to_invoke(v, st, limits, &msg_text, origin, false) {
+                    Ok(true) => continue,
+                    Ok(false) => cleanup_owned_frames(st),
+                    Err(outcome) => return Some(outcome),
+                }
                 return Some(ExecOutcome::Error {
                     message: msg_text,
-                    span: sp,
+                    span: origin.span,
                 });
             }
         }

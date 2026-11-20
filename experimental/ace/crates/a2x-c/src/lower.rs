@@ -732,7 +732,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                 }
                 self.out.push("}".to_string());
             }
-            hir::Stmt::Loop { id, body } => {
+            hir::Stmt::Loop { id, body, .. } => {
                 self.loop_stack.push(id.0);
                 self.out.push("for (;;) {".to_string());
                 self.lower_block(*body)?;

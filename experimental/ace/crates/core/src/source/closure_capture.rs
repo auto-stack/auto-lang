@@ -89,6 +89,10 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(end, outer_locals, scopes, uses, by_name);
             }
 
+            ExprKind::ArrayConditionalElem { cond, value } => {
+                visit_expr(cond, outer_locals, scopes, uses, by_name);
+                visit_expr(value, outer_locals, scopes, uses, by_name);
+            }
             // PLAN-962: an array literal captures through its elements.
             ExprKind::ArrayLit(elems) => {
                 for e in elems {
@@ -480,6 +484,10 @@ pub(crate) fn scan_shared_capture_cells(
             ExprKind::Range { start, end, .. } => {
                 visit_expr(start, scopes, shared);
                 visit_expr(end, scopes, shared);
+            }
+            ExprKind::ArrayConditionalElem { cond, value } => {
+                visit_expr(cond, scopes, shared);
+                visit_expr(value, scopes, shared);
             }
             // PLAN-962: an array literal captures through its elements.
             ExprKind::ArrayLit(elems) => {

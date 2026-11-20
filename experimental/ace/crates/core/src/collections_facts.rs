@@ -448,6 +448,7 @@ impl<'a> Walker<'a> {
                 Stmt::Loop {
                     id: loop_id,
                     body: lb,
+                    ..
                 } => {
                     let before = self.live.clone();
                     // dry-scan the kill sites first: the frame's survivor
@@ -856,7 +857,7 @@ fn digest_stmt(h: &mut Fnv64, s: &Stmt) {
             h.u32(then.0);
             h.u32(els.map(|b| b.0).unwrap_or(u32::MAX));
         }
-        Stmt::Loop { id, body } => {
+        Stmt::Loop { id, body, .. } => {
             h.str("loop");
             h.u32(id.0);
             h.u32(body.0);

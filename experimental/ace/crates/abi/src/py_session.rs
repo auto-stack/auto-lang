@@ -11,7 +11,10 @@
 //! interpreter is host infrastructure and is NEVER finalized per session
 //! (R-06); dropping the session only tears down the binding generation.
 
-use crate::rust_provider::{open_py_bridge_session, F0Session};
+use crate::rust_provider::{
+    ensure_python_dll_path, open_py_bridge_session, open_session_from_build, F0Session,
+    RustProviderBuild,
+};
 use ace_av_core::av::{execute_console_foreign, CancelFlag, ExecLimits};
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::foreign_exec::ForeignStubTable;
@@ -54,6 +57,7 @@ pub struct PySession {
 pub struct PyRun {
     pub outcome: ExecOutcome,
     pub console: PyConsole,
+    pub trace: ace_av_core::av::ExecTrace,
 }
 
 impl PyRun {
@@ -79,6 +83,14 @@ impl PySession {
         })
     }
 
+    /// Open the current binding with an explicitly prepared provider.
+    pub fn from_prepared(build: &RustProviderBuild) -> Result<Self, String> {
+        ensure_python_dll_path();
+        Ok(Self {
+            inner: open_session_from_build(build, 1)?,
+        })
+    }
+
     /// The admitted foreign environment.
     pub fn admitted(&self) -> &AdmittedForeign {
         &self.inner.admitted
@@ -93,19 +105,37 @@ impl PySession {
 
     /// The same run with explicit limits.
     pub fn run_with(&mut self, src: &str, limits: &ExecLimits) -> Result<PyRun, String> {
+        self.run_source(src, limits, false)
+    }
+
+    /// Run ordinary Auto with the current, source-bound Python provider.
+    pub fn run_language_with(&mut self, src: &str, limits: &ExecLimits) -> Result<PyRun, String> {
+        self.run_source(src, limits, true)
+    }
+
+    fn run_source(
+        &mut self,
+        src: &str,
+        limits: &ExecLimits,
+        ordinary: bool,
+    ) -> Result<PyRun, String> {
         let caps = vec![
             ace_foreign_contract::manual::SOURCE_CAP.to_string(),
             ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
         ];
-        let compiled = ace_core::source::compile_aggregates_source_with_foreign(
-            src,
-            "py-session.at",
-            &caps,
-            &self.inner.admitted,
-        )
-        .map_err(|ds| format!("compile: {ds:?}"))?;
-        let mir = ace_lowering::lower_checked_closures(&compiled.checked, "d_main", 0)
-            .map_err(|e| format!("lower: {e:?}"))?;
+        let compile = if ordinary {
+            ace_core::source::compile_language_source_with_foreign
+        } else {
+            ace_core::source::compile_aggregates_source_with_foreign
+        };
+        let lower = if ordinary {
+            ace_lowering::lower_checked_auto_language
+        } else {
+            ace_lowering::lower_checked_closures
+        };
+        let compiled = compile(src, "py-session.at", &caps, &self.inner.admitted)
+            .map_err(|ds| format!("compile: {ds:?}"))?;
+        let mir = lower(&compiled.checked, "d_main", 0).map_err(|e| format!("lower: {e:?}"))?;
         ace_av_core::verify_mir(&mir).map_err(|e| format!("mir: {e:?}"))?;
         let encoded = ace_av_core::abc::encode_abc(&mir)
             .map_err(|e| format!("encode: {e:?}"))?
@@ -113,10 +143,15 @@ impl PySession {
         let decoded =
             ace_av_core::abc::decode_abc(&encoded).map_err(|e| format!("decode: {e:?}"))?;
         let table: &mut ForeignStubTable = self.inner.session.table();
+        if ordinary {
+            table
+                .bind_python_error_observers(&self.inner.admitted)
+                .map_err(|error| format!("{}: {}", error.code, error.message))?;
+        }
         let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &mir.owner, table)
             .map_err(|e| format!("admit: {e:?}"))?;
         let mut console = PyConsole::default();
-        let (outcome, _) = execute_console_foreign(
+        let (outcome, trace) = execute_console_foreign(
             &loaded,
             limits,
             &CancelFlag::new(false),
@@ -125,7 +160,11 @@ impl PySession {
             table,
         )
         .map_err(|e| format!("execute: {e:?}"))?;
-        Ok(PyRun { outcome, console })
+        Ok(PyRun {
+            outcome,
+            console,
+            trace,
+        })
     }
 
     /// Tear down the binding generation (the interpreter stays host-owned).

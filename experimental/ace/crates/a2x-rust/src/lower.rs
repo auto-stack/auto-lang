@@ -1003,7 +1003,7 @@ impl<'v, 'a> FnLowering<'v, 'a> {
                     els: e,
                 });
             }
-            hir::Stmt::Loop { id, body } => {
+            hir::Stmt::Loop { id, body, .. } => {
                 self.loop_stack.push(id.0);
                 let b = self.lower_block(*body)?;
                 self.loop_stack.pop();

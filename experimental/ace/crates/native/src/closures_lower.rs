@@ -434,6 +434,12 @@ fn emit_admitted(m: &MirModule, layouts: &[Descriptor]) -> Result<emit::UnitObje
                     lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
                     lower.fb.ins().return_(&[]);
                 }
+                Terminator::Invoke { .. } => {
+                    return Err(unsupported(
+                        "mn.invoke",
+                        "language-error unwind is supported by AV",
+                    ));
+                }
                 Terminator::LangFail { .. } => {
                     if let Some(env) = lower.env_param {
                         lower.checked("mn_coll_env_unpin", &[(env, types::I64)])?;

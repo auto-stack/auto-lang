@@ -847,6 +847,7 @@ pub enum RStmt {
         body: RBlock,
         span: Span,
         target: LoopRef,
+        unwind: Option<(LocalRef, LocalRef)>,
     },
     Break {
         target: Option<LoopRef>,
@@ -1765,14 +1766,31 @@ pub fn resolve_aggregates_with_foreign(
     capabilities: &[String],
     foreign: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let supply = ForeignOnlySupply::new(foreign);
-    let (fns, records, coll, _) = resolve_detailed(
+    resolve_with_foreign_source(
         program,
         capabilities,
+        foreign,
         SourceProfile::Aggregates,
+        false,
+    )
+}
+
+pub(crate) fn resolve_with_foreign_source(
+    program: &ast::Program,
+    capabilities: &[String],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    profile: SourceProfile,
+    script_errors: bool,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let supply = ForeignOnlySupply::new(foreign);
+    let (fns, records, coll, _) = resolve_detailed_in_mode(
+        program,
+        capabilities,
+        profile,
         None,
         Some(&supply),
         None,
+        script_errors,
     )?;
     Ok(ResolvedProgram {
         foreign_slots: Vec::new(),
@@ -7195,7 +7213,7 @@ F:{d}
             // PLAN-962: literals/indexes never reach closure inference
             // (statement-level desugar owns them); totals for
             // exhaustiveness.
-            ExprKind::ArrayLit(_) => VT::I32,
+            ExprKind::ArrayLit(_) | ExprKind::ArrayConditionalElem { .. } => VT::I32,
             // PLAN-963（T-04）：值实参调用由实例层重绑；closures 面不产
             // ConstCall，本臂仅为穷尽性。
             ExprKind::ConstCall { .. } => VT::I32,
@@ -10916,6 +10934,8 @@ F:{d}
             body: r_try,
             span,
             target: try_loop,
+            unwind: (self.profile.is_auto_language() && !self.is_generator)
+                .then_some((cs.kind, cs.err)),
         });
 
         let mut catch_diverges = true;
@@ -11023,6 +11043,8 @@ F:{d}
                 body: r_catch,
                 span: cc.span,
                 target: catch_loop,
+                unwind: (self.profile.is_auto_language() && !self.is_generator)
+                    .then_some((cs.kind, cs.err)),
             });
             out.push(RStmt::If {
                 cond: ResolvedExpr {
@@ -11169,6 +11191,8 @@ F:{d}
                 body: r_fin,
                 span: fb.span,
                 target: fin_loop,
+                unwind: (self.profile.is_auto_language() && !self.is_generator)
+                    .then_some((cs.kind, cs.err)),
             });
             let mut restore_stmts = vec![
                 RStmt::Assign {
@@ -11417,10 +11441,20 @@ F:{d}
             ],
             span: body.span,
         };
+        let unwind =
+            if self.profile.is_auto_language() && !self.is_generator && self.has_enclosing_try() {
+                // Route failures through the iterator's normal close and
+                // post-frame exit dispatch before entering catch/finally.
+                let control = self.ensure_ctrl_state(span);
+                Some((control.kind, control.err))
+            } else {
+                None
+            };
         out.push(RStmt::Loop {
             body: loop_body,
             span,
             target,
+            unwind,
         });
         out.push(self.close_for_iter_stmt(close_fn_index, it_local, span));
         if self.has_outer_ctrl_barrier() {
@@ -12323,6 +12357,12 @@ F:{d}
                 kind: RExprKind::IntLit(0),
             };
         }
+        if elems
+            .iter()
+            .any(|elem| matches!(elem.kind, ExprKind::ArrayConditionalElem { .. }))
+        {
+            return self.resolve_conditional_array(elems, span, publish_script_result);
+        }
         let mut rs = Vec::with_capacity(elems.len());
         for el in elems {
             let value = self.expr_iterative(el);
@@ -12345,52 +12385,128 @@ F:{d}
             },
             span,
         });
-        for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
-            // PLAN-1082: a NESTED array-literal element resolves to a
-            // synthetic temp read; wrapping it in `Move` spells the
-            // whole-fresh-rvalue transfer the push admission wants
-            // (user-local reads keep the implicit-move rejection).
-            if self.profile.is_auto_language()
-                && matches!(ast_el.kind, ExprKind::ArrayLit(_))
-                && matches!(r.kind, RExprKind::ReadLocal(_))
-                && self.vt_is_coll_owned(r.vt)
-            {
-                let inner_vt = r.vt;
-                let span0 = r.span;
-                let taken = std::mem::replace(&mut r.kind, RExprKind::IntLit(0));
-                r = ResolvedExpr {
-                    span: span0,
-                    vt: inner_vt,
-                    kind: RExprKind::Move {
-                        inner: Box::new(ResolvedExpr {
-                            span: span0,
-                            vt: inner_vt,
-                            kind: taken,
-                        }),
-                    },
-                };
-            }
-            self.check_push_value(&elem_vt, &mut r, ast_el.span);
-            self.emit_stmt(RStmt::ExprStmt {
-                value: ResolvedExpr {
-                    span: ast_el.span,
-                    vt: VT::Unit,
-                    kind: RExprKind::ListPush {
-                        list: Box::new(ResolvedExpr {
-                            span: ast_el.span,
-                            vt: VT::List(li),
-                            kind: RExprKind::ReadLocal(temp),
-                        }),
-                        value: Box::new(r),
-                    },
-                },
-                span: ast_el.span,
-            });
+        for (value, ast_elem) in rs.into_iter().zip(elems) {
+            let push = self.array_push(temp, li, ast_elem, value);
+            self.emit_stmt(push);
         }
         ResolvedExpr {
             span,
             vt: VT::List(li),
             kind: RExprKind::ReadLocal(temp),
+        }
+    }
+
+    fn resolve_conditional_array(
+        &mut self,
+        elems: &[Expr],
+        span: Span,
+        publish_script_result: bool,
+    ) -> ResolvedExpr {
+        let mut items = Vec::with_capacity(elems.len());
+        let mut values = Vec::with_capacity(elems.len());
+        for elem in elems {
+            let (guard, source_value) = match &elem.kind {
+                ExprKind::ArrayConditionalElem { cond, value } => {
+                    let (prelude, test, _) =
+                        self.resolve_in_branch(|resolver| resolver.resolve_condition(cond));
+                    (Some((prelude, test)), value.as_ref())
+                }
+                _ => (None, elem),
+            };
+            let (prelude, value, diverges) =
+                self.resolve_in_branch(|resolver| resolver.expr_iterative(source_value));
+            values.push(if publish_script_result {
+                Self::own_dynamic_text(value)
+            } else {
+                value
+            });
+            items.push((guard, prelude, source_value, diverges));
+        }
+        let elem_vt = self.array_element_type(&mut values);
+        let list = self.coll.intern_list(elem_vt);
+        let temp = self.agg_temp("arr_lit", VT::List(list), false, span);
+        self.emit_stmt(RStmt::Let {
+            local: temp,
+            value: ResolvedExpr {
+                span,
+                vt: VT::List(list),
+                kind: RExprKind::ListNew { list },
+            },
+            span,
+        });
+        for ((guard, mut prelude, source_value, diverges), value) in items.into_iter().zip(values) {
+            if !diverges {
+                prelude.push(self.array_push(temp, list, source_value, value));
+            }
+            if let Some((condition_prelude, cond)) = guard {
+                for stmt in condition_prelude {
+                    self.emit_stmt(stmt);
+                }
+                self.emit_stmt(RStmt::If {
+                    cond,
+                    then: RBlock {
+                        stmts: prelude,
+                        span: source_value.span,
+                    },
+                    els: None,
+                    span: source_value.span,
+                });
+            } else {
+                for stmt in prelude {
+                    self.emit_stmt(stmt);
+                }
+            }
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::List(list),
+            kind: RExprKind::Move {
+                inner: Box::new(ResolvedExpr {
+                    span,
+                    vt: VT::List(list),
+                    kind: RExprKind::ReadLocal(temp),
+                }),
+            },
+        }
+    }
+
+    fn array_push(
+        &mut self,
+        local: LocalRef,
+        list: usize,
+        source: &Expr,
+        mut value: ResolvedExpr,
+    ) -> RStmt {
+        if self.profile.is_auto_language()
+            && matches!(source.kind, ExprKind::ArrayLit(_))
+            && matches!(value.kind, RExprKind::ReadLocal(_))
+            && self.vt_is_coll_owned(value.vt)
+        {
+            value = ResolvedExpr {
+                span: value.span,
+                vt: value.vt,
+                kind: RExprKind::Move {
+                    inner: Box::new(value),
+                },
+            };
+        }
+        let span = source.span;
+        let element_type = self.coll.lists[list];
+        self.check_push_value(&element_type, &mut value, span);
+        RStmt::ExprStmt {
+            value: ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::ListPush {
+                    list: Box::new(ResolvedExpr {
+                        span,
+                        vt: VT::List(list),
+                        kind: RExprKind::ReadLocal(local),
+                    }),
+                    value: Box::new(value),
+                },
+            },
+            span,
         }
     }
 
@@ -12674,6 +12790,7 @@ F:{d}
                             body: block,
                             span,
                             target,
+                            unwind: None,
                         });
                         if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
                             self.emit_post_frame_dispatch(span, parent);
@@ -13380,7 +13497,17 @@ F:{d}
                             });
                         continue;
                     }
-                    if let ExprKind::ArrayLit(elems_ast) = &value.kind {
+                    let plain_array = match &value.kind {
+                        ExprKind::ArrayLit(elements)
+                            if !elements.iter().any(|elem| {
+                                matches!(elem.kind, ExprKind::ArrayConditionalElem { .. })
+                            }) =>
+                        {
+                            Some(elements)
+                        }
+                        _ => None,
+                    };
+                    if let Some(elems_ast) = plain_array {
                         let mut elems = Vec::with_capacity(elems_ast.len());
                         for e in elems_ast {
                             elems.push(self.expr_iterative(e));
@@ -14466,6 +14593,7 @@ F:{d}
                         let mut prologue = prologue;
                         prologue.push(RStmt::Loop {
                             target,
+                            unwind: None,
                             body: RBlock {
                                 stmts: vec![if_stmt],
                                 span: body.span,
@@ -14724,6 +14852,7 @@ F:{d}
                         },
                         span: *span,
                         target,
+                        unwind: None,
                     });
                     if self.profile.is_aggregates() && self.has_outer_ctrl_barrier() {
                         self.emit_post_frame_dispatch(*span, &mut prologue);
@@ -14868,6 +14997,14 @@ F:{d}
             // EMPTY literal keeps its named rejection: no element type is
             // inferable on this face (write `List<T>.new()`).
             ExprKind::ArrayLit(elems) => self.resolve_array_literal(elems, e.span, false),
+            ExprKind::ArrayConditionalElem { .. } => {
+                self.bind_err(
+                    "source.array-element-position",
+                    "a conditional element needs an enclosing list literal",
+                    e.span,
+                );
+                self.dummy_of(VT::I32, e.span)
+            }
             // PLAN-963（T-04）：`rep<2>(21)` 必经实例层重绑成具体实例的普通
             // 调用；到达 resolve = 模板未被实例化（具名拒，不猜）。
             ExprKind::ConstCall { callee, .. } => {
@@ -18293,6 +18430,27 @@ F:{d}
                     return Self::own_dynamic_text(value);
                 }
             }
+            if recv.vt.is_text()
+                && name.name == "to"
+                && to_word.is_some_and(|word| vt_of_word(word) == VT::I32)
+                && self.sigs.contains_key(super::adapter::STDLIB_TEXT_TO_INT)
+            {
+                let callee = ast::Ident {
+                    name: super::adapter::STDLIB_TEXT_TO_INT.into(),
+                    span: name.span,
+                };
+                let value_span = recv.span;
+                return self.resolve_call(
+                    &callee,
+                    vec![ResolvedArg {
+                        name: None,
+                        value: recv,
+                        moved: false,
+                        span: value_span,
+                    }],
+                    span,
+                );
+            }
             if recv.vt == VT::I32
                 && name.name == "to"
                 && to_word.is_some_and(|word| vt_of_word(word).is_text())
@@ -19040,6 +19198,10 @@ F:{d}
                     // as text (literals AND reads of Str locals).
                     (_, VT::Str | VT::StrOwned) => {
                         parts.push(FStrPart::Text(a.value.clone()));
+                    }
+                    (_, VT::Dyn) if self.profile.is_auto_language() => {
+                        let text = Self::coerce_dynamic(a.value.clone(), VT::StrOwned);
+                        parts.push(FStrPart::Text(text));
                     }
                     (_, VT::I32) => {
                         let operand = a.value.clone();

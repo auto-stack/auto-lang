@@ -198,7 +198,7 @@ pub fn compile_language_source(
     // method surface dispatches to these REAL public functions (same
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
-    let grafted = graft_stdlib_text(src, graft_stdlib_list(src));
+    let grafted = graft_stdlib_integer_parse(src, graft_stdlib_text(src, graft_stdlib_list(src)));
     let profile = SourceProfile::Auto;
     let parts = if grafted.len() == src.len() {
         compile_parts_with(src, module_path, capabilities, profile)?
@@ -397,6 +397,48 @@ pub fn text_scan_signature(symbol: &str) -> Option<(&'static [VT], VT)> {
     }
 }
 
+pub(super) const STDLIB_TEXT_TO_INT: &str = "__std_conv_require_int";
+const STDLIB_ASM_CONV_AT: &str = include_str!("../../../../../../stdlib/ace/asm/conv.at");
+
+fn graft_stdlib_integer_parse(user_source: &str, mut source: String) -> String {
+    let needs_integer_parse = user_source.match_indices(".to").any(|(index, method)| {
+        user_source[index + method.len()..]
+            .trim_start()
+            .strip_prefix('(')
+            .and_then(|arguments| arguments.trim_start().strip_prefix("int"))
+            .is_some_and(|remainder| remainder.trim_start().starts_with(')'))
+    });
+    if !needs_integer_parse {
+        return source;
+    }
+    // Reuse the standard-library parser. An ordinary conversion consumes
+    // its Option through the language's checked error channel.
+    let (parse, _) = STDLIB_ASM_CONV_AT
+        .split_once("pub fn is_uint")
+        .expect("stdlib conversion and predicate declarations");
+    source.push('\n');
+    source.push_str(&mangle_stdlib_functions(
+        &parse.replace("s Str", "s str"),
+        &["to_int", "parse_at"],
+        "__std_conv_",
+    ));
+    source.push_str(
+        r#"
+fn __std_conv_require_int(s str) int {
+    let parsed = __std_conv_to_int(s)
+    is parsed {
+        Some(n) -> { return n }
+        else -> { return __std_conv_bad_int() }
+    }
+}
+fn __std_conv_bad_int() int {
+    fail("ValueError: invalid integer text")
+}
+"#,
+    );
+    source
+}
+
 fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
     if [".find(", ".trim(", ".split(", ".substr("]
         .iter()
@@ -471,6 +513,32 @@ pub fn compile_aggregates_source_with_foreign(
     capabilities: &[String],
     foreign: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_source_with_foreign(
+        src,
+        module_path,
+        capabilities,
+        foreign,
+        SourceProfile::Aggregates,
+    )
+}
+
+/// Ordinary Auto with an explicitly admitted foreign provider.
+pub fn compile_language_source_with_foreign(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_source_with_foreign(src, module_path, capabilities, foreign, SourceProfile::Auto)
+}
+
+fn compile_source_with_foreign(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    foreign: &ace_foreign_contract::manual::AdmittedForeign,
+    profile: SourceProfile,
+) -> Result<CompiledSource, Vec<Diagnostic>> {
     // PLAN-1107 T-02: arm the shared py-op recorder for this compile. The
     // recorder is thread-local and only records while armed, so every other
     // compile path is untouched. The plan is always disarmed (taken) below,
@@ -478,7 +546,7 @@ pub fn compile_aggregates_source_with_foreign(
     // operations were actually recorded.
     crate::py_ops::begin_recording();
     let compiled = (|| {
-        let mut program = match super::parse_program_with(src, SourceProfile::Aggregates) {
+        let mut program = match super::parse_program_with(src, profile) {
             Ok(p) => p,
             Err(d) => return Err(vec![d]),
         };
@@ -490,14 +558,18 @@ pub fn compile_aggregates_source_with_foreign(
             src,
             module_path,
             capabilities,
-            SourceProfile::Aggregates,
+            profile,
             None,
             Some(foreign),
             false,
         )?;
         let checked = crate::verify::verify_foreign_closures(parts.bundle, foreign)?;
         Ok(CompiledSource {
-            profile: super::AGGREGATES_SOURCE_PROFILE,
+            profile: if profile.is_auto_language() {
+                super::AUTO_SOURCE_PROFILE
+            } else {
+                super::AGGREGATES_SOURCE_PROFILE
+            },
             input_hash: parts.input_hash,
             atom_text: parts.atom_text,
             checked,
@@ -1509,12 +1581,17 @@ fn compile_program_observed_with_age(
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     age_eq: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    // PLAN-1026: the py-bridge training lane grafts the adapter's
-    // declared frame ops into the AGGREGATES surface (the F0 text-record
-    // lane keeps its own entry); every other profile ignores the env.
+    // The explicit provider supplies checked foreign facts to the
+    // aggregates and ordinary Auto faces. Plain sources never add it.
     let resolved_in = match (profile, foreign) {
-        (SourceProfile::Aggregates, Some(env)) => {
-            super::resolve::resolve_aggregates_with_foreign(program, capabilities, env)
+        (SourceProfile::Aggregates | SourceProfile::Auto, Some(env)) => {
+            super::resolve::resolve_with_foreign_source(
+                program,
+                capabilities,
+                env,
+                profile,
+                profile.is_auto_language() && module_path.ends_with(".as"),
+            )
         }
         (SourceProfile::Auto, _) if module_path.ends_with(".as") => {
             super::resolve::resolve_with_source_mode(program, capabilities, profile, true)
@@ -2096,6 +2173,7 @@ enum SKind {
     Loop {
         target: usize,
         body: usize,
+        unwind: Option<(usize, usize)>,
     },
     Break {
         target: usize,
@@ -2277,6 +2355,7 @@ impl PlanCtx<'_> {
                 home: usize,
                 span: Span,
                 target: usize,
+                unwind: Option<(usize, usize)>,
             },
         }
         let entry = plan.blocks.len();
@@ -2410,13 +2489,23 @@ impl PlanCtx<'_> {
                             kind: SKind::Loop {
                                 target,
                                 body: k_test,
+                                unwind: None,
                             },
                             span: stmt_span,
                         });
                     }
-                    PCont::LoopArm { home, span, target } => {
+                    PCont::LoopArm {
+                        home,
+                        span,
+                        target,
+                        unwind,
+                    } => {
                         plan.blocks[home].stmts.push(SNode {
-                            kind: SKind::Loop { target, body: bid },
+                            kind: SKind::Loop {
+                                target,
+                                body: bid,
+                                unwind,
+                            },
                             span,
                         });
                     }
@@ -2602,7 +2691,12 @@ impl PlanCtx<'_> {
                         },
                     });
                 }
-                RStmt::Loop { body, span, target } => {
+                RStmt::Loop {
+                    body,
+                    span,
+                    target,
+                    unwind,
+                } => {
                     ensure_loop(plan, target.0, *span);
                     let k_body = plan.blocks.len();
                     plan.blocks.push(BNode {
@@ -2623,6 +2717,7 @@ impl PlanCtx<'_> {
                             home,
                             span: *span,
                             target: target.0,
+                            unwind: unwind.map(|(kind, message)| (kind.0, message.0)),
                         },
                     });
                 }
@@ -2702,6 +2797,7 @@ impl PlanCtx<'_> {
                     kind: SKind::Loop {
                         target: ph,
                         body: k_empty,
+                        unwind: None,
                     },
                     span,
                 });
@@ -5833,8 +5929,17 @@ impl<'p> Emitter<'p> {
                             }
                             None => format!("if(cond: e{}, then: k{}) {{}}", cond, then),
                         },
-                        SKind::Loop { target, body } => {
-                            format!("loop(id: q{}, body: k{}) {{}}", target, body)
+                        SKind::Loop {
+                            target,
+                            body,
+                            unwind,
+                        } => {
+                            let handler = unwind
+                                .map(|(kind, message)| {
+                                    format!(", error_kind: l{kind}, error_message: l{message}")
+                                })
+                                .unwrap_or_default();
+                            format!("loop(id: q{target}, body: k{body}{handler}) {{}}")
                         }
                         SKind::Break { target } => format!("break(target: q{}) {{}}", target),
                         SKind::Continue { target } => {

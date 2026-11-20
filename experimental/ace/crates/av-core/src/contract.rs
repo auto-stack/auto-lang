@@ -536,6 +536,7 @@ pub struct RecordValue {
 pub struct StrBuf {
     pub id: u64,
     pub bytes: Box<[u8]>,
+    error_origin: Option<LanguageErrorOrigin>,
 }
 
 /// Owning handle to an [`StrBuf`] (the `Value::Str` payload). Cloning adds
@@ -553,7 +554,11 @@ impl StrHandle {
     /// A handle with NO arena hook (placeholder / out-of-execution value).
     pub fn detached(bytes: Box<[u8]>) -> Self {
         StrHandle {
-            rc: std::rc::Rc::new(StrBuf { id: 0, bytes }),
+            rc: std::rc::Rc::new(StrBuf {
+                id: 0,
+                bytes,
+                error_origin: None,
+            }),
             hook: None,
         }
     }
@@ -565,13 +570,27 @@ impl StrHandle {
         hook: std::rc::Rc<std::cell::RefCell<crate::owned_text::ArenaCore>>,
     ) -> Self {
         StrHandle {
-            rc: std::rc::Rc::new(StrBuf { id, bytes }),
+            rc: std::rc::Rc::new(StrBuf {
+                id,
+                bytes,
+                error_origin: None,
+            }),
             hook: Some(hook),
         }
     }
     pub fn bytes(&self) -> &[u8] {
         &self.rc.bytes
     }
+    pub(crate) fn set_error_origin(&mut self, origin: LanguageErrorOrigin) {
+        std::rc::Rc::get_mut(&mut self.rc)
+            .expect("fresh error message handle")
+            .error_origin = Some(origin);
+    }
+
+    pub(crate) fn error_origin(&self) -> Option<LanguageErrorOrigin> {
+        self.rc.error_origin
+    }
+
     /// PLAN-919: a LEDGERED handle (minted by the arena) vs a detached
     /// placeholder / out-of-execution value. Only attached handles are
     /// lifecycle owners.
@@ -1229,6 +1248,20 @@ pub struct SpanInfo {
     pub func: u32,
     pub start: u32,
     pub end: u32,
+}
+
+/// Classification and original operation site of a handled language error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LanguageErrorOrigin {
+    pub kind: LanguageErrorKind,
+    pub span: Option<SpanInfo>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LanguageErrorKind {
+    Explicit,
+    ListIndex,
+    Python(u8),
 }
 
 impl fmt::Display for SpanInfo {

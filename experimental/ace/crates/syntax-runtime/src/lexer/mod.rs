@@ -445,10 +445,15 @@ impl<'p, 's> Scanner<'p, 's> {
         let mut n = 1u64;
         loop {
             match self.w.byte(at + n)? {
-                // The number's decimal point is a single dot. Leave
-                // adjacent range punctuation for the next scanner step.
-                Some(b'.') if number_before_range && self.w.byte(at + n + 1)? == Some(b'.') => {
-                    break
+                // In a surface with range punctuation, a dot can also
+                // introduce a postfix method call. Leave that punctuation
+                // for the next token without splitting decimal suffixes.
+                Some(b'.')
+                    if number_before_range
+                        && (self.w.byte(at + n + 1)? == Some(b'.')
+                            || self.starts_postfix_method(at + n + 1)?) =>
+                {
+                    break;
                 }
                 Some(b) if cont.contains(b) || (b >= 0x80 && cont.non_ascii) => n += 1,
                 Some(_) | None => break,
@@ -459,6 +464,23 @@ impl<'p, 's> Scanner<'p, 's> {
             return Ok(None);
         }
         Ok(Some(n))
+    }
+
+    fn starts_postfix_method(&mut self, mut at: u64) -> Result<bool, RtError> {
+        let Some(first) = self.w.byte(at)? else {
+            return Ok(false);
+        };
+        if !first.is_ascii_alphabetic() && first != b'_' {
+            return Ok(false);
+        }
+        at += 1;
+        while let Some(byte) = self.w.byte(at)? {
+            if !byte.is_ascii_alphanumeric() && byte != b'_' {
+                return Ok(byte == b'(');
+            }
+            at += 1;
+        }
+        Ok(false)
     }
 
     fn scan_block(
