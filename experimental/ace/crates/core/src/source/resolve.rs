@@ -1102,6 +1102,7 @@ pub struct CollTables {
     variant_names: BTreeMap<String, usize>,
     spec_variants: BTreeSet<usize>,
     enum_instances: BTreeMap<usize, ast::EnumInstance>,
+    record_instances: BTreeMap<String, ast::RecordInstance>,
     enum_type_templates: BTreeMap<String, Vec<String>>,
     enum_type_requests: Vec<instances::AutoEnumDemand>,
     /// PLAN-962: aggregates-profile admission — nested List, composite
@@ -2407,6 +2408,9 @@ fn resolve_detailed_in_mode(
             let Some(&ri) = rec_index.get(&t.name.name) else {
                 continue;
             };
+            if let Some(instance) = &t.instance {
+                coll.record_instances.insert(t.name.name.clone(), instance.clone());
+            }
             let mut seen: BTreeSet<&str> = BTreeSet::new();
             for f in &t.fields {
                 if !seen.insert(f.name.name.as_str()) {
@@ -14395,6 +14399,19 @@ F:{d}
                         self.reject_elem_view_use(&value, "the returned value");
                         if self.owned_spec_result && self.fn_result == VT::StrOwned {
                             value = Self::own_dynamic_text(value);
+                        }
+                        if self.profile.is_auto_language()
+                            && value.vt == self.fn_result
+                            && matches!(value.vt, VT::Rec(_))
+                            && !self.vt_is_coll_owned(value.vt)
+                            && matches!(&value.kind, RExprKind::ReadLocal(local)
+                                if self.locals[local.0].is_param && self.locals[local.0].mode != ast::ParamMode::Move)
+                        {
+                            value = ResolvedExpr {
+                                span: value.span,
+                                vt: value.vt,
+                                kind: RExprKind::RecordClone { base: Box::new(value) },
+                            };
                         }
                         retag_literal(&mut value, self.fn_result);
                         if matches!(

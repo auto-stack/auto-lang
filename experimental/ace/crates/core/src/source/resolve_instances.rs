@@ -647,7 +647,7 @@ fn source_annotation_by_name(
         VT::U64 => TypeRef::Builtin(TypeWord::U64),
         VT::F32 => TypeRef::Builtin(TypeWord::Float),
         VT::F64 => TypeRef::Builtin(TypeWord::F64),
-        VT::Rec(index) => TypeRef::Record(ident(&record_name(index)?)),
+        VT::Rec(index) => record_instance_annotation(&record_name(index)?, tables, span),
         VT::List(index) => TypeRef::Generic {
             name: ident("List"),
             args: vec![ann(*tables.lists.get(index)?)?],
@@ -697,6 +697,33 @@ fn source_annotation_by_name(
         _ => return None,
     };
     Some(TypeAnn { kind, span })
+}
+
+fn record_instance_annotation(name: &str, tables: &CollTables, span: Span) -> TypeRef {
+    let ident = |name: &str| Ident {
+        name: name.to_owned(),
+        span,
+    };
+    match tables.record_instances.get(name) {
+        Some(instance) => TypeRef::Generic {
+            name: ident(&instance.template),
+            args: instance
+                .arguments
+                .iter()
+                .map(|argument| {
+                    let kind = match &argument.kind {
+                        TypeRef::Record(record) => {
+                            record_instance_annotation(&record.name, tables, span)
+                        }
+                        TypeRef::Builtin(TypeWord::I32) => TypeRef::Builtin(TypeWord::Int),
+                        kind => kind.clone(),
+                    };
+                    TypeAnn { kind, span }
+                })
+                .collect(),
+        },
+        None => TypeRef::Record(ident(name)),
+    }
 }
 
 pub(super) fn enum_type_annotation(

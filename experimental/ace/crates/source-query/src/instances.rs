@@ -382,6 +382,16 @@ fn materialize_instance(
     for_each_block_mut(&mut body, &mut |expr| {
         let types = match &mut expr.kind {
             ExprKind::ConstCall { types, .. } => types,
+            ExprKind::GenericType { args, .. } | ExprKind::CtorNamed { args, .. } => args,
+            ExprKind::Closure { params, result, .. } => {
+                for param in params {
+                    param.ty = subst_ann(&param.ty);
+                }
+                if let Some(result) = result {
+                    *result = subst_ann(result);
+                }
+                return;
+            }
             ExprKind::MethodCall {
                 instance: Some(args),
                 ..
@@ -908,9 +918,13 @@ fn verify_auto_bound(
     let Some(bound) = &param.bound else {
         return Ok(());
     };
-    let satisfied = matches!(&ty.kind, TypeRef::Record(id) if items.iter().any(|item| {
-        matches!(item, Item::Type(t) if t.name.name == id.name && t.conforms.iter().any(|c| c.name.name == bound.name))
-    }));
+    let satisfied = find_bound_record(items, ty).is_some_and(|record| {
+        record.spec_memberships.contains(&bound.name)
+            || record
+                .conforms
+                .iter()
+                .any(|claim| claim.name.name == bound.name)
+    });
     if satisfied {
         Ok(())
     } else {
@@ -925,6 +939,47 @@ fn verify_auto_bound(
             ),
             call,
         )])
+    }
+}
+
+fn find_bound_record<'a>(
+    items: &'a [Item],
+    ty: &TypeAnn,
+) -> Option<&'a ace_core::source::ast::TypeItem> {
+    let records = items.iter().filter_map(|item| match item {
+        Item::Type(record) => Some(record),
+        _ => None,
+    });
+    match &ty.kind {
+        TypeRef::Record(name) => records.into_iter().find(|r| r.name.name == name.name),
+        TypeRef::Generic { name, args } => {
+            let mut want = Vec::new();
+            for arg in args {
+                if matches!(&arg.kind, TypeRef::Generic { .. }) {
+                    let nested = find_bound_record(items, arg)?;
+                    let nominal = TypeAnn {
+                        kind: TypeRef::Record(nested.name.clone()),
+                        span: arg.span,
+                    };
+                    crate::ident::type_canonical(&nominal, &mut want);
+                } else {
+                    crate::ident::type_canonical(arg, &mut want);
+                }
+            }
+            records.into_iter().find(|r| {
+                r.instance.as_ref().is_some_and(|instance| {
+                    if instance.template != name.name || instance.arguments.len() != args.len() {
+                        return false;
+                    }
+                    let mut actual = Vec::new();
+                    for arg in &instance.arguments {
+                        crate::ident::type_canonical(arg, &mut actual);
+                    }
+                    actual == want
+                })
+            })
+        }
+        _ => None,
     }
 }
 
@@ -1044,11 +1099,17 @@ fn rebind_enum_constructors(body: &mut Block, owner: &str, rewrites: &EnumCallRe
 
 /// Return the origin of each concrete symbol so a package can retain source
 /// associations after templates are removed from the executable AST.
+#[derive(Default)]
+pub(crate) struct AutoInstanceOrigins {
+    pub(crate) functions: BTreeMap<String, String>,
+    pub(crate) records: BTreeMap<String, String>,
+}
+
 pub(crate) fn instantiate_auto_program_scoped(
     program: &mut Program,
     capabilities: &[String],
     template_identity: impl Fn(&str) -> String,
-) -> Result<BTreeMap<String, String>, Vec<Diagnostic>> {
+) -> Result<AutoInstanceOrigins, Vec<Diagnostic>> {
     use ace_core::source::resolve::discover_auto_instance_calls;
     use std::time::Instant;
 
@@ -1056,6 +1117,7 @@ pub(crate) fn instantiate_auto_program_scoped(
     let mut names = BTreeSet::new();
     let mut type_names = BTreeSet::new();
     let mut enums = BTreeMap::new();
+    let mut record_templates = BTreeMap::new();
     for item in &mut program.items {
         if let Item::Type(record) = item {
             if !type_names.insert(record.name.name.clone()) && enums.contains_key(&record.name.name)
@@ -1066,6 +1128,10 @@ pub(crate) fn instantiate_auto_program_scoped(
                     format!("duplicate type `{}`", record.name.name),
                     record.name.span,
                 )]);
+            }
+            if !record.type_params.is_empty() {
+                record_templates.insert(record.name.name.clone(), record.clone());
+                continue;
             }
         }
         if let Item::Enum(en) = item {
@@ -1093,15 +1159,30 @@ pub(crate) fn instantiate_auto_program_scoped(
     program.items.retain(|item| match item {
         Item::Fn(f) => f.type_params.is_empty(),
         Item::Enum(en) => en.type_params.is_empty(),
+        Item::Type(record) => record.type_params.is_empty(),
         _ => true,
     });
     let mut expanded_enums = BTreeMap::<String, String>::new();
     let mut expanded = BTreeMap::<String, String>::new();
-    let mut origins = BTreeMap::new();
+    let mut origins = AutoInstanceOrigins::default();
     let limit = ProduceLimits::default();
     let start = Instant::now();
     let mut steps = 0;
     loop {
+        origins.records.extend(ace_core::source::cst::materialize_auto_record_instances(
+            program,
+            &record_templates,
+        )?);
+        for item in &mut program.items {
+            if let Item::Type(record) = item {
+                register_auto_methods(
+                    &mut templates,
+                    &mut names,
+                    &record.name.name,
+                    &mut record.methods,
+                )?;
+            }
+        }
         let demands = discover_auto_instance_calls(program, &templates, &enums, capabilities)?;
         let Some(first_span) = demands
             .calls
@@ -1188,7 +1269,17 @@ pub(crate) fn instantiate_auto_program_scoped(
                     }
                 }
             }
-            let template_key = template_identity(&demand.callee);
+            let template_key = match demand.callee.rsplit_once('.') {
+                Some((owner, method)) if origins.records.contains_key(owner) => {
+                    let template = format!("{}.{method}", origins.records[owner]);
+                    let owner_key = template_identity(&template);
+                    sq_hash(
+                        "ac1088/record-method-template/v1",
+                        &[owner_key.as_bytes(), owner.as_bytes()],
+                    )
+                }
+                _ => template_identity(&demand.callee),
+            };
             let identity = sq_hash("ac1088/auto-instance/v1", &[template_key.as_bytes(), &key]);
             let name = expanded.entry(identity.clone()).or_insert_with(|| {
                 let base = format!("{}_{}", template.name.name, &identity[..16]);
@@ -1229,7 +1320,7 @@ pub(crate) fn instantiate_auto_program_scoped(
                 } else {
                     program.items.push(Item::Fn(concrete));
                 }
-                origins.insert(concrete_key, demand.callee.clone());
+                origins.functions.insert(concrete_key, demand.callee.clone());
                 name
             });
             rewrites.insert(

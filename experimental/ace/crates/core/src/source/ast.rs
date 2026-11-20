@@ -246,14 +246,23 @@ pub struct TypeItem {
     /// monomorphized at projection time (explicit type arguments at every
     /// use), so no synthesized `TypeItem` reaching resolve carries these.
     pub type_params: Vec<TypeParamDecl>,
+    pub instance: Option<RecordInstance>,
     /// PLAN-963 (T-03): specs claimed by `type X as A[, B]`, in written order.
     /// Consumed at projection time (conformance validation + default method
     /// injection); resolve and the four backends see only concrete methods.
     pub conforms: Vec<ConformRef>,
+    /// Verified direct and inherited spec memberships.
+    pub spec_memberships: Vec<String>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FnItem>,
     /// `type` keyword through the closing brace.
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordInstance {
+    pub template: String,
+    pub arguments: Vec<TypeAnn>,
 }
 
 /// One conformance claim of `type X as S` / `as S<int>` (PLAN-963 T-03).
@@ -441,7 +450,7 @@ impl Program {
         }
         self.items.iter().any(|item| match item {
             Item::Fn(f) => generic(f),
-            Item::Type(t) => t.methods.iter().any(generic),
+            Item::Type(t) => !t.type_params.is_empty() || t.methods.iter().any(generic),
             Item::Enum(e) => !e.type_params.is_empty() || e.methods.iter().any(generic),
             _ => false,
         })

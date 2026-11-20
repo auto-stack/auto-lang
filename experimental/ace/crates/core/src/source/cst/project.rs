@@ -511,7 +511,7 @@ pub(crate) fn project_program_with_caps(
     }
     // PLAN-963（T-03）：类型别名展开（先于泛型记录单态化：别名目标里的
     // `Point<int>` 在展开后落在使用位，再由单态化遍换名）。
-    for d in expand_type_aliases(&mut items, &aliases) {
+    for d in expand_type_aliases(&mut items, &aliases, profile.is_auto_language()) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     if let Some(first) = eng.cx.first_diag() {
@@ -530,7 +530,7 @@ pub(crate) fn project_program_with_caps(
     // 记录类型；模板本身从程序中移除。包模块面推迟到扁平程序后统一做
     // （V-G06：跨模块使用点共享实例身份）。
     if !defer_templates {
-        for d in expand_user_generic_types(&mut items, &specs) {
+        for d in expand_user_generic_types(&mut items, &specs, profile.is_auto_language()) {
             eng.cx.diags.push((d.span.start as u64, d));
         }
     }
@@ -546,7 +546,7 @@ pub(crate) fn project_program_with_caps(
     }
     // PLAN-963（T-03）：spec 默认体注入的类型注解未经过首遍展开（spec 声明不在
     // `items` 里），这里再展开一遍——只影响刚注入的方法，普通类型第二遍为空转。
-    for d in expand_type_aliases(&mut items, &aliases) {
+    for d in expand_type_aliases(&mut items, &aliases, profile.is_auto_language()) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     if let Some(first) = eng.cx.first_diag() {
@@ -8032,6 +8032,8 @@ impl<'a> Engine<'a> {
             name,
             type_params,
             conforms,
+            instance: None,
+            spec_memberships: Vec::new(),
             fields,
             methods,
         }
@@ -12946,6 +12948,9 @@ fn apply_spec_conformance(
             }
         }
         t.methods.extend(injected);
+        if ordinary_auto {
+            t.spec_memberships = done;
+        }
     }
     diags
 }
@@ -13178,23 +13183,43 @@ fn spec_obligations<'a>(
 // ---------------------------------------------------------------------------
 
 /// 单态化用户泛型记录；无泛型声明时零行为改动。
-fn expand_user_generic_types(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
-    expand_user_generic_types_with_origins(items, specs).0
+fn expand_user_generic_types(
+    items: &mut Vec<Item>,
+    specs: &[SpecDecl],
+    ordinary: bool,
+) -> Vec<Diagnostic> {
+    let keep_templates = ordinary && has_dependent_record_uses(items);
+    expand_user_generic_types_with_origins(items, specs, keep_templates, ordinary).0
+}
+
+fn has_dependent_record_uses(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Fn(f) => !f.type_params.is_empty(),
+        Item::Type(t) => t.methods.iter().any(|m| !m.type_params.is_empty()),
+        Item::Enum(e) => {
+            !e.type_params.is_empty() || e.methods.iter().any(|m| !m.type_params.is_empty())
+        }
+        _ => false,
+    })
 }
 
 /// PLAN-963（V-G06）：包模块扁平程序的记录模板单态化入口。返回（诊断、
 /// 实例符号 → 模板符号），后者供绑定层补 `type_origins` 并把诊断归到模块。
 pub(crate) fn monomorphize_package_program(
     items: &mut Vec<Item>,
+    ordinary: bool,
 ) -> (Vec<Diagnostic>, BTreeMap<String, String>) {
     // 包模块面无 spec（`spec` 不在 packages-modules 裁剪内），遵从核验空转。
     let specs: Vec<SpecDecl> = Vec::new();
-    expand_user_generic_types_with_origins(items, &specs)
+    let keep_templates = ordinary && has_dependent_record_uses(items);
+    expand_user_generic_types_with_origins(items, &specs, keep_templates, ordinary)
 }
 
 fn expand_user_generic_types_with_origins(
     items: &mut Vec<Item>,
     specs: &[SpecDecl],
+    keep_templates: bool,
+    ordinary: bool,
 ) -> (Vec<Diagnostic>, BTreeMap<String, String>) {
     // PLAN-963（T-03）：`<T has S>` 的核验面——bound 名必须是已声明 spec，
     // 实参必须是遵从该 spec 的记录（合成实例的遵从列表随模板复制）。
@@ -13218,14 +13243,11 @@ fn expand_user_generic_types_with_origins(
         // 静默丢实参；重写遍为空，只跑构造检查。
         let mut gt = GenericExpand {
             templates,
-            taken: BTreeSet::new(),
-            by_key: BTreeMap::new(),
-            origin: BTreeMap::new(),
-            made: Vec::new(),
-            diags: Vec::new(),
-            depth: 0,
+            keep_templates,
+            ordinary,
             spec_names,
             record_specs,
+            ..GenericExpand::default()
         };
         for it in items.iter_mut() {
             gt.resolve_typed_ctors_in_item(it);
@@ -13242,13 +13264,11 @@ fn expand_user_generic_types_with_origins(
     let mut gt = GenericExpand {
         templates,
         taken,
-        by_key: BTreeMap::new(),
-        origin: BTreeMap::new(),
-        made: Vec::new(),
-        diags: Vec::new(),
-        depth: 0,
+        keep_templates,
+        ordinary,
         spec_names,
         record_specs,
+        ..GenericExpand::default()
     };
     gt.rewrite_program(items);
     // PLAN-963（T-02）：显式类型实参构造（`Point<int> { .. }`）覆盖注解
@@ -13257,27 +13277,72 @@ fn expand_user_generic_types_with_origins(
     for it in items.iter_mut() {
         gt.resolve_typed_ctors_in_item(it);
     }
-    let mut made: Vec<TypeItem> = std::mem::take(&mut gt.made);
-    let mut done: Vec<TypeItem> = Vec::new();
-    while !made.is_empty() {
-        for mut t in made.drain(..) {
-            for m in t.methods.iter_mut() {
-                gt.resolve_typed_ctors_in_block(&mut m.body);
-            }
-            done.push(t);
-        }
-        made = std::mem::take(&mut gt.made);
-    }
-    gt.made = done;
-    let made = std::mem::take(&mut gt.made);
+    gt.finish(items);
     items.retain(|i| match i {
-        Item::Type(t) => t.type_params.is_empty(),
+        Item::Type(t) => keep_templates || t.type_params.is_empty(),
         _ => true,
     });
-    for t in made {
-        items.push(Item::Type(t));
-    }
     (gt.diags, gt.origin)
+}
+
+pub fn materialize_auto_record_instances(
+    program: &mut Program,
+    templates: &BTreeMap<String, TypeItem>,
+) -> Result<BTreeMap<String, String>, Vec<Diagnostic>> {
+    if templates.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut gt = GenericExpand {
+        templates: templates.clone(),
+        ordinary: true,
+        ..GenericExpand::default()
+    };
+    gt.taken.extend(templates.keys().cloned());
+    for item in &program.items {
+        let Item::Type(t) = item else { continue };
+        gt.taken.insert(t.name.name.clone());
+        gt.spec_names.extend(t.spec_memberships.iter().cloned());
+        gt.record_specs
+            .insert(t.name.name.clone(), t.conforms.clone());
+        if let Some(instance) = &t.instance {
+            let spellings: Option<Vec<_>> = instance.arguments.iter().map(type_spelling).collect();
+            if let Some(spellings) = spellings {
+                gt.by_key.insert(
+                    format!("{}<{}>", instance.template, spellings.join(",")),
+                    t.name.name.clone(),
+                );
+                gt.origin
+                    .insert(t.name.name.clone(), instance.template.clone());
+            }
+        }
+    }
+    gt.rewrite_program(&mut program.items);
+    for item in &mut program.items {
+        gt.resolve_typed_ctors_in_item(item);
+    }
+    gt.finish(&mut program.items);
+    if gt.diags.is_empty() {
+        Ok(gt.origin)
+    } else {
+        Err(gt.diags)
+    }
+}
+
+impl GenericExpand {
+    fn finish(&mut self, items: &mut Vec<Item>) {
+        let mut made = std::mem::take(&mut self.made);
+        let mut done: Vec<TypeItem> = Vec::new();
+        while !made.is_empty() {
+            for mut t in made.drain(..) {
+                for m in &mut t.methods {
+                    self.resolve_typed_ctors_in_block(&mut m.body);
+                }
+                done.push(t);
+            }
+            made = std::mem::take(&mut self.made);
+        }
+        items.extend(done.into_iter().map(Item::Type));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -13295,7 +13360,11 @@ struct TypeAliasDecl {
     target: TypeAnn,
 }
 
-fn expand_type_aliases(items: &mut Vec<Item>, aliases: &[TypeAliasDecl]) -> Vec<Diagnostic> {
+fn expand_type_aliases(
+    items: &mut Vec<Item>,
+    aliases: &[TypeAliasDecl],
+    explicit_type_arguments: bool,
+) -> Vec<Diagnostic> {
     if aliases.is_empty() {
         return Vec::new();
     }
@@ -13334,6 +13403,18 @@ fn expand_type_aliases(items: &mut Vec<Item>, aliases: &[TypeAliasDecl]) -> Vec<
         cycle_msg: "type alias cycle: expanding the alias chain does not terminate",
     };
     ex.rewrite_program(items);
+    if explicit_type_arguments {
+        // The expression walk used for generic types also visits explicit
+        // type arguments. Expand aliases before materializing any records.
+        let mut walk = GenericExpand {
+            aliases: Some(ex),
+            ..GenericExpand::default()
+        };
+        for item in items {
+            walk.resolve_typed_ctors_in_item(item);
+        }
+        ex = walk.aliases.expect("alias substitution");
+    }
     diags.append(&mut ex.diags);
     diags
 }
@@ -13482,7 +13563,11 @@ impl TypeSubst {
     }
 }
 
+#[derive(Default)]
 struct GenericExpand {
+    aliases: Option<TypeSubst>,
+    keep_templates: bool,
+    ordinary: bool,
     templates: BTreeMap<String, TypeItem>,
     taken: BTreeSet<String>,
     by_key: BTreeMap<String, String>,
@@ -13592,6 +13677,15 @@ impl GenericExpand {
         if args.is_empty() {
             return;
         }
+        if let Some(aliases) = self.aliases.as_mut() {
+            for arg in args {
+                *arg = aliases.ann(arg);
+            }
+            return;
+        }
+        if self.keep_templates && args.iter().any(type_contains_variable) {
+            return;
+        }
         let span = e.span;
         let name = ty.clone();
         let taken = std::mem::take(args);
@@ -13697,6 +13791,11 @@ impl GenericExpand {
                     self.resolve_typed_ctors_in_arg(a);
                 }
             }
+            ExprKind::GenericType { args, .. } if self.aliases.is_some() => {
+                for ty in args {
+                    *ty = self.ann(ty);
+                }
+            }
             ExprKind::Call { args, .. } => {
                 for a in args.iter_mut() {
                     self.resolve_typed_ctors_in_arg(a);
@@ -13719,10 +13818,20 @@ impl GenericExpand {
             }
             ExprKind::Field { base, .. } => self.resolve_typed_ctors_in_expr(base),
             ExprKind::HashExpr { expr } => self.resolve_typed_ctors_in_expr(expr),
-            ExprKind::Closure { body, .. } => match body.as_mut() {
-                ClosureBody::Expr(x) => self.resolve_typed_ctors_in_expr(x),
-                ClosureBody::Block(b) => self.resolve_typed_ctors_in_block(b),
-            },
+            ExprKind::Closure { params, result, body, .. } => {
+                if let Some(aliases) = self.aliases.as_mut() {
+                    for param in params {
+                        param.ty = aliases.ann(&param.ty);
+                    }
+                    if let Some(result) = result {
+                        *result = aliases.ann(result);
+                    }
+                }
+                match body.as_mut() {
+                    ClosureBody::Expr(x) => self.resolve_typed_ctors_in_expr(x),
+                    ClosureBody::Block(b) => self.resolve_typed_ctors_in_block(b),
+                }
+            }
             _ => {}
         }
     }
@@ -13834,6 +13943,11 @@ impl GenericExpand {
                     self.resolve_typed_ctors_in_block(&mut m.body);
                 }
             }
+            Item::Enum(e) if self.aliases.is_some() => {
+                for method in &mut e.methods {
+                    self.resolve_typed_ctors_in_block(&mut method.body);
+                }
+            }
             Item::Enum(_) => {}
             // PLAN-967 F0: the import frontdoor carries no expressions.
             Item::UseRs(_) => {}
@@ -13858,9 +13972,14 @@ impl GenericExpand {
 
     /// 重写注解：用户泛型引用 → 具体记录名；内建泛型只递归其参数位。
     fn ann(&mut self, a: &TypeAnn) -> TypeAnn {
+        if let Some(aliases) = self.aliases.as_mut() {
+            return aliases.ann(a);
+        }
         match &a.kind {
             TypeRef::Generic { name, args } => {
-                if self.templates.contains_key(&name.name) {
+                if self.templates.contains_key(&name.name)
+                    && !(self.keep_templates && args.iter().any(type_contains_variable))
+                {
                     self.instance(name, args, a.span)
                 } else {
                     TypeAnn {
@@ -14035,6 +14154,11 @@ impl GenericExpand {
                 let mut methods = Vec::with_capacity(tpl.methods.len());
                 for m in &tpl.methods {
                     let mut g = m.clone();
+                    if self.ordinary {
+                        if let Some(owner) = g.owner.as_mut() {
+                            owner.name = candidate.clone();
+                        }
+                    }
                     // 先按声明序替换（参数/返回/局部注解），再走与普通函数
                     // 相同的注解解析+构造换名：方法体内的 `Point { .. }`
                     // （返回类型已具体化）同样必须换成合成实例名。
@@ -14053,7 +14177,12 @@ impl GenericExpand {
                         span,
                     },
                     type_params: Vec::new(),
+                    instance: self.ordinary.then(|| RecordInstance {
+                        template: name.name.clone(),
+                        arguments: concrete,
+                    }),
                     conforms: tpl.conforms.clone(),
+                    spec_memberships: tpl.spec_memberships.clone(),
                     fields,
                     methods,
                     span: tpl.span,
@@ -14068,6 +14197,22 @@ impl GenericExpand {
             }),
             span,
         }
+    }
+}
+
+fn type_contains_variable(annotation: &TypeAnn) -> bool {
+    match &annotation.kind {
+        TypeRef::TyVar(_) => true,
+        TypeRef::Generic { args, .. } | TypeRef::Tuple(args) => {
+            args.iter().any(type_contains_variable)
+        }
+        TypeRef::Function { params, result } => {
+            params.iter().any(type_contains_variable) || type_contains_variable(result)
+        }
+        TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
+            type_contains_variable(inner)
+        }
+        _ => false,
     }
 }
 

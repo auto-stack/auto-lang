@@ -89,8 +89,32 @@ pub fn compile_package_product_auto(
             },
         )
         .map_err(|ds| locate_all(&bound, ds))?;
-        for (concrete, template) in linked {
-            let origin = bound.origins[&template].clone();
+        for (concrete, template) in &linked.records {
+            let origin = bound.type_origins[template].clone();
+            bound.type_origins.insert(concrete.clone(), origin);
+        }
+        for item in &bound.program.items {
+            let ace_core::source::ast::Item::Type(record) = item else {
+                continue;
+            };
+            let Some(template) = linked.records.get(&record.name.name) else {
+                continue;
+            };
+            for method in &record.methods {
+                let source = format!("{template}.{}", method.name.name);
+                if let Some(origin) = bound.origins.get(&source).cloned() {
+                    bound
+                        .origins
+                        .insert(format!("{}.{}", record.name.name, method.name.name), origin);
+                }
+            }
+        }
+        for (concrete, template) in linked.functions {
+            let origin = bound.origins.get(&template).cloned().unwrap_or_else(|| {
+                let (owner, method) = template.rsplit_once('.').expect("record method origin");
+                let record = &linked.records[owner];
+                bound.origins[&format!("{record}.{method}")].clone()
+            });
             bound.origins.insert(concrete, origin);
         }
     }

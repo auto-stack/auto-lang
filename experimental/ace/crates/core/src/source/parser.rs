@@ -1602,6 +1602,8 @@ impl<'s> Parser<'s> {
             // PLAN-963（T-03）：`as Spec` 遵从列表由 CST 投影 + spec 擦除
             // pass 承载（旧 parser 面不解析）。
             conforms: Vec::new(),
+            instance: None,
+            spec_memberships: Vec::new(),
             fields,
             methods,
         })

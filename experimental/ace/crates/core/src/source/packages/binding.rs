@@ -1446,7 +1446,7 @@ fn bind_package_syntax_inner(
     // 符号由已 mangle 的模板符号派生，天然区分两包同名模板），并把实例成员
     // 归属与源位置补登记。const/store 的值体与注解同在本程序内，一并改写。
     let (mono_diags, mono_origins) =
-        crate::source::cst::monomorphize_package_program(&mut program_items);
+        crate::source::cst::monomorphize_package_program(&mut program_items, face == Faces::Auto);
     if let Some(d) = mono_diags
         .into_iter()
         .min_by_key(|d| (d.span.start, d.span.end))

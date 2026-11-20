@@ -1,0 +1,309 @@
+# Record templates and explicit type aliases
+
+## Case: generic-record-actual
+id: "av.parity.1088.generic-record-actual"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn read<T>(b Box<T>) T { return b.value }
+fn main() int { return read(Box<int> { value: 42 }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-explicit
+id: "av.parity.1088.generic-record-explicit"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn read<T>(b Box<T>) T { return b.value }
+fn main() int { return read<int>(Box<int> { value: 42 }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-build-in-template
+id: "av.parity.1088.generic-record-build-in-template"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn build<T>(v T) int { let box Box<T> = Box { value: v }; return 42 }
+fn main() int { return build(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-result
+id: "av.parity.1088.generic-record-result"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn build<T>(v T) Box<T> { return Box { value: v } }
+fn main() int { let box Box<int> = build(42); return box.value }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: local-generic-alias-explicit
+id: "av.parity.1088.local-generic-alias-explicit"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+type IntBox = Box<int>
+fn identity<T>(x T) T { return x }
+fn main() int { let v IntBox = Box { value: 42 }; let b = identity<IntBox>(v); return b.value }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-function-numeric-alias-explicit
+id: "av.parity.1088.generic-function-numeric-alias-explicit"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Index = int
+fn identity<T>(x T) T { return x }
+fn main() int { return identity<Index>(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-nested
+id: "av.parity.1088.generic-record-nested"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn read<T>(outer Box<Box<T>>) T { return outer.value.value }
+fn main() int { return read(Box<Box<int>> { value: Box<int> { value: 42 } }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-owner
+id: "av.parity.1088.generic-record-owner"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn size<T>(b Box<T>) int { return b.value.len() }
+fn main() int { let b = Box<Str> { value: "test".clone() }; return 38 + size(b) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-inherited-bound
+id: "av.parity.1088.generic-inherited-bound"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Base { fn value() int { return 42 } }
+spec Derived: Base {}
+type Num as Derived {}
+fn get<T has Base>(x T) int { return x.value() }
+fn main() int { return get(Num()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: generic-record-wrong-argument
+id: "av.parity.1088.generic-record-wrong-argument"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { value T }
+fn read<T>(b Box<T>) T { return b.value }
+fn main() int { return read<int>(Box<bool> { value: true }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"
+
+## Case: generic-inherited-bound-unclaimed
+id: "av.parity.1088.generic-inherited-bound-unclaimed"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Base { fn value() int { return 42 } }
+spec Derived: Base {}
+type Num as Derived {}
+type Other { fn value() int { return 42 } }
+fn get<T has Base>(x T) int { return x.value() }
+fn main() int { return get(Other()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-bound"
+
+## Case: generic-record-verified-spec-bound
+id: "av.parity.1088.generic-record-verified-spec-bound"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Base { fn value() int }
+type Box<T> as Base { content T; fn value() int { return 42 } }
+fn get<T has Base>(value T) int { return value.value() }
+fn main() int { return get(Box<Box<int>> { content: Box<int> { content: 19 } }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: cross-module-record-template
+id: "av.parity.1088.cross-module-record-template"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.Box
+use lib.make
+use lib.read
+fn main() int {
+    let first = make(19)
+    let second = Box<int> { value: 23 }
+    return read(first) + read(second)
+}
+```
+
+#### lib.at
+
+```auto
+pub type Box<T> { value T }
+pub fn make<T>(value T) Box<T> { return Box { value: value } }
+pub fn read<T>(box Box<T>) T { return box.value }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: cross-module-record-template-method
+id: "av.parity.1088.cross-module-record-template-method"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.make
+fn main() int { let box = make(19); return box.echo(42) }
+```
+
+#### lib.at
+
+```auto
+pub type Box<T> { value T; fn echo<U>(other U) U { return other } }
+pub fn make<T>(value T) Box<T> { return Box { value: value } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
