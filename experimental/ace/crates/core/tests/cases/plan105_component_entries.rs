@@ -890,5 +890,4 @@ fn p105_elem_view_field_projection_compiles() {
         &caps,
         &scenario,
     )
-    .unwrap_or_else(|ds| panic!("elem view field projection must compile: {ds:?}"));
-}
+    .unwrap_or_else(|ds| panic!("elem view field projection must compile: {ds:?}"));}

@@ -1026,7 +1026,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { int-literal(field: "len") {} }
             rbracket() {}
             age-model-ty(field: "elem") {}
-        }        age-model-ty(profiles: [age-component, age-package]) {
+        }
+        age-model-ty(profiles: [age-component, age-package]) {
             alt { age-list-ty(field: "list") {} }
             alt { int-kw() {} }
             alt { i32() {} }
@@ -1069,7 +1070,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         age-on-assign(profiles: [age-component, age-package], expect: "an `on` handler assignment `<field> = <expr>`") {
             ident(field: "field") {}
-            assign() {}
+            // PLAN-105 T-02（U03 真语料 012）：钩子形赋值也收复合运算符
+            // （`i = i + 1` 之外还有 `+=` 形）。
+            age-assign-op(field: "op") {}
             pratt(of: "wide-ops", field: "rhs") {}
         }
         // PLAN-981（G2）：hook-local 绑定——本执行路径求值一次
@@ -3015,7 +3018,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 opt(profiles: [auto, auto-packages]) { expr(field: "slice_end") }
                 rbracket() {}
             }
-            alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
+            alt(profiles: [aggregates, auto, closures, scheduler, config-document, age-component, age-package, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) }
@@ -3082,7 +3085,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
-            alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
+            alt(profiles: [config-document, age-component, age-package]) { cfg-empty-array-lit() {} }
+            // PLAN-105 T-02（U03 真语料 012）：条件位数组字面量（`if xs[0] == 1` 之外的列表初值）。
+            alt(profiles: [age-component, age-package]) { array-lit() {} }
             // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
             alt(profiles: [auto, auto-packages]) { empty-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) { array-lit() {} }
@@ -3120,7 +3125,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
-            alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
+            alt(profiles: [config-document, age-component, age-package]) { cfg-empty-array-lit() {} }
+            // PLAN-105 T-02（U03 真语料 012）：条件位数组字面量（`if xs[0] == 1` 之外的列表初值）。
+            alt(profiles: [age-component, age-package]) { array-lit() {} }
             // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
             alt(profiles: [auto, auto-packages]) { empty-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) { array-lit() {} }
@@ -3206,7 +3213,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-982（CONFIG）：配置文档面的**空列表** `[]`（独立规则：共享的
         // `array-lit` 仍要求至少一个元素，其它面的语义不变）。
-        cfg-empty-array-lit(profiles: [config-document]) {
+        cfg-empty-array-lit(profiles: [config-document, age-component, age-package]) {
             lbracket() {}
             rbracket() {}
         }

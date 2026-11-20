@@ -170,7 +170,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 13 邻居逐字节不变。
             // PLAN-124: route link elements in the AGE component and package profiles.
             // PLAN-125: retain a text literal followed by parenthesized view properties.
-            "338affa552b3bd575c803c04f7487bf61c55c49adf17b9b0db49beecddeb5277",
+            "51b49135b2ad5332c2e809379a1a275aa58358e2983e005a9a8c1f87f4d7f165",
         ),
         (
             SourceProfile::AgeH0,
@@ -266,6 +266,6 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 91c53cde…→06809c84…。
         // PLAN-124: route links and structural projection of package host commands.
         // PLAN-125: retain a text literal followed by parenthesized view properties.
-        "7a6a9d8cf3d03934dcabb987cdd0712200194764f3d811dcd9a662236bddec30"
+        "17294031690d38249496d2144a2272692c1665d59c82a6eb70b3da7f4db59dbd"
     );
 }
