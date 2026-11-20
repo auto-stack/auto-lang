@@ -1,3 +1,9 @@
+## R1046-01 / R1046-02 — AAC 符号表导入与临时探针（复审已关闭，2026-11-20）
+
+PLAN-1046 r8 最终复审在真实 A2R `catalog_directory` 确认两种 AGE 符号表导入保留 AST 但缺少模块依赖，导致缺失模块和循环放行。另有两个未登记且只输出诊断的临时 Rust 测试文件。复现、冻结身份和归因见 [PLAN-1046 §9](archive/1046-aac-syntax-source-and-modules.md#9-复审记录)。
+
+- 归 PLAN-1046 T-04/T-05/T-06。关闭条件为两种导入的正反例经正式原生目录入口验证、移出临时探针、受影响证据重绑并通过复审。
+
 ## D-1084-BASE-01 — Windows 标量前门深层 `!` 栈溢出（OPEN，2026-11-20）
 
 - 父提交 `384609645cfc092da66e7d005ee1b052e0a547f2` 与 PLAN-1084 候选在 `ace-core::conformance scalar_source::deep_not_chain_reaches_checked_bundle` 的原 20,000 层样本均报 `0xc00000fd`。候选的前门观察在 parse 完成前中止。跑法与收据见 [PLAN-1084](archive/1084-av-parity-dynamic-objects-and-null.md)。

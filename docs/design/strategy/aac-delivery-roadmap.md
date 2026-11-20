@@ -40,7 +40,7 @@ flowchart TD
 | 1 | [1044：基线、需求与阶段契约](../../plans/1044-aac-baseline-and-stage-contracts.md) | G-AAC；首包冻结CS/CL、schema、语法和资源合同；本轮只读审计已在Design59，不冒该包T完成 |
 | 2 | [1056：精确摘要与编译器codec](../../plans/1056-aac-exact-digests-and-compiler-codecs.md) | 1044；复用/补统一Auto库及wire协议支撑，不依赖AAC语义/服务，不反加M2-A门 |
 | 3 | [1045：hosted标准库与SDK](../../plans/1045-aac-hosted-stdlib-and-sdk.md) | 1044+1056；消费M2-A库/OS/FFI/SDK，不实现第二套标准库 |
-| 3A | [1046：Auto语法、源码与模块](../../plans/1046-aac-syntax-source-and-modules.md) | 1044+1045；第一批Auto主体，先独立语法/模块验收 |
+| 3A | [1046：Auto语法、源码与模块](../../plans/archive/1046-aac-syntax-source-and-modules.md) | 1044+1045；第一批Auto主体，先独立语法/模块验收 |
 | 3B | [1051：native后端与CTE服务桥](../../plans/1051-aac-native-backend-and-cte-bridges.md) | 1044+1045；transport有限试验后冻结，不等完整前端/MIR才做服务边界 |
 | 4 | [1047：绑定、类型与受检HIR](../../plans/1047-aac-binding-types-and-checked-hir.md) | 1046；接已冻结HIR/语义接口，不依Rustsolver运行 |
 | 4B | [1055：基础MIR与CT启动闭环](../../plans/1055-aac-early-typed-mir-and-ct-bootstrap.md) | 1047+1051；Auto受检基础闭包→Auto MIR/verify→真AV/native；不等1048/1049/1050 |
