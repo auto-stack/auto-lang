@@ -1,0 +1,67 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.initializers.global_layout_stride
+use app.types.integer_type
+
+// Source rows occupy [0, rows). Literal carrier expressions occupy the next
+// two ranges. The global declaration IDs have a separate, reversible range.
+pub fn getter_mode() int { return 1 }
+pub fn setter_mode() int { return 2 }
+pub fn initializer_mode() int { return 3 }
+
+pub fn global_definition(rows int, source int, mode int) int {
+    return rows * 3 + source * 3 + mode - 1
+}
+
+pub fn global_mode(rows int, definition int) int {
+    let offset = definition - rows * 3
+    if (offset < 0 || offset >= rows * 3) { return 0 }
+    return offset % 3 + 1
+}
+
+pub fn global_source(rows int, definition int) int {
+    return (definition - rows * 3) / 3
+}
+
+pub fn global_effect_node(rows int, source int) int {
+    return rows * 6 + source
+}
+
+pub fn layout_offset(layouts List<int>, source int) int {
+    var index = 0
+    for (index < layouts.len()) {
+        if (layouts.get(index) == source) { return index }
+        index = index + global_layout_stride()
+    }
+    return -1
+}
+
+fn intrinsic_definition(defs List<int>, definition int, output_type int) int {
+    defs.push(definition)
+    defs.push(output_type)
+    defs.push(-1)
+    defs.push(-1)
+    return 0
+}
+
+// The transport uses the existing shared get/set intrinsics. Its setters
+// yield the shared i32 status value. Source mutability is checked at use,
+// since even an immutable slot needs an authorized write during init.
+pub fn add_global_intrinsics(rows int, layouts List<int>, defs List<int>, locals List<int>, fuel List<int>, deadline i64) int {
+    var index = 0
+    for (index < layouts.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let source = layouts.get(index)
+        let lane = layouts.get(index + 1)
+        let getter = global_definition(rows, source, getter_mode())
+        let setter = global_definition(rows, source, setter_mode())
+        intrinsic_definition(defs, getter, lane)
+        intrinsic_definition(defs, setter, integer_type())
+        locals.push(setter)
+        locals.push(setter)
+        locals.push(lane)
+        locals.push(0)
+        index = index + global_layout_stride()
+    }
+    return 0
+}

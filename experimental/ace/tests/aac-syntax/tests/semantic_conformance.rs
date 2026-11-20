@@ -35,6 +35,31 @@ fn forwards_and_maps_named_arguments_in_source_order() {
 }
 
 #[test]
+fn verifies_global_accessors_and_effectful_named_argument_order() {
+    let source = concat!(
+        "var event_log int = 0\n",
+        "fn A() int { event_log = event_log * 10 + 2\n return 37 }\n",
+        "fn B() bool { event_log = event_log * 10 + 1\n return true }\n",
+        "fn pick(a int, b bool) int { return a }\n",
+        "fn main() int { let invoked = pick(b: B(), a: A())\n return event_log }\n",
+    );
+    let document = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::text_record_descriptor(), &document)
+        .unwrap_or_else(|error| panic!("{error:?}\n{document}"));
+    ace_core::verify::verify_text_record(bound).expect("reference verifies global accessor HIR");
+    assert!(document.contains("module.global.get:g3_appm4_main_event_log"));
+    assert!(document.contains("module.global.set:g3_appm4_main_event_log"));
+    assert!(document.contains("__aac_init_g3_appm4_main_event_log"));
+    assert!(document.contains("{ param: 1u32, arg: 0u32 }, { param: 0u32, arg: 1u32 }"));
+    let rejection = run_core_hir_case(source.as_bytes(), "immutable-global")
+        .expect("mutability is checked on the real draft");
+    assert!(
+        rejection.starts_with("ERROR hir.mutability 0 "),
+        "{rejection}"
+    );
+}
+
+#[test]
 fn block_shadowing_initializer_sees_previous_scope() {
     let source = concat!(
         "fn f(x int) int {\n",

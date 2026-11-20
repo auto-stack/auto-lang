@@ -2,16 +2,29 @@ use app.atom_data.bind_document_shape
 use app.binding.bind_budget
 use app.binding.call_mapping_stride
 use app.binding.call_parameter_slots
+use app.binding.constant_decl
 use app.binding.decl_category
 use app.binding.decl_name
 use app.binding.function_decl
+use app.binding.global_var_decl
 use app.binding.local_let_decl
 use app.binding.local_var_decl
 use app.binding.parameter_decl
 use app.binding.resolved_function
 use app.binding.take_step
 use app.core_atom_bound.bind_core_atom
+use app.core_globals.add_global_intrinsics
+use app.core_globals.getter_mode
+use app.core_globals.global_definition
+use app.core_globals.global_effect_node
+use app.core_globals.global_mode
+use app.core_globals.global_source
+use app.core_globals.initializer_mode
+use app.core_globals.layout_offset
+use app.core_globals.setter_mode
 use app.hir_schema_data.core_schema
+use app.initializers.global_layout_stride
+use app.initializers.global_symbol
 use app.numeric_literal.decode_i32_literal
 use app.numeric_literal.negative_source_literal
 use app.semantic_tree.child_with_kind
@@ -123,10 +136,15 @@ fn local_definition(category int) bool {
     return category == parameter_decl() || category == local_let_decl() || category == local_var_decl()
 }
 
+fn global_category(category int) bool {
+    return category == constant_decl() || category == global_var_decl()
+}
+
 fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var owners = List<int>.new()
     var scalar = List<int>.new()
     scalar.push(0)
+    let count = row_count(ast)
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
@@ -134,6 +152,9 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
         var owner = -1
         if (outer >= 0) { owner = owners.get(outer) }
         if (decl_category(declarations, row) == function_decl()) { owner = row }
+        if (global_category(decl_category(declarations, row))) {
+            owner = global_definition(count, row, initializer_mode())
+        }
         owners.push(owner)
         expressions.push(-1)
         row = row + 1
@@ -184,6 +205,10 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 if (!write && target >= 0 && local_definition(decl_category(declarations, target))) {
                     add_expression(exprs, expressions, row, owner, read_op(), t, target)
                 }
+                if (!write && target >= 0 && global_category(decl_category(declarations, target))) {
+                    let getter = global_definition(count, target, getter_mode())
+                    add_expression(exprs, expressions, row, owner, call_op(), t, getter)
+                }
             }
             if (node_kind == "call") {
                 let target = resolved_function(pg, ast, links, declarations, uses, row)
@@ -216,7 +241,17 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
     return 0
 }
 
-fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, exprs List<int>, body int, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn append_global_write(count int, source int, global int, owner int, value int, exprs List<int>, args List<int>) int {
+    let node = global_effect_node(count, source)
+    let setter = global_definition(count, global, setter_mode())
+    append_expression(exprs, node, owner, call_op(), integer_type(), setter)
+    args.push(node)
+    args.push(value)
+    args.push(0)
+    return node
+}
+
+fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, locals List<int>, exprs List<int>, args List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var child = first_child(links, body)
     var result = -1
     for (child >= 0) {
@@ -233,18 +268,30 @@ fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations
                 let target = child_with_role(pg, ast, links, stmt, "name")
                 if (target < 0) { return failed(errors, stmt, hir_reference_error()) }
                 local = uses.get(target)
-                if (local < 0 || decl_category(declarations, local) != local_var_decl()) { return failed(errors, stmt, hir_unsupported()) }
+                if (local < 0) { return failed(errors, stmt, hir_reference_error()) }
+                let resolved = decl_category(declarations, local)
+                if (resolved != local_var_decl() && resolved != global_var_decl()) { return failed(errors, stmt, hir_mutability_error()) }
                 op = assign_op()
             }
             if (op == 0) {
                 result = stmt
             } else {
                 let value = child_with_role(pg, ast, links, stmt, "value")
-                if (value < 0 || exprs.get(value) < 0) { return failed(errors, stmt, hir_unsupported()) }
+                if (value < 0 || expression_ids.get(value) < 0) { return failed(errors, stmt, hir_unsupported()) }
+                var evaluated = expression_ids.get(value)
+                if (op == assign_op() && decl_category(declarations, local) == global_var_decl()) {
+                    evaluated = append_global_write(row_count(ast), stmt, local, owner, evaluated, exprs, args)
+                    local = evaluated
+                    op = initialize_op()
+                    locals.push(owner)
+                    locals.push(local)
+                    locals.push(integer_type())
+                    locals.push(immutable_slot())
+                }
                 statements.push(body)
                 statements.push(op)
                 statements.push(local)
-                statements.push(exprs.get(value))
+                statements.push(evaluated)
             }
         }
         child = next_sibling(links, child)
@@ -253,13 +300,13 @@ fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations
     return result
 }
 
-fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, infer_return bool, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, infer_return bool, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var pending = List<int>.new()
     pending.push(body)
     for (pending.len() > 0) {
         let block = pending.remove(pending.len() - 1)
         if (!take_step(fuel, deadline)) { return failed(errors, block, bind_budget()) }
-        let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, statements, fuel, deadline, errors)
+        let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, owner, locals, exprs, args, statements, fuel, deadline, errors)
         if (statement < 0) { return statement }
         let form = kind(pg, ast, statement)
         var condition = -1
@@ -293,7 +340,31 @@ fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<
     return 0
 }
 
-fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_global_initializers(count int, layouts List<int>, expression_ids List<int>, defs List<int>, exprs List<int>, args List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var at = 0
+    for (at < layouts.len()) {
+        let source = layouts.get(at)
+        if (!take_step(fuel, deadline)) { return failed(errors, source, bind_budget()) }
+        let value = expression_ids.get(layouts.get(at + 3))
+        if (!supported_type(layouts.get(at + 1)) || value < 0) { return failed(errors, source, hir_unsupported()) }
+        let owner = global_definition(count, source, initializer_mode())
+        let evaluated = append_global_write(count, source, source, owner, value, exprs, args)
+        defs.push(owner)
+        defs.push(integer_type())
+        defs.push(owner)
+        defs.push(owner)
+        blocks.push(owner)
+        blocks.push(owner)
+        blocks.push(-1)
+        blocks.push(-1)
+        blocks.push(-1)
+        blocks.push(evaluated)
+        at = at + global_layout_stride()
+    }
+    return 0
+}
+
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var expressions = List<int>.new()
     let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, exprs, args, expressions, fuel, deadline, errors)
     if (lowered != 0) { return lowered }
@@ -305,7 +376,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
             let body = child_with_role(pg, ast, links, row, "body")
             if (body < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
             let infer_return = child_with_role(pg, ast, links, row, "ty") < 0
-            let result = lower_blocks(pg, ast, links, declarations, uses, expressions, body, row, infer_return, blocks, statements, fuel, deadline, errors)
+            let result = lower_blocks(pg, ast, links, declarations, uses, expressions, body, row, infer_return, locals, exprs, args, blocks, statements, fuel, deadline, errors)
             if (result != 0) { return result }
             defs.push(row)
             defs.push(facts.get(row))
@@ -338,11 +409,15 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
                 locals.push(facts.get(row))
                 locals.push(slot)
             } else {
-                if (category != 0 && category != parameter_decl()) { return failed(errors, row, hir_unsupported()) }
+                if (category != 0 && category != parameter_decl() && !global_category(category)) { return failed(errors, row, hir_unsupported()) }
             }
         }
         row = row + 1
     }
+    let initialized = lower_global_initializers(row_count(ast), layouts, expressions, defs, exprs, args, blocks, fuel, deadline, errors)
+    if (initialized != 0) { return initialized }
+    let registered = add_global_intrinsics(row_count(ast), layouts, defs, locals, fuel, deadline)
+    if (registered != 0) { return failed(errors, 0, registered) }
     if (defs.len() == 0) { return failed(errors, 0, hir_unsupported()) }
     return 0
 }
@@ -366,11 +441,20 @@ fn param_count(parameters List<int>, owner int) int {
     return count
 }
 
-fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, layouts List<int>, rows int, fuel List<int>, deadline i64) int {
     let target_id = exprs.get(position + 4)
     let definition = find_row(defs, 4, target_id, 0)
     if (definition < 0) { return hir_reference_error() }
     if (exprs.get(position + 3) != defs.get(definition + 1)) { return hir_type_error() }
+    let owner = exprs.get(position + 1)
+    if (defs.get(definition + 2) < 0 && global_mode(rows, target_id) == setter_mode()) {
+        if (!has_budget(fuel, deadline, layouts.len() / global_layout_stride())) { return bind_budget() }
+        let source = global_source(rows, target_id)
+        let layout = layout_offset(layouts, source)
+        if (layout < 0) { return hir_reference_error() }
+        let initializer = global_definition(rows, source, initializer_mode())
+        if (owner != initializer && layouts.get(layout + 2) != 1) { return hir_mutability_error() }
+    }
     if (!has_budget(fuel, deadline, parameters.len() / 4)) { return bind_budget() }
     let expected = param_count(parameters, target_id)
     var slots = List<int>.new()
@@ -379,7 +463,6 @@ fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<
         slots.push(0)
         i = i + 1
     }
-    let owner = exprs.get(position + 1)
     let call = exprs.get(position)
     var found = 0
     i = 0
@@ -532,8 +615,10 @@ fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int
     }
     at = 0
     for (at < defs.len()) {
-        let code = claim_node(blocks, 6, block_claims, defs.get(at + 3), fuel, deadline)
-        if (code != 0) { return failed(errors, defs.get(at), code) }
+        if (defs.get(at + 2) >= 0) {
+            let code = claim_node(blocks, 6, block_claims, defs.get(at + 3), fuel, deadline)
+            if (code != 0) { return failed(errors, defs.get(at), code) }
+        }
         at = at + 4
     }
     at = 0
@@ -667,7 +752,27 @@ fn verify_statements(locals List<int>, exprs List<int>, args List<int>, blocks L
     return 0
 }
 
-fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+fn verify_accessor(defs List<int>, parameters List<int>, at int, layouts List<int>, rows int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, layouts.len() / global_layout_stride() + parameters.len() / 2)) { return bind_budget() }
+    let definition = defs.get(at)
+    let mode = global_mode(rows, definition)
+    if (mode != getter_mode() && mode != setter_mode()) { return hir_reference_error() }
+    let layout = layout_offset(layouts, global_source(rows, definition))
+    if (layout < 0 || defs.get(at + 3) != -1) { return hir_reference_error() }
+    let lane = layouts.get(layout + 1)
+    let arity = param_count(parameters, definition)
+    if (mode == getter_mode()) {
+        if (arity != 0 || defs.get(at + 1) != lane) { return hir_type_error() }
+    } else {
+        let parameter = param_at(parameters, definition, 0)
+        if (arity != 1 || parameter < 0 || parameters.get(parameter + 2) != lane || defs.get(at + 1) != integer_type()) {
+            return hir_type_error()
+        }
+    }
+    return 0
+}
+
+fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
     var position = 0
     for (position < defs.len()) {
         let id = defs.get(position)
@@ -675,14 +780,22 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             failed(errors, id, bind_budget())
             return None
         }
-        if (defs.get(position + 2) != id) {
-            failed(errors, id, hir_owner_error())
-            return None
-        }
-        let entry = find_row(blocks, 6, defs.get(position + 3), 0)
-        if (entry < 0 || blocks.get(entry + 1) != id) {
-            failed(errors, id, hir_reference_error())
-            return None
+        if (defs.get(position + 2) == -1 && defs.get(position + 3) == -1) {
+            let status = verify_accessor(defs, parameters, position, layouts, rows, fuel, deadline)
+            if (status != 0) {
+                failed(errors, id, status)
+                return None
+            }
+        } else {
+            if (defs.get(position + 2) != id) {
+                failed(errors, id, hir_owner_error())
+                return None
+            }
+            let entry = find_row(blocks, 6, defs.get(position + 3), 0)
+            if (entry < 0 || blocks.get(entry + 1) != id) {
+                failed(errors, id, hir_reference_error())
+                return None
+            }
         }
         position = position + 4
     }
@@ -694,7 +807,8 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             return None
         }
         let owner = exprs.get(position + 1)
-        if (find_row(defs, 4, owner, 0) < 0) {
+        let declaring = find_row(defs, 4, owner, 0)
+        if (declaring < 0 || defs.get(declaring + 2) < 0) {
             failed(errors, row, hir_owner_error())
             return None
         }
@@ -713,7 +827,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             }
         }
         if (op == constant_op() && type_id != integer_type()) { status = hir_type_error() }
-        if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, fuel, deadline) }
+        if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, layouts, rows, fuel, deadline) }
         if (op == less_than_op() || op == add_op() || op == multiply_op()) {
             status = verify_binary(exprs, args, position, op, fuel, deadline)
         }
@@ -814,9 +928,35 @@ fn block_statements(statements List<int>, block int) Str {
     return join_rows(output, output.len())
 }
 
-fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, ast List<int>, src List<int>, declarations List<int>, modules List<int>) Str {
+fn render_definition(def int, ast List<int>, src List<int>, declarations List<int>, modules List<int>) Str {
+    let mode = global_mode(row_count(ast), def)
+    let key = id("d", def) + " " + id("s", def)
+    if (mode != 0) {
+        let source = global_source(row_count(ast), def)
+        let symbol = global_symbol(ast, src, modules, declarations, source)
+        if (mode == getter_mode()) {
+            return " intrinsic " + key + " { symbol: \"module.global.get:" + symbol + "\"; effect: pure }\n"
+        }
+        if (mode == setter_mode()) {
+            return " intrinsic " + key + " { symbol: \"module.global.set:" + symbol + "\"; effect: observable }\n"
+        }
+        return " function " + key + " { name: \"__aac_init_" + symbol + "\"; body: " + ref_text("b", def) + " }\n"
+    }
+    var name = spelling(src, ast, decl_name(declarations, def))
+    let module_id = source_id(ast, def)
+    if (module_id != 0) { name = module_name_at(modules, module_id) + "." + name }
+    return " function " + key + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
+}
+
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
     var output = List<Str>.new()
-    let opening = "hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {\n module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
+    var schema = "auto.hir.core.draft"
+    var profile = "core-i32-draft"
+    if (has_globals) {
+        schema = "auto.hir.text-record.draft"
+        profile = "text-record-i32-draft"
+    }
+    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
     output.push(opening.move)
     var def_at = 0
     for (def_at < checked.definitions * 4) {
@@ -838,10 +978,7 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     def_at = 0
     for (def_at < checked.definitions * 4) {
         let def = defs.get(def_at)
-        var name = spelling(src, ast, decl_name(declarations, def))
-        let module_id = source_id(ast, def)
-        if (module_id != 0) { name = module_name_at(modules, module_id) + "." + name }
-        let line = " function " + id("d", def) + " " + id("s", def) + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
+        let line = render_definition(def, ast, src, declarations, modules)
         output.push(line.move)
         def_at = def_at + 4
     }
@@ -849,13 +986,18 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     def_at = 0
     for (def_at < checked.definitions * 4) {
         let def = defs.get(def_at)
+        if (defs.get(def_at + 2) < 0) {
+            def_at = def_at + 4
+            continue
+        }
         let start = " body " + id("b", def) + " { owner: " + ref_text("d", def) + "; entry: " + ref_text("k", defs.get(def_at + 3)) + "\n locals {\n"
         output.push(start.move)
         var param_at = 0
         for (param_at < parameters.len()) {
             if (parameters.get(param_at) == def) {
                 let param = parameters.get(param_at + 1)
-                let name = spelling(src, ast, decl_name(declarations, param))
+                var name = "global_status_" + from_int(param)
+                if (param < row_count(ast)) { name = spelling(src, ast, decl_name(declarations, param)) }
                 let slot = parameters.get(param_at + 3)
                 var entries = "binding; mutable: false"
                 if (slot == mutable_slot()) { entries = "binding; mutable: true" }
@@ -923,20 +1065,42 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
 // Controls inside the stage driver alter the real draft before verification.
 // The serialized Atom document is a transport value and carries no verifier
 // credential. VerifiedCore exists only inside this module.
-fn supported_source_item(pg List<int>, ast List<int>, links List<int>, item int) bool {
+fn supported_source_item(pg List<int>, ast List<int>, links List<int>, declarations List<int>, item int) bool {
     let node_kind = kind(pg, ast, item)
+    if (global_category(decl_category(declarations, item))) { return true }
     if (node_kind == "public-item") {
         let body = child_with_role(pg, ast, links, item, "body")
         if (body < 0) { return false }
         let actual = first_child(links, body)
         if (actual < 0) { return false }
         let form = kind(pg, ast, actual)
-        return form == "fn-item" || form == "use-tail-p"
+        return form == "fn-item" || form == "use-tail-p" || global_category(decl_category(declarations, actual))
+    }
+    if (node_kind == "script-item") {
+        var statement = first_child(links, item)
+        var globals = 0
+        for (statement >= 0) {
+            if (kind(pg, ast, statement) == "stmt") {
+                let entry = first_child(links, statement)
+                if (entry < 0 || !global_category(decl_category(declarations, entry))) { return false }
+                globals = globals + 1
+            }
+            statement = next_sibling(links, statement)
+        }
+        return globals > 0
     }
     return node_kind == "fn-item" || node_kind == "use-item-p"
 }
 
-pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
+fn source_origin(rows int, row int) int {
+    if (row >= rows * 6 && row < rows * 7) { return row - rows * 6 }
+    if (global_mode(rows, row) != 0) { return global_source(rows, row) }
+    if (row >= rows && row < rows * 3) { return (row - rows) / 2 }
+    if (row >= 0 && row < rows) { return row }
+    return 0
+}
+
+pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
     var module_id = 0
     for (module_id < roots.len()) {
         var member = first_child(links, roots.get(module_id))
@@ -946,7 +1110,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
                 return ""
             }
             let item = first_child(links, member)
-            if (item < 0 || !supported_source_item(pg, ast, links, item)) {
+            if (item < 0 || !supported_source_item(pg, ast, links, declarations, item)) {
                 failed(errors, member, hir_unsupported())
                 return ""
             }
@@ -960,7 +1124,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var args = List<int>.new()
     var blocks = List<int>.new()
     var statements = List<int>.new()
-    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, layouts, defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
     if (status != 0) { return "" }
     if (control == 1) { defs.set(2, row_count(ast)) }
     if (control == 2) {
@@ -973,10 +1137,11 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
             position = position + 5
         }
     }
-    let verified = verify(defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
+    if (control == 3 && layouts.len() >= global_layout_stride()) { layouts.set(2, 0) }
+    let verified = verify(defs, parameters, exprs, args, blocks, statements, layouts, row_count(ast), fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, ast, src, declarations, modules) }
-        None -> {}
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, ast, src, declarations, modules, layouts.len() > 0) }
+        None -> { errors.set(0, source_origin(row_count(ast), errors.get(0))) }
     }
     return ""
 }
@@ -1009,7 +1174,8 @@ pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status != 0) { return status }
     var errors = List<int>.new()
-    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, fuel, deadline, errors)
+    var no_layouts = List<int>.new()
+    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, no_layouts, 0, fuel, deadline, errors)
     is verified {
         Some(_) -> { return 0 }
         None -> {}
