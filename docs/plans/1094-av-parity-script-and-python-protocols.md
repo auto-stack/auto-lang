@@ -458,6 +458,13 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 
 ## 9. 复审记录
 
+- 2026-11-20 goal round 2（waiting）：`stage: goal | plan_id: PLAN-1094 | plan_revision: r5 | round: 2
+  | from: work(blocked) | to: user | status: executing | outcome: waiting | worktree: 保留（clean @ 5a76167cc）
+  | commit: 9938058d0 | next: user`。重读 §10 无新裁定；依赖链侧观测：PLAN-1083 已 executing
+  （其 T-01 提交 6e0337167，T-02 施工中：ast.rs/cst/project.rs/auto-source.at 已改）——用户以并行
+  goal 会话按路线图顺序推进依赖链（路径①的行为信号），但 1084/1087/1092/1093 仍未开工，
+  本包 T-02..T-06 无可解锁工作。按 waiting 协议本轮不执行阶段工作、不跑检查；裁定请求仍开于 §10。
+
 - 2026-11-20 T-01 work（goal 完成计划1094 round 1，按 r5 执行；同日 r4/r5 修订单独落）：
   `stage: work | plan_id: PLAN-1094 | plan_revision: r5 | outcome: blocked（T-01 完成=1/8；
   T-02..T-06 阻塞硬依赖） | worktree: D:/autostack/.wt/lang-1094/auto-lang | branch: plan-1094-dev
