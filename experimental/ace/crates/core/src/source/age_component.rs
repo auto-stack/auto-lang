@@ -4496,8 +4496,10 @@ fn initial_literal(v: &InitialValue, span: Span) -> Expr {
 /// 列表类型位包成 `List<T>.new()`（共享 resolver 要求空字面量带元素类型）。
 fn list_new_from_array(value: Expr, elem: &TypeAnn) -> Expr {
     let span = value.span;
+    // 仅**空**字面量需要包成 `List<T>.new()`（非空字面量自带元素类型，且
+    // 数组字面量在组件面只允许出现在 let/var 初值位）。
     let empty = matches!(&value.kind, ExprKind::ArrayLit(e) if e.is_empty());
-    if !matches!(&value.kind, ExprKind::ArrayLit(_)) {
+    if !empty {
         return value;
     }
     let recv = Expr {
@@ -4510,11 +4512,7 @@ fn list_new_from_array(value: Expr, elem: &TypeAnn) -> Expr {
             args: vec![elem.clone()],
         },
     };
-    let args = if empty {
-        Vec::new()
-    } else {
-        vec![crate::source::ast::Arg::Pos(value)]
-    };
+    let args = Vec::new();
     Expr {
         span,
         kind: ExprKind::MethodCall {
