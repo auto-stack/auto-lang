@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-20
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1083, PLAN-1086, PLAN-1087]
 supersedes_spec_components: [docs/specs/ace-migration/m2-control-effects.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -334,7 +334,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -358,7 +358,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-05** work：唯一作者载入与四条 VM 迁移映射经生产发现验证。故意红、目标隔离与结构准入七条对照通过。
 - [x] **T-06** work：冻结实现及定向证据。§9 交 IF-AV-PARITY-GENERATOR，按仓规定独立复审后执行冻结并集，AC-06 在实跑后关闭。
 - [x] **T-07** review：按冻结提交重建 AC、语义和语料证据，核 SD-01、SD-02、SD-FC，见 §9。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：冻结组对账、规范落主、归档与守卫清理均已完成，见 §9。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
@@ -465,6 +465,23 @@ AV 阶段从固定 AV 模块选择过滤 27 项非 AV 实际执行及 1 项 Wind
 - [feature-organized-corpus.md](../../specs/auto-test-case/feature-organized-corpus.md)，SHA256 f6d4b11f00b233b6732569f5994600bb02f3a2f520647881f52babb36cd4ab81。
 
 - `archived`：计划身份 r3、`completion_kind: delivered`。下面补记材料和工作树清理的实际收据。
+
+
+### 2026-11-20 r3 · 清理收据
+
+2026-11-20T23:40:58+08:00 确认交付树和归档提交已在 master、两工作树无修改、归属明确、无本计划执行进程。PowerShell `wt-guard.ps1` 对两工作树与唯一材料 scope 均输出 clean，未发现 reparse point。按原命令和 manifest 对账根/ACE Cargo target、nextest 预备与运行、AV worker 临时项目、父端探针输入/输出、日志和清单。工作树内的正常 target 随树清除，临时项目及证据位于唯一材料区。无需额外迁移项，无挂起持有。
+
+| 已清除路径 | 文件数 | 文件字节总和 |
+|---|---:|---:|
+| D:/autostack/.wt/lang-1089/auto-lang | 85,736 | 18,236,777,437 |
+| D:/autostack/.wt/lang-1089/auto-down | 1,318 | 27,021,855 |
+| D:/autostack/plan-artifacts/plan-1089 | 9,121 | 524,564,404 |
+
+两次 `git worktree remove` 与 `git branch -d plan-1089-dev` 退出 0。空组目录和材料 scope 已用 PowerShell 删除并复查不存在；两个仓库的 worktree 清单均没有该组。证据先折 Plan、归档提交 a503d7ab23208a0496c35637303dd8cc8c4e4d51，再执行删除。登记表按本计划删除收据刷新。首门遗留原红 D-1037-01 保持原 owner。
+
+stage: merge | plan_id: PLAN-1089 | plan_revision: r3 | outcome: pass | reviewed_commit: e72afc9e43155c71a229462cb092a7919fe10c75 | delivery_commit: a003e23213ed912a4dafcf95c4fb8c89d8f679ce | archive_commit: a503d7ab23208a0496c35637303dd8cc8c4e4d51 | completion_kind: delivered | cleanup: removed | next: done
+
+stage: goal | plan_id: PLAN-1089 | plan_revision: r3 | round: 3 | from: merge | to: done | status: archived | outcome: pass | commit: a003e23213ed912a4dafcf95c4fb8c89d8f679ce | next: done
 
 ## 10. 待澄清事项
 
