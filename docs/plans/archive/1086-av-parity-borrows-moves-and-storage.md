@@ -132,11 +132,11 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 
 ## 6. 测试设计
 
-### V-AV-ONLY / V-IGNORE-LIFECYCLE（未执行）
+### V-AV-ONLY / V-IGNORE-LIFECYCLE（实际结果见 §9）
 
 原T-03..06落实、T-07复核：同一Case AV已选，AC/A2R检查加#ignore；制造该目标缺工具/运行失败/错误oracle时，目标prepare/dispatch计数为0，AV仍按独立预期通过，忽略行不充PASS。将AV oracle改错必须使AV门红，全部有效AV检查被ignore或零选中也必须红。移除某非AV阶段ignore并进入其后端选择后，该目标失败必须在该后端门显现，而AV视图仍不选择它；移除ignore不能同时删原平台/ignore理由。公共格式/重复ID/AV必需shared规则出错不被这一阶段策略豁免。
 
-### FC 测试组织与迁移必验增量（未执行）
+### FC 测试组织与迁移必验增量（实际结果见 §9）
 
 | V-ID | owner_stage / 原任务 | 必须观察的结果 |
 |---|---|---|
@@ -347,7 +347,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 - [x] **AC-09｜owner_stage: work**：`av.collections/1` 的 MIR 类型面承载 owned 文本 `Str`（元素/状态位、`clone`/拼接/`len` 最小值语义）；`COLL-STR` 的最小复现（组件面文本列表）从 `lower.type-use` 拒绝变为真实可执行，且不新增第二套文本表示、不弱化既有 AV `Str` 所有权/释放合同。原 T-09。
 
@@ -374,10 +374,10 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-05** work：28 条主承接与 11 条接续保原源码和原 VM 预期迁入唯一作者。普通 AV 已实跑。
 - [x] **T-06** work：冻结八组，修正原聚合文本探针后完整 AV 组通过，具名保留一条基线语义文档失败。齐备 IF-AV-PARITY-OWNERSHIP。
 - [x] **T-07** review：已在原工作树按冻结提交重核行为、反例、迁移、测试与 Spec 增量，原聚合探针纠正后回归通过。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：快进落主、核对四份规范和导航、归档并完成工作树和材料路径核销。
 - [x] **T-09** work：collections-str 从共享源码前门走到 AV，返回 42，覆盖 owned 文本状态函数、列表转移和移出、克隆、拼接、Unicode 长度和内容比较。
 
-主承接与接续共 39 条已通过 AV。交付已合入 `master`，已归档，专属树与材料路径待清理。
+主承接与接续共 39 条已通过 AV。交付已合入 `master` 并归档，专属树与材料路径已核销。
 
 ## 9. 复审记录
 
@@ -492,6 +492,11 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 | `docs/design/strategy/av-autovm-legacy-case-map.md` | c085ebdd57756449855f3ab588c80ef4d35c86731380bd2f5ce1406fb0926dc2 |
 
 - checkpoint: archived | key: PLAN-1086:r5 | completion_kind: delivered | path: docs/plans/archive/1086-av-parity-borrows-moves-and-storage.md | cleanup: pending。归档阶段保 T-08 与 AC-08 待清理核销。
+- checkpoint: cleaned | key: PLAN-1086:r5 | archive_commit: 9436c3ca543cca8dabc5bcf5e07c0ccbd29082b7。归档前实际检查 8/9 任务、10/11 验收项、8 份入口文件和 17 条出链。归档后两树状态 clean，分别核对已落主 auto-lang@426eef929 和 detached auto-down@72b097006。对 `D:/autostack/.wt/lang-1086/auto-lang` 及 `D:/autostack/.wt/lang-1086/auto-down` 各执行 `wt-guard.ps1`，均 clean，退出 0。分别删除 126674 文件、22181953269 字节与 1294 文件、26841767 字节，含原树 target 和 972 探针构件；删除已合入分支 `plan-1086-dev` 与空组目录。未回收中间产物。发现的 nextest 系统临时提取目录已由驱动清理。
+- 唯一计划材料根 `D:/autostack/plan-artifacts/plan-1086` 的内容按 §9 折叠，核对登记 owner 与绝对路径，经 `wt-guard.ps1` clean 后用 PowerShell 删除 4393 文件、620086471 字节。已验证两个 worktree、分支、组目录和材料根均不存在。未发现外部安装、消费者副本或另盘计划专用输出。现有基线红按照原 owner 跟踪，本计划无具名材料持有。
+- 发布现状：主检出的 `experimental/ace/target/release/av-worker.exe` 构建时间为 2026-11-19 11:10:13 +08:00，早于交付提交。此次交付的执行证据来自已准备的 debug 工具，未进行发布构建或部署。
+- 周期批量预检归独立主检出任务。上次收据 2026-11-20T00:00:00Z，覆盖 949fdc5e1，最高已落主 ID 1098；在该覆盖提交之后归档的 1085 触发 `%5`。主检出仍有其它会话在编辑的设计文件，批量门的干净输入条件未满足。既有批量准备缺陷归 PLAN-1108。未启动 `cargo t all`，收据没有前移；本 Plan 采用上述 AV 范围冻结证据。
+- stage: merge | plan_id: PLAN-1086 | plan_revision: r5 | outcome: pass | delivery_commit: 426eef929855622ef1cc48c990b981d6fb20f015 | cleanup: verified | task_ids: T-01..09 complete。
 
 ## 10. 待澄清事项
 
