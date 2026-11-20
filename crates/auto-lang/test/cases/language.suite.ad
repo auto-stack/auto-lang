@@ -12,5 +12,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/collections/list-places.case.ad",
   "language/types/variants.case.ad",
   "language/patterns/nested-match.case.ad",
+  "language/dynamic/objects-null.case.ad",
 ] }
 ```

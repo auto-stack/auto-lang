@@ -8568,6 +8568,86 @@ F:{d}
         }
     }
 
+    fn object_field_key(field: &ast::Ident) -> ResolvedExpr {
+        ResolvedExpr {
+            span: field.span,
+            vt: VT::Str,
+            kind: RExprKind::StrLit(field.name.clone()),
+        }
+    }
+
+    fn object_get(base: ResolvedExpr, key: ResolvedExpr, elem: VT, span: Span) -> ResolvedExpr {
+        ResolvedExpr {
+            span,
+            vt: elem,
+            kind: RExprKind::ObjectGet {
+                base: Box::new(base),
+                key: Box::new(key),
+            },
+        }
+    }
+
+    fn resolve_object_field_assign(
+        &mut self,
+        target: &ast::AssignTarget,
+        value: &ast::Expr,
+        span: Span,
+    ) -> Option<RStmt> {
+        if self.profile != SourceProfile::Auto {
+            return None;
+        }
+        let (last, parents) = target.path.split_last()?;
+        let local = self.lookup(&target.base.name)?;
+        let vt = self.locals[local.0].vt;
+        if !matches!(vt, VT::Object(_)) {
+            return None;
+        }
+        let mut base = ResolvedExpr {
+            span: target.base.span,
+            vt,
+            kind: RExprKind::ReadLocal(local),
+        };
+        for field in parents {
+            let VT::Object(object) = base.vt else {
+                return None;
+            };
+            let field_span = base.span.join(field.span);
+            base = Self::object_get(
+                base,
+                Self::object_field_key(field),
+                self.coll.objects[object],
+                field_span,
+            );
+        }
+        let VT::Object(object) = base.vt else {
+            return None;
+        };
+        let elem = self.coll.objects[object];
+        let mut value = self.expr_with_expect(value, Some(elem));
+        if value.vt != elem {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "object element type `{}` expected, found `{}`",
+                    elem.as_str(),
+                    value.vt.as_str()
+                ),
+                value.span,
+            );
+        }
+        self.check_push_value(&elem, &mut value, last.span);
+        let value = ResolvedExpr {
+            span,
+            vt: VT::Unit,
+            kind: RExprKind::ObjectSet {
+                base: Box::new(base),
+                key: Box::new(Self::object_field_key(last)),
+                value: Box::new(value),
+            },
+        };
+        Some(RStmt::ExprStmt { value, span })
+    }
+
     /// PLAN-1082 (L-19/L-48): resolve the unified place-chain assignment
     /// `base (.f | [e])* (op)= v`. The grammar orders this rule after
     /// path-assign/index-assign, so the shapes arriving here are mixed
@@ -12549,6 +12629,10 @@ F:{d}
                             target.base.span,
                         );
                     }
+                    if let Some(stmt) = self.resolve_object_field_assign(target, value, *span) {
+                        self.emit_stmt(stmt);
+                        continue;
+                    }
                     let expect = self.lookup(&target.base.name).map(|l| self.locals[l.0].vt);
                     let mut value = self.expr_with_expect(value, expect);
                     // PLAN-962: storing a whole-element view into a local
@@ -13877,15 +13961,7 @@ F:{d}
                                 index.span,
                             );
                         }
-                        let elem = self.coll.objects[oi];
-                        ResolvedExpr {
-                            span: e.span,
-                            vt: elem,
-                            kind: RExprKind::ObjectGet {
-                                base: Box::new(recv),
-                                key: Box::new(idx),
-                            },
-                        }
+                        Self::object_get(recv, idx, self.coll.objects[oi], e.span)
                     }
                     other => {
                         self.bind_err(
@@ -15930,6 +16006,17 @@ F:{d}
                         }
                         out[dest] = self.py_op_call("py_getattr", name.span, frame);
                         continue;
+                    }
+                    if self.profile == SourceProfile::Auto {
+                        if let VT::Object(object) = base.vt {
+                            out[dest] = Self::object_get(
+                                base,
+                                Self::object_field_key(&name),
+                                self.coll.objects[object],
+                                span,
+                            );
+                            continue;
+                        }
                     }
                     let VT::Rec(ri) = base.vt else {
                         self.bind_err(

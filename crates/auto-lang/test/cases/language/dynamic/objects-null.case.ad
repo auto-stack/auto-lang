@@ -1,0 +1,33 @@
+# Dynamic objects and null
+
+## Case: nested-object-alias
+id: "av.parity.1084.nested-object-alias"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ var o = { inner: { x: 19, y: 20 } }
+ o.inner.y = 23
+ return o.inner.x + o.inner.y
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
