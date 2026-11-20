@@ -179,6 +179,26 @@ pub fn run_core_hir_case(sample: &[u8], mode: &str) -> Result<String, String> {
     run_semantic_source(sample, None, true, Some(mode))
 }
 
+#[cfg(all(windows, feature = "aac-foreign-semantics"))]
+pub fn run_semantic_foreign_case(
+    source: &str,
+    metadata: &[u8],
+    authority: &str,
+) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("semantic-foreign", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let page = root.join("source-declarations.json");
+        std::fs::write(&input, source).map_err(|err| format!("write foreign input: {err}"))?;
+        std::fs::write(&page, metadata).map_err(|err| format!("write foreign page: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, true, Some("verify"));
+        cmd.env("AAC1047_FOREIGN_PATH", page)
+            .env("AAC1047_FOREIGN_AUTHORITY", authority);
+        execute_report(cmd, &output, "semantic-foreign")
+    })
+}
+
 #[cfg(windows)]
 pub fn observe_hir_publication(
     sample: &[u8],

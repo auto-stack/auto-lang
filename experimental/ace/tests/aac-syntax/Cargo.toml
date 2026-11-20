@@ -9,6 +9,7 @@ description = "PLAN-1046 AAC syntax runtime / source projection / module assembl
 [dependencies]
 ace-a2x-rust = { path = "../../crates/a2x-rust" }
 ace-a2x-store = { path = "../../crates/a2x-store" }
+ace-abi = { path = "../../crates/abi", optional = true }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1"
 ace-core = { path = "../../crates/core" }
@@ -17,6 +18,7 @@ ace-av = { path = "../../crates/av" }
 ace-av-core = { path = "../../crates/av-core" }
 ace-syntax-runtime = { path = "../../crates/syntax-runtime" }
 ace-syntax-grammar = { path = "../../crates/syntax-grammar" }
+serde_json = { version = "1", optional = true }
 
 [[test]]
 name = "conformance"
@@ -24,8 +26,19 @@ path = "tests/conformance.rs"
 
 [features]
 aac-semantics = []
+aac-foreign-semantics = ["aac-semantics", "dep:ace-abi", "dep:serde_json"]
+
+[[bin]]
+name = "prepare-semantic-foreign"
+path = "src/bin/prepare-semantic-foreign.rs"
+required-features = ["aac-foreign-semantics"]
 
 [[test]]
 name = "semantic_conformance"
 path = "tests/semantic_conformance.rs"
 required-features = ["aac-semantics"]
+
+[[test]]
+name = "semantic_foreign"
+path = "tests/semantic_foreign.rs"
+required-features = ["aac-foreign-semantics"]

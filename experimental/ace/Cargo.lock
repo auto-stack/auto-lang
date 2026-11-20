@@ -158,6 +158,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
+ "ace-abi",
  "ace-av",
  "ace-av-core",
  "ace-core",
@@ -166,6 +167,7 @@ dependencies = [
  "ace-syntax-runtime",
  "auto-tool-execution",
  "blake3",
+ "serde_json",
 ]
 
 [[package]]
