@@ -1073,7 +1073,15 @@ pub struct CollTables {
     /// PLAN-964 (L-16/L-20): object element types (structural,
     /// deduplicated; `VT::Object(i)` indexes here).
     pub objects: Vec<VT>,
-}
+
+    /// PLAN-1083: scalar `= N` enums — enum name to (arm, value) pairs;
+    /// `Color.Red` resolves as the plain int constant.
+    pub scalar_enums: BTreeMap<String, Vec<(String, i32)>>,
+    /// PLAN-1083: (variant, disc) arms whose payload is a NAMED-FIELD
+    /// record (`Arm { f T, .. }`) — a single binding destructures the one
+    /// field (an anonymous record-typed payload keeps the whole-value
+    /// binding, e.g. `Msg.Move(p)`).
+    pub named_field_arms: BTreeSet<(usize, u32)>,}
 
 impl CollTables {
     fn intern_function(&mut self, signature: ClosureFnType) -> usize {
@@ -2219,9 +2227,40 @@ fn resolve_detailed(
     // so acyclic forward references do not depend on declaration order.
     // The completed graph is checked below before any body is resolved.
     let mut enum_indices = BTreeMap::new();
+    // PLAN-1083: scalar `= N` enums resolve as i32 constants (the enum
+    // name maps each arm to its declared value; `Color.Red` IS the int).
+    // Bare-only enums keep the PLAN-864 variant identity unchanged.
     if is_coll {
         for (item_index, item) in program.items.iter().enumerate() {
             if let ast::Item::Enum(e) = item {
+                if e.arms.iter().any(|a| a.disc.is_some()) {
+                    let mut next = 0i32;
+                    let mut arms = Vec::new();
+                    let mut mixed = false;
+                    for a in &e.arms {
+                        if a.disc.is_some() {
+                            next = a.disc.unwrap_or(0);
+                        } else if a.payload.is_some() || !a.fields.is_empty() {
+                            mixed = true;
+                        }
+                        arms.push((a.name.name.clone(), next));
+                        next = next.wrapping_add(1);
+                    }
+                    if mixed {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "source.enum-mixed-arms",
+                            format!(
+                                "enum `{}` mixes `= N` scalar arms with payload arms",
+                                e.name.name
+                            ),
+                            e.name.span,
+                        ));
+                        continue;
+                    }
+                    coll.scalar_enums.insert(e.name.name.clone(), arms);
+                    continue;
+                }
                 if rec_index.contains_key(&e.name.name)
                     || coll.variant_by_name(&e.name.name).is_some()
                 {
@@ -2295,6 +2334,51 @@ fn resolve_detailed(
                                 a.name.span,
                             ));
                             ok = false;
+                            continue;
+                        }
+                        // PLAN-1083: a named-field payload `Arm { f T, .. }`
+                        // interns a synthesized record (no user ident can
+                        // spell `::`), so the payload rides the ordinary
+                        // record construction/field-read machinery.
+                        if !a.fields.is_empty() {
+                            let synth = format!("__enum_{}_{}", e.name.name, a.name.name);
+                            let ri = records.len();
+                            records.push(ResolvedRecord {
+                                name: synth.clone(),
+                                name_span: a.name.span,
+                                fields: Vec::new(),
+                                methods: Vec::new(),
+                            });
+                            rec_index.insert(synth, ri);
+                            let mut fseen: BTreeSet<&str> = BTreeSet::new();
+                            for (fname, fty) in &a.fields {
+                                if !fseen.insert(fname.name.as_str()) {
+                                    diags.push(Diagnostic::new(
+                                        Stage::Bind,
+                                        "source.duplicate",
+                                        format!(
+                                            "field `{}` is declared more than once in enum arm `{}.{}`",
+                                            fname.name, e.name.name, a.name.name
+                                        ),
+                                        fname.span,
+                                    ));
+                                    ok = false;
+                                }
+                                let vt = vt_of_ann_coll(
+                                    fty,
+                                    &rec_index,
+                                    &mut coll,
+                                    &mut diags,
+                                    TypePos::Field,
+                                );
+                                records[ri].fields.push(ResolvedField {
+                                    name: fname.name.clone(),
+                                    vt,
+                                    span: fname.span,
+                                });
+                            }
+                            coll.named_field_arms.insert((enum_index, arms.len() as u32));
+                            arms.push((a.name.name.clone(), Some(VT::Rec(ri))));
                             continue;
                         }
                         let payload = a.payload.as_ref().map(|pt| {
@@ -8242,6 +8326,89 @@ F:{d}
         })
     }
 
+    /// PLAN-1083: `E.A` (no call) — a payload-less qualified variant arm
+    /// constructs the variant value directly; a payload arm is a named
+    /// argument-count error (never silently default).
+    fn try_resolve_variant_arm(&mut self, e: &ast::Expr) -> Option<ResolvedExpr> {
+        if !self.profile.is_collections() {
+            return None;
+        }
+        let ExprKind::Field { base, name } = &e.kind else {
+            return None;
+        };
+        let ExprKind::Var(id) = &base.kind else {
+            return None;
+        };
+        if self.lookup(&id.name).is_some() {
+            return None;
+        }
+        let Some(vi) = self.coll.variant_by_name(&id.name) else {
+            return None;
+        };
+        let Some(disc) = self.coll.variants[vi]
+            .arms
+            .iter()
+            .position(|(n, _)| *n == name.name)
+        else {
+            return None;
+        };
+        if self.coll.variants[vi].arms[disc].1.is_some() {
+            self.bind_err(
+                "source.argument",
+                format!(
+                    "arm `{}.{}` carries a payload; construct it with arguments",
+                    id.name, name.name
+                ),
+                name.span,
+            );
+            return None;
+        }
+        Some(ResolvedExpr {
+            span: e.span,
+            vt: VT::Variant(vi),
+            kind: RExprKind::VariantCtor {
+                variant: vi,
+                disc: disc as u32,
+                payload: None,
+            },
+        })
+    }
+
+    /// PLAN-1083: `Color.Red` where `Color` is a scalar `= N` enum — the
+    /// plain int constant (never a variant construction).
+    fn try_resolve_scalar_enum(&mut self, e: &ast::Expr, expect: Option<VT>) -> Option<ResolvedExpr> {
+        let ExprKind::Field { base, name } = &e.kind else {
+            return None;
+        };
+        let ExprKind::Var(id) = &base.kind else {
+            return None;
+        };
+        let Some(arms) = self.coll.scalar_enums.get(&id.name) else {
+            return None;
+        };
+        let found = arms
+            .iter()
+            .find(|(n, _)| n == &name.name)
+            .map(|(_, v)| *v);
+        let v = match found {
+            Some(v) => v,
+            None => {
+                self.bind_err(
+                    "source.pattern-unknown-arm",
+                    format!("scalar enum `{}` has no arm named `{}`", id.name, name.name),
+                    name.span,
+                );
+                return None;
+            }
+        };
+        let _ = expect;
+        Some(ResolvedExpr {
+            span: e.span,
+            vt: VT::I32,
+            kind: RExprKind::IntLit(v),
+        })
+    }
+
     fn try_resolve_may_ctor(&mut self, e: &ast::Expr, expect: Option<VT>) -> Option<ResolvedExpr> {
         if !self.profile.is_aggregates()
             || self.lookup("May").is_some()
@@ -9059,7 +9226,10 @@ F:{d}
             Variant {
                 vi: usize,
                 disc: u32,
-                bind: Option<ast::Ident>,
+                /// PLAN-1083: payload bindings in source order — one for the
+                /// PLAN-864 single payload, more for multi-field/tuple
+                /// destructuring.
+                binds: Vec<ast::Ident>,
                 payload_vt: Option<VT>,
             },
             Int(i32),
@@ -9068,8 +9238,14 @@ F:{d}
 
         struct ArmResolved {
             pat: PatCond,
+            /// PLAN-1083: the payload-binding Lets, prepended at chain
+            /// build (a guard evaluates AFTER them, before the body).
+            prefix: Vec<RStmt>,
             block: RBlock,
             expr_val: Option<ResolvedExpr>,
+            /// PLAN-1083: the resolved guard — Some only when the arm
+            /// carried `pat if cond -> body`.
+            guard: Option<ResolvedExpr>,
             span: Span,
         }
 
@@ -9126,20 +9302,128 @@ F:{d}
                 ast::MatchPattern::Variant {
                     qual,
                     name,
-                    binding,
+                    bindings,
                 } => {
+                    // PLAN-1083: a qualified scalar-enum arm on an int
+                    // scrutinee matches BY VALUE (Color.Red == 1).
+                    if scr_vt == VT::I32 {
+                        if let Some(q) = qual.as_ref() {
+                            let found = self
+                                .coll
+                                .scalar_enums
+                                .get(&q.name)
+                                .and_then(|arms| {
+                                    arms.iter().find(|(n, _)| *n == name.name).map(|(_, v)| *v)
+                                });
+                            if let Some(v) = found {
+                                match Some(v) {
+                                    Some(v) => {
+                                        if !seen_ints.insert(v) {
+                                            self.bind_err(
+                                                "source.pattern-duplicate",
+                                                format!(
+                                                    "duplicate `is` pattern `{}.{}`",
+                                                    q.name, name.name
+                                                ),
+                                                arm.span,
+                                            );
+                                        }
+                                        PatCond::Int(v)
+                                    }
+                                    None => {
+                                        self.bind_err(
+                                            "source.pattern-unknown-arm",
+                                            format!(
+                                                "scalar enum `{}` has no arm named `{}`",
+                                                q.name, name.name
+                                            ),
+                                            arm.span,
+                                        );
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                self.bind_err(
+                                    "source.type-mismatch",
+                                    format!(
+                                        "`{}` does not name a scalar enum; `{}` cannot match `{}`",
+                                        q.name,
+                                        name.name,
+                                        scr_vt.as_str()
+                                    ),
+                                    arm.span,
+                                );
+                                continue;
+                            }
+                        } else {
+                            self.bind_err(
+                                "source.type-mismatch",
+                                format!(
+                                    "pattern `{}` cannot match `{}`",
+                                    name.name, scr_vt.as_str()
+                                ),
+                                arm.span,
+                            );
+                            continue;
+                        }
+                    } else {
                     let Some((vi, disc)) = self.is_arm_disc(scr_vt, qual.as_ref(), name) else {
                         continue;
                     };
                     if !seen_discs.insert(disc) {
-                        self.bind_err(
-                            "source.pattern-duplicate",
-                            format!("duplicate `is` arm `{}`", name.name),
-                            arm.span,
-                        );
+                        // PLAN-1083: a disc may repeat while every EARLIER
+                        // arm for it is guarded (guard false falls through
+                        // to the repeat); a repeat after a plain arm is
+                        // unreachable and stays the frozen duplicate.
+                        let dup_ok = compiled.iter().all(|c| {
+                            !matches!(&c.pat, PatCond::Variant { disc: d, .. } if *d == disc)
+                                || c.guard.is_some()
+                        });
+                        if !dup_ok {
+                            self.bind_err(
+                                "source.pattern-duplicate",
+                                format!("duplicate `is` arm `{}`", name.name),
+                                arm.span,
+                            );
+                        }
                     }
                     let payload_vt = self.coll.variants[vi].arms[disc as usize].1;
-                    if binding.is_some() && payload_vt.is_none() {
+                    if let Some(pvt) = payload_vt {
+                        let named_arm = self.coll.named_field_arms.contains(&(vi, disc));
+                        let want = match pvt {
+                            VT::Tuple(ti) => self.coll.tuples.get(ti).map(|t| t.len()),
+                            // a NAMED-FIELD payload binds field-by-field; an
+                            // anonymous record-typed payload is ONE value.
+                            VT::Rec(_) if named_arm => match pvt {
+                                VT::Rec(ri) => self.records.get(ri).map(|r| r.fields.len()),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(want) = want {
+                            if !bindings.is_empty() && bindings.len() != want {
+                                self.bind_err(
+                                    "source.pattern-bindings",
+                                    format!(
+                                        "arm `{}` payload carries {} value(s); the pattern binds {}",
+                                        name.name,
+                                        want,
+                                        bindings.len()
+                                    ),
+                                    arm.span,
+                                );
+                            }
+                        } else if bindings.len() > 1 {
+                            self.bind_err(
+                                "source.pattern-bindings",
+                                format!(
+                                    "arm `{}` carries a single-value payload; multi-binding destructuring needs a tuple/record payload",
+                                    name.name
+                                ),
+                                arm.span,
+                            );
+                        }
+                    } else if !bindings.is_empty() {
                         self.bind_err(
                             "source.type-mismatch",
                             format!("arm `{}` carries no payload; remove the binding", name.name),
@@ -9149,8 +9433,9 @@ F:{d}
                     PatCond::Variant {
                         vi,
                         disc,
-                        bind: binding.clone(),
+                        binds: bindings.clone(),
                         payload_vt,
+                    }
                     }
                 }
             };
@@ -9160,46 +9445,207 @@ F:{d}
                 views: BTreeMap::new(),
             });
             let mut prefix_stmts = Vec::new();
+            // PLAN-1083: multi-binding destructuring — the payload projects
+            // ONCE into a step-local temp; each binding then reads its tuple
+            // element / record field. A single binding keeps the PLAN-864
+            // direct-projection shape (byte-identical lowering).
             if let PatCond::Variant {
                 vi,
                 disc,
-                bind: Some(ref bident),
+                binds,
                 payload_vt: Some(pvt),
-            } = pat
+            } = &pat
             {
-                let bl = LocalRef(self.locals.len());
-                self.locals.push(LocalDecl {
-                    name: bident.name.clone(),
-                    vt: pvt,
-                    mutable: false,
-                    is_param: false,
-                    param_index: None,
-                    capture_index: None,
-                    cell: false,
-                    is_capture: false,
-                    mode: ast::ParamMode::Default,
-                    span: bident.span,
-                });
-                self.scopes
-                    .last_mut()
-                    .unwrap()
-                    .names
-                    .insert(bident.name.clone(), bl);
-                self.declared_names.insert(bident.name.clone());
-                prefix_stmts.push(RStmt::Let {
-                    local: bl,
-                    value: ResolvedExpr {
-                        span: bident.span,
-                        vt: pvt,
-                        kind: RExprKind::VariantProject {
-                            local: scr_l,
-                            variant: vi,
-                            disc,
-                        },
+                let project = |span: Span| ResolvedExpr {
+                    span,
+                    vt: *pvt,
+                    kind: RExprKind::VariantProject {
+                        local: scr_l,
+                        variant: *vi,
+                        disc: *disc,
                     },
-                    span: bident.span,
-                });
+                };
+                let named_arm = self.coll.named_field_arms.contains(&(*vi, *disc));
+                if binds.len() == 1 && named_arm {
+                    // PLAN-1083: `Arm(f) -> ..` on a NAMED-FIELD payload
+                    // binds the single declared field (never the whole
+                    // synthesized record).
+                    if let Some(bident) = binds.first() {
+                        let hidden = self.agg_temp("__is_payload", *pvt, false, bident.span);
+                        prefix_stmts.push(RStmt::Let {
+                            local: hidden,
+                            value: project(bident.span),
+                            span: bident.span,
+                        });
+                        let (evt, kind) = match *pvt {
+                            VT::Rec(ri) => {
+                                let evt = self
+                                    .records
+                                    .get(ri)
+                                    .and_then(|r| r.fields.first().map(|f| f.vt))
+                                    .unwrap_or(VT::I32);
+                                (
+                                    evt,
+                                    RExprKind::FieldGet {
+                                        base: Box::new(ResolvedExpr {
+                                            span: bident.span,
+                                            vt: *pvt,
+                                            kind: RExprKind::ReadLocal(hidden),
+                                        }),
+                                        path: vec![(ri, 0)],
+                                    },
+                                )
+                            }
+                            _ => (VT::I32, RExprKind::ReadLocal(hidden)),
+                        };
+                        let bl = LocalRef(self.locals.len());
+                        self.locals.push(LocalDecl {
+                            name: bident.name.clone(),
+                            vt: evt,
+                            mutable: false,
+                            is_param: false,
+                            param_index: None,
+                            capture_index: None,
+                            cell: false,
+                            is_capture: false,
+                            mode: ast::ParamMode::Default,
+                            span: bident.span,
+                        });
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(bident.name.clone(), bl);
+                        self.declared_names.insert(bident.name.clone());
+                        prefix_stmts.push(RStmt::Let {
+                            local: bl,
+                            value: ResolvedExpr {
+                                span: bident.span,
+                                vt: evt,
+                                kind,
+                            },
+                            span: bident.span,
+                        });
+                    }
+                } else if binds.len() <= 1 {
+                    if let Some(bident) = binds.first() {
+                        let bl = LocalRef(self.locals.len());
+                        self.locals.push(LocalDecl {
+                            name: bident.name.clone(),
+                            vt: *pvt,
+                            mutable: false,
+                            is_param: false,
+                            param_index: None,
+                            capture_index: None,
+                            cell: false,
+                            is_capture: false,
+                            mode: ast::ParamMode::Default,
+                            span: bident.span,
+                        });
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(bident.name.clone(), bl);
+                        self.declared_names.insert(bident.name.clone());
+                        prefix_stmts.push(RStmt::Let {
+                            local: bl,
+                            value: project(bident.span),
+                            span: bident.span,
+                        });
+                    }
+                } else {
+                    let hidden = self.agg_temp("__is_payload", *pvt, false, binds[0].span);
+                    prefix_stmts.push(RStmt::Let {
+                        local: hidden,
+                        value: project(binds[0].span),
+                        span: binds[0].span,
+                    });
+                    for (i, bident) in binds.iter().enumerate() {
+                        let (evt, kind) = match *pvt {
+                            VT::Tuple(ti) => {
+                                let evt = self
+                                    .coll
+                                    .tuples
+                                    .get(ti)
+                                    .and_then(|t| t.get(i).copied())
+                                    .unwrap_or(VT::I32);
+                                (
+                                    evt,
+                                    RExprKind::TupleGet {
+                                        base: Box::new(ResolvedExpr {
+                                            span: bident.span,
+                                            vt: *pvt,
+                                            kind: RExprKind::ReadLocal(hidden),
+                                        }),
+                                        index: i,
+                                    },
+                                )
+                            }
+                            VT::Rec(ri) => {
+                                let evt = self
+                                    .records
+                                    .get(ri)
+                                    .and_then(|r| r.fields.get(i).map(|f| f.vt))
+                                    .unwrap_or(VT::I32);
+                                (
+                                    evt,
+                                    RExprKind::FieldGet {
+                                        base: Box::new(ResolvedExpr {
+                                            span: bident.span,
+                                            vt: *pvt,
+                                            kind: RExprKind::ReadLocal(hidden),
+                                        }),
+                                        path: vec![(ri, i)],
+                                    },
+                                )
+                            }
+                            _ => (VT::I32, RExprKind::ReadLocal(hidden)),
+                        };
+                        let bl = LocalRef(self.locals.len());
+                        self.locals.push(LocalDecl {
+                            name: bident.name.clone(),
+                            vt: evt,
+                            mutable: false,
+                            is_param: false,
+                            param_index: None,
+                            capture_index: None,
+                            cell: false,
+                            is_capture: false,
+                            mode: ast::ParamMode::Default,
+                            span: bident.span,
+                        });
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .names
+                            .insert(bident.name.clone(), bl);
+                        self.declared_names.insert(bident.name.clone());
+                        prefix_stmts.push(RStmt::Let {
+                            local: bl,
+                            value: ResolvedExpr {
+                                span: bident.span,
+                                vt: evt,
+                                kind,
+                            },
+                            span: bident.span,
+                        });
+                    }
+                }
             }
+            // PLAN-1083: the guard resolves INSIDE the arm scope (the
+            // pattern bindings are visible) and must be bool-typed.
+            let guard = arm.guard.as_ref().map(|g| {
+                let cond = self.expr_with_expect(g, Some(VT::Bool));
+                if cond.vt != VT::Bool {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!("`is` guard must be bool, found `{}`", cond.vt.as_str()),
+                        g.span,
+                    );
+                }
+                cond
+            });
 
             let (mut ablock, expr_val) = match &arm.body {
                 ast::AggArmBody::Block(b) => {
@@ -9254,14 +9700,12 @@ F:{d}
                 }
             };
             self.scopes.pop();
-            if !prefix_stmts.is_empty() {
-                prefix_stmts.append(&mut ablock.stmts);
-                ablock.stmts = prefix_stmts;
-            }
             compiled.push(ArmResolved {
                 pat,
+                prefix: prefix_stmts,
                 block: ablock,
                 expr_val,
+                guard,
                 span: arm.span,
             });
         }
@@ -9346,6 +9790,8 @@ F:{d}
                             ev.span,
                         );
                     }
+                    // PLAN-1083: the value assign lands at the END of the
+                    // arm body — inside the guard's then-block below.
                     ca.block.stmts.push(RStmt::Assign {
                         local: rl,
                         path: Vec::new(),
@@ -9354,6 +9800,31 @@ F:{d}
                     });
                 }
             }
+            // PLAN-1083: assemble [prefix Lets, guarded?] body — a guard
+            // false falls through to the REMAINING chain (els), never to
+            // the end of this arm's block.
+            let guard = ca.guard.take();
+            let block_span = ca.block.span;
+            let mut then_stmts = ca.prefix;
+            match guard {
+                Some(g) => {
+                    let els = chain.take();
+                    then_stmts.push(RStmt::If {
+                        cond: g,
+                        then: ca.block,
+                        els,
+                        span: ca.span,
+                    });
+                }
+                None => {
+                    let mut block = ca.block;
+                    then_stmts.append(&mut block.stmts);
+                }
+            }
+            ca.block = RBlock {
+                stmts: then_stmts,
+                span: block_span,
+            };
             match ca.pat {
                 PatCond::Else => {
                     chain = Some(ca.block);
@@ -10245,19 +10716,43 @@ F:{d}
 
     /// PLAN-864: a qualified ctor takes exactly the arm's payload arity.
     fn check_qualified_ctor_args(&mut self, vi: usize, disc: u32, args: &[ast::Arg], span: Span) {
-        let has_payload = self.coll.variants[vi].arms[disc as usize].1.is_some();
+        // PLAN-1083: tuple/record payloads take one value per element/
+        // field (positional or named); a single-value payload keeps the
+        // PLAN-864 one-argument contract.
+        let payload_vt = self.coll.variants[vi].arms[disc as usize].1;
         let n = args.len();
-        match (has_payload, n) {
-            (true, 1) => {}
-            (false, 0) => {}
-            (true, _) => self.bind_err(
+        let named_arm = self.coll.named_field_arms.contains(&(vi, disc));
+        let want = match payload_vt {
+            Some(VT::Tuple(ti)) => self.coll.tuples.get(ti).map(|t| t.len()),
+            // a NAMED-FIELD payload constructs field-by-field; an anonymous
+            // record-typed payload (`Msg.Move(Pt)`) is ONE whole value.
+            Some(VT::Rec(_)) if named_arm => {
+                payload_vt.and_then(|vt| match vt {
+                    VT::Rec(ri) => self.records.get(ri).map(|r| r.fields.len()),
+                    _ => None,
+                })
+            }
+            _ => None,
+        };
+        match (payload_vt, want, n) {
+            (None, _, 0) => {}
+            (None, _, _) => self.bind_err(
+                "source.argument",
+                "this variant arm carries no payload".to_string(),
+                span,
+            ),
+            (Some(_), None, 1) => {}
+            (Some(_), None, _) => self.bind_err(
                 "source.argument",
                 "this variant arm takes exactly one payload value".to_string(),
                 span,
             ),
-            (false, _) => self.bind_err(
+            (Some(_), Some(w), _) if n == w => {}
+            (Some(_), Some(w), _) => self.bind_err(
                 "source.argument",
-                "this variant arm carries no payload".to_string(),
+                format!(
+                    "this variant arm takes {w} payload value(s) (positional or named), found {n}"
+                ),
                 span,
             ),
         }
@@ -10446,6 +10941,12 @@ F:{d}
     /// resolves bottom-up unchanged.
     fn expr_with_expect(&mut self, v: &ast::Expr, expect: Option<VT>) -> ResolvedExpr {
         self.expr_diverged = false;
+        if let Some(se) = self.try_resolve_scalar_enum(v, expect) {
+            return se;
+        }
+        if let Some(va) = self.try_resolve_variant_arm(v) {
+            return va;
+        }
         if let Some(may) = self.try_resolve_may_ctor(v, expect) {
             return may;
         }
@@ -14738,7 +15239,13 @@ F:{d}
                     }
                     if let ExprKind::Field { base, name } = &node.kind {
                         if self.profile.is_aggregates() {
-                            if let Some(may) = self.try_resolve_may_ctor(node, None) {
+                            if let Some(se) = self.try_resolve_scalar_enum(node, None) {
+                                out[slot] = se;
+                                continue;
+                            } else if let Some(va) = self.try_resolve_variant_arm(node) {
+                                out[slot] = va;
+                                continue;
+                            } else if let Some(may) = self.try_resolve_may_ctor(node, None) {
                                 out[slot] = may;
                                 continue;
                             }
@@ -14888,7 +15395,13 @@ F:{d}
                         });
                     } else if let ExprKind::MethodCall { recv, name, args } = &node.kind {
                         if self.profile.is_aggregates() {
-                            if let Some(may) = self.try_resolve_may_ctor(node, None) {
+                            if let Some(se) = self.try_resolve_scalar_enum(node, None) {
+                                out[slot] = se;
+                                continue;
+                            } else if let Some(va) = self.try_resolve_variant_arm(node) {
+                                out[slot] = va;
+                                continue;
+                            } else if let Some(may) = self.try_resolve_may_ctor(node, None) {
                                 out[slot] = may;
                                 continue;
                             }
@@ -15537,19 +16050,108 @@ F:{d}
                         RecvClass::VariantArm { vi, disc } => {
                             // PLAN-864: `E.A(e)` / `E.A` — qualified variant
                             // construction; the payload (if any) is the
-                            // single resolved argument.
-                            let payload = match rargs.len() {
-                                0 => None,
-                                1 => {
+                            // single resolved argument. PLAN-1083: multi-
+                            // element tuple payloads assemble a TupleLit;
+                            // record payloads assemble the positional/named
+                            // record constructor (reusing the record
+                            // machinery — never a second representation).
+                            let arm_payload_vt = self.coll.variants[vi].arms[disc as usize].1;
+                            let named_arm = self.coll.named_field_arms.contains(&(vi, disc));
+                            let payload = match (arm_payload_vt, rargs.len()) {
+                                (_, 0) => None,
+                                (Some(single_vt), 1)
+                                    if !matches!(single_vt, VT::Tuple(_))
+                                        && !(matches!(single_vt, VT::Rec(_)) && named_arm) =>
+                                {
                                     let mut value = rargs.remove(0).value;
-                                    if let Some(expected) =
-                                        self.coll.variants[vi].arms[disc as usize].1
-                                    {
-                                        retag_literal(&mut value, expected);
-                                    }
+                                    retag_literal(&mut value, single_vt);
                                     Some(Box::new(value))
                                 }
-                                _ => None, // rejected at classification
+                                (Some(VT::Tuple(ti)), n) if n >= 1 => {
+                                    let elem_vts: Vec<VT> = self
+                                        .coll
+                                        .tuples
+                                        .get(ti)
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    if n == elem_vts.len() {
+                                        let mut elems = Vec::with_capacity(n);
+                                        for (i, mut ra) in rargs.drain(..).enumerate() {
+                                            if let Some(evt) = elem_vts.get(i) {
+                                                retag_literal(&mut ra.value, *evt);
+                                            }
+                                            elems.push(ra.value);
+                                        }
+                                        Some(Box::new(ResolvedExpr {
+                                            span: node_span,
+                                            vt: arm_payload_vt.unwrap(),
+                                            kind: RExprKind::TupleLit { elems },
+                                        }))
+                                    } else {
+                                        None // arity rejected at classification
+                                    }
+                                }
+                                (Some(VT::Rec(ri)), n) if n >= 1 => {
+                                    let rec_vt = VT::Rec(ri);
+                                    let named = rargs.iter().any(|a| a.name.is_some());
+                                    if named {
+                                        let fields = self
+                                            .records
+                                            .get(ri)
+                                            .map(|r| {
+                                                r.fields.iter().map(|f| (f.name.clone(), f.vt)).collect::<Vec<_>>()
+                                            })
+                                            .unwrap_or_default();
+                                        let mut pairs = Vec::with_capacity(n);
+                                        for mut ra in rargs.drain(..) {
+                                            let fname = ra
+                                                .name
+                                                .as_ref()
+                                                .map(|x| x.name.clone())
+                                                .unwrap_or_default();
+                                            let evt = fields
+                                                .iter()
+                                                .find(|(n2, _)| *n2 == fname)
+                                                .map(|(_, vt)| *vt);
+                                            if let Some(evt) = evt {
+                                                retag_literal(&mut ra.value, evt);
+                                            }
+                                            pairs.push((fname, ra.value));
+                                        }
+                                        Some(Box::new(ResolvedExpr {
+                                            span: node_span,
+                                            vt: rec_vt,
+                                            kind: RExprKind::CtorNamed {
+                                                rec: ri,
+                                                fields: pairs,
+                                            },
+                                        }))
+                                    } else {
+                                        let elems_vt: Vec<VT> = self
+                                            .records
+                                            .get(ri)
+                                            .map(|r| r.fields.iter().map(|f| f.vt).collect())
+                                            .unwrap_or_default();
+                                        if n == elems_vt.len() {
+                                            for (i, ra) in rargs.iter_mut().enumerate() {
+                                                if let Some(evt) = elems_vt.get(i).copied() {
+                                                    retag_literal(&mut ra.value, evt);
+                                                }
+                                            }
+                                            Some(Box::new(ResolvedExpr {
+                                                span: node_span,
+                                                vt: rec_vt,
+                                                kind: RExprKind::CtorPos {
+                                                    rec: ri,
+                                                    args: rargs,
+                                                },
+                                            }))
+                                        } else {
+                                            None // arity rejected at classification
+                                        }
+                                    }
+                                }
+                                (_, _) => None, // rejected at classification
                             };
                             out[dest] = ResolvedExpr {
                                 span: node_span,

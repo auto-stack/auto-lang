@@ -121,6 +121,15 @@ pub struct SourceKinds {
     pub go_stmt: Option<u32>,
     pub union_item: Option<u32>,
     pub enum_arm: Option<u32>,
+    /// PLAN-1083: enum-body member wrapper (arm | auto-face view method) and
+    /// the multi-element tuple payload tail.
+    pub enum_member: Option<u32>,
+    pub enum_payload_tail: Option<u32>,
+    /// PLAN-1083: multi-binding destructuring tail `Arm(a, b, ..)`.
+    pub arm_binding_tail: Option<u32>,
+    /// PLAN-1083: or-arm tail `| pat` and the `pat if cond ->` guard.
+    pub agg_or_arm_tail: Option<u32>,
+    pub arm_guard: Option<u32>,
     pub is_stmt: Option<u32>,
     pub for_in_stmt: Option<u32>,
     pub for_range_stmt: Option<u32>,
@@ -266,6 +275,7 @@ pub struct SourceKinds {
     pub agg_is_stmt: Option<u32>,
     pub is_expr: Option<u32>,
     pub agg_match_arm: Option<u32>,
+    pub agg_arm_pat: Option<u32>,
     pub try_stmt: Option<u32>,
     pub catch_clause: Option<u32>,
     pub finally_clause: Option<u32>,
@@ -495,6 +505,11 @@ impl SourceKinds {
             go_stmt: rk_opt(p, "go-stmt"),
             union_item: rk_opt(p, "union-item"),
             enum_arm: rk_opt(p, "enum-arm"),
+            enum_member: rk_opt(p, "enum-member"),
+            enum_payload_tail: rk_opt(p, "enum-payload-tail"),
+            arm_binding_tail: rk_opt(p, "arm-binding-tail"),
+            agg_or_arm_tail: rk_opt(p, "agg-or-arm-tail"),
+            arm_guard: rk_opt(p, "arm-guard"),
             is_stmt: rk_opt(p, "is-stmt"),
             for_in_stmt: rk_opt(p, "for-in-stmt"),
             for_range_stmt: rk_opt(p, "for-range-stmt"),
@@ -626,6 +641,7 @@ impl SourceKinds {
             agg_is_stmt: rk_opt(p, "agg-is-stmt"),
             is_expr: rk_opt(p, "is-expr"),
             agg_match_arm: rk_opt(p, "agg-match-arm"),
+            agg_arm_pat: rk_opt(p, "agg-arm-pat"),
             try_stmt: rk_opt(p, "try-stmt"),
             catch_clause: rk_opt(p, "catch-clause"),
             finally_clause: rk_opt(p, "finally-clause"),

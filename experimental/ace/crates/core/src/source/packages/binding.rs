@@ -1899,14 +1899,14 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
                 if let MatchPattern::Variant {
                     qual,
                     name,
-                    binding,
+                    bindings,
                 } = &mut a.pat
                 {
                     if let Some(q) = qual {
                         sh(&mut q.span, offset);
                     }
                     sh(&mut name.span, offset);
-                    if let Some(b) = binding {
+                    for b in bindings {
                         sh(&mut b.span, offset);
                     }
                 }
@@ -2137,12 +2137,12 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         ExprKind::IsExpr { scrutinee, arms } => {
             shift_expr(scrutinee, offset);
             for a in arms {
-                if let MatchPattern::Variant { qual, name, binding } = &mut a.pat {
+                if let MatchPattern::Variant { qual, name, bindings } = &mut a.pat {
                     if let Some(q) = qual {
                         sh(&mut q.span, offset);
                     }
                     sh(&mut name.span, offset);
-                    if let Some(b) = binding {
+                    for b in bindings {
                         sh(&mut b.span, offset);
                     }
                 }
@@ -2974,11 +2974,11 @@ impl<'a> Walker<'a> {
                 self.walk_expr(scrutinee, locals)?;
                 for a in arms {
                     let mut inner_locals = locals.clone();
-                    if let MatchPattern::Variant {
-                        binding: Some(b), ..
-                    } = &a.pat
+                    if let MatchPattern::Variant { bindings, .. } = &a.pat
                     {
-                        inner_locals.insert(b.name.clone());
+                        for b in bindings {
+                            inner_locals.insert(b.name.clone());
+                        }
                     }
                     match &mut a.body {
                         AggArmBody::Block(b) => self.walk_block(b, inner_locals)?,

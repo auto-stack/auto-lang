@@ -1052,6 +1052,10 @@ fn t01_bisect_faces() {
             "enum Box { Holder { v int } }\nfn main() int { let b = Box.Holder(9)\n is b { Box.Holder(v) -> { return v } } }\n".into(),
         ),
         (
+            "B15b named 2-field",
+            "enum Box2 { Holder { a int; b int } }\nfn main() int { let b = Box2.Holder(3, 4)\n is b { Box2.Holder(x, y) -> { return x + y } } }\n".into(),
+        ),
+        (
             "B16 enum int arm statement is",
             "fn main() int { let x = 2\n is x {\n  1 -> { return 10 }\n  2 -> { return 20 }\n }\n}\n".into(),
         ),
@@ -1097,6 +1101,18 @@ fn t01_bisect_faces() {
         (
             "B25 scalar enum use as int",
             "enum Color { Red = 1, Green = 2 }\nfn main() int { let c = Color.Red\n return c }\n".into(),
+        ),
+        (
+            "B33 no-binding arm on payload variant",
+            "enum Color {\n    RGB { r int, g int, b int }\n}\nfn main() {\n    let c1 = Color.RGB(100, 150, 200)\n    is c1 {\n        Color.RGB -> print(\"rgb\")\n    }\n}\n".into(),
+        ),
+        (
+            "B34 guard duplicate disc",
+            "enum Reg {\n    Yes(int)\n    No\n}\nfn main() int {\n    let r = Reg.Yes(42)\n    is r {\n        Reg.Yes(v) if v > 100 -> { return 1 }\n        Reg.Yes(v) -> { return v }\n        Reg.No -> { return 0 }\n    }\n}\n".into(),
+        ),
+        (
+            "B35 Err enum payload",
+            "enum ParseError {\n    UnexpectedEnd\n}\nfn parse(s Str) !int {\n    if s == \"\" {\n        return Err(ParseError.UnexpectedEnd)\n    }\n    Ok(42)\n}\nfn main() {\n    let r = parse(\"\")\n    is r {\n        Ok(n) -> print(n)\n        Err(e) -> {\n            is e {\n                ParseError.UnexpectedEnd -> print(\"unexpected end\")\n                else -> print(\"other error\")\n            }\n        }\n    }\n}\n".into(),
         ),
         (
             "B26 array literal trailing comma",
@@ -1179,5 +1195,124 @@ fn t01_bisect_faces() {
     ];
     for (label, src) in &faces {
         println!("[p1083-B] {label} => {}", observe(src));
+    }
+}
+
+/// T-02 temp: print full diagnostics for the remaining red faces.
+#[test]
+fn t02_infra_diag() {
+    let faces: &[(&str, &str)] = &[
+        (
+            "B15 named payload",
+            concat!(
+                "enum Box { Holder { v int } }\n",
+                "fn main() int { let b = Box.Holder(9)\n",
+                " is b { Box.Holder(v) -> { return v } } }\n",
+            ),
+        ),
+        (
+            "B25 scalar enum",
+            concat!(
+                "enum Color { Red = 1, Green = 2 }\n",
+                "fn main() int { let c = Color.Red\n return c }\n",
+            ),
+        ),
+        (
+            "B2 method field write",
+            concat!(
+                "type Counter {\n",
+                "    value int\n",
+                "    fn bump() int { .value = .value + 1\n return .value }\n",
+                "    static fn new(v int) Counter { return Counter(v) }\n",
+                "}\n",
+                "fn main() int { var c = Counter.new(10)\n return c.bump() }\n",
+            ),
+        ),
+        (
+            "B35 Err enum payload",
+            concat!(
+                "enum ParseError {\n",
+                "    UnexpectedEnd\n",
+                "}\n",
+                "fn parse(s Str) !int {\n",
+                "    if s == \"\" {\n",
+                "        return Err(ParseError.UnexpectedEnd)\n",
+                "    }\n",
+                "    return Ok(42)\n",
+                "}\n",
+                "fn main() {\n",
+                "    let r = parse(\"\")\n",
+                "    is r {\n",
+                "        Ok(n) -> print(n)\n",
+                "        Err(e) -> {\n",
+                "            is e {\n",
+                "                ParseError.UnexpectedEnd -> print(\"unexpected end\")\n",
+                "                else -> print(\"other error\")\n",
+                "            }\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+            ),
+        ),
+    ];
+    for (label, src) in faces {
+        match ace_core::source::compile_language_source(src, "p1083.at", &[]) {
+            Ok(_) => println!("[p1083-DIAG] {label} => OK"),
+            Err(ds) => {
+                for d in &ds {
+                    println!(
+                        "[p1083-DIAG] {label} => {:?}:{}:{} span={:?}",
+                        d.stage, d.code, d.message, d.span
+                    );
+                }
+            }
+        }
+    }
+    let scalar_variants: &[(&str, &str)] = &[
+        (
+            "S1 single = N arm",
+            "enum C { R = 1 }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S2 newline separated = N",
+            "enum C { R = 1\n G = 2 }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S3 comma separated = N",
+            "enum C { R = 1, G = 2 }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S4 named fields comma",
+            "enum B { H { a int, b int } }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S5 named fields newline",
+            "enum B { H { a int\n b int } }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S6 named fields semi",
+            "enum B { H { a int; b int } }\nfn main() int { return 2 }\n",
+        ),
+        (
+            "S7 enum arms comma plain",
+            "enum C { R\n G }\nfn main() int { let c = C.R\n is c { C.R -> { return 1 } C.G -> { return 2 } } }\n",
+        ),
+        (
+            "S8 enum arms comma",
+            "enum C { R, G }\nfn main() int { let c = C.R\n is c { C.R -> { return 1 } C.G -> { return 2 } } }\n",
+        ),
+    ];
+    for (label, src) in scalar_variants {
+        match ace_core::source::compile_language_source(src, "p1083.at", &[]) {
+            Ok(_) => println!("[p1083-DIAG] {label} => OK"),
+            Err(ds) => {
+                for d in &ds {
+                    println!(
+                        "[p1083-DIAG] {label} => {:?}:{}:{} span={:?}",
+                        d.stage, d.code, d.message, d.span
+                    );
+                }
+            }
+        }
     }
 }

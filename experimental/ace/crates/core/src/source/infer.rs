@@ -75,6 +75,7 @@ struct Ctx<'p> {
 
 pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
+    normalize_auto_face(program);
     merge_prototypes(program, &mut diags);
     let has_inferred = program.items.iter().any(|i| match i {
         Item::Fn(f) => {
@@ -867,5 +868,209 @@ fn complete_nested_block(
             }
             _ => {}
         }
+    }
+}
+
+/// PLAN-1083 (auto face): parse→resolve normalizations for the ordinary
+/// language face — both are pure AST rewrites, never a second parser:
+///
+/// - a trailing `is` statement of the SCRIPT main becomes the legal script
+///   tail `ExprStmt(IsExpr)` (the arm values ARE the script's value);
+/// - a trailing `is` statement of a declared VALUE-returning fn becomes
+///   `Return(IsExpr)` (the is expression returns; a void fn keeps the
+///   statement form);
+/// - a `!T` fn whose `Err(..)` payloads all name ONE declared enum E is
+///   rewritten to the explicit `Result<T, E>` spelling — the enum rides
+///   the Err arm through the ordinary variant machinery (Str errors keep
+///   the `!T` sugar untouched).
+pub(crate) fn normalize_auto_face(program: &mut Program) {
+    let enums: Vec<String> = program
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Enum(e) => Some(e.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    for item in &mut program.items {
+        let Item::Fn(f) = item else { continue };
+        if f.proto {
+            continue;
+        }
+        if let Some(last) = f.body.stmts.last_mut() {
+            if let Stmt::AggIsMatch {
+                scrutinee, arms, span
+            } = last
+            {
+                let is_expr = Expr {
+                    span: *span,
+                    kind: ExprKind::IsExpr {
+                        scrutinee: Box::new(scrutinee.clone()),
+                        arms: arms.clone(),
+                    },
+                };
+                let span = *span;
+                if f.script {
+                    *last = Stmt::ExprStmt {
+                        value: is_expr,
+                        span,
+                    };
+                } else if !matches!(
+                    f.ret.kind,
+                    TypeRef::Inferred | TypeRef::Builtin(TypeWord::Void)
+                ) {
+                    *last = Stmt::Return {
+                        value: is_expr,
+                        span,
+                    };
+                }
+            }
+        }
+        if let TypeRef::ResultBang(inner) = f.ret.kind.clone() {
+            let mut names: Vec<String> = Vec::new();
+            let mut foreign = false;
+            collect_err_payload_enums(&f.body, &enums, &mut names, &mut foreign);
+            let distinct: Vec<&String> = {
+                let mut seen: Vec<String> = Vec::new();
+                names.iter().filter(|n| {
+                    if seen.contains(n) {
+                        false
+                    } else {
+                        seen.push((*n).clone());
+                        true
+                    }
+                }).collect()
+            };
+            if !foreign && distinct.len() == 1 {
+                let e = distinct[0].clone();
+                let span = f.ret.span;
+                f.ret.kind = TypeRef::Generic {
+                    name: crate::source::ast::Ident {
+                        name: "Result".to_string(),
+                        span,
+                    },
+                    args: vec![
+                        TypeAnn {
+                            kind: inner.kind,
+                            span: inner.span,
+                        },
+                        TypeAnn {
+                            kind: TypeRef::Record(crate::source::ast::Ident {
+                                name: e,
+                                span,
+                            }),
+                            span,
+                        },
+                    ],
+                };
+                // The `!T` sugar auto-wraps a bare tail in `Ok(..)` with the
+                // fn-result expectation; the explicit `Result<T, E>` spelling
+                // does not — normalize the tail to `return Ok(v)` so the
+                // constructor interns against the fn's own Result identity.
+                if let Some(last) = f.body.stmts.last_mut() {
+                    let tail = match last {
+                        Stmt::ExprStmt { value, .. } => Some(value.clone()),
+                        _ => None,
+                    };
+                    if let Some(v) = tail {
+                        let wrapped = match &v.kind {
+                            ExprKind::Call { callee, args }
+                                if callee.name == "Ok" && args.len() == 1 =>
+                            {
+                                v
+                            }
+                            _ => Expr {
+                                span: v.span,
+                                kind: ExprKind::Call {
+                                    callee: crate::source::ast::Ident {
+                                        name: "Ok".to_string(),
+                                        span: v.span,
+                                    },
+                                    args: vec![Arg::Pos(v)],
+                                },
+                            },
+                        };
+                        let span = wrapped.span;
+                        *last = Stmt::Return {
+                            value: wrapped,
+                            span,
+                        };
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Walk a body collecting the enum names used as `Err(E.A..)` payload
+/// expressions; any non-enum `Err(..)` payload marks the fn `foreign`
+/// (Str errors keep the `!T` sugar — no rewrite).
+fn collect_err_payload_enums(
+    block: &Block,
+    enums: &[String],
+    names: &mut Vec<String>,
+    foreign: &mut bool,
+) {
+    for stmt in &block.stmts {
+        walk_stmt_enums(stmt, enums, names, foreign);
+    }
+}
+
+fn walk_stmt_enums(
+    stmt: &Stmt,
+    enums: &[String],
+    names: &mut Vec<String>,
+    foreign: &mut bool,
+) {
+    match stmt {
+        Stmt::Return { value, .. } => walk_expr_enums(value, enums, names, foreign),
+        Stmt::If { then, els, .. } => {
+            for s in &then.stmts {
+                walk_stmt_enums(s, enums, names, foreign);
+            }
+            if let Some(e) = els {
+                for s in &e.stmts {
+                    walk_stmt_enums(s, enums, names, foreign);
+                }
+            }
+        }
+        Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
+            for s in &body.stmts {
+                walk_stmt_enums(s, enums, names, foreign);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn walk_expr_enums(
+    e: &Expr,
+    enums: &[String],
+    names: &mut Vec<String>,
+    foreign: &mut bool,
+) {
+    match &e.kind {
+        ExprKind::Call { callee, args } if callee.name == "Err" => match args.first() {
+            Some(Arg::Pos(inner) | Arg::MovePos(inner)) => {
+                if let ExprKind::Field { base, .. } = &inner.kind {
+                    if let ExprKind::Var(id) = &base.kind {
+                        if enums.contains(&id.name) {
+                            names.push(id.name.clone());
+                            return;
+                        }
+                    }
+                }
+                *foreign = true;
+            }
+            _ => *foreign = true,
+        },
+        ExprKind::Call { args, .. } | ExprKind::MethodCall { args, .. } => {
+            for a in args {
+                if let Arg::Pos(x) | Arg::MovePos(x) = a {
+                    walk_expr_enums(x, enums, names, foreign);
+                }
+            }
+        }
+        _ => {}
     }
 }

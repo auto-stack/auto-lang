@@ -180,11 +180,11 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(scrutinee, outer_locals, scopes, uses, by_name);
                 for arm in arms {
                     let mut bound = BTreeSet::new();
-                    if let MatchPattern::Variant {
-                        binding: Some(b), ..
-                    } = &arm.pat
+                    if let MatchPattern::Variant { bindings, .. } = &arm.pat
                     {
-                        bound.insert(b.name.clone());
+                        for b in bindings {
+                            bound.insert(b.name.clone());
+                        }
                     }
                     scopes.push(bound);
                     match &arm.body {
@@ -342,11 +342,11 @@ pub(crate) fn analyze_capture_uses(
                     visit_expr(scrutinee, outer_locals, scopes, uses, by_name);
                     for arm in arms {
                         let mut bound = BTreeSet::new();
-                        if let MatchPattern::Variant {
-                            binding: Some(b), ..
-                        } = &arm.pat
+                        if let MatchPattern::Variant { bindings, .. } = &arm.pat
                         {
-                            bound.insert(b.name.clone());
+                            for b in bindings {
+                                bound.insert(b.name.clone());
+                            }
                         }
                         scopes.push(bound);
                         match &arm.body {
@@ -567,11 +567,11 @@ pub(crate) fn scan_shared_capture_cells(
                 visit_expr(scrutinee, scopes, shared);
                 for arm in arms {
                     let mut bound = BTreeMap::new();
-                    if let MatchPattern::Variant {
-                        binding: Some(b), ..
-                    } = &arm.pat
+                    if let MatchPattern::Variant { bindings, .. } = &arm.pat
                     {
-                        bound.insert(b.name.clone(), (b.span.start, false));
+                        for b in bindings {
+                            bound.insert(b.name.clone(), (b.span.start, false));
+                        }
                     }
                     scopes.push(bound);
                     match &arm.body {
@@ -714,11 +714,11 @@ pub(crate) fn scan_shared_capture_cells(
                     visit_expr(scrutinee, scopes, shared);
                     for arm in arms {
                         let mut bound = BTreeMap::new();
-                        if let MatchPattern::Variant {
-                            binding: Some(b), ..
-                        } = &arm.pat
+                        if let MatchPattern::Variant { bindings, .. } = &arm.pat
                         {
-                            bound.insert(b.name.clone(), (b.span.start, false));
+                            for b in bindings {
+                                bound.insert(b.name.clone(), (b.span.start, false));
+                            }
                         }
                         scopes.push(bound);
                         match &arm.body {

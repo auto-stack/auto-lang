@@ -372,20 +372,31 @@ pub struct StoreItem {
 
 /// A `enum Name { Arm(T)? ... }` item (PLAN-864, collections surface).
 /// Arms are whitespace separated (optional `,` tolerated); declaration
-/// order is the runtime discriminant order.
+/// order is the runtime discriminant order. PLAN-1083 (auto face): arms
+/// may carry named-field payloads (`Arm { w int, h int }`, `fields`) or
+/// an explicit scalar discriminant (`Arm = 3`, `disc`), and the enum body
+/// may carry `fn` members (`methods`) — the instance-method surface with
+/// the implicit variant receiver.
 #[derive(Clone, Debug)]
 pub struct EnumItem {
     pub name: Ident,
     pub arms: Vec<EnumArm>,
+    pub methods: Vec<FnItem>,
     /// `enum` keyword through the closing brace.
     pub span: Span,
 }
 
-/// One variant arm: `Name` or `Name(PayloadType)`.
+/// One variant arm: `Name` or `Name(PayloadType)`. PLAN-1083 (auto face):
+/// `Name(T1, T2, ...)` projects a multi-element tuple payload into
+/// `payload = TypeRef::Tuple`; `Name { f int, ... }` carries `fields`
+/// (resolve interns the synthesized record payload); `Name = N` carries
+/// the explicit scalar `disc`.
 #[derive(Clone, Debug)]
 pub struct EnumArm {
     pub name: Ident,
     pub payload: Option<TypeAnn>,
+    pub fields: Vec<(Ident, TypeAnn)>,
+    pub disc: Option<i32>,
     /// Arm name token through the payload type token.
     pub span: Span,
 }
@@ -944,7 +955,10 @@ pub enum MatchPattern {
     Variant {
         qual: Option<Ident>,
         name: Ident,
-        binding: Option<Ident>,
+        /// Payload bindings in source order — one for the PLAN-864 single
+        /// payload, more for the PLAN-1083 multi-field/tuple destructuring
+        /// (`Arm(a, b)`); empty for the bare arm.
+        bindings: Vec<Ident>,
     },
     IntLit(i32),
     BoolLit(bool),
@@ -961,6 +975,10 @@ pub enum AggArmBody {
 pub struct AggMatchArm {
     pub pat: MatchPattern,
     pub body: AggArmBody,
+    /// PLAN-1083 (auto face): `pat if cond -> body` — the guard evaluates
+    /// only after the pattern matches (bindings visible); false continues
+    /// to the next arm.
+    pub guard: Option<Expr>,
     pub span: Span,
 }
 

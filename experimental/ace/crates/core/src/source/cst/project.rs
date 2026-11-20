@@ -3756,9 +3756,17 @@ enum Frame {
     AggIsArms(AggIsMatchCtx),
     AggIsArmRhs {
         ctx: Box<AggIsMatchCtx>,
-        pat: MatchPattern,
+        /// PLAN-1083: one entry per or-arm pattern (`A | B -> body` shares
+        /// the rhs); the single-arm case is a one-element vec.
+        pats: Vec<MatchPattern>,
         arm_start: Span,
         is_block: bool,
+        /// PLAN-1083: `pat if cond -> body` — the guard expression (pops
+        /// before the rhs value when present).
+        has_guard: bool,
+        /// PLAN-1083: `pat -> return e` — the rhs is a return statement;
+        /// the popped expr wraps into a synthetic one-stmt block.
+        is_return: bool,
     },
     TryFinish {
         has_catch: bool,
@@ -7486,36 +7494,116 @@ impl<'a> Engine<'a> {
     fn run_enum_item(&mut self, node: u32) -> EnumItem {
         let name_leaf = self.cx.field_child(node, "name").expect("enum name");
         let name = ident_of(&mut self.cx, name_leaf);
+        // PLAN-1083: arms ride the enum-member wrapper (transparent for the
+        // frozen profiles — projection only looks at arm/method children);
+        // auto-face enum bodies may carry view-method members.
+        let member_kind = self.cx.k.enum_member.unwrap_or(u32::MAX);
         let arm_kind = self.cx.k.enum_arm.unwrap_or(u32::MAX);
-        let mut arm_nodes: Vec<u32> = self
+        let mut member_nodes: Vec<u32> = self
             .cx
             .children(node)
             .into_iter()
-            .filter(|&c| self.cx.tree.kind(c) == arm_kind)
+            .filter(|&c| self.cx.tree.kind(c) == member_kind || self.cx.tree.kind(c) == arm_kind)
             .collect();
-        arm_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+        member_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
         let mut arms = Vec::new();
-        for a in arm_nodes {
-            let aname_leaf = self.cx.field_child(a, "name").expect("arm name");
-            let aname = ident_of(&mut self.cx, aname_leaf);
-            let payload = self
-                .cx
-                .field_child(a, "payload")
-                .map(|t| self.classify_word(t, false, false));
-            let span = match &payload {
-                Some(t) => aname.span.join(t.span),
-                None => aname.span,
-            };
-            arms.push(EnumArm {
-                name: aname,
-                payload,
-                span,
-            });
+        let mut methods = Vec::new();
+        for m in member_nodes {
+            if self.cx.tree.kind(m) == arm_kind {
+                arms.push(self.run_enum_arm(m));
+                continue;
+            }
+            if let Some(a) = self.cx.field_child(m, "arm") {
+                arms.push(self.run_enum_arm(a));
+            } else if let Some(f) = self.cx.field_child(m, "method") {
+                methods.push(self.run_fn_item(f, Some(name.clone()), Receiver::View));
+            }
         }
         EnumItem {
             name,
             arms,
+            methods,
             span: self.cx.span_of(node),
+        }
+    }
+
+    /// One enum arm (PLAN-1083: tuple-tail payloads fold into
+    /// `TypeRef::Tuple`; named-field payloads carry `fields`; `= N` carries
+    /// `disc`).
+    fn run_enum_arm(&mut self, a: u32) -> EnumArm {
+        let aname_leaf = self.cx.field_child(a, "name").expect("arm name");
+        let aname = ident_of(&mut self.cx, aname_leaf);
+        // Named-field payload `Arm { f int, ... }` — the field members in
+        // declaration order (resolve interns the synthesized record).
+        let field_kind = self.cx.k.field_member;
+        let mut fields: Vec<(Ident, TypeAnn)> = Vec::new();
+        let mut fnodes: Vec<u32> = self
+            .cx
+            .children(a)
+            .into_iter()
+            .filter(|&c| self.cx.tree.kind(c) == field_kind)
+            .collect();
+        fnodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+        for f in fnodes {
+            let fname_leaf = self.cx.field_child(f, "name").expect("field name");
+            let fname = ident_of(&mut self.cx, fname_leaf);
+            let fty_leaf = self.cx.field_child(f, "ty").expect("field type");
+            let fty = self.classify_word(fty_leaf, false, false);
+            fields.push((fname, fty));
+        }
+        // Explicit scalar discriminant `Arm = N`.
+        let disc = self
+            .cx
+            .field_child(a, "disc")
+            .map(|l| self.cx.spelling(l).parse::<i32>().unwrap_or(0));
+        // Paren payload `Arm(T)` — plus auto-face tuple tails folding into
+        // a multi-element `TypeRef::Tuple` payload.
+        let mut payload = self
+            .cx
+            .field_child(a, "payload")
+            .map(|t| self.classify_word(t, false, false));
+        let tail_kind = self.cx.k.enum_payload_tail.unwrap_or(u32::MAX);
+        let mut tails: Vec<u32> = self
+            .cx
+            .children(a)
+            .into_iter()
+            .filter(|&c| self.cx.tree.kind(c) == tail_kind)
+            .collect();
+        if !tails.is_empty() {
+            tails.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            let mut elems = Vec::new();
+            if let Some(head) = payload.take() {
+                elems.push(head);
+            }
+            let ann_kind = self.cx.k.ann_ty;
+            for t in tails {
+                if let Some(ty) = self
+                    .cx
+                    .children(t)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.kind(c) == ann_kind)
+                {
+                    elems.push(self.classify_word(ty, false, false));
+                }
+            }
+            let span = self.cx.span_of(a);
+            payload = Some(TypeAnn {
+                kind: TypeRef::Tuple(elems),
+                span,
+            });
+        }
+        let span = match (&payload, disc, fields.first()) {
+            (Some(t), _, _) => aname.span.join(t.span),
+            (_, Some(_), _) => aname.span,
+            (_, _, Some((_, ty))) => aname.span.join(ty.span),
+            _ => aname.span,
+        };
+        EnumArm {
+            name: aname,
+            payload,
+            fields,
+            disc,
+            span,
         }
     }
 
@@ -10921,15 +11009,45 @@ impl<'a> Engine<'a> {
             .field_child(pat_n, "pattern")
             .expect("agg arm pattern");
         let name = ident_of(&mut self.cx, pat_leaf);
-        let binding = self
+        // PLAN-1083: the `_` wildcard projects to the Else pattern (an
+        // unconditional catch-all arm; must be last, like `else`).
+        if name.name == "_" && qual.is_none() {
+            return MatchPattern::Else;
+        }
+        // PLAN-1083: multi-binding destructuring `Arm(a, b, ..)` — the head
+        // binding plus every comma tail ident, in source order.
+        let mut bindings: Vec<Ident> = self
             .cx
             .field_child(pat_n, "payload")
             .and_then(|b| self.cx.field_child(b, "binding"))
-            .map(|b| ident_of(&mut self.cx, b));
+            .map(|b| ident_of(&mut self.cx, b))
+            .into_iter()
+            .collect();
+        if let Some(payload_n) = self.cx.field_child(pat_n, "payload") {
+            let tail_kind = self.cx.k.arm_binding_tail.unwrap_or(u32::MAX);
+            let mut tails: Vec<u32> = self
+                .cx
+                .children(payload_n)
+                .into_iter()
+                .filter(|&c| self.cx.tree.kind(c) == tail_kind)
+                .collect();
+            tails.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+            let ident_kind = self.cx.k.tok_ident;
+            for t in tails {
+                if let Some(leaf) = self
+                    .cx
+                    .children(t)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.kind(c) == ident_kind)
+                {
+                    bindings.push(ident_of(&mut self.cx, leaf));
+                }
+            }
+        }
         MatchPattern::Variant {
             qual,
             name,
-            binding,
+            bindings,
         }
     }
 
@@ -11116,19 +11234,70 @@ impl<'a> Engine<'a> {
                     rest.remove(0);
                     let pat_n = self.cx.field_child(arm_n, "pat").expect("agg arm pat");
                     let pat = self.project_agg_pat(pat_n);
+                    // PLAN-1083: or-arm tails `A | B -> body` — every extra
+                    // pattern shares this rhs; the arity check is bind-time
+                    // per expanded arm (projection keeps the source order).
+                    let or_tail_kind = self.cx.k.agg_or_arm_tail.unwrap_or(u32::MAX);
+                    let mut or_tails: Vec<u32> = self
+                        .cx
+                        .children(arm_n)
+                        .into_iter()
+                        .filter(|&c| self.cx.tree.kind(c) == or_tail_kind)
+                        .collect();
+                    or_tails.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
+                    let mut pats = vec![pat];
+                    for t in or_tails {
+                        if let Some(p) = self
+                            .cx
+                            .children(t)
+                            .into_iter()
+                            .find(|&c| self.cx.tree.kind(c) == self.cx.k.agg_arm_pat.unwrap_or(u32::MAX))
+                        {
+                            pats.push(self.project_agg_pat(p));
+                        }
+                    }
+                    let guard_expr_n = self
+                        .cx
+                        .field_child(arm_n, "guard")
+                        .and_then(|g| self.cx.field_child(g, "cond"));
                     let rhs_n = self.cx.field_child(arm_n, "rhs").expect("agg arm rhs");
                     let arm_start = self.cx.span_of(pat_n);
+                    // PLAN-1083: `pat -> return e` rhs — wrap the projected
+                    // expr into a synthetic one-statement return block.
+                    let ret_n = self.cx.field_child(rhs_n, "stmt");
                     if let Some(body_n) = self.cx.field_child(rhs_n, "body") {
                         self.stack.push(Frame::AggIsArmRhs {
                             ctx: Box::new(AggIsMatchCtx {
                                 remaining: rest,
                                 ..ctx
                             }),
-                            pat,
+                            pats: pats.clone(),
                             arm_start,
                             is_block: true,
+                            has_guard: guard_expr_n.is_some(),
+                            is_return: false,
                         });
+                        if let Some(g) = guard_expr_n {
+                            self.stack.push(Frame::ExprEnter(g));
+                        }
                         self.enter_block(body_n);
+                    } else if let Some(rn) = ret_n {
+                        let value_n = self.cx.field_child(rn, "value").expect("return value");
+                        self.stack.push(Frame::AggIsArmRhs {
+                            ctx: Box::new(AggIsMatchCtx {
+                                remaining: rest,
+                                ..ctx
+                            }),
+                            pats: pats.clone(),
+                            arm_start,
+                            is_block: false,
+                            has_guard: guard_expr_n.is_some(),
+                            is_return: true,
+                        });
+                        if let Some(g) = guard_expr_n {
+                            self.stack.push(Frame::ExprEnter(g));
+                        }
+                        self.stack.push(Frame::ExprEnter(value_n));
                     } else {
                         let expr_n = self.cx.field_child(rhs_n, "expr").expect("agg arm expr");
                         self.stack.push(Frame::AggIsArmRhs {
@@ -11136,10 +11305,15 @@ impl<'a> Engine<'a> {
                                 remaining: rest,
                                 ..ctx
                             }),
-                            pat,
+                            pats: pats.clone(),
                             arm_start,
                             is_block: false,
+                            has_guard: guard_expr_n.is_some(),
+                            is_return: false,
                         });
+                        if let Some(g) = guard_expr_n {
+                            self.stack.push(Frame::ExprEnter(g));
+                        }
                         self.stack.push(Frame::ExprEnter(expr_n));
                     }
                 } else {
@@ -11164,10 +11338,19 @@ impl<'a> Engine<'a> {
             }
             Frame::AggIsArmRhs {
                 ctx,
-                pat,
+                pats,
                 arm_start,
                 is_block,
+                has_guard,
+                is_return,
             } => {
+                // PLAN-1083: the guard value (pushed above the rhs frames)
+                // pops first; it rides every expanded or-arm copy.
+                let guard = if has_guard {
+                    Some(self.pop_e())
+                } else {
+                    None
+                };
                 let (body, end_span) = if is_block {
                     let b = self.pop_b();
                     let s = b.span;
@@ -11175,14 +11358,31 @@ impl<'a> Engine<'a> {
                 } else {
                     let e = self.pop_e();
                     let s = e.span;
-                    (AggArmBody::Expr(e), s)
+                    if is_return {
+                        // `pat -> return e` — a synthetic one-statement
+                        // return block (arm bodies are blocks here).
+                        let span = s;
+                        (
+                            AggArmBody::Block(Block {
+                                stmts: vec![Stmt::Return { value: e, span }],
+                                span,
+                            }),
+                            s,
+                        )
+                    } else {
+                        (AggArmBody::Expr(e), s)
+                    }
                 };
                 let mut ctx = *ctx;
-                ctx.arms.push(AggMatchArm {
-                    pat,
-                    body,
-                    span: arm_start.join(end_span),
-                });
+                let span = arm_start.join(end_span);
+                for pat in pats {
+                    ctx.arms.push(AggMatchArm {
+                        pat,
+                        body: body.clone(),
+                        guard: guard.clone(),
+                        span,
+                    });
+                }
                 self.stack.push(Frame::AggIsArms(ctx));
             }
             Frame::TryFinish {

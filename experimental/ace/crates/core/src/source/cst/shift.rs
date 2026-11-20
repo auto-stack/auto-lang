@@ -215,16 +215,12 @@ fn shift_expr(e: &mut Expr, delta: i64) {
 
 fn shift_agg_match_arm(a: &mut AggMatchArm, delta: i64) {
     match &mut a.pat {
-        MatchPattern::Variant {
-            qual,
-            name,
-            binding,
-        } => {
+        MatchPattern::Variant { qual, name, bindings } => {
             if let Some(q) = qual {
                 shift_ident(q, delta);
             }
             shift_ident(name, delta);
-            if let Some(b) = binding {
+            for b in bindings {
                 shift_ident(b, delta);
             }
         }

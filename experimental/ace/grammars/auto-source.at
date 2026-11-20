@@ -2030,13 +2030,19 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             type-arg(field: "ty")
         }
         // PLAN-928（T-03）：PLAN-864 有限 enum——臂换行/`;` 分隔（list-nl 语义；
-        // `,` 容忍由差分冻结），至多单载荷。
+        // `,` 容忍由差分冻结），至多单载荷。PLAN-1083（auto 面）：enum 体
+        // 允许 fn 成员（enum 实例方法）；包装规则 enum-member 对冻结面透明
+        // （投影只看其 arm/method 子节点，AST/诊断不变）。
         enum-item(recover: true, profiles: [collections, aggregates, auto, scheduler]) {
             enum(field: "kw")
             ident(field: "name")
             lbrace() {}
-            list { enum-arm() {} }
+            list { enum-member() {} }
             rbrace() {}
+        }
+        enum-member(profiles: [collections, aggregates, auto, scheduler]) {
+            alt { enum-arm(field: "arm") }
+            alt(profiles: [auto]) { view-method(field: "method") }
         }
         // PLAN-962（T-08）：tag/union 声明形（与 enum-item 同构；投影复用
         // Enum AST——union 语义=tagged 变体由 resolve 面定义）。
@@ -2055,8 +2061,19 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         enum-arm(profiles: [collections, aggregates, auto, scheduler]) {
-            alt { ident(field: "name") lparen() {} ann-ty(field: "payload") rparen() {} }
-            alt { ident(field: "name") }
+            // PLAN-1083（auto 面）：臂后逗号吸收（legacy `Red = 1, Green = 2`
+            // 的分隔拼写；冻结面逗号行为不变）——规则体不可混合 alt 与普通
+            // 步骤，吸收步置于每个 alt 尾部。
+            alt { ident(field: "name") lparen() {} ann-ty(field: "payload") many(profiles: [auto]) { enum-payload-tail() {} } rparen() {} opt(profiles: [auto]) { comma() {} } }
+            alt(profiles: [auto]) { ident(field: "name") lbrace() {} list { field-member(field: "fields") {} } rbrace() {} opt(profiles: [auto]) { comma() {} } }
+            alt(profiles: [auto]) { ident(field: "name") assign() {} int-lit(field: "disc") opt(profiles: [auto]) { comma() {} } }
+            alt { ident(field: "name") opt(profiles: [auto]) { comma() {} } }
+        }
+        // PLAN-1083（auto 面）：多元组载荷尾（`Arm(int, int, ...)`）——
+        // 头载荷 + 至少一个 `, ty` 尾；投影折 TypeRef::Tuple。
+        enum-payload-tail(profiles: [auto]) {
+            comma() {}
+            ann-ty() {}
         }
         member {
             alt { field-member() {} }
@@ -2068,6 +2085,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "name")
             opt { colon() {} }
             ann-ty(field: "ty")
+            // PLAN-1083（auto 面）：字段后逗号吸收（命名载荷 `Rect { w int, h int }`
+            // 的同行拼写；冻结面行为不变）。
+            opt(profiles: [auto]) { comma() {} }
         }
         static-method {
             static(field: "lead")
@@ -2538,7 +2558,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         arm-payload(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct]) {
             lparen() {}
             ident(field: "binding")
+            many(profiles: [auto]) { arm-binding-tail() {} }
             rparen() {}
+        }
+        // PLAN-1083（auto 面）：多绑定解构尾（`Arm(a, b, ...)`）——按载荷
+        // 声明序绑定（命名载荷=字段序，元组载荷=元素序）。
+        arm-binding-tail(profiles: [auto]) {
+            comma() {}
+            ident() {}
         }
         // PLAN-965 (M2-A): `is` statement & expression, `try/catch/finally`, `yield` (aggregates, auto only).
         agg-is-stmt(profiles: [aggregates, auto, scheduler]) {
@@ -2557,9 +2584,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         agg-match-arm(profiles: [aggregates, auto, scheduler]) {
             agg-arm-pat(field: "pat")
+            many(profiles: [auto]) { agg-or-arm-tail() {} }
+            opt(profiles: [auto]) { arm-guard(field: "guard") }
             agg-arm-sep() {}
             agg-arm-rhs(field: "rhs")
             opt { comma() {} }
+        }
+        // PLAN-1083（auto 面）：or 臂 `A | B -> body`——尾模式与头模式共享
+        // 同一 rhs（投影按模式数展开为多臂）；绑定元数不一致投影具名拒。
+        agg-or-arm-tail(profiles: [auto]) {
+            vbar() {}
+            agg-arm-pat() {}
+        }
+        // PLAN-1083（auto 面）：guard 臂 `pat if cond -> body`——cond 仅在
+        // 模式命中后求值（绑定可见）；false 继续下一臂。
+        arm-guard(profiles: [auto]) {
+            if(field: "kw")
+            condition-expr(field: "cond")
         }
         agg-arm-pat(profiles: [aggregates, auto, scheduler]) {
             alt { else(field: "kw") }
@@ -2575,6 +2616,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         agg-arm-rhs(profiles: [aggregates, auto, scheduler]) {
             alt { block(field: "body") }
             alt { expr(field: "expr") }
+            alt(profiles: [auto]) { return-stmt(field: "stmt") }
         }
         try-stmt(profiles: [aggregates, auto, scheduler]) {
             r-try(field: "kw")
@@ -2870,6 +2912,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }        array-elems(profiles: [aggregates, auto, scheduler, config-document]) {
             expr(field: "head")
             many { array-elem-tail() {} }
+            opt(profiles: [auto]) { comma() {} }
         }
         array-elem-tail(profiles: [aggregates, auto, scheduler, config-document]) {
             comma() {}
