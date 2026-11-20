@@ -781,6 +781,20 @@ fn rewrite_store_expr(e: &mut Expr, map: &[(String, String)]) -> Result<(), Vec<
             }
             Ok(())
         }
+        // 记录构造与对象字面量里的字段值同样要按 store 字段映射重写
+        // （`Todo { id: .next_id, text: .input, … }` 内的 `.next_id`）。
+        ExprKind::CtorNamed { fields, .. } => {
+            for f in fields.iter_mut() {
+                rewrite_store_expr(&mut f.value, map)?;
+            }
+            Ok(())
+        }
+        ExprKind::ObjectLit { fields } => {
+            for f in fields.iter_mut() {
+                rewrite_store_expr(&mut f.value, map)?;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -4047,7 +4061,18 @@ pub(crate) fn rename_expr_with_params(
                         },
                     },
                 },
-                None => expr.clone(),
+                // 具名拒：未声明的 model 字段绝不能留成 `self.<name>`（那会在
+                // 共享 verify 里变成 `no local named self` 的误导性诊断）。
+                None => {
+                    return Err(vec![text_diag(
+                        "source.undefined",
+                        format!(
+                            "model has no field `{}` (a handler references `.{0}`)",
+                            name.name
+                        ),
+                        name.span,
+                    )])
+                }
             }
         }
         // PLAN-981（G2，2026-11-18 裁定）：**rename 通用基座**——任意基座的
