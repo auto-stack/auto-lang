@@ -93,6 +93,35 @@ fn p980_style_usage_is_replaced_with_the_literal() {
     );
 }
 
+#[test]
+fn plan125_text_literal_parentheses_keep_the_label_and_style() {
+    use ace_core::source::age_component::{
+        project_component_candidates, ComponentEntryValue, ComponentViewItem,
+    };
+    use ace_core::source::ast::ExprKind;
+    let source = r#"
+widget App {
+    view {
+        text "▸" (style: "duration-200") {}
+        text "Next" {}
+    }
+}
+"#;
+    let nodes = project_component_candidates(source).expect("component projection accepts text props");
+    let [ComponentViewItem::Element(styled), ComponentViewItem::Text(next)] =
+        nodes[0].view.tree.as_slice()
+    else {
+        panic!("styled text and sibling project independently: {:?}", nodes[0].view.tree);
+    };
+    assert_eq!(styled.tag, "text");
+    assert!(matches!(&styled.label.as_ref().unwrap().kind, ExprKind::StrLit(text) if text == "▸"));
+    assert!(matches!(&styled.items[..], [ComponentViewItem::Entry(entry)]
+        if entry.key == "style" && matches!(&entry.value,
+            ComponentEntryValue::Expr(expr) if matches!(&expr.kind, ExprKind::StrLit(v) if v == "duration-200"))));
+    assert!(matches!(&next.expr.kind, ExprKind::StrLit(text) if text == "Next"));
+    compile(source).expect("the same form verifies on the package path");
+}
+
 /// ⑥导入的 style 引用 → `style-call` 具名拒（本刀不折叠、无 global 读）。
 #[test]
 fn p980_style_imported_reference_is_named() {

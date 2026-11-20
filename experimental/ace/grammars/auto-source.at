@@ -1103,6 +1103,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-981（IF-981-REF）：节点实例引用只在包面存在。
             alt(profiles: [age-package]) { age-node-ref() {} }
             alt { age-view-entry() {} }
+            alt { age-text-literal-props() {} }
             alt { age-text-item() {} }
             alt { age-text-props() {} }
             alt { age-text-bare() {} }
@@ -1133,6 +1134,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-view-else(profiles: [age-component, age-package]) {
             alt { else(field: "kw") age-view-if(field: "chain") }
             alt { else(field: "kw") age-view-if-then(field: "items") }
+        }
+        // A literal followed by parentheses introduces view attributes, so this
+        // form must be tried before Pratt can consume them as a call.
+        age-text-literal-props(profiles: [age-component, age-package]) {
+            name(of: "age-text-head", field: "component")
+            str-lit(same-line: true, field: "text")
+            lparen(same-line: true) {}
+            list-nl { age-view-entry() {} }
+            rparen() {}
+            opt { age-element-props-body() {} }
         }
         // `text <label> { props }`——带属性体的文本（001 形；空括号形走
         // age-text-item，裸标签形走 age-text-bare）。

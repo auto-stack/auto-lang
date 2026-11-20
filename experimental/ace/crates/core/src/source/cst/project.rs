@@ -5769,6 +5769,7 @@ impl<'a> Engine<'a> {
         let text_item = self.rule_kind_of("age-text-item");
         let text_bare = self.rule_kind_of("age-text-bare");
         let text_props = self.rule_kind_of("age-text-props");
+        let text_literal_props = self.rule_kind_of("age-text-literal-props");
         let entry_kind = self.rule_kind_of("age-view-entry");
         let element_kind = self.rule_kind_of("age-view-element");
         let cond_kind = self.rule_kind_of("age-view-if");
@@ -5783,6 +5784,7 @@ impl<'a> Engine<'a> {
             let raw_is_item = Some(raw_kind) == text_item
                 || Some(raw_kind) == text_bare
                 || Some(raw_kind) == text_props
+                || Some(raw_kind) == text_literal_props
                 || Some(raw_kind) == entry_kind
                 || Some(raw_kind) == element_kind
                 || Some(raw_kind) == cond_kind
@@ -5813,7 +5815,7 @@ impl<'a> Engine<'a> {
                 };
                 texts.push(leaf.clone());
                 out.push(ComponentViewItem::Text(leaf));
-            } else if Some(kind) == text_props {
+            } else if Some(kind) == text_props || Some(kind) == text_literal_props {
                 // 带属性体的文本（001 形）：tag=text 的元素 + label 表达式同时
                 // 入 texts（绑定验证通道与其它文本叶一致）。
                 let comp = self
@@ -5821,7 +5823,15 @@ impl<'a> Engine<'a> {
                     .field_child(item, "component")
                     .expect("text head leaf");
                 let expr_node = self.cx.field_child(item, "text").expect("text expression");
-                let label = self.project_expr_sync(expr_node);
+                let label = if Some(kind) == text_literal_props {
+                    let raw = self.cx.spelling(expr_node);
+                    Expr {
+                        kind: ExprKind::StrLit(lex::decode_str_value(&raw.as_bytes()[1..raw.len() - 1])),
+                        span: self.cx.span_of(expr_node),
+                    }
+                } else {
+                    self.project_expr_sync(expr_node)
+                };
                 texts.push(crate::source::age_h0::AgeTextLeaf {
                     role: text_role.to_string(),
                     spelling: self.cx.spelling(comp),
