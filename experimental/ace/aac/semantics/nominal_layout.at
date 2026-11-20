@@ -5,6 +5,10 @@ use app.binding.field_owner
 use app.binding.take_step
 use app.binding.type_decl
 use app.binding.variant_decl
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
 use app.semantic_tree.parent
 use app.semantic_tree.row_count
 use app.types.nominal_kind
@@ -45,7 +49,7 @@ fn layout_dependencies(types List<int>, lane int, owner int, site int, edges Lis
     return 0
 }
 
-pub fn verify_source_layouts(ast List<int>, declarations List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+pub fn verify_source_layouts(pg List<int>, ast List<int>, links List<int>, declarations List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     var complete = List<int>.new()
     var edges = List<int>.new()
     var remaining = 0
@@ -69,7 +73,21 @@ pub fn verify_source_layouts(ast List<int>, declarations List<int>, facts List<i
                 owner = field_owner(ast, row)
             }
         }
-        if (category == variant_decl()) { owner = parent(ast, parent(ast, row)) }
+        if (category == variant_decl()) {
+            owner = parent(ast, parent(ast, row))
+            var part = first_child(links, row)
+            for (part >= 0) {
+                if (!take_step(fuel, deadline)) { return bind_budget() }
+                if (kind(pg, ast, part) == "enum-payload-tail") {
+                    let annotation = child_with_kind(pg, ast, links, part, "ann-ty")
+                    if (annotation >= 0 && facts.get(annotation) > 0) {
+                        let gathered = layout_dependencies(types, facts.get(annotation), owner, annotation, edges, fuel, deadline)
+                        if (gathered != 0) { return gathered }
+                    }
+                }
+                part = next_sibling(links, part)
+            }
+        }
         if (owner >= 0 && lane > 0) {
             let gathered = layout_dependencies(types, lane, owner, row, edges, fuel, deadline)
             if (gathered != 0) { return gathered }

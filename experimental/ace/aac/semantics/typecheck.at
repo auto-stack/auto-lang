@@ -999,7 +999,7 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
     }
     let patterns = match_source_patterns(pg, ast, links, src, declarations, uses, facts, types, true, errors, fuel, deadline)
     if (patterns < 0) { return patterns }
-    let layouts = verify_source_layouts(ast, declarations, facts, types, errors, fuel, deadline)
+    let layouts = verify_source_layouts(pg, ast, links, declarations, facts, types, errors, fuel, deadline)
     if (layouts == bind_budget()) { return failure(errors, 0, layouts) }
     if (layouts != 0) { return layouts }
     let calls = map_deferred_calls(pg, ast, links, src, declarations, uses, facts, types, mappings, errors, fuel, deadline)

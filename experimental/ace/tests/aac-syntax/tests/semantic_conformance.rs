@@ -330,6 +330,12 @@ fn rejects_inline_recursive_layout_but_accepts_list_indirection() {
     let indirect = cycle.replace("Data(Packet)", "Data(List<Packet>)");
     let observed = type_report(&indirect);
     assert!(observed.starts_with("aac.type-report/1\n"), "{observed}");
+    let trailing = cycle.replace("Data(Packet)", "Data(int, Packet)");
+    let site = trailing.find(", Packet").unwrap() + 2;
+    assert_eq!(
+        type_report(&trailing),
+        format!("ERROR type.recursive-layout 0 {site}..{}\n", site + 6)
+    );
 }
 
 #[test]
