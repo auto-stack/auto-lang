@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1094
-status: drafting
+status: executing
 feature_name: AV脚本模式与Python对象协议兼容补齐
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
-plan_revision: 3
-current_step: 0
+updated_at: 2026-11-20
+plan_revision: 5
+current_step: 1
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1084, PLAN-1087, PLAN-1092, PLAN-1093]
 supersedes_spec_components: [docs/specs/auto-av/python-interop.md, docs/specs/auto-lang/vm/design/null-family.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -18,6 +18,14 @@ affects: [ace, auto-av, auto-test-case]
 # [PLAN-1094] AV脚本模式与Python对象协议兼容补齐
 
 ## 0. 变更摘要
+
+### 2026-11-20 r5 · 补齐 AV 异常交接证据
+
+补具名未捕获对照和两条路径的类型、位置断言，明确 T-06 冻结 AV 证据、T-08 交正式来源。1110 按该来源接 A2PY。两个计划的运行验收均待实施。
+
+### 2026-11-20 r4 · Python 错误交接
+
+1107 已交同源 Python 执行。1094 的异常捕获、错误分类及原位置义务沿原 AV 验收，通过 §5 的接口交接给 A2PY 后继。当前修订为文档交接，实施任务及 AV 阶段门沿 r3。[PLAN-1110](1110-ace-a2py-python-exception-mapping.md)
 
 ### 2026-11-19 r3 · AV-ONLY与检查级#ignore（用户补充，仅规划）
 
@@ -75,7 +83,76 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 
 硬依赖：PLAN-1078, PLAN-1084, PLAN-1087, PLAN-1092, PLAN-1093；实际外部接口：1026 PySession/CPython adapter正式切片。依赖只按本包所需正式切片，不反等1068/985/B、完整AAC或完整UI/GPU产品。982配置producer、967 provider生成、971测试发现各由原owner只生产一次。
 
+### T-01 冻结记录（2026-11-20，work 阶段，基线 5a76167cc，plan_revision r5）
+
+**输入指纹复核**（实施树 `D:/autostack/.wt/lang-1094/auto-lang` @ 5a76167cc）：
+
+| 源 | 计划值（r3 起草时） | T-01 实测 | 判定 |
+|---|---|---|---|
+| script_entry.rs | d1d0fff…49728 | 一致 | 未漂移 |
+| resolve.rs | 54978de…ea68 | `712008f3…2b7e3` | 漂移：PLAN-1107（共享 py-op 事实层/A2PY 发射）+ 1082 T-02..05 |
+| py_session.rs | 50579af…8277 | 一致 | 未漂移 |
+| av.rs | 2ad814…6139c | `7e45425f…deb6c` | 漂移：PLAN-1106（增量事件会话）、982（text/console 车道）、981（AGE port） |
+
+7 份主承接旧文档（99_py_dispatch×2、99_script_err×5）SHA16 与路线图清单逐一相符，无漂移。
+r3 起草后出现的新输入源：PLAN-1107 已交付共享 py-op 结构化事实层
+（`ace-foreign-contract::py_ops`，`p1107/py-language-contract/1`）与帧操作数单次求值约束——
+本包普通面 py 接线**必须消费该事实层**，不重造第二套帧文本/py 解析；r4/r5 的 1110 交接
+以该同源事实为前置。
+
+**有界全链探测**（ace-core CLI `check-source --source-profile auto.source.language.av/v1`，
+经 parse→resolve→typecheck→bind→verify；探测源 16 份+汇总在
+`D:/autostack/plan-artifacts/plan-1094/probes/`，probe-results.txt SHA256 前 16 位 `8a39c905f8ee7df2`）：
+
+| 探测形态 | 实际 stage/code | 冻结结论 |
+|---|---|---|
+| 正控 `fn main() int { return 2+3*4 }` | OK（require `av.aggregates/1`） | 普通面链路健康 |
+| `use.py builtins: int` | parse/`text/source.use-rs.syntax` | int 成员拼写触发 use.rs/c 诊断臂 |
+| `use.py builtins: str` 单成员 | 编译 OK（零 py capability）；体内 `str("a")` → bind/`source.undefined` | 声明可解析但 1026 前门变换（成员提升+py_locals）未接普通面 |
+| `use.py …: int, str` / `str, int` 多成员 | parse 失败（int 首=use-rs.syntax；str 首=`expected fn, found ,`） | 1026 合同的多成员按源序形未准入 |
+| `use.py numpy: arange` + `t.len()` | bind/`source.undefined`（arange）＋`bind/source.unsupported`（numeric receiver no method len） | 外对象动态分派缺口=1084 范围 |
+| 纯 Auto `try/catch` | 编译 OK | try/catch 语句面已在普通面；缺 py 异常→可捕获语言错误接线（1087＋本包 T-03） |
+| `with … as`（纯 Auto 与 py 形） | parse/`text/source.syntax`（expected statement, found `with`） | with 语句面不存在=1092 #[with] 共享语法范围 |
+| `.to(str)`（普通面） | CST 前门破口→回退 legacy parser，掩蔽报 `` `fn` is not part of this source profile `` | py-op `.to(...)` 映射未准入普通面；诊断去掩蔽属本包 AC-02 面 |
+| `"…\0…"` 字面量 | 同上回退（`\0` 不在 1079 已交付转义集） | §6 python-unicode 落 canonical 用 `\u{0}` 拼写 |
+
+**可行性结论**：1026/1107 已交 Closures 族 foreign 全链（lowering→ABC→AV dispatch→PySession），
+普通面与其同走 `compile_language_source` 管道、同 Closures 家族——本包**无需新运行时地基**；
+缺口收敛为四条源面/接线：①普通面 use.py 前门准入＋成员提升＋py_locals 纪律（消费 1107 事实层）；
+②py 异常→catch 接线与分类渲染（消费 1087 展开面；`PyException ValueError: …` 渲染沿原 oracle）；
+③with 语句面（消费 1092 #[with]）；④外对象动态分派（消费 1084 动态值）。
+①中不依赖 1084 的部分也无法单独出口：T-02 合同的动态参数/属性/索引/调用组合以 1084 地基为前置。
+
+**FC 冻结**：canonical 位置 `crates/auto-lang/test/cases/language/script/python-context.case.ad`
+（新建 script/ 行为目录）；`language.suite.ad` 仅追加引用（schema autolang.suite/2 既有 6 文件不动）；
+legacy-map.tsv 由 T-02 添 7 行（owner=PLAN-1094；原 ID/check/oracle/SHA16 见路线图 §PLAN-1094 清单）；
+判等条件：case ID 族 `av.parity.1094.*`；相同文件名/不同路径/模式/授权/错误阶段/资源角色不自动合并；
+旧 7 文档只作具名冻结历史，不再是活跃作者。Rust 内联角色枚举：ace-abi 7 文件
+（py_bridge_1026/py_session_1026/py_session_1107/py_error_1107/py_protocol_1107/py_identity_1107/py_ops_1107）
+＋ av/src/language_source_worker.rs（普通链 worker=本包接线点）；av/tests 无 py 专属内联。
+
+**规范基线差异**（四份 supersedes 目标现状）：python-interop.md=1026 v1 冻结＋1107 附录（py-op 事实、
+操作数单次求值、失败面 Trap{ForeignStatus} 不发布部分 stdout）；language-parity.md=AVP-00..04 已交
+（§4 明确"脚本/Python 协议"未交）；null-family.md=550 旧 AutoVM 契约（本包 SD-03 只增 AV 事实）；
+feature-organized-corpus.md=1078 已交作者/suite/AV 视图/#ignore 机制。
+
 ## 5. 详细设计
+
+### Python 错误切片交接
+
+1094 提供 `IF-AV-PARITY-SCRIPT` 的 Python 错误切片。共享作者文件位于 `crates/auto-lang/test/cases/language/script/python-context.case.ad`（拟建），包含 §6 的捕获用例和未捕获对照。每条 Case 交一份 `main.as` / `auto-script` 源和一项必验 AV check。
+
+| 交接项 | AV 证据 |
+|---|---|
+| 源和运行身份 | Case ID、check ID、实际入口和能力、逻辑源路径、`auto-script`、输入原始字节 SHA256、执行提交与 provider 身份。 |
+| 异常类型 | 两例都从实际执行取到 Python `ValueError` 及对应 Auto 错误类别 `value`（已有 provider 对应 class 5）。`value` 是语义类别，provider 数字属于 AV 实现。运行阶段、消息和控制流结果随收据记录。 |
+| 捕获分支 | 观察到实际 handler 处理的错误，进入一次并返回 `42`。成功的入口值和空双流沿原用例断言。 |
+| 未捕获分支 | 零捕获，运行以结构化 Auto 语言错误结束，无成功入口值。实际错误携带相同异常分类。 |
+| 原始位置 | 对失败的 `int("abc")` 记录逻辑源路径和原始 UTF-8 半开字节范围。位置经过实际执行产生，父侧使用 §6 的独立范围断言。 |
+
+普通 AV worker 当前以 `probe.at` 编译并省略 `Error` / `Trap` 的 span，现有输出字段不足以独立验收。T-03/04 在实际 AV 路径接通位置和类型观察。可使用既有结果通道或同次执行的 AV 观察接口，后者需与 AV check 的实际输入、执行和结果绑定，由父侧判定。捕获观察发生在 handler 接收错误时，未捕获取自终态。错误类型与位置取自执行记录，预期从源和规范独立确定。验证无需新增 Auto 反射语法。逻辑路径按 Case 源身份传递，暂存名只用于定位工作文件。
+
+T-06 冻结这两条 AV check 的证据及字段语义，T-08 在切片正式落主时交出处和复验入口。若先独立落主所需切片，其正式收据即可供 1110 消费。1094 的 T-06..08 仅看 AV 和其共享前置。A2PY 检查尚未注册时登记在 Notes/义务表，已注册的检查按阶段忽略或未选，相关准备和 dispatch 均为零。A2PY adapter、解释器、检查结果及双端评审归 1110，持续使用同一作者源。[PLAN-1110](1110-ace-a2py-python-exception-mapping.md)
 
 ### AV-ONLY · 本轮实际执行边界
 
@@ -139,7 +216,8 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 | Case ID | AC / invariant | owner / work task | 实际入口 | 独立预期 | 覆盖边界 |
 |---|---|---|---|---|---|
 | `av.parity.1094.nested-python-call` | AC-01 | work / T-02..05 | `auto-case`→普通AV真实源码链 | 值=42; stdout=''; stderr为空 | 本例具体输入；额外状态见下表，不声称全语言 |
-| `av.parity.1094.python-error-catch` | AC-01 | work / T-02..05 | `auto-case`→普通AV真实源码链 | 值=42; stdout=''; stderr为空 | 本例具体输入；额外状态见下表，不声称全语言 |
+| `av.parity.1094.python-error-catch` | AC-01/03 | work / T-03..06 | `auto-case` → 普通 AV 真运行与捕获观察 | 捕获一次，`ValueError` → `value`，返回 42，双流为空。原始位置为 `main.as` 中 `int("abc")`。 | LF 草案的原始 UTF-8 范围 `[51,61)`，第 3 行第 15 列起。 |
+| `av.parity.1094.python-error-uncaught` | AC-02/03 | work / T-03..06 | 同一普通 AV 路径，取运行终态 | 零捕获，未捕获语言错误，`ValueError` → `value`，无成功值。原始位置为 `main.as` 中 `int("abc")`。 | LF 草案的范围 `[45,55)`，第 3 行第 9 列起。 |
 | `av.parity.1094.context-manager-close` | AC-01 | work / T-02..05 | `auto-case`→普通AV真实源码链 | 值=42; stdout=''; stderr为空 | 本例具体输入；额外状态见下表，不声称全语言 |
 | `av.parity.1094.python-unicode` | AC-01 | work / T-02..05 | `auto-case`→普通AV真实源码链 | 值=42; stdout=''; stderr为空 | 本例具体输入；额外状态见下表，不声称全语言 |
 
@@ -147,6 +225,7 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 |---|---|---|---|---|
 | `WITH-EXITS` | AC-03/AC-04 | work / T-04..05 | 正常/return/break/continue/异常/嵌套with/enter失败，检查退出顺序和实际外部对象关闭计数；Python __exit__抑制仅按该协议处理普通语言异常。 | 原父侧case/worker观察，引用实际输入与assert；不能仅grep或数测试 |
 | `SCRIPT-MODE` | AC-03/AC-04 | work / T-04..05 | 同一文本普通模式的合法/非法邻例、.as与pragma优先级、无py时adapter不加载；浮点keyword、kwargs顺序及>256字节多字节文本实际值验。 | 原父侧case/worker观察，引用实际输入与assert；不能仅grep或数测试 |
+| `PY-ERROR-OBS` | AC-01/02/03 | work / T-04..06 | 以两条 §6 Python 错误用例作正控。分别替换预期类别、偏移原始 span 或移除必需观察记录，父侧必须报失败。 | 采用实际 handler/运行终态与同源指纹。T-06 冻结结构化断言入口，验明结果对 `ValueError`、`value` 和表达式级位置敏感。 |
 
 ### AutoDown代码用例（设计草案）
 
@@ -224,8 +303,17 @@ exit: 42
 ### Notes
 
 拟定合同，**未执行**；`av`是required运行检查，不是静态emit检查。
-父侧还验证ValueError分类与原消息，不能随便抛一个错误得到42。
+父侧按 PY-ERROR-OBS 验证实际 handler 接收一次、`ValueError`、Auto 类别 `value`、原消息和失败操作的位置。
 `````
+
+未捕获对照的源草案如下，T-05 落入同一作者文件，Case ID 为 `av.parity.1094.python-error-uncaught`，逻辑路径与语法模式同捕获例。冻结时用实际源字节核对 §6 半开范围，按 T-01/T-04 确认的观察入口设置失败断言。
+
+```auto
+use.py builtins: int
+fn main() int {
+ return int("abc").to(int)
+}
+```
 
 `````autodown
 ## Case: context-manager-close
@@ -329,7 +417,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 - [ ] **AC-FC｜owner_stage: work**：§5 FC及§6 V-FC-SOURCE/MIGRATE/TARGET由原T-01..06落实；唯一活跃作者、逐原义务迁移/条件/历史身份守恒与本轮所选AV真实观察齐，非AV#ignore/NOT_RUN分列且不阻AV。原T-07 review逐项核，T-08仅真实落主后交来源；既有AC全部保留，不缩语言或后端分母。
 
 - [ ] **AC-01｜owner_stage: work**：§6所有正例在普通AV真实执行满足固定值/双流及本包完整语义，原源不以mini/get/loop等替换后冒原兼容。
-- [ ] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span；未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
+- [ ] **AC-02｜owner_stage: work**：所有反例在约定阶段给可辨识错误与原source span。Python 未捕获对照必须检验运行终态、错误类型和失败操作原始位置。未授权/预算/取消/host失败分类保留；不静默默认值/空成功。
 - [ ] **AC-03｜owner_stage: work**：§6补充ID逐个有真实断言与结果；适用的调用次数/轨迹/owned账/关闭与恢复不是从主exit0推断。
 - [ ] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
 - [ ] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
@@ -350,20 +438,38 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 | T-07 | review | T-06 | 独立上下文逐AC追源码→消费者→实际oracle；扫遗漏/未批准延后/临时兼容，必要反例重放；不因勾选或主exit0信任结果。 另独立核AC-FC，实际输入/目标/迁移/消费者与反控均须成立。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-07、AC-FC、AC-AV-ONLY |
 | T-08 | merge | T-07 pass及实施/合入授权 | 按已审Spec增量落主、归档并交正式接口；计划内折证据、清统一材料/guard后移除唯一工作树，不动其它会话文件。 并交本包canonical引用/迁移映射及已验目标来源，公共作者规则由1078统一沉淀。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-08、AC-FC、AC-AV-ONLY |
 
-本轮任务状态（全部未施工）：
+本轮任务状态（T-01 已完成；T-02..06 阻塞于硬依赖未交付，见 §10）：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
+- [x] **T-01** work：已完成（2026-11-20）。输入指纹复核＋漂移来源、7 份旧文档哈希核验、
+  16 份有界探测（正控绿；use.py/with/动态分派/`.to(str)`/`\0` 精确 stage·code 冻结）、
+  可行性结论（无新运行时地基，缺口=四条源面/接线）、FC canonical 位置与判等条件、
+  Rust 内联角色枚举、四份规范基线差异——全部见 §4 T-01 冻结记录。
+  探测原始件：`D:/autostack/plan-artifacts/plan-1094/probes/`（probe-results.txt `8a39c905f8ee7df2`）。
+  AC-04/AC-05/AC-FC 的 T-01 份额就绪；AC 的最终判定仍待 T-02..06 实施后真实运行。
+- [ ] **T-02** work：见上表唯一任务合同。阻塞：硬依赖 1084（动态值）/1093 未交付（均 drafting 0/N）。
+- [ ] **T-03** work：见上表唯一任务合同。阻塞：硬依赖 1087（错误/展开）、1092（#[with] 语句面）未交付。
+- [ ] **T-04** work：见上表唯一任务合同。阻塞：随 T-02/T-03 前置（1084/1087/1092/1093）。
 - [ ] **T-05** work：见上表唯一任务合同。
 - [ ] **T-06** work：见上表唯一任务合同。
 - [ ] **T-07** review：见上表唯一任务合同。
 - [ ] **T-08** merge：见上表唯一任务合同。
 
-下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
+下一执行入口：核主检出、本包 r5 和依赖正式来源，创建唯一专属树后从 T-01 开始。依赖缺失先做可独立推进的输入审计。新发现的高风险未定语义先有界探测并作决定，超本包目标时显式修订或拆 Plan，保留全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-20 T-01 work（goal 完成计划1094 round 1，按 r5 执行；同日 r4/r5 修订单独落）：
+  `stage: work | plan_id: PLAN-1094 | plan_revision: r5 | outcome: blocked（T-01 完成=1/8；
+  T-02..T-06 阻塞硬依赖） | worktree: D:/autostack/.wt/lang-1094/auto-lang | branch: plan-1094-dev
+  | base_commit: 5a76167cc | code_commit: 无代码改动（T-01 为审计/探测，产物在 plan-artifacts）
+  | dependency_revisions: 1078=archived；1084/1087/1092/1093=drafting 0/N；1107=archived（新输入源）
+  | task_ids: T-01 | evidence: §4 T-01 冻结记录＋probes/probe-results.txt（8a39c905f8ee7df2，
+  16 探测源；正控绿，其余按形态冻结 stage/code） | blockers: 见 §10 依赖阻塞条目
+  | next_responsible_role: 用户裁定推进路径（按序完成依赖链或修订解除硬依赖）`。
+  并发说明：本日另一会话对本计划做 r4/r5 修订单纯文档交接（1110 Python 错误切片消费），
+  与本 T-01 记录不同记录类型、无行冲突；实施合同沿 r3/r5 未变。
+
+- 2026-11-20 r5：静态复查补齐 AV 的捕获/未捕获类型和位置证据，具名 `PY-ERROR-OBS`、AC-01..03 的观察路径及 T-06/T-08 交接。依赖方向、AV-only 阶段门与 0/8 进度沿原计划。
 
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
@@ -373,5 +479,15 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 - 本轮没有编译、测试、运行脚本case或UI/GPU、提交合入/归档；示例全部是目标合同，不能作为已有绿证据。
 
 ## 10. 待澄清事项
+
+- **[2026-11-20·阻塞] 硬依赖未交付，T-02..T-06 无法开工**（goal「完成计划1094」round 1）：
+  T-01（不依赖硬依赖的输入审计）已完成；T-02..T-06 按合同消费 1084（动态值/对象键）、
+  1087（跨调用错误展开）、1092（#[with] 共享语句面）、1093（受检 FFI 接面）的已交付能力，
+  四计划均 drafting 0/N，传导依赖 1083/1085/1086/1088–1091 亦未施工
+  （路线图顺序下一批为 1083/AVP-05；观察到 `D:/autostack/.wt/lang-1083/auto-lang` 工作树已由另一会话建立）。
+  已问询用户未获回答，按 §8 默认路径（"依赖缺失先做不依赖它的输入审计"）执行 T-01 后停。
+  解锁动作二选一：①按路线图顺序完成 1083→…→1093 后恢复本包 T-02（多 goal 会话推进）；
+  ②用户显式修订本包解除/缩减硬依赖（改变范围与验收阈值，需同步路线图与 1084/1087/1092/1093 活跃作者合同）。
+  本包保持 executing；worktree/分支/plan-artifacts scope 保留待恢复。
 
 不需再次确认已经授权的规划范围。已定语言规范/数值宽度/安全边界沿原来源；T-01对真实旧用例与Spec冲突做具名裁定或有界机制探测，属于本包必要工作。涉及改变已批准公共语义、资源承诺或验收阈值时提交具体差异再决定；不得以“未定”无限延期本包required行。默认支持同一合法源或已批准、可审计的兼容规范化，不承诺复制旧bug或尚无语言构造。
