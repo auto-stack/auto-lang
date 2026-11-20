@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-20
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1081, PLAN-1083]
 supersedes_spec_components: [docs/specs/ace-migration/m2-modules.md, docs/specs/ace-migration/m2-generics.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -341,7 +341,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-artifacts
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -365,9 +365,9 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-artifacts
 - [x] **T-05** work：九个原义务迁移、作者和目标隔离控制均已核。
 - [x] **T-06** work：冻结固定组实际终态、继承红与样本时间见 §9。
 - [x] **T-07** review：独立复放、合同逐项与规范核对，见 §9。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：代码与规范线性落主、归档、guard 及材料清理均核，见 §9。
 
-落主与规范身份已核验，T-08 进入清理。
+交付、归档与清理均已核验。
 
 ## 9. 复审记录
 
@@ -454,6 +454,12 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-artifacts
 - 2026-11-20 `stage: merge | key: PLAN-1085:r3 | archive_commit: 274f86183bfb5dce7118e95ccbd517c392873bdd | checkpoints: archived, worktrees_removed | pending: artifact_scope_removed, registry_refreshed, T-08`。归档已在 master，17 个从归档向外的路径及四个规范和两处导航均核对。主、伴随工作树属于 lang-1085，清洁、身份符合并在删除前分别通过 `wt-guard.ps1`。普通主工作树 101,669 文件、22,225,226,257 字节，伴随工作树 1,294 文件、26,841,767 字节，目录和中间产物已随树移除，合入分支与空组目录已移除。
 
   路径对账：T-02 早期系统临时执行根 `C:/Users/zhaop/AppData/Local/Temp/tmcase-wwhk0o_3` 核实不存在。早期显式工具准备根 `C:/Users/zhaop/AppData/Local/Temp/fixed-admission-62ikuv6t` 的 JSON 指向唯一 1085 worktree，确认无 reparse point 后移除 5 文件、71,625 字节，路径不存在。其余各轮源码探针、AV store、Cargo/nextest 日志、运行输出、准备归档及临时产物在 Plan 专属材料或已移除的工作树。材料目录 owner 和在途登记确认，保护扫描 clean，15,477 文件、362,329,193 字节，即将按政策全删。
+
+- 2026-11-20 `stage: merge | key: PLAN-1085:r3 | outcome: pass | delivery_commit: 03ccfff2aa48916921287220a0fd2a9247d95fa8 | archive_commit: 274f86183bfb5dce7118e95ccbd517c392873bdd | checkpoints: prepared, landed, canonical_verified, archived, cleaned`。两工作树及合入分支、空组目录均验证不存在。注册材料作用域 `D:/autostack/plan-artifacts/plan-1085` 在同一路径和 owner 校验且无占用后重跑 reparse guard clean，15,477 文件、362,329,193 字节于 3.051s 删除，目录不存在。无具名保留。收尾登记 `deleted-at-merge`、`cleaned`、remaining_bytes=0，以本结案提交的归档 SHA256 为索引。
+
+- 2026-11-20 周期批量预检。上份收据为 2026-11-20T00:00Z、最高已落主 ID 1098、覆盖提交 949fdc5e1。本次 1085 虽是较小 ID，但在该覆盖提交之后落主，满足 `%5` 周期触发。按 `auto-plan-regress` 归独立主检出单实例。档后检查发现其它会话的 AutoUI `cargo rustc ... --example ace_node_desktop_window` 仍在编译，并有范围外的设计工作中改动，当前未启动批量运行，也未前移收据；该周期任务不改变本 Plan 的受影响组与归档结论。
+
+- 2026-11-20 `stage: goal | plan_id: PLAN-1085 | plan_revision: r3 | round: 4 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 03ccfff2aa48916921287220a0fd2a9247d95fa8 | next: done`。T-01..T-08 完成，归档、规范和路径见上。
 
 ## 10. 待澄清事项
 
