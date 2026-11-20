@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-20
 plan_revision: 8
-current_step: 8
+current_step: 9
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1045]
 supersedes_spec_components: [docs/specs/auto-ac/project.md, docs/specs/stdlib/design/context-source-assembly.md, docs/specs/auto-syntax/grammar-contract.md]
@@ -18,6 +18,8 @@ touched_goals: [GOAL-002]
 # [PLAN-1046] AAC Auto语法运行时、源码投影与模块装配
 
 ## 0. 变更摘要
+
+2026-11-20 r8。9/9 完成。代码与四份规范已快进落主，计划已归档，专树与本计划验证材料已清理。
 
 2026-11-20 r8。最终复审通过，R1046-01/02 关闭。按冻结提交验证原始反例、受影响分支及规范增量，进入 T-08 合入。
 
@@ -225,7 +227,7 @@ T-05/T-09 扩展现有 `experimental/ace/tests/aac-syntax/native_driver.at` 和 
 
 ## 8. 执行步骤
 
-专树 `D:/autostack/.wt/lang-1046/auto-lang`、分支 `plan-1046-dev` 已建，work/review/merge 沿同一树。计划材料使用已登记的 `D:/autostack/plan-artifacts/plan-1046/`，测试生成输出/SDK/仓外消费及外置 target 显式放该 scope，禁止 junction/symlink。T-04/T-05 的返修和 T-06 重绑完成，进入 T-07 最终复审；如当前工具提供原生 TODO，执行前登记下表未完成任务 ID。T-02/T-03/T-04 的已交实现保留，组合所涉及的共享语法、投影、目录和已有证据由 T-05/T-06 补证。
+专树 `D:/autostack/.wt/lang-1046/auto-lang`、分支 `plan-1046-dev` 已建，work/review/merge 沿同一树。计划材料使用已登记的 `D:/autostack/plan-artifacts/plan-1046/`，测试生成输出/SDK/仓外消费及外置 target 显式放该 scope，禁止 junction/symlink。T-04/T-05 返修和 T-06 重绑、T-07 复审、T-08 归档及清理均已完成；如当前工具提供原生 TODO，执行前登记下表未完成任务 ID。T-02/T-03/T-04 的已交实现保留，组合所涉及的共享语法、投影、目录和已有证据由 T-05/T-06 补证。
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
@@ -239,7 +241,7 @@ T-05/T-09 扩展现有 `experimental/ace/tests/aac-syntax/native_driver.at` 和 
 | [x] T-09 源码位置和模块分类补证 | work | T-05；§5实际输入合同 | 以当前syntax-runtime/position.rs的byte/UTF-8/UTF-16、CRLF与emoji中点floor规则补driver；校验普通/格式串的冷、编辑、恢复诊断原始跨度。验证语法恢复后仍保错误状态、全部语法义务映射、合法互递归与非法初始化环的不同去向。保持逻辑source/project定位与内容SnapshotId分账。 | §6 V-05、V-FSTR-02/03 的位置和保旧预期及输入/产物身份；AC-07/AC-04 |
 | [x] T-06 定向验证和交review | work | T-02..05、T-09 | 按 §6 登记/运行本包固定组及 `ace-syntax ace-source`、必要 consumer 和命名正反例，核父子真实终态/身份/原oracle/资源/清理。用正式 Windows AC 链接入口复核 V-AC-STAGED，沿 §4/§10 的实际 owner 核供给和当前切片的支持；诊断 response file 保留作定位证据。更改旧 profile/源码身份后重绑受影响的证据，准备 SD-01/02/03。 | `1abe595fc`。四个固定组 1470 项通过，源绑定 A2R 和 Windows AC 正反例重验。交独立复审，证据见 §9。 |
 | [x] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
 
@@ -486,6 +488,16 @@ SD-01..04 冻结材料 `r11-spec-delta.json` SHA256 `b7dad5a9decf6744406a016d3e0
 - `archived`：当前归档目标 `docs/plans/archive/1046-aac-syntax-source-and-modules.md`。计划正文和四处来链修正至真实归档路径，已检查本文件相对路径、任务和 frontmatter。交付既成，最后一项 T-08 清理待证据落账。
 
 清理前以登记 `REGISTRY.md`、当前进程及不跟随链接的盘点确认：`D:/autostack/.wt/lang-1046/` 仅专树 `auto-lang`，产物主要在 `target`、`experimental/ace/target`、runner target。原有 `ace-native` 889 测试辅助代码在专树内产生的 `docs/plans/attachments/889/` 含已完成本次门禁的临时驱动和存储，共 7,395 文件 / 386,534,277 bytes，其验收摘要已保留，随专树删除。`D:/autostack/plan-artifacts/plan-1046/` 包含外部 `native-probe` 的调试目标、真实 PE/源码及工具日志并受本计划登记；早期简写 `plan-artifacts/profile-sizes.txt` 的实际文件在此 scope。逐一核计划命令的源树、外部 target、PE 工作目录、组输出和材料根，根目录、兄弟组和主检出附件中无额外同号输出；无具名未关闭 hold。
+
+2026-11-20 T-08 收尾核验（AC-06 PASS）。归档检查点 `f2c30750553413e83be4d1765a9c46f826ac9cb0` 已在 `master`。专树的绝对路径、分支和交付祖先关系均一致，移除前重新运行 PowerShell `wt-guard.ps1` 返回 clean。`git worktree remove D:/autostack/.wt/lang-1046/auto-lang`、`git branch -d plan-1046-dev` 退出 0，空组目录已移除；`git worktree list --porcelain`、分支列表和磁盘三处确认已无该专树、分支和组。构建中间件随专树删除，测试落在原 889 辅助路径的本次临时文件一起清理。
+
+`cleaned`：已核材料目录的注册 owner、解析绝对路径、进程占用与 reparse point，最终盘点 706,618 文件、18,030,825,187 bytes。自动执行策略拦截带 `-Force` 的命令；按核验过的固定绝对路径执行 `Remove-Item -LiteralPath 'D:/autostack/plan-artifacts/plan-1046' -Recurse` 成功退出 0，`Test-Path` 确认目录不存在。`.retention/policy.json` 的 `scopes.plan-1046` 已刷新为 `deleted-at-merge` 和 `cleaned`，剩余 0 bytes，无具名保留。主检出原有其他计划的文档改动独立保留。归档路径和设计导航已验证；受影响代码和四份规范已在默认分支，后继按已交语法与候选契约消费。
+
+批量回归核 `docs/plans/.last-batch-regression.json`，上次覆盖 ID 1098，收据时间 2026-11-20T00:00:00Z，本次不到 48h。此后新归档 1046/1051/1081/1082/1083/1084/1085/1086/1106/1107/1109，无 ID 超过 1098 且可被 5 整除；批量门未到期，其已知基础设施问题沿原登记。本轮复用 1470 项原始固定组证据，实际落主后冒烟 15 项用时 2.529s，无新增永久用例。
+
+`stage: merge | plan_id: PLAN-1046 | plan_revision: r8 | outcome: pass | reviewed_commit: 1abe595fc8aa7d2d5790657eda1d8aa8c0366656 | delivery_commit: dca20c884737485d4da6dc32b9399e4245718769 | canonical: SD-01..04 exact SHA256 verified | archive: docs/plans/archive/1046-aac-syntax-source-and-modules.md | archive_checkpoint: f2c30750553413e83be4d1765a9c46f826ac9cb0 | cleanup: worktree, branch, empty group and registered artifact scope removed; registry refreshed | batch_regression: not due | task_id: T-08 done | result: 9/9`
+
+`stage: goal | plan_id: PLAN-1046 | plan_revision: r8 | round: 12 | from: merge | to: done | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1046/auto-lang (removed) | commit: dca20c884737485d4da6dc32b9399e4245718769 | next: done`
 
 ## 10. 待澄清事项
 
