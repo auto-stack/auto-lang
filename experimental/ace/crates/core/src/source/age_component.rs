@@ -3510,18 +3510,9 @@ fn hook_stmts_lower(
 ) -> Result<(), Vec<Diagnostic>> {
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
     for st in body {
-        // PLAN-105 T-02（U03 真语料 012/016）：handler 局部列表字面量
-        // （`let xs = [...]` / `var rows = []`）——文法/投影已收，执行面（列表
-        // 值语义）未接线 → **具名拒**（不落内部适配错误）。
-        if let ComponentStmt::Let { value, span, .. } = st {
-            if matches!(value.kind, ExprKind::ArrayLit(_)) {
-                return Err(vec![text_diag(
-                    "source.age.component-unsupported",
-                    "list/array literals in handler-local bindings are not wired yet (list value semantics is a named pending surface)",
-                    *span,
-                )]);
-            }
-        }
+        // PLAN-105 T-02（U03 真语料 012）：handler 局部列表字面量
+        // （`var rows []str = []`）——collections 域已承载 List 值语义，
+        // 交给共享 resolver 脱糖（`List<T>.new([...])`）。
         match st {            // PLAN-105 T-02：handler 级调用语句。列表方法（`xs.push(…)`/
             // `xs.get(…)`/`xs.len()`）在 collections 域按**表达式语句**交给共享
             // resolver（列表方法脱糖）；其余调用维持具名拒（不静默丢调用）。

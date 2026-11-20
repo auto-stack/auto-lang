@@ -7560,6 +7560,24 @@ impl<'a> Engine<'a> {
         if let Some(g) = self.cx.field_child(node, "generic") {
             return self.project_generic_ty(g);
         }
+        // PLAN-105 T-02（U03 真语料 012）：`[]T` / `[N]T` 列表注解（age-list-ty）
+        // ——按 `List<T>` 承载；元素注解递归同一入口。此前落到「type word leaf」
+        // 的 `.expect`（真语料 012 直接 panic），现在按结构投影。
+        if let Some(l) = self.cx.field_child(node, "list") {
+            let span = self.cx.span_of(l);
+            let elem_node = self.cx.field_child(l, "elem").unwrap_or(l);
+            let elem = self.classify_word(elem_node, false, false);
+            return TypeAnn {
+                kind: TypeRef::Generic {
+                    name: Ident {
+                        name: "List".to_string(),
+                        span,
+                    },
+                    args: vec![elem],
+                },
+                span,
+            };
+        }
         if let Some(o) = self.cx.field_child(node, "optional") {
             return self.project_optional_ty(o);
         }
