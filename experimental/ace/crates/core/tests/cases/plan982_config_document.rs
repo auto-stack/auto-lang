@@ -183,9 +183,9 @@ lib("x") {
         panic!("object literal value expected, got {:?}", v.value.kind);
     };
     assert_eq!(fields.len(), 2);
-    assert_eq!(fields[0].key, "mode");
+    assert_eq!(fields[0].key, ace_core::hir::ObjectKey::Text("mode".into()));
     assert!(matches!(&fields[0].value.kind, ExprKind::StrLit(s) if s == "lockstep"));
-    assert_eq!(fields[1].key, "mpu");
+    assert_eq!(fields[1].key, ace_core::hir::ObjectKey::Text("mpu".into()));
     assert!(matches!(&fields[1].value.kind, ExprKind::BoolLit(true)));
 
     // `kernel: kernel_config`——pair 的值是普通表达式（不是节点）。
@@ -509,7 +509,11 @@ fn p982_config_document_accepts_hash_comments_json_and_block_objects() {
             ConfigPairValue::Expr(e) => match &e.kind {
                 ExprKind::ObjectLit { fields } => {
                     assert_eq!(fields.len(), 1);
-                    assert_eq!(fields[0].key, "@scope/x", "string keys are decoded");
+                    assert_eq!(
+                        fields[0].key,
+                        ace_core::hir::ObjectKey::Text("@scope/x".into()),
+                        "string keys are decoded"
+                    );
                 }
                 other => panic!("expected an object literal, got {other:?}"),
             },

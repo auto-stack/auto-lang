@@ -391,12 +391,68 @@ pub enum Value {
     External(std::rc::Rc<std::cell::RefCell<ExternalCell>>),
 }
 
-/// The shared payload of one PLAN-964 object cell: ordered (key → value)
-/// entries, insertion order preserved. Keys are owned Str bytes; values
-/// are admitted whitelist values (nested objects/lists/variants allowed).
+/// The key domain of an Auto object. The tag participates in equality, so
+/// e.g. 1, true, and "1" are different keys.
+#[derive(Clone, Debug)]
+pub enum ObjectKey {
+    Text(StrHandle),
+    Int(i32),
+    Bool(bool),
+}
+
+impl PartialEq for ObjectKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Text(a), Self::Text(b)) => a.bytes() == b.bytes(),
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ObjectKey {}
+
+impl std::hash::Hash for ObjectKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Self::Text(text) => text.bytes().hash(state),
+            Self::Int(value) => value.hash(state),
+            Self::Bool(value) => value.hash(state),
+        }
+    }
+}
+
+impl ObjectKey {
+    pub(crate) fn from_value(value: Value) -> Option<Self> {
+        match value {
+            Value::Str(value) => Some(Self::Text(value)),
+            Value::I32(value) => Some(Self::Int(value)),
+            Value::Bool(value) => Some(Self::Bool(value)),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn text_bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Text(text) => Some(text.bytes()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn detached(self) -> Self {
+        match self {
+            Self::Text(text) => Self::Text(StrHandle::detached(text.bytes().into())),
+            other => other,
+        }
+    }
+}
+
+/// Shared object payload, with entries in insertion order.
 #[derive(Clone, Debug)]
 pub struct ObjectData {
-    pub entries: Vec<(StrHandle, Value)>,
+    pub entries: Vec<(ObjectKey, Value)>,
 }
 
 /// One PLAN-964 external cell (INT-1026/IF-VAL): provider identity, kind
@@ -755,7 +811,7 @@ impl PartialEq for Value {
                         .entries
                         .iter()
                         .zip(rb.entries.iter())
-                        .all(|((ka, va), (kb, vb))| ka.bytes() == kb.bytes() && va == vb)
+                        .all(|((ka, va), (kb, vb))| ka == kb && va == vb)
             }
             // External compares by provider identity + token — same cell
             // through different aliases compares equal (content identity
@@ -902,7 +958,7 @@ impl Value {
                     let cell = o.borrow();
                     for (k, v) in cell.entries.iter() {
                         *visited += 1; // the entry edge
-                        b += k.bytes().len();
+                        b += k.text_bytes().map_or(0, <[u8]>::len);
                         stack.push(v.clone());
                     }
                 }

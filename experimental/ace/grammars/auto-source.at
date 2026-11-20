@@ -2481,7 +2481,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             assign() {}
             expr(field: "value")
         }
-        path-seg { dot() {} ident(field: "path") }
+        path-seg {
+            alt { dot() {} ident(field: "path") }
+            alt(profiles: [auto]) { dot(same-line: true) int-lit(field: "path", same-line: true) }
+            alt(profiles: [auto]) { dot(same-line: true) true-kw(field: "path", same-line: true) }
+            alt(profiles: [auto]) { dot(same-line: true) false-kw(field: "path", same-line: true) }
+        }
         // PLAN-962（L-48）：`xs[i] = v`——元素替换（list-set 语义，等价
         // `.set(i, v)`；旧引擎 SET_ELEM 同形）。PLAN-964：closures 面同样
         // 接受（共享对象单元格 `cell[k] = v` 动态键写）。
@@ -2760,6 +2765,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 整臂裁剪，冻结面逐字节不变。
             alt(profiles: [auto]) { pipegt() dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document]) { dot(same-line: true) ident(field: "member") }
+            alt(profiles: [auto]) { dot(same-line: true) int-lit(field: "member", same-line: true) }
+            alt(profiles: [auto]) { dot(same-line: true) true-kw(field: "member", same-line: true) }
+            alt(profiles: [auto]) { dot(same-line: true) false-kw(field: "member", same-line: true) }
             // PLAN-964（L-16/L-20）：索引后缀 `base[key]`——对象动态键读
             // （ObjectGet）与 List 整数索引共用此步，resolve 按 base 类型分派。
             // PLAN-982：配置文档也要能读对象字段 `k["heap"]`（物化层把它发射成
@@ -3004,6 +3012,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         object-key(profiles: [aggregates, auto, closures, scheduler, config-document]) {
             alt { ident(field: "key") }
             alt { str-lit(field: "key") }
+            alt(profiles: [auto]) { int-lit(field: "key") }
+            alt(profiles: [auto]) { signed-object-key(field: "key") {} }
+            alt(profiles: [auto]) { true-kw(field: "key") }
+            alt(profiles: [auto]) { false-kw(field: "key") }
+        }
+        signed-object-key(profiles: [auto]) {
+            minus() {}
+            int-lit(field: "magnitude", same-line: true)
         }
         // PLAN-964（L-21）：nil 字面量（nil/null 统一，PLAN-053）。
         nil-lit(profiles: [aggregates, auto, closures, scheduler, config-document]) {

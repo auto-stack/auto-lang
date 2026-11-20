@@ -6750,14 +6750,19 @@ k 0
                 // values evaluate in source order; the fresh cell lands in
                 // an Object-typed temp.
                 let mut key_slots = Vec::with_capacity(keys.len());
-                let str_ty = self.out.intern_type(MirType::Str);
-                for k in keys {
-                    let ks = self.temp_ty(str_ty)?;
-                    let c = self
-                        .out
-                        .intern_const(MirConst::Str(k.as_bytes().to_vec().into_boxed_slice()));
-                    self.emit(MirInstr::Const { dst: ks, value: c }, sp)?;
-                    key_slots.push(ks);
+                for key in keys {
+                    let (ty, value) = match key {
+                        hir::ObjectKey::Text(text) => {
+                            (MirType::Str, MirConst::Str(text.as_bytes().into()))
+                        }
+                        hir::ObjectKey::Int(value) => (MirType::I32, MirConst::I32(*value)),
+                        hir::ObjectKey::Bool(value) => (MirType::Bool, MirConst::Bool(*value)),
+                    };
+                    let ty = self.out.intern_type(ty);
+                    let dst = self.temp_ty(ty)?;
+                    let value = self.out.intern_const(value);
+                    self.emit(MirInstr::Const { dst, value }, sp)?;
+                    key_slots.push(dst);
                 }
                 let mut vals = Vec::with_capacity(eval_args.len());
                 for a in eval_args {

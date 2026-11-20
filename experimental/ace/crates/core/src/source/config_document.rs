@@ -880,7 +880,10 @@ fn emit_value(
                     ctx,
                     &obj,
                     "cfg_obj_put",
-                    str_lit(&f.key, f.span),
+                    str_lit(
+                        f.key.text().expect("config grammar admits text keys only"),
+                        f.span,
+                    ),
                     v.0,
                     v.1,
                     f.span,

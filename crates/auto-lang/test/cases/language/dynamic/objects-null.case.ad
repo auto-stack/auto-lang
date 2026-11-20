@@ -31,3 +31,59 @@ exit: 42
 
 ```text
 ```
+
+## Case: bool-and-int-keys
+id: "av.parity.1084.bool-and-int-keys"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let a = { true: 19, false: 23 }
+ let b = { 1: 19, 2: 23 }
+ return a.false + b[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: int-bool-text-key-identity
+id: "av.parity.1084.int-bool-text-key-identity"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var values = { 1: 11, true: 20, "1": 1, -7: 2 }
+    var k = 1
+    values[k] = 19
+    if values[true] != 20 || values["1"] != 1 { return 0 }
+    return values[k] + values.true + values["1"] + values[-7]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

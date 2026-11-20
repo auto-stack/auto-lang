@@ -3327,6 +3327,42 @@ impl<'a, 'r> Verifier<'a, 'r> {
     }
 
     /// F-941-15 cold half B of the per-instruction typing walk (union frame halved; see check_function).
+    fn object_elem_of(
+        &self,
+        f: &MirFunction,
+        slot: SlotId,
+        span: Option<SpanInfo>,
+    ) -> Result<TypeIdx, MirVerifyError> {
+        let ty = slot_ty_of(f, slot, span, "object")?;
+        match self.module.types.get(ty as usize) {
+            Some(MirType::Object { elem }) if self.collections_surface() => Ok(*elem),
+            _ => Err(MirVerifyError::Invalid {
+                code: "mir.object-type".into(),
+                message: "object instruction requires an object slot".into(),
+                span,
+            }),
+        }
+    }
+
+    fn check_object_key(
+        &self,
+        f: &MirFunction,
+        slot: SlotId,
+        view_allowed: bool,
+        span: Option<SpanInfo>,
+    ) -> Result<(), MirVerifyError> {
+        let ty = slot_ty_of(f, slot, span, "object key")?;
+        match self.module.types.get(ty as usize) {
+            Some(MirType::Str | MirType::I32 | MirType::Bool) => Ok(()),
+            Some(MirType::StrView) if view_allowed => Ok(()),
+            _ => Err(MirVerifyError::Invalid {
+                code: "mir.object-key".into(),
+                message: "object key requires string, i32 or bool".into(),
+                span,
+            }),
+        }
+    }
+
     #[inline(never)]
     fn check_instr_typing_b(
         &mut self,
@@ -3941,6 +3977,54 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             "env-get dst type {} does not match captured field type {}",
                             dt, want
                         ),
+                    ));
+                }
+            }
+            MirInstr::ObjectNew { dst, keys, vals } => {
+                let elem = self.object_elem_of(f, *dst, sp)?;
+                if keys.len() != vals.len() {
+                    return Err(err(
+                        "mir.object-arity",
+                        "object key and value counts differ".into(),
+                    ));
+                }
+                for key in keys {
+                    self.check_object_key(f, *key, false, sp)?;
+                }
+                for val in vals {
+                    let ty = slot_ty_of(f, *val, sp, "object value")?;
+                    if !self.ty_equiv(ty, elem) {
+                        return Err(err(
+                            "mir.object-type",
+                            "object value type does not match the element type".into(),
+                        ));
+                    }
+                }
+            }
+            MirInstr::ObjectGet {
+                dst,
+                obj,
+                key,
+                elem,
+            } => {
+                let declared = self.object_elem_of(f, *obj, sp)?;
+                self.check_object_key(f, *key, true, sp)?;
+                let result = slot_ty_of(f, *dst, sp, "object result")?;
+                if !self.ty_equiv(*elem, declared) || !self.ty_equiv(result, declared) {
+                    return Err(err(
+                        "mir.object-type",
+                        "object read type does not match the element type".into(),
+                    ));
+                }
+            }
+            MirInstr::ObjectSet { obj, key, value } => {
+                let elem = self.object_elem_of(f, *obj, sp)?;
+                self.check_object_key(f, *key, true, sp)?;
+                let ty = slot_ty_of(f, *value, sp, "object value")?;
+                if !self.ty_equiv(ty, elem) {
+                    return Err(err(
+                        "mir.object-type",
+                        "object value type does not match the element type".into(),
                     ));
                 }
             }

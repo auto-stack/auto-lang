@@ -25,8 +25,8 @@
 //!   so no value tree can stack-bomb a later freeze/clone/drop.
 
 use crate::contract::{
-    ListHandle, ObjectData, RecordValue, StrHandle, Value, VariantValue, CANCEL_CHECK_INTERVAL,
-    MAX_LIST_ELEMS, MAX_RECORD_FIELDS,
+    ListHandle, ObjectData, ObjectKey, RecordValue, StrHandle, Value, VariantValue,
+    CANCEL_CHECK_INTERVAL, MAX_LIST_ELEMS, MAX_RECORD_FIELDS,
 };
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -584,7 +584,7 @@ impl DynValue {
             /// borrow) and fresh key buffers are minted at rebuild (the
             /// deep copy breaks every shared buffer).
             Object {
-                keys: Vec<StrHandle>,
+                keys: Vec<ObjectKey>,
             },
         }
         fn open_frame<'a>(
@@ -636,10 +636,10 @@ impl DynValue {
                 }
                 (Value::Object(o), DynType::Object) => {
                     let cell = o.borrow();
-                    let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                    let entries: Vec<(ObjectKey, Value)> = cell.entries.clone();
                     let kids: Vec<Value> = entries.iter().map(|(_, v)| v.clone()).collect();
                     let kid_tys: Vec<&DynType> = kids.iter().map(|_| &OBJECT_DYN).collect();
-                    let keys: Vec<StrHandle> = entries.into_iter().map(|(k, _)| k).collect();
+                    let keys: Vec<ObjectKey> = entries.into_iter().map(|(k, _)| k).collect();
                     Some((
                         kids,
                         kid_tys,
@@ -728,12 +728,7 @@ impl DynValue {
                         let entries = keys
                             .into_iter()
                             .zip(done.vals.into_iter())
-                            .map(|(k, v)| {
-                                (
-                                    StrHandle::detached(k.bytes().to_vec().into_boxed_slice()),
-                                    v,
-                                )
-                            })
+                            .map(|(key, value)| (key.detached(), value))
                             .collect();
                         Value::Object(std::rc::Rc::new(std::cell::RefCell::new(ObjectData {
                             entries,
@@ -984,7 +979,7 @@ fn check_shape(
             (Value::Nil, T::Nil) => true,
             (Value::Object(o), T::Object) => {
                 let cell = o.borrow();
-                let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                let entries: Vec<(ObjectKey, Value)> = cell.entries.clone();
                 for (_k, v) in entries.into_iter() {
                     if !work() {
                         return Err(DynPackError::Budget {
@@ -1088,7 +1083,7 @@ fn check_whitelist(
             }
             Value::Object(o) => {
                 let cell = o.borrow();
-                let entries: Vec<(StrHandle, Value)> = cell.entries.clone();
+                let entries: Vec<(ObjectKey, Value)> = cell.entries.clone();
                 for (_k, ev) in entries.into_iter() {
                     stack.push((ev, d + 1));
                 }

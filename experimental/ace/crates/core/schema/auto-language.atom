@@ -135,7 +135,7 @@ descriptor(schema: "auto.hir.auto-language.draft", revision: 1u32, profile: "aut
                 payload: ExprRef
                 captures: CaptureBindingList
                 value: ExprRef
-                keys: TextList
+                keys: ObjectKeyList
                 key: ExprRef
                 parts: ExprRefList
             }

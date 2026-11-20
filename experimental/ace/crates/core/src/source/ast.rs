@@ -689,7 +689,7 @@ pub struct NamedCtorField {
 /// index-assign).
 #[derive(Clone, Debug)]
 pub struct ObjectField {
-    pub key: String,
+    pub key: crate::hir::ObjectKey,
     pub value: Expr,
     pub span: Span,
 }

@@ -33,6 +33,64 @@ mod tests {
     use std::cell::Cell;
     use std::rc::Rc;
 
+    #[test]
+    fn object_keys_preserve_tags_order_and_nested_values_on_restore() {
+        use crate::contract::{ObjectData, ObjectKey};
+        use std::cell::RefCell;
+
+        let text = |key: &str| ObjectKey::Text(StrHandle::detached(key.as_bytes().into()));
+        let nested = Value::Object(Rc::new(RefCell::new(ObjectData {
+            entries: vec![(text("n"), Value::I32(23))],
+        })));
+        let object = Value::Object(Rc::new(RefCell::new(ObjectData {
+            entries: vec![
+                (ObjectKey::Int(1), Value::I32(19)),
+                (ObjectKey::Bool(true), nested),
+                (text("1"), Value::Nil),
+            ],
+        })));
+        let dynamic = DynValue::pack(object, DynType::Object).unwrap();
+        let ctx = RestoreContext::new(&[], &[]);
+        let opts = TraversalOptions::default();
+        let bytes = freeze(&dynamic, &opts).unwrap();
+        assert_eq!(u16::from_le_bytes(bytes[4..6].try_into().unwrap()), 2);
+        let restored = unfreeze(&bytes, &ctx, &opts).unwrap();
+        assert_eq!(restored.as_value(), dynamic.as_value());
+        assert_eq!(freeze(&restored, &opts).unwrap(), bytes);
+
+        let mut forged_v1 = bytes.clone();
+        forged_v1[4..6].copy_from_slice(&1u16.to_le_bytes());
+        let end = forged_v1.len() - 8;
+        let checksum = fnv1a64(&forged_v1[..end]);
+        forged_v1[end..].copy_from_slice(&checksum.to_le_bytes());
+        assert_eq!(
+            unfreeze(&forged_v1, &ctx, &opts),
+            Err(PortableError::Invalid {
+                reason: "object-key"
+            }),
+        );
+    }
+
+    #[test]
+    fn string_only_object_keeps_v1_wire_generation() {
+        use crate::contract::{ObjectData, ObjectKey};
+
+        let value = Value::Object(Rc::new(std::cell::RefCell::new(ObjectData {
+            entries: vec![(
+                ObjectKey::Text(StrHandle::detached(b"name".as_slice().into())),
+                Value::I32(42),
+            )],
+        })));
+        let object = DynValue::pack(value, DynType::Object).unwrap();
+        let ctx = RestoreContext::new(&[], &[]);
+        let opts = TraversalOptions::default();
+        let bytes = freeze(&object, &opts).unwrap();
+        assert_eq!(u16::from_le_bytes(bytes[4..6].try_into().unwrap()), 1);
+        let restored = unfreeze(&bytes, &ctx, &opts).unwrap();
+        assert_eq!(restored.as_value(), object.as_value());
+        assert_eq!(freeze(&restored, &opts).unwrap(), bytes);
+    }
+
     // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
@@ -893,9 +951,9 @@ mod tests {
             unfreeze(&m, &empty, &TraversalOptions::default()),
             Err(PortableError::Invalid { reason: "magic" })
         );
-        // Bad version (2) — a different format generation.
+        // Bad version (3) — an unknown format generation.
         let mut v = good.clone();
-        v[4] = 2;
+        v[4] = 3;
         v.truncate(v.len() - 8);
         let sum = fnv1a64(&v);
         v.extend_from_slice(&sum.to_le_bytes());

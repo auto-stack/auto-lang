@@ -1881,7 +1881,7 @@ enum EKind {
     },
     // -- PLAN-964 object/nil/FStr surface --
     ObjectCtor {
-        keys: Vec<String>,
+        keys: Vec<crate::hir::ObjectKey>,
         eval: Vec<usize>,
     },
     ObjectGet {
@@ -5523,7 +5523,7 @@ impl<'p> Emitter<'p> {
                             // reads the elem inside the object row.
                             let keys_s: Vec<String> = keys
                                 .iter()
-                                .map(|k| format!("\"{}\"", Self::esc(k)))
+                                .map(|k| k.to_atom(|text| format!("\"{}\"", Self::esc(text))))
                                 .collect();
                             let eval_s: Vec<String> =
                                 eval.iter().map(|x| format!("e{}", x)).collect();

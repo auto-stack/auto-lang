@@ -533,7 +533,7 @@ pub enum RExprKind {
     /// (`vt` = `VT::Object(oi)`; the elem derives from the interned
     /// object table).
     ObjectCtor {
-        keys: Vec<String>,
+        keys: Vec<crate::hir::ObjectKey>,
         args: Vec<ResolvedExpr>,
     },
     /// Dynamic index read `obj[k]` — missing key traps at runtime.
@@ -8568,11 +8568,35 @@ F:{d}
         }
     }
 
+    fn check_object_key(&mut self, key: &ResolvedExpr) {
+        let ordinary = self.profile == SourceProfile::Auto;
+        if !key.vt.is_text() && !(ordinary && matches!(key.vt, VT::I32 | VT::Bool)) {
+            let domain = if ordinary {
+                "`Str`, `int` or `bool`"
+            } else {
+                "`Str` in this profile"
+            };
+            self.bind_err(
+                "source.object-key",
+                format!("an object key must be {domain}"),
+                key.span,
+            );
+        }
+    }
+
     fn object_field_key(field: &ast::Ident) -> ResolvedExpr {
+        let (vt, kind) = match field.name.as_str() {
+            "true" => (VT::Bool, RExprKind::BoolLit(true)),
+            "false" => (VT::Bool, RExprKind::BoolLit(false)),
+            name => match name.parse::<i32>() {
+                Ok(value) => (VT::I32, RExprKind::IntLit(value)),
+                Err(_) => (VT::Str, RExprKind::StrLit(name.to_owned())),
+            },
+        };
         ResolvedExpr {
             span: field.span,
-            vt: VT::Str,
-            kind: RExprKind::StrLit(field.name.clone()),
+            vt,
+            kind,
         }
     }
 
@@ -11960,13 +11984,7 @@ F:{d}
                     if let VT::Object(oi) = base_vt {
                         let elem = self.coll.objects[oi];
                         let index = self.expr_iterative(&ia.index);
-                        if !index.vt.is_text() {
-                            self.bind_err(
-                                "source.object-key",
-                                "an object key must be `Str` in this profile".to_string(),
-                                ia.index.span,
-                            );
-                        }
+                        self.check_object_key(&index);
                         let mut value = self.expr_with_expect(&ia.value, Some(elem));
                         self.reject_elem_view_use(&value, "the stored value");
                         if value.vt != elem {
@@ -13954,13 +13972,7 @@ F:{d}
                     }
                     // PLAN-964 (L-20): object dynamic-key read.
                     VT::Object(oi) => {
-                        if !idx.vt.is_text() {
-                            self.bind_err(
-                                "source.object-key",
-                                "an object key must be `Str` in this profile".to_string(),
-                                index.span,
-                            );
-                        }
+                        self.check_object_key(&idx);
                         Self::object_get(recv, idx, self.coll.objects[oi], e.span)
                     }
                     other => {
@@ -14001,13 +14013,13 @@ F:{d}
                 let mut args = Vec::with_capacity(fields.len());
                 let mut keys = Vec::with_capacity(fields.len());
                 let mut elem: Option<VT> = None;
-                let mut dup: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                let mut dup = std::collections::HashSet::new();
                 for f in fields {
                     let value = self.expr_iterative(&f.value);
-                    if !dup.insert(f.key.as_str()) {
+                    if !dup.insert(&f.key) {
                         self.bind_err(
                             "source.object-duplicate",
-                            format!("duplicate object key `{}`", f.key),
+                            format!("duplicate object key {:?}", f.key),
                             f.span,
                         );
                     }

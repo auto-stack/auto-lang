@@ -16,6 +16,32 @@
 use crate::atom_text::Span;
 use std::fmt;
 
+/// Static keys of an object literal. Atom text preserves the value tag
+/// independently of the key's printable spelling.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ObjectKey {
+    Text(String),
+    Int(i32),
+    Bool(bool),
+}
+
+impl ObjectKey {
+    pub(crate) fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn to_atom(&self, quote: impl FnOnce(&str) -> String) -> String {
+        match self {
+            Self::Text(text) => quote(text),
+            Self::Int(value) => value.to_string(),
+            Self::Bool(value) => format!("{{ bool: {value} }}"),
+        }
+    }
+}
+
 macro_rules! typed_id {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
@@ -715,7 +741,7 @@ pub enum ExprKind {
     ObjectCtor {
         elem: TypeId,
         eval_args: Vec<ExprId>,
-        keys: Vec<String>,
+        keys: Vec<ObjectKey>,
     },
     /// PLAN-964 (L-20): dynamic index read `obj[k]` — `base` is the
     /// object expression, `key` the Str expression. A missing key TRAPS

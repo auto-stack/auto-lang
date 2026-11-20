@@ -10,7 +10,7 @@
 
 use crate::abc_verify::LoadedModule;
 use crate::contract::{
-    ExecOutcome, ObjectData, ResourceKind, SpanInfo, StrHandle, TrapKind, Value,
+    ExecOutcome, ObjectData, ObjectKey, ResourceKind, SpanInfo, TrapKind, Value,
     CANCEL_CHECK_INTERVAL, MAX_AV_FRAMES, MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL,
     MAX_TRACE_BYTES,
 };
@@ -3085,6 +3085,35 @@ fn resolve_view_bytes<V: ModuleView>(
                 ExecOutcome::Infra("share view resolution failed (admission violation)".to_string())
             })?;
             Ok((resolved.handle.bytes().to_vec(), view.clone()))
+        }
+    }
+}
+
+// A text key can be borrowed while comparing. Only upsert of a new key
+// extends its lifetime by taking an owned copy through the arena.
+enum ObjectKeyOperand {
+    Owned(ObjectKey),
+    BorrowedText(Vec<u8>),
+}
+
+impl ObjectKeyOperand {
+    fn resolve<V: ModuleView>(v: &V, func: u32, value: Value) -> Result<Self, ExecOutcome> {
+        if matches!(value, Value::StrView(_)) {
+            let (bytes, _) = resolve_view_bytes(v, func, &value)?;
+            return Ok(Self::BorrowedText(bytes));
+        }
+        let kind = value.type_name();
+        ObjectKey::from_value(value)
+            .map(Self::Owned)
+            .ok_or_else(|| {
+                ExecOutcome::Infra(format!("object key holds {kind} (admission violation)"))
+            })
+    }
+
+    fn matches(&self, key: &ObjectKey) -> bool {
+        match self {
+            Self::Owned(owned) => owned == key,
+            Self::BorrowedText(bytes) => key.text_bytes() == Some(bytes.as_slice()),
         }
     }
 }
@@ -6891,26 +6920,22 @@ fn dispatch_with_host<V: ModuleView>(
                                 .collect::<Vec<_>>(),
                         )
                     };
-                    let mut entries: Vec<(StrHandle, Value)> = Vec::with_capacity(kvs.len());
-                    let mut seen: Vec<Vec<u8>> = Vec::with_capacity(kvs.len());
-                    for (k, val) in kvs.into_iter().zip(vls.into_iter()) {
-                        let kb = match &k {
-                            Value::Str(h) => h.bytes().to_vec(),
-                            other => {
-                                return Some(ExecOutcome::Infra(format!(
-                                    "object-new key holds {} (admission violation)",
-                                    other.type_name()
-                                )))
-                            }
+                    let mut entries = Vec::with_capacity(kvs.len());
+                    let mut seen = std::collections::HashSet::with_capacity(kvs.len());
+                    for (key, value) in kvs.into_iter().zip(vls) {
+                        let kind = key.type_name();
+                        let Some(key) = ObjectKey::from_value(key) else {
+                            return Some(ExecOutcome::Infra(format!(
+                                "object-new key holds {kind} (admission violation)"
+                            )));
                         };
-                        if seen.iter().any(|s| *s == kb) {
+                        if !seen.insert(key.clone()) {
                             return Some(ExecOutcome::Trap {
-                                kind: crate::contract::TrapKind::ObjectDuplicate,
+                                kind: TrapKind::ObjectDuplicate,
                                 span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                             });
                         }
-                        seen.push(kb);
-                        entries.push((k.expect_owned_str(), val));
+                        entries.push((key, value));
                     }
                     st.steps += keys.len() as u64;
                     let cell = std::rc::Rc::new(std::cell::RefCell::new(ObjectData { entries }));
@@ -6939,15 +6964,15 @@ fn dispatch_with_host<V: ModuleView>(
                             ov.type_name()
                         )));
                     };
-                    let (kb, _sv) = match resolve_view_bytes(v, func_idx, &kv) {
-                        Ok(x) => x,
+                    let key = match ObjectKeyOperand::resolve(v, func_idx, kv) {
+                        Ok(key) => key,
                         Err(out) => return Some(out),
                     };
                     let found = {
                         let c = cell.borrow();
                         c.entries
                             .iter()
-                            .find(|(k, _)| k.bytes() == kb.as_slice())
+                            .find(|(k, _)| key.matches(k))
                             .map(|(_, e)| e.clone())
                     };
                     let Some(value) = found else {
@@ -7006,16 +7031,12 @@ fn dispatch_with_host<V: ModuleView>(
                             });
                         }
                     }
-                    let (kb, _sv) = match resolve_view_bytes(v, func_idx, &kv) {
-                        Ok(x) => x,
+                    let key = match ObjectKeyOperand::resolve(v, func_idx, kv) {
+                        Ok(key) => key,
                         Err(out) => return Some(out),
                     };
                     let mut c = cell.borrow_mut();
-                    match c
-                        .entries
-                        .iter_mut()
-                        .find(|(k, _)| k.bytes() == kb.as_slice())
-                    {
+                    match c.entries.iter_mut().find(|(k, _)| key.matches(k)) {
                         Some((_k, slot)) => {
                             *slot = vv;
                         }
@@ -7026,18 +7047,18 @@ fn dispatch_with_host<V: ModuleView>(
                             // The precheck walks the object slot (deep size),
                             // which borrows the cell — hence the re-borrow
                             // after the allocation.
-                            let h = match &kv {
-                                Value::Str(h) => h.clone(),
-                                Value::StrView(_) => {
-                                    let deep = std::mem::size_of::<Value>() + kb.len();
+                            let owned = match key {
+                                ObjectKeyOperand::Owned(owned) => owned,
+                                ObjectKeyOperand::BorrowedText(bytes) => {
+                                    let deep = std::mem::size_of::<Value>() + bytes.len();
                                     if let Err(out) =
                                         owned_alloc_precheck(st, deep, *obj as usize, limits)
                                     {
                                         return Some(out);
                                     }
-                                    st.steps += kb.len() as u64;
-                                    match st.arena.try_alloc(&kb) {
-                                        Ok(h) => h,
+                                    st.steps += bytes.len() as u64;
+                                    match st.arena.try_alloc(&bytes) {
+                                        Ok(handle) => ObjectKey::Text(handle),
                                         Err(n) => {
                                             return Some(ExecOutcome::Infra(format!(
                                                 "fault-injected at owned allocation attempt #{n}"
@@ -7045,14 +7066,8 @@ fn dispatch_with_host<V: ModuleView>(
                                         }
                                     }
                                 }
-                                other => {
-                                    return Some(ExecOutcome::Infra(format!(
-                                        "object-set key holds {} (admission violation)",
-                                        other.type_name()
-                                    )))
-                                }
                             };
-                            cell.borrow_mut().entries.push((h, vv));
+                            cell.borrow_mut().entries.push((owned, vv));
                         }
                     }
                     st.steps += 1;

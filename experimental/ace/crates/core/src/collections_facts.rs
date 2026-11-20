@@ -1154,8 +1154,28 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             eval_args, keys, ..
         } => {
             h.str("oc");
-            for k in keys {
-                h.str(k);
+            let typed = keys.iter().any(|key| key.text().is_none());
+            if typed {
+                h.str("typed-object-keys-v1");
+            }
+            for key in keys {
+                use crate::hir::ObjectKey;
+                match key {
+                    ObjectKey::Text(text) => {
+                        if typed {
+                            h.byte(0);
+                        }
+                        h.str(text);
+                    }
+                    ObjectKey::Int(value) => {
+                        h.byte(1);
+                        h.u32(*value as u32);
+                    }
+                    ObjectKey::Bool(value) => {
+                        h.byte(2);
+                        h.byte(u8::from(*value));
+                    }
+                }
             }
             for a in eval_args {
                 h.u32(a.0);

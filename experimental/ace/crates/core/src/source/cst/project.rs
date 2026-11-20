@@ -4575,7 +4575,7 @@ impl<'a> Engine<'a> {
             match self.run_cfg_pair_value(value_node) {
                 crate::source::config_document::ConfigPairValue::Expr(value) => {
                     fields.push(ObjectField {
-                        key: key.name,
+                        key: crate::hir::ObjectKey::Text(key.name),
                         value,
                         span,
                     });
@@ -8439,7 +8439,29 @@ impl<'a> Engine<'a> {
                 seg_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
                 for seg in seg_nodes {
                     if let Some(pl) = self.cx.field_child(seg, "path") {
-                        path.push(ident_of(&mut self.cx, pl));
+                        let kind = self.cx.tree.kind(pl);
+                        if kind == self.cx.k.tok_int_lit {
+                            let span = self.cx.span_of(pl);
+                            let name = self.cx.spelling(pl);
+                            if name.parse::<i32>().is_err() {
+                                self.cx.reject(span, || {
+                                    Diagnostic::new(
+                                        Stage::Text,
+                                        "source.literal-range",
+                                        "object integer key exceeds i32 range",
+                                        span,
+                                    )
+                                });
+                            }
+                            path.push(Ident { name, span });
+                        } else if kind == self.cx.k.tok_true || kind == self.cx.k.tok_false {
+                            path.push(Ident {
+                                name: self.cx.spelling(pl),
+                                span: self.cx.span_of(pl),
+                            });
+                        } else {
+                            path.push(ident_of(&mut self.cx, pl));
+                        }
                     }
                 }
             }
@@ -9397,22 +9419,48 @@ impl<'a> Engine<'a> {
                         collect_seq(&self.cx, fields_n, fk, "object-field-tail");
                     nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
                     for f in nodes {
+                        use crate::hir::ObjectKey;
                         let key = match self.cx.field_child(f, "key") {
-                            Some(k) => {
-                                let kk = self.cx.tree.kind(k);
-                                let text = self.cx.spelling(k);
-                                let _ = kk;
-                                if text.len() >= 2 && text.starts_with('"') && text.ends_with('"') {
-                                    lex::decode_str_value(&text.as_bytes()[1..text.len() - 1])
-                                } else {
-                                    text
+                            Some(key_node) => {
+                                let k = self.cx.field_child(key_node, "key").unwrap_or(key_node);
+                                let magnitude = self.cx.field_child(k, "magnitude");
+                                let text = match magnitude {
+                                    Some(leaf) => format!("-{}", self.cx.spelling(leaf)),
+                                    None => self.cx.spelling(k),
+                                };
+                                match self.cx.tree.kind(k) {
+                                    tk if tk == self.cx.k.tok_int_lit || magnitude.is_some() => {
+                                        let key_span = self.cx.span_of(k);
+                                        match text.parse() {
+                                            Ok(key) => ObjectKey::Int(key),
+                                            Err(_) => {
+                                                self.cx.reject(key_span, || {
+                                                    Diagnostic::new(
+                                                        Stage::Text,
+                                                        "source.literal-range",
+                                                        "object integer key exceeds i32 range",
+                                                        key_span,
+                                                    )
+                                                });
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    tk if tk == self.cx.k.tok_true => ObjectKey::Bool(true),
+                                    tk if tk == self.cx.k.tok_false => ObjectKey::Bool(false),
+                                    _ if text.starts_with('"') && text.ends_with('"') => {
+                                        ObjectKey::Text(lex::decode_str_value(
+                                            &text.as_bytes()[1..text.len() - 1],
+                                        ))
+                                    }
+                                    _ => ObjectKey::Text(text),
                                 }
                             }
                             None => {
                                 let span = self.cx.span_of(f);
                                 self.cx
                                     .reject(span, || syntax_diag("object field key", span));
-                                String::new()
+                                continue;
                             }
                         };
                         let vn = self.cx.field_child(f, "value").expect("object field value");
@@ -10059,6 +10107,9 @@ impl<'a> Engine<'a> {
                 || self.cx.k.tok_r_nil.is_some_and(|n| mk == n)
                 // PLAN-968: `Task.spawn` member leaf (`spawn` is reserved).
                 || mk == self.cx.k.tok_r_spawn
+                || (self.cx.profile == SourceProfile::Auto
+                    && [self.cx.k.tok_int_lit, self.cx.k.tok_true, self.cx.k.tok_false]
+                        .contains(&mk))
         })
     }
 
@@ -10335,6 +10386,16 @@ impl<'a> Engine<'a> {
         // `.name`：record 族 = 字段读；text-only 面 = 无括号文本方法（旧拒绝）。
         let mspan = self.cx.span_of(member);
         let mname = self.cx.spelling(member);
+        if mk == self.cx.k.tok_int_lit && mname.parse::<i32>().is_err() {
+            self.cx.reject(mspan, || {
+                Diagnostic::new(
+                    Stage::Text,
+                    "source.literal-range",
+                    "object integer key exceeds i32 range",
+                    mspan,
+                )
+            });
+        }
         if self.cx.profile.is_record() {
             let span = recv.span.join(mspan);
             Expr {

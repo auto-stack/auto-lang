@@ -36,8 +36,8 @@
 //! the version stays 1 (contract §12).
 
 use crate::contract::{
-    fnv1a64, ListHandle, ObjectData, RecordValue, StrHandle, Value, VariantValue, MAX_LIST_ELEMS,
-    MAX_RECORD_FIELDS,
+    fnv1a64, ListHandle, ObjectData, ObjectKey, RecordValue, StrHandle, Value, VariantValue,
+    MAX_LIST_ELEMS, MAX_RECORD_FIELDS,
 };
 use crate::dynamic::{
     byte_cost_cell, byte_cost_list_extra, byte_cost_record_extra, leaf_cost, DynArm, DynField,
@@ -54,6 +54,9 @@ pub const PORTABLE_MAGIC: [u8; 4] = *b"AVPF";
 /// Wire version (v1; the r2 collections expansion stays v1 — the format
 /// was never published outside this plan, both sides ship together).
 pub const PORTABLE_VERSION: u16 = 1;
+/// Typed object keys use the same pairs of value nodes under a new wire
+/// generation. String-only payloads keep their v1 byte identity.
+pub const PORTABLE_TYPED_OBJECT_VERSION: u16 = 2;
 /// Payload kind: a DynValue tree (the only kind of v1).
 pub const PORTABLE_KIND_DYN_VALUE: u8 = 1;
 
@@ -243,6 +246,7 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
     // Unique-in-edge ledger: every Rc payload (record / Str buffer / list
     // buffer / variant payload) may be emitted exactly once.
     let mut visited: HashSet<usize> = HashSet::new();
+    let mut typed_object_keys = false;
     // DFS preorder work stack of SHALLOW-owned values (handle bumps — a
     // ListBuf RefCell is read exactly once per pop, guards never stack).
     let mut stack: Vec<(Value, &DynType, u32)> = vec![(v.as_value().clone(), v.ty(), 1)];
@@ -435,7 +439,18 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
                 // values carry self-describing descriptors (objects are
                 // structural — see `value_dyn_type`).
                 for (k, v) in entries.into_iter() {
-                    children.push((Value::Str(k), &STR_DYN));
+                    let key_node = match k {
+                        ObjectKey::Text(text) => (Value::Str(text), &STR_DYN),
+                        ObjectKey::Int(value) => {
+                            typed_object_keys = true;
+                            (Value::I32(value), &DYN_I32)
+                        }
+                        ObjectKey::Bool(value) => {
+                            typed_object_keys = true;
+                            (Value::Bool(value), &DYN_BOOL)
+                        }
+                    };
+                    children.push(key_node);
                     let vt = value_dyn_type(&v)?;
                     children.push((v, vt));
                 }
@@ -465,6 +480,9 @@ pub fn freeze(v: &DynValue, opts: &TraversalOptions) -> Result<Vec<u8>, Portable
         }
     }
 
+    if typed_object_keys {
+        out[4..6].copy_from_slice(&PORTABLE_TYPED_OBJECT_VERSION.to_le_bytes());
+    }
     // Patch the real node count, then the checksum trailer.
     let nodes = t.node_count();
     out[8..12].copy_from_slice(&nodes.to_le_bytes());
@@ -592,6 +610,39 @@ fn value_dyn_type(v: &Value) -> Result<&'static DynType, PortableError> {
         }),
     }
 }
+// Object entries are the one container whose descriptor is supplied by
+// the child. Accept exactly the context-free descriptors freeze emits;
+// the type tag and payload are still checked together by the decoder.
+fn object_child_type(
+    observed: &DynType,
+    is_key: bool,
+    typed_keys: bool,
+) -> Result<&'static DynType, PortableError> {
+    if is_key {
+        return match observed {
+            DynType::Str => Ok(&STR_DYN),
+            DynType::I32 if typed_keys => Ok(&DYN_I32),
+            DynType::Bool if typed_keys => Ok(&DYN_BOOL),
+            _ => Err(PortableError::Invalid {
+                reason: "object-key",
+            }),
+        };
+    }
+    match observed {
+        DynType::I32 => Ok(&DYN_I32),
+        DynType::Bool => Ok(&DYN_BOOL),
+        DynType::I64 => Ok(&DYN_I64),
+        DynType::U64 => Ok(&DYN_U64),
+        DynType::F32 => Ok(&DYN_F32),
+        DynType::F64 => Ok(&DYN_F64),
+        DynType::Char => Ok(&DYN_CHAR),
+        DynType::Str => Ok(&STR_DYN),
+        DynType::Nil => Ok(&DYN_NIL),
+        DynType::Object => Ok(&OBJECT_DYN),
+        _ => Err(PortableError::Invalid { reason: "type" }),
+    }
+}
+
 static DYN_I32: DynType = DynType::I32;
 static DYN_BOOL: DynType = DynType::Bool;
 static DYN_I64: DynType = DynType::I64;
@@ -628,9 +679,11 @@ pub fn unfreeze(
     if bytes[0..4] != PORTABLE_MAGIC {
         return Err(PortableError::Invalid { reason: "magic" });
     }
-    if u16::from_le_bytes([bytes[4], bytes[5]]) != PORTABLE_VERSION {
-        return Err(PortableError::Invalid { reason: "version" });
-    }
+    let typed_object_keys = match u16::from_le_bytes([bytes[4], bytes[5]]) {
+        PORTABLE_VERSION => false,
+        PORTABLE_TYPED_OBJECT_VERSION => true,
+        _ => return Err(PortableError::Invalid { reason: "version" }),
+    };
     if bytes[6] != PORTABLE_KIND_DYN_VALUE {
         return Err(PortableError::Invalid { reason: "kind" });
     }
@@ -697,17 +750,22 @@ pub fn unfreeze(
         let node_ty = if parsed_nodes == 0 {
             &root_ty
         } else {
-            let expected = expected_child(
-                stack
-                    .last()
-                    .ok_or(PortableError::Invalid { reason: "trailing" })?,
-            )?;
+            let parent = stack
+                .last()
+                .ok_or(PortableError::Invalid { reason: "trailing" })?;
             t.enter_node(stack.len() as u32 + 1)?;
             let before = t.bytes_used();
             let observed = read_tydesc(&mut r, &mut t, 1, false)?;
-            if !ty_ident(&observed, expected, &mut t)? {
-                return Err(PortableError::Invalid { reason: "type" });
-            }
+            let expected = if matches!(parent.ty, DynType::Object) {
+                let is_key = parent.vals.len() % 2 == 0;
+                object_child_type(&observed, is_key, typed_object_keys)?
+            } else {
+                let expected = expected_child(parent)?;
+                if !ty_ident(&observed, expected, &mut t)? {
+                    return Err(PortableError::Invalid { reason: "type" });
+                }
+                expected
+            };
             drop(observed);
             let temporary = t.bytes_used().saturating_sub(before);
             t.release_bytes(temporary);
@@ -943,11 +1001,18 @@ pub fn unfreeze(
                         (DynType::Object, _) => {
                             let mut vals = done.vals.into_iter();
                             let mut entries = Vec::with_capacity(vals.len() / 2);
-                            while let (Some(k), Some(v)) = (vals.next(), vals.next()) {
-                                let Value::Str(h) = k else {
-                                    return Err(PortableError::Invalid { reason: "type" });
-                                };
-                                entries.push((h, v));
+                            let mut seen = HashSet::with_capacity(entries.capacity());
+                            while let (Some(key), Some(value)) = (vals.next(), vals.next()) {
+                                let key =
+                                    ObjectKey::from_value(key).ok_or(PortableError::Invalid {
+                                        reason: "object-key",
+                                    })?;
+                                if !seen.insert(key.clone()) {
+                                    return Err(PortableError::Invalid {
+                                        reason: "duplicate-key",
+                                    });
+                                }
+                                entries.push((key, value));
                             }
                             Value::Object(Rc::new(std::cell::RefCell::new(ObjectData { entries })))
                         }

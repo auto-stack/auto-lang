@@ -63,6 +63,7 @@ enum FieldType {
     TypeUse,
     TypeUseList,
     TextList,
+    ObjectKeyList,
     ExprRefList,
     BindingList,
     CaptureBindingList,
@@ -97,6 +98,7 @@ fn builtin_field_type(word: &str) -> Option<FieldType> {
         "TypeUse" => FieldType::TypeUse,
         "TypeUseList" => FieldType::TypeUseList,
         "TextList" => FieldType::TextList,
+        "ObjectKeyList" => FieldType::ObjectKeyList,
         "ExprRefList" => FieldType::ExprRefList,
         "BindingList" => FieldType::BindingList,
         "CaptureBindingList" => FieldType::CaptureBindingList,
@@ -3061,16 +3063,36 @@ impl<'d> Binder<'d> {
                     return None;
                 };
                 let mut keys = Vec::with_capacity(kitems.len());
-                for it in kitems {
-                    let Some(s) = self.text_of(it) else {
+                let typed = self.desc.is_auto_language();
+                for item in kitems {
+                    let key = match item {
+                        Value::Int(int) if typed && int.suffix.is_none() => {
+                            int.to_i32().map(hir::ObjectKey::Int)
+                        }
+                        Value::Obj(fields) if typed => match fields.as_slice() {
+                            [field] if field.name == "bool" => match &field.value {
+                                Value::Ident(value) if value == "true" || value == "false" => {
+                                    Some(hir::ObjectKey::Bool(value == "true"))
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        },
+                        other => self.text_of(other).map(hir::ObjectKey::Text),
+                    };
+                    let Some(key) = key else {
                         self.error(
                             "bind.type-shape",
-                            "object_ctor keys entries must be text",
+                            if typed {
+                                "object key must be text, a bare i32, or a tagged bool"
+                            } else {
+                                "object_ctor keys entries must be text"
+                            },
                             keys_field.value_span,
                         );
                         return None;
                     };
-                    keys.push(s);
+                    keys.push(key);
                 }
                 let Some(eval_field) = fields.get("eval") else {
                     return None;
@@ -4460,7 +4482,10 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             // `type` (the object row ref) already rode the prelude.
             body_fields.push(format!(
                 "keys: [{}]",
-                keys.iter().map(|k| quote(k)).collect::<Vec<_>>().join(", ")
+                keys.iter()
+                    .map(|k| k.to_atom(quote))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
             body_fields.push(format!(
                 "eval: [{}]",
