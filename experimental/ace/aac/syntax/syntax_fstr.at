@@ -29,7 +29,27 @@ fn plain_quote_end(src List<int>, start int, limit int) int {
         if (c == quote) { return at }
         if (c == 92 && at < limit) { at = at + 1 }
     }
-    return limit
+    return -1
+}
+
+fn block_comment_end(src List<int>, start int, limit int) int {
+    var depth = 1
+    var at = start + 2
+    for (at + 1 < limit) {
+        let c = src.get(at)
+        let next = src.get(at + 1)
+        if (c == 42 && next == 47) {
+            depth = depth - 1
+            if (depth == 0) { return at + 2 }
+            at = at + 1
+        }
+        if (c == 47 && next == 42) {
+            depth = depth + 1
+            at = at + 1
+        }
+        at = at + 1
+    }
+    return -1
 }
 
 fn ordinary_end(src List<int>, at int, limit int) int {
@@ -39,6 +59,9 @@ fn ordinary_end(src List<int>, at int, limit int) int {
         var end = at + 2
         for (end < limit && src.get(end) != 10) { end = end + 1 }
         return end
+    }
+    if (c == 47 && at + 1 < limit && src.get(at + 1) == 42) {
+        return block_comment_end(src, at, limit)
     }
     return at + 1
 }
@@ -54,7 +77,14 @@ fn map_range(map List<int>, vlo int, vhi int, rlo int, rhi int) int {
     return 0
 }
 
-fn copy_bytes(src List<int>, lo int, hi int, out List<int>, map List<int>) int {
+// The existing backend collection capacity also applies to these lists.
+fn format_room(out List<int>, map List<int>, slots int, bytes int, entries int) bool {
+    return bytes + entries <= slots - out.len() - map.len() && bytes <= 65536 - out.len() && entries <= 65536 - map.len()
+}
+
+pub fn format_resource() int { return -2147483646 }
+
+fn copy_bytes(src List<int>, lo int, hi int, out List<int>, map List<int>, slots int) bool {
     var vlo = 0
     var rlo = 0
     if (map.len() > 0) {
@@ -62,6 +92,10 @@ fn copy_bytes(src List<int>, lo int, hi int, out List<int>, map List<int>) int {
         rlo = map.get(map.len() - 1)
     }
     let start = out.len()
+    var entries = 0
+    if (start != vlo || lo != rlo) { entries = entries + 4 }
+    if (hi > lo) { entries = entries + 4 }
+    if (!format_room(out, map, slots, hi - lo, entries)) { return false }
     if (start != vlo || lo != rlo) {
         map_range(map, vlo, start, rlo, lo)
     }
@@ -73,7 +107,7 @@ fn copy_bytes(src List<int>, lo int, hi int, out List<int>, map List<int>) int {
     if (at > lo) {
         map_range(map, start, out.len(), lo, hi)
     }
-    return 0
+    return true
 }
 
 fn push_call_open(out List<int>) int {
@@ -87,12 +121,13 @@ fn push_call_open(out List<int>) int {
     return 0
 }
 
-fn separate_part(out List<int>, parts int) int {
+fn separate_part(out List<int>, map List<int>, slots int, parts int) bool {
     if (parts > 0) {
+        if (!format_room(out, map, slots, 2, 0)) { return false }
         out.push(44)
         out.push(32)
     }
-    return 0
+    return true
 }
 
 fn brace_end(src List<int>, at int, limit int) int {
@@ -111,14 +146,15 @@ fn brace_end(src List<int>, at int, limit int) int {
     return -limit - 1
 }
 
-fn emit_text(src List<int>, start int, end int, out List<int>, map List<int>) int {
+fn emit_text(src List<int>, start int, end int, out List<int>, map List<int>, slots int) bool {
+    if (!format_room(out, map, slots, 1, 0)) { return false }
     out.push(34)
     var copy_from = start
     var at = start
     for (at + 1 < end) {
         if (src.get(at) == 92) {
             if (src.get(at + 1) == 36) {
-                copy_bytes(src, copy_from, at, out, map)
+                if (!copy_bytes(src, copy_from, at, out, map, slots) || !format_room(out, map, slots, 1, 0)) { return false }
                 out.push(92)
                 copy_from = at
             }
@@ -126,13 +162,14 @@ fn emit_text(src List<int>, start int, end int, out List<int>, map List<int>) in
         }
         at = at + 1
     }
-    copy_bytes(src, copy_from, end, out, map)
+    if (!copy_bytes(src, copy_from, end, out, map, slots) || !format_room(out, map, slots, 1, 0)) { return false }
     out.push(34)
-    return 0
+    return true
 }
 
 // Return the first raw byte after the literal, or -(first bad byte + 1).
-fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map List<int>) int {
+fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map List<int>, slots int) int {
+    if (!format_room(out, map, slots, 7, 0)) { return format_resource() }
     push_call_open(out)
     var text = start + 2
     var at = text
@@ -141,9 +178,9 @@ fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map
         let c = src.get(at)
         if (c == 34) {
             if (text < at || parts == 0) {
-                separate_part(out, parts)
-                emit_text(src, text, at, out, map)
+                if (!separate_part(out, map, slots, parts) || !emit_text(src, text, at, out, map, slots)) { return format_resource() }
             }
+            if (!format_room(out, map, slots, 1, 0)) { return format_resource() }
             out.push(41)
             return at + 1
         }
@@ -177,16 +214,19 @@ fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map
             }
             if (expr >= 0) {
                 if (text < at) {
-                    separate_part(out, parts)
-                    emit_text(src, text, at, out, map)
+                    if (!separate_part(out, map, slots, parts) || !emit_text(src, text, at, out, map, slots)) { return format_resource() }
                     parts = parts + 1
                 }
-                separate_part(out, parts)
-                copy_bytes(src, expr, end, out, map)
+                if (!separate_part(out, map, slots, parts) || !copy_bytes(src, expr, end, out, map, slots)) { return format_resource() }
                 parts = parts + 1
                 text = after
                 at = after
             } else {
+                if (c == 36 && text < at) {
+                    if (!separate_part(out, map, slots, parts) || !emit_text(src, text, at, out, map, slots)) { return format_resource() }
+                    parts = parts + 1
+                    text = at
+                }
                 at = at + 1
             }
         }
@@ -195,26 +235,39 @@ fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map
 }
 
 // Out is filled only if the source contains an authored format string.
-// Marks are virtual offsets of generated __fstr identifiers, in source order.
-pub fn normalize_formats(src List<int>, limit int, mode int, out List<int>, map List<int>, marks List<int>) int {
+// Format rows are [virtual_start, virtual_end, raw_start, raw_end]. They
+// mark generated names and disallow checkpoints inside a literal.
+pub fn normalize_formats(src List<int>, limit int, mode int, work int, out List<int>, map List<int>, marks List<int>) int {
+    return normalize_format_window(src, limit, mode, work, false, out, map, marks)
+}
+
+pub fn format_open_boundary() int { return -2147483647 }
+
+pub fn normalize_format_window(src List<int>, limit int, mode int, work int, must_close bool, out List<int>, map List<int>, marks List<int>) int {
     if (mode == 0) { return 0 }
     var copy_from = 0
     var at = 0
     for (at < limit) {
         let c = src.get(at)
         if (c == 102 && at + 1 < limit && src.get(at + 1) == 34 && (at == 0 || !ident_continue(src.get(at - 1)))) {
-            copy_bytes(src, copy_from, at, out, map)
-            marks.push(out.len())
-            let end = emit_format(src, at, limit, mode, out, map)
+            let slots = work / 4 - marks.len() - 4
+            if (marks.len() > 65532 || !copy_bytes(src, copy_from, at, out, map, slots)) { return format_resource() }
+            let virtual_start = out.len()
+            let end = emit_format(src, at, limit, mode, out, map, slots)
             if (end < 0) { return end }
+            map_range(marks, virtual_start, out.len(), at, end)
             copy_from = end
             at = end
         } else {
             at = ordinary_end(src, at, limit)
+            if (at < 0) {
+                if (must_close) { return format_open_boundary() }
+                at = limit
+            }
         }
     }
     if (marks.len() == 0) { return 0 }
-    copy_bytes(src, copy_from, limit, out, map)
+    if (!copy_bytes(src, copy_from, limit, out, map, work / 4 - marks.len())) { return format_resource() }
     return 1
 }
 
@@ -240,12 +293,13 @@ pub fn raw_offset(map List<int>, offset int) int {
 fn generated_name(marks List<int>, start int, end int) bool {
     if (end - start != 6) { return false }
     var lo = 0
-    var hi = marks.len()
+    let count = marks.len() / 4
+    var hi = count
     for (lo < hi) {
         let mid = lo + (hi - lo) / 2
-        if (marks.get(mid) < start) { lo = mid + 1 } else { hi = mid }
+        if (marks.get(mid * 4) < start) { lo = mid + 1 } else { hi = mid }
     }
-    return lo < marks.len() && marks.get(lo) == start
+    return lo < count && marks.get(lo * 4) == start
 }
 
 pub fn remap_format_tree(map List<int>, marks List<int>, nodes List<int>, decls List<int>, diags List<int>) int {

@@ -7,8 +7,14 @@ use app.syntax_grammar_data.scalar_parts
 use app.syntax_grammar_data.scheduler_parts
 use app.syntax_lexer.compile_scanner
 use app.syntax_lexer.lex_all
+use app.syntax_lexer.tok_count
+use app.syntax_lexer.tok_end
+use app.syntax_lexer.tok_start
+use app.syntax_lexer.tok_token
+use app.syntax_lexer.tok_trivia
 use app.syntax_fstr.fstr_default
 use app.syntax_fstr.fstr_scheduler
+use app.syntax_fstr.format_resource
 use app.syntax_fstr.normalize_formats
 use app.syntax_fstr.remap_format_tree
 use app.syntax_parse.first_sets_into
@@ -64,23 +70,36 @@ pub fn format_mode(profile Str) int {
     return 0
 }
 
+pub fn diag_format_syntax() int { return 10 }
+pub fn diag_format_eof() int { return 11 }
+
 pub fn parse_cst(pg List<int>, mode int, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
     var virtual = List<int>.new()
     var mapping = List<int>.new()
     var marks = List<int>.new()
-    let prepared = normalize_formats(srcb, srcb.len(), mode, virtual, mapping, marks)
-    if (prepared < 0) { return -7 }
-    if (prepared == 0) {
-        return parse_input(pg, srcb, t, ef, decls, dmsg, depth, work)
+    let prepared = normalize_formats(srcb, srcb.len(), mode, work, virtual, mapping, marks)
+    if (prepared == format_resource()) { return -3 }
+    if (prepared <= 0) {
+        let root = parse_input(pg, srcb, t, ef, decls, dmsg, depth, work, false)
+        if (prepared < 0 && root >= 0) {
+            let at = -prepared - 1
+            var end = at
+            if (at < srcb.len()) { end = at + 1 }
+            dmsg.push(diag_format_syntax())
+            dmsg.push(at)
+            dmsg.push(end)
+            dmsg.push(0)
+        }
+        return root
     }
     let extra = (virtual.len() + mapping.len() + marks.len()) * 4
     if (extra > work) { return -3 }
-    let root = parse_input(pg, virtual, t, ef, decls, dmsg, depth, work - extra)
+    let root = parse_input(pg, virtual, t, ef, decls, dmsg, depth, work - extra, true)
     if (root >= 0) { remap_format_tree(mapping, marks, t, decls, dmsg) }
     return root
 }
 
-fn parse_input(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
+fn parse_input(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int, mapped bool) int {
     let cs = compile_scanner(pg)
     var toks = List<int>.new()
     var lexd = List<int>.new()
@@ -92,5 +111,27 @@ fn parse_input(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls Li
     }
     var cold = List<int>.new()
     cold.push(0)
-    return parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
+    let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
+    if (mapped && root >= 0 && dmsg.len() > 0 && has_open_brace(toks, srcb)) {
+        dmsg.push(diag_format_eof())
+        dmsg.push(srcb.len())
+        dmsg.push(srcb.len())
+        dmsg.push(0)
+    }
+    return root
+}
+
+fn has_open_brace(toks List<int>, srcb List<int>) bool {
+    var braces = 0
+    var i = 0
+    for (i < tok_count(toks)) {
+        let start = tok_start(toks, i)
+        if (tok_end(toks, i) == start + 1 && tok_token(toks, i) >= 0 && !tok_trivia(toks, i)) {
+            let c = srcb.get(start)
+            if (c == 123) { braces = braces + 1 }
+            if (c == 125 && braces > 0) { braces = braces - 1 }
+        }
+        i = i + 1
+    }
+    return braces > 0
 }

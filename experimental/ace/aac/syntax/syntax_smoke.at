@@ -6,6 +6,8 @@ use app.syntax_frontend.fetch_parts
 use app.syntax_frontend.str_to_bytes
 use app.syntax_frontend.parse_cst
 use app.syntax_frontend.format_mode
+use app.syntax_frontend.diag_format_syntax
+use app.syntax_frontend.diag_format_eof
 use app.source_ast.project_ast
 use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
@@ -167,6 +169,12 @@ fn render_diag(pg List<int>, dmsg List<int>) Str {
         }
         if (kind == 9) {
             out = out + "unexpected token in " + rule_expect(pg, param)
+        }
+        if (kind == diag_format_syntax()) {
+            out = out + "source.fstr-syntax malformed format string"
+        }
+        if (kind == diag_format_eof()) {
+            out = out + "expected `}` before end of source"
         }
         if (kind == 90) {
             out = out + "GATE ls=" + itoa(st) + " br=" + itoa(en) + " sep=" + itoa(param)

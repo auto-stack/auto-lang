@@ -753,6 +753,7 @@ fn aac1046_corpus_text() {
     let bad = obs("parse", "auto", truncated);
     let (tree, diagnostics) = bad.split_once("DIAGS\n").unwrap_or_else(|| panic!("{bad}"));
     assert!(tree.starts_with("CANON\n") && !diagnostics.is_empty());
+    assert!(diagnostics.lines().any(|diag| diag == format!("{0}..{0} expected `}}` before end of source", truncated.len())));
     for diagnostic in diagnostics.lines() {
         let (span, _) = diagnostic.split_once(' ').unwrap();
         let (start, end) = span.split_once("..").unwrap();
@@ -783,6 +784,27 @@ fn aac1046_corpus_text() {
             .unwrap_or_else(|| panic!("missing interpolation call {call} at {start}..{end}"))
     }).collect();
     assert!(calls[0] < calls[1]);
+}
+
+#[test]
+fn aac1046_format_delimiters_report_original_bytes() {
+    use ace_core::source::{parse_program_with, SourceProfile};
+
+    let good = "// 😀\r\nfn main() int { let s = f\"${42}\"\r\n return 1 }";
+    assert!(parse_program_with(good, SourceProfile::Auto).is_ok());
+    assert!(obs("parse", "auto", good).ends_with("DIAGS\n"));
+    let delimiter = good.find("}\"").unwrap();
+    let no_brace = format!("{}{}", &good[..delimiter], &good[delimiter + 1..]);
+    let no_quote = &good[..delimiter + 1];
+    for (source, start, end) in [(&no_brace[..], delimiter, delimiter + 1), (no_quote, no_quote.len(), no_quote.len())] {
+        assert_eq!(parse_program_with(source, SourceProfile::Auto).unwrap_err().code, "source.fstr-syntax");
+        let out = obs("parse", "auto", source);
+        assert!(out.starts_with("CANON\n"), "{out}");
+        assert!(out.lines().any(|diag| diag == format!("{start}..{end} source.fstr-syntax malformed format string")), "{out}");
+    }
+    let short = "fn f() int { let s=f\"${1}\" }";
+    assert!(short.len() <= 128);
+    assert_eq!(obs("parse-source-work", "auto", short), "PARSE_ERR 3");
 }
 
 #[test]
