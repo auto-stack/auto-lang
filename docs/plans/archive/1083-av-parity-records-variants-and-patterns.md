@@ -366,7 +366,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 - [x] **T-03** work：已完成 2026-11-20（证据见§9 T-02..T-05收据与上方详录）。
 - [x] **T-04** work：已完成 2026-11-20（证据见§9 T-02..T-05收据与上方详录）。
 - [x] **T-05** work：已完成 2026-11-20（canonical/suite/map/规范化台账见§9与上方详录；红元控制随T-06完成）。
-- [ ] **T-06** work：见上表唯一任务合同。
+- [x] **T-06** work：已完成 2026-11-20（冻结并集/红元/IF-AV-PARITY-TYPE收据见§9与上方详录）。
 - [x] **T-07** review：已完成 2026-11-20（final pass，R-1/R-2发现-修复-复验关闭）。复审记录见§9。
 - [x] **T-08** merge：已完成 2026-11-20（merge pass，收据见§9）。
 
