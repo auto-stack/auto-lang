@@ -391,6 +391,7 @@ pub enum RExprKind {
     /// call form. `vt` of the node is the global's declared type.
     CallGlobalGet {
         global: String,
+        take: bool,
     },
     /// PLAN-960: write of a module store (`module.global.set:<sym>(v)`);
     /// a statement-position effect (result Unit).
@@ -2592,7 +2593,23 @@ fn resolve_detailed_in_mode(
             // function. `index == usize::MAX` marks a non-function entry.
             ast::Item::Const(ast::ConstItem { name, ty, .. })
             | ast::Item::Store(ast::StoreItem { name, ty, .. }) => {
-                let vt = vt_of_ann(ty, &rec_index, &mut diags);
+                let vt = if surface.is_auto_language() {
+                    vt_of_ann_coll(ty, &rec_index, &mut coll, &mut diags, TypePos::Local)
+                } else {
+                    vt_of_ann(ty, &rec_index, &mut diags)
+                };
+                if surface.is_auto_language() && matches!(item, ast::Item::Store(_)) {
+                    sigs.insert(
+                        format!("{}{}", super::packages::GLOBAL_TAKE_PREFIX, name.name),
+                        FnSig {
+                            param_names: Vec::new(),
+                            params: Vec::new(),
+                            defaults: Vec::new(),
+                            result: vt,
+                            index: usize::MAX,
+                        },
+                    );
+                }
                 sigs.insert(
                     format!("module.global.get:{}", name.name),
                     FnSig {
@@ -5528,6 +5545,8 @@ pub(crate) enum TypePos {
 /// PLAN-864: table-aware annotation resolution — `?T` sugar, `List<T>`,
 /// `Result<T,E>` and record names, with the value-context rejections of
 /// [`TypePos`].
+pub(crate) const INFERRED_OBJECT_TYPE: &str = "__inferred_object";
+
 fn vt_of_ann_coll(
     ann: &ast::TypeAnn,
     rec_index: &BTreeMap<String, usize>,
@@ -5645,6 +5664,10 @@ fn vt_of_ann_coll(
             VT::Variant(vi)
         }
         ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
+            (INFERRED_OBJECT_TYPE, 1) if coll.aggregates_admission => {
+                let element = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
+                VT::Object(coll.intern_object(element))
+            }
             // PLAN-962 (T-08, L-08): `Box<T>` — explicit single-value
             // indirection. Representation: the single-element List cell
             // (t01-freeze D9 — the closure-cell precedent); a Box-typed
@@ -18299,7 +18322,11 @@ F:{d}
         // PLAN-960: module global accessors (packages binder rewrite). The
         // pseudo-signature carries the declared type; reads take no
         // arguments, writes exactly one positional of that type.
-        if let Some(sym) = callee.name.strip_prefix("module.global.get:") {
+        let get = callee.name.strip_prefix(super::packages::GLOBAL_GET_PREFIX);
+        let take = callee
+            .name
+            .strip_prefix(super::packages::GLOBAL_TAKE_PREFIX);
+        if let Some(sym) = get.or(take) {
             let Some(sig) = self.sigs.get(&callee.name).cloned() else {
                 self.bind_err(
                     "source.undefined",
@@ -18324,6 +18351,7 @@ F:{d}
                 vt: self.node_ty(call_span, sig.result),
                 kind: RExprKind::CallGlobalGet {
                     global: sym.to_string(),
+                    take: take.is_some(),
                 },
             };
         }

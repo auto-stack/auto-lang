@@ -226,6 +226,7 @@ pub const OP_DYN_TAKE: u8 = 0x31;
 /// PLAN-960: module global cell read/write.
 pub const OP_GLOBAL_GET: u8 = 0x38;
 pub const OP_GLOBAL_SET: u8 = 0x39;
+pub const OP_GLOBAL_TAKE: u8 = 0x4D;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
 pub const TERM_RETURN: u8 = 0x12;
@@ -1552,6 +1553,11 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     }
                     MirInstr::GlobalGet { dst, global } => {
                         put_u8(&mut w, OP_GLOBAL_GET);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *global);
+                    }
+                    MirInstr::GlobalTake { dst, global } => {
+                        put_u8(&mut w, OP_GLOBAL_TAKE);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *global);
                     }
@@ -3491,6 +3497,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         MirInstr::Call { callee, dst, args }
                     }
                     OP_GLOBAL_GET => MirInstr::GlobalGet {
+                        dst: c.u32()?,
+                        global: c.u32()?,
+                    },
+                    OP_GLOBAL_TAKE => MirInstr::GlobalTake {
                         dst: c.u32()?,
                         global: c.u32()?,
                     },

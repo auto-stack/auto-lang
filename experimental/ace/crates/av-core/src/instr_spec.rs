@@ -43,6 +43,17 @@ pub struct InstructionSpec {
 
 /// The frozen instruction contract of both wire families.
 pub const SPECS: &[InstructionSpec] = &[
+    InstructionSpec {
+        opcode: crate::abc::OP_GLOBAL_TAKE,
+        name: "GLOBAL_TAKE",
+        family: "instr",
+        operands: &[("global", "R"), ("dst", "W")],
+        type_rule: "mutable linked global type equals destination slot type",
+        traps: true,
+        fuel: 1,
+        profiles: &["closures"],
+        ownership: "transfer to the slot; the cell stays empty until replaced",
+    },
     InstructionSpec { opcode: 0x36, name: "FOREIGN_CALL", family: "instr", operands: &[("args", "R"), ("dst", "W")], type_rule: "exact admitted i32/bool contract; native binding requalified; AV admission rejects", traps: true, fuel: 1, profiles: &["foreign-native"], ownership: "scalar Copy; no addresses persisted" },
     InstructionSpec { opcode: 0x35, name: "HOST_CALL", family: "instr", operands: &[("host", "R"), ("arg", "R")], type_rule: "host table exact signature; current capability admission precedes execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "readonly borrow; bounded output; no guest reentry" },
     InstructionSpec { opcode: 0x3C, name: "PLATFORM_CALL", family: "instr", operands: &[("dst", "W"), ("host", "R"), ("args", "R")], type_rule: "platform host table exact signature; current capability + pre-OS ledger checks precede execution", traps: false, fuel: 1, profiles: &["host-console"], ownership: "borrowed view / opaque generation handle; no guest reentry" },
@@ -742,6 +753,7 @@ pub fn coverage_check() -> Result<(), String> {
         "DYN_PACK",
         "DYN_IS",
         "DYN_TAKE",
+        "GLOBAL_TAKE",
         "JUMP",
         "BRANCH",
         "RETURN",
@@ -781,6 +793,7 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::PlatformCall { .. } => "PLATFORM_CALL",
         MirInstr::GlobalGet { .. } => "GLOBAL_GET",
         MirInstr::GlobalSet { .. } => "GLOBAL_SET",
+        MirInstr::GlobalTake { .. } => "GLOBAL_TAKE",
         MirInstr::Const { .. } => "CONST",
         MirInstr::Copy { .. } => "COPY",
         MirInstr::Bin { .. } => "BIN",
@@ -864,6 +877,7 @@ mod tests {
         assert_eq!(
             trapping,
             vec![
+                "GLOBAL_TAKE",
                 "FOREIGN_CALL",
                 "BIN",
                 "UN",

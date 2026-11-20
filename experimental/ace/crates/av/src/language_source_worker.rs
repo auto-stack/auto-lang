@@ -113,9 +113,12 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             &mut capture,
         );
         match result {
-            Ok((outcome, trace)) => {
-                step["trace"] = json!(trace);
-                (Ok(outcome), capture)
+            Ok(observation) => {
+                step["trace"] = json!(observation.trace);
+                if let Some(location) = observation.trap_location {
+                    step["diag"] = location;
+                }
+                (Ok(observation.outcome), capture)
             }
             Err(diag) => (Err(diag), capture),
         }
@@ -330,13 +333,19 @@ fn project_source_hash(files: &BTreeMap<String, String>) -> String {
     sha256_hex(combined.as_bytes())
 }
 
+struct ProjectObservation {
+    outcome: ExecOutcome,
+    trace: Vec<&'static str>,
+    trap_location: Option<Json>,
+}
+
 fn run_project(
     entry_path: &str,
     files: BTreeMap<String, String>,
     caps: &[String],
     store: &Path,
     capture: &mut ConsoleCapture,
-) -> Result<(ExecOutcome, Vec<&'static str>), Json> {
+) -> Result<ProjectObservation, Json> {
     let path_diagnostic = |path: &str| {
         json!({
             "stage": "bind", "code": "source.module-path",
@@ -404,7 +413,35 @@ fn run_project(
             ace_av_core::mir::TraceEvent::MarkB => "b",
         })
         .collect();
-    Ok((outcome, marks))
+    let trap_location = if let ExecOutcome::Trap {
+        kind,
+        span: Some(span),
+    } = &outcome
+    {
+        use ace_core::atom_text::{Span, Stage};
+        let located = compiled.bound.locate(Diagnostic::new(
+            Stage::Text,
+            kind.code(),
+            kind.code(),
+            Span {
+                start: span.start as usize,
+                end: span.end as usize,
+            },
+        ));
+        let path = paths
+            .get(&located.module)
+            .map_or(entry_path, String::as_str);
+        let mut location = diagnostic(&located.diagnostic, path);
+        location["stage"] = json!("run");
+        Some(location)
+    } else {
+        None
+    };
+    Ok(ProjectObservation {
+        outcome,
+        trace: marks,
+        trap_location,
+    })
 }
 
 /// The full producer→consumer chain: Auto-profile compile → closures

@@ -230,6 +230,7 @@ pub const AV_DATA_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 /// Capability that admits the closed test-only trace intrinsic set
 /// (same string as the HIR front door, `hir.test.trace.v1`).
 pub const TRACE_CAPABILITY: &str = "hir.test.trace.v1";
+pub const GLOBAL_TAKE_CAPABILITY: &str = "av.globals.take/1";
 
 /// PLAN-821: the text runtime capability the text-record source domain
 /// derives for resource modules (782: 组合模块派生 `ac.runtime.text.v1`).
@@ -1099,6 +1100,8 @@ pub enum TrapKind {
     /// PLAN-964: OBJECT_NEW with a duplicate key (defense in depth; the
     /// source front rejects duplicates first).
     ObjectDuplicate,
+    /// A module store has been moved out and has not been assigned again.
+    GlobalMoved,
 }
 
 impl TrapKind {
@@ -1122,6 +1125,7 @@ impl TrapKind {
             TrapKind::ObjectMissing => "av.dyn.object-missing",
             TrapKind::ObjectCycle => "av.dyn.object-cycle",
             TrapKind::ObjectDuplicate => "av.dyn.object-duplicate",
+            TrapKind::GlobalMoved => "av.trap.global-moved",
         }
     }
 }

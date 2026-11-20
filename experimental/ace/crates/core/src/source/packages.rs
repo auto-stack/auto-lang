@@ -451,6 +451,7 @@ pub use binding::{
     bind_packages_auto, fn_symbol, global_symbol, init_symbol, type_symbol, unit_key,
     BoundPackages, GlobalDecl, PackageDiagnostic, PackageImplLayer, PackageImplSyntax,
     PackageModuleInput, PackageSegment, PackagedAgeComponent, GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
+    GLOBAL_TAKE_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{

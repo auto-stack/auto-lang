@@ -31,8 +31,94 @@ pub fn case_stem(dir: &Path) -> Option<String> {
         .map(|(_, stem)| stem.to_string())
 }
 
+// An identity-preserving VM migration keeps the historical oracle id and
+// routes active legacy readers to the same author as the AV probe.
+fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
+    let Some(category) = path.parent().and_then(Path::parent) else {
+        return Ok(None);
+    };
+    let Some(vm) = category.parent().filter(|path| path.ends_with("vm")) else {
+        return Ok(None);
+    };
+    let Some(test_root) = vm.parent() else {
+        return Ok(None);
+    };
+    let cases = test_root.join("cases");
+    let map_path = cases.join("language/migration/legacy-map.tsv");
+    let map = match std::fs::read_to_string(&map_path) {
+        Ok(map) => map,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{}: {error}", map_path.display())),
+    };
+    let relative = path
+        .strip_prefix(test_root)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let source = format!("crates/auto-lang/test/{relative}");
+    let mut identity = None;
+    let mut checks = std::collections::BTreeSet::new();
+    for line in map.lines().filter(|line| !line.starts_with('#')) {
+        let fields: Vec<_> = line.split('\t').collect();
+        if let [old_path, old_id, old_check, _, _, _, _, new_id, _, _, _, "mapped"] =
+            fields.as_slice()
+        {
+            if old_path.trim_start_matches("../../../") != source || old_id != new_id {
+                continue;
+            }
+            if identity
+                .replace(*new_id)
+                .is_some_and(|previous| previous != *new_id)
+            {
+                return Err(format!("ambiguous canonical VM migration for {source}"));
+            }
+            checks.insert(*old_check);
+        }
+    }
+    let Some(identity) = identity else {
+        return Ok(None);
+    };
+    let suite = auto_test_case::discovery::load_suite(
+        &cases.join("language.suite.ad"),
+        &Limits::defaults(),
+    )
+    .map_err(|error| error.to_string())?;
+    if let Some(error) = suite.errors.first() {
+        return Err(error.to_string());
+    }
+    let mut matches = suite
+        .cases
+        .iter()
+        .flat_map(|file| file.specs.iter().zip(&file.doc_spans))
+        .filter(|(spec, _)| spec.id == identity);
+    let (spec, span) = matches
+        .next()
+        .ok_or_else(|| format!("canonical VM case {identity} is absent"))?;
+    if matches.next().is_some() {
+        return Err(format!("canonical VM case {identity} is duplicated"));
+    }
+    let mut spec = spec.clone();
+    spec.checks
+        .retain(|check| checks.contains(check.id.as_str()));
+    if spec.checks.len() != checks.len() {
+        return Err(format!("canonical VM case {identity} lost a legacy check"));
+    }
+    Ok(Some(LegacyDoc {
+        case: AuthorCase {
+            spec,
+            key: span.key.clone(),
+            heading_line: span.heading_line,
+            end_line: span.end_line,
+            check_spans: span.check_spans.clone(),
+        },
+    }))
+}
+
 pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
     let doc_path = doc_path(dir, stem);
+    if let Some(doc) = canonical_vm_case(&doc_path)? {
+        return Ok(doc);
+    }
     let bytes = std::fs::read(&doc_path).map_err(|e| {
         format!(
             "legacy doc {} missing/unreadable: {e} (migration doc required; sidecar fallback is forbidden)",

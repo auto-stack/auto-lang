@@ -77,7 +77,7 @@ pub struct ProgramSnapshot {
     /// PLAN-960: module global cells (program-scoped; never persisted) and
     /// the init functions' code slots in dependency order.
     globals: Vec<crate::mir::MirGlobal>,
-    cells: std::cell::RefCell<Vec<crate::contract::Value>>,
+    cells: std::cell::RefCell<Vec<Option<crate::av::GlobalValue>>>,
     init_slots: Vec<u32>,
     initialization: std::cell::Cell<InitState>,
     /// PLAN-946 (T-02): link-computed — EVERY linked unit is a
@@ -110,11 +110,89 @@ impl ProgramSnapshot {
                 .ok_or_else(|| format!("init function `{name}` is not linked"))?;
             slots.push(slot as u32);
         }
-        snap.cells = std::cell::RefCell::new(vec![crate::contract::Value::I32(0); globals.len()]);
+        snap.cells = std::cell::RefCell::new(vec![
+            Some(crate::av::GlobalValue::plain(
+                crate::contract::Value::I32(0)
+            ));
+            globals.len()
+        ]);
         snap.globals = globals;
         snap.init_slots = slots;
         Ok(snap)
     }
+    /// Recheck the portable units' globals against the producer's typed
+    /// table before installing a package generation. Unit ABC carries
+    /// local slot types and global ordinals; mutable cells are link-owned.
+    pub fn link_with_checked_globals(
+        code: Vec<Arc<FunctionCode>>,
+        entry: &str,
+        revision: u64,
+        span_maps: Vec<crate::span_map::SpanSegments>,
+        producer: &MirModule,
+        init_names: &[String],
+    ) -> Result<Self, String> {
+        use crate::mir::MirInstr;
+
+        let mut scratch = MirModule::new(producer.owner.clone());
+        let global_types = merge_types(&mut scratch, producer);
+        for code_unit in &code {
+            let unit = code_unit.unit().module();
+            if !unit
+                .funcs
+                .iter()
+                .flat_map(|f| &f.blocks)
+                .flat_map(|b| &b.instrs)
+                .any(|instr| {
+                    matches!(
+                        instr,
+                        MirInstr::GlobalGet { .. }
+                            | MirInstr::GlobalTake { .. }
+                            | MirInstr::GlobalSet { .. }
+                    )
+                })
+            {
+                continue;
+            }
+            let unit_types = merge_types(&mut scratch, unit);
+            for func in &unit.funcs {
+                for instr in func.blocks.iter().flat_map(|block| &block.instrs) {
+                    let (ordinal, slot, take) = match instr {
+                        MirInstr::GlobalGet { dst, global } => (*global, *dst, false),
+                        MirInstr::GlobalTake { dst, global } => (*global, *dst, true),
+                        MirInstr::GlobalSet { src, global, .. } => (*global, *src, false),
+                        _ => continue,
+                    };
+                    let global = producer
+                        .globals
+                        .get(ordinal as usize)
+                        .ok_or_else(|| format!("global.reference: cell #{ordinal} missing"))?;
+                    let expected = global_types[global.ty as usize];
+                    let actual = unit_types[func.slots[slot as usize].ty as usize];
+                    if expected == u32::MAX || expected != actual {
+                        return Err(format!(
+                            "global.type: cell `{}` has a different type in unit `{}`",
+                            global.name, func.name
+                        ));
+                    }
+                    if take && !global.mutable {
+                        return Err(format!(
+                            "global.immutable: cell `{}` cannot be moved",
+                            global.name
+                        ));
+                    }
+                }
+            }
+        }
+        Self::link_with_globals(
+            code,
+            entry,
+            revision,
+            span_maps,
+            producer.globals.clone(),
+            init_names,
+        )
+    }
+
     pub fn initialized(&self) -> bool {
         self.initialization.get() == InitState::Ready
     }
@@ -137,12 +215,22 @@ impl ProgramSnapshot {
     pub(crate) fn reset_global_cells(&self) {
         let mut cells = self.cells.borrow_mut();
         for c in cells.iter_mut() {
-            *c = crate::contract::Value::I32(0);
+            *c = Some(crate::av::GlobalValue::plain(crate::contract::Value::I32(
+                0,
+            )));
         }
     }
     /// PLAN-960: the global cell table (for observation; never serialized).
     pub fn global_cells(&self) -> Vec<crate::contract::Value> {
-        self.cells.borrow().clone()
+        self.cells
+            .borrow()
+            .iter()
+            .map(|cell| {
+                cell.as_ref()
+                    .map(|value| value.value.clone())
+                    .unwrap_or(crate::contract::Value::Nil)
+            })
+            .collect()
     }
 
     /// PLAN-1106（事件事务回滚）：整表恢复全局 cell（长度必须与 globals
@@ -159,7 +247,7 @@ impl ProgramSnapshot {
         }
         let mut cells = self.cells.borrow_mut();
         for (c, v) in cells.iter_mut().zip(values.iter()) {
-            *c = v.clone();
+            *c = Some(crate::av::GlobalValue::plain(v.clone()));
         }
         Ok(())
     }
@@ -868,15 +956,27 @@ impl crate::av::ModuleView for UnitView<'_> {
     fn entry(&self) -> u32 {
         self.entry_override.unwrap_or(self.snap.entry_slot)
     }
-    fn global_read(&self, idx: u32) -> Option<crate::contract::Value> {
+    fn global_read(&self, idx: u32) -> Option<Option<crate::av::GlobalValue>> {
         self.snap.cells.borrow().get(idx as usize).cloned()
     }
-    fn global_write(&self, idx: u32, value: crate::contract::Value) -> Result<(), String> {
+    fn global_can_take(&self, idx: u32) -> bool {
+        self.snap
+            .globals
+            .get(idx as usize)
+            .is_some_and(|cell| cell.mutable)
+    }
+    fn clear_global(&self, idx: u32) {
+        let old = self.snap.cells.borrow_mut()[idx as usize].take();
+        drop(old);
+    }
+    fn global_write(&self, idx: u32, value: crate::av::GlobalValue) -> Result<(), String> {
         let mut cells = self.snap.cells.borrow_mut();
         let Some(cell) = cells.get_mut(idx as usize) else {
             return Err(format!("global.reference: cell #{idx} missing"));
         };
-        *cell = value;
+        let old = cell.replace(value);
+        drop(cells);
+        drop(old);
         Ok(())
     }
 

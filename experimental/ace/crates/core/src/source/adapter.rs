@@ -3781,12 +3781,18 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
-            RExprKind::CallGlobalGet { global } => {
+            RExprKind::CallGlobalGet { global, take } => {
+                let prefix = if *take {
+                    super::packages::GLOBAL_TAKE_PREFIX
+                } else {
+                    super::packages::GLOBAL_GET_PREFIX
+                };
+                let accessor = format!("{prefix}{global}");
                 self.global_first_use
-                    .entry(format!("module.global.get:{global}"))
+                    .entry(accessor.clone())
                     .or_insert((false, e.vt, e.span));
                 plan.exprs.push(ENode {
-                    kind: EKind::GlobalGet(global.clone()),
+                    kind: EKind::GlobalGet(accessor),
                     vt: e.vt,
                     span: e.span,
                 });
@@ -4917,7 +4923,11 @@ impl<'p> Emitter<'p> {
                     global_def_id(full),
                     global_type_id(full),
                     full,
-                    if *is_set { "observable" } else { "pure" }
+                    if *is_set || full.starts_with(super::packages::GLOBAL_TAKE_PREFIX) {
+                        "observable"
+                    } else {
+                        "pure"
+                    }
                 ),
                 *span
             );
@@ -5328,12 +5338,12 @@ impl<'p> Emitter<'p> {
                                 ),
                             }
                         }
-                        EKind::GlobalGet(global) => {
+                        EKind::GlobalGet(accessor) => {
                             format!(
                                 "expr e{} call {{ type: {}; callee: {}; eval_args: []; bindings: [] }}",
                                 ei,
                                 ty,
-                                global_def_id(&format!("module.global.get:{global}"))
+                                global_def_id(accessor)
                             )
                         }
                         EKind::GlobalSet(global, v) => {

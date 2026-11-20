@@ -863,6 +863,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // widened composite element domain in this verifier).
                 || c == "av.aggregates/1"
                 || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
+                || (self.is_closures && c == crate::contract::GLOBAL_TAKE_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -2761,7 +2762,21 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             // PLAN-960: global cells are checked against the module's
             // global table (index range + slot type == cell type).
-            MirInstr::GlobalGet { dst, global } => {
+            MirInstr::GlobalGet { dst, global } | MirInstr::GlobalTake { dst, global } => {
+                let take = matches!(instr, MirInstr::GlobalTake { .. });
+                if take
+                    && (!self.is_closures
+                        || !self
+                            .module
+                            .capabilities
+                            .iter()
+                            .any(|cap| cap == crate::contract::GLOBAL_TAKE_CAPABILITY))
+                {
+                    return Err(err(
+                        "global.take-capability",
+                        "global take requires its AV capability".into(),
+                    ));
+                }
                 // The decoded-unit path carries no global table (cells
                 // are program-scoped at link, never on the wire): the
                 // range/type check runs when the table is present and
@@ -2770,6 +2785,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     let g = self.module.globals.get(*global as usize).ok_or_else(|| {
                         err("global.reference", "global index out of range".into())
                     })?;
+                    if take && !g.mutable {
+                        return Err(err(
+                            "global.immutable",
+                            "cannot take an immutable global".into(),
+                        ));
+                    }
                     let dst_ty = slot_ty_of(f, *dst, sp, "global dst")?;
                     if !self.ty_equiv(dst_ty, g.ty) {
                         return Err(err(
@@ -4653,6 +4674,7 @@ impl MirInstr {
     pub fn def_slot(&self) -> Option<SlotId> {
         match self {
             MirInstr::GlobalGet { dst, .. }
+            | MirInstr::GlobalTake { dst, .. }
             | MirInstr::GlobalSet { dst, .. }
             | MirInstr::Const { dst, .. }
             | MirInstr::Copy { dst, .. }
@@ -4788,7 +4810,7 @@ impl MirInstr {
             | MirInstr::SchedPort { .. }
             | MirInstr::SchedStopping { .. } => vec![],
             MirInstr::PlatformCall { args, .. } => args.clone(),
-            MirInstr::GlobalGet { .. } => vec![],
+            MirInstr::GlobalGet { .. } | MirInstr::GlobalTake { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],
             MirInstr::FieldGet { base, .. } => vec![*base],
             // FieldSet READS the root record (structural rebuild source) and

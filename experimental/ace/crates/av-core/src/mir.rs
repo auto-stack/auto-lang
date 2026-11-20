@@ -482,6 +482,11 @@ pub enum MirInstr {
         dst: SlotId,
         global: u32,
     },
+    /// Transfer the value from a mutable global and leave its cell empty.
+    GlobalTake {
+        dst: SlotId,
+        global: u32,
+    },
     /// PLAN-960: write `src` into a module global cell (the source-level
     /// write yields i32 0 into `dst`).
     GlobalSet {

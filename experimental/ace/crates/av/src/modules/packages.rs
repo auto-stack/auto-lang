@@ -68,7 +68,7 @@ impl PackageAvTarget {
             )
         }
         .map_err(|e| format!("{e:?}"))?;
-        let globals = mir.globals.clone();
+        ace_av_core::verify_mir(&mir).map_err(|e| format!("{e:?}"))?;
         let slot_names: std::collections::BTreeMap<String, Vec<Option<String>>> = mir
             .funcs
             .iter()
@@ -92,12 +92,12 @@ impl PackageAvTarget {
         let span_maps = (0..codes.len())
             .map(|_| ace_av_core::span_map::SpanSegments::default())
             .collect();
-        let current = ace_av_core::program_snapshot::ProgramSnapshot::link_with_globals(
+        let current = ace_av_core::program_snapshot::ProgramSnapshot::link_with_checked_globals(
             codes,
             entry,
             0,
             span_maps,
-            globals,
+            &mir,
             &init_names,
         )?;
         Ok(Self {
@@ -409,5 +409,102 @@ mod tests {
             av.global_cells()
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ordinary_packages_keep_owned_globals_per_generation() {
+        use ace_av_core::contract::{ExecOutcome, Value};
+        use ace_source_query::modules::{packages::compile_package_product_auto, PackageStore};
+
+        let inputs = [input(
+            "app",
+            "main",
+            r#"fn make() fn(int) -> int {
+    let owned = "ok".clone()
+    return move (x int) => x + owned.len()
+}
+var f fn(int) -> int = make()
+var hit = 0
+fn main() int { hit = hit + 1; return f(39) + hit }"#,
+        )];
+        let caps = ["ac.source.language.av/v1".into()];
+        let budget = FrontBudget::WORK_OWNED_64MIB;
+        let dir = tmp("ordinary-global-cap");
+        let product = compile_package_product_auto(&inputs, "app::main", &caps, budget).unwrap();
+        let receipt = PackageStore::prepare(&dir, &product, &inputs, &[]).unwrap();
+        let current = PackageAvTarget::cold(&dir, &product).unwrap();
+
+        let (first, trace) = ace_av_core::execute_program(
+            &current.current,
+            &ace_av_core::ExecLimits::default(),
+            &ace_av_core::CancelFlag::default(),
+        );
+        assert!(matches!(
+            first,
+            ExecOutcome::Success {
+                value: Value::I32(42),
+                ..
+            }
+        ));
+        let arena = trace.arena.unwrap();
+        assert_eq!(arena.live(), 1);
+
+        let mut bad = inputs.clone();
+        bad[0].source.push_str("\nfn main() int { return 0 }");
+        let diags = match compile_package_product_auto(&bad, "app::main", &caps, budget) {
+            Ok(_) => panic!("invalid edit unexpectedly compiled"),
+            Err(diags) => diags,
+        };
+        assert_eq!(
+            diags[0].diagnostic.code,
+            "source.module-duplicate-declaration"
+        );
+        assert_eq!(current.run_value(), Ok(Value::I32(43)));
+
+        let (restored, targets) = PackageStore::restore(&dir, &receipt).unwrap();
+        assert!(targets.is_empty());
+        assert_eq!(restored.bound.input_hash, product.bound.input_hash);
+        let fresh = PackageAvTarget::cold(&dir, &restored).unwrap();
+        let tight_limit = ace_av_core::ExecLimits {
+            max_steps: 0,
+            ..ace_av_core::ExecLimits::default()
+        };
+        let (limited, _) = ace_av_core::execute_program(
+            &fresh.current,
+            &tight_limit,
+            &ace_av_core::CancelFlag::default(),
+        );
+        assert!(matches!(
+            limited,
+            ExecOutcome::Resource {
+                kind: ace_av_core::contract::ResourceKind::InstrSteps,
+                ..
+            }
+        ));
+        assert!(!fresh.current.initialized());
+        let cancel = ace_av_core::CancelFlag::new(true);
+        let (cancelled, _) = ace_av_core::execute_program(
+            &fresh.current,
+            &ace_av_core::ExecLimits::default(),
+            &cancel,
+        );
+        assert!(matches!(cancelled, ExecOutcome::Cancelled));
+        assert!(!fresh.current.initialized());
+        assert_eq!(fresh.run_value(), Ok(Value::I32(42)));
+        assert_eq!(current.run_value(), Ok(Value::I32(44)));
+
+        let mut next_version = inputs.clone();
+        next_version[0].version = "2.0.0".into();
+        let next = compile_package_product_auto(&next_version, "app::main", &caps, budget).unwrap();
+        assert_ne!(next.bound.input_hash, product.bound.input_hash);
+        let next_target = PackageAvTarget::cold(&dir, &next).unwrap();
+        assert_eq!(next_target.run_value(), Ok(Value::I32(42)));
+        assert_eq!(current.run_value(), Ok(Value::I32(45)));
+        drop(next_target);
+
+        drop(current);
+        assert_eq!(arena.live(), 0);
+        drop(fresh);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

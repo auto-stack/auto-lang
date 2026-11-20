@@ -3370,7 +3370,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::SchedStopping { .. } => {
                 return Err("native.sched-unsupported: the task scheduler surface is not part of the native backend".into())
             }
-            MirInstr::GlobalGet { .. } | MirInstr::GlobalSet { .. } => {
+            MirInstr::GlobalGet { .. } | MirInstr::GlobalTake { .. } | MirInstr::GlobalSet { .. } => {
                 return Err(
                     "module global cells are outside the mn surface first cut (PLAN-960 follow-up)"
                         .into(),

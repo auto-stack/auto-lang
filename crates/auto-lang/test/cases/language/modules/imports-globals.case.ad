@@ -248,3 +248,544 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 stage: "resolve"
 code: "source.module-cycle"
+
+## Case: owned-global-move
+id: "av.parity.1085.owned-global-move"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Packet { text Str }
+var packet = Packet("answer".clone())
+fn take(move p Packet) int { if p.text == "answer" { return 42 }; return 0 }
+fn main() int { return take(packet.move) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: read-moved-global
+id: "av.parity.1085.read-moved-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Packet { text Str }
+var packet = Packet("answer".clone())
+fn take(move p Packet) int { if p.text == "answer" { return 42 }; return 0 }
+fn main() int { let value = take(packet.move); return packet.text.len() + value }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.global-moved"
+
+## Case: reassign-moved-global
+id: "av.parity.1085.reassign-moved-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Packet { text Str }
+var packet = Packet("answer".clone())
+fn take(move p Packet) int { if p.text == "answer" { return 42 }; return 0 }
+fn main() int { let value = take(packet.move); packet = Packet("again".clone()); return packet.text.len() + value }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 47
+
+## Case: string-global-replacement
+id: "av.parity.1085.string-global-replacement"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var title Str = "old".clone()
+fn main() int { title = "hello".clone(); return title.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 5
+
+## Case: list-global
+id: "av.parity.1085.list-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var items = [20, 22]
+fn main() int { return items[0] + items[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: variant-global
+id: "av.parity.1085.variant-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var state ?int = Some(42)
+fn main() int { return is state { Some(n) -> n; None -> 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: closure-global
+id: "av.parity.1085.closure-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn make() fn(int) -> int {
+    let owned = "ok".clone()
+    return move (x int) => x + owned.len()
+}
+var f fn(int) -> int = make()
+var hit = 0
+fn main() int { hit = hit + 1; return f(39) + hit }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: object-global
+id: "av.parity.1085.object-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var obj = { n: 42 }
+fn main() int { return obj["n"] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-03-variables-001-var
+id: "legacy.03_variables.001_var"
+entry-mode: "program"
+
+### Auto
+path: "var.at"
+```auto
+var a = 1
+a+2
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 3
+
+## Case: legacy-03-variables-002-var-assign
+id: "legacy.03_variables.002_var_assign"
+entry-mode: "program"
+
+### Auto
+path: "var_assign.at"
+```auto
+var a = 1
+a = 2
+a
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 2
+
+## Case: legacy-03-variables-003-var-mut
+id: "legacy.03_variables.003_var_mut"
+entry-mode: "program"
+
+### Auto
+path: "var_mut.at"
+```auto
+var x = 1
+x = 10
+x+1
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+11
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 11
+
+## Case: legacy-03-variables-004-var-if
+id: "legacy.03_variables.004_var_if"
+entry-mode: "program"
+
+### Auto
+path: "var_if.at"
+```auto
+var x = if true { 1 } else { 2 }
+x+1
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 2
+
+## Case: legacy-03-variables-005-let-binding
+id: "legacy.03_variables.005_let_binding"
+entry-mode: "program"
+
+### Auto
+path: "let_binding.at"
+```auto
+let x = 41
+x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+41
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 41
+
+## Case: legacy-03-variables-006-let-asn-error
+id: "legacy.03_variables.006_let_asn_error"
+entry-mode: "program"
+
+### Auto
+path: "let_asn_error.at"
+```auto
+let x = 41
+x = 10
+x
+```
+
+### VM diagnostic
+#ignore
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "verify.immutable-write"
+
+## Case: legacy-03-variables-007-var-reassignment
+id: "legacy.03_variables.007_var_reassignment"
+entry-mode: "program"
+
+### Auto
+path: "var_reassignment.at"
+```auto
+let x = 41
+var x = 10
+x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+## Case: legacy-03-variables-008-simple-block
+id: "legacy.03_variables.008_simple_block"
+entry-mode: "program"
+
+### Auto
+path: "simple_block.at"
+```auto
+let a = 10
+{
+  let a = 20
+}
+a
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+## Case: legacy-17-modules-001-use-fn
+id: "legacy.17_modules.001_use_fn"
+entry-mode: "program"
+
+### Auto
+path: "use_fn.at"
+```auto
+use auto.greet_mod: greet, add
+
+pub fn main() {
+    greet("world")
+    print(add(1, 2))
+}
+```
+
+#### greet_mod.at
+
+```auto
+// Test helper module for 17_modules/001_use_fn
+pub fn greet(name str) {
+    print(name)
+}
+
+pub fn add(a int, b int) int {
+    a + b
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+world
+3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+world
+3
+```
+
+## Case: script-import
+id: "av.parity.1085.script-import"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.get
+let x = get()
+x + 2
+```
+
+#### lib.at
+
+```auto
+pub fn get() int { return 40 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dependency-script-refusal
+id: "av.parity.1085.dependency-script-refusal"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.get
+fn main() int { return get() }
+```
+
+#### lib.at
+
+```auto
+pub fn get() int { return 40 }
+41
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-script"
+
+## Case: competing-entries
+id: "av.parity.1085.competing-entries"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return 40 }
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-duplicate-declaration"
+
+## Case: forward-initializer
+id: "av.parity.1085.forward-initializer"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var left int = right + 2
+var right = 40
+fn main() int { return left }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: initializer-cycle
+id: "av.parity.1085.initializer-cycle"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+var first int = second
+var second int = first
+fn main() int { return first }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-init-cycle"

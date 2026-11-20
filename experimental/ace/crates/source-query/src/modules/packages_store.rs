@@ -8,7 +8,9 @@
 //! (parse gate → bind → resolve/typecheck/emit/verify) and then checks the
 //! recomputed identity against the root; the no-reparse fast path follows
 //! the fact-page work (see D-960-1).
-use crate::modules::packages::{compile_bound_packages, PackageProduct};
+use crate::modules::packages::{
+    compile_bound_packages, compile_package_product_auto, PackageProduct,
+};
 use ace_artifacts::{
     codec::ChunkKind,
     identity::{QueryKey, RefKind},
@@ -71,6 +73,8 @@ struct Root {
     schema: String,
     binding: String,
     grammar: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    language_profile: Option<String>,
     entry: String,
     capabilities: Vec<String>,
     input_hash: String,
@@ -157,6 +161,8 @@ impl PackageStore {
             schema: PACKAGES_ROOT_SCHEMA.into(),
             binding: PACKAGES_BINDING_VERSION.into(),
             grammar: bound.grammar_id.clone(),
+            language_profile: (product.compiled.profile == ace_core::source::AUTO_SOURCE_PROFILE)
+                .then(|| product.compiled.profile.to_owned()),
             entry: bound.entry.clone(),
             capabilities: bound.capabilities.clone(),
             input_hash: bound.input_hash.clone(),
@@ -225,6 +231,15 @@ impl PackageStore {
         if root.schema != PACKAGES_ROOT_SCHEMA || root.binding != PACKAGES_BINDING_VERSION {
             return Err("packages root schema/binding mismatch".into());
         }
+        let auto_language = match root.language_profile.as_deref() {
+            None => false,
+            Some(ace_core::source::AUTO_SOURCE_PROFILE) if root.context.is_none() => true,
+            Some(profile) => {
+                return Err(format!(
+                    "unsupported packages root language profile: {profile}"
+                ))
+            }
+        };
         let mut inputs = Vec::new();
         let mut units = std::collections::BTreeMap::new();
         let mut impls = std::collections::BTreeMap::new();
@@ -260,6 +275,9 @@ impl PackageStore {
                 source: u.source.clone(),
                 provider: provider.clone(),
             });
+            if auto_language {
+                continue;
+            }
             let syntax = ace_core::source::packages::parse_package_source(
                 &u.source,
                 &root.capabilities,
@@ -290,6 +308,39 @@ impl PackageStore {
                     },
                 );
             }
+        }
+        let targets = root
+            .targets
+            .iter()
+            .map(|(key, target)| {
+                (
+                    key.clone(),
+                    PackageStoreReceipt {
+                        artifact: target.artifact.clone(),
+                        digest: target.digest.clone(),
+                    },
+                )
+            })
+            .collect();
+        if auto_language {
+            let product = compile_package_product_auto(
+                &inputs,
+                &root.entry,
+                &root.capabilities,
+                FrontBudget::WORK_OWNED_64MIB,
+            )
+            .map_err(|ds| {
+                format!(
+                    "restore re-compile: {} {}",
+                    ds[0].module, ds[0].diagnostic.code
+                )
+            })?;
+            if product.bound.input_hash != root.input_hash
+                || product.bound.grammar_id != root.grammar
+            {
+                return Err("packages restore identity mismatch".into());
+            }
+            return Ok((product, targets));
         }
         // PLAN-1043：根带上下文 → 同一装配权威重放；带实现层却无上下文 = 拒。
         let has_impl = inputs.iter().any(|i| i.provider.is_some());
@@ -359,19 +410,6 @@ impl PackageStore {
                 ds[0].module, ds[0].diagnostic.code
             )
         })?;
-        let targets = root
-            .targets
-            .iter()
-            .map(|(k, t)| {
-                (
-                    k.clone(),
-                    PackageStoreReceipt {
-                        artifact: t.artifact.clone(),
-                        digest: t.digest.clone(),
-                    },
-                )
-            })
-            .collect();
         Ok((product, targets))
     }
 

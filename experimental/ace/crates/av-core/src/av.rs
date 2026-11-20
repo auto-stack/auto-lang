@@ -1043,7 +1043,7 @@ pub fn execute_program_platform(
     };
     // module inits run under the same platform provider (a platform-using
     // init is legal — e.g. seeding from the environment).
-    if let Some(out) = run_module_inits_with(prog, &mut st, |slot, st| {
+    if let Some(out) = run_module_inits_with(prog, &mut st, cancel, |slot, st| {
         dispatch_with_host(
             &prog.unit_view_at(slot),
             &limits,
@@ -1240,7 +1240,7 @@ pub fn execute_program_text_platform(
     };
     // init 链零参不变（初始化顺序 = link 序；console/1 宿主仍随入口分派——
     // 与 execute_program_platform 同纪律）。
-    if let Some(out) = run_module_inits_with(prog, &mut st, |slot, st| {
+    if let Some(out) = run_module_inits_with(prog, &mut st, cancel, |slot, st| {
         dispatch_with_host(
             &prog.unit_view_at(slot),
             &limits,
@@ -1481,7 +1481,7 @@ fn run_module_inits(
     st: &mut LoopState,
     optimize: bool,
 ) -> Option<ExecOutcome> {
-    run_module_inits_with(prog, st, |slot, st| {
+    run_module_inits_with(prog, st, cancel, |slot, st| {
         let view = if optimize {
             prog.unit_view_at(slot)
         } else {
@@ -1495,14 +1495,21 @@ fn run_module_inits(
 fn run_module_inits_with(
     prog: &crate::program_snapshot::ProgramSnapshot,
     st: &mut LoopState,
+    cancel: &CancelFlag,
     mut run: impl FnMut(u32, &mut LoopState) -> ExecOutcome,
 ) -> Option<ExecOutcome> {
+    if CancelCheck::poll(cancel) {
+        return Some(ExecOutcome::Cancelled);
+    }
     let init = match prog.begin_initialization() {
         Ok(Some(init)) => init,
         Ok(None) => return None,
         Err(message) => return Some(ExecOutcome::Infra(message.into())),
     };
     for &slot in prog.init_slots() {
+        if CancelCheck::poll(cancel) {
+            return Some(ExecOutcome::Cancelled);
+        }
         let out = run(slot, st);
         if !st.frames.is_empty() {
             cleanup_owned_frames(st);
@@ -1510,6 +1517,9 @@ fn run_module_inits_with(
         if !matches!(out, ExecOutcome::Success { .. }) {
             return Some(out);
         }
+    }
+    if CancelCheck::poll(cancel) {
+        return Some(ExecOutcome::Cancelled);
     }
     init.commit();
     None
@@ -2032,18 +2042,92 @@ struct LoopState {
     sched_sleep_fired: bool,
 }
 
+#[derive(Clone, Debug)]
 struct ClosureEntry {
-    env: crate::closures::ClosureEnv,
+    env: std::rc::Rc<std::cell::RefCell<crate::closures::ClosureEnv>>,
     func: u32,
     sig: u32,
     borrows: Vec<ClosureBorrow>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ClosureBorrow {
     frame: u64,
     slot: u32,
     generation: u64,
+}
+
+/// A generation owns its saved global value and any frame-independent
+/// environment required to use it after the execution that created it.
+#[derive(Clone, Debug)]
+pub(crate) struct GlobalValue {
+    pub(crate) value: Value,
+    closure: Option<ClosureEntry>,
+}
+
+impl GlobalValue {
+    pub(crate) fn plain(value: Value) -> Self {
+        Self {
+            value,
+            closure: None,
+        }
+    }
+
+    fn for_store(st: &LoopState, value: Value) -> Result<Self, TrapKind> {
+        let closure = if let Value::Closure(reference) = value {
+            let entry = st
+                .closure_envs
+                .get(&reference.env)
+                .filter(|entry| entry.borrows.is_empty() && closure_ref_valid(st, reference))
+                .ok_or(TrapKind::InvalidHandle)?;
+            Some(entry.clone())
+        } else {
+            None
+        };
+        Ok(Self { value, closure })
+    }
+
+    fn load(self, st: &mut LoopState, dst: usize, limits: &ExecLimits) -> Result<(), ExecOutcome> {
+        let Some(entry) = self.closure else {
+            return commit_slot_write(st, dst, self.value, limits);
+        };
+        let mut visited = 0;
+        let env_bytes = {
+            let env = entry.env.borrow();
+            env.deep_size(&mut visited)
+                .saturating_add(closure_binding_bytes(env.field_count(), 0))
+        };
+        st.steps = st.steps.saturating_add(visited);
+        if st.slot_bytes.saturating_add(env_bytes) > limits.max_slot_bytes {
+            return Err(ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: "global closure environment exceeds the slot budget".into(),
+            });
+        }
+        let handle = reserve_closure_handle().ok_or_else(|| ExecOutcome::Resource {
+            kind: ResourceKind::TableEntries,
+            message: "closure handle space exhausted".into(),
+        })?;
+        st.closure_envs
+            .try_reserve(1)
+            .map_err(|_| ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: "could not reserve global closure binding".into(),
+            })?;
+        let value = Value::Closure(crate::contract::ClosureRefV {
+            func: entry.func,
+            sig: entry.sig,
+            env: handle,
+            gen: handle,
+        });
+        st.slot_bytes += env_bytes;
+        st.closure_envs.insert(handle, entry);
+        if let Err(outcome) = commit_slot_write(st, dst, value, limits) {
+            release_closure_env(st, handle);
+            return Err(outcome);
+        }
+        Ok(())
+    }
 }
 
 fn closure_borrows_valid(st: &LoopState, cref: crate::contract::ClosureRefV) -> bool {
@@ -2171,10 +2255,14 @@ pub(crate) trait ModuleView {
     /// The entry function slot.
     fn entry(&self) -> u32;
     /// PLAN-960: module global cells (program-scoped). Default: none.
-    fn global_read(&self, _idx: u32) -> Option<Value> {
+    fn global_read(&self, _idx: u32) -> Option<Option<GlobalValue>> {
         None
     }
-    fn global_write(&self, _idx: u32, _value: Value) -> Result<(), String> {
+    fn global_can_take(&self, _idx: u32) -> bool {
+        false
+    }
+    fn clear_global(&self, _idx: u32) {}
+    fn global_write(&self, _idx: u32, _value: GlobalValue) -> Result<(), String> {
         Err("global.reference: this view has no global cells".into())
     }
 }
@@ -3362,14 +3450,21 @@ fn release_frame_owned_lifo(st: &mut LoopState, frame: &mut Frame) {
 /// items, no host drop-glue recursion on deep chains).
 fn release_closure_env(st: &mut LoopState, handle: u64) {
     if let Some(entry) = st.closure_envs.remove(&handle) {
-        let binding_bytes = closure_binding_bytes(entry.env.field_count(), entry.borrows.len());
-        let env = entry.env;
         let mut visited = 0u64;
-        let env_bytes = env.deep_size(&mut visited).saturating_add(binding_bytes);
+        let env_bytes = {
+            let env = entry.env.borrow();
+            env.deep_size(&mut visited)
+                .saturating_add(closure_binding_bytes(
+                    env.field_count(),
+                    entry.borrows.len(),
+                ))
+        };
         st.slot_bytes = st.slot_bytes.saturating_sub(env_bytes);
         // The worklist pops from the end, so capture-order roots release
         // in reverse capture order without reversing them twice.
-        release_owned_worklist(&mut st.steps, env.into_fields());
+        if let Ok(env) = std::rc::Rc::try_unwrap(entry.env) {
+            release_owned_worklist(&mut st.steps, env.into_inner().into_fields());
+        }
     }
 }
 
@@ -4331,14 +4426,32 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
-                MirInstr::GlobalGet { dst, global } => {
-                    let Some(val) = v.global_read(*global) else {
-                        return Some(ExecOutcome::Infra(format!(
-                            "global.reference: cell #{global} missing"
-                        )));
+                MirInstr::GlobalGet { dst, global } | MirInstr::GlobalTake { dst, global } => {
+                    let take = matches!(instr, MirInstr::GlobalTake { .. });
+                    let val = match v.global_read(*global) {
+                        Some(Some(value)) => value,
+                        Some(None) => {
+                            return Some(ExecOutcome::Trap {
+                                kind: TrapKind::GlobalMoved,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "global.reference: cell #{global} missing"
+                            )))
+                        }
                     };
-                    if let Err(out) = commit_slot_write(st, *dst as usize, val, limits) {
+                    if take && !v.global_can_take(*global) {
+                        return Some(ExecOutcome::Infra(format!(
+                            "global.immutable: cell #{global} cannot be moved"
+                        )));
+                    }
+                    if let Err(out) = val.load(st, *dst as usize, limits) {
                         return Some(out);
+                    }
+                    if take {
+                        v.clear_global(*global);
                     }
                 }
                 MirInstr::GlobalSet { dst, global, src } => {
@@ -4346,11 +4459,20 @@ fn dispatch_with_host<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
-                    if let Err(e) = v.global_write(*global, val) {
-                        return Some(ExecOutcome::Infra(e));
-                    }
+                    let stored = match GlobalValue::for_store(st, val) {
+                        Ok(stored) => stored,
+                        Err(kind) => {
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                    };
                     if let Err(out) = commit_slot_write(st, *dst as usize, Value::I32(0), limits) {
                         return Some(out);
+                    }
+                    if let Err(e) = v.global_write(*global, stored) {
+                        return Some(ExecOutcome::Infra(e));
                     }
                 }
                 MirInstr::Bin { op, dst, lhs, rhs } => {
@@ -4759,7 +4881,10 @@ fn dispatch_with_host<V: ModuleView>(
                     let wall_left = limits.wall.saturating_sub(started.elapsed());
                     let (plan, _prep) = {
                         let fr = st.frames.last().expect("frame present");
-                        let env_handle = fr.closure_env;
+                        let parent_env = fr
+                            .closure_env
+                            .and_then(|handle| st.closure_envs.get(&handle))
+                            .map(|entry| entry.env.borrow());
                         let mut specs: Vec<crate::closures::CaptureSpec> =
                             Vec::with_capacity(captures.len());
                         for c in captures.iter() {
@@ -4785,13 +4910,9 @@ fn dispatch_with_host<V: ModuleView>(
                                 }
                             };
                             let src: &Value = if c.kind == crate::mir::CaptureKind::MoveFromEnv {
-                                let h = env_handle.expect(
-                                    "MoveFromEnv in a frame without an env binding (admission violation)",
-                                );
-                                match st
-                                    .closure_envs
-                                    .get(&h)
-                                    .and_then(|e| e.env.field(c.src as usize))
+                                match parent_env
+                                    .as_ref()
+                                    .and_then(|env| env.field(c.src as usize))
                                 {
                                     Some(v) => v,
                                     None => {
@@ -5029,7 +5150,7 @@ fn dispatch_with_host<V: ModuleView>(
                                 let taken = st
                                     .closure_envs
                                     .get_mut(&h)
-                                    .and_then(|e| e.env.take_field(c.src as usize));
+                                    .and_then(|e| e.env.borrow_mut().take_field(c.src as usize));
                                 match taken {
                                     Some(v) => {
                                         let mut visited = 0u64;
@@ -5113,7 +5234,7 @@ fn dispatch_with_host<V: ModuleView>(
                     st.closure_envs.insert(
                         handle,
                         ClosureEntry {
-                            env,
+                            env: std::rc::Rc::new(std::cell::RefCell::new(env)),
                             func: target,
                             sig: sig_ty,
                             borrows,
@@ -5291,9 +5412,9 @@ fn dispatch_with_host<V: ModuleView>(
                     let share = match st
                         .closure_envs
                         .get(&handle)
-                        .and_then(|e| e.env.field(*field as usize))
+                        .and_then(|e| e.env.borrow().field(*field as usize).cloned())
                     {
-                        Some(v) => v.clone(),
+                        Some(v) => v,
                         None => {
                             return Some(ExecOutcome::Trap {
                                 kind: TrapKind::InvalidHandle,
@@ -5351,7 +5472,7 @@ fn dispatch_with_host<V: ModuleView>(
                             });
                         }
                         let env = match st.closure_envs.get(&cref.env) {
-                            Some(e) => &e.env,
+                            Some(e) => e.env.borrow(),
                             None => {
                                 return Some(ExecOutcome::Trap {
                                     kind: TrapKind::InvalidHandle,
@@ -5450,11 +5571,12 @@ fn dispatch_with_host<V: ModuleView>(
                             };
                             new_fields.push(cloned_field);
                         }
+                        drop(env);
                         let new_env = crate::closures::ClosureEnv::from_fields(new_fields);
                         st.closure_envs.insert(
                             handle,
                             ClosureEntry {
-                                env: new_env,
+                                env: std::rc::Rc::new(std::cell::RefCell::new(new_env)),
                                 func: cref.func,
                                 sig: cref.sig,
                                 borrows: Vec::new(),
@@ -10035,10 +10157,13 @@ mod tests {
             assert!(st.steps < 200);
         }
         let handle = st.frames.last().unwrap().closure_env.unwrap();
-        let field = st.closure_envs.get(&handle).unwrap().env.field(0).unwrap();
-        assert!(matches!(field, Value::Str(h) if h.bytes() == b"owned"));
-        let mut visited = 0;
-        let field_bytes = field.deep_size(&mut visited);
+        let field_bytes = {
+            let env = st.closure_envs.get(&handle).unwrap().env.borrow();
+            let field = env.field(0).unwrap();
+            assert!(matches!(field, Value::Str(h) if h.bytes() == b"owned"));
+            let mut visited = 0;
+            field.deep_size(&mut visited)
+        };
         let projected = st
             .slot_bytes
             .saturating_sub(field_bytes.saturating_sub(std::mem::size_of::<Value>()))
@@ -10058,7 +10183,7 @@ mod tests {
             "{outcome:?}"
         );
         assert!(
-            matches!(st.closure_envs.get(&handle).unwrap().env.field(0), Some(Value::Str(h)) if h.bytes() == b"owned"),
+            matches!(st.closure_envs.get(&handle).unwrap().env.borrow().field(0), Some(Value::Str(h)) if h.bytes() == b"owned"),
             "parent field must remain owned on pre-commit refusal"
         );
         assert_eq!(
@@ -10092,10 +10217,12 @@ mod tests {
         st.closure_envs.insert(
             first,
             ClosureEntry {
-                env: crate::closures::ClosureEnv::from_fields(vec![
-                    Value::Str(arena.alloc(b"a")),
-                    Value::Str(arena.alloc(b"b")),
-                ]),
+                env: std::rc::Rc::new(std::cell::RefCell::new(
+                    crate::closures::ClosureEnv::from_fields(vec![
+                        Value::Str(arena.alloc(b"a")),
+                        Value::Str(arena.alloc(b"b")),
+                    ]),
+                )),
                 func: 1,
                 sig: 0,
                 borrows: Vec::new(),
@@ -10104,7 +10231,9 @@ mod tests {
         st.closure_envs.insert(
             second,
             ClosureEntry {
-                env: crate::closures::ClosureEnv::from_fields(vec![Value::Str(arena.alloc(b"c"))]),
+                env: std::rc::Rc::new(std::cell::RefCell::new(
+                    crate::closures::ClosureEnv::from_fields(vec![Value::Str(arena.alloc(b"c"))]),
+                )),
                 func: 1,
                 sig: 0,
                 borrows: Vec::new(),

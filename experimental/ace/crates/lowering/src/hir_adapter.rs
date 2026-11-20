@@ -5179,8 +5179,12 @@ k 0
                                     }
                                 }
                             }
-                            // PLAN-960: module global cell read/write.
-                            if let Some(gname) = symbol.strip_prefix("module.global.get:") {
+                            // Module global accessors share the cell type and index.
+                            let get =
+                                symbol.strip_prefix(ace_core::source::packages::GLOBAL_GET_PREFIX);
+                            let take =
+                                symbol.strip_prefix(ace_core::source::packages::GLOBAL_TAKE_PREFIX);
+                            if let Some(gname) = get.or(take) {
                                 let sig = self.out.imports[imp as usize].sig;
                                 let result_ty =
                                     self.out.sig_of(sig).map(|f| f.result).ok_or_else(|| {
@@ -5192,7 +5196,15 @@ k 0
                                 let cell_ty = global_cell_ty(self.out, result_ty);
                                 let g = global_cell_index(self.out, gname, cell_ty);
                                 let dst = self.temp_ty(result_ty)?;
-                                self.emit(MirInstr::GlobalGet { dst, global: g }, sp)?;
+                                if take.is_some() {
+                                    let capability = ace_av_core::contract::GLOBAL_TAKE_CAPABILITY;
+                                    if !self.out.capabilities.iter().any(|cap| cap == capability) {
+                                        self.out.capabilities.push(capability.into());
+                                    }
+                                    self.emit(MirInstr::GlobalTake { dst, global: g }, sp)?;
+                                } else {
+                                    self.emit(MirInstr::GlobalGet { dst, global: g }, sp)?;
+                                }
                                 return Ok(dst);
                             }
                             if let Some(gname) = symbol.strip_prefix("module.global.set:") {

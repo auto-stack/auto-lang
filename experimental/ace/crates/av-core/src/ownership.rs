@@ -768,7 +768,7 @@ fn verify_owned_function_impl(
                 }
                 // PLAN-960: global cells hold scalars only in this cut; the
                 // read defines `dst`, the write reads `src` and defines `dst`.
-                MirInstr::GlobalGet { dst, .. } => {
+                MirInstr::GlobalGet { dst, .. } | MirInstr::GlobalTake { dst, .. } => {
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "re-initialization");
                     }

@@ -125,6 +125,7 @@ impl BoundPackages {
 }
 
 pub const GLOBAL_GET_PREFIX: &str = "module.global.get:";
+pub const GLOBAL_TAKE_PREFIX: &str = "module.global.take:";
 pub const GLOBAL_SET_PREFIX: &str = "module.global.set:";
 
 fn fail(
@@ -840,7 +841,17 @@ fn bind_package_syntax_inner(
         let mut all: BTreeMap<String, Span> = BTreeMap::new();
         for item in &unit.program.items {
             let (name, span) = match item {
-                Item::Fn(f) => (f.name.clone(), f.name.span),
+                Item::Fn(f) => {
+                    if face == Faces::Auto && f.script && key != entry {
+                        return Err(fail(
+                            key,
+                            "source.module-script",
+                            "only the entry module may have executable script statements",
+                            f.span,
+                        ));
+                    }
+                    (f.name.clone(), f.name.span)
+                }
                 Item::Type(t) => (t.name.clone(), t.name.span),
                 Item::Const(c) => (c.name.clone(), c.name.span),
                 Item::Store(v) => (v.name.clone(), v.name.span),
@@ -1225,8 +1236,8 @@ fn bind_package_syntax_inner(
             depth: 0,
             set_counter: 0,
             tyvars: BTreeSet::new(),
-            aggregates,
-            asm_lane: in_face && aggregates,
+            aggregates: aggregates || face == Faces::Auto,
+            asm_lane: (in_face && aggregates) || face == Faces::Auto,
             auto_language: face == Faces::Auto,
         };
         let mut inits: Vec<String> = Vec::new();
@@ -2790,13 +2801,32 @@ impl<'a> Walker<'a> {
                         let sym = b.symbol.clone();
                         self.record_call(&sym);
                         callee.name = sym;
-                    } else if self.global_of(&callee.name).is_some() {
-                        return Err(fail(
-                            self.key,
-                            "source.module-symbol",
-                            format!("`{}` is a module global, not a function", callee.name),
-                            callee.span,
-                        ));
+                    } else if let Some(symbol) = self.global_of(&callee.name) {
+                        if !self.auto_language {
+                            return Err(fail(
+                                self.key,
+                                "source.module-symbol",
+                                format!("`{}` is a module global, not a function", callee.name),
+                                callee.span,
+                            ));
+                        }
+                        self.record_read(&symbol);
+                        let callee = Expr {
+                            span: callee.span,
+                            kind: ExprKind::Call {
+                                callee: Ident {
+                                    name: format!("{GLOBAL_GET_PREFIX}{symbol}"),
+                                    span: callee.span,
+                                },
+                                args: Vec::new(),
+                            },
+                        };
+                        self.walk_args(args, locals)?;
+                        e.kind = ExprKind::CallValue {
+                            callee: Box::new(callee),
+                            args: std::mem::take(args),
+                        };
+                        return Ok(());
                     } else if self.is_type_name(&callee.name) {
                         // 位置构造 `Pair(1, true)`：resolver 路由为 record 构造。
                         let sym = self.type_name(&Ident {
@@ -2813,7 +2843,7 @@ impl<'a> Walker<'a> {
                         // eprint/say）在包体原样透传给 resolver（其按 profile
                         // 绑定为 console 内在调用——同 PLAN-1041 平台保留名
                         // 纪律）。
-                    } else if self.auto_language && matches!(callee.name.as_str(), "mark_a" | "mark_b") {
+                    } else if self.auto_language && matches!(callee.name.as_str(), "mark_a" | "mark_b" | "take" | "__fstr") {
                         // Capability admission remains the shared resolver's job.
                     } else if self.aggregates
                         && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
@@ -2850,7 +2880,26 @@ impl<'a> Walker<'a> {
                 self.walk_expr(rhs, locals)
             }
             ExprKind::Unary { operand, .. } => self.walk_expr(operand, locals),
-            ExprKind::Method { recv, args, .. } => {
+            ExprKind::Method { recv, name, args } => {
+                if self.auto_language && name.name == "move" && args.is_empty() {
+                    if let ExprKind::Var(id) = &recv.kind {
+                        if let Some(symbol) = (!locals.contains(&id.name))
+                            .then(|| self.global_of(&id.name))
+                            .flatten()
+                        {
+                            if !self.globals[&symbol].mutable {
+                                return Err(fail(self.key, "source.module-const-move",
+                                    format!("cannot move out of the module constant `{}`", id.name), span));
+                            }
+                            self.record_read(&symbol);
+                            e.kind = ExprKind::Call {
+                                callee: Ident { name: format!("{GLOBAL_TAKE_PREFIX}{symbol}"), span },
+                                args: Vec::new(),
+                            };
+                            return Ok(());
+                        }
+                    }
+                }
                 // 文本内建方法：接收者改写、方法名由 resolver 按接收者类型绑定。
                 self.walk_expr(recv, locals)?;
                 self.walk_args(args, locals)

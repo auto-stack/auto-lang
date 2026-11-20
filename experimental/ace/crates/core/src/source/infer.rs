@@ -567,6 +567,17 @@ fn estimate(
                 .cloned()
                 .unwrap_or(Ty::Unknown)
         }
+        ExprKind::ArrayLit(values) => {
+            estimate_collection("List", e.span, values.iter(), env, ctx, sites)
+        }
+        ExprKind::ObjectLit { fields } => estimate_collection(
+            super::resolve::INFERRED_OBJECT_TYPE,
+            e.span,
+            fields.iter().map(|field| &field.value),
+            env,
+            ctx,
+            sites,
+        ),
         ExprKind::CtorNamed { ty, fields, .. } => {
             for f in fields {
                 estimate(&f.value, env, ctx, sites);
@@ -601,6 +612,36 @@ fn estimate(
         }
         ExprKind::MutArg { .. } | ExprKind::ViewArg { .. } => Ty::Unknown,
         _ => Ty::Unknown,
+    }
+}
+
+fn estimate_collection<'a>(
+    name: &str,
+    span: Span,
+    values: impl IntoIterator<Item = &'a Expr>,
+    env: &Env,
+    ctx: &mut Ctx,
+    sites: &mut Vec<(String, Vec<(usize, Ty)>, Span)>,
+) -> Ty {
+    let mut common = None;
+    for value in values {
+        let Ty::Concrete(ty) = estimate(value, env, ctx, sites) else {
+            return Ty::Unknown;
+        };
+        if common.as_ref().is_some_and(|previous| previous != &ty) {
+            return Ty::Unknown;
+        }
+        common = Some(ty);
+    }
+    match common {
+        Some(kind) => Ty::Concrete(TypeRef::Generic {
+            name: super::ast::Ident {
+                name: name.into(),
+                span,
+            },
+            args: vec![TypeAnn { kind, span }],
+        }),
+        None => Ty::Unknown,
     }
 }
 

@@ -215,7 +215,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-super3 { literal: "super3" }
         r-super4 { literal: "super4" }
         r-tag { literal: "tag" }
-        r-take { literal: "take" }
+        r-take(profiles: [core, scalar, text, record, record-instances, text-record-instances, text-record, config-document, age-h0, age-component, age-package, entry-unit, host-console, collections, closures, numeric, aggregates, scheduler, scalar-instances, scalar-modules, packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, scalar-ct]) { literal: "take" }
         r-task { literal: "task" }
         r-to { literal: "to" }
         r-try { literal: "try" }
@@ -385,7 +385,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scheduler]) { task-item() {} }
             // PLAN-982（B-CONFIG-I）：配置文档面以**一个**顺序入口承载顶层文档行序列。
             alt(profiles: [config-document]) { cfg-document-item() {} }
-            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler]) { script-item() {} }
+            alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler, auto-packages]) { script-item() {} }
         }
         // ---- AGE 领域节点（PLAN-979 T-H0-I）----
         // H0 冻结输入：`node <Name> { view { text <text-expr> {} } }`。节点名是
@@ -2205,7 +2205,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // ---- 脚本形态（entry-unit：顶层语句序列到 EOF；首语句必需——
         // 空/仅分隔符文件由投影按旧合同区分"expected fn"与 Ok(empty)；
         // 声明先行的 entry-order 检查在投影保真）----
-        script-item(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler]) {
+        script-item(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler, auto-packages]) {
             stmt() {}
             list-nl { stmt() {} }
         }
@@ -2877,7 +2877,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [closures, aggregates, auto, scheduler, auto-packages]) { lambda-expr() {} }
             // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（保留词
             // r-take 专用原子形）。
-            alt(profiles: [aggregates, auto, scheduler, auto-packages]) { take-atom() {} }
+            alt(profiles: [aggregates, scheduler]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
             alt(profiles: [aggregates, auto, scheduler, age-package, auto-packages]) { tuple-lit() {} }
@@ -2921,7 +2921,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { lambda-expr() {} }
             // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（保留词
             // r-take 专用原子形）。
-            alt(profiles: [aggregates, auto, scheduler, auto-packages]) { take-atom() {} }
+            alt(profiles: [aggregates, scheduler]) { take-atom() {} }
             // PLAN-962（L-15）：tuple 字面量 `(e1, e2, ...)`（≥2 元；先于
             // 括号组——无 `=>` 且带逗号即 tuple，单元素组回退）。
             alt(profiles: [aggregates, auto, scheduler, age-package, auto-packages]) { tuple-lit() {} }
@@ -3001,7 +3001,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [auto, auto-packages]) { expr() {} }
         }
         // PLAN-962（T-08，L-09）：take 原子形（弃用 Move 别名）。
-        take-atom(profiles: [aggregates, auto, scheduler, auto-packages]) {
+        take-atom(profiles: [aggregates, scheduler]) {
             r-take(same-line: true) {}
             lparen(same-line: true) {}
             expr(field: "value")

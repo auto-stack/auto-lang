@@ -1027,11 +1027,11 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
         // PLAN-960: the global cell table travels with every unit so unit
         // verification range-checks global references (cells themselves are
         // program-scoped at link, never persisted per unit).
-        unit.globals = m.globals.clone();
         let mut ty_map: Vec<TypeIdx> = vec![u32::MAX; m.types.len()];
         let mut c_map: Vec<u32> = vec![u32::MAX; m.consts.len()];
         // Needed types: own sig + slots + callee sigs + referenced import sigs.
         let mut needed: Vec<TypeIdx> = vec![f.sig];
+        needed.extend(m.globals.iter().map(|global| global.ty));
         for s in &f.slots {
             needed.push(s.ty);
         }
@@ -1065,6 +1065,9 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                 }
                 if let MirInstr::DynIs { ty, .. } | MirInstr::DynTake { ty, .. } = i {
                     needed.push(*ty);
+                }
+                if let MirInstr::ObjectGet { elem, .. } = i {
+                    needed.push(*elem);
                 }
                 if let MirInstr::HostCall { host, .. } | MirInstr::PlatformCall { host, .. } = i {
                     if let Some(hi) = m.host_imports.get(*host as usize) {
@@ -1142,6 +1145,18 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                             progress = true;
                         }
                     }
+                    MirType::Object { elem } => {
+                        if ty_map[*elem as usize] == u32::MAX {
+                            if !needed.contains(elem) {
+                                needed.push(*elem);
+                            }
+                        } else {
+                            ty_map[t as usize] = unit.intern_type(MirType::Object {
+                                elem: ty_map[*elem as usize],
+                            });
+                            progress = true;
+                        }
+                    }
                     MirType::List(l) | MirType::Place(l) => {
                         if ty_map[l.elem as usize] == u32::MAX {
                             if !needed.contains(&l.elem) {
@@ -1199,6 +1214,16 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
             return Err(format!("unit `{}`: unresolved type closure", f.name));
         }
 
+        unit.globals = m
+            .globals
+            .iter()
+            .map(|global| {
+                let mut remapped = global.clone();
+                remapped.ty = ty_map[global.ty as usize];
+                remapped
+            })
+            .collect();
+
         // PLAN-947: console host declarations travel with the units that
         // reference them (index-remapped, deduplicated) so the native
         // per-function split carries the same console/1 admission facts
@@ -1230,6 +1255,9 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                     }
                     MirInstr::DynIs { ty, .. } | MirInstr::DynTake { ty, .. } => {
                         *ty = ty_map[*ty as usize];
+                    }
+                    MirInstr::ObjectGet { elem, .. } => {
+                        *elem = ty_map[*elem as usize];
                     }
                     MirInstr::CreateClosure { callee, .. } => {
                         // r8: a unit's CREATE_CLOSURE binds its closure

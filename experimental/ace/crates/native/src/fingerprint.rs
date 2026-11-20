@@ -227,6 +227,7 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             )
         ),
         MirInstr::GlobalGet { dst, global } => format!("global_get {} <- g{}", dst, global),
+        MirInstr::GlobalTake { dst, global } => format!("global_take {} <- g{}", dst, global),
         MirInstr::GlobalSet { dst, global, src } => {
             format!("global_set g{} <- {} ; {} = 0", global, src, dst)
         }
