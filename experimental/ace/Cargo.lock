@@ -156,12 +156,16 @@ dependencies = [
 name = "ace-aac-syntax-conformance"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-av",
  "ace-av-core",
  "ace-core",
  "ace-source-query",
  "ace-syntax-grammar",
  "ace-syntax-runtime",
+ "auto-tool-execution",
+ "blake3",
 ]
 
 [[package]]

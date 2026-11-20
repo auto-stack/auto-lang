@@ -30,6 +30,12 @@ use ace_source_query::modules::packages::{
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod native;
+
+pub use native::{
+    native_fingerprint, run_native_case, DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE,
+};
+
 pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;
 
 // The Auto module set (file name -> embedded source). `syntax_smoke.at` is

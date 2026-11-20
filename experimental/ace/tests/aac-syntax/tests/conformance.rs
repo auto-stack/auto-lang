@@ -3,11 +3,12 @@
 //! identity binding. This file grows into the full V-01..V-05 conformance
 //! suite as the tasks land.
 
-use ace_aac_syntax_conformance::run_case;
+#![cfg(all(windows, target_arch = "x86_64"))]
 
-fn obs(tag: &str, fname: &str, call: &str) -> String {
-    let bytes = run_case(tag, &format!("app.syntax_smoke.{fname}"), call).expect("av run");
-    String::from_utf8(bytes).expect("utf8 observable")
+use ace_aac_syntax_conformance::run_native_case;
+
+fn obs(case: &str, profile: &str, source: &str) -> String {
+    run_native_case(case, profile, source, None).expect("prepared AAC native run")
 }
 
 /// The embedded grammar hexes equal a fresh compile of the repository
@@ -42,7 +43,7 @@ fn aac1046_decode_all_profiles() {
         "text-record-instances",
         "scalar",
     ] {
-        let out = obs("decode", "decode_case", &format!("decode_case(\"{name}\")"));
+        let out = obs("decode", name, "");
         // Independent expected values: recompile here and count the tables.
         let p = ace_syntax_grammar::compile_profile(
             include_str!("../../../grammars/auto-source.at"),
@@ -63,14 +64,14 @@ fn aac1046_decode_all_profiles() {
 #[test]
 fn aac1046_decode_truncated_refused() {
     for name in ["auto", "scalar"] {
-        let out = obs("trunc", "decode_truncated_case", &format!("decode_truncated_case(\"{name}\")"));
+        let out = obs("decode-truncated", name, "");
         assert!(out.starts_with("REFUSED "), "{name}: {out}");
     }
 }
 
 #[test]
 fn aac1046_hex_bytes_roundtrip() {
-    let out = obs("hexrt", "hex_roundtrip_case", "hex_roundtrip_case(\"scalar\")");
+    let out = obs("hex-roundtrip", "scalar", "");
     let fresh = ace_syntax_grammar::compile_profile(
         include_str!("../../../grammars/auto-source.at"),
         "scalar",
@@ -83,7 +84,7 @@ fn aac1046_hex_bytes_roundtrip() {
 #[test]
 fn aac1046_byte_len_probe() {
     for name in ["auto", "age-package", "scalar"] {
-        let out = obs("blen", "byte_len_case", &format!("byte_len_case(\"{name}\")"));
+        let out = obs("byte-length", name, "");
         println!("{name}: {out}");
         assert!(out.contains("bytes="), "{out}");
     }
@@ -92,7 +93,7 @@ fn aac1046_byte_len_probe() {
 #[test]
 fn aac1046_decode_dbg_probe() {
     for name in ["auto", "scalar"] {
-        let out = obs("dbgd", "decode_dbg_case", &format!("decode_dbg_case(\"{name}\")"));
+        let out = obs("decode-debug", name, "");
         println!("{name}: {out}");
     }
 }
@@ -239,7 +240,7 @@ fn rust_oracle(profile: &str, sample: &str) -> String {
 #[test]
 fn aac1046_parse_parity_scalar() {
     let sample = "fn main() int { return 1 }";
-    let out = obs("parse", "parse_case", &format!("parse_case(\"scalar\", \"{sample}\")"));
+    let out = obs("parse", "scalar", sample);
     let expect = rust_oracle("scalar", sample);
     assert_eq!(out, expect);
 }
@@ -247,31 +248,31 @@ fn aac1046_parse_parity_scalar() {
 #[test]
 fn aac1046_stage_probes() {
     let sample = "fn main() int { return 1 }";
-    let lex = obs("lex", "lex_case", &format!("lex_case(\"scalar\", \"{sample}\")"));
+    let lex = obs("lex", "scalar", sample);
     println!("LEX: {lex}");
     assert!(lex.starts_with("ntok="), "{lex}");
-    let fs = obs("fs", "firstsets_case", "firstsets_case(\"scalar\")");
+    let fs = obs("first-sets", "scalar", "");
     println!("FS: {fs}");
     assert!(fs.starts_with("startfirst="), "{fs}");
 }
 
 #[test]
 fn aac1046_scan_probe() {
-    let out = obs("scan", "scan_case", "scan_case(\"scalar\")");
+    let out = obs("scan", "scalar", "");
     println!("SCAN: {out}");
     assert!(out.starts_with("entries="), "{out}");
 }
 
 #[test]
 fn aac1046_raw_probe() {
-    let out = obs("raw", "raw_case", "raw_case(\"scalar\")");
+    let out = obs("raw", "scalar", "");
     println!("RAW: {out}");
     assert!(out.starts_with("nscan="), "{out}");
 }
 
 #[test]
 fn aac1046_bucket_probe() {
-    let out = obs("bkt", "bucket_count_case", "bucket_count_case(\"scalar\")");
+    let out = obs("bucket-count", "scalar", "");
     println!("BUCKET: {out}");
     assert_eq!(out, "counts-ok");
 }
@@ -290,11 +291,7 @@ fn aac1046_parse_parity_battery() {
         ("scalar", "fn s() int { return 1 + 2 * 3 - 4 / 2 }"),
     ];
     for (i, (profile, sample)) in cases.iter().enumerate() {
-        let out = obs(
-            &format!("pb{i}"),
-            "parse_case",
-            &format!("parse_case(\"{profile}\", \"{sample}\")"),
-        );
+        let out = obs("parse", profile, sample);
         let expect = rust_oracle(profile, sample);
         assert_eq!(out, expect, "case {i}: {profile} / {sample}");
     }
@@ -349,11 +346,8 @@ fn aac1046_edit_incremental_equality() {
     assert!(splice.fallback.is_none());
     assert!(splice.reused_decls > 0, "fixture must exercise actual grafting");
 
-    let incr_run = obs(
-        "edit",
-        "edit_case",
-        &format!("edit_case(\"scalar\", {original:?}, 25, 25, \"1 + \")"),
-    );
+    let incr_run = run_native_case("edit", "scalar", original, Some((25, 25, "1 + ")))
+        .expect("prepared AAC native edit");
     let (tree, facts) = incr_run
         .split_once("SPLICE")
         .unwrap_or_else(|| panic!("missing splice result: {incr_run}"));
@@ -375,9 +369,9 @@ fn aac1046_identity_change_restore() {
     // then undo: the SnapshotId must change and restore.
     // Inserting INSIDE the α scalar (offset 1) must be refused (code 4);
     // inserting BEFORE it (offset 0) is legal and the undo restores the id.
-    let mid = obs("ident", "identity_case", "identity_case(\"α中 b\", 1)");
+    let mid = run_native_case("identity", "", "α中 b", Some((1, 1, ""))).unwrap();
     assert_eq!(mid, "EDIT1_REFUSED 4", "mid-scalar cut must be refused");
-    let out = obs("ident", "identity_case", "identity_case(\"α中 b\", 0)");
+    let out = run_native_case("identity", "", "α中 b", Some((0, 0, ""))).unwrap();
     println!("IDENT| {out}");
     assert!(out.starts_with("changed=1 restored=1"), "{out}");
 }
@@ -392,14 +386,8 @@ fn aac1046_threefn_parity() {
     // The edit case's cold leg: three fns, plain cold parse, byte-exact
     // oracle parity.
     let sample = "fn a(x int) int { return x }\nfn b(y int) int { return y }\nfn c(z int) int { return z }";
-    let call = format!("parse_case(\"scalar\", \"{}\")", sample);
-    let out = obs("t3", "parse_case", &call);
-    let expect = rust_oracle(
-        "scalar",
-        "fn a(x int) int { return x }
-fn b(y int) int { return y }
-fn c(z int) int { return z }",
-    );
+    let out = obs("parse", "scalar", sample);
+    let expect = rust_oracle("scalar", sample);
     assert_eq!(out, expect);
 }
 
@@ -407,23 +395,16 @@ fn c(z int) int { return z }",
 #[test]
 fn aac1046_truncated_stream() {
     // A stream cut mid-decl at EOF: recovery must terminate cleanly.
-    let call = "parse_case(\"scalar\", \"fn a(x int) int { return x }
-fn b(y int) int { ret\")";
-    let out = obs("tr", "parse_case", call);
-    let head: String = out.chars().take(120).collect();
-    println!("TR| {head}");
-    let expect = rust_oracle(
-        "scalar",
-        "fn a(x int) int { return x }
-fn b(y int) int { ret",
-    );
+    let sample = "fn a(x int) int { return x }\nfn b(y int) int { ret";
+    let out = obs("parse", "scalar", sample);
+    let expect = rust_oracle("scalar", sample);
     assert_eq!(out, expect);
 }
 
 #[test]
 fn aac1046_singlefn_midexpr() {
     let esc = "fn b(y int) int { y + ";
-    let out = obs("sf", "parse_case", &format!("parse_case(\"scalar\", \"{}\")", esc));
+    let out = obs("parse", "scalar", esc);
     let expect = rust_oracle("scalar", "fn b(y int) int { y + ");
     assert_eq!(out, expect);
 }
@@ -432,9 +413,7 @@ fn aac1046_singlefn_midexpr() {
 fn aac1046_midexpr_eof() {
     // EOF right after a binary operator: Pratt WantPrimary at EOF.
     let esc = "fn a(x int) int { return x }\nfn b(y int) int { return y + ";
-    let out = obs("me", "parse_case", &format!("parse_case(\"scalar\", \"{}\")", esc));
-    let head: String = out.chars().take(100).collect();
-    println!("ME| {head}");
+    let out = obs("parse", "scalar", esc);
     let expect = rust_oracle("scalar", "fn a(x int) int { return x }\nfn b(y int) int { return y + ");
     assert_eq!(out, expect);
 }
