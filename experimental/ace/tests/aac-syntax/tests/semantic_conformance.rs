@@ -917,11 +917,9 @@ fn preserves_signed_i32_bits_and_radix_through_hir() {
 
 #[test]
 fn rejects_empty_components_in_the_project_inventory() {
-    assert!(
-        observe_project_inventory("main")
-            .expect("valid inventory")
-            .starts_with("hir(")
-    );
+    assert!(observe_project_inventory("main")
+        .expect("valid inventory")
+        .starts_with("hir("));
     for inventory in ["", "main\n", "main\n\nextra", "/main", "main/"] {
         let report = observe_project_inventory(inventory).expect("malformed inventory diagnostic");
         assert_eq!(report, "ERROR source.module\n", "{inventory:?}");
@@ -1273,11 +1271,9 @@ fn preserves_tuple_order_and_checks_indirect_signature() {
     );
     let report = type_report(source);
     assert!(report.starts_with("aac.type-report/1\n"), "{report}");
-    assert!(
-        report
-            .lines()
-            .any(|line| line.starts_with("TYPE ") && line.split_whitespace().nth(2) == Some("27"))
-    );
+    assert!(report
+        .lines()
+        .any(|line| line.starts_with("TYPE ") && line.split_whitespace().nth(2) == Some("27")));
     let bad = source.replace("f(7)", "f(false)");
     let from = bad.find("false").unwrap();
     assert_eq!(
