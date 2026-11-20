@@ -1140,6 +1140,33 @@ fn rejects_unused_and_shared_evaluations_in_descriptor_input() {
 }
 
 #[test]
+fn verifies_guarded_return_with_a_typed_continuation() {
+    let source = concat!(
+        "fn side(a int, flag bool) int {\n",
+        " let earlier = a + 1\n",
+        " if flag { return earlier }\n",
+        " let fallback = earlier + 4\n",
+        " return fallback\n",
+        "}\n",
+        "fn main() int { return side(flag: true, a: 10) + side(flag: false, a: 26) }\n",
+    );
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR production");
+    let draft = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify(draft).expect("reference verifies both terminating paths");
+    assert_eq!(
+        run_core_hir_case(atom.as_bytes(), "descriptor").expect("Auto transport verification"),
+        "ADMITTED core-i32-draft\n"
+    );
+    let dead = "fn main() int { return 1; return 2 }";
+    let written = dead.find("return 2").unwrap();
+    assert_eq!(
+        run_core_hir_case(dead.as_bytes(), "verify").expect("dead statement diagnostic"),
+        format!("ERROR hir.unsupported 0 {written}..{}\n", written + 8)
+    );
+}
+
+#[test]
 fn rejects_an_unreachable_terminating_block() {
     let source = b"fn compute() int { return 2 }";
     let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
@@ -1346,6 +1373,11 @@ fn completes_implicit_signatures_and_rejects_a_conflicting_call() {
         "fn add(n int) int;\nfn add(value) { value + 2 }\nfn main() int { return add(40) }";
     let report = type_report(seeded);
     assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let atom = run_core_hir_case(seeded.as_bytes(), "verify").expect("Auto prototype HIR");
+    let draft = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    let checked = ace_core::verify::verify(draft).expect("reference verifies resolved prototype");
+    assert_eq!(checked.bundle().modules[0].defs.len(), 2);
     let wrong_tail = seeded.replace("value + 2", "false");
     let start = wrong_tail.find("false").unwrap();
     assert_eq!(

@@ -12,6 +12,7 @@ use app.binding.global_var_decl
 use app.binding.local_let_decl
 use app.binding.local_var_decl
 use app.binding.parameter_decl
+use app.binding.prototype_decl
 use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
@@ -356,15 +357,14 @@ fn append_global_write(count int, source int, global int, owner int, value int, 
     return node
 }
 
-fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, locals List<int>, exprs List<int>, args List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
-    var child = first_child(links, body)
-    var result = -1
+fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, start int, owner int, locals List<int>, exprs List<int>, args List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var child = start
     for (child >= 0) {
         let node_kind = kind(pg, ast, child)
         if (node_kind == "stmt") {
             if (!take_step(fuel, deadline)) { return failed(errors, child, bind_budget()) }
             let stmt = first_child(links, child)
-            if (result >= 0 || stmt < 0) { return failed(errors, child, hir_unsupported()) }
+            if (stmt < 0) { return failed(errors, child, hir_unsupported()) }
             let category = decl_category(declarations, stmt)
             var op = 0
             var local = stmt
@@ -378,47 +378,52 @@ fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations
                 if (resolved != local_var_decl() && resolved != global_var_decl()) { return failed(errors, stmt, hir_mutability_error()) }
                 op = assign_op()
             }
-            if (op == 0) {
-                result = stmt
-            } else {
-                let value = child_with_role(pg, ast, links, stmt, "value")
-                if (value < 0 || expression_ids.get(value) < 0) { return failed(errors, stmt, hir_unsupported()) }
-                var evaluated = expression_ids.get(value)
-                if (op == assign_op() && decl_category(declarations, local) == global_var_decl()) {
-                    evaluated = append_global_write(row_count(ast), stmt, local, owner, evaluated, exprs, args)
-                    local = evaluated
-                    op = initialize_op()
-                    locals.push(owner)
-                    locals.push(local)
-                    locals.push(integer_type())
-                    locals.push(immutable_slot())
-                }
-                statements.push(body)
-                statements.push(op)
-                statements.push(local)
-                statements.push(evaluated)
+            if (op == 0) { return stmt }
+            let value = child_with_role(pg, ast, links, stmt, "value")
+            if (value < 0 || expression_ids.get(value) < 0) { return failed(errors, stmt, hir_unsupported()) }
+            var evaluated = expression_ids.get(value)
+            if (op == assign_op() && decl_category(declarations, local) == global_var_decl()) {
+                evaluated = append_global_write(row_count(ast), stmt, local, owner, evaluated, exprs, args)
+                local = evaluated
+                op = initialize_op()
+                locals.push(owner)
+                locals.push(local)
+                locals.push(integer_type())
+                locals.push(immutable_slot())
             }
+            statements.push(body)
+            statements.push(op)
+            statements.push(local)
+            statements.push(evaluated)
         }
         child = next_sibling(links, child)
     }
-    if (result < 0) { return failed(errors, body, hir_unsupported()) }
-    return result
+    return failed(errors, body, hir_unsupported())
 }
 
 fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, infer_return bool, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var pending = List<int>.new()
     pending.push(body)
+    pending.push(first_child(links, body))
     for (pending.len() > 0) {
+        let cursor = pending.remove(pending.len() - 1)
         let block = pending.remove(pending.len() - 1)
         if (!take_step(fuel, deadline)) { return failed(errors, block, bind_budget()) }
-        let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, owner, locals, exprs, args, statements, fuel, deadline, errors)
+        let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, cursor, owner, locals, exprs, args, statements, fuel, deadline, errors)
         if (statement < 0) { return statement }
+        let lexical_list = parent(ast, statement)
+        var rest = next_sibling(links, lexical_list)
+        for (rest >= 0 && kind(pg, ast, rest) != "stmt") {
+            if (!take_step(fuel, deadline)) { return failed(errors, rest, bind_budget()) }
+            rest = next_sibling(links, rest)
+        }
         let form = kind(pg, ast, statement)
         var condition = -1
         var yes = -1
         var no = -1
         var value = -1
-        if (form == "return-stmt" || (form == "expr-stmt" && infer_return && block == body)) {
+        if (form == "return-stmt" || (form == "expr-stmt" && infer_return && parent(ast, lexical_list) == body)) {
+            if (rest >= 0) { return failed(errors, rest, hir_unsupported()) }
             let result = child_with_role(pg, ast, links, statement, "value")
             if (result < 0 || expression_ids.get(result) < 0) { return failed(errors, statement, hir_unsupported()) }
             value = expression_ids.get(result)
@@ -427,13 +432,25 @@ fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<
             let test = child_with_role(pg, ast, links, statement, "cond")
             yes = child_with_role(pg, ast, links, statement, "then")
             let alternative = child_with_kind(pg, ast, links, statement, "else-block")
-            if (alternative >= 0) { no = child_with_kind(pg, ast, links, alternative, "block") }
-            if (test < 0 || yes < 0 || no < 0 || expression_ids.get(test) < 0) {
-                return failed(errors, statement, hir_unsupported())
+            if (test < 0 || yes < 0 || expression_ids.get(test) < 0) { return failed(errors, statement, hir_unsupported()) }
+            var no_cursor = -1
+            if (alternative >= 0) {
+                if (rest >= 0) { return failed(errors, rest, hir_unsupported()) }
+                no = child_with_kind(pg, ast, links, alternative, "block")
+                if (no < 0) { return failed(errors, statement, hir_unsupported()) }
+                no_cursor = first_child(links, no)
+            } else {
+                if (rest < 0) { return failed(errors, statement, hir_unsupported()) }
+                // The first remaining statement owns the synthetic suffix
+                // block. The suffix is visited only on the false branch.
+                no = rest
+                no_cursor = rest
             }
             condition = expression_ids.get(test)
             pending.push(no)
+            pending.push(no_cursor)
             pending.push(yes)
+            pending.push(first_child(links, yes))
         }
         blocks.push(block)
         blocks.push(owner)
@@ -517,7 +534,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
                 locals.push(slot)
             } else {
                 let type_member = category == type_decl() || category == field_decl()
-                if (category != 0 && category != parameter_decl() && !type_member && !global_category(category)) { return failed(errors, row, hir_unsupported()) }
+                if (category != 0 && category != parameter_decl() && category != prototype_decl() && !type_member && !global_category(category)) { return failed(errors, row, hir_unsupported()) }
             }
         }
         row = row + 1
