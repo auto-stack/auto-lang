@@ -1,0 +1,205 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.numeric_literal.literal_range
+use app.numeric_literal.literal_syntax
+use app.types.f64_type
+
+fn spend_digits(fuel List<int>, deadline i64, count int) bool {
+    if (!take_step(fuel, deadline) || fuel.get(0) < count) { return false }
+    fuel.set(0, fuel.get(0) - count)
+    return true
+}
+
+fn trim_fraction(digits List<int>) int {
+    for (digits.len() > 0 && digits.get(digits.len() - 1) == 0) {
+        digits.remove(digits.len() - 1)
+    }
+    return 0
+}
+
+fn decimal_parts(src List<int>, start int, end int, whole List<int>, fraction List<int>, fuel List<int>, deadline i64) int {
+    var at = start
+    var decimal = false
+    if (!spend_digits(fuel, deadline, end - start)) { return bind_budget() }
+    for (at < end) {
+        let byte_value = src.get(at)
+        if (byte_value == 46) {
+            decimal = true
+        } else {
+            if (byte_value != 95) {
+                if (byte_value < 48 || byte_value > 57) { break }
+                let digit = byte_value - 48
+                if (decimal) {
+                    fraction.push(digit)
+                } else {
+                    if (digit != 0 || whole.len() > 0) { whole.push(digit) }
+                }
+            }
+        }
+        at = at + 1
+    }
+    if (!decimal) { return literal_syntax() }
+    return trim_fraction(fraction)
+}
+
+// Decimal long division by 2 emits the integer bits least-significant first.
+fn whole_bits(digits List<int>, bits List<int>, fuel List<int>, deadline i64) int {
+    var head = 0
+    for (head < digits.len()) {
+        if (!spend_digits(fuel, deadline, digits.len() - head)) { return bind_budget() }
+        var at = head
+        var carry = 0
+        for (at < digits.len()) {
+            let digit = carry * 10 + digits.get(at)
+            digits.set(at, digit / 2)
+            carry = digit % 2
+            at = at + 1
+        }
+        bits.push(carry)
+        if (digits.get(head) == 0) { head = head + 1 }
+    }
+    return 0
+}
+
+// Decimal doubling emits the next fractional bit and keeps the exact tail.
+fn fraction_bit(digits List<int>, fuel List<int>, deadline i64) int {
+    if (!spend_digits(fuel, deadline, digits.len())) { return bind_budget() }
+    var at = digits.len() - 1
+    var carry = 0
+    for (at >= 0) {
+        let digit = digits.get(at) * 2 + carry
+        digits.set(at, digit % 10)
+        carry = digit / 10
+        at = at - 1
+    }
+    trim_fraction(digits)
+    return carry
+}
+
+fn rounded_mantissa(integer List<int>, fraction List<int>, exponent List<int>, precision int, min_normal int, mantissa List<int>, fuel List<int>, deadline i64) int {
+    let last_subnormal = min_normal - precision + 1
+    let zero_guard = last_subnormal - 1
+    var leading = integer.len() - 1
+    var present = integer.len() > 0
+    if (!present) {
+        for (leading >= zero_guard && fraction.len() > 0) {
+            let bit = fraction_bit(fraction, fuel, deadline)
+            if (bit < 0) { return bit }
+            if (bit == 1) {
+                present = true
+                break
+            }
+            leading = leading - 1
+        }
+    }
+    if (!present) { leading = zero_guard - 1 }
+    var position = leading
+    if (position < min_normal) { position = min_normal }
+    var place = position
+    var consumed = 0
+    var guard = 0
+    for (consumed <= precision) {
+        var bit = 0
+        if (place >= 0) {
+            bit = integer.get(place)
+        } else {
+            if (place == leading && integer.len() == 0 && present) {
+                bit = 1
+            } else {
+                if (place < leading && present) {
+                    bit = fraction_bit(fraction, fuel, deadline)
+                    if (bit < 0) { return bit }
+                }
+            }
+        }
+        if (consumed == precision) {
+            guard = bit
+        } else {
+            mantissa.push(bit)
+        }
+        consumed = consumed + 1
+        place = place - 1
+    }
+    var sticky = fraction.len() > 0
+    for (place >= 0 && !sticky) {
+        if (integer.get(place) != 0) { sticky = true }
+        place = place - 1
+    }
+    var carry = guard == 1 && (sticky || mantissa.get(precision - 1) == 1)
+    var at = precision - 1
+    for (at >= 0 && carry) {
+        let bit = mantissa.get(at)
+        mantissa.set(at, 1 - bit)
+        carry = bit == 1
+        at = at - 1
+    }
+    if (carry) {
+        mantissa.set(0, 1)
+        position = position + 1
+    }
+    if (mantissa.get(0) == 1) { exponent.set(0, position + 1 - min_normal) }
+    return 0
+}
+
+fn write_bits(exponent int, exponent_width int, negative bool, mantissa List<int>) Str {
+    var packed = List<int>.new()
+    var sign = 0
+    if (negative) { sign = 1 }
+    packed.push(sign)
+    var bit = 0
+    for (bit < exponent_width) {
+        packed.push(0)
+        bit = bit + 1
+    }
+    var encoded = exponent
+    for (bit > 0) {
+        packed.set(bit, encoded % 2)
+        encoded = encoded / 2
+        bit = bit - 1
+    }
+    bit = 1
+    for (bit < mantissa.len()) {
+        packed.push(mantissa.get(bit))
+        bit = bit + 1
+    }
+    let alphabet = "0123456789abcdef"
+    var text = ""
+    bit = 0
+    for (bit < packed.len()) {
+        let digit = packed.get(bit) * 8 + packed.get(bit + 1) * 4 + packed.get(bit + 2) * 2 + packed.get(bit + 3)
+        text = text + alphabet.slice(digit, digit + 1).clone()
+        bit = bit + 4
+    }
+    return text
+}
+
+// The lexical/type stage checks suffix and width before requesting payload.
+// Rounding is performed once, directly at the target ABI precision.
+pub fn float_payload(src List<int>, start int, end int, negative bool, type_id int, output List<Str>, fuel List<int>, deadline i64) int {
+    var whole = List<int>.new()
+    var fraction = List<int>.new()
+    let parsed = decimal_parts(src, start, end, whole, fraction, fuel, deadline)
+    if (parsed != 0) { return parsed }
+    var integer = List<int>.new()
+    let converted = whole_bits(whole, integer, fuel, deadline)
+    if (converted != 0) { return converted }
+    var precision = 24
+    var min_normal = -126
+    var exponent_width = 8
+    var overflow = 255
+    if (type_id == f64_type()) {
+        precision = 53
+        min_normal = -1022
+        exponent_width = 11
+        overflow = 2047
+    }
+    var exponent = List<int>.new()
+    exponent.push(0)
+    var mantissa = List<int>.new()
+    let rounded = rounded_mantissa(integer, fraction, exponent, precision, min_normal, mantissa, fuel, deadline)
+    if (rounded != 0) { return rounded }
+    if (exponent.get(0) >= overflow) { return literal_range() }
+    let bits = write_bits(exponent.get(0), exponent_width, negative, mantissa)
+    output.push(bits.move)
+    return 0
+}

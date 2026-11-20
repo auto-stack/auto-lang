@@ -53,6 +53,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/numeric_literal.at").into(),
         ),
         (
+            "float_literal.at".into(),
+            include_str!("../../../aac/semantics/float_literal.at").into(),
+        ),
+        (
             "typecheck.at".into(),
             include_str!("../../../aac/semantics/typecheck.at").into(),
         ),

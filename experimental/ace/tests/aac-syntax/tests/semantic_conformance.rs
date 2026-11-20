@@ -582,6 +582,51 @@ fn checks_float_width_and_ties_at_the_overflow_boundary() {
 }
 
 #[test]
+fn publishes_target_width_float_bits_without_double_rounding() {
+    let samples = [
+        "0.0",
+        "-0.0",
+        "0.1",
+        "16777217.0",
+        "1.000000059604644775390625",
+        "1.000000059604644775390626",
+    ];
+    let mut source = String::new();
+    for (index, sample) in samples.iter().enumerate() {
+        source.push_str(&format!(
+            "fn sample{index}() float {{ return {sample}f32 }}\n"
+        ));
+    }
+    let report = type_report(&source);
+    let observed: Vec<_> = report
+        .lines()
+        .filter_map(|line| line.strip_prefix("FLOAT f32 "))
+        .map(|line| line.split_whitespace().next().unwrap().to_owned())
+        .collect();
+    let expected: Vec<_> = samples
+        .iter()
+        .map(|sample| format!("{:08x}", sample.parse::<f32>().unwrap().to_bits()))
+        .collect();
+    assert_eq!(observed, expected, "{report}");
+}
+
+#[test]
+fn preserves_a_double_subnormal_and_signed_underflow() {
+    let subnormal = format!("0.{}5", "0".repeat(323));
+    let underflow = format!("-0.{}1", "0".repeat(323));
+    let expected = [1u64, 1u64 << 63];
+    for (sample, bits) in [(subnormal, expected[0]), (underflow, expected[1])] {
+        assert_eq!(sample.parse::<f64>().unwrap().to_bits(), bits);
+        let source = format!("fn sample() double {{ return {sample}f64 }}");
+        let report = type_report(&source);
+        assert!(
+            report.contains(&format!("FLOAT f64 {bits:016x} ")),
+            "{report}"
+        );
+    }
+}
+
+#[test]
 fn checks_text_concatenation_and_rejects_float_bit_operators() {
     let good = "fn join(a str, b Str) Str { return a + b }";
     assert!(type_report(good).starts_with("aac.type-report/1\n"));

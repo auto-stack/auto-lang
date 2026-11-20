@@ -10,6 +10,7 @@ use app.binding.bind_unresolved
 use app.binding.call_mapping_stride
 use app.binding.decl_category
 use app.binding.decl_name
+use app.binding.take_step
 use app.core_hir.checked_core_atom
 use app.core_hir.hir_owner_error
 use app.core_hir.hir_initialization_error
@@ -28,6 +29,7 @@ use app.foreign_contract.admit_foreign_provider
 use app.foreign_contract.foreign_authority_error
 use app.foreign_contract.foreign_provider_error
 use app.foreign_contract.foreign_signature_error
+use app.float_literal.float_payload
 use app.initializers.initialize_order
 use app.initializers.initializer_cycle
 use app.initializers.initializer_module_order
@@ -38,12 +40,14 @@ use app.initializers.global_symbol
 use app.initializers.global_type_error
 use app.numeric_literal.literal_range
 use app.numeric_literal.literal_syntax
+use app.numeric_literal.negative_source_literal
 use app.semantic_tree.add_module_name
 use app.semantic_tree.append_source
 use app.semantic_tree.build_child_index
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
+use app.semantic_tree.kind
 use app.semantic_tree.parse_semantic_source
 use app.semantic_tree.row_count
 use app.semantic_tree.source_id
@@ -69,6 +73,8 @@ use app.types.type_first
 use app.types.type_kind
 use app.types.type_second
 use app.types.type_stride
+use app.types.f32_type
+use app.types.f64_type
 use std.conv.from_int
 use std.conv.to_int
 use std.env.get
@@ -181,6 +187,32 @@ fn type_report(ast List<int>, bases List<int>, facts List<int>, types List<int>)
         index = index + 1
     }
     return join_rows(result, result.len())
+}
+
+fn collect_literal_facts(pg List<int>, ast List<int>, src List<int>, bases List<int>, facts List<int>, lines List<Str>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    var hex = List<Str>.new()
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) {
+            errors.push(row)
+            return bind_budget()
+        }
+        let lane = facts.get(row)
+        if ((lane == f32_type() || lane == f64_type()) && kind(pg, ast, row) == "affix-num") {
+            let negative = negative_source_literal(src, ast, row)
+            let status = float_payload(src, start_of(ast, row), end_of(ast, row), negative, lane, hex, fuel, deadline)
+            if (status != 0) {
+                errors.push(row)
+                return status
+            }
+            var width = "f32"
+            if (lane == f64_type()) { width = "f64" }
+            let line = "FLOAT " + width + " " + hex.remove(0) + " " + location(ast, row, bases) + "\n"
+            lines.push(line.move)
+        }
+        row = row + 1
+    }
+    return 0
 }
 
 fn globals_report(ast List<int>, src List<int>, bases List<int>, modules List<int>, declarations List<int>, layouts List<int>, accesses List<int>) Str {
@@ -328,7 +360,12 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             }
             return document
         }
-        typed_report = type_report(ast, bases, facts, types) + globals_report(ast, src, bases, modules, declarations, layouts, accesses)
+        var literals = List<Str>.new()
+        let extracted = collect_literal_facts(pg, ast, src, bases, facts, literals, errors, fuel, deadline)
+        if (extracted != 0) {
+            return "ERROR " + diagnostic_name(extracted) + " " + location(ast, errors.get(0), bases) + "\n"
+        }
+        typed_report = type_report(ast, bases, facts, types) + globals_report(ast, src, bases, modules, declarations, layouts, accesses) + join_rows(literals, literals.len())
     }
     return typed_report + binding_report(ast, src, bases, declarations, uses, mappings, initializers) + declaration_report(ast, src, bases, metadata, pending)
 }
