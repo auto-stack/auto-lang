@@ -19,6 +19,12 @@ use app.binding.parameter_decl
 use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
+use app.foreign_contract.foreign_callback_error
+use app.foreign_contract.foreign_callback_lane
+use app.foreign_contract.foreign_handle_error
+use app.foreign_contract.foreign_handle_lane
+use app.foreign_contract.foreign_pending_lane
+use app.foreign_contract.foreign_signature_error
 use app.numeric_literal.numeric_literal_type
 use app.numeric_literal.negative_source_literal
 use app.semantic_tree.child_with_kind
@@ -295,18 +301,39 @@ fn postfix_type(pg List<int>, ast List<int>, links List<int>, src List<int>, dec
     return current
 }
 
+fn foreign_source_type(lane int, types List<int>, fuel List<int>, deadline i64) int {
+    if (foreign_handle_lane(lane)) { return integer_type() }
+    if (lane == foreign_callback_lane()) {
+        var callback_params = List<int>.new()
+        callback_params.push(integer_type())
+        callback_params.push(integer_type())
+        let chain = intern_sequence(types, callback_params, fuel, deadline)
+        if (chain < 0) { return bind_budget() }
+        let callback = intern_type(types, function_kind(), integer_type(), chain, fuel, deadline)
+        if (callback < 0) { return bind_budget() }
+        return callback
+    }
+    return lane
+}
+
 fn foreign_callable(external List<int>, at int, types List<int>, fuel List<int>, deadline i64) int {
     var lanes = List<int>.new()
     let count = external.get(at + 1)
     var index = 0
     for (index < count) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
-        lanes.push(external.get(at + index + 2))
+        let lane = foreign_source_type(external.get(at + index + 2), types, fuel, deadline)
+        if (lane == foreign_pending_lane()) { return 0 }
+        if (lane < 0) { return lane }
+        lanes.push(lane)
         index = index + 1
     }
     let sequence = intern_sequence(types, lanes, fuel, deadline)
     if (sequence < 0) { return bind_budget() }
-    let callable = intern_type(types, function_kind(), external.get(at), sequence, fuel, deadline)
+    let result = foreign_source_type(external.get(at), types, fuel, deadline)
+    if (result == foreign_pending_lane()) { return 0 }
+    if (result < 0) { return result }
+    let callable = intern_type(types, function_kind(), result, sequence, fuel, deadline)
     if (callable < 0) { return bind_budget() }
     return callable
 }
@@ -347,6 +374,8 @@ fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarati
         if (text_length_receiver(pg, ast, links, src, facts, row) >= 0) { return integer_type() }
         let callee = direct_callee(pg, ast, links, row)
         if (callee < 0) { return 0 }
+        let foreign = external_signature(uses.get(callee))
+        if (foreign >= 0 && facts.get(callee) == 0) { return foreign_signature_error() }
         let postfix = call_postfix(pg, ast, links, row)
         let callable = facts.get(postfix)
         if (callable == 0) { return 0 }
@@ -420,6 +449,102 @@ fn simple_name(pg List<int>, ast List<int>, links List<int>, start int) int {
         row = child
     }
     return -1
+}
+
+fn foreign_call(pg List<int>, ast List<int>, links List<int>, uses List<int>, row int) int {
+    let name = direct_callee(pg, ast, links, row)
+    if (name < 0) { return -1 }
+    return external_signature(uses.get(name))
+}
+
+// Handles use an Int source lane. Keep the credential alongside the regular
+// type facts so a scalar bit pattern cannot satisfy an opaque provider lane.
+fn handle_origin(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, external List<int>, handles List<int>, row int) int {
+    let category = decl_category(declarations, row)
+    if (category == local_let_decl()) {
+        let initializer = child_with_role(pg, ast, links, row, "value")
+        if (initializer >= 0) { return handles.get(initializer) }
+        return 0
+    }
+    let node_kind = kind(pg, ast, row)
+    if (node_kind == "ident") {
+        let target = uses.get(row)
+        if (target >= 0 && decl_category(declarations, target) == local_let_decl()) { return handles.get(target) }
+        return 0
+    }
+    if (node_kind == "call") {
+        let at = foreign_call(pg, ast, links, uses, row)
+        if (at >= 0 && foreign_handle_lane(external.get(at))) { return external.get(at) }
+        return 0
+    }
+    if (value_wrapper(node_kind)) {
+        let child = first_child(links, row)
+        if (child >= 0 && next_sibling(links, child) < 0) { return handles.get(child) }
+    }
+    return 0
+}
+
+fn validate_foreign_resources(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, external List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    if (external.len() == 0) { return 0 }
+    let rows = row_count(ast)
+    var handles = List<int>.new()
+    var row = 0
+    for (row < rows) {
+        handles.push(0)
+        row = row + 1
+    }
+    var changed = true
+    for (changed) {
+        changed = false
+        row = rows - 1
+        for (row >= 0) {
+            if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+            if (handles.get(row) == 0) {
+                let origin = handle_origin(pg, ast, links, declarations, uses, external, handles, row)
+                if (origin != 0) {
+                    handles.set(row, origin)
+                    changed = true
+                }
+            }
+            row = row - 1
+        }
+    }
+    row = 0
+    for (row < rows) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        if (kind(pg, ast, row) == "call") {
+            let at = foreign_call(pg, ast, links, uses, row)
+            if (at >= 0) {
+                let arguments = call_args(pg, ast, links, row)
+                var index = 0
+                var part = first_child(links, arguments)
+                for (part >= 0) {
+                    if (!take_step(fuel, deadline)) { return failure(errors, part, bind_budget()) }
+                    var argument = -1
+                    let shape = kind(pg, ast, part)
+                    if (shape == "arg") { argument = part }
+                    if (shape == "arg-tail") { argument = child_with_kind(pg, ast, links, part, "arg") }
+                    if (argument >= 0) {
+                        let value = first_child(links, argument)
+                        let lane = external.get(at + index + 2)
+                        if (foreign_handle_lane(lane) && handles.get(value) != lane) {
+                            return failure(errors, value, foreign_handle_error())
+                        }
+                        if (lane == foreign_callback_lane()) {
+                            let name = simple_name(pg, ast, links, value)
+                            if (name < 0 || uses.get(name) < 0 || decl_category(declarations, uses.get(name)) != function_decl()) {
+                                return failure(errors, value, foreign_callback_error())
+                            }
+                        }
+                        index = index + 1
+                    }
+                    part = next_sibling(links, part)
+                }
+            }
+        }
+        row = row + 1
+    }
+    return 0
 }
 
 fn seed_call_types(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, errors List<int>, fuel List<int>, deadline i64) int {
@@ -662,5 +787,7 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
     }
     let methods = map_methods(pg, ast, links, src, declarations, uses, mappings, errors, fuel, deadline)
     if (methods != 0) { return methods }
-    return validate(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+    let checked = validate(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+    if (checked != 0) { return checked }
+    return validate_foreign_resources(pg, ast, links, declarations, uses, external, errors, fuel, deadline)
 }

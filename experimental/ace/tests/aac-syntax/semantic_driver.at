@@ -29,6 +29,8 @@ use app.declarations.deferred_stride
 use app.declarations.pending_foreign
 use app.foreign_contract.admit_foreign_provider
 use app.foreign_contract.foreign_authority_error
+use app.foreign_contract.foreign_callback_error
+use app.foreign_contract.foreign_handle_error
 use app.foreign_contract.foreign_provider_error
 use app.foreign_contract.foreign_signature_error
 use app.float_literal.float_payload
@@ -118,6 +120,8 @@ fn diagnostic_name(code int) Str {
     if (code == type_empty_list()) { return "type.empty-list" }
     if (code == foreign_authority_error()) { return "foreign.authority" }
     if (code == foreign_provider_error()) { return "foreign.provider" }
+    if (code == foreign_handle_error()) { return "foreign.handle-owner" }
+    if (code == foreign_callback_error()) { return "foreign.callback-target" }
     if (code == foreign_signature_error()) { return "foreign.signature" }
     if (code == literal_range()) { return "type.literal-range" }
     if (code == literal_syntax()) { return "type.literal-syntax" }
@@ -267,9 +271,11 @@ fn admit_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, ba
         let row = pending.get(at + 1)
         let language = child_with_role(pg, ast, links, row, "lang")
         let provider = child_with_role(pg, ast, links, row, "provider")
-        if (pending.get(at) != pending_foreign() || language < 0 || provider < 0 || spelling(src, ast, language) != "rs") {
+        if (pending.get(at) != pending_foreign() || language < 0 || provider < 0) {
             return "pending"
         }
+        let language_name = spelling(src, ast, language)
+        if (language_name != "rs" && language_name != "c") { return "pending" }
         at = at + deferred_stride()
     }
     let path = get("AAC1047_FOREIGN_PATH")
@@ -286,7 +292,8 @@ fn admit_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, ba
                 let row = pending.get(at + 1)
                 let token = child_with_role(pg, ast, links, row, "provider")
                 let provider = spelling(src, ast, token)
-                let status = admit_foreign_provider(bytes, authority.clone(), provider, source_id(ast, row), names, signatures, fuel, deadline)
+                let language = spelling(src, ast, child_with_role(pg, ast, links, row, "lang"))
+                let status = admit_foreign_provider(bytes, authority.clone(), provider, language, source_id(ast, row), names, signatures, fuel, deadline)
                 if (status != 0) {
                     return "ERROR " + diagnostic_name(status) + " " + location(ast, token, bases) + "\n"
                 }

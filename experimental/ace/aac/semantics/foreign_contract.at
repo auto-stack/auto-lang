@@ -19,6 +19,11 @@ use std.conv.from_int
 pub fn foreign_authority_error() int { return -37 }
 pub fn foreign_signature_error() int { return -38 }
 pub fn foreign_provider_error() int { return -39 }
+pub fn foreign_handle_error() int { return -44 }
+pub fn foreign_callback_error() int { return -45 }
+pub fn foreign_callback_lane() int { return -1 }
+pub fn foreign_pending_lane() int { return -2 }
+pub fn foreign_handle_lane(lane int) bool { return lane <= -1000 }
 
 fn language_lane(lane Str) int {
     if (lane == "I32") { return integer_type() }
@@ -32,17 +37,29 @@ fn language_lane(lane Str) int {
     return 0
 }
 
-fn lane_at(page List<int>, path Str) int {
-    return language_lane(foreign_field_text(page, path))
+fn lane_at(page List<int>, path Str, provider Str, owner int, resource bool) int {
+    let scalar = language_lane(foreign_field_text(page, path.clone()))
+    if (scalar > 0) {
+        if (resource && (scalar == i64_type() || scalar == u64_type())) { return integer_type() }
+        return scalar
+    }
+    if (!resource) { return 0 }
+    let handle = path.clone() + ".Handle.provider"
+    if (foreign_field_kind(page, handle.clone()) == 4) {
+        if (foreign_field_text(page, handle) != provider) { return foreign_pending_lane() }
+        return -1000 - owner
+    }
+    if (foreign_field_kind(page, path.clone() + ".Callback") == 6) { return foreign_callback_lane() }
+    return foreign_pending_lane()
 }
 
-fn parameter_lanes(page List<int>, path Str, out List<int>, fuel List<int>, deadline i64) int {
+fn parameter_lanes(page List<int>, path Str, provider Str, owner int, resource bool, out List<int>, fuel List<int>, deadline i64) int {
     if (foreign_field_kind(page, path.clone()) != 5) { return foreign_signature_error() }
     var at = 0
     for (take_step(fuel, deadline)) {
         let lane_path = path.clone() + "." + from_int(at)
         if (foreign_field_kind(page, lane_path.clone()) == 0) { return 0 }
-        let code = lane_at(page, lane_path)
+        let code = lane_at(page, lane_path, provider.clone(), owner, resource)
         if (code == 0) { return foreign_signature_error() }
         out.push(code)
         at = at + 1
@@ -60,10 +77,10 @@ fn foreign_page_status(bytes List<int>, authority Str, fuel List<int>, deadline 
     return 0
 }
 
-fn foreign_result(page List<int>, form Str, pure bool, resource bool, fn_path Str) int {
+fn foreign_result(page List<int>, form Str, pure bool, resource bool, fn_path Str, provider Str, owner int) int {
     if (pure) {
         if (foreign_field_kind(page, fn_path + ".error_model") != 1) { return foreign_signature_error() }
-        return lane_at(page, form + ".Pure.ret")
+        return lane_at(page, form + ".Pure.ret", provider, owner, resource)
     }
     let err = fn_path + ".error_model"
     if (foreign_field_text(page, err.clone() + ".kind") != "status-i32" || foreign_field_kind(page, err + ".codes.0") != 5) {
@@ -76,40 +93,41 @@ fn foreign_result(page List<int>, form Str, pure bool, resource bool, fn_path St
     if (resource) {
         let out = fallible + ".out"
         if (foreign_field_kind(page, out.clone()) == 1) { return unit_type() }
-        return lane_at(page, out)
+        return lane_at(page, out, provider, owner, resource)
     }
     let outs = fallible + ".outs"
     if (foreign_field_kind(page, outs.clone()) != 5 || foreign_field_kind(page, outs.clone() + ".1") != 0) {
         return foreign_signature_error()
     }
     if (foreign_field_kind(page, outs.clone() + ".0") == 0) { return unit_type() }
-    return lane_at(page, outs + ".0")
+    return lane_at(page, outs + ".0", provider, owner, resource)
 }
 
 // For the scalar and noescape text-view contract, the source callable has
 // precisely the admitted parameter lanes and success-result lane. The full
 // original declaration remains the foreign consumer's authority.
-fn project_signature(page List<int>, entry Str, signature List<int>, fuel List<int>, deadline i64) int {
+fn project_signature(page List<int>, entry Str, provider Str, owner int, signature List<int>, fuel List<int>, deadline i64) int {
     let fn_path = entry + ".function"
     let resource_path = fn_path.clone() + ".resource"
     let resource = foreign_field_kind(page, resource_path.clone()) == 6
     var form = fn_path.clone() + ".form"
     if (resource) {
         if (foreign_field_text(page, resource_path.clone() + ".format") != "autoabi.contract.resource-sig/1") { return foreign_signature_error() }
+        if (foreign_field_true(page, resource_path.clone() + ".typed_peer")) { return foreign_signature_error() }
         if (!foreign_field_true(page, resource_path.clone() + ".noescape")) { return foreign_signature_error() }
         form = resource_path.clone() + ".form"
     }
     let pure = foreign_field_kind(page, form.clone() + ".Pure") == 6
     if (!pure && foreign_field_kind(page, form.clone() + ".Fallible") != 6) { return foreign_signature_error() }
-    let result = foreign_result(page, form.clone(), pure, resource, fn_path.clone())
-    if (result <= 0) { return foreign_signature_error() }
+    let result = foreign_result(page, form.clone(), pure, resource, fn_path.clone(), provider.clone(), owner)
+    if (result == 0 || result == foreign_signature_error()) { return foreign_signature_error() }
     var params = form + ".Fallible.params"
     if (pure) { params = fn_path.clone() + ".form.Pure.params" }
     if (resource) { params = resource_path + ".params" }
     let start = signature.len()
     signature.push(result)
     signature.push(0)
-    let status = parameter_lanes(page, params, signature, fuel, deadline)
+    let status = parameter_lanes(page, params, provider, owner, resource, signature, fuel, deadline)
     if (status != 0) { return status }
     signature.set(start + 1, signature.len() - start - 2)
     return 0
@@ -117,9 +135,20 @@ fn project_signature(page List<int>, entry Str, signature List<int>, fuel List<i
 
 // Entries: module identity, signature offset, byte count, source name.
 // Signatures: result type, parameter count, parameter types in slot order.
-fn project_provider(page List<int>, provider Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+fn provider_language(page List<int>, entry Str, provider Str, language Str) bool {
+    let logical = foreign_field_text(page, entry + ".logical")
+    var family = "rust/"
+    if (language == "c") { family = "c/" }
+    let prefix = family + provider + "/"
+    if (logical.len() <= prefix.len()) { return false }
+    let matched = logical.slice(0, prefix.len()).clone() == prefix
+    return matched
+}
+
+fn project_provider(page List<int>, provider Str, language Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
     if (page.len() == 0 || page.get(0) != 91) { return foreign_authority_error() }
     var index = 0
+    var owner = -1
     var found = false
     for (take_step(fuel, deadline)) {
         let entry = from_int(index)
@@ -127,11 +156,12 @@ fn project_provider(page List<int>, provider Str, module_id int, names List<int>
             if (found) { return 0 }
             return foreign_provider_error()
         }
-        if (foreign_field_text(page, entry.clone() + ".provider") == provider) {
+        if (foreign_field_text(page, entry.clone() + ".provider") == provider && provider_language(page, entry.clone(), provider.clone(), language.clone())) {
             let name = str_to_bytes(foreign_field_text(page, entry.clone() + ".name"))
             if (name.len() == 0) { return foreign_signature_error() }
             let start = signatures.len()
-            let status = project_signature(page, entry, signatures, fuel, deadline)
+            if (owner < 0) { owner = index }
+            let status = project_signature(page, entry, provider.clone(), owner, signatures, fuel, deadline)
             if (status != 0) { return status }
             names.push(module_id)
             names.push(start)
@@ -148,8 +178,8 @@ fn project_provider(page List<int>, provider Str, module_id int, names List<int>
     return bind_budget()
 }
 
-pub fn admit_foreign_provider(bytes List<int>, authority Str, provider Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+pub fn admit_foreign_provider(bytes List<int>, authority Str, provider Str, language Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
     let trusted = foreign_page_status(bytes, authority, fuel, deadline)
     if (trusted != 0) { return trusted }
-    return project_provider(bytes, provider, module_id, names, signatures, fuel, deadline)
+    return project_provider(bytes, provider, language, module_id, names, signatures, fuel, deadline)
 }
