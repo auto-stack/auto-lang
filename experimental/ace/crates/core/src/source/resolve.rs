@@ -17111,6 +17111,9 @@ F:{d}
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
                 spans: Vec<Span>,
+                /// PLAN-105 T-02：每个实参是否带 `.move` 标记（AST 的
+                /// `Arg::MovePos`——机器的槽位不承载该标记，需显式携带）。
+                moved_flags: Vec<bool>,
                 node_span: Span,
                 to_word: Option<TypeWord>,
             },
@@ -17191,6 +17194,7 @@ F:{d}
                         let mut arg_slots = Vec::with_capacity(args.len());
                         let mut names = Vec::with_capacity(args.len());
                         let mut spans = Vec::with_capacity(args.len());
+                        let mut moved_flags: Vec<bool> = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 2);
                         subtasks.push(Task::Visit {
                             node: callee,
@@ -17311,6 +17315,7 @@ F:{d}
                         let mut arg_slots = Vec::with_capacity(args.len());
                         let mut names = Vec::with_capacity(args.len());
                         let mut spans = Vec::with_capacity(args.len());
+                        let mut moved_flags: Vec<bool> = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 2);
                         // `.to(...)` takes a single bare type word, not a
                         // value expression; keep it for MethodOut
@@ -17322,6 +17327,7 @@ F:{d}
                             match a {
                                 Arg::Pos(e) => {
                                     names.push(None);
+                                    moved_flags.push(false);
                                     spans.push(e.span);
                                     if let ExprKind::TypeWordArg(w) = &e.kind {
                                         to_word = Some(*w);
@@ -17331,6 +17337,7 @@ F:{d}
                                 }
                                 Arg::MovePos(e) => {
                                     names.push(None);
+                                    moved_flags.push(true);
                                     spans.push(e.span);
                                     subtasks.push(Task::Visit { node: e, slot: sl });
                                 }
@@ -17339,6 +17346,7 @@ F:{d}
                                         name: name.name.clone(),
                                         span: name.span,
                                     }));
+                                    moved_flags.push(false);
                                     spans.push(*span);
                                     subtasks.push(Task::Visit {
                                         node: value,
@@ -17356,6 +17364,7 @@ F:{d}
                             recv_slot,
                             arg_slots,
                             names,
+                            moved_flags,
                             spans,
                             node_span: node.span,
                             to_word,
@@ -18452,9 +18461,11 @@ F:{d}
                         // PLAN-782: in the combination profile the
                         // first-class move wrapper IS the argument value
                         // (CallBinding.moved stays text-profile only).
-                        let moved = matches!(value.kind, RExprKind::Move { .. })
-                            && !self.profile.is_record();
-                        let value = if moved {
+                        // PLAN-105 T-02（U03 真语料 013）：collections 域也要保留
+                        // `.move` 实参标记——列表 `push(<整局部>)` 的所有权转移靠它
+                        // （此前只有文本域保留，collections 被归一成 moved=false）。
+                                                let moved = matches!(value.kind, RExprKind::Move { .. })
+                            && (self.profile.is_text() || self.profile.is_collections()); let value = if moved {
                             match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
                                 RExprKind::Move { inner } => *inner,
                                 _ => unreachable!("checked above"),
@@ -18518,6 +18529,7 @@ F:{d}
                     arg_slots,
                     names,
                     spans,
+                    moved_flags,
                     node_span,
                     to_word,
                 } => {
@@ -18528,8 +18540,19 @@ F:{d}
                         // PLAN-782: in the combination profile the
                         // first-class move wrapper IS the argument value
                         // (CallBinding.moved stays text-profile only).
-                        let moved = matches!(value.kind, RExprKind::Move { .. })
-                            && !self.profile.is_record();
+                        // PLAN-105 T-02（U03 真语料 013）：collections 域也要保留
+                        // `.move` 实参标记——列表 `push(<整局部>)` 的所有权转移靠它
+                        // （此前只有文本域保留，collections 被归一成 moved=false）。
+                        let flagged = moved_flags.get(i).copied().unwrap_or(false);
+                        let moved = (flagged || matches!(value.kind, RExprKind::Move { .. }))
+                            && (self.profile.is_text()
+                                || self.profile.is_collections()
+                                || matches!(
+                                    self.profile,
+                                    SourceProfile::AgeComponent
+                                        | SourceProfile::AgePackage
+                                        | SourceProfile::AgeH0
+                                ));
                         let value = if moved {
                             match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
                                 RExprKind::Move { inner } => *inner,
