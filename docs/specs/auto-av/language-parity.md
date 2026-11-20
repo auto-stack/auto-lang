@@ -310,3 +310,13 @@ after`（d01 静默失效债闭） | PASS |
 带借用输入的生成器由直接 for-in 消费。首次取项时，挂起前的公用前段经普通受检形参读取或写回调用者的 owner。状态只保存前段留下的标量和拥有值。仍在挂起后使用借用时报告 bind/source.generator-borrow-param。返回或存放带借用的流报告 bind/source.generator-borrow-escape。
 
 提前 break、正常耗尽和显式 close 会终结流。未启动即 close 不执行生成器体；悬挂 finally 从内到外执行，每个作用域一次。关闭释放后的终态在捕获关闭错误后仍可见，后续 close 无副作用、next 为 None。宿主取消与程序错误的分类沿用普通 AV 合同。父端分别观测取消、两项后的资源释放和关闭错误恢复。接口和复跑见 [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md)。
+
+## PLAN-1088 增量（AVP-10，泛型、spec 与方法决议）
+
+`IF-AV-PARITY-GENERIC` 走 `ac-av/language-source-run-v1` 的 `d_main` 入口。普通函数和方法从实际参数、显式类型与 const 实参、已知返回上下文产生实例需求。相同声明及替换共用实例；包的声明身份携带包名、锁定版本和模块。函数体更新保持逻辑实例身份，签名更新后按新签名重新检查调用，恢复校验产物所属闭包。
+
+普通 AV 通过实际参数或预期类型求解依赖的记录和枚举类型。类型别名在类型实参位置展开，记录保名义身份。枚举保构造、分派与方法的具体身份。普通包支持跨模块的泛型函数、记录和方法实例。泛型参数的 spec 约束使用显式遵从及其传递闭包；具体记录支持关联类型和默认体。普通单模块的完整具体 spec 参数通过已核验记录见证分派。显式实现优先于默认体，同层默认体歧义具名拒绝，导出记录上的扩展方法随模块可见性绑定。
+
+`List<T>.to_array()` 复制元素和资源；`filter` 按调用时的元素顺序调用谓词，结果独立拥有保留元素。普通块闭包可声明返回类型。旧 spec 工具用例所需的字符串操作走受检 AV，Unicode 大写转换通过 `av.text.case/1` 准入，并计入执行燃料和槽预算。字节码标记为 `STR_UPPER = 0x53`。
+
+公共输入、检查和原始输出见 [泛型作者目录](../../../crates/auto-lang/test/cases/language/generics) 与 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。旧泛型枚举 28.005 的 VM 检查保留数字显示；普通 AV 按 PLAN-474 的文本显示判断 `true` 和 `false`。PLAN-1092 持有 `#[with]` 源码拼写并复用本接口的约束见证。

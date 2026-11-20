@@ -141,3 +141,11 @@ B 开工前须核 M2A-08 正式收据（本文件落盘 + 963 归档）；由 98
 ## PLAN-1081 增量（2026-11-20，函数类型面）
 
 Auto 面 `fn(T..)R` 类型位与函数值全链打通：形参 `f fn(int)int` 接收命名函数项或闭包值（interned `ClosureFnType` 按值等价判定）；签名不符 = `verify/source.type-mismatch` 具名拒（不静默默认）；`fn maker() fn(int)int { return twice }` 返回槽成立。事实与 oracles 见 `docs/specs/auto-av/language-parity.md` §6.5。
+
+## PLAN-1088 增量（普通 Auto AV 面）
+
+普通 AV 在已绑定实参和返回上下文处求解实例，复用既有替换与具体签名，经受检 HIR、MIR 和 ABC 执行。局部 `Box<int>`、模板内 `Box<T>`、显式别名、泛型 enum 载荷、泛型方法及跨模块记录和方法实例已有公共 AV 检查。普通 AV 的未知参数化类型给 `source.undefined`，未满足声明约束给 `source.instances-bound`，类型和值实参的数量、次序和域按对应声明检查。D-963-C7 的普通 AV 局部注解路径已有具名正负控。
+
+遵从闭包将直接和继承 spec 见证送入约束判定。关联类型的绑定用于具体记录签名与默认体；普通单模块可用具备完整具体签名的 spec 分派值。动态分派沿核验后的名义 variant 和方法执行。相同替换的包实例覆盖冷编、体变更、签名变化、版本漂移及跨版本恢复拒绝。D-963-C3 的源码属性拼写由 PLAN-1092 接入现有边界。
+
+验收、原旧义务与复现命令见 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。

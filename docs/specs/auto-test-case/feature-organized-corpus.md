@@ -102,3 +102,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 [generators/yield-close.case.ad](../../../crates/auto-lang/test/cases/language/generators/yield-close.case.ad) 是生成器挂起、取项、耗尽和关闭的活跃作者。四份旧 VM 文档的源码字节、case/check、输出和末尾换行通过 legacy-map.tsv 保留。旧 VM 生产发现和包装读者按映射读 canonical 文档，原文档供历史核对。原 VM 检查与新增间接返回的旧参考均应用阶段 #ignore。AV 实际检查按运行目标选择并独立比较。
 
 三项父端资源观察重用同一 AutoDown 作者的源。实验分别从 AV 记录早停后的 Str/List/Variant、挂起期间的宿主取消以及关闭错误捕获后的释放。选择、oracle 与来源反控见 [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md)。
+
+## PLAN-1088 增量（generics 家族）
+
+泛型、spec 分派与方法决议的活跃作者是 `language/generics/` 下的 `spec-methods.case.ad`、`list-methods.case.ad`、`spec-dispatch.case.ad` 和 `record-templates.case.ad`。主承接七份旧 VM 文档，附加承接泛型枚举 28.005，共八条路径依原 Case/check ID 映射至 canonical 作者。m08/m09 使用 ownership 家族既有条目。
+
+同一 Auto 源下按阶段选择真实 AV 检查，原 VM oracle 随 `#ignore` 检查保留。旧路径由 `CanonicalVmCases` 通过迁移数据解析到 canonical 作者。可执行控制验证源码身份漂移、AV oracle 错误、重复活跃 Case、无有效 AV 检查及未选目标的工具隔离。实际结果及输入身份见 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。
