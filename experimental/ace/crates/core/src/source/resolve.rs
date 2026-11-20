@@ -10630,7 +10630,12 @@ F:{d}
             }
         }
 
-        let res_local = if is_expr_mode {
+        // An effect-valued match executes the selected arm but has no
+        // storage slot: Unit is a result, never a local value in AV MIR.
+        let unit_result = self.profile.is_auto_language()
+            && is_expr_mode
+            && inferred_vt == Some(VT::Unit);
+        let res_local = if is_expr_mode && !unit_result {
             let rv = inferred_vt.unwrap_or(VT::Unit);
             let rl = self.agg_temp("is_res", rv, true, span);
             let dummy = self.dummy_of(rv, span);
@@ -10705,6 +10710,24 @@ F:{d}
                         local: rl,
                         path: Vec::new(),
                         value: ev,
+                        span: ca.span,
+                    });
+                }
+            }
+            if unit_result {
+                if let Some(value) = ca.expr_val.take() {
+                    if value.vt != VT::Unit {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "is arm type mismatch: expected unit, found {}",
+                                value.vt.as_str()
+                            ),
+                            value.span,
+                        );
+                    }
+                    ca.block.stmts.push(RStmt::ExprStmt {
+                        value,
                         span: ca.span,
                     });
                 }
@@ -10827,6 +10850,15 @@ F:{d}
             vt: rv,
             kind: RExprKind::ReadLocal(rl),
         });
+        let expr_out = if unit_result {
+            Some(ResolvedExpr {
+                span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            })
+        } else {
+            expr_out
+        };
         (out_stmts, expr_out)
     }
 

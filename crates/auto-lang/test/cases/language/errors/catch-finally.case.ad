@@ -1,0 +1,484 @@
+# Language errors and control flow
+
+Ordinary Auto sources through the shared AV language entry. The VM checks retain their original oracles and conditions.
+
+## Case: finally-return-order
+id: "av.parity.1087.finally-return-order"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Trace { n int }
+fn inner(mut t Trace) int {
+ try { return 19 } finally { t.n = t.n * 10 + 1 }
+}
+fn main() int {
+ var t = Trace(0)
+ let a = inner(t.mut)
+ try { if a != 19 { return 0 } } finally { t.n = t.n * 10 + 2 }
+ if t.n == 12 { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: uncaught-keeps-message
+id: "av.parity.1087.uncaught-keeps-message"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn inner() int { fail("parity-error-xyz") }
+fn main() int { return inner() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "parity-error-xyz"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-04-control-flow-007-asn-upper
+id: "legacy.04_control_flow.007_asn_upper"
+entry-mode: "program"
+
+### Auto
+path: "asn_upper.at"
+```auto
+var a = 1
+if true { a = 2 }
+a
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+2
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 2
+
+## Case: legacy-04-control-flow-008-is-or-pattern
+id: "legacy.04_control_flow.008_is_or_pattern"
+entry-mode: "program"
+
+### Auto
+path: "is_or_pattern.at"
+```auto
+var n = 2
+is n {
+    1 | 2 | 3 -> print("small")
+    5 -> print("five")
+    else -> print("other")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+small
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+small
+```
+
+## Case: legacy-04-control-flow-009-is-or-groups
+id: "legacy.04_control_flow.009_is_or_groups"
+entry-mode: "program"
+
+### Auto
+path: "is_or_groups.at"
+```auto
+var n = 3
+is n {
+    1 | 2 -> print("low")
+    3 | 4 -> print("high")
+    else -> print("other")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+high
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+high
+```
+
+## Case: legacy-04-control-flow-011-as-float-to-int
+id: "legacy.04_control_flow.011_as_float_to_int"
+entry-mode: "program"
+
+### Auto
+path: "as_float_to_int.at"
+```auto
+var x = 3
+print(x.as(float).as(int))
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+```
+
+## Case: legacy-04-control-flow-012-to-str
+id: "legacy.04_control_flow.012_to_str"
+entry-mode: "program"
+
+### Auto
+path: "to_str.at"
+```auto
+var x = 42
+print(x.to(str))
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: legacy-05-loops-001-for-range
+id: "legacy.05_loops.001_for_range"
+entry-mode: "program"
+
+### Auto
+path: "for_range.at"
+```auto
+var sum = 0
+for i in 0..10 {
+  sum = sum + i
+}
+sum
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+45
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 45
+
+## Case: legacy-05-loops-002-range-inclusive
+id: "legacy.05_loops.002_range_inclusive"
+entry-mode: "program"
+
+### Auto
+path: "range_inclusive.at"
+```auto
+var sum = 0
+for i in 0..=10 {
+  sum = sum + i
+}
+sum
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+55
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 55
+
+## Case: legacy-05-loops-005-loop-keyword
+id: "legacy.05_loops.005_loop_keyword"
+entry-mode: "program"
+
+### Auto
+path: "loop_keyword.at"
+```auto
+fn main() {
+    var count = 0
+    loop {
+        count += 1
+        if count >= 3 {
+            break
+        }
+    }
+    print(count)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+3
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3
+```
+
+## Case: legacy-16-option-result-009-propagate-ok
+id: "legacy.16_option_result.009_propagate_ok"
+entry-mode: "program"
+
+### Auto
+path: "propagate_ok.at"
+```auto
+let x = Ok(100)
+let y = x.?
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+100
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 100
+
+## Case: legacy-16-option-result-010-propagate-err
+id: "legacy.16_option_result.010_propagate_err"
+entry-mode: "program"
+
+### Auto
+path: "propagate_err.at"
+```auto
+let x = Err("error")
+let y = x.?
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+4000000
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "error"
+
+## Case: legacy-16-option-result-011-coalesce-some
+id: "legacy.16_option_result.011_coalesce_some"
+entry-mode: "program"
+
+### Auto
+path: "coalesce_some.at"
+```auto
+let x = Some(42)
+let y = x ?? 0
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+42
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-16-option-result-012-coalesce-none
+id: "legacy.16_option_result.012_coalesce_none"
+entry-mode: "program"
+
+### Auto
+path: "coalesce_none.at"
+```auto
+let x = None
+let y = x ?? 99
+y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+99
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 99
+
+## Case: legacy-16-option-result-020-result-propagate
+id: "legacy.16_option_result.020_result_propagate"
+entry-mode: "program"
+
+### Auto
+path: "result_propagate.at"
+```auto
+fn try_parse(s str) !int {
+    if s == "" {
+        return Err("empty string")
+    }
+    Ok(42)
+}
+
+fn chain() !int {
+    let a = try_parse("hello").?
+    let b = try_parse("").?
+    Ok(a + b)
+}
+
+let result = chain()
+is result {
+    Ok(n) -> print(n)
+    Err(e) -> print("propagated error")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+propagated error
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+propagated error
+```
