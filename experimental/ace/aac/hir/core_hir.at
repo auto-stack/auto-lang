@@ -205,7 +205,7 @@ fn terminal_statement(pg List<int>, ast List<int>, links List<int>, body int) in
     return result
 }
 
-fn lower_blocks(pg List<int>, ast List<int>, links List<int>, expression_ids List<int>, body int, owner int, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_blocks(pg List<int>, ast List<int>, links List<int>, expression_ids List<int>, body int, owner int, infer_return bool, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var pending = List<int>.new()
     pending.push(body)
     for (pending.len() > 0) {
@@ -218,7 +218,7 @@ fn lower_blocks(pg List<int>, ast List<int>, links List<int>, expression_ids Lis
         var yes = -1
         var no = -1
         var value = -1
-        if (form == "return-stmt") {
+        if (form == "return-stmt" || (form == "expr-stmt" && infer_return && block == body)) {
             let result = child_with_role(pg, ast, links, statement, "value")
             if (result < 0 || expression_ids.get(result) < 0) { return failed(errors, statement, hir_unsupported()) }
             value = expression_ids.get(result)
@@ -256,7 +256,8 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
         if (category == function_decl()) {
             let body = child_with_role(pg, ast, links, row, "body")
             if (body < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
-            let result = lower_blocks(pg, ast, links, expressions, body, row, blocks, fuel, deadline, errors)
+            let infer_return = child_with_role(pg, ast, links, row, "ty") < 0
+            let result = lower_blocks(pg, ast, links, expressions, body, row, infer_return, blocks, fuel, deadline, errors)
             if (result != 0) { return result }
             defs.push(row)
             defs.push(facts.get(row))

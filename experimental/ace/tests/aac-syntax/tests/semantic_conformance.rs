@@ -570,3 +570,35 @@ fn preserves_nested_payload_types_through_public_fields_and_calls() {
         )
     );
 }
+
+#[test]
+fn completes_implicit_signatures_and_rejects_a_conflicting_call() {
+    let document = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/calls/binding-pipeline.case.ad"
+    );
+    let section = document.split_once("## Case: untyped-old-form").unwrap().1;
+    let source = section.split_once("```auto").unwrap().1.split_once("```").unwrap().0;
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto source HIR");
+    let bundle = ace_core::descriptor::bind(ace_core::descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify(bundle).expect("reference verifies inferred signatures");
+    let bad = "fn same(a) { return a }\nfn main() int { return same(3) + same(false) }";
+    let start = bad.find("false").unwrap();
+    assert_eq!(
+        type_report(bad),
+        format!("ERROR type.argument 0 {start}..{}\n", start + 5)
+    );
+}
+
+#[test]
+fn normalizes_forward_type_aliases_and_rejects_a_cycle() {
+    let good = "type Count = Width\nfn pass(x Count) int { return x }\ntype Width = int";
+    let report = type_report(good);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let bad = "type Count = Width\ntype Width = Count\nfn pass(x Count) int { return x }";
+    let start = bad.find("Width").unwrap();
+    assert_eq!(
+        type_report(bad),
+        format!("ERROR type.unresolved 0 {start}..{}\n", start + "Width".len())
+    );
+}

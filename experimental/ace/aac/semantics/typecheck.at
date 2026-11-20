@@ -14,6 +14,7 @@ use app.binding.local_let_decl
 use app.binding.local_var_decl
 use app.binding.method_decl
 use app.binding.map_call
+use app.binding.parameter_decl
 use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
@@ -28,6 +29,7 @@ use app.semantic_tree.parent
 use app.semantic_tree.row_count
 use app.semantic_tree.spelling
 use app.semantic_tree.start_of
+use app.types.alias_target
 use app.types.annotation_types
 use app.types.boolean_type
 use app.types.char_type
@@ -302,6 +304,95 @@ fn enclosing_function(ast List<int>, declarations List<int>, row int) int {
     return -1
 }
 
+fn tail_expression(pg List<int>, ast List<int>, links List<int>, function int) int {
+    let body = child_with_role(pg, ast, links, function, "body")
+    if (body < 0) { return -1 }
+    var child = first_child(links, body)
+    var tail = -1
+    for (child >= 0) {
+        if (kind(pg, ast, child) == "stmt") { tail = first_child(links, child) }
+        child = next_sibling(links, child)
+    }
+    if (tail >= 0 && kind(pg, ast, tail) == "expr-stmt") {
+        return child_with_role(pg, ast, links, tail, "value")
+    }
+    return -1
+}
+
+fn simple_name(pg List<int>, ast List<int>, links List<int>, start int) int {
+    var row = start
+    for (row >= 0) {
+        let node_kind = kind(pg, ast, row)
+        if (node_kind == "ident") { return row }
+        if (!value_wrapper(node_kind)) { return -1 }
+        let child = first_child(links, row)
+        if (child < 0 || next_sibling(links, child) >= 0) { return -1 }
+        row = child
+    }
+    return -1
+}
+
+fn seed_call_types(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var changed = 0
+    var edge = 0
+    for (edge < mappings.len()) {
+        let arg = mappings.get(edge + 1)
+        if (!take_step(fuel, deadline)) { return failure(errors, arg, bind_budget()) }
+        let actual = facts.get(arg)
+        if (actual != 0) {
+            let function = resolved_function(pg, ast, links, declarations, uses, mappings.get(edge))
+            if (function >= 0) {
+                let parameters = call_parameter_slots(pg, ast, links, function)
+                let parameter = parameters.get(mappings.get(edge + 2))
+                if (facts.get(parameter) == 0) {
+                    facts.set(parameter, actual)
+                    changed = 1
+                }
+            }
+        }
+        edge = edge + call_mapping_stride()
+    }
+    return changed
+}
+
+fn seed_body_types(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, implicit_results List<int>, facts List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var changed = 0
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        let node_kind = kind(pg, ast, row)
+        let tail = implicit_results.get(row)
+        if (tail >= 0 && facts.get(row) == 0 && facts.get(tail) != 0) {
+            facts.set(row, facts.get(tail))
+            changed = 1
+        }
+        if (node_kind == "return-stmt") {
+            let value = child_with_role(pg, ast, links, row, "value")
+            let function = enclosing_function(ast, declarations, row)
+            if (value >= 0 && function >= 0) {
+                let actual = facts.get(value)
+                let result = facts.get(function)
+                if (actual != 0 && result == 0) {
+                    facts.set(function, actual)
+                    changed = 1
+                }
+                if (actual == 0 && result != 0) {
+                    let name = simple_name(pg, ast, links, value)
+                    if (name >= 0) {
+                        let definition = uses.get(name)
+                        if (definition >= 0 && decl_category(declarations, definition) == parameter_decl() && facts.get(definition) == 0) {
+                            facts.set(definition, result)
+                            changed = 1
+                        }
+                    }
+                }
+            }
+        }
+        row = row + 1
+    }
+    return changed
+}
+
 fn validate_indirect(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, row int, errors List<int>, fuel List<int>, deadline i64) int {
     let postfix = call_postfix(pg, ast, links, row)
     if (postfix < 0 || facts.get(postfix) == 0) { return failure(errors, row, type_unknown()) }
@@ -335,6 +426,9 @@ fn validate(pg List<int>, ast List<int>, links List<int>, declarations List<int>
         if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
         let node_kind = kind(pg, ast, row)
         let category = decl_category(declarations, row)
+        if ((function_category(category) || category == parameter_decl()) && facts.get(row) == 0) {
+            return failure(errors, row, type_unknown())
+        }
         if (initializer_category(category) || node_kind == "return-stmt" || node_kind == "assign-stmt") {
             let value = child_with_role(pg, ast, links, row, "value")
             let actual = facts.get(value)
@@ -401,12 +495,25 @@ fn map_methods(pg List<int>, ast List<int>, links List<int>, src List<int>, decl
 pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let count = row_count(ast)
     var row = 0
+    var explicit_returns = List<int>.new()
+    var implicit_results = List<int>.new()
     for (row < count) {
         facts.push(0)
+        explicit_returns.push(0)
+        implicit_results.push(-1)
         row = row + 1
     }
     init_types(types)
     if (annotation_types(pg, ast, links, src, declarations, uses, facts, types, errors, fuel, deadline) != 0) { return bind_budget() }
+    row = 0
+    for (row < count) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        if (kind(pg, ast, row) == "return-stmt") {
+            let function = enclosing_function(ast, declarations, row)
+            if (function >= 0) { explicit_returns.set(function, 1) }
+        }
+        row = row + 1
+    }
     row = 0
     for (row < count) {
         if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
@@ -418,11 +525,17 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
                 if (type_id == 0) { return failure(errors, annotation, type_unknown()) }
                 facts.set(row, type_id)
             } else {
-                if (function_category(category)) { facts.set(row, unit_type()) }
+                if (function_category(category) && explicit_returns.get(row) == 0) {
+                    let tail = tail_expression(pg, ast, links, row)
+                    if (tail >= 0) {
+                        implicit_results.set(row, tail)
+                    } else {
+                        facts.set(row, unit_type())
+                    }
+                }
                 if (category == type_decl()) {
-                    let type_id = intern_type(types, nominal_kind(), row, 0, fuel, deadline)
-                    if (type_id < 0) { return failure(errors, row, bind_budget()) }
-                    facts.set(row, type_id)
+                    let alias_site = alias_target(pg, ast, links, row)
+                    if (alias_site >= 0 && facts.get(row) == 0) { return failure(errors, alias_site, type_unknown()) }
                 }
             }
         }
@@ -444,6 +557,11 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
             }
             row = row - 1
         }
+        let calls = seed_call_types(pg, ast, links, declarations, uses, mappings, facts, errors, fuel, deadline)
+        if (calls < 0) { return calls }
+        let bodies = seed_body_types(pg, ast, links, declarations, uses, implicit_results, facts, errors, fuel, deadline)
+        if (bodies < 0) { return bodies }
+        if (calls != 0 || bodies != 0) { changed = true }
     }
     let methods = map_methods(pg, ast, links, src, declarations, uses, mappings, errors, fuel, deadline)
     if (methods != 0) { return methods }

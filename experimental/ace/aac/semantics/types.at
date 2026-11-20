@@ -84,6 +84,12 @@ pub fn annotation_wrapper(node_kind Str) bool {
     return named || node_kind == "fn-type-param" || node_kind == "fn-type-result"
 }
 
+pub fn alias_target(pg List<int>, ast List<int>, links List<int>, declaration int) int {
+    let tail = child_with_role(pg, ast, links, declaration, "tail")
+    if (tail < 0) { return -1 }
+    return child_with_role(pg, ast, links, tail, "alias")
+}
+
 // Type sequences are interned from the last element back to the first.
 // Empty is 0, with the enclosing tuple/function node preserving its kind.
 pub fn intern_sequence(types List<int>, elements List<int>, fuel List<int>, deadline i64) int {
@@ -185,14 +191,14 @@ fn apply_type(pg List<int>, ast List<int>, links List<int>, src List<int>, facts
     return 0
 }
 
-fn wrapped_annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+fn wrapped_annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, row int) int {
     let word = child_with_role(pg, ast, links, row, "word")
     if (word >= 0) {
         let primitive_type = primitive(spelling(src, ast, word))
         if (primitive_type > 0) { return primitive_type }
         let nominal = uses.get(word)
         if (nominal >= 0 && decl_category(declarations, nominal) == type_decl()) {
-            return intern_type(types, nominal_kind(), nominal, 0, fuel, deadline)
+            return facts.get(nominal)
         }
         return 0
     }
@@ -204,7 +210,7 @@ fn wrapped_annotation(pg List<int>, ast List<int>, links List<int>, src List<int
 fn annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
     let node_kind = kind(pg, ast, row)
     if (annotation_wrapper(node_kind.clone())) {
-        return wrapped_annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+        return wrapped_annotation(pg, ast, links, src, declarations, uses, facts, row)
     }
     if (node_kind == "generic-ty") { return apply_type(pg, ast, links, src, facts, types, row, fuel, deadline) }
     if (node_kind == "tuple-ty") { return tuple_type(pg, ast, links, facts, types, row, false, fuel, deadline) }
@@ -227,19 +233,56 @@ fn annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
 }
 
 pub fn annotation_types(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
-    var row = facts.len() - 1
-    for (row >= 0) {
+    var row = 0
+    var aliases = List<int>.new()
+    for (row < facts.len()) {
         if (!take_step(fuel, deadline)) {
             errors.push(row)
             return -1
         }
-        let type_id = annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
-        if (type_id < 0) {
-            errors.push(row)
-            return -1
+        var item = -1
+        if (decl_category(declarations, row) == type_decl()) {
+            item = alias_target(pg, ast, links, row)
+            if (item < 0) {
+                let type_id = intern_type(types, nominal_kind(), row, 0, fuel, deadline)
+                if (type_id < 0) {
+                    errors.push(row)
+                    return -1
+                }
+                facts.set(row, type_id)
+            }
         }
-        facts.set(row, type_id)
-        row = row - 1
+        aliases.push(item)
+        row = row + 1
+    }
+    var changed = true
+    for (changed) {
+        changed = false
+        row = facts.len() - 1
+        for (row >= 0) {
+            if (!take_step(fuel, deadline)) {
+                errors.push(row)
+                return -1
+            }
+            if (facts.get(row) == 0) {
+                let item = aliases.get(row)
+                var type_id = 0
+                if (item >= 0) {
+                    type_id = facts.get(item)
+                } else {
+                    type_id = annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+                }
+                if (type_id < 0) {
+                    errors.push(row)
+                    return -1
+                }
+                if (type_id != 0) {
+                    facts.set(row, type_id)
+                    changed = true
+                }
+            }
+            row = row - 1
+        }
     }
     return 0
 }
