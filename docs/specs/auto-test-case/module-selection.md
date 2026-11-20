@@ -201,11 +201,11 @@ CTE常规小修订使用8fn/3修订验证相同值、居民generation与未修�
 
 - `--prepare-only` 产出发现清单、nextest archive、工具与环境、`prepared.json`；
   `--run-prepared <manifest>` 只执行，任何身份不一致即 `PREPARATION_REQUIRED`（退出码 2）。
-- `--prepare-only --debug-tools` 保留固定组及其原用例选择。准备阶段把 release worker
+- nextest 固定组可用 `--prepare-only --debug-tools` 保留原用例选择。准备阶段把 release worker
   切为 debug，把 `runtime-release` 静态库切为 panic-abort 的 `runtime-dev`。原生运行库
   在准备时预热，执行时核对内容身份，缺件或失配时报 `PREPARATION_REQUIRED`。
   调用方以 `--run-prepared` 显式消费该清单。清单绑定实际 profile 和工具路径。
-  debug 清单直接调用 nextest 读取归档，使执行与预热采用一致的 Rust 工具链环境。
+  debug 清单为每组提供归档并直接调用 nextest，使执行与预热采用一致的 Rust 工具链环境。
 - 运行段**零 lazy build / 零下载 / 零 release 回落**：测试通过环境变量取得准备好的产物
   （`AC_AV_CASE_WORKER`、`AC_A2X_HIR_WORKER`、`ACE_TEXT_RUNTIME_LIB`、`ACE_DATA_RUNTIME_LIB`、
   `ACE_COLLECTIONS_RUNTIME_LIB`、`ACE_TRACE_RUNTIME_LIB`、`ACE_STORE_GC_BIN` 等），缺变量即具名准备错误。

@@ -641,9 +641,13 @@ def verify_prepared(manifest):
     if not isinstance(debug_tools, bool):
         raise ValueError('PREPARATION_REQUIRED: invalid prepared tool mode')
     tools = configured_tools(ROOT, debug_tools)
-    for entry in manifest.get('invocations', []):
-        if debug_tools and entry.get('tool_env', {}).get('ACE_FIXED_TEST_RUNTIME_MODE') != 'run-debug':
-            raise ValueError('PREPARATION_REQUIRED: debug run requires prepared-only runtime mode')
+    for index, entry in enumerate(manifest.get('invocations', [])):
+        archive = entry.get('archive')
+        if debug_tools:
+            if entry.get('runner') != 'nextest' or entry.get('index') != index or not archive:
+                raise ValueError('PREPARATION_REQUIRED: debug run requires an archive for each nextest invocation')
+            if entry.get('tool_env', {}).get('ACE_FIXED_TEST_RUNTIME_MODE') != 'run-debug':
+                raise ValueError('PREPARATION_REQUIRED: debug run requires prepared-only runtime mode')
         identities = entry.get('tool_identity') or {}
         for name in entry.get('tools', []):
             expected = identities.get(name)
@@ -668,7 +672,6 @@ def verify_prepared(manifest):
                 binding = tools[name].get('env')
                 if binding and (name not in artifacts or entry['tool_env'].get(binding) != artifacts[name]):
                     raise ValueError('PREPARATION_REQUIRED: unbound debug tool environment: ' + name)
-        archive = entry.get('archive')
         if archive:
             path = Path(archive['path'])
             if not path.is_file():
@@ -739,6 +742,8 @@ def main(argv=None):
     if args.ignored and any(g['name'] != 'aavm' for g in selected) and not args.test_name:
         ap.error('ignored-only replay must explicitly name aavm or a single test (--test-name)')
     plan = invocations(selected, args.test_name)
+    if args.debug_tools and any(group['runner'] != 'nextest' for group in plan):
+        ap.error('--debug-tools requires nextest fixed groups')
     summary = {'schema': 'fixed-test-run/1', 'selected_groups': [g['name'] for g in selected],
                'config_sha256': value['_sha256'],
                'invocations': plan, 'results': [], 'gate_passed': False}

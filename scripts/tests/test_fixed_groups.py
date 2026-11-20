@@ -1163,6 +1163,14 @@ class PreparedRunGate(unittest.TestCase):
             entry['tool_env'] = {'ACE_FIXED_TEST_RUNTIME_MODE': 'run-debug',
                                  'AC_A2X_HIR_WORKER': str(worker)}
             fixed.verify_prepared(manifest)
+            archive = entry.pop('archive')
+            with self.assertRaisesRegex(ValueError, 'requires an archive for each nextest invocation'):
+                fixed.verify_prepared(manifest)
+            entry['archive'] = archive
+            entry['index'] = 1
+            with self.assertRaisesRegex(ValueError, 'requires an archive for each nextest invocation'):
+                fixed.verify_prepared(manifest)
+            entry['index'] = 0
             entry['tool_env']['AC_A2X_HIR_WORKER'] += '.other'
             with self.assertRaisesRegex(ValueError, 'unbound debug tool'):
                 fixed.verify_prepared(manifest)
