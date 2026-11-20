@@ -2427,7 +2427,9 @@ fn compile_component_scenario_full(
     let initial_maps = validate_initials(initials, node, scenario.instances)?;
     // 每个 (实例, 字段) 一个状态函数：该实例的 init（可被初值覆盖）+ 定向 ops，返回该字段。
     for inst in 0..scenario.instances {
-        for f in &node.fields {
+        // PLAN-105 T-02（U03 真语料 012）：**列表字段不进状态观测通道**——状态
+        // 函数按内建类型返回（int/bool/str），列表字段由视图/循环消费。
+        for f in node.fields.iter().filter(|f| field_type(f).is_some()) {
             let mut stmts = instance_stmts(inst, 0, node, scenario, &initial_maps[inst])?;
             stmts.push(Stmt::Return {
                 value: Expr {
@@ -3554,12 +3556,124 @@ fn hook_stmts_lower(
                 });
                 continue;
             }
-            ComponentStmt::For { span, .. } => {
-                return Err(vec![text_diag(
-                    "source.age.component-unsupported",
-                    "handler-level `for` over view-data is not wired yet (list iteration is a named pending surface)",
-                    *span,
-                )])
+            // PLAN-105 T-02（U03 真语料 012）：handler 级 `for <v> in <list> { … }`
+            // ——降级为索引 while 循环（collections 域的 `List.len()` + 下标读），
+            // 元素绑定到 hook 局部（源序保持；循环体共用同一降级通道）。
+            ComponentStmt::For {
+                value,
+                iter,
+                body,
+                span,
+            } => {
+                let iter_local =
+                    rename_expr_with_params(iter, FieldBinding::Local(inst), &node.fields, &scope)?;
+                let k = *counter;
+                *counter += 1;
+                let idx = hook_local_name(inst, seq, k, "i");
+                let elem = hook_local_name(inst, seq, k, &value.name);
+                out.push(Stmt::Let {
+                    kw: *span,
+                    name: Ident {
+                        name: idx.clone(),
+                        span: *span,
+                    },
+                    ann: Some(TypeAnn {
+                        kind: TypeRef::Builtin(TypeWord::I32),
+                        span: *span,
+                    }),
+                    mutable: true,
+                    value: Expr {
+                        span: *span,
+                        kind: ExprKind::IntLit(0),
+                    },
+                    span: *span,
+                });
+                let cond = Expr {
+                    span: *span,
+                    kind: ExprKind::Binary {
+                        op: crate::source::ast::BinOp::Lt,
+                        lhs: Box::new(Expr {
+                            span: *span,
+                            kind: ExprKind::Var(Ident {
+                                name: idx.clone(),
+                                span: *span,
+                            }),
+                        }),
+                        rhs: Box::new(Expr {
+                            span: *span,
+                            kind: ExprKind::MethodCall {
+                                recv: Box::new(iter_local.clone()),
+                                name: Ident {
+                                    name: "len".to_string(),
+                                    span: *span,
+                                },
+                                args: Vec::new(),
+                            },
+                        }),
+                    },
+                };
+                let mut body_out = vec![Stmt::Let {
+                    kw: *span,
+                    name: Ident {
+                        name: elem.clone(),
+                        span: *span,
+                    },
+                    ann: None,
+                    mutable: false,
+                    value: Expr {
+                        span: *span,
+                        kind: ExprKind::Index {
+                            base: Box::new(iter_local),
+                            index: Box::new(Expr {
+                                span: *span,
+                                kind: ExprKind::Var(Ident {
+                                    name: idx.clone(),
+                                    span: *span,
+                                }),
+                            }),
+                        },
+                    },
+                    span: *span,
+                }];
+                let mut scope2 = scope.clone();
+                scope2.push((value.name.clone(), elem, *span));
+                hook_stmts_lower(inst, seq, node, body, &scope2, &mut body_out, counter)?;
+                body_out.push(Stmt::Assign {
+                    target: crate::source::ast::AssignTarget {
+                        base: Ident {
+                            name: idx.clone(),
+                            span: *span,
+                        },
+                        path: Vec::new(),
+                    },
+                    value: Expr {
+                        span: *span,
+                        kind: ExprKind::Binary {
+                            op: crate::source::ast::BinOp::Add,
+                            lhs: Box::new(Expr {
+                                span: *span,
+                                kind: ExprKind::Var(Ident {
+                                    name: idx,
+                                    span: *span,
+                                }),
+                            }),
+                            rhs: Box::new(Expr {
+                                span: *span,
+                                kind: ExprKind::IntLit(1),
+                            }),
+                        },
+                    },
+                    span: *span,
+                });
+                out.push(Stmt::While {
+                    cond,
+                    body: Block {
+                        stmts: body_out,
+                        span: *span,
+                    },
+                    span: *span,
+                });
+                continue;
             }
             ComponentStmt::Assign(assign) => {
                 // PLAN-105 T-02（U03 真语料 012）：裸名先查执行路径绑定表

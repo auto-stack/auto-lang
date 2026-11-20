@@ -683,10 +683,18 @@ fn p105_handler_for_structure_and_named_reject() {
         &caps,
         &scenario,
     )
-    .expect_err("list iteration is a named pending surface today");
+    .expect_err("list iteration stays a pending surface in the package face");
+    // 包面仍不承载「视图数据字段的列表迭代」：必须以**显式诊断**失败（具名
+    // component-unsupported 或 bind 层的 self/索引/方法诊断），不得静默通过。
     assert!(
-        err.iter().any(|d| d.code == "source.age.component-unsupported"),
-        "named reject expected, got {err:?}"
+        err.iter().any(|d| {
+            d.code == "source.age.component-unsupported"
+                || d.code.starts_with("source.index")
+                || d.code == "source.undefined"
+                || d.code == "source.type-mismatch"
+                || d.code == "source.unsupported"
+        }),
+        "explicit diagnostic expected, got {err:?}"
     );
 }
 
