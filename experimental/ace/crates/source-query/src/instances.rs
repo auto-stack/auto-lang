@@ -265,6 +265,7 @@ fn bounds_satisfied(
     prog: &Program,
     entry: &TemplateEntryFull<'_>,
     subst: &[InstanceTy],
+    call_site: Option<Span>,
     diags: &mut Vec<Diagnostic>,
 ) -> bool {
     let mut ok = true;
@@ -283,7 +284,11 @@ fn bounds_satisfied(
         if !satisfied {
             ok = false;
             diags.push(Diagnostic::new(
-                Stage::Text,
+                if call_site.is_some() {
+                    Stage::Bind
+                } else {
+                    Stage::Text
+                },
                 "source.instances-bound",
                 format!(
                     "type argument `{}` does not satisfy `{spec}` (bound of `{}` in `{}`)",
@@ -291,7 +296,7 @@ fn bounds_satisfied(
                     entry.ty_params[i],
                     entry.name
                 ),
-                entry.item.span,
+                call_site.unwrap_or(entry.item.span),
             ));
         }
     }
@@ -647,8 +652,8 @@ fn rebind_self_calls(b: &mut Block, self_name: &str, concrete: &str) {
 
 #[derive(Default)]
 struct RoundDemands {
-    /// 模板名 → (规范序键 → (声明序实参, 调用点数))。
-    per_template: BTreeMap<String, BTreeMap<Vec<String>, (SolvedArgs, usize)>>,
+    /// 模板名 → (规范序键 → (声明序实参, 首个调用点 span))。
+    per_template: BTreeMap<String, BTreeMap<Vec<String>, (SolvedArgs, Span)>>,
     /// (owner fn, 调用点 span) → (模板名, 声明序实参)。owner 必须
     /// 入键：同一模板的两个实例体**共享源 span**（concretize 保 span），仅
     /// 按 span 键会把 wrap_bool 的解覆盖到 wrap_i32 的调用点上。
@@ -753,8 +758,12 @@ fn discover_round(
             };
             let entry_key = order_of(&solved_args);
             let m = out.per_template.entry(callee.clone()).or_default();
-            let ent = m.entry(entry_key).or_insert((solved_args.clone(), 0));
-            ent.1 += 1;
+            m.entry(entry_key).or_insert_with(|| {
+                (
+                    solved_args.clone(),
+                    Span { start: span.0 as usize, end: span.1 as usize },
+                )
+            });
             out.callsites
                 .insert((f.name.name.clone(), span.0, span.1), (callee, solved_args));
         }
@@ -895,6 +904,9 @@ pub fn instantiate_program_limited(
     let mut by_template: BTreeMap<String, Vec<(SolvedArgs, String)>> = BTreeMap::new();
     let mut all_callsites: BTreeMap<(String, u32, u32), (String, SolvedArgs)> = BTreeMap::new();
     let mut rounds_left = templates.len() * 2 + 2;
+    let ordinary_auto = capabilities
+        .iter()
+        .any(|cap| cap == ace_core::source::AUTO_SOURCE_ADMISSION_CAP);
     loop {
         // 当前工作程序：原始项 + 已物化实例项（模板保留，供后续轮发现）。
         let mut work_items: Vec<Item> = prog.items.clone();
@@ -914,7 +926,7 @@ pub fn instantiate_program_limited(
         }
         let mut fresh = false;
         for (tpl, tys) in &round.per_template {
-            for (order, (solved, _count)) in tys {
+            for (order, (solved, call_site)) in tys {
                 if !materialized.insert((tpl.clone(), order.clone())) {
                     continue;
                 }
@@ -950,7 +962,13 @@ pub fn instantiate_program_limited(
                 }
                 let args = instance_args(entry, solved);
                 let consts = instance_consts(entry, solved);
-                if !bounds_satisfied(&work, entry, &solved.tys, &mut diags) {
+                if !bounds_satisfied(
+                    &work,
+                    entry,
+                    &solved.tys,
+                    ordinary_auto.then_some(*call_site),
+                    &mut diags,
+                ) {
                     continue;
                 }
                 let name = concrete_name(

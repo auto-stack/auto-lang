@@ -192,6 +192,18 @@ pub fn compile_language_source(
     module_path: &str,
     capabilities: &[String],
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_language_source_with(src, module_path, capabilities, |_| Ok(()))
+}
+
+/// Instantiate an ordinary source program after projection and signature
+/// completion, before binding and HIR verification. AV supplies the shared
+/// source-query pass here because source-query already depends on this crate.
+pub fn compile_language_source_with(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    prepare: impl FnOnce(&mut super::ast::Program) -> Result<(), Vec<Diagnostic>>,
+) -> Result<CompiledSource, Vec<Diagnostic>> {
     // PLAN-1082 (T-03): graft the frozen 972 assembled stdlib list module
     // (name-mangled) onto the single-module ordinary face when the source
     // references the legacy `List.new(` constructor or a HOF method — the
@@ -200,12 +212,11 @@ pub fn compile_language_source(
     // hit the source compiles byte-identically (zero graft, zero drift).
     let grafted = graft_stdlib_integer_parse(src, graft_stdlib_text(src, graft_stdlib_list(src)));
     let profile = SourceProfile::Auto;
-    let parts = if grafted.len() == src.len() {
-        compile_parts_with(src, module_path, capabilities, profile)?
-    } else {
+    let (mut program, has_instances) =
+        super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
+    if grafted.len() != src.len() {
         // A script consumes its top-level statement tail. Project the
         // appended declarations separately, preserving user source spans.
-        let mut program = super::parse_program_with(src, profile).map_err(|d| vec![d])?;
         let helpers =
             super::parse_program_with(&grafted[src.len()..], profile).map_err(|mut d| {
                 d.span.start += src.len();
@@ -235,9 +246,12 @@ pub fn compile_language_source(
             super::cst::shift_fn_item(helper, src.len());
             program.items.push(item);
         }
-        super::infer::complete(&mut program)?;
-        compile_program_parts(&program, &grafted, module_path, capabilities, profile)?
-    };
+    }
+    super::infer::complete(&mut program)?;
+    if has_instances {
+        prepare(&mut program)?;
+    }
+    let parts = compile_program_parts(&program, &grafted, module_path, capabilities, profile)?;
     let checked = crate::verify::verify_auto_language(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::AUTO_SOURCE_PROFILE,

@@ -329,6 +329,27 @@ pub fn project_body_scoped_with_caps(
             }
         }
     }
+    // The ordinary resolver accepts a positional record construction as a
+    // direct call when the name does not resolve to a function. Supply the
+    // same signature to demand discovery; the resolver still checks the
+    // concrete construction after substitution.
+    if capabilities
+        .iter()
+        .any(|c| c == ace_core::source::AUTO_SOURCE_ADMISSION_CAP)
+    {
+        for record in &records {
+            if !fns.iter().any(|f| f.name == record.name) {
+                fns.push(InputFn {
+                    name: record.name.clone(),
+                    params: record.fields.clone(),
+                    ret: Ann::Record(record_static(&record.name)?),
+                    type_params: Vec::new(),
+                    const_params: Vec::new(),
+                    body: InputBlock { stmts: Vec::new() },
+                });
+            }
+        }
+    }
     // Capability intrinsics: signature-only entries, no body. The name set
     // matches core's closed intrinsic registry; a source function of the
     // same name shadows the intrinsic (core resolves user names first).

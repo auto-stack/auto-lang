@@ -3535,13 +3535,34 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
 /// 旧签名兼容桥（§5.1：`parse_program_with` 保兼容返回类型，七 profile
 /// 路由至通用 CST）。typed 分类由 [`parse_front`] 承载；本桥只作单诊断投影。
 pub fn parse_program_via_cst(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
+    parse_whole_front_ok(src, profile).map(|ok| ok.program)
+}
+
+/// Find instance syntax in the admitted CST without traversing or cloning
+/// the AST of an ordinary program with no templates.
+pub(crate) fn parse_auto_program_for_instances(src: &str) -> Result<(Program, bool), Diagnostic> {
+    let profile = SourceProfile::Auto;
+    let ok = parse_whole_front_ok(src, profile)?;
+    let template = ok.program.items.iter().any(|item| {
+        matches!(item, crate::source::ast::Item::Fn(f) if !f.type_params.is_empty())
+    });
+    let explicit_call = !template && src.contains('<') && profile_grammar(profile)
+        .ok()
+        .and_then(|cached| cached.kinds.generic_call)
+        .is_some_and(|kind| {
+            ok.cst.blocks.iter().any(|block| block.nodes.iter().any(|node| node.kind == kind))
+        });
+    Ok((ok.program, template || explicit_call))
+}
+
+fn parse_whole_front_ok(src: &str, profile: SourceProfile) -> Result<FrontOk, Diagnostic> {
     match parse_front(FrontRequest {
         src,
         profile,
         kind: FrontKind::WholeModule,
         budget: FrontBudget::WORK_OWNED_64MIB,
     }) {
-        FrontOutcome::Ok(ok) => Ok(ok.program),
+        FrontOutcome::Ok(ok) => Ok(ok),
         FrontOutcome::Diag(diags) => Err(super::first_diag(&diags)),
         FrontOutcome::ResourceExhausted { what, limit } => Err(Diagnostic::new(
             crate::atom_text::Stage::Text,

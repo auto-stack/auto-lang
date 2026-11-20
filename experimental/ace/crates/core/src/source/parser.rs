@@ -113,6 +113,18 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 /// accepts the new operators, unary ops and the conditional `for` loop;
 /// the core surface keeps its historical accept/reject sets.
 pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
+    parse_program_with_mode(src, profile, false).map(|(program, _)| program)
+}
+
+pub(crate) fn parse_auto_program_for_instances(src: &str) -> Result<(Program, bool), Diagnostic> {
+    parse_program_with_mode(src, SourceProfile::Auto, true)
+}
+
+fn parse_program_with_mode(
+    src: &str,
+    profile: SourceProfile,
+    inspect_instances: bool,
+) -> Result<(Program, bool), Diagnostic> {
     note_tokenize(Span {
         start: 0,
         end: src.len(),
@@ -171,7 +183,11 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
             } else {
                 src.to_string()
             };
-            let program = super::cst::parse_program_via_cst(&parsed_src, profile)?;
+            let (program, has_instances) = if inspect_instances {
+                super::cst::parse_auto_program_for_instances(&parsed_src)?
+            } else {
+                (super::cst::parse_program_via_cst(&parsed_src, profile)?, false)
+            };
             // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
             // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
             for item in &program.items {
@@ -179,7 +195,7 @@ pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, 
                     note_parse(&f.name.name);
                 }
             }
-            Ok(program)
+            Ok((program, has_instances))
         }
         // PLAN-979：AGE 领域声明只经领域前门（`source::age_h0`）消费——通用
         // 解析入口在此显式拒绝，绝不返回一个把领域声明静默丢掉的 Program。

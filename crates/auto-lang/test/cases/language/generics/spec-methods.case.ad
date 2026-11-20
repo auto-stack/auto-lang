@@ -1,0 +1,381 @@
+# Generics, constraints, and methods
+
+Ordinary AV source checks. Original VM checks retain their source and oracle.
+
+## Case: generic-two-types
+id: "av.parity.1088.generic-two-types"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn id<T>(x T) T { return x }
+fn main() int { if id(true) { return id(42) }; return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: generic-spec-default
+id: "av.parity.1088.generic-spec-default"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Picker<T> { fn pick(a T, b T) T { return a } }
+type AsInt as Picker<int> { v int }
+fn main() int { let x AsInt = AsInt { v: 1 }; return x.pick(41, 7) + x.v }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: ext-method
+id: "av.parity.1088.ext-method"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type N { v int }
+ext N { fn twice() int { return .v * 2 } }
+fn main() int { return N(21).twice() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: bound-missing
+id: "av.parity.1088.bound-missing"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn value() int }
+fn get<T has S>(x T) int { return x.value() }
+type Plain { n int }
+fn main() int { return get(Plain(42)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-bound"
+message-contains: "type argument `Plain` does not satisfy `S`"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: local-record-annotation
+id: "av.parity.1088.local-record-annotation"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { v T }
+fn main() int { let b Box<int> = Box<int> { v: 42 }; return b.v }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: local-record-missing
+id: "av.parity.1088.local-record-missing"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let b Missing<int> = 42; return b }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.undefined"
+message-contains: "no parameterized type named `Missing`"
+
+## Case: spec-default-ambiguity
+id: "av.parity.1088.spec-default-ambiguity"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec A { fn value() int { return 1 } }
+spec B { fn value() int { return 2 } }
+type Both as A, B { v int }
+fn main() int { return Both(0).value() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "ambiguous-candidates"
+
+## Case: spec-explicit-priority
+id: "av.parity.1088.spec-explicit-priority"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec A { fn value() int { return 1 } }
+spec B { fn value() int { return 2 } }
+type Both as A, B { v int; fn value() int { return .v } }
+fn main() int { return Both(42).value() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: const-parameter
+id: "av.parity.1088.const-parameter"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn rep<const N u32>(x int) int { return x * N }
+fn main() int { return rep<2>(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: const-out-of-range
+id: "av.parity.1088.const-out-of-range"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn rep<const N u32>(x int) int { return x * N }
+fn main() int { return rep<4294967296>(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "parse"
+code: "source.literal-range"
+message-contains: "outside the u32 domain"
+
+## Case: recursive-generic
+id: "av.parity.1088.recursive-generic"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn same<T>(n int, x T) T { if n == 0 { return x }; return same(n-1, x) }
+fn main() int { return same(4,42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: list-initializer-type-mismatch
+id: "av.parity.1088.list-initializer-type-mismatch"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = List<int>.new([true]); return xs.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.type-mismatch"
+message-contains: "expected list element"
+
+## Case: legacy-99-idiom2-m07-ext-method
+id: "legacy.99_idiom2.m07_ext_method"
+entry-mode: "program"
+
+### Auto
+path: "ext_method.at"
+```auto
+// Plan 514 W1-2 探针 m07：ext 扩展方法（读字段 + ext 内字段写）
+type Num {
+    v int
+    fn get() int { return .v }
+    static fn new(v int) Num { return Num(v) }
+}
+ext Num {
+    fn double() int { return .v * 2 }
+    fn bump() {
+        .v = .v + 1
+    }
+}
+fn main() {
+    let n = Num.new(21)
+    print(f"get=${n.get()}")
+    print(f"double=${n.double()}")
+    var m = Num.new(5)
+    m.bump()
+    print(f"bumped=${m.get()}")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+get=21
+double=42
+bumped=6
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+get=21
+double=42
+bumped=6
+```
+
+## Case: legacy-24-generics-001-list-struct
+id: "legacy.24_generics.001_list_struct"
+entry-mode: "program"
+
+### Auto
+path: "list_struct.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "first" },
+        Note { id: 1, title: "second" },
+    ])
+    var count = 0
+    for n in notes {
+        count = count + 1
+    }
+    print(count)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+2
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+2
+```

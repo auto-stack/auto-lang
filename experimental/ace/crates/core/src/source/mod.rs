@@ -126,6 +126,8 @@ pub const CONFIG_DOCUMENT_SOURCE_PROFILE: &str = "auto.source.config-document.v1
 /// pipeline; no second parser/interpreter). Later AVP batches widen this
 /// surface incrementally; the frozen narrow profiles keep their identities.
 pub const AUTO_SOURCE_PROFILE: &str = "auto.source.language.av/v1";
+/// Admission capability used by the ordinary AV source recipe.
+pub const AUTO_SOURCE_ADMISSION_CAP: &str = "ac.source.language.av/v1";
 /// The entry-unit source profile (PLAN-862, R2-E/SEM-05): the scalar
 /// operator surface plus the ENTRY surface — `fn main() int`,
 /// `fn main() void` (Unit result), a single-file top-level statement

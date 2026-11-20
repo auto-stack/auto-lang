@@ -12428,6 +12428,7 @@ F:{d}
         // Text views become independent owners only in the list being
         // directly published as the interactive script result.
         publish_script_result: bool,
+        explicit_list: Option<usize>,
     ) -> ResolvedExpr {
         // PLAN-1082: rvalue admission is the ORDINARY (auto) face
         // only; the frozen narrow profiles keep the 962 init-only
@@ -12445,7 +12446,7 @@ F:{d}
                 kind: RExprKind::IntLit(0),
             };
         }
-        if elems.is_empty() {
+        if elems.is_empty() && explicit_list.is_none() {
             self.bind_err(
                 "source.array-lit-empty",
                 "an empty array literal has no element type; write List<T>.new() instead"
@@ -12474,8 +12475,11 @@ F:{d}
             };
             rs.push(value);
         }
-        let elem_vt = self.array_element_type(&mut rs);
-        let li = self.coll.intern_list(elem_vt);
+        let li = explicit_list.unwrap_or_else(|| {
+            let elem_vt = self.array_element_type(&mut rs);
+            self.coll.intern_list(elem_vt)
+        });
+        let elem_vt = self.coll.lists[li];
         let temp = self.agg_temp("arr_lit", VT::List(li), false, span);
         self.emit_stmt(RStmt::Let {
             local: temp,
@@ -12486,8 +12490,19 @@ F:{d}
             },
             span,
         });
-        for (value, ast_elem) in rs.into_iter().zip(elems) {
-            let push = self.array_push(temp, li, ast_elem, value);
+        for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
+            if explicit_list.is_some() {
+                retag_literal(&mut r, elem_vt);
+                if r.vt != elem_vt {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!("expected list element `{}`, found `{}`", elem_vt.as_str(), r.vt.as_str()),
+                        ast_el.span,
+                    );
+                    continue;
+                }
+            }
+            let push = self.array_push(temp, li, ast_el, r);
             self.emit_stmt(push);
         }
         ResolvedExpr {
@@ -13747,11 +13762,19 @@ F:{d}
                     let ann_vt: Option<VT> = match ann {
                         Some(a) => {
                             if self.profile.is_collections() {
+                                let mut discarded = Vec::new();
+                                let diagnostics = if self.profile.is_auto_language()
+                                    && matches!(a.kind, ast::TypeRef::Generic { .. })
+                                {
+                                    &mut *self.diags
+                                } else {
+                                    &mut discarded
+                                };
                                 Some(vt_of_ann_coll(
                                     a,
                                     self.rec_index,
                                     self.coll,
-                                    &mut Vec::new(),
+                                    diagnostics,
                                     TypePos::Local,
                                 ))
                             } else {
@@ -14110,7 +14133,7 @@ F:{d}
                                 && self.is_script
                                 && is_root_tail =>
                         {
-                            self.resolve_array_literal(elems, value.span, true)
+                            self.resolve_array_literal(elems, value.span, true, None)
                         }
                         _ => self.expr_iterative(value),
                     };
@@ -15108,7 +15131,7 @@ F:{d}
             // fast path (the Let arm intercepts first) is unchanged. An
             // EMPTY literal keeps its named rejection: no element type is
             // inferable on this face (write `List<T>.new()`).
-            ExprKind::ArrayLit(elems) => self.resolve_array_literal(elems, e.span, false),
+            ExprKind::ArrayLit(elems) => self.resolve_array_literal(elems, e.span, false, None),
             ExprKind::ArrayConditionalElem { .. } => {
                 self.bind_err(
                     "source.array-element-position",
@@ -17072,19 +17095,25 @@ F:{d}
                         } else {
                             recv_class
                         };
-                        // An explicitly typed constructor needs no element
-                        // inference for its legacy empty initializer.
-                        if self.profile.is_auto_language()
-                            && name.name == "new"
-                            && matches!(args.as_slice(), [Arg::Pos(e)] if matches!(&e.kind, ExprKind::ArrayLit(elements) if elements.is_empty()))
-                        {
+                        if self.profile.is_auto_language() {
                             if let RecvClass::ListCtor(list) = recv_class {
-                                out[slot] = ResolvedExpr {
-                                    span: node.span,
-                                    vt: VT::List(list),
-                                    kind: RExprKind::ListNew { list },
-                                };
-                                continue;
+                                match (name.name.as_str(), args.as_slice()) {
+                                    ("new", [Arg::Pos(ast::Expr { kind: ExprKind::ArrayLit(elems), .. })]) => {
+                                        out[slot] = self.resolve_array_literal(
+                                            elems, node.span, false, Some(list),
+                                        );
+                                        continue;
+                                    }
+                                    ("new", []) => {}
+                                    _ => {
+                                        self.bind_err(
+                                            "source.argument",
+                                            "use `List<T>.new()` or `List<T>.new([elements])`",
+                                            node.span,
+                                        );
+                                        continue;
+                                    }
+                                }
                             }
                         }
                         let recv_slot = match recv_class {
@@ -18351,7 +18380,7 @@ F:{d}
                             kind: ExprKind::StrLit(part.into()),
                         })
                         .collect();
-                    return self.resolve_array_literal(&elements, span, false);
+                    return self.resolve_array_literal(&elements, span, false, None);
                 }
             }
         }

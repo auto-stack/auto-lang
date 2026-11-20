@@ -38,7 +38,17 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, false, false)
+    project_program_with_caps(
+        p,
+        k,
+        tree,
+        snap,
+        profile,
+        false,
+        profile.is_auto_language(),
+        false,
+        false,
+    )
 }
 
 /// PLAN-963（V-G06）：包模块的投影入口——记录模板**推迟**到扁平程序（全部模块
@@ -524,7 +534,7 @@ pub(crate) fn project_program_with_caps(
     }
     // PLAN-963（T-03）：`type X as S` 遵从检查 + spec 默认方法注入。放在单态化
     // 之后：合成实例同样按具体方法签名核验，注入的默认体随实例一起进入 resolve。
-    for d in apply_spec_conformance(&mut items, &specs) {
+    for d in apply_spec_conformance(&mut items, &specs, profile.is_auto_language()) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
     // PLAN-963（T-03）：spec 默认体注入的类型注解未经过首遍展开（spec 声明不在
@@ -10236,9 +10246,10 @@ impl<'a> Engine<'a> {
                 || self.cx.k.tok_r_nil.is_some_and(|n| mk == n)
                 // PLAN-968: `Task.spawn` member leaf (`spawn` is reserved).
                 || mk == self.cx.k.tok_r_spawn
-                || (self.cx.profile == SourceProfile::Auto
-                    && [self.cx.k.tok_int_lit, self.cx.k.tok_true, self.cx.k.tok_false]
-                        .contains(&mk))
+                || (self.cx.profile.is_auto_language()
+                    && ([self.cx.k.tok_int_lit, self.cx.k.tok_true, self.cx.k.tok_false]
+                        .contains(&mk)
+                        || self.cx.k.tok_double_kw == Some(mk)))
         })
     }
 
@@ -12574,7 +12585,11 @@ fn instantiate_spec_method(
     (params, ret, body)
 }
 
-fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
+fn apply_spec_conformance(
+    items: &mut [Item],
+    specs: &[SpecDecl],
+    ordinary_auto: bool,
+) -> Vec<Diagnostic> {
     let any_conform = items
         .iter()
         .any(|i| matches!(i, Item::Type(t) if !t.conforms.is_empty()));
@@ -12773,12 +12788,23 @@ fn apply_spec_conformance(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diag
                 done.push(spec.name.name.clone());
                 for m in &spec.methods {
                     let (m_params, m_ret, m_body) = instantiate_spec_method(m, &subst, &mut diags);
-                    let existing = t
-                        .methods
-                        .iter()
-                        .chain(injected.iter())
-                        .find(|f| f.name.name == m.name.name && f.receiver == Receiver::View);
-                    if let Some(f) = existing {
+                    let own = t.methods.iter().find(|f| {
+                        f.name.name == m.name.name && f.receiver == Receiver::View
+                    });
+                    let default = injected.iter().find(|f| f.name.name == m.name.name);
+                    if ordinary_auto && own.is_none() && default.is_some() && m_body.is_some() {
+                        diags.push(Diagnostic::new(
+                            Stage::Bind,
+                            "ambiguous-candidates",
+                            format!(
+                                "type `{owner}` inherits more than one default for `fn {}`",
+                                m.name.name
+                            ),
+                            m.name.span,
+                        ));
+                        continue;
+                    }
+                    if let Some(f) = own.or(default) {
                         // 显式实现优先于默认体；签名必须与 spec 一致（按类型
                         // kind 比较，span 不参与语义身份）。
                         let same = f.params.len() == m_params.len()
@@ -13886,8 +13912,12 @@ fn rename_ctor_for_ann(
         return;
     };
     match &mut value.kind {
-        ExprKind::CtorNamed { ty, fields, .. } => {
-            if templates.contains_key(&ty.name) {
+        ExprKind::CtorNamed { ty, args, fields } => {
+            // An explicit constructor can infer a different instance than the
+            // annotation. Leave it intact for the explicit-instantiation pass.
+            if args.is_empty()
+                && origin.get(&id.name).map(String::as_str) == Some(ty.name.as_str())
+            {
                 ty.name = id.name.clone();
                 ty.span = id.span;
             }

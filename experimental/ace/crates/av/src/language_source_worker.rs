@@ -521,8 +521,17 @@ fn run_chain(
     caps: &[String],
     capture: &mut ConsoleCapture,
 ) -> Result<(ExecOutcome, ExecTrace), Json> {
-        let compiled = ace_core::source::compile_language_source(source, path, caps)
-            .map_err(|ds| diagnostic(&ds[0], path))?;
+        let compiled = ace_core::source::adapter::compile_language_source_with(
+            source,
+            path,
+            caps,
+            |program| {
+                let instances = ace_source_query::instantiate_program(program, "", path, caps)?;
+                *program = instances.program;
+                Ok(())
+            },
+        )
+        .map_err(|ds| diagnostic(&ds[0], path))?;
         // PLAN-1080: the ordinary language face lowers through the same
         // frozen closures-family MIR with the record-method def admission.
         let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
