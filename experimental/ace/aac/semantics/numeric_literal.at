@@ -1,6 +1,8 @@
 use app.binding.bind_budget
 use app.binding.take_step
 use app.semantic_tree.span_text
+use app.semantic_tree.parent
+use app.semantic_tree.start_of
 use app.syntax_frontend.str_to_bytes
 use app.types.f32_type
 use app.types.f64_type
@@ -84,7 +86,7 @@ fn float_range(src List<int>, start int, end int, significant int, lanes int, fu
 
 // Recognize the numeric body before interpreting the suffix. In hexadecimal,
 // letters a..f belong to the magnitude, including trailing "f32"/"f64".
-pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fuel List<int>, deadline i64) int {
+fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List<int>, fuel List<int>, deadline i64) int {
     var radix = 10
     var digits_start = start
     if (end - start >= 2 && src.get(start) == 48) {
@@ -134,16 +136,42 @@ pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fu
     if (limit == 0u64) { return literal_range() }
     let base = radix.to(u64)
     var magnitude = 0u64
+    var value = 0
+    let record_scalar = type_id == integer_type() && scalar.len() > 0
     var node = digits_start
     for (node < offset) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
         let byte_value = src.get(node)
         if (byte_value != 95) {
-            let digit = radix_digit(byte_value, radix).to(u64)
-            if (magnitude > (limit - digit) / base) { return literal_range() }
-            magnitude = magnitude * base + digit
+            let digit = radix_digit(byte_value, radix)
+            let unsigned = digit.to(u64)
+            if (magnitude > (limit - unsigned) / base) { return literal_range() }
+            magnitude = magnitude * base + unsigned
+            // Accumulate a negative value directly so MIN never has to
+            // pass through the unrepresentable positive i32 magnitude.
+            if (record_scalar) {
+                value = value * radix
+                if (negative) { value = value - digit } else { value = value + digit }
+            }
         }
         node = node + 1
     }
+    if (record_scalar) { scalar.set(0, value) }
     return type_id
+}
+
+pub fn negative_source_literal(src List<int>, ast List<int>, token int) bool {
+    let enclosing = parent(ast, token)
+    if (enclosing < 0) { return false }
+    let at = start_of(ast, enclosing)
+    return at < start_of(ast, token) && src.get(at) == 45
+}
+
+pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fuel List<int>, deadline i64) int {
+    var scalar = List<int>.new()
+    return inspect_literal(src, start, end, negative, scalar, fuel, deadline)
+}
+
+pub fn decode_i32_literal(src List<int>, start int, end int, negative bool, out List<int>, fuel List<int>, deadline i64) int {
+    return inspect_literal(src, start, end, negative, out, fuel, deadline)
 }

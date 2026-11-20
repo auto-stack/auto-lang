@@ -322,6 +322,19 @@ fn load_source(pg List<int>, path Str, id int, src List<int>, ast List<int>, bas
     return "ERROR os.read\n"
 }
 
+fn has_named_inventory(inventory Str) bool {
+    var index = 0
+    var separated = true
+    for (index < inventory.len()) {
+        let byte_value = inventory.char_at(index).to_codepoint()
+        let boundary = byte_value == 10 || byte_value == 47
+        if (boundary && separated) { return false }
+        separated = boundary
+        index = index + 1
+    }
+    return !separated
+}
+
 fn project(steps int) Str {
     let pg = decode_program_parts(fetch_parts("aac"))
     if (!pg_ok(pg)) { return "ERROR internal.grammar\n" }
@@ -339,7 +352,9 @@ fn project(steps int) Str {
     } else {
         package = get("AAC1047_PACKAGE")
         if (!identifier(package.clone())) { return "ERROR source.package\n" }
-        var requested = split(get("AAC1047_INVENTORY"), "\n")
+        let inventory = get("AAC1047_INVENTORY")
+        if (!has_named_inventory(inventory.clone())) { return "ERROR source.module\n" }
+        var requested = split(inventory, "\n")
         for (requested.len() > 0) {
             let name = requested.remove(0)
             var parts = split(name.clone(), "/")

@@ -1,5 +1,4 @@
 use app.semantic_tree.span_text
-use std.conv.to_int
 
 pub fn atom_tag(bytes List<int>, tokens List<int>, nodes List<int>, node int) Str {
     if (node < 0) { return "" }
@@ -94,15 +93,25 @@ fn number(bytes List<int>, tokens List<int>, values List<int>, value int, ending
     let text = value_text(bytes, tokens, values, value, 2)
     let length = text.len()
     if (length <= 3 || text.slice(length - 3, length).clone() != ending) { return false }
-    let converted = to_int(text.slice(0, length - 3).clone())
-    is converted {
-        Some(n) -> {
-            parsed.set(0, n)
-            return true
-        }
-        None -> {}
+    var cursor = 0
+    var limit = 2147483647i64
+    let negative = text.char_at(0).to_codepoint() == 45
+    if (negative) {
+        if (ending != "i32" || length == 4) { return false }
+        cursor = 1
+        limit = 2147483648i64
     }
-    return false
+    var amount = 0i64
+    for (cursor < length - 3) {
+        let digit = text.char_at(cursor).to_codepoint() - 48
+        if (digit < 0 || digit > 9) { return false }
+        amount = amount * 10i64 + digit.to(i64)
+        if (amount > limit) { return false }
+        cursor = cursor + 1
+    }
+    if (negative) { amount = 0i64 - amount }
+    parsed.set(0, amount.to(int))
+    return true
 }
 
 fn primitive(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, types int, value int) int {

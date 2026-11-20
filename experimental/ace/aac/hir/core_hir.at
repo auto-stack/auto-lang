@@ -12,8 +12,11 @@ use app.binding.resolved_function
 use app.binding.take_step
 use app.core_atom_bound.bind_core_atom
 use app.hir_schema_data.core_schema
+use app.numeric_literal.decode_i32_literal
+use app.numeric_literal.negative_source_literal
 use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
 use app.semantic_tree.first_child
 use app.semantic_tree.kind
 use app.semantic_tree.module_name_at
@@ -23,13 +26,13 @@ use app.semantic_tree.role
 use app.semantic_tree.source_id
 use app.semantic_tree.row_count
 use app.semantic_tree.spelling
+use app.semantic_tree.start_of
 use app.syntax_cst.join_rows
 use app.syntax_frontend.str_to_bytes
 use app.types.boolean_type
 use app.types.integer_type
 use std.bytes.decode_utf8
 use std.conv.from_int
-use std.conv.to_int
 
 pub fn hir_unsupported() int { return -30 }
 pub fn hir_owner_error() int { return -31 }
@@ -122,6 +125,8 @@ fn local_definition(category int) bool {
 
 fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var owners = List<int>.new()
+    var scalar = List<int>.new()
+    scalar.push(0)
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
@@ -162,12 +167,16 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 add_expression(exprs, expressions, row, owner, less_than_op(), t, 0)
                 binary_inputs(args, row, left, right)
             }
+            if (node_kind == "int-lit" || node_kind == "affix-num") {
+                let negative = negative_source_literal(src, ast, row)
+                let decoded = decode_i32_literal(src, start_of(ast, row), end_of(ast, row), negative, scalar, fuel, deadline)
+                if (decoded == bind_budget()) { return failed(errors, row, decoded) }
+                if (decoded != integer_type()) { return failed(errors, row, hir_unsupported()) }
+                add_expression(exprs, expressions, row, owner, constant_op(), t, scalar.get(0))
+            }
             if (node_kind == "int-literal") {
-                let parsed = to_int(spelling(src, ast, row))
-                is parsed {
-                    Some(value) -> { add_expression(exprs, expressions, row, owner, constant_op(), t, value) }
-                    None -> { return failed(errors, row, hir_unsupported()) }
-                }
+                let token = child_with_role(pg, ast, links, row, "value")
+                if (token >= 0) { expressions.set(row, expressions.get(token)) }
             }
             if (node_kind == "ident") {
                 let target = uses.get(row)

@@ -1,8 +1,8 @@
 #![cfg(windows)]
 
 use ace_aac_syntax_conformance::{
-    observe_hir_publication, run_core_hir_case, run_core_hir_project, run_semantic_case,
-    run_semantic_project, run_type_case, run_type_project,
+    observe_hir_publication, observe_project_inventory, run_core_hir_case, run_core_hir_project,
+    run_semantic_case, run_semantic_project, run_type_case, run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -477,6 +477,34 @@ fn checks_integer_width_and_radix_before_type_publication() {
             start + "18446744073709551616u64".len()
         )
     );
+}
+
+#[test]
+fn preserves_signed_i32_bits_and_radix_through_hir() {
+    let source = b"fn hex() int { return 0x2Ai32 }\nfn minimum() int { return -2147483648i32 }";
+    let document = run_core_hir_case(source, "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &document)
+        .unwrap_or_else(|error| panic!("{error:?}\n{document}"));
+    ace_core::verify::verify(bound).expect("reference verifies both integer constants");
+    assert!(document.contains("value: 42i32"), "{document}");
+    assert!(document.contains("value: -2147483648i32"), "{document}");
+    let admit = |draft: &str| {
+        run_core_hir_case(draft.as_bytes(), "descriptor").expect("Auto HIR admission")
+    };
+    assert_eq!(admit(&document), "ADMITTED core-i32-draft\n");
+    let outside = document.replace("-2147483648i32", "-184467440737095516160i32");
+    assert_eq!(admit(&outside), "ERROR hir.type\n");
+}
+
+#[test]
+fn rejects_empty_components_in_the_project_inventory() {
+    assert!(observe_project_inventory("main")
+        .expect("valid inventory")
+        .starts_with("hir("));
+    for inventory in ["", "main\n", "main\n\nextra", "/main", "main/"] {
+        let report = observe_project_inventory(inventory).expect("malformed inventory diagnostic");
+        assert_eq!(report, "ERROR source.module\n", "{inventory:?}");
+    }
 }
 
 #[test]

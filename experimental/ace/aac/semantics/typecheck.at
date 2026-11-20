@@ -20,6 +20,7 @@ use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
 use app.numeric_literal.numeric_literal_type
+use app.numeric_literal.negative_source_literal
 use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
@@ -108,10 +109,8 @@ fn numeric_type(id int) bool {
 fn literal_type(src List<int>, ast List<int>, row int, node_kind Str, fuel List<int>, deadline i64) int {
     if (node_kind == "true-kw" || node_kind == "false-kw") { return boolean_type() }
     if (node_kind == "int-lit" || node_kind == "affix-num") {
-        let outer = parent(ast, row)
         let begin = start_of(ast, row)
-        let sign = start_of(ast, outer)
-        let negative = sign < begin && src.get(sign) == 45
+        let negative = negative_source_literal(src, ast, row)
         return numeric_literal_type(src, begin, end_of(ast, row), negative, fuel, deadline)
     }
     if (node_kind == "str-lit") { return text_view_type() }

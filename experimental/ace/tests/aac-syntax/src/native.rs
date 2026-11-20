@@ -282,21 +282,31 @@ fn run_semantic_source(
 }
 
 pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> {
-    run_project(modules, false, None)
+    run_project(modules, false, None, None)
 }
 
 pub fn run_type_project(modules: &[(&str, &str)]) -> Result<String, String> {
-    run_project(modules, true, None)
+    run_project(modules, true, None, None)
 }
 
 pub fn run_core_hir_project(modules: &[(&str, &str)]) -> Result<String, String> {
-    run_project(modules, true, Some("verify"))
+    run_project(modules, true, Some("verify"), None)
+}
+
+pub fn observe_project_inventory(inventory: &str) -> Result<String, String> {
+    run_project(
+        &[("main", "fn main() int { return 3 }")],
+        true,
+        Some("verify"),
+        Some(inventory),
+    )
 }
 
 fn run_project(
     modules: &[(&str, &str)],
     typed: bool,
     hir_mode: Option<&str>,
+    inventory: Option<&str>,
 ) -> Result<String, String> {
     let exe = prepared_semantic()?;
     with_fixture("semantic-project", |root| {
@@ -315,11 +325,14 @@ fn run_project(
             std::fs::write(input, source).map_err(|err| err.to_string())?;
             names.push(*name);
         }
+        let declared = inventory
+            .map(str::to_owned)
+            .unwrap_or_else(|| names.join("\n"));
         let mut cmd = Command::new(exe);
         cmd.current_dir(root)
             .env("AAC1047_PROJECT", root)
             .env("AAC1047_PACKAGE", "app")
-            .env("AAC1047_INVENTORY", names.join("\n"))
+            .env("AAC1047_INVENTORY", declared)
             .env("AAC1047_OUTPUT", &output)
             .env("AAC1047_TYPED", if typed { "1" } else { "0" })
             .env_remove("AAC1047_HIR")
