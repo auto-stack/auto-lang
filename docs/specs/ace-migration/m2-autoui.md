@@ -102,6 +102,10 @@ if/else、component、outlet/memo、memo/exact、link）、view-fn、style-recip
 - **合同演进**：979 的 `text <expr> {}` 空括号冻结面扩为三形（空括号/带属性
   体/裸标签——001 真实语法）；979 反例 unknown-attribute 改无冒号形（979 文件
   内 PLAN-980 注记；具名结构拒绝合同不变）。
+- **文本 literal 括号属性（PLAN-125）**。AGE 组件面和包面允许
+  `text "literal" (style: "…") {}`。文本 literal 保留在文本叶序列，
+  `text` 元素同时保留 label 和括号属性，供消费端投影。原有
+  `text "literal" { style: "…" }` 继续通过同一文本叶和属性通道。
 
 ## 5. 边界与已知限制（未交付面保持显式）
 
