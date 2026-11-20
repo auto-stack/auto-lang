@@ -1570,6 +1570,16 @@ pub fn emit_resolved_packages_parts(
     emit_resolved_packages_parts_profile(program, sources, module_path, SourceProfile::TextRecord)
 }
 
+/// Resolve a bound package through the ordinary Auto signature and type pipeline.
+pub fn resolve_auto_package(
+    program: &super::ast::Program,
+    capabilities: &[String],
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let mut program = program.clone();
+    super::infer::complete(&mut program)?;
+    super::resolve_with(&program, capabilities, SourceProfile::Auto)
+}
+
 /// PLAN-946（T-02）：aggregates packages 线的部件发射——List/Variant 类型表
 /// 条目按 962 域（`is_collections()`）发射，descriptor 同域；plain/ct 线仍走
 /// TextRecord（`emit_resolved_packages_parts` 原面逐字节不变）。

@@ -107,6 +107,11 @@ pub(crate) fn project_program_with_caps(
         .iter()
         .position(|r| r.name == "age-let-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    let auto_var_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "auto-var-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let var_item_kind = p
         .rules
         .iter()
@@ -258,6 +263,7 @@ pub(crate) fn project_program_with_caps(
             || kind == k.union_item.unwrap_or(u32::MAX)
             || Some(kind) == const_item_kind
             || Some(kind) == var_item_kind
+            || Some(kind) == auto_var_item_kind
             // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 也是声明位项。
             || Some(kind) == age_let_item_kind
             || Some(kind) == k.spec_item
@@ -340,10 +346,11 @@ pub(crate) fn project_program_with_caps(
                         continue;
                     }
                 }
-            } else if Some(kind) == const_item_kind || Some(kind) == var_item_kind {
-                // PLAN-960（T-02）：packages-modules 面的 const/var 模块项
-                // （kind 精确匹配；use/pub-use 项仍走元数据跳过路径）。
-                items.push(eng.run_global_item(node, Some(kind) == var_item_kind));
+            } else if Some(kind) == const_item_kind
+                || Some(kind) == var_item_kind
+                || Some(kind) == auto_var_item_kind
+            {
+                items.push(eng.run_global_item(node, Some(kind) != const_item_kind));
             } else if Some(kind) == use_rs_item_kind || Some(kind) == use_c_item_kind {
                 // PLAN-967（F0）：`use.rs <provider>` —— lang 叶必须恰为
                 // `rs`；任何其它拼写是命名拒绝，不是静默的模块 use。
@@ -7743,7 +7750,10 @@ impl<'a> Engine<'a> {
             .cx
             .field_child(node, "ty")
             .map(|n| self.classify_word(n, false, false))
-            .expect("global items carry a required type annotation");
+            .unwrap_or(TypeAnn {
+                kind: TypeRef::Inferred,
+                span: name.span,
+            });
         let value_n = self.cx.field_child(node, "value").expect("global value");
         self.stack.push(Frame::GlobalItemFinish {
             node,

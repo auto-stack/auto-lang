@@ -2394,6 +2394,20 @@ fn run_check_with_transport(
     if family == RecipeFamily::LanguageSource {
         request["source_path"] = serde_json::json!(&case.entry_path);
     }
+    if family == RecipeFamily::LanguageSource
+        && (case.files.len() > 1 || av.caps.iter().any(|c| c == "ac.source.modules.packages/v1"))
+    {
+        let files: Vec<_> = case.files[1..]
+            .iter()
+            .map(|file| {
+                serde_json::json!({
+                    "path": file.virtual_path,
+                    "source_b64": b64(&file.bytes),
+                })
+            })
+            .collect();
+        request["project"] = serde_json::json!({"entry_path":case.entry_path,"files":files});
+    }
     if let Some(id) = &typed_fixture {
         request["typed_fixture"] = serde_json::json!(id);
     }
@@ -2756,7 +2770,9 @@ fn run_check_with_transport(
                 // FIXTURE ENTRY (the frozen input that actually ran); a
                 // source run binds the current source revision
                 // (F820-R6-01; PLAN-821 same rule for owned).
-                let expect_hash = if typed_fixture.is_some()
+                let expect_hash = if request.get("project").is_some() {
+                    case.source_sha256.clone()
+                } else if typed_fixture.is_some()
                     || owned_fixture.is_some()
                     || collections_fixture.is_some()
                     || closures_fixture.is_some()

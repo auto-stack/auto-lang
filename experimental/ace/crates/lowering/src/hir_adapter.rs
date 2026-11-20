@@ -654,7 +654,19 @@ fn lower_checked_collection_family(
                 if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
                     continue;
                 }
-                if symbol.starts_with("__sched_") {
+                if auto_language && symbol.starts_with("module.global.") {
+                    let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                    let idx = out.intern_import(MirImport {
+                        symbol: symbol.clone(),
+                        effect: match effect {
+                            hir::Effect::Observable => Effect::Observable,
+                            hir::Effect::Pure => Effect::Pure,
+                        },
+                        sig,
+                        env: None,
+                    });
+                    def_map.insert(di as u32, CalleeRef::Import(idx));
+                } else if symbol.starts_with("__sched_") {
                     let sig =
                         owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                     let idx = out.intern_import(MirImport {
@@ -1406,6 +1418,17 @@ pub fn lower_checked_closures_with_init(
     init_names: &[String],
 ) -> Result<MirModule, AdapterError> {
     let mut out = lower_checked_closures(checked, entry_name, source_snapshot)?;
+    append_init_chain(&mut out, init_names)?;
+    Ok(out)
+}
+
+pub fn lower_checked_auto_language_with_init(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+    init_names: &[String],
+) -> Result<MirModule, AdapterError> {
+    let mut out = lower_checked_auto_language(checked, entry_name, source_snapshot)?;
     append_init_chain(&mut out, init_names)?;
     Ok(out)
 }
@@ -3102,6 +3125,7 @@ fn owned_type_idx_of(
             // which this owned-profile lowering never sees (defense).
             hir::BuiltinType::Unit
                 if out.is_host_console_profile()
+                    || out.is_closures_profile()
                     // PLAN-968: console intrinsics in scheduler modules
                     // carry the same unit result seam (the module's defs
                     // carry __sched_ intrinsics).

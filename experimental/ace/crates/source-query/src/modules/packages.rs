@@ -43,6 +43,39 @@ pub fn compile_package_product(
     compile_bound_packages(bound, caps)
 }
 
+/// Compile a package closure with the ordinary Auto resolver and HIR profile.
+pub fn compile_package_product_auto(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let mut caps = caps.to_vec();
+    let packages = ace_core::source::packages::PACKAGES_CAPABILITY;
+    if !caps.iter().any(|cap| cap == packages) {
+        caps.push(packages.into());
+    }
+    let bound = ace_core::source::packages::bind_packages_auto(inputs, entry, &caps, budget)
+        .map_err(|e| vec![e])?;
+    let profile = SourceProfile::Auto;
+    let resolved = ace_core::source::adapter::resolve_auto_package(&bound.program, &caps)
+        .map_err(|ds| locate_all(&bound, ds))?;
+    typecheck_with(&resolved, profile).map_err(|ds| locate_all(&bound, ds))?;
+    let parts = emit_resolved_packages_parts_profile(&resolved, &bound, "packages", profile)
+        .map_err(|ds| locate_all(&bound, ds))?;
+    let checked =
+        ace_core::verify::verify_closures(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
+    Ok(PackageProduct {
+        compiled: CompiledSource {
+            profile: parts.profile,
+            input_hash: parts.input_hash,
+            atom_text: parts.atom_text,
+            checked,
+        },
+        bound,
+    })
+}
+
 /// PLAN-946：aggregates 域的 packages 前门。与 [`compile_package_product`]
 /// 同一 resolver/typecheck/emitter 管线，仅 profile 换为 PLAN-962 的
 /// `SourceProfile::Aggregates`、HIR 验证走 closures-superset 家族入口

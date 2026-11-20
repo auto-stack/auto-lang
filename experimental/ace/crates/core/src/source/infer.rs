@@ -58,6 +58,7 @@ impl Ty {
 struct UntypedFn {
     name: String,
     param_names: Vec<String>,
+    inferred_params: Vec<bool>,
     params: Vec<Ty>,
     ret: Ty,
 }
@@ -77,13 +78,26 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     normalize_auto_face(program);
     merge_prototypes(program, &mut diags);
-    let has_inferred = program.items.iter().any(|i| match i {
-        Item::Fn(f) => {
-            f.ret.kind == TypeRef::Inferred
-                || f.params.iter().any(|p| p.ty.kind == TypeRef::Inferred)
-        }
-        _ => false,
-    });
+    let global_get = crate::source::packages::GLOBAL_GET_PREFIX;
+    let inferred_globals: Vec<_> = program
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| match item {
+            Item::Store(store) if store.ty.kind == TypeRef::Inferred => {
+                Some((index, format!("{global_get}{}", store.name.name)))
+            }
+            _ => None,
+        })
+        .collect();
+    let has_inferred = !inferred_globals.is_empty()
+        || program.items.iter().any(|i| match i {
+            Item::Fn(f) => {
+                f.ret.kind == TypeRef::Inferred
+                    || f.params.iter().any(|p| p.ty.kind == TypeRef::Inferred)
+            }
+            _ => false,
+        });
     if !has_inferred {
         // Fast path: fully typed module — the pass is a no-op (every
         // frozen-narrow-face-shaped Auto program lands here).
@@ -112,6 +126,11 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
                         UntypedFn {
                             name: f.name.name.clone(),
                             param_names: f.params.iter().map(|p| p.name.name.clone()).collect(),
+                            inferred_params: f
+                                .params
+                                .iter()
+                                .map(|p| p.ty.kind == TypeRef::Inferred)
+                                .collect(),
                             params: f.params.iter().map(|p| Ty::of_ann(&p.ty)).collect(),
                             ret: Ty::of_ann(&f.ret),
                         },
@@ -130,6 +149,11 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
                 }
                 ctx.records.entry(t.name.name.clone()).or_insert(t);
             }
+            Item::Store(crate::source::ast::StoreItem { name, ty, .. })
+            | Item::Const(crate::source::ast::ConstItem { name, ty, .. }) => {
+                ctx.typed_rets
+                    .insert(format!("{global_get}{}", name.name), Ty::of_ann(ty));
+            }
             _ => {}
         }
     }
@@ -143,7 +167,7 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
         .map(|u| u.params.len() + 1)
         .sum::<usize>()
         .max(1);
-    let cap = slot_count + 2;
+    let cap = slot_count + inferred_globals.len() + 2;
     for _round in 0..cap {
         let before = fingerprint(&ctx);
         let mut sites: Vec<(String, Vec<(usize, Ty)>, Span)> = Vec::new();
@@ -165,9 +189,20 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
                 _ => {}
             }
         }
+        let mut globals_changed = false;
+        for (index, accessor) in &inferred_globals {
+            let Item::Store(store) = &program.items[*index] else {
+                unreachable!("inferred global index must refer to a store");
+            };
+            let ty = estimate(&store.value, &Env::default(), &mut ctx, &mut sites);
+            if ty != Ty::Unknown && ctx.typed_rets.get(accessor) != Some(&ty) {
+                ctx.typed_rets.insert(accessor.clone(), ty);
+                globals_changed = true;
+            }
+        }
         feed_sites(&mut ctx, sites, &mut diags);
         derive_returns(program, &mut ctx, &mut diags);
-        if fingerprint(&ctx) == before {
+        if !globals_changed && fingerprint(&ctx) == before {
             break;
         }
     }
@@ -187,9 +222,30 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
         }
     }
 
+    let inferred_global_types: Vec<_> = inferred_globals
+        .into_iter()
+        .map(|(index, accessor)| (index, ctx.typed_rets.get(&accessor).cloned()))
+        .collect();
+    let untyped = ctx.untyped;
+    for (index, ty) in inferred_global_types {
+        let Item::Store(store) = &mut program.items[index] else {
+            unreachable!("inferred global index must refer to a store");
+        };
+        if let Some(Ty::Concrete(ty)) = ty {
+            store.ty.kind = ty;
+        } else {
+            diags.push(Diagnostic::new(
+                Stage::Bind,
+                "source.inference",
+                "the type of the module global cannot be inferred from its initializer",
+                store.name.span,
+            ));
+        }
+    }
+
     // Rewrite annotations + reject unresolved/conflicting slots.
-    for (idx, u) in &ctx.untyped {
-        let Item::Fn(f) = &mut program.items[*idx] else {
+    for (idx, u) in untyped {
+        let Item::Fn(f) = &mut program.items[idx] else {
             unreachable!("untyped slot keyed by fn item");
         };
         for (pi, slot) in u.params.iter().enumerate() {
@@ -581,6 +637,11 @@ fn feed_sites(
             continue;
         };
         for (pos, ty) in slots {
+            // Explicit parameters are checked by resolve, including conversions
+            // such as passing an owned string to a borrowed text parameter.
+            if u.inferred_params.get(pos) != Some(&true) {
+                continue;
+            }
             if let Ty::Concrete(t) = ty {
                 if let Some(slot) = u.params.get_mut(pos) {
                     match slot {

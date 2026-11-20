@@ -1,0 +1,131 @@
+# Modules and global state
+
+## Case: multifile-call
+id: "av.parity.1085.multifile-call"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.answer
+fn main() int { return answer() }
+```
+
+#### lib.at
+
+```auto
+pub fn answer() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: module-global-once
+id: "av.parity.1085.module-global-once"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use state.bump
+use state.read
+fn main() int { bump(); return read() }
+```
+
+#### state.at
+
+```auto
+var n = 40
+pub fn bump() { n = n + 2 }
+pub fn read() int { return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: missing-import
+id: "av.parity.1085.missing-import"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use absent.answer
+fn main() int { return answer() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-missing"
+
+## Case: dependency-reexport-alias
+id: "av.parity.1085.dependency-reexport-alias"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use facade.result as total
+fn main() int { return total() }
+```
+
+#### facade.at
+
+```auto
+pub use support.lib.answer as result
+```
+
+#### support/lib.at
+
+```auto
+pub fn answer() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: private-import
+id: "av.parity.1085.private-import"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.answer
+fn main() int { return answer() }
+```
+
+#### lib.at
+
+```auto
+fn answer() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-private"

@@ -341,6 +341,28 @@ pub fn packages_aggregates_ct_grammar() -> Result<&'static CachedGrammar, String
     capability_grammar(&PACKAGES_AGGREGATES_CT_GRAMMAR, "packages-aggregates-ct")
 }
 
+static AUTO_PACKAGES_GRAMMAR: OnceLock<OnceLock<CachedGrammar>> = OnceLock::new();
+
+pub(crate) fn auto_packages_grammar() -> Result<&'static CachedGrammar, String> {
+    capability_grammar(&AUTO_PACKAGES_GRAMMAR, "auto-packages")
+}
+
+pub(crate) fn parse_packages_front_auto(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with(
+        PackagesFace::Auto,
+        src,
+        budget,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+        0,
+    )
+}
+
 fn capability_grammar(
     cell: &'static OnceLock<OnceLock<CachedGrammar>>,
     slug: &str,
@@ -468,6 +490,7 @@ pub(crate) fn parse_packages_front_aggregates_ct(
 pub(crate) enum PackagesFace {
     /// packages-modules（旧 `false`）。
     Modules,
+    Auto,
     /// packages-ct（PLAN-1043；旧 `true`）。
     Ct,
     /// packages-aggregates（PLAN-946；ct 专属规则在本面裁剪缺席→不可达）。
@@ -484,6 +507,7 @@ impl PackagesFace {
     fn grammar(&self) -> Result<&'static CachedGrammar, String> {
         match self {
             PackagesFace::Modules => packages_grammar(),
+            PackagesFace::Auto => auto_packages_grammar(),
             PackagesFace::Ct => packages_ct_grammar(),
             PackagesFace::Aggregates => packages_aggregates_grammar(),
             PackagesFace::Age => packages_age_grammar(),
@@ -808,6 +832,7 @@ pub(crate) fn project_packages_front(
     let public_item = rule("public-item");
     let const_item = rule("const-item");
     let var_item = rule("var-item");
+    let auto_var_item = rule("auto-var-item");
     // PLAN-981（IF-981-REF）：`pub node Foo {..}` —— 公共 node 声明的导出面。
     let age_pub_node = rule("age-pub-node-item");
     // PLAN-981（IF-981-ORIGINAL）：模块级 `let` 与符号表导入。
@@ -882,7 +907,9 @@ pub(crate) fn project_packages_front(
         // 表达式语句/`?T` 形状按 962 域投影）；plain/ct 面保持 TextRecord。
         // PLAN-972（T-02）：packages-aggregates-ct 同按 Aggregates 域投影
         //（其 #in 落位声明共享同一域）。
-        let proj_profile = if face.aggregates_proj() {
+        let proj_profile = if face == PackagesFace::Auto {
+            SourceProfile::Auto
+        } else if face.aggregates_proj() {
             SourceProfile::Aggregates
         } else {
             SourceProfile::TextRecord
@@ -2036,7 +2063,10 @@ pub(crate) fn project_packages_front(
                 exports.insert(name.clone());
                 const_exports.insert(name.clone());
                 declarations.insert(name, node_span(tree, node));
-            } else if Some(kind) == const_item || Some(kind) == var_item {
+            } else if Some(kind) == const_item
+                || Some(kind) == var_item
+                || Some(kind) == auto_var_item
+            {
                 saw_decl = true;
                 let name = text(tree, field(tree, node, "name").expect("global name"));
                 declarations.insert(name, node_span(tree, node));

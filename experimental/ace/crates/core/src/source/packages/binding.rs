@@ -269,7 +269,7 @@ pub fn bind_packages(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_packages_face(inputs, entry, caps, budget, false)
+    bind_packages_face(inputs, entry, caps, budget, Faces::Plain)
 }
 
 /// PLAN-946（T-02）：aggregates 域的包绑定（同一身份/预算/std 保留/装配
@@ -281,7 +281,17 @@ pub fn bind_packages_aggregates(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_packages_face(inputs, entry, caps, budget, true)
+    bind_packages_face(inputs, entry, caps, budget, Faces::Aggregates)
+}
+
+/// Bind ordinary Auto source in a host-supplied package closure.
+pub fn bind_packages_auto(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_packages_face(inputs, entry, caps, budget, Faces::Auto)
 }
 
 /// PLAN-981（IF-981-MODULE）：`age-package` 面的包绑定 —— 同一绑定器、同一
@@ -346,13 +356,8 @@ fn bind_packages_face(
     entry: &str,
     caps: &[String],
     budget: FrontBudget,
-    aggregates: bool,
+    face: Faces,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    let face = if aggregates {
-        Faces::Aggregates
-    } else {
-        Faces::Plain
-    };
     bind_packages_face_with(
         inputs,
         entry,
@@ -371,6 +376,7 @@ fn bind_packages_face(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Faces {
     Plain,
+    Auto,
     Aggregates,
     /// PLAN-972：装配 aggregates 线（aggregates 全表面 + ct 装配项）。
     AggregatesCt,
@@ -446,6 +452,7 @@ fn bind_packages_face_with(
                 parse_package_source_age(&input.source, caps, budget, scenario, node_base)
             }
             Faces::Plain => parse_package_source(&input.source, caps, budget),
+            Faces::Auto => crate::source::cst::parse_packages_front_auto(&input.source, budget),
         };
         let syntax = parsed.map_err(|mut ds| PackageDiagnostic {
             module: key.clone(),
@@ -476,9 +483,7 @@ fn bind_packages_face_with(
     }
     if matches!(face, Faces::Aggregates) {
         bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
-    } else if matches!(face, Faces::Age) {
-        // PLAN-981：AGE 包面走同一内层绑定，只把面标成 Age（grammar 身份与
-        // 领域候选都按该面裁定）；不另建绑定器。
+    } else if matches!(face, Faces::Age | Faces::Auto) {
         bind_package_syntax_inner(
             inputs,
             entry,
@@ -487,7 +492,7 @@ fn bind_packages_face_with(
             units,
             BTreeMap::new(),
             None,
-            Faces::Age,
+            face,
         )
     } else {
         bind_package_syntax(inputs, entry, caps, budget, units)
@@ -660,7 +665,9 @@ fn bind_package_syntax_inner(
     let in_face = caps.iter().any(|c| c == super::IN_CAPABILITY);
     // PLAN-972/981 resync：`aggregates` 线含装配 ct 线（Walker 的 aggregates/asm_lane 位）。
     let aggregates = matches!(face, Faces::Aggregates | Faces::AggregatesCt);
-    let grammar = if in_face && aggregates {
+    let grammar = if face == Faces::Auto {
+        crate::source::cst::auto_packages_grammar()
+    } else if in_face && aggregates {
         super::packages_aggregates_ct_grammar()
     } else if in_face {
         super::packages_ct_grammar()

@@ -45,7 +45,14 @@ impl PackageAvTarget {
             .collect();
         // PLAN-946（T-02）：aggregates packages 线（std.list 承载面）走
         // closures-superset 家族降落 + init 链；plain/ct 线保持原 owned 面。
-        let mir = if product.compiled.profile == ace_core::source::AGGREGATES_SOURCE_PROFILE {
+        let mir = if product.compiled.profile == ace_core::source::AUTO_SOURCE_PROFILE {
+            ace_lowering::lower_checked_auto_language_with_init(
+                &product.compiled.checked,
+                entry,
+                0,
+                &init_names,
+            )
+        } else if product.compiled.profile == ace_core::source::AGGREGATES_SOURCE_PROFILE {
             ace_lowering::lower_checked_closures_with_init(
                 &product.compiled.checked,
                 entry,

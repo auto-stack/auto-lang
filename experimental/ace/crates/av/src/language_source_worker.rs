@@ -6,8 +6,15 @@ use ace_av_core::abc::encode_abc;
 use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits};
 use ace_av_core::contract::{fnv1a64, ExecOutcome, ObjectKey, Value};
 use ace_av_core::verify_mir;
+use ace_core::atom_text::Diagnostic;
+use ace_core::runtime_contract::sha256_hex;
+use ace_core::source::cst::FrontBudget;
+use ace_core::source::packages::{unit_key, PackageModuleInput};
 use base64::Engine;
+use serde::Deserialize;
 use serde_json::{json, Value as Json};
+use std::collections::BTreeMap;
+use std::path::Path;
 
 use crate::console_host::ConsoleCapture;
 
@@ -26,6 +33,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "request_hash",
         "source_b64",
         "source_path",
+        "project",
         "entry",
         "steps",
         // Present-but-inert optional fields of the shared request builder.
@@ -78,7 +86,36 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut step = json!({"op":"run", "outcome":"infra", "value":null, "trap":null, "diag":null,
         "source_hash":format!("{:016x}",fnv1a64(source.as_bytes())), "wall_ms":0.0});
 
-    let (result, capture) = run_chain(&source, path, &caps);
+    let (result, capture) = if let Some(project) = object.get("project") {
+        let project: SourceProject =
+            serde_json::from_value(project.clone()).map_err(|e| e.to_string())?;
+        let store = request["store_root"]
+            .as_str()
+            .ok_or("missing project store root")?;
+        let mut files = BTreeMap::from([(project.entry_path.clone(), source)]);
+        for file in project.files {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(file.source_b64)
+                .map_err(|e| format!("invalid project file {}: {e}", file.path))?;
+            let source = String::from_utf8(bytes)
+                .map_err(|e| format!("invalid UTF-8 project file {}: {e}", file.path))?;
+            if files.insert(file.path, source).is_some() {
+                return Err("duplicate project path".into());
+            }
+        }
+        step["source_hash"] = json!(project_source_hash(&files));
+        let mut capture = ConsoleCapture::default();
+        let result = run_project(
+            &project.entry_path,
+            files,
+            &caps,
+            Path::new(store),
+            &mut capture,
+        );
+        (result, capture)
+    } else {
+        run_chain(&source, path, &caps)
+    };
     match result {
         Err(diag) => {
             step["outcome"] = json!("diag");
@@ -227,6 +264,135 @@ fn display_result(value: &Value) -> Option<String> {
     Some(result)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceProject {
+    entry_path: String,
+    files: Vec<ProjectFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectFile {
+    path: String,
+    source_b64: String,
+}
+
+fn diagnostic(diag: &Diagnostic, path: &str) -> Json {
+    json!({
+        "stage": format!("{:?}", diag.stage).to_lowercase(),
+        "code": diag.code,
+        "message": diag.message,
+        "path": path,
+        "span": {"start": diag.span.start, "end": diag.span.end}
+    })
+}
+
+/// Resolve virtual Auto project paths to the package graph. The unqualified
+/// project root is package `auto` (including legacy `use auto.mod: a, b`).
+/// A single directory component in a project path names a dependency package.
+fn project_module(path: &str, source: String) -> Option<PackageModuleInput> {
+    let (package, file) = path.split_once('/').unwrap_or(("auto", path));
+    let id = file.strip_suffix(".at")?;
+    let valid_segment = |part: &str| {
+        part.bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+            && part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    };
+    if !valid_segment(package) || !valid_segment(id) {
+        return None;
+    }
+    Some(PackageModuleInput {
+        package: package.into(),
+        version: "0".into(),
+        id: id.into(),
+        source,
+        provider: None,
+    })
+}
+
+// Match the parent Case IR's identity over the admitted virtual paths and bytes.
+fn project_source_hash(files: &BTreeMap<String, String>) -> String {
+    let mut combined = String::new();
+    for (path, source) in files {
+        combined.push_str(path);
+        combined.push('\0');
+        combined.push_str(&sha256_hex(source.as_bytes()));
+        combined.push('\0');
+    }
+    sha256_hex(combined.as_bytes())
+}
+
+fn run_project(
+    entry_path: &str,
+    files: BTreeMap<String, String>,
+    caps: &[String],
+    store: &Path,
+    capture: &mut ConsoleCapture,
+) -> Result<ExecOutcome, Json> {
+    let path_diagnostic = |path: &str| {
+        json!({
+            "stage": "bind", "code": "source.module-path",
+            "message": "project files must use module.at or package/module.at",
+            "path": path, "span": {"start": 0, "end": 0}
+        })
+    };
+    let mut paths = BTreeMap::new();
+    let mut inputs = Vec::with_capacity(files.len());
+    let mut entry = None;
+    for (path, source) in files {
+        let module = project_module(&path, source).ok_or_else(|| path_diagnostic(&path))?;
+        let key = unit_key(&module.package, &module.id);
+        if path == entry_path {
+            entry = Some(key.clone());
+        }
+        if paths.insert(key.clone(), path.clone()).is_some() {
+            return Err(json!({"stage":"bind","code":"source.module-identity",
+                "message":format!("duplicate package module {key}"),"path":path,
+                "span":{"start":0,"end":0}}));
+        }
+        inputs.push(module);
+    }
+    let entry = entry.ok_or_else(|| path_diagnostic(entry_path))?;
+    let compiled = ace_source_query::modules::packages::compile_package_product_auto(
+        &inputs,
+        &entry,
+        caps,
+        FrontBudget::WORK_OWNED_64MIB,
+    )
+    .map_err(|ds| {
+        let d = &ds[0];
+        let path = paths.get(&d.module).map_or(entry_path, String::as_str);
+        diagnostic(&d.diagnostic, path)
+    })?;
+    let target = crate::modules::packages::PackageAvTarget::cold(store, &compiled)
+        .map_err(|message| json!({"stage":"admit","code":"av.package","message":message}))?;
+    // The ordinary Case worker is a console-only provider. Do not turn a
+    // source capability declaration into ambient platform I/O authority.
+    let grants: Vec<_> = caps
+        .iter()
+        .filter(|cap| {
+            matches!(
+                cap.as_str(),
+                ace_av_core::host::STDOUT | ace_av_core::host::STDERR
+            )
+        })
+        .cloned()
+        .collect();
+    let mut backend = ace_av_core::platform_io::CapturePlatformIo::default();
+    let (outcome, _, _) = ace_av_core::av::execute_program_platform(
+        &target.current,
+        &ExecLimits::default(),
+        &CancelFlag::default(),
+        &grants,
+        Some(capture),
+        &mut backend,
+    )
+    .map_err(|e| json!({"stage":"admit","code":e.code,"message":e.message}))?;
+    Ok(outcome)
+}
+
 /// The full producer→consumer chain: Auto-profile compile → closures
 /// lowering → MIR verify → ABC admit → AV execute with console capture.
 /// Compile-stage diagnostics map to the diag outcome (frontend codes)
@@ -238,16 +404,8 @@ fn run_chain(
 ) -> (Result<ExecOutcome, Json>, ConsoleCapture) {
     let mut capture = ConsoleCapture::default();
     let outcome = (|| -> Result<ExecOutcome, Json> {
-        let compiled =
-            ace_core::source::compile_language_source(source, path, caps).map_err(|ds| {
-                let d = ds.first();
-                json!({
-                    "stage": d.map(|x| format!("{:?}", x.stage).to_lowercase()).unwrap_or_default(),
-                    "code": d.map(|x| x.code.clone()).unwrap_or_default(),
-                    "message": d.map(|x| x.message.clone()).unwrap_or_default(),
-                    "span": d.map(|x| json!({"path":path, "start":x.span.start, "end":x.span.end})),
-                })
-            })?;
+        let compiled = ace_core::source::compile_language_source(source, path, caps)
+            .map_err(|ds| diagnostic(&ds[0], path))?;
         // PLAN-1080: the ordinary language face lowers through the same
         // frozen closures-family MIR with the record-method def admission.
         let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
