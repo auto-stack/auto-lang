@@ -420,10 +420,10 @@ fn asm_aggr_compile(
 /// slice/char_at/len_bytes。
 ///
 /// PLAN-1098 T-05 (O-02): every sub-scenario carries an INDEPENDENT oracle —
-/// arithmetic/Unicode facts for the values (1 / 4 / 1 / 97 / 1 / 20013) and the
-/// frozen profile boundary (stage + code + message) for the two constructs this
-/// source profile does not admit. Printing whichever branch happened could
-/// never go red.
+/// arithmetic and Unicode facts for values and the named diagnostic for the
+/// remaining source boundary. PLAN-1086 admits a local view of an owned string
+/// in the aggregates profile. Its first scalar is ASCII, so the slice has one
+/// UTF-8 byte.
 enum StrSurface {
     Value(i32),
     Diagnostic(&'static str, &'static str),
@@ -456,10 +456,7 @@ fn probe972_t02_str_surface() {
         (
             "str_slice_len_bytes",
             "fn main() int {\n    let s Str = \"A中😀\"\n    let t = s.slice(0, 1)\n    return t.len_bytes()\n}",
-            StrSurface::Diagnostic(
-                "verify.local-type",
-                "text types exist only in the text-i32-draft profile",
-            ),
+            StrSurface::Value(1),
         ),
         (
             "str_char_at",
