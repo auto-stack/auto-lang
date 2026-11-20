@@ -1753,6 +1753,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 opt { ret-ty(field: "ty") }
                 block(field: "body")
             }
+            // The combined AAC profile includes both failable returns and the
+            // legacy scheduler marker. Prefer a complete return annotation.
+            alt(profiles: [aac]) {
+                ident(field: "name")
+                opt { type-params(field: "type_params") }
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                ret-ty(field: "ty")
+                block(field: "body")
+            }
             alt {
                 ident(field: "name")
                 // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级

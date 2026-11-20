@@ -10,6 +10,20 @@ fn observe(source: &str) -> String {
     run_semantic_case(source.as_bytes(), None).expect("Auto semantic stage driver")
 }
 
+fn canonical_source<'a>(corpus: &'a str, title: &str) -> &'a str {
+    let heading = format!("## Case: {title}\n");
+    corpus
+        .split_once(&heading)
+        .expect("canonical case")
+        .1
+        .split_once("```auto\n")
+        .expect("source block")
+        .1
+        .split_once("```")
+        .expect("source end")
+        .0
+}
+
 #[test]
 fn forwards_and_maps_named_arguments_in_source_order() {
     let source = concat!(
@@ -191,7 +205,7 @@ fn verifies_nominal_record_construction_and_nested_field_reads() {
 }
 
 #[test]
-fn binds_variant_payloads_and_checks_match_exhaustiveness() {
+fn binds_variant_payloads_in_their_own_arm() {
     let source = concat!(
         "enum Packet { Data(int)\n Done }\n",
         "fn make_packet(value int) Packet { return Packet.Data(value) }\n",
@@ -216,6 +230,32 @@ fn binds_variant_payloads_and_checks_match_exhaustiveness() {
         type_report(&escaped),
         format!("ERROR bind.unresolved 0 {site}..{}\n", site + 6)
     );
+    let corpus =
+        include_str!("../../../../../crates/auto-lang/test/cases/language/types/variants.case.ad");
+    let named = canonical_source(corpus, "named-enum-payload");
+    let reordered = named.replace("code: 42, text: \"ok\"", "text: \"ok\", code: 42");
+    let report = type_report(&reordered);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let slots: Vec<_> = report
+        .lines()
+        .filter(|line| line.starts_with("ARG "))
+        .map(|line| line.split_whitespace().nth(3).unwrap())
+        .collect();
+    assert_eq!(slots, ["1", "0"]);
+    let canonical = type_report(named);
+    assert!(canonical.starts_with("aac.type-report/1\n"), "{canonical}");
+    let bad_field = named.replace("code: 42", "code: false");
+    let site = bad_field.find("false").unwrap();
+    assert_eq!(
+        type_report(&bad_field),
+        format!("ERROR type.argument 0 {site}..{}\n", site + 5)
+    );
+    let tuple_arm = "enum Pair { Values(int, bool) }\nfn read(p Pair) int {\n is p { Values(count, enabled) -> { if enabled { return count }; return 0 } }\n}\nfn main() int { return read(Pair.Values(42, true)) }";
+    let positional = type_report(tuple_arm);
+    assert!(
+        positional.starts_with("aac.type-report/1\n"),
+        "{positional}"
+    );
 }
 
 #[test]
@@ -223,24 +263,42 @@ fn distinguishes_fallthrough_statements_from_match_expressions() {
     let corpus = include_str!(
         "../../../../../crates/auto-lang/test/cases/language/patterns/nested-match.case.ad"
     );
-    let case = |title: &str| {
-        let heading = format!("## Case: {title}\n");
-        corpus
-            .split_once(&heading)
-            .expect("canonical case")
-            .1
-            .split_once("```auto\n")
-            .expect("source block")
-            .1
-            .split_once("```")
-            .expect("source end")
-            .0
-    };
+    let case = |title: &str| canonical_source(corpus, title);
     for title in ["statement-fallthrough", "guard-arm", "or-arm"] {
         let report = type_report(case(title));
         assert!(
             report.starts_with("aac.type-report/1\n"),
             "{title}: {report}"
+        );
+    }
+    let nested = case("nested-result-option");
+    let report = type_report(nested);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let type_rows: Vec<Vec<_>> = report
+        .lines()
+        .filter(|line| line.starts_with("TYPE "))
+        .map(|line| line.split_whitespace().collect())
+        .collect();
+    let option = type_rows
+        .iter()
+        .find(|row| row[2..] == ["20", "1", "0"])
+        .expect("Option<Int> type")[1];
+    let result = type_rows
+        .iter()
+        .find(|row| row[2..] == ["21", option, "3"])
+        .expect("Result<Option<Int>, Str> type")[1];
+    for (expression, type_id) in [
+        ("Ok(Some(42))", result),
+        ("Some(42)", option),
+        ("Err(\"bad\")", result),
+    ] {
+        let start = nested.find(expression).unwrap();
+        let location = format!(" 0 {start}..{} {type_id}", start + expression.len());
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("TY ") && line.ends_with(&location)),
+            "{expression}: {report}"
         );
     }
     let invalid = case("nonexhaustive-expr-rejects");
@@ -249,6 +307,12 @@ fn distinguishes_fallthrough_statements_from_match_expressions() {
     assert_eq!(
         type_report(invalid),
         format!("ERROR type.match-exhaustive 0 {start}..{stop}\n")
+    );
+    let incompatible = nested.replace("Err(\"bad\")", "Err(9)");
+    let start = incompatible.find("Err(9)").unwrap();
+    assert_eq!(
+        type_report(&incompatible),
+        format!("ERROR type.argument 0 {start}..{}\n", start + 6)
     );
 }
 
@@ -664,6 +728,29 @@ fn binds_methods_through_their_receiver_and_maps_formals() {
         type_report(&wrong),
         format!("ERROR type.argument 0 {start}..{}\n", start + 1)
     );
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/calls/binding-pipeline.case.ad"
+    );
+    let pipe = canonical_source(corpus, "pipe-method-and-field");
+    let pipe_report = type_report(pipe);
+    assert!(
+        pipe_report.starts_with("aac.type-report/1\n"),
+        "{pipe_report}"
+    );
+    let add = pipe_report
+        .lines()
+        .find(|line| line.contains(" 9 add 0 "))
+        .expect("method declaration")
+        .split_whitespace()
+        .nth(1)
+        .unwrap();
+    assert_eq!(pipe_report.matches(&format!("USE {add} add 0 ")).count(), 2);
+    let wrong_pipe = pipe.replace(".add(3)", ".add(false)");
+    let start = wrong_pipe.find("false").unwrap();
+    assert_eq!(
+        type_report(&wrong_pipe),
+        format!("ERROR type.argument 0 {start}..{}\n", start + 5)
+    );
 }
 
 const CORE_HIR_INPUT: &[u8] = b"fn A() int { return 41 }\n\
@@ -770,6 +857,22 @@ fn rechecks_descriptor_shape_references_and_mapped_types() {
 
 #[test]
 fn checks_integer_width_and_radix_before_type_publication() {
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/numbers/literals-conversions.case.ad"
+    );
+    for title in ["wide-exact", "mixed-width-explicit", "overflow-is-not-wrap"] {
+        let report = type_report(canonical_source(corpus, title));
+        assert!(
+            report.starts_with("aac.type-report/1\n"),
+            "{title}: {report}"
+        );
+    }
+    let shift = "fn main() u32 { return (1u32).shl(5u8) }";
+    let written = shift.find("5u8").unwrap();
+    assert_eq!(
+        type_report(shift),
+        format!("ERROR type.argument 0 {written}..{}\n", written + 3)
+    );
     let valid = concat!(
         "fn min() i64 { return -9223372036854775808i64 }\n",
         "fn max() u64 { return 18446744073709551615u64 }\n",
@@ -808,9 +911,11 @@ fn preserves_signed_i32_bits_and_radix_through_hir() {
 
 #[test]
 fn rejects_empty_components_in_the_project_inventory() {
-    assert!(observe_project_inventory("main")
-        .expect("valid inventory")
-        .starts_with("hir("));
+    assert!(
+        observe_project_inventory("main")
+            .expect("valid inventory")
+            .starts_with("hir(")
+    );
     for inventory in ["", "main\n", "main\n\nextra", "/main", "main/"] {
         let report = observe_project_inventory(inventory).expect("malformed inventory diagnostic");
         assert_eq!(report, "ERROR source.module\n", "{inventory:?}");
@@ -1135,9 +1240,11 @@ fn preserves_tuple_order_and_checks_indirect_signature() {
     );
     let report = type_report(source);
     assert!(report.starts_with("aac.type-report/1\n"), "{report}");
-    assert!(report
-        .lines()
-        .any(|line| line.starts_with("TYPE ") && line.split_whitespace().nth(2) == Some("27")));
+    assert!(
+        report
+            .lines()
+            .any(|line| line.starts_with("TYPE ") && line.split_whitespace().nth(2) == Some("27"))
+    );
     let bad = source.replace("f(7)", "f(false)");
     let from = bad.find("false").unwrap();
     assert_eq!(

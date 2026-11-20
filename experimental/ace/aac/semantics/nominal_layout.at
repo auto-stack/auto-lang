@@ -61,7 +61,14 @@ pub fn verify_source_layouts(ast List<int>, declarations List<int>, facts List<i
         }
         complete.push(ready)
         var owner = -1
-        if (category == field_decl()) { owner = field_owner(ast, row) }
+        if (category == field_decl()) {
+            let container = parent(ast, row)
+            if (decl_category(declarations, container) == variant_decl()) {
+                owner = parent(ast, parent(ast, container))
+            } else {
+                owner = field_owner(ast, row)
+            }
+        }
         if (category == variant_decl()) { owner = parent(ast, parent(ast, row)) }
         if (owner >= 0 && lane > 0) {
             let gathered = layout_dependencies(types, lane, owner, row, edges, fuel, deadline)

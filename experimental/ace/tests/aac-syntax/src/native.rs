@@ -85,6 +85,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/facts_report.at").into(),
         ),
         (
+            "choices.at".into(),
+            include_str!("../../../aac/semantics/choices.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),

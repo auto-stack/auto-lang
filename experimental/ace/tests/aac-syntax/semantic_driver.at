@@ -20,6 +20,7 @@ use app.core_hir.hir_initialization_error
 use app.core_hir.hir_mutability_error
 use app.core_hir.hir_global_authority_error
 use app.core_hir.hir_borrow_error
+use app.choices.choice_argument_error
 use app.core_hir.hir_reference_error
 use app.core_hir.hir_shape_error
 use app.core_hir.hir_type_error
@@ -109,6 +110,7 @@ fn diagnostic_name(code int) Str {
     if (code == type_value()) { return "type.value" }
     if (code == type_return()) { return "type.return" }
     if (code == type_argument()) { return "type.argument" }
+    if (code == choice_argument_error()) { return "type.argument" }
     if (code == type_branch()) { return "type.branch" }
     if (code == type_condition()) { return "type.condition" }
     if (code == type_member()) { return "type.member" }

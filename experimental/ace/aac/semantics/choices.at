@@ -1,0 +1,151 @@
+use app.binding.bind_budget
+use app.binding.builtin_choice_kind
+use app.binding.call_args
+use app.binding.constant_decl
+use app.binding.decl_category
+use app.binding.direct_callee
+use app.binding.function_decl
+use app.binding.global_var_decl
+use app.binding.local_let_decl
+use app.binding.local_var_decl
+use app.binding.method_decl
+use app.binding.take_step
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.types.intern_type
+use app.types.option_kind
+use app.types.owned_text_type
+use app.types.result_kind
+use app.types.text_view_type
+use app.types.type_first
+use app.types.type_kind
+use app.types.type_second
+
+pub fn choice_argument_error() int { return -52 }
+
+fn transparent(form Str) bool {
+    return form == "expr" || form == "unary-expr" || form == "postfix-expr" || form == "atom-expr"
+}
+
+fn initializer(category int) bool {
+    return category == local_let_decl() || category == local_var_decl() || category == global_var_decl() || category == constant_decl()
+}
+
+pub fn call_choice(pg List<int>, ast List<int>, links List<int>, uses List<int>, call int) int {
+    let name = direct_callee(pg, ast, links, call)
+    if (name < 0) { return 0 }
+    return builtin_choice_kind(uses.get(name))
+}
+
+fn expected_payload(types List<int>, expected int, choice int) int {
+    if (expected <= 0) { return 0 }
+    let family = type_kind(types, expected)
+    if (family == option_kind() && choice == 2) { return type_first(types, expected) }
+    if (family == result_kind()) {
+        if (choice == 3) { return type_first(types, expected) }
+        if (choice == 4) { return type_second(types, expected) }
+    }
+    return 0
+}
+
+// Walk only value-preserving wrappers. Nested constructors project their
+// payload type from the enclosing annotated result or binding.
+fn expected_type(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, start int, fuel List<int>, deadline i64) int {
+    var row = start
+    var enclosing_choices = List<int>.new()
+    var expected = 0
+    for (row >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let outer = parent(ast, row)
+        if (outer < 0) { break }
+        let form = kind(pg, ast, outer)
+        let category = decl_category(declarations, outer)
+        if (initializer(category) && child_with_role(pg, ast, links, outer, "value") == row) {
+            expected = facts.get(outer)
+            break
+        }
+        if (form == "return-stmt" && child_with_role(pg, ast, links, outer, "value") == row) {
+            var scope = parent(ast, outer)
+            for (scope >= 0) {
+                if (!take_step(fuel, deadline)) { return bind_budget() }
+                let scope_kind = decl_category(declarations, scope)
+                if (scope_kind == function_decl() || scope_kind == method_decl()) {
+                    expected = facts.get(scope)
+                    break
+                }
+                scope = parent(ast, scope)
+            }
+            break
+        }
+        if (form == "arg") {
+            let arguments = parent(ast, outer)
+            if (arguments < 0 || kind(pg, ast, arguments) != "args") { break }
+            let call = parent(ast, arguments)
+            if (call < 0 || kind(pg, ast, call) != "call") { break }
+            let choice = call_choice(pg, ast, links, uses, call)
+            if (choice <= 1) { break }
+            enclosing_choices.push(choice)
+            row = call
+            continue
+        }
+        if (!transparent(form) || first_child(links, outer) != row || next_sibling(links, row) >= 0) { break }
+        row = outer
+    }
+    for (expected > 0 && enclosing_choices.len() > 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        expected = expected_payload(types, expected, enclosing_choices.remove(enclosing_choices.len() - 1))
+    }
+    return expected
+}
+
+pub fn none_type(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let expected = expected_type(pg, ast, links, declarations, uses, facts, types, row, fuel, deadline)
+    if (expected <= 0) { return expected }
+    if (type_kind(types, expected) == option_kind()) { return expected }
+    return choice_argument_error()
+}
+
+pub fn is_text_literal(pg List<int>, ast List<int>, links List<int>, value int) bool {
+    var row = value
+    for (row >= 0) {
+        let form = kind(pg, ast, row)
+        if (form == "str-lit") { return true }
+        let condition = form == "condition-expr" || form == "condition-unary" || form == "condition-atom" || form == "condition-postfix"
+        if (!condition && !transparent(form)) { return false }
+        let child = first_child(links, row)
+        if (child < 0 || next_sibling(links, child) >= 0) { return false }
+        row = child
+    }
+    return false
+}
+
+pub fn choice_call_type(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, choice int, fuel List<int>, deadline i64) int {
+    let arguments = call_args(pg, ast, links, row)
+    if (arguments < 0) { return choice_argument_error() }
+    let first = child_with_kind(pg, ast, links, arguments, "arg")
+    if (choice == 1) {
+        if (first >= 0) { return choice_argument_error() }
+        return none_type(pg, ast, links, declarations, uses, facts, types, row, fuel, deadline)
+    }
+    if (first < 0 || child_with_kind(pg, ast, links, arguments, "arg-tail") >= 0) { return choice_argument_error() }
+    let value = first_child(links, first)
+    if (value < 0 || kind(pg, ast, value) == "named-arg") { return choice_argument_error() }
+    let actual = facts.get(value)
+    if (actual == 0) { return 0 }
+    let expected = expected_type(pg, ast, links, declarations, uses, facts, types, row, fuel, deadline)
+    if (expected < 0) { return expected }
+    let wanted = expected_payload(types, expected, choice)
+    if (wanted > 0) {
+        let literal_text = actual == text_view_type() && wanted == owned_text_type() && is_text_literal(pg, ast, links, value)
+        if (actual != wanted && !literal_text) { return choice_argument_error() }
+        return expected
+    }
+    if (choice != 2) { return 0 }
+    let inferred = intern_type(types, option_kind(), actual, 0, fuel, deadline)
+    if (inferred < 0) { return bind_budget() }
+    return inferred
+}

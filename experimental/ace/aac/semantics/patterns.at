@@ -8,6 +8,7 @@ use app.semantic_tree.first_child
 use app.semantic_tree.end_of
 use app.semantic_tree.kind
 use app.semantic_tree.next_sibling
+use app.semantic_tree.role
 use app.semantic_tree.row_count
 use app.semantic_tree.spelling
 use app.semantic_tree.start_of
@@ -19,6 +20,7 @@ use app.types.integer_type
 use app.types.nominal_kind
 use app.types.option_kind
 use app.types.result_kind
+use app.types.tuple_kind
 use app.types.type_first
 use app.types.type_kind
 use app.types.type_second
@@ -53,6 +55,46 @@ fn variant_slot(ast List<int>, src List<int>, declarations List<int>, variants L
     return type_pattern_error()
 }
 
+pub fn enum_payload_fields(pg List<int>, ast List<int>, links List<int>, variant int, fields List<int>, fuel List<int>, deadline i64) int {
+    var child = first_child(links, variant)
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (role(pg, ast, child) == "fields") { fields.push(child) }
+        child = next_sibling(links, child)
+    }
+    return 0
+}
+
+// A named payload uses declaration order. Positional payload elements remain
+// positional even when the first element is itself a tuple.
+fn enum_payload_types(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, variant int, parameters List<int>, fuel List<int>, deadline i64) int {
+    let first_type = child_with_role(pg, ast, links, variant, "payload")
+    let multi = child_with_kind(pg, ast, links, variant, "enum-payload-tail") >= 0
+    var part = first_child(links, variant)
+    for (part >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        var element = -1
+        if (part == first_type || role(pg, ast, part) == "fields") { element = part }
+        if (kind(pg, ast, part) == "enum-payload-tail") { element = child_with_kind(pg, ast, links, part, "ann-ty") }
+        if (element >= 0) {
+            let lane = facts.get(element)
+            if (lane == 0) { return 0 }
+            if (part == first_type && !multi && type_kind(types, lane) == tuple_kind()) {
+                var item = type_first(types, lane)
+                for (item > 0) {
+                    if (!take_step(fuel, deadline)) { return bind_budget() }
+                    parameters.push(type_first(types, item))
+                    item = type_second(types, item)
+                }
+            } else {
+                parameters.push(lane)
+            }
+        }
+        part = next_sibling(links, part)
+    }
+    return 1
+}
+
 pub fn enum_member_type(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, lane int, member int, fuel List<int>, deadline i64) int {
     let owner = type_first(types, lane)
     var variants = List<int>.new()
@@ -62,11 +104,10 @@ pub fn enum_member_type(pg List<int>, ast List<int>, links List<int>, src List<i
     if (at < 0) { return at }
     let variant = variants.get(at)
     uses.set(member, variant)
-    if (child_with_role(pg, ast, links, variant, "payload") < 0) { return lane }
-    let payload = facts.get(variant)
-    if (payload == 0) { return 0 }
     var parameters = List<int>.new()
-    parameters.push(payload)
+    let loaded = enum_payload_types(pg, ast, links, facts, types, variant, parameters, fuel, deadline)
+    if (loaded <= 0) { return loaded }
+    if (parameters.len() == 0) { return lane }
     let sequence = intern_sequence(types, parameters, fuel, deadline)
     if (sequence < 0) { return bind_budget() }
     let signature = intern_type(types, function_kind(), lane, sequence, fuel, deadline)
@@ -93,6 +134,7 @@ fn match_pattern(pg List<int>, ast List<int>, links List<int>, src List<int>, de
     let literal = child_with_role(pg, ast, links, pattern, "lit")
     var slot = -1
     var payload = 0
+    var parameters = List<int>.new()
     let name = child_with_role(pg, ast, links, pattern, "pattern")
     var wildcard = false
     if (name >= 0) { wildcard = spelling(src, ast, name) == "_" }
@@ -145,7 +187,12 @@ fn match_pattern(pg List<int>, ast List<int>, links List<int>, src List<int>, de
                 if (slot < 0) { return fail(errors, name, slot) }
                 let declaration = variants.get(slot)
                 uses.set(name, declaration)
-                payload = facts.get(declaration)
+                let loaded = enum_payload_types(pg, ast, links, facts, types, declaration, parameters, fuel, deadline)
+                if (loaded < 0) { return fail(errors, pattern, loaded) }
+                if (loaded == 0) {
+                    if (final_pass) { return fail(errors, pattern, type_pattern_error()) }
+                    return 0
+                }
             } else {
                 slot = builtin_pattern(family, written)
                 if (slot < 0) { return fail(errors, name, slot) }
@@ -157,10 +204,10 @@ fn match_pattern(pg List<int>, ast List<int>, links List<int>, src List<int>, de
         }
     }
     let binding = child_with_role(pg, ast, links, pattern, "payload")
-    if (binding >= 0 && payload <= 0) { return fail(errors, pattern, type_pattern_error()) }
-    if (binding >= 0 && facts.get(binding) == 0) {
-        facts.set(binding, payload)
-        state.set(1, 1)
+    if (binding >= 0) {
+        if (payload > 0) { parameters.push(payload) }
+        let bound = bind_pattern_payload(pg, ast, links, facts, parameters, binding, state, fuel, deadline)
+        if (bound != 0) { return fail(errors, binding, bound) }
     }
     if (guard >= 0 && final_pass) {
         let condition = child_with_role(pg, ast, links, guard, "cond")
@@ -170,6 +217,30 @@ fn match_pattern(pg List<int>, ast List<int>, links List<int>, src List<int>, de
         if (covered.get(slot) != 0) { return fail(errors, pattern, type_pattern_error()) }
         if (guard < 0) { covered.set(slot, 1) }
     }
+    return 0
+}
+
+fn bind_pattern_payload(pg List<int>, ast List<int>, links List<int>, facts List<int>, parameters List<int>, binding int, state List<int>, fuel List<int>, deadline i64) int {
+    if (parameters.len() == 0) { return type_pattern_error() }
+    if (facts.get(binding) == 0) {
+        facts.set(binding, parameters.get(0))
+        state.set(1, 1)
+    }
+    var tail = first_child(links, binding)
+    var index = 1
+    for (tail >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (kind(pg, ast, tail) == "arm-binding-tail") {
+            if (index >= parameters.len()) { return type_pattern_error() }
+            if (facts.get(tail) == 0) {
+                facts.set(tail, parameters.get(index))
+                state.set(1, 1)
+            }
+            index = index + 1
+        }
+        tail = next_sibling(links, tail)
+    }
+    if (index != parameters.len()) { return type_pattern_error() }
     return 0
 }
 

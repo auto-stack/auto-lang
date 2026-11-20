@@ -54,7 +54,7 @@ fn category(node_kind Str) int {
     if (node_kind == "type-item" || node_kind == "enum-item") { return type_decl() }
     if (node_kind == "field-member") { return field_decl() }
     if (node_kind == "enum-arm") { return variant_decl() }
-    if (node_kind == "arm-payload") { return pattern_binding_decl() }
+    if (node_kind == "arm-payload" || node_kind == "arm-binding-tail") { return pattern_binding_decl() }
     return 0
 }
 
@@ -117,7 +117,7 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
         if (outer >= 0) {
             let outer_tag = kind(pg, ast, outer)
             var scope = scopes.get(outer)
-            let type_scope = outer_tag == "type-item" || outer_tag == "enum-item"
+            let type_scope = outer_tag == "type-item" || outer_tag == "enum-item" || outer_tag == "enum-arm"
             let match_scope = outer_tag == "match-arm" || outer_tag == "agg-match-arm"
             if (outer_tag == "program" || outer_tag == "block" || type_scope || match_scope) { scope = outer }
             scopes.set(row, scope)
@@ -134,7 +134,7 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
         }
         if (node_kind != 0) {
             var name = child_with_role(pg, ast, links, row, "name")
-            if (node_kind == pattern_binding_decl()) { name = child_with_role(pg, ast, links, row, "binding") }
+            if (node_kind == pattern_binding_decl()) { name = child_with_kind(pg, ast, links, row, "ident") }
             if (name >= 0) {
                 let scope = decl_scope(pg, ast, links, scopes, row, node_kind)
                 var index = -1
@@ -440,6 +440,19 @@ pub fn external_signature(reference int) int {
     return -1000 - reference
 }
 
+pub fn builtin_choice_kind(reference int) int {
+    if (reference > -100 || reference < -103) { return 0 }
+    return -99 - reference
+}
+
+fn builtin_choice_ref(name Str) int {
+    if (name == "None") { return -100 }
+    if (name == "Some") { return -101 }
+    if (name == "Ok") { return -102 }
+    if (name == "Err") { return -103 }
+    return bind_unresolved()
+}
+
 fn foreign_reference(src List<int>, ast List<int>, external List<int>, row int, fuel List<int>, deadline i64) int {
     let module_id = source_id(ast, row)
     let name = spelling(src, ast, row)
@@ -483,13 +496,16 @@ fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>,
                         target = foreign_reference(src, ast, external, row, fuel, deadline)
                     }
                     if (target == bind_unresolved()) {
+                        target = builtin_choice_ref(spelling(src, ast, row))
+                    }
+                    if (target == bind_unresolved()) {
                         target = qualified_ref(pg, ast, links, src, modules, roots, heads, declarations, imports, row, fuel, deadline)
                     }
                 }
                 if (type_name && target == bind_unresolved()) {
                     target = -1
                 } else {
-                    if (external_signature(target) < 0) {
+                    if (external_signature(target) < 0 && builtin_choice_kind(target) == 0) {
                         if (target < 0) { return fail(errors, row, target) }
                         let cat = decl_category(declarations, target)
                         if (write && cat != local_var_decl() && cat != global_var_decl()) {
@@ -555,6 +571,7 @@ pub fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
 pub fn call_postfix(pg List<int>, ast List<int>, links List<int>, call int) int {
     let unary = first_child(links, call)
     if (unary < 0) { return -1 }
+    if (kind(pg, ast, unary) == "postfix") { return unary }
     var postfix = child_with_kind(pg, ast, links, unary, "postfix-expr")
     if (postfix < 0) { postfix = child_with_kind(pg, ast, links, unary, "condition-postfix") }
     return postfix
@@ -566,6 +583,11 @@ pub fn direct_callee(pg List<int>, ast List<int>, links List<int>, call int) int
     let atom = first_child(links, postfix)
     if (atom < 0) { return -1 }
     return child_with_kind(pg, ast, links, atom, "ident")
+}
+
+pub fn postfix_step(pg List<int>, ast List<int>, links List<int>, row int) int {
+    if (kind(pg, ast, row) == "postfix-tail") { return child_with_kind(pg, ast, links, row, "postfix-step") }
+    return row
 }
 
 pub fn resolved_function(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, call int) int {
@@ -581,7 +603,9 @@ pub fn resolved_function(pg List<int>, ast List<int>, links List<int>, declarati
     var step = next_sibling(links, atom)
     var resolved = -1
     for (step >= 0) {
-        let member = child_with_role(pg, ast, links, step, "member")
+        let part = postfix_step(pg, ast, links, step)
+        if (part < 0) { return -1 }
+        let member = child_with_role(pg, ast, links, part, "member")
         if (member >= 0) {
             let target = uses.get(member)
             resolved = -1
