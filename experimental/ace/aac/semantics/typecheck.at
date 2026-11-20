@@ -1,0 +1,329 @@
+use app.binding.bind_budget
+use app.binding.call_mapping_stride
+use app.binding.call_parameter_slots
+use app.binding.constant_decl
+use app.binding.decl_category
+use app.binding.direct_callee
+use app.binding.function_decl
+use app.binding.global_var_decl
+use app.binding.local_let_decl
+use app.binding.local_var_decl
+use app.binding.method_decl
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.types.annotation_types
+use app.types.boolean_type
+use app.types.char_type
+use app.types.f32_type
+use app.types.f64_type
+use app.types.function_kind
+use app.types.i8_type
+use app.types.i64_type
+use app.types.init_types
+use app.types.integer_type
+use app.types.intern_type
+use app.types.text_view_type
+use app.types.type_chain_kind
+use app.types.type_first
+use app.types.type_kind
+use app.types.u8_type
+use app.types.u32_type
+use app.types.u64_type
+use app.types.unit_type
+use std.text.ends_with
+
+pub fn type_unknown() int { return -20 }
+pub fn type_operator() int { return -21 }
+pub fn type_value() int { return -22 }
+pub fn type_return() int { return -23 }
+pub fn type_argument() int { return -24 }
+pub fn type_branch() int { return -25 }
+pub fn type_condition() int { return -26 }
+
+fn failure(errors List<int>, row int, code int) int {
+    errors.push(row)
+    return code
+}
+
+fn function_category(category int) bool {
+    return category == function_decl() || category == method_decl()
+}
+
+fn annotation_of(pg List<int>, ast List<int>, links List<int>, row int) int {
+    let annotation = child_with_role(pg, ast, links, row, "ty")
+    if (annotation >= 0) { return annotation }
+    return child_with_role(pg, ast, links, row, "ann")
+}
+
+fn initializer_category(category int) bool {
+    return category == local_let_decl() || category == local_var_decl() || category == constant_decl() || category == global_var_decl()
+}
+
+fn signature(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, function int, fuel List<int>, deadline i64) int {
+    let result = facts.get(function)
+    if (result == 0) { return 0 }
+    let params = call_parameter_slots(pg, ast, links, function)
+    var i = params.len() - 1
+    var chain = 0
+    for (i >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let param = facts.get(params.get(i))
+        if (param == 0) { return 0 }
+        chain = intern_type(types, type_chain_kind(), param, chain, fuel, deadline)
+        if (chain < 0) { return bind_budget() }
+        i = i - 1
+    }
+    let callable = intern_type(types, function_kind(), result, chain, fuel, deadline)
+    if (callable < 0) { return bind_budget() }
+    return callable
+}
+
+fn numeric_type(id int) bool {
+    return id == integer_type() || (id >= i8_type() && id <= f64_type())
+}
+
+fn affix_type(text Str) int {
+    if (ends_with(text.clone(), "i8")) { return i8_type() }
+    if (ends_with(text.clone(), "u8") || ends_with(text.clone(), "byte")) { return u8_type() }
+    if (ends_with(text.clone(), "i32")) { return integer_type() }
+    if (ends_with(text.clone(), "u32") || ends_with(text.clone(), "uint")) { return u32_type() }
+    if (ends_with(text.clone(), "i64")) { return i64_type() }
+    if (ends_with(text.clone(), "u64")) { return u64_type() }
+    if (ends_with(text.clone(), "f32") || ends_with(text.clone(), "float")) { return f32_type() }
+    if (ends_with(text.clone(), "f64") || ends_with(text, "double")) { return f64_type() }
+    return 0
+}
+
+fn literal_type(src List<int>, ast List<int>, row int, node_kind Str) int {
+    if (node_kind == "true-kw" || node_kind == "false-kw") { return boolean_type() }
+    if (node_kind == "int-lit") { return integer_type() }
+    if (node_kind == "float-lit") { return f64_type() }
+    if (node_kind == "affix-num") { return affix_type(spelling(src, ast, row)) }
+    if (node_kind == "str-lit") { return text_view_type() }
+    if (node_kind == "char-lit") { return char_type() }
+    return 0
+}
+
+fn value_wrapper(node_kind Str) bool {
+    let expression = node_kind == "expr" || node_kind == "atom-expr" || node_kind == "unary-expr" || node_kind == "postfix-expr" || node_kind == "int-literal"
+    let condition = node_kind == "condition-expr" || node_kind == "condition-atom" || node_kind == "condition-unary" || node_kind == "condition-postfix" || node_kind == "if-cond"
+    return expression || condition || node_kind == "expr-stmt" || node_kind == "return-stmt" || node_kind == "stmt"
+}
+
+fn matching_operator(node_kind Str) bool {
+    let arithmetic = node_kind == "plus" || node_kind == "minus" || node_kind == "star" || node_kind == "slash" || node_kind == "percent"
+    let comparison = node_kind == "lt" || node_kind == "gt" || node_kind == "le" || node_kind == "ge" || node_kind == "eq" || node_kind == "ne"
+    let boolean = node_kind == "andand" || node_kind == "oror"
+    let bits = node_kind == "amp" || node_kind == "vbar" || node_kind == "caret" || node_kind == "shl" || node_kind == "shr"
+    return arithmetic || comparison || boolean || bits
+}
+
+fn binary_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int, op Str) int {
+    let lhs = first_child(links, row)
+    if (lhs < 0) { return 0 }
+    let token = next_sibling(links, lhs)
+    if (token < 0 || kind(pg, ast, token) != op) { return 0 }
+    let rhs = next_sibling(links, token)
+    if (rhs < 0) { return 0 }
+    let left = facts.get(lhs)
+    let right = facts.get(rhs)
+    if (left == 0 || right == 0) { return 0 }
+    if (left != right) { return type_operator() }
+    if (op == "eq" || op == "ne") { return boolean_type() }
+    if (op == "andand" || op == "oror") {
+        if (left != boolean_type()) { return type_operator() }
+        return boolean_type()
+    }
+    if (!numeric_type(left)) { return type_operator() }
+    if (op == "lt" || op == "gt" || op == "le" || op == "ge") { return boolean_type() }
+    return left
+}
+
+fn last_block_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int) int {
+    var child = first_child(links, row)
+    var value = 0
+    for (child >= 0) {
+        if (kind(pg, ast, child) == "stmt") { value = facts.get(child) }
+        child = next_sibling(links, child)
+    }
+    return value
+}
+
+fn conditional_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int) int {
+    let condition = child_with_role(pg, ast, links, row, "cond")
+    let then_row = child_with_role(pg, ast, links, row, "then")
+    let else_row = child_with_role(pg, ast, links, row, "else")
+    if (condition < 0 || then_row < 0 || else_row < 0) { return type_branch() }
+    let condition_type = facts.get(condition)
+    if (condition_type == 0) { return 0 }
+    if (condition_type != boolean_type()) { return type_condition() }
+    let when_true = last_block_value(pg, ast, links, facts, then_row)
+    let when_false = last_block_value(pg, ast, links, facts, else_row)
+    if (when_true == 0 || when_false == 0) { return 0 }
+    if (when_true != when_false) { return type_branch() }
+    return when_true
+}
+
+fn wrapped_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int, node_kind Str) int {
+    let value = child_with_role(pg, ast, links, row, "value")
+    if (value >= 0) { return facts.get(value) }
+    let first = first_child(links, row)
+    if (first < 0) { return 0 }
+    let start_kind = kind(pg, ast, first)
+    if (start_kind == "lparen") {
+        let inner = next_sibling(links, first)
+        if (inner >= 0) { return facts.get(inner) }
+        return 0
+    }
+    if (start_kind == "minus" || start_kind == "bang") {
+        let inner = next_sibling(links, first)
+        if (inner < 0) { return 0 }
+        let inner_type = facts.get(inner)
+        if (inner_type == 0) { return 0 }
+        if (start_kind == "bang" && inner_type != boolean_type()) { return type_operator() }
+        if (start_kind == "minus" && !numeric_type(inner_type)) { return type_operator() }
+        return inner_type
+    }
+    // Member calls/types are attached to their postfix result before
+    // propagation. A field access cannot silently inherit its receiver.
+    if ((node_kind == "postfix-expr" || node_kind == "condition-postfix") && next_sibling(links, first) >= 0) { return 0 }
+    return facts.get(first)
+}
+
+fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let node_kind = kind(pg, ast, row)
+    let category = decl_category(declarations, row)
+    if (initializer_category(category)) {
+        let value = child_with_role(pg, ast, links, row, "value")
+        if (value >= 0) { return facts.get(value) }
+        return 0
+    }
+    if (node_kind == "ident") {
+        let target = uses.get(row)
+        if (target < 0) { return 0 }
+        if (function_category(decl_category(declarations, target))) {
+            return signature(pg, ast, links, facts, types, target, fuel, deadline)
+        }
+        return facts.get(target)
+    }
+    if (node_kind == "call") {
+        let callee = direct_callee(pg, ast, links, row)
+        if (callee < 0) { return 0 }
+        let callable = facts.get(callee)
+        if (callable == 0) { return 0 }
+        if (type_kind(types, callable) != function_kind()) { return type_argument() }
+        return type_first(types, callable)
+    }
+    if (node_kind == "if-value") { return conditional_value(pg, ast, links, facts, row) }
+    if (matching_operator(node_kind.clone())) { return binary_type(pg, ast, links, facts, row, node_kind) }
+    if (value_wrapper(node_kind.clone())) { return wrapped_value(pg, ast, links, facts, row, node_kind) }
+    return literal_type(src, ast, row, node_kind)
+}
+
+fn enclosing_function(ast List<int>, declarations List<int>, row int) int {
+    var at = parent(ast, row)
+    for (at >= 0) {
+        if (function_category(decl_category(declarations, at))) { return at }
+        at = parent(ast, at)
+    }
+    return -1
+}
+
+fn validate(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        let node_kind = kind(pg, ast, row)
+        let category = decl_category(declarations, row)
+        if (initializer_category(category) || node_kind == "return-stmt" || node_kind == "assign-stmt") {
+            let value = child_with_role(pg, ast, links, row, "value")
+            let actual = facts.get(value)
+            if (actual == 0) { return failure(errors, value, type_unknown()) }
+            var expected = facts.get(row)
+            var code = type_value()
+            if (node_kind == "return-stmt") {
+                let function = enclosing_function(ast, declarations, row)
+                if (function >= 0) { expected = facts.get(function) }
+                code = type_return()
+            }
+            if (node_kind == "assign-stmt") {
+                let name = child_with_role(pg, ast, links, row, "name")
+                let target = uses.get(name)
+                expected = facts.get(target)
+            }
+            if (actual != expected) { return failure(errors, value, code) }
+        }
+        if (node_kind == "if-stmt" || node_kind == "for-cond-stmt") {
+            let condition = child_with_role(pg, ast, links, row, "cond")
+            if (condition >= 0 && facts.get(condition) != boolean_type()) { return failure(errors, condition, type_condition()) }
+        }
+        if (node_kind == "expr-stmt" && facts.get(row) == 0) { return failure(errors, row, type_unknown()) }
+        row = row + 1
+    }
+    row = 0
+    for (row < mappings.len()) {
+        let call = mappings.get(row)
+        let argument = mappings.get(row + 1)
+        let slot = mappings.get(row + 2)
+        if (!take_step(fuel, deadline)) { return failure(errors, argument, bind_budget()) }
+        let function = uses.get(direct_callee(pg, ast, links, call))
+        let params = call_parameter_slots(pg, ast, links, function)
+        let expected = facts.get(params.get(slot))
+        let actual = facts.get(argument)
+        if (actual == 0) { return failure(errors, argument, type_unknown()) }
+        if (actual != expected) { return failure(errors, argument, type_argument()) }
+        row = row + call_mapping_stride()
+    }
+    return 0
+}
+
+pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    let count = row_count(ast)
+    var row = 0
+    for (row < count) {
+        facts.push(0)
+        row = row + 1
+    }
+    init_types(types)
+    if (annotation_types(pg, ast, links, src, declarations, uses, facts, types, errors, fuel, deadline) != 0) { return bind_budget() }
+    row = 0
+    for (row < count) {
+        if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        let category = decl_category(declarations, row)
+        if (category != 0) {
+            let annotation = annotation_of(pg, ast, links, row)
+            if (annotation >= 0) {
+                let type_id = facts.get(annotation)
+                if (type_id == 0) { return failure(errors, annotation, type_unknown()) }
+                facts.set(row, type_id)
+            } else {
+                if (function_category(category)) { facts.set(row, unit_type()) }
+            }
+        }
+        row = row + 1
+    }
+    var changed = true
+    for (changed) {
+        changed = false
+        row = count - 1
+        for (row >= 0) {
+            if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+            if (facts.get(row) == 0) {
+                let type_id = derive(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+                if (type_id < 0) { return failure(errors, row, type_id) }
+                if (type_id > 0) {
+                    facts.set(row, type_id)
+                    changed = true
+                }
+            }
+            row = row - 1
+        }
+    }
+    return validate(pg, ast, links, declarations, uses, mappings, facts, errors, fuel, deadline)
+}

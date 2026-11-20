@@ -1,0 +1,178 @@
+use app.binding.decl_category
+use app.binding.type_decl
+use app.binding.take_step
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.spelling
+
+pub fn integer_type() int { return 1 }
+pub fn boolean_type() int { return 2 }
+pub fn owned_text_type() int { return 3 }
+pub fn text_view_type() int { return 4 }
+pub fn char_type() int { return 5 }
+pub fn unit_type() int { return 6 }
+pub fn i8_type() int { return 7 }
+pub fn u8_type() int { return 8 }
+pub fn u32_type() int { return 9 }
+pub fn i64_type() int { return 10 }
+pub fn u64_type() int { return 11 }
+pub fn f32_type() int { return 12 }
+pub fn f64_type() int { return 13 }
+pub fn option_kind() int { return 20 }
+pub fn result_kind() int { return 21 }
+pub fn future_kind() int { return 22 }
+pub fn iterator_kind() int { return 23 }
+pub fn list_kind() int { return 24 }
+pub fn nominal_kind() int { return 25 }
+pub fn function_kind() int { return 26 }
+pub fn tuple_kind() int { return 27 }
+pub fn type_chain_kind() int { return 28 }
+
+pub fn type_stride() int { return 3 }
+pub fn type_kind(types List<int>, type_id int) int { return types.get(type_id * type_stride()) }
+pub fn type_first(types List<int>, type_id int) int { return types.get(type_id * type_stride() + 1) }
+pub fn type_second(types List<int>, type_id int) int { return types.get(type_id * type_stride() + 2) }
+
+pub fn init_types(types List<int>) int {
+    var code = 0
+    for (code <= f64_type()) {
+        types.push(code)
+        types.push(0)
+        types.push(0)
+        code = code + 1
+    }
+    return 0
+}
+
+pub fn intern_type(types List<int>, code int, left int, right int, fuel List<int>, deadline i64) int {
+    var type_id = f64_type() + 1
+    for (type_id < types.len() / type_stride()) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        if (type_kind(types, type_id) == code && type_first(types, type_id) == left && type_second(types, type_id) == right) {
+            return type_id
+        }
+        type_id = type_id + 1
+    }
+    types.push(code)
+    types.push(left)
+    types.push(right)
+    return type_id
+}
+
+pub fn primitive(name Str) int {
+    if (name == "int" || name == "i32") { return integer_type() }
+    if (name == "bool") { return boolean_type() }
+    if (name == "Str") { return owned_text_type() }
+    if (name == "str") { return text_view_type() }
+    if (name == "char") { return char_type() }
+    if (name == "void") { return unit_type() }
+    if (name == "i8") { return i8_type() }
+    if (name == "byte" || name == "u8") { return u8_type() }
+    if (name == "uint" || name == "u32") { return u32_type() }
+    if (name == "i64") { return i64_type() }
+    if (name == "u64") { return u64_type() }
+    if (name == "float" || name == "f32") { return f32_type() }
+    if (name == "double" || name == "f64") { return f64_type() }
+    return 0
+}
+
+pub fn annotation_wrapper(node_kind Str) bool {
+    return node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner"
+}
+
+fn type_arg_at(pg List<int>, ast List<int>, links List<int>, node int) int {
+    let node_kind = kind(pg, ast, node)
+    if (node_kind == "type-arg") { return node }
+    if (node_kind == "type-arg-tail") { return child_with_kind(pg, ast, links, node, "type-arg") }
+    return -1
+}
+
+fn apply_type(pg List<int>, ast List<int>, links List<int>, src List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let head = child_with_role(pg, ast, links, row, "name")
+    let name = spelling(src, ast, head)
+    let args = child_with_role(pg, ast, links, row, "args")
+    var node = first_child(links, args)
+    var count = 0
+    var left = 0
+    var right = 0
+    for (node >= 0) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        let arg = type_arg_at(pg, ast, links, node)
+        if (arg >= 0) {
+            let type_id = facts.get(arg)
+            if (type_id <= 0) { return type_id }
+            if (count == 0) { left = type_id }
+            if (count == 1) { right = type_id }
+            count = count + 1
+        }
+        node = next_sibling(links, node)
+    }
+    if (name == "Result" && count == 2) { return intern_type(types, result_kind(), left, right, fuel, deadline) }
+    if (count == 1) {
+        if (name == "Option") { return intern_type(types, option_kind(), left, 0, fuel, deadline) }
+        if (name == "Future") { return intern_type(types, future_kind(), left, 0, fuel, deadline) }
+        if (name == "Iter") { return intern_type(types, iterator_kind(), left, 0, fuel, deadline) }
+        if (name == "List") { return intern_type(types, list_kind(), left, 0, fuel, deadline) }
+    }
+    return 0
+}
+
+fn wrapped_annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let word = child_with_role(pg, ast, links, row, "word")
+    if (word >= 0) {
+        let primitive_type = primitive(spelling(src, ast, word))
+        if (primitive_type > 0) { return primitive_type }
+        let nominal = uses.get(word)
+        if (nominal >= 0 && decl_category(declarations, nominal) == type_decl()) {
+            return intern_type(types, nominal_kind(), nominal, 0, fuel, deadline)
+        }
+        return 0
+    }
+    let inner = first_child(links, row)
+    if (inner >= 0) { return facts.get(inner) }
+    return 0
+}
+
+fn annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let node_kind = kind(pg, ast, row)
+    if (annotation_wrapper(node_kind.clone())) {
+        return wrapped_annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+    }
+    if (node_kind == "generic-ty") { return apply_type(pg, ast, links, src, facts, types, row, fuel, deadline) }
+    if (node_kind == "optional-ty" || node_kind == "err-ty") {
+        let inner = child_with_role(pg, ast, links, row, "inner")
+        let payload = facts.get(inner)
+        if (payload <= 0) { return payload }
+        if (node_kind == "optional-ty") { return intern_type(types, option_kind(), payload, 0, fuel, deadline) }
+        return intern_type(types, result_kind(), payload, owned_text_type(), fuel, deadline)
+    }
+    if (node_kind == "tilde-ty") {
+        let inner = child_with_role(pg, ast, links, row, "generic")
+        let value = facts.get(inner)
+        if (value <= 0) { return value }
+        let form = type_kind(types, value)
+        if (form == iterator_kind() || form == future_kind()) { return value }
+    }
+    return 0
+}
+
+pub fn annotation_types(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var row = facts.len() - 1
+    for (row >= 0) {
+        if (!take_step(fuel, deadline)) {
+            errors.push(row)
+            return -1
+        }
+        let type_id = annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+        if (type_id < 0) {
+            errors.push(row)
+            return -1
+        }
+        facts.set(row, type_id)
+        row = row - 1
+    }
+    return 0
+}

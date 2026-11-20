@@ -28,6 +28,14 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             "initializers.at".into(),
             include_str!("../../../aac/semantics/initializers.at").into(),
         ),
+        (
+            "types.at".into(),
+            include_str!("../../../aac/semantics/types.at").into(),
+        ),
+        (
+            "typecheck.at".into(),
+            include_str!("../../../aac/semantics/typecheck.at").into(),
+        ),
     ]);
     files
 }
@@ -125,6 +133,14 @@ fn prepared_semantic() -> Result<&'static Path, String> {
 }
 
 pub fn run_semantic_case(sample: &[u8], steps: Option<u32>) -> Result<String, String> {
+    run_semantic_source(sample, steps, false)
+}
+
+pub fn run_type_case(sample: &[u8], steps: Option<u32>) -> Result<String, String> {
+    run_semantic_source(sample, steps, true)
+}
+
+fn run_semantic_source(sample: &[u8], steps: Option<u32>, typed: bool) -> Result<String, String> {
     let exe = prepared_semantic()?;
     with_fixture("semantic", |root| {
         let input = root.join("input.at");
@@ -134,6 +150,7 @@ pub fn run_semantic_case(sample: &[u8], steps: Option<u32>) -> Result<String, St
         cmd.current_dir(root)
             .env("AAC1047_INPUT", input)
             .env("AAC1047_OUTPUT", &output)
+            .env("AAC1047_TYPED", if typed { "1" } else { "0" })
             .env_remove("AAC1047_PROJECT")
             .env_remove("AAC1047_STEPS");
         if let Some(steps) = steps {
@@ -162,6 +179,7 @@ pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> 
             .env("AAC1047_PACKAGE", "app")
             .env("AAC1047_INVENTORY", names.join("\n"))
             .env("AAC1047_OUTPUT", &output)
+            .env_remove("AAC1047_TYPED")
             .env_remove("AAC1047_STEPS");
         execute_report(cmd, &output, "semantic-project")
     })

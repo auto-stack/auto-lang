@@ -29,6 +29,18 @@ use app.syntax_frontend.fetch_parts
 use app.syntax_frontend.format_mode
 use app.syntax_program.decode_program_parts
 use app.syntax_program.pg_ok
+use app.typecheck.infer_source
+use app.typecheck.type_argument
+use app.typecheck.type_branch
+use app.typecheck.type_condition
+use app.typecheck.type_operator
+use app.typecheck.type_return
+use app.typecheck.type_unknown
+use app.typecheck.type_value
+use app.types.type_first
+use app.types.type_kind
+use app.types.type_second
+use app.types.type_stride
 use std.conv.from_int
 use std.conv.to_int
 use std.env.get
@@ -56,6 +68,13 @@ fn diagnostic_name(code int) Str {
     if (code == bind_import_cycle()) { return "bind.import-cycle" }
     if (code == initializer_cycle()) { return "bind.initializer-cycle" }
     if (code == initializer_module_order()) { return "bind.initializer-order" }
+    if (code == type_unknown()) { return "type.unresolved" }
+    if (code == type_operator()) { return "type.operator" }
+    if (code == type_value()) { return "type.value" }
+    if (code == type_return()) { return "type.return" }
+    if (code == type_argument()) { return "type.argument" }
+    if (code == type_branch()) { return "type.branch" }
+    if (code == type_condition()) { return "type.condition" }
     return "internal.semantic"
 }
 
@@ -97,6 +116,27 @@ fn binding_report(ast List<int>, src List<int>, bases List<int>, declarations Li
     return join_rows(output, output.len())
 }
 
+fn type_report(ast List<int>, bases List<int>, facts List<int>, types List<int>) Str {
+    var result = List<Str>.new()
+    result.push("aac.type-report/1\n")
+    var index = 1
+    for (index < types.len() / type_stride()) {
+        let line = "TYPE " + from_int(index) + " " + from_int(type_kind(types, index)) + " " + from_int(type_first(types, index)) + " " + from_int(type_second(types, index)) + "\n"
+        result.push(line.move)
+        index = index + 1
+    }
+    index = 0
+    for (index < facts.len()) {
+        let fact = facts.get(index)
+        if (fact > 0) {
+            let line = "TY " + from_int(index) + " " + location(ast, index, bases) + " " + from_int(fact) + "\n"
+            result.push(line.move)
+        }
+        index = index + 1
+    }
+    return join_rows(result, result.len())
+}
+
 fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package Str, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
@@ -117,6 +157,16 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
     if (ordered != 0) {
         return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    if (get("AAC1047_TYPED") == "1") {
+        var facts = List<int>.new()
+        var types = List<int>.new()
+        let typed = infer_source(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+        if (typed != 0) {
+            return "ERROR " + diagnostic_name(typed) + " " + location(ast, errors.get(0), bases) + "\n"
+        }
+        let report = type_report(ast, bases, facts, types)
+        return report + binding_report(ast, src, bases, declarations, uses, mappings, initializers)
     }
     return binding_report(ast, src, bases, declarations, uses, mappings, initializers)
 }

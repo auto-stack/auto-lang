@@ -409,20 +409,25 @@ fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>,
             let outer = parent(ast, row)
             let node_kind = kind(pg, ast, outer)
             let write = node_kind == "assign-stmt" && role(pg, ast, row) == "name"
-            if (node_kind == "atom-expr" || node_kind == "condition-atom" || write) {
+            let type_name = role(pg, ast, row) == "word" && (node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner")
+            if (node_kind == "atom-expr" || node_kind == "condition-atom" || write || type_name) {
                 target = lookup(src, ast, scopes, heads, declarations, row, fuel, deadline)
                 if (target == bind_unresolved()) {
                     let local_name = module_alias(src, ast, imports, source_id(ast, row), row, fuel, deadline)
                     target = local_name
                     if (local_name >= 0) { target = imports.get(local_name + 5) }
                 }
-                if (target == bind_unresolved() && !write) {
+                if (target == bind_unresolved() && !write && !type_name) {
                     target = qualified_ref(pg, ast, links, src, modules, package.clone(), roots, heads, declarations, imports, row, fuel, deadline)
                 }
-                if (target < 0) { return fail(errors, row, target) }
-                let cat = decl_category(declarations, target)
-                if (write && cat != local_var_decl() && cat != global_var_decl()) {
-                    return fail(errors, row, bind_immutable())
+                if (type_name && target == bind_unresolved()) {
+                    target = -1
+                } else {
+                    if (target < 0) { return fail(errors, row, target) }
+                    let cat = decl_category(declarations, target)
+                    if (write && cat != local_var_decl() && cat != global_var_decl()) {
+                        return fail(errors, row, bind_immutable())
+                    }
                 }
             }
         }
