@@ -242,3 +242,29 @@ after`（d01 静默失效债闭） | PASS |
 | `av.parity.1082.empty-array-rejects` / `list-new-zero-arg-rejects` / `place-elem-field-rejects` | `resolve/source.array-lit-empty` / `source.list-new-empty` / `source.place-elem-field` | PASS |
 
 冻结边界：元素字段写、record 方法、对象字面量深链、Str 元整读分别归 records/AVP-05/AVP-06/AVP-08；hashmap/hashset/StrBldr 归 stdlib 容器批（本包非目标"不另造容器库"）。复跑入口：`cargo t case-av-language-parity`（67 AV 选中）与 `cargo test -p ace-av --test conformance plan1082_collections_places`（17 例）。
+
+## PLAN-1083 增量（2026-11-20，AVP-05 名义类型/枚举/模式面）
+
+**支持域（普通 AV 链真实执行，`ac-av/language-source-run-v1`）**：
+
+- **枚举载荷形式**：命名多字段 `Arm { f T, .. }`（合成 record 载荷 `__enum_<E>_<A>`；命名实参序/乱序构造、位置构造、多绑定解构按声明序、单字段绑定、无绑定臂）；多元组 `Arm(T1, T2, ..)`（`TypeRef::Tuple` 折叠，位置构造/多绑定，965 元组机制复用）；标量 `= N` 判别（resolve 期 i32 常量折叠，`E.A` 即 int，int scrutinee 上 qualified 臂按值匹配；auto 面臂逗号分隔吸收）。载荷元数不匹配具名拒 `bind/source.pattern-bindings`；`= N` 与载荷臂混用拒 `bind/source.enum-mixed-arms`。
+- **模式组合**：`_` 通配（投影 Else，须后置）；or 臂 `A | B -> body`（投影展开共享 rhs，绑定元数须一致）；guard 臂 `pat if cond -> body`（模式命中后求值、绑定可见、false 继续下一臂、未选臂 guard 不求值；同 disc 重复仅当前序臂皆 guard，纯重复仍 `bind/source.pattern-duplicate`）；return 臂体；非穷尽值位 `bind/source.pattern-nonexhaustive`；auto 面语句 `is` fall-through（无匹配继续后续语句；值位与冻结面保穷尽合同，filler 按 has_following 门控）；fn 尾 `is` → `Return(IsExpr)`、script 尾 `is` → 尾值（infer::complete 规范化；return 臂尾保持语句形）。
+- **enum 实例方法**：enum 体 fn 成员（auto 面），隐式 variant 接收者（`is self` 分派）、变异接收者按值传参（无 view borrow——复合值 864 规则）、`m.<Enum>.<name>` 单元与 `t_variant_<E>` 类型原子。
+- **Option/Result 面**：`?T`/`!T`/`!?int` 注解、bare 构造子、is 分派、`.?(default)`、`.or(default)`（guard-test 投影/默认）；`!T` 且全部 Err 载荷命名同一枚举 → 显式 `Result<T, E>` 改写（Str 错误保持糖；尾 Ok 归一 `return Ok(v)`）。
+- **隐式 self 字段写**：`.f (op)= v` 语句（auto 面 self-place 规则，投影为 base=self 的 place 链）；数组字面量尾逗号；字段/臂逗号吸收。
+
+| case | oracle | 结果 |
+|---|---|---|
+| `av.parity.1083.named-enum-payload` / `nested-result-option` / `tuple-across-call` | exit 42（§6 合同 1/2/3 逐字） | PASS |
+| `av.parity.1083.duplicate-pattern`（§6 合同 4） | `bind/source.pattern-duplicate` | PASS |
+| `av.parity.1083.multi-field-positional` / `single-named-payload` / `bare-scalar-arm` | `10/20`、`5`、`point`（016 三腿） | PASS |
+| `av.parity.1083.named-construct-ordered` / `named-construct-reordered` / `positional-tuple-payload` | `404`、`503`、`5000`（017 逐字） | PASS |
+| `av.parity.1083.no-binding-arm` / `multi-field-arith-destructuring` / `float-payload` / `two-elem-tuple-payload` | `rgb`、`383`、`3.14`、`10/20`（018/019） | PASS |
+| `av.parity.1083.scalar-enum-value` / `int-literal-arms` | exit 1（10.002）、exit 40（10.011 int 码规范化 red→10/blue→30/unknown→0） | PASS |
+| `av.parity.1083.enum-static-style-method` / `enum-instance-method` / `payload-variant-method` / `wildcard-arm` | `called-ok`、`yes/no`×2、`red/other/other`（28.001-004） | PASS |
+| `av.parity.1083.option-family` / `option-none-match` / `result-family` / `unwrap-or-default` / `option-or` / `result-fn-str-error` | 42、-1、-2、141、141、5（16.001-019） | PASS |
+| `av.parity.1083.err-enum-payload` / `multi-error-family` | `unexpected end`、`404/timeout/200`（16.021/022） | PASS |
+| `av.parity.1083.nested-is-shadowing` / `guard-arm` / `guard-not-evaluated` / `or-arm` / `nonexhaustive-expr-rejects` / `statement-fallthrough` / `exhaustiveness-else` / `fn-tail-is-value` / `script-tail-is-value` | PATTERN-BIND 五面 + 尾值族（O54/B34/B36/O53/B37/B38/else/30/42） | PASS |
+| `av.parity.1083.record-method-reads` / `positional-ctor-family` / `list-elem-method` / `method-value-family` / `str-field-record` / `record-array-fields` / `nested-type-instance` | `chain=6`、`build=9/origin=0`、`total=6/idx1=2`、`7/8/12`、`title ok/id ok/from fn ok`、`array field ok/second id ok`、exit 10（m03-m06/034-036/008 读面） | PASS |
+
+冻结边界：record 方法字段写（`&mut self` 接收者可变性）与经元素 Str 字段读归 AVP-08 borrows（PLAN-1086；m01/m08/m09 写腿与 10.036 title 腿 research-hold）；泛型 enum 归 AVP-10（PLAN-1088；28.005 hold）；`use auto.result` stdlib Result 方法归 modules/stdlib owner（28.006 hold）；fstr record display 归文本面（10.013 display oracle 留 map）；未类型尾调用未类型函数的推导缺口为 1080 既有（wildcard helper 内联规避）。复跑入口：`cargo t case-av-language-parity`（111 AV 绿/41 NOT_RUN）与 `cargo test -p ace-av --test conformance plan1083_canonical_verify`（35 例孪生）。

@@ -85,3 +85,13 @@ object；tuple 递归），source/HIR/MIR/layout 四层一致（旧 Str-only 走
 - **rvalue 数组字面量**（auto 面独占）：任意 rvalue 位语句级提升；aggregates 冻结面 init-only 合同字节不变（`aggregates_t01_probe::array_literal_negative_controls` 仍绿）；空 `[]` 具名拒 `source.array-lit-empty`。
 - **诊断**：`source.compound-elem-type`（复合限 i32 元素）、`source.place-elem-field`、`source.list-new-empty`、`source.hof-elem-domain`、既有 `iterate-mutate`/`move-required` 边界保持；PLAN-1035 F34 Copy/owned record 替换边界经 place 链复验。
 - 证据：`cargo t case-av-language-parity`（25 例本包 canonical，67 AV 绿/34 隔离）+ `plan1082_collections_places`（17 例）；§6 冻结并集见计划 1082 §9（ace-source 927/ace-lowering 9/ace-stdlib 2 绿；继承红 3 项具名分账：host_console×2、sema-boundary-audit×1，base 复测同红）。
+
+## PLAN-1083 增量（2026-11-20，AVP-05 类型/模式面语言事实）
+
+962 聚合基线与 1082 面保持；本包仅增 auto 面语言事实（L-10..18 所属行）：
+
+- **枚举载荷扩展**（auto 面独占；冻结面 864 单载荷合同不变）：enum-arm 增命名多字段 `{ f T, .. }`（合成 record 载荷 `__enum_<E>_<A>` 复用 771 构造/字段读机制）、多元组 `(T1, T2, ..)`（TypeRef::Tuple 折叠，962 元组机制）、标量 `= N` 判别（i32 常量折叠，非 variant）；臂逗号/分号/换行分隔与字段逗号吸收（auto 门控，冻结面字节不变——981 grammar-id 重冻结 Collections/Aggregates/Scheduler，13 邻居逐字节不变）。
+- **enum 实例方法**（auto 面独占）：enum 体 fn 成员投影 FnItem（receiver=View），扁平表 `fn_vowner` 变体 owner 平行列（nested 收集器同步）；接收者参数 VT::Variant（`is self` 走既有 agg-is 分派）；变异接收者按值传参（adapter MethodCall 无 BorrowView——复合值 864 view 规则）；def 原子 `t_variant_<E>`。
+- **裸臂构造**：`E.A` 无调用路径经 `try_resolve_variant_arm` 构造（payload 臂报 argument 错）。
+- **诊断**：`source.pattern-bindings`、`source.enum-mixed-arms`、既有 `pattern-duplicate/nonexhaustive/argument` 边界保持；oracle 手写 parser 构造器随 EnumArm/EnumItem 扩展字段补齐（差分 oracle 面不变）。
+- 证据：`cargo t case-av-language-parity`（本包 35 例，111 AV 绿/41 隔离）+ `plan1083_records_variants_patterns`（O/B 矩阵）；§6 冻结并集见计划 1083 §9（ace-source 931/ace-syntax/ace-lowering 绿；继承红 3 项具名分账：host_console×2、sema-boundary×1，与 1082 base 证据相同）。

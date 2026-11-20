@@ -86,3 +86,12 @@
   `ace-a2x` PASS 238/238（干净 `--target-dir`，共享 target 会假红；见 round-7 收据）；红集逐名等于 `master` 既有 `text.char-multi` 族（6 例）与
   `ace-runtime` text shim 链接红（19 例），本包 diff 引入的红为 0。
 - V 行映射与逐 F-ID 修复证据见 PLAN-965 §9 修复收据（round 4）。
+## PLAN-1083 增量（2026-11-20，AVP-05 模式/控制流语言事实）
+
+965 is/try/yield 基线保持；本包仅增 auto 面模式组合事实：
+
+- **guard 臂**（auto 面独占）：`pat if cond -> body`——guard 在模式命中后、载荷 Let 之后求值（绑定可见），false 经 else 链继续下一臂（同一剩余链双引用：guard-else clone + pattern-else 原件）；未选臂 guard 不求值（B36 证据）；同 disc 重复仅当每一前序同 disc 臂皆 guard（纯重复保持 `source.pattern-duplicate` 冻结）。
+- **or 臂**：`A | B -> body` 投影展开为共享 rhs 的多臂（绑定元数不一致=展开后 undefined 具名拒）。
+- **语句 fall-through**（auto 面独占）：非穷尽语句 `is` 无匹配继续后续语句（穷尽检查与 return filler 按 `has_following` 门控——尾 filler 会使后继代码不可达）；值位（is 表达式）与冻结面语句穷尽合同不变。
+- **尾值规范化**（infer::complete，parse→resolve 间纯 AST 改写）：fn 尾 `is` → `Return(IsExpr)`（return 臂尾保持语句形）、script 尾 `is` → 尾值 ExprStmt；`!T` 全枚举 Err 载荷 → 显式 `Result<T, E>` + 尾 `Ok` 归一 `return Ok(v)`。
+- 证据：`plan1083_canonical_verify`（patterns 12 例）/`plan1083_records_variants_patterns`（B34/B36/B37/B38/O53）；重放 `cargo t case-av-language-parity`。
