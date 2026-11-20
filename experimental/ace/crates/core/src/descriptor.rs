@@ -1317,6 +1317,7 @@ impl<'d> Binder<'d> {
                     };
                     hir::TypeKind::Object { elem }
                 }
+                "dyn" => hir::TypeKind::Dyn,
                 "nil" => {
                     // PLAN-964 (L-21): the null value type — zero-width,
                     // no fields.
@@ -3174,6 +3175,13 @@ impl<'d> Binder<'d> {
                 hir::ExprKind::ObjectSet { base, key, value }
             }
             "nil_lit" => hir::ExprKind::NilLit,
+            "dyn_cast" => {
+                let (name, span) = self.text_ref(&fields, "operand")?;
+                let operand = self.resolve_in(&name, span, "ExprRef", &body.exprs, expr_sibs)?;
+                hir::ExprKind::DynCast {
+                    operand: hir::ExprId(operand),
+                }
+            }
             "text_display" => {
                 let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
                     return None;
@@ -3935,6 +3943,9 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                     ));
                 }
                 // PLAN-964: nil and object type rows.
+                hir::TypeKind::Dyn => {
+                    w.line(&format!("type(id: {}, kind: dyn) {{}}", quote(&t.id_text)));
+                }
                 hir::TypeKind::Nil => {
                     w.line(&format!("type(id: {}, kind: nil) {{}}", quote(&t.id_text)))
                 }
@@ -4150,6 +4161,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::VariantProject { .. } => "variant_project",
         // -- PLAN-964 object/nil/FStr surface ----------------------------
         hir::ExprKind::NilLit => "nil_lit",
+        hir::ExprKind::DynCast { .. } => "dyn_cast",
         hir::ExprKind::ObjectCtor { .. } => "object_ctor",
         hir::ExprKind::ObjectGet { .. } => "object_get",
         hir::ExprKind::ObjectSet { .. } => "object_set",
@@ -4514,7 +4526,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 quote(&b.exprs[value.0 as usize].id_text)
             ));
         }
-        hir::ExprKind::TextDisplay { operand } => {
+        hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
             body_fields.push(format!(
                 "operand: {}",
                 quote(&b.exprs[operand.0 as usize].id_text)

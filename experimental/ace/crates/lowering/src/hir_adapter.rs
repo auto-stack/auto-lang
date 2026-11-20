@@ -607,6 +607,15 @@ fn lower_checked_collection_family(
         MirModule::new_collections(owner)
     };
     out.capabilities = checked.required_capabilities().to_vec();
+    if auto_language
+        && module
+            .types
+            .iter()
+            .any(|t| matches!(t.kind, hir::TypeKind::Dyn))
+    {
+        out.capabilities
+            .push(ace_av_core::contract::LANGUAGE_VALUES_CAPABILITY.to_owned());
+    }
 
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
     let mut fn_order: Vec<(u32, hir::TypeId, hir::BodyId, String)> = Vec::new();
@@ -3049,6 +3058,7 @@ fn collections_type_idx_of(
                 // type; an object maps structurally by its elem (the
                 // shared cell is the MIR Object shape).
                 hir::TypeKind::Nil => Ok(out.intern_type(MirType::Nil)),
+                hir::TypeKind::Dyn => Ok(out.intern_type(MirType::Dyn)),
                 hir::TypeKind::Object { elem } => {
                     let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
                     Ok(out.intern_type(MirType::Object { elem: e }))
@@ -6737,6 +6747,16 @@ k 0
             // -- PLAN-964 object/nil/FStr surface (av.dynamic/1 expansion) --
             // The nil literal is a zero-width value: materialize the Nil
             // const into a Nil-typed temp.
+            hir::ExprKind::DynCast { operand } if self.collections() => {
+                let src = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                let instr = match self.out.types.get(ty as usize) {
+                    Some(MirType::Dyn) => MirInstr::DynPack { dst, src },
+                    _ => MirInstr::DynTake { dst, src, ty },
+                };
+                self.emit(instr, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::NilLit if self.collections() => {
                 let dst = self.temp_ty(ty)?;
                 let c = self.out.intern_const(MirConst::Nil);
@@ -6947,6 +6967,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         ObjectCtor { .. } => "object-ctor",
         ObjectGet { .. } => "object-get",
         ObjectSet { .. } => "object-set",
+        DynCast { .. } => "dyn-cast",
         TextDisplay { .. } => "text-display",
     }
 }

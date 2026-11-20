@@ -265,10 +265,10 @@ fn inventory_vm_cache_read_only() {
         // migration document — the frozen `.at`/`.as` sidecar is never read, so
         // a doc-only tree inventories identically and a polluted sidecar cannot
         // change this row.
-        let document = root.join(key).join(format!("{stem}.case.ad"));
-        let doc_bytes = std::fs::read(&document).expect("migration document of a cache entry");
         let doc = crate::tests::legacy_doc::load_case(&root.join(key), &stem)
             .unwrap_or_else(|e| panic!("{key}: {e}"));
+        let document = &doc.document_path;
+        let doc_bytes = std::fs::read(document).expect("author document of a cache entry");
         assert_eq!(
             doc.source_text().as_bytes(),
             data.source.as_bytes(),

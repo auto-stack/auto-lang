@@ -80,6 +80,7 @@ pub enum VtDump {
     Object(usize),
     /// PLAN-964: the nil value kind.
     Nil,
+    Dyn,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -322,6 +323,7 @@ fn vt_dump(v: VT) -> VtDump {
         // closures surface admits no objects) — map structurally.
         VT::Object(i) => VtDump::Object(i),
         VT::Nil => VtDump::Nil,
+        VT::Dyn => VtDump::Dyn,
     }
 }
 
@@ -574,6 +576,7 @@ fn vt_in(d: VtDump) -> VT {
         // PLAN-964: object/nil (totality; never in a closures dump).
         VtDump::Object(i) => VT::Object(i),
         VtDump::Nil => VT::Nil,
+        VtDump::Dyn => VT::Dyn,
     }
 }
 

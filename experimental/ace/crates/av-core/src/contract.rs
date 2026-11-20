@@ -111,6 +111,8 @@ pub const AV_COLLECTIONS_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
 /// Logical schema identity of the closures-profile Typed MIR.
 pub const MIR_CLOSURES_SCHEMA: &str = "auto.mir.av-closures/1";
+/// Checked erasure and recovery in the ordinary AV language lowering.
+pub const LANGUAGE_VALUES_CAPABILITY: &str = "av.language-values/1";
 /// Wire schema identity of the closures-profile ABC format. Same `AVAD`
 /// magic FAMILY, wire VERSION 5 — v4 (dynamic) and v5 (closures) are
 /// mutually unreadable format generations (the 798 r6 isolation precedent).

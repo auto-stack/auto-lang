@@ -4279,13 +4279,7 @@ fn decode_compare(v: Option<&CVal>, path: &str) -> Result<Compare, ContractError
 
 /// PLAN-863: both byte-stream oracles and the result/error axis are mandatory.
 /// Parent callers also use this for programmatically constructed checks.
-pub fn validate_console_oracle(
-    stdout: Option<&StreamExpect>,
-    stderr: Option<&StreamExpect>,
-    exit: Option<i32>,
-    channel: Option<&str>,
-    completion: &Completion,
-) -> Result<(), String> {
+fn validate_console_streams(stdout: Option<&StreamExpect>, stderr: Option<&StreamExpect>) -> Result<(), String> {
     let (Some(out), Some(err)) = (stdout, stderr) else {
         return Err("console recipe requires explicit stdout and stderr byte assertions".into());
     };
@@ -4295,6 +4289,38 @@ pub fn validate_console_oracle(
     if out.text.len().saturating_add(err.text.len()) > 1_048_576 {
         return Err("console expected streams exceed the combined 1 MiB cap".into());
     }
+    Ok(())
+}
+
+pub fn validate_language_oracle(
+    stdout: Option<&StreamExpect>,
+    stderr: Option<&StreamExpect>,
+    exit: Option<i32>,
+    channel: Option<&str>,
+    result: Option<&ResultExpect>,
+    completion: &Completion,
+) -> Result<(), String> {
+    if !matches!(channel, Some("text" | "object")) && result.is_none() {
+        return validate_console_oracle(stdout, stderr, exit, channel, completion);
+    }
+    validate_console_streams(stdout, stderr)?;
+    if !matches!(completion, Completion::Success) || exit.is_some()
+        || !matches!(channel, Some("text" | "object"))
+        || !result.is_some_and(|r| r.format == "legacy-display" && r.text.len() <= 1_048_576)
+    {
+        return Err("ordinary AV text/object success requires one bounded result oracle and no exit oracle".into());
+    }
+    Ok(())
+}
+
+pub fn validate_console_oracle(
+    stdout: Option<&StreamExpect>,
+    stderr: Option<&StreamExpect>,
+    exit: Option<i32>,
+    channel: Option<&str>,
+    completion: &Completion,
+) -> Result<(), String> {
+    validate_console_streams(stdout, stderr)?;
     match completion {
         Completion::Success if exit.is_none() && channel != Some("unit") => {
             Err("console success requires an exit oracle or explicit unit channel".into())

@@ -211,6 +211,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
     /// The collections feature surface (List/Variant/Place and their
     /// instructions): admitted by `av.collections/1` and its dynamic
     /// successor (PLAN-824 subsumption).
+    fn language_values(&self) -> bool {
+        self.is_closures
+            && self
+                .module
+                .capabilities
+                .iter()
+                .any(|c| c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
+    }
+
+    fn dynamic_values(&self) -> bool {
+        self.is_dynamic || self.language_values()
+    }
+
     fn collections_surface(&self) -> bool {
         self.is_collections || self.is_dynamic || self.is_closures
     }
@@ -547,7 +560,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
                 // PLAN-824: the erased Dyn type is dynamic-profile-only.
-                MirType::Dyn if !self.is_dynamic => {
+                MirType::Dyn if !self.dynamic_values() => {
                     return Err(MirVerifyError::uns(
                         "mir.profile-type",
                         format!(
@@ -849,6 +862,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // PLAN-962: the aggregates admission capability (keys the
                 // widened composite element domain in this verifier).
                 || c == "av.aggregates/1"
+                || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -1126,6 +1140,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // 族携带 entry kind，按签名形状收纳；冻结窄面的
                         // **源路径**产不出该形状——注解必选，故仅 MIR 准入
                         // 面放宽，可审计）。
+                        || (entry_sig.params.is_empty() && self.language_values()
+                            && matches!(self.module.types.get(entry_sig.result as usize), Some(MirType::Dyn)))
                         || (entry_sig.params.is_empty()
                             && matches!(
                                 self.module.types.get(entry_sig.result as usize),
@@ -1483,6 +1499,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
         use std::collections::HashMap;
         fn go(
             m: &MirModule,
+            language_values: bool,
             idx: TypeIdx,
             depth: u32,
             path: &mut Vec<TypeIdx>,
@@ -1502,12 +1519,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 Some(MirType::Bool) | Some(MirType::I32) | Some(MirType::I64)
                 | Some(MirType::U64) | Some(MirType::F32) | Some(MirType::F64)
                 | Some(MirType::Char) | Some(MirType::Str) => true,
-                Some(MirType::Record(r)) => {
-                    r.fields.iter().all(|f| go(m, f.ty, depth + 1, path, memo))
-                }
-                Some(MirType::List(l)) => go(m, l.elem, depth + 1, path, memo),
+                Some(MirType::Object { .. } | MirType::Nil) => language_values,
+                Some(MirType::Record(r)) => r
+                    .fields
+                    .iter()
+                    .all(|f| go(m, language_values, f.ty, depth + 1, path, memo)),
+                Some(MirType::List(l)) => go(m, language_values, l.elem, depth + 1, path, memo),
                 Some(MirType::Variant(v)) => v.arms.iter().all(|a| match a.payload {
-                    Some(p) => go(m, p, depth + 1, path, memo),
+                    Some(p) => go(m, language_values, p, depth + 1, path, memo),
                     None => true,
                 }),
                 _ => false,
@@ -1516,7 +1535,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
             memo.insert((idx, depth), ok);
             ok
         }
-        go(self.module, root, 1, &mut Vec::new(), &mut HashMap::new())
+        go(
+            self.module,
+            self.language_values(),
+            root,
+            1,
+            &mut Vec::new(),
+            &mut HashMap::new(),
+        )
     }
 
     /// PLAN-822: index operands are i32-typed slots (domain checked at
@@ -3336,6 +3362,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
         let ty = slot_ty_of(f, slot, span, "object")?;
         match self.module.types.get(ty as usize) {
             Some(MirType::Object { elem }) if self.collections_surface() => Ok(*elem),
+            Some(MirType::Dyn) if self.language_values() => Ok(ty),
             _ => Err(MirVerifyError::Invalid {
                 code: "mir.object-type".into(),
                 message: "object instruction requires an object slot".into(),
@@ -4030,7 +4057,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             // -- PLAN-824 dynamic surface (typing arms) ----------
             MirInstr::DynPack { dst, src } => {
-                if !self.is_dynamic {
+                if !self.dynamic_values() {
                     return Err(err(
                         "mir.profile-instr",
                         "DYN_PACK exists only in the dynamic profile".to_string(),
@@ -4056,7 +4083,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::DynIs { dst, src, ty } => {
-                if !self.is_dynamic {
+                if !self.dynamic_values() {
                     return Err(err(
                         "mir.profile-instr",
                         "DYN_IS exists only in the dynamic profile".to_string(),
@@ -4090,7 +4117,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::DynTake { dst, src, ty } => {
-                if !self.is_dynamic {
+                if !self.dynamic_values() {
                     return Err(err(
                         "mir.profile-instr",
                         "DYN_TAKE exists only in the dynamic profile".to_string(),

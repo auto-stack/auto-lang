@@ -341,6 +341,7 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                 // PLAN-964: nil/object types live only in the aggregates
                 // domain, which this core/scalar artifact codec never sees.
                 | TypeKind::Nil
+                | TypeKind::Dyn
                 | TypeKind::Object { .. } => {
                     return Err(CodecError::UnsupportedFeature(
                         "type kind outside core/scalar subset",

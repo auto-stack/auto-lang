@@ -596,7 +596,7 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 stack.push((*key, mode));
                 stack.push((*base, mode));
             }
-            hir::ExprKind::TextDisplay { operand } => {
+            hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
                 scan.has_owned_producing = true;
                 stack.push((*operand, mode));
             }
@@ -2745,7 +2745,7 @@ fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueTyp
                 }
                 // PLAN-964: totality only — nil is zero-width, object is
                 // an opaque cell neither owned nor read by the text walk.
-                Some(hir::TypeKind::Nil) => ValueType::Unit,
+                Some(hir::TypeKind::Nil | hir::TypeKind::Dyn) => ValueType::Unit,
                 Some(hir::TypeKind::Object { .. }) => ValueType::Unit,
                 None => ValueType::I32,
             },

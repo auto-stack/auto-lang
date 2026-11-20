@@ -117,6 +117,8 @@ pub struct RunReport {
     pub schema: String,
     pub suite_id: String,
     pub suite_sha256: String,
+    /// Target of an explicitly scoped run. Absent in full-suite reports.
+    pub selected_target: Option<String>,
     /// Adapters the suite requires of every selected case.
     pub required_adapters: Vec<String>,
     /// Toolchain/config identity the results are bound to (Plan 773 F-06):
@@ -140,6 +142,7 @@ impl RunReport {
             schema: REPORT_SCHEMA.to_string(),
             suite_id: suite_id.to_string(),
             suite_sha256: suite_sha256.to_string(),
+            selected_target: None,
             required_adapters: required_adapters.to_vec(),
             toolchain: BTreeMap::new(),
             results: Vec::new(),
@@ -174,8 +177,20 @@ impl RunReport {
         {
             return 2;
         }
-        if self.count(Status::Fail) > 0 || self.count(Status::NotRun) > 0 {
+        if self.count(Status::Fail) > 0
+            || (self.selected_target.is_none() && self.count(Status::NotRun) > 0)
+        {
             return 1;
+        }
+        if self.selected_target.is_some() {
+            if self.results.iter().any(|row| {
+                !matches!(row.status, Status::Pass | Status::Skip | Status::NotRun)
+            }) {
+                return 1;
+            }
+            if self.count(Status::Pass) == 0 {
+                return 2;
+            }
         }
         0
     }
@@ -186,6 +201,9 @@ impl RunReport {
         s.push_str("{\n");
         s.push_str(&format!("  \"schema\": {},\n", json_str(&self.schema)));
         s.push_str(&format!("  \"suite\": {},\n", json_str(&self.suite_id)));
+        if let Some(target) = &self.selected_target {
+            s.push_str(&format!("  \"selected_target\": {},\n", json_str(target)));
+        }
         s.push_str(&format!(
             "  \"suite_sha256\": {},\n",
             json_str(&self.suite_sha256)
@@ -378,6 +396,9 @@ impl RunReport {
             "suite {} ({}), schema {}\n",
             self.suite_id, self.suite_sha256, self.schema
         ));
+        if let Some(target) = &self.selected_target {
+            out.push_str(&format!("target {}\n", target));
+        }
         for r in &self.results {
             out.push_str(&format!(
                 "{:<12} {} / {} [{}::{}]{}{}\n",

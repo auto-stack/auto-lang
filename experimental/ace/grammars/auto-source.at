@@ -2976,8 +2976,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt(profiles: [auto]) { comma() {} }
         }
         array-elem-tail(profiles: [aggregates, auto, scheduler, config-document]) {
-            comma() {}
-            expr() {}
+            alt { comma() {} expr() {} }
+            alt(profiles: [auto]) { expr() {} }
         }
         // PLAN-962（T-08，L-09）：take 原子形（弃用 Move 别名）。
         take-atom(profiles: [aggregates, auto, scheduler]) {

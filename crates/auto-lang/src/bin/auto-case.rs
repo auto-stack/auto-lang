@@ -412,6 +412,7 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
         case: flag(args, "--case"),
         adapter: flag(args, "--adapter"),
         check: flag(args, "--check"),
+        target: flag(args, "--target"),
     };
     let mut report =
         auto_lang::test_cases::run_suite_selected(suite, &out, &Limits::defaults(), &selection)?;

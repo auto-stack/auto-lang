@@ -964,6 +964,7 @@ fn shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> String {
             Some(hir::TypeKind::Variant { .. }) => "variant".to_string(),
             // PLAN-964: nil/object shapes for the canonical digest.
             Some(hir::TypeKind::Nil) => "nil".to_string(),
+            Some(hir::TypeKind::Dyn) => "dyn".to_string(),
             Some(hir::TypeKind::Object { .. }) => "object".to_string(),
             None => "oob".to_string(),
         },

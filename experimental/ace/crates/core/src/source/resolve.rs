@@ -58,6 +58,8 @@ pub enum VT {
     Object(usize),
     /// PLAN-964 (L-21): the null value type.
     Nil,
+    /// Type-erased owned language value.
+    Dyn,
     /// PLAN-968: an opaque task-actor handle, monomorphic per declared
     /// task — `VT::Task(i)` indexes into [`CollTables::sched_tasks`]. At
     /// runtime a handle is the i32 scheduler task id.
@@ -101,6 +103,7 @@ impl VT {
             VT::Function(_) => "function",
             VT::Object(_) => "object",
             VT::Nil => "nil",
+            VT::Dyn => "Dyn",
             // PLAN-968 scheduler handle types (opaque i32 ids at runtime).
             VT::Task(_) => "task",
             VT::Future(_) => "future",
@@ -549,6 +552,9 @@ pub enum RExprKind {
     },
     /// The nil literal (`nil`/`null`).
     NilLit,
+    DynCast {
+        operand: Box<ResolvedExpr>,
+    },
     /// I32 → decimal owned Str (FStr interpolation display).
     TextDisplay {
         operand: Box<ResolvedExpr>,
@@ -781,7 +787,7 @@ impl Drop for ResolvedExpr {
                     stack.push(e);
                 }
             }
-            RExprKind::TextDisplay { operand } => {
+            RExprKind::TextDisplay { operand } | RExprKind::DynCast { operand } => {
                 let e = std::mem::replace(operand.as_mut(), dummy());
                 stack.push(e);
             }
@@ -3054,7 +3060,13 @@ fn resolve_detailed(
         let text_entry_params = matches!(surface, SourceProfile::HostConsole);
         check_entry_matrix(&mut fns, &flat, &mut diags, text_entry_params);
     } else if surface.is_aggregates() {
-        normalize_aggregates_bodies(&mut fns, &flat, &agg_iter_reg, &mut sigs);
+        normalize_aggregates_bodies(
+            &mut fns,
+            &flat,
+            &agg_iter_reg,
+            &mut sigs,
+            surface == SourceProfile::Auto,
+        );
     }
 
     if diags.is_empty() {
@@ -3383,6 +3395,7 @@ fn patch_foreign_sentinels(fns: &mut [ResolvedFn], sigs: &mut BTreeMap<String, F
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
+            | RExprKind::DynCast { operand }
             | RExprKind::TupleGet { base: operand, .. }
             | RExprKind::FieldGet { base: operand, .. } => patch_expr(operand, patch_idx),
             RExprKind::CtorPos { args, .. } => {
@@ -3490,6 +3503,7 @@ fn normalize_aggregates_bodies(
     flat: &[&ast::FnItem],
     agg_iter_reg: &agg_lower::AggIterRegistry,
     sigs: &mut BTreeMap<String, FnSig>,
+    ordinary_auto: bool,
 ) {
     for (i, item) in flat.iter().enumerate() {
         if agg_iter_reg.gen_fns.contains_key(&i) {
@@ -3507,6 +3521,11 @@ fn normalize_aggregates_bodies(
                 _ => None,
             };
             if let Some(vt) = tail_val_vt {
+                let vt = if ordinary_auto && matches!(vt, VT::Object(_) | VT::Str | VT::StrOwned) {
+                    VT::Dyn
+                } else {
+                    vt
+                };
                 f.result = vt;
                 if let Some(sig) = sigs.get_mut(&f.name) {
                     sig.result = vt;
@@ -3520,7 +3539,14 @@ fn normalize_aggregates_bodies(
                         },
                     );
                     *last = match taken {
-                        RStmt::ExprStmt { value, span } => RStmt::Return { value, span },
+                        RStmt::ExprStmt { value, span } => {
+                            let value = if vt == VT::Dyn {
+                                FnResolver::coerce_dynamic(value, vt)
+                            } else {
+                                value
+                            };
+                            RStmt::Return { value, span }
+                        }
                         other => other,
                     };
                 }
@@ -5859,6 +5885,7 @@ pub(crate) fn iter_record_name(elem: VT) -> String {
         VT::Tuple(t) => format!("t{t}"),
         VT::Object(o) => format!("o{o}"),
         VT::Nil => "nil".to_string(),
+        VT::Dyn => "dyn".to_string(),
         VT::I8 => "i8".to_string(),
         VT::U8 => "u8".to_string(),
         VT::U32 => "u32".to_string(),
@@ -8568,6 +8595,44 @@ F:{d}
         }
     }
 
+    fn own_dynamic_text(mut value: ResolvedExpr) -> ResolvedExpr {
+        if value.vt != VT::Str {
+            return value;
+        }
+        if matches!(value.kind, RExprKind::StrLit(_)) {
+            value.vt = VT::StrOwned;
+            return value;
+        }
+        ResolvedExpr {
+            span: value.span,
+            vt: VT::StrOwned,
+            kind: RExprKind::Method {
+                recv: Box::new(value),
+                method: BuiltinMethod::To,
+                to: Some(VT::StrOwned),
+                args: Vec::new(),
+            },
+        }
+    }
+
+    fn coerce_dynamic(value: ResolvedExpr, expected: VT) -> ResolvedExpr {
+        if value.vt == expected || (value.vt != VT::Dyn && expected != VT::Dyn) {
+            return value;
+        }
+        let value = Self::own_dynamic_text(value);
+        ResolvedExpr {
+            span: value.span,
+            vt: if expected == VT::Str {
+                VT::StrOwned
+            } else {
+                expected
+            },
+            kind: RExprKind::DynCast {
+                operand: Box::new(value),
+            },
+        }
+    }
+
     fn check_object_key(&mut self, key: &ResolvedExpr) {
         let ordinary = self.profile == SourceProfile::Auto;
         if !key.vt.is_text() && !(ordinary && matches!(key.vt, VT::I32 | VT::Bool)) {
@@ -8623,7 +8688,7 @@ F:{d}
         let (last, parents) = target.path.split_last()?;
         let local = self.lookup(&target.base.name)?;
         let vt = self.locals[local.0].vt;
-        if !matches!(vt, VT::Object(_)) {
+        if !matches!(vt, VT::Object(_) | VT::Dyn) {
             return None;
         }
         let mut base = ResolvedExpr {
@@ -8632,6 +8697,10 @@ F:{d}
             kind: RExprKind::ReadLocal(local),
         };
         for field in parents {
+            if base.vt == VT::Dyn {
+                let object = self.coll.intern_object(VT::Dyn);
+                base = Self::coerce_dynamic(base, VT::Object(object));
+            }
             let VT::Object(object) = base.vt else {
                 return None;
             };
@@ -8642,6 +8711,10 @@ F:{d}
                 self.coll.objects[object],
                 field_span,
             );
+        }
+        if base.vt == VT::Dyn {
+            let object = self.coll.intern_object(VT::Dyn);
+            base = Self::coerce_dynamic(base, VT::Object(object));
         }
         let VT::Object(object) = base.vt else {
             return None;
@@ -8672,6 +8745,100 @@ F:{d}
         Some(RStmt::ExprStmt { value, span })
     }
 
+    fn dynamic_place(&self, mut ty: VT, steps: &[ast::PlaceStep]) -> bool {
+        for step in steps {
+            ty = match (ty, step) {
+                (VT::Dyn | VT::Object(_), _) => return true,
+                (VT::List(list), ast::PlaceStep::Index(_)) => self.coll.lists[list],
+                (VT::Rec(record), ast::PlaceStep::Field(field)) => {
+                    let Some(field) = self.records[record]
+                        .fields
+                        .iter()
+                        .find(|f| f.name == field.name)
+                    else {
+                        return false;
+                    };
+                    field.vt
+                }
+                _ => return false,
+            };
+        }
+        false
+    }
+
+    fn materialize_place_operand(&mut self, value: ResolvedExpr) -> ResolvedExpr {
+        let span = value.span;
+        let vt = value.vt;
+        let local = self.agg_temp("object_operand", vt, false, span);
+        self.emit_stmt(RStmt::Let { local, value, span });
+        ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::ReadLocal(local),
+        }
+    }
+
+    fn resolve_dynamic_place_assign(&mut self, place: &ast::PlaceAssign) {
+        let Some((last, prefix)) = place.steps.split_last() else {
+            return;
+        };
+        let receiver = place_read_ast(&place.base, prefix);
+        let mut base = self.expr_iterative(&receiver);
+        let key = match last {
+            ast::PlaceStep::Field(field) => {
+                if base.vt == VT::Dyn {
+                    let object = self.coll.intern_object(VT::Dyn);
+                    base = Self::coerce_dynamic(base, VT::Object(object));
+                }
+                Self::object_field_key(field)
+            }
+            ast::PlaceStep::Index(index) => {
+                base = self.materialize_place_operand(base);
+                self.expr_iterative(index)
+            }
+        };
+        self.check_object_key(&key);
+        let base = if matches!(last, ast::PlaceStep::Field(_)) {
+            self.materialize_place_operand(base)
+        } else {
+            base
+        };
+        let key = if matches!(last, ast::PlaceStep::Index(_)) {
+            let key = Self::own_dynamic_text(key);
+            self.materialize_place_operand(key)
+        } else {
+            key
+        };
+        let mut value = self.expr_with_expect(&place.value, Some(VT::Dyn));
+        if place.op != ast::PlaceOp::Set {
+            let old = Self::object_get(base.clone(), key.clone(), VT::Dyn, place.span);
+            value = Self::coerce_dynamic(
+                ResolvedExpr {
+                    span: place.span,
+                    vt: VT::I32,
+                    kind: RExprKind::Binary {
+                        op: place_bin_op(place.op),
+                        lhs: Box::new(Self::coerce_dynamic(old, VT::I32)),
+                        rhs: Box::new(Self::coerce_dynamic(value, VT::I32)),
+                    },
+                },
+                VT::Dyn,
+            );
+        }
+        self.emit_stmt(RStmt::ExprStmt {
+            span: place.span,
+            value: ResolvedExpr {
+                span: place.span,
+                vt: VT::Unit,
+                kind: RExprKind::ObjectSet {
+                    base: Box::new(base),
+                    key: Box::new(key),
+                    value: Box::new(value),
+                },
+            },
+        });
+    }
+
     /// PLAN-1082 (L-19/L-48): resolve the unified place-chain assignment
     /// `base (.f | [e])* (op)= v`. The grammar orders this rule after
     /// path-assign/index-assign, so the shapes arriving here are mixed
@@ -8694,6 +8861,10 @@ F:{d}
             return;
         };
         let base_vt = self.locals[xl.0].vt;
+        if self.profile == SourceProfile::Auto && self.dynamic_place(base_vt, &pa.steps) {
+            self.resolve_dynamic_place_assign(pa);
+            return;
+        }
         let last_idx = pa
             .steps
             .iter()
@@ -11239,7 +11410,17 @@ F:{d}
                 let payload = payload_ast.map(|p| self.expr_iterative(p));
                 self.resolve_bare_ctor(cname, payload, expect, v.span)
             }
-            None => self.expr_iterative(v),
+            None => {
+                let value = self.expr_iterative(v);
+                match expect {
+                    Some(expected)
+                        if self.profile == SourceProfile::Auto && expected != VT::Unit =>
+                    {
+                        Self::coerce_dynamic(value, expected)
+                    }
+                    _ => value,
+                }
+            }
         }
     }
 
@@ -11981,8 +12162,11 @@ F:{d}
                     let base_vt = self.locals[xl.0].vt;
                     // PLAN-964 (L-20): an OBJECT local accepts dynamic-key
                     // writes `obj[k] = v` (Str key, elem-typed value).
-                    if let VT::Object(oi) = base_vt {
-                        let elem = self.coll.objects[oi];
+                    if matches!(base_vt, VT::Object(_) | VT::Dyn) {
+                        let elem = match base_vt {
+                            VT::Object(object) => self.coll.objects[object],
+                            _ => VT::Dyn,
+                        };
                         let index = self.expr_iterative(&ia.index);
                         self.check_object_key(&index);
                         let mut value = self.expr_with_expect(&ia.value, Some(elem));
@@ -12823,6 +13007,10 @@ F:{d}
                 Stmt::ExprStmt { value, span } => {
                     self.expr_diverged = false;
                     let value = self.expr_iterative(value);
+                    if self.profile == SourceProfile::Auto && matches!(value.kind, RExprKind::Unit)
+                    {
+                        continue;
+                    }
                     if self.profile.is_aggregates() && self.expr_diverged {
                         continue;
                     }
@@ -12874,7 +13062,7 @@ F:{d}
                     els,
                     span,
                 } => {
-                    let cond = self.expr_iterative(cond);
+                    let cond = self.expr_with_expect(cond, Some(VT::Bool));
                     self.scopes.push(Scope {
                         names: BTreeMap::new(),
                         views: BTreeMap::new(),
@@ -12934,7 +13122,7 @@ F:{d}
                             },
                         });
                     } else {
-                        let cond = self.expr_iterative(cond);
+                        let cond = self.expr_with_expect(cond, Some(VT::Bool));
                         self.scopes.push(Scope {
                             names: BTreeMap::new(),
                             views: BTreeMap::new(),
@@ -13970,6 +14158,10 @@ F:{d}
                             }
                         }
                     }
+                    VT::Dyn => {
+                        self.check_object_key(&idx);
+                        Self::object_get(recv, idx, VT::Dyn, e.span)
+                    }
                     // PLAN-964 (L-20): object dynamic-key read.
                     VT::Object(oi) => {
                         self.check_object_key(&idx);
@@ -14012,7 +14204,8 @@ F:{d}
                 }
                 let mut args = Vec::with_capacity(fields.len());
                 let mut keys = Vec::with_capacity(fields.len());
-                let mut elem: Option<VT> = None;
+                let ordinary = self.profile == SourceProfile::Auto;
+                let mut elem = ordinary.then_some(VT::Dyn);
                 let mut dup = std::collections::HashSet::new();
                 for f in fields {
                     let value = self.expr_iterative(&f.value);
@@ -14023,6 +14216,11 @@ F:{d}
                             f.span,
                         );
                     }
+                    let value = if ordinary {
+                        Self::coerce_dynamic(value, VT::Dyn)
+                    } else {
+                        value
+                    };
                     match elem {
                         None => elem = Some(value.vt),
                         Some(e0) if e0 == value.vt => {}
@@ -15988,7 +16186,7 @@ F:{d}
                     bslot,
                     dest,
                 } => {
-                    let base = std::mem::replace(&mut out[bslot], dummy_resolved());
+                    let mut base = std::mem::replace(&mut out[bslot], dummy_resolved());
                     // PLAN-1026: attribute read on a Python object —
                     // py_getattr(receiver, name); the result is a Python
                     // object (never an early field projection).
@@ -16020,6 +16218,10 @@ F:{d}
                         continue;
                     }
                     if self.profile == SourceProfile::Auto {
+                        if base.vt == VT::Dyn {
+                            let object = self.coll.intern_object(VT::Dyn);
+                            base = Self::coerce_dynamic(base, VT::Object(object));
+                        }
                         if let VT::Object(object) = base.vt {
                             out[dest] = Self::object_get(
                                 base,
@@ -16545,6 +16747,19 @@ F:{d}
                 } => {
                     let mut l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let mut r = std::mem::replace(&mut out[rslot], dummy_resolved());
+                    if l.vt == VT::Dyn && r.vt == VT::Dyn {
+                        let ty = if matches!(op, BinOp::And | BinOp::Or) {
+                            VT::Bool
+                        } else {
+                            VT::I32
+                        };
+                        l = Self::coerce_dynamic(l, ty);
+                        r = Self::coerce_dynamic(r, ty);
+                    } else if l.vt == VT::Dyn {
+                        l = Self::coerce_dynamic(l, r.vt);
+                    } else if r.vt == VT::Dyn {
+                        r = Self::coerce_dynamic(r, l.vt);
+                    }
                     // PLAN-964 (L-22): Eq/Ne over an owned text value and a
                     // string literal — the literal defaults to the borrow
                     // view `str`; retag it to the text side's type so the
@@ -17399,6 +17614,68 @@ F:{d}
                 };
                 return self.py_call_sugar(&recv, "", rargs, call_span);
             }
+        }
+        if self.profile == SourceProfile::Auto
+            && callee.name == "assert_eq"
+            && self.lookup(&callee.name).is_none()
+            && !self.sigs.contains_key(&callee.name)
+        {
+            if rargs.len() != 2 || rargs.iter().any(|arg| arg.name.is_some() || arg.moved) {
+                self.bind_err(
+                    "source.assert-arity",
+                    "assert_eq requires two positional values",
+                    call_span,
+                );
+            } else {
+                let mut rhs = rargs.pop().expect("arity checked").value;
+                let mut lhs = rargs.pop().expect("arity checked").value;
+                if lhs.vt == VT::Dyn {
+                    let expected = if rhs.vt == VT::Dyn { VT::I32 } else { rhs.vt };
+                    lhs = Self::coerce_dynamic(lhs, expected);
+                }
+                if rhs.vt == VT::Dyn {
+                    rhs = Self::coerce_dynamic(rhs, lhs.vt);
+                }
+                if lhs.vt.is_text() && rhs.vt.is_text() {
+                    let lt = lhs.vt;
+                    let rt = rhs.vt;
+                    retag_literal(&mut lhs, rt);
+                    retag_literal(&mut rhs, lt);
+                }
+                let condition = ResolvedExpr {
+                    span: call_span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Ne,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
+                };
+                let mut failure = Vec::new();
+                self.emit_fail_to_out(
+                    ResolvedExpr {
+                        span: call_span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::StrLit("assert_eq failed".to_owned()),
+                    },
+                    call_span,
+                    &mut failure,
+                );
+                self.emit_stmt(RStmt::If {
+                    cond: condition,
+                    then: RBlock {
+                        stmts: failure,
+                        span: call_span,
+                    },
+                    els: None,
+                    span: call_span,
+                });
+            }
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::Unit,
+                kind: RExprKind::Unit,
+            };
         }
         // PLAN-962（T-08，L-09）：`take(x)` = Move 弃用别名（用户同名 fn 优先）。
         if callee.name == "take"

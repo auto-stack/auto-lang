@@ -1783,6 +1783,7 @@ fn context_fingerprint(m: &hir::Module) -> String {
                 // PLAN-964: nil mixes as itself (zero-width); object mixes
                 // structurally by its elem.
                 Some(hir::TypeKind::Nil) => mix(h, "nil"),
+                Some(hir::TypeKind::Dyn) => mix(h, "dyn"),
                 Some(hir::TypeKind::Object { elem }) => {
                     mix(h, "object[");
                     mix_use(h, elem, m, depth - 1);
@@ -2669,6 +2670,7 @@ pub(crate) enum ValueType {
     /// PLAN-964 (L-21): the nil value type — a zero-width null distinct
     /// from `unit` (nil is a VALUE, unit is a no-value result).
     Nil,
+    Dyn,
     /// PLAN-864: an opaque composite (List/Variant type-table entry). The
     /// shared record-domain walks treat it as a non-unifiable leaf; the
     /// collections verification entry owns its real rules.
@@ -2739,6 +2741,7 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::Unit => "unit",
         // PLAN-964: nil is its own value kind.
         ValueType::Nil => "nil",
+        ValueType::Dyn => "Dyn",
         ValueType::Opaque => "composite",
         ValueType::I8 => "i8",
         ValueType::U8 => "u8",
@@ -3104,6 +3107,7 @@ impl Verifier {
                     // PLAN-964: nil is zero-width; object rides the opaque
                     // lane with the collections walk (like List).
                     hir::TypeKind::Nil => ValueType::Nil,
+                    hir::TypeKind::Dyn => ValueType::Dyn,
                     hir::TypeKind::Object { .. } => ValueType::Opaque,
                 };
                 (i as u32, vt)
@@ -3313,7 +3317,7 @@ impl Verifier {
                 E::ObjectCtor { eval_args, .. } => eval_args.clone(),
                 E::ObjectGet { base, key } => vec![*base, *key],
                 E::ObjectSet { base, key, value } => vec![*base, *key, *value],
-                E::TextDisplay { operand } => vec![*operand],
+                E::TextDisplay { operand } | E::DynCast { operand } => vec![*operand],
             }
         }
 
@@ -4671,7 +4675,9 @@ impl Verifier {
                     children.push(key.0);
                     children.push(value.0);
                 }
-                hir::ExprKind::TextDisplay { operand } => children.push(operand.0),
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
+                    children.push(operand.0)
+                }
                 // text kinds never appear in a record module (profile
                 // defense); totality only
                 hir::ExprKind::StrLit { .. }
@@ -5210,7 +5216,7 @@ impl Verifier {
                         }
                     }
                 }
-                hir::ExprKind::TextDisplay { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
                     if (operand.0 as usize) >= n_exprs {
                         bad("expression", operand.0, n_exprs, e.span);
                     }
@@ -5976,7 +5982,8 @@ impl Verifier {
                             stack.push(Visit::Enter(*key));
                             stack.push(Visit::Enter(*value));
                         }
-                        hir::ExprKind::TextDisplay { operand } => {
+                        hir::ExprKind::TextDisplay { operand }
+                        | hir::ExprKind::DynCast { operand } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*operand));
                         }
@@ -5986,6 +5993,35 @@ impl Verifier {
                     let e = &body.exprs[id.0 as usize];
                     let declared = declared_of(e);
                     let computed = match &e.kind {
+                        hir::ExprKind::DynCast { operand } => {
+                            let source = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            let (erased, concrete) = if source == ValueType::Dyn {
+                                (true, declared)
+                            } else {
+                                (declared == ValueType::Dyn, source)
+                            };
+                            if !erased
+                                || matches!(
+                                    concrete,
+                                    ValueType::Dyn
+                                        | ValueType::Function
+                                        | ValueType::Closure
+                                        | ValueType::Str
+                                        | ValueType::Unit
+                                )
+                            {
+                                self.error(
+                                    "verify.dyn-cast",
+                                    "dynamic cast requires Dyn and one owned value type",
+                                    e.span,
+                                );
+                            }
+                            declared
+                        }
                         // PLAN-961: a numeric constant contributes its own
                         // payload type; a cast computes its DESTINATION.
                         hir::ExprKind::NumericConst { ty, .. } => vt_builtin(*ty),
@@ -7011,7 +7047,7 @@ impl Verifier {
                             match bt {
                                 // PLAN-864: composites (List/Variant) are never
                                 // view-borrowed in this surface.
-                                ValueType::Opaque => {
+                                ValueType::Opaque | ValueType::Dyn => {
                                     self.error(
                                         "verify.type-mismatch",
                                         format!(
@@ -7459,7 +7495,7 @@ impl Verifier {
                     targets.push(key.0);
                     targets.push(value.0);
                 }
-                hir::ExprKind::TextDisplay { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
                     targets.push(operand.0);
                 }
                 _ => {}
@@ -8237,7 +8273,7 @@ impl Verifier {
                     stack.push(*key);
                     stack.push(*base);
                 }
-                hir::ExprKind::TextDisplay { operand } => {
+                hir::ExprKind::TextDisplay { operand } | hir::ExprKind::DynCast { operand } => {
                     stack.push(*operand);
                 }
             }

@@ -1137,6 +1137,7 @@ fn sel(case: Option<&str>, adapter: Option<&str>, check: Option<&str>) -> Select
         case: case.map(String::from),
         adapter: adapter.map(String::from),
         check: check.map(String::from),
+        target: None,
     }
 }
 

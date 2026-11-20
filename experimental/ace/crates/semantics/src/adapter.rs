@@ -139,6 +139,7 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
         // inference surface (aggregates belongs to the new pipeline).
         VT::Object(_) => "object",
         VT::Nil => "nil",
+        VT::Dyn => "dyn",
     }
 }
 

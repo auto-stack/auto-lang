@@ -1118,12 +1118,7 @@ fn check_whitelist(
                     depth: d,
                 })
             }
-            Value::Dyn(_) => {
-                return Err(DynPackError::Unsupported {
-                    category: "dyn",
-                    depth: d,
-                })
-            }
+            Value::Dyn(value) => stack.push((value.as_value().clone(), d + 1)),
         }
     }
     Ok(())

@@ -243,6 +243,7 @@ struct ProbeSection {
     caps: Vec<String>,
     exit: Option<i32>,
     channel: Option<(String, usize)>,
+    result: Option<(String, usize)>,
     stage: Option<(String, usize)>,
     code: Option<(String, usize)>,
     /// Optional single-line message matchers (CF-02): exact or contains.
@@ -1694,17 +1695,32 @@ fn decode_one_case(
                         expect.completion = Completion::Error { stage, code: None, message };
                     }
                 }
-                if let Some((ch, ch_line)) = &p.channel {
-                    if ch != "value" && ch != "unit" {
+                let language = p.recipe == "ac-av/language-source-run-v1";
+                if let Some((channel, line)) = &p.channel {
+                    if !matches!(channel.as_str(), "value" | "unit")
+                        && !(language && matches!(channel.as_str(), "text" | "object"))
+                    {
+                        return err(*line, format!("当前 Probe 配方不支持 channel {channel:?}"));
+                    }
+                    expect.av_channel = Some(channel.clone());
+                }
+                if let Some((text, line)) = &p.result {
+                    if !language
+                        || !matches!(expect.completion, Completion::Success)
+                        || expect.exit.is_some()
+                        || !matches!(expect.av_channel.as_deref(), Some("text" | "object"))
+                    {
                         return err(
-                            *ch_line,
-                            format!(
-                                "console Probe channel 仅支持 'value' 或 'unit'，收到 {:?}",
-                                ch
-                            ),
+                            *line,
+                            "Probe result 仅用于成功的普通 AV text/object 结果检查",
                         );
                     }
-                    expect.av_channel = Some(ch.clone());
+                    expect.result = Some(ResultExpect {
+                        format: "legacy-display".into(),
+                        text: text.clone(),
+                    });
+                } else if matches!(expect.av_channel.as_deref(), Some("text" | "object")) {
+                    return err(p.section_line, "普通 AV text/object 检查必须声明 result");
                 }
                 for st in &p.streams {
                     match st.kind {
@@ -2132,7 +2148,7 @@ fn decode_h3_section(
         "Rust diagnostic" => &["check-id", "stage", "code", "contains", "final-newline", "tier"],
         "Notes" => &[],
         t if t.starts_with("Probe ") => &[
-            "recipe", "entry", "caps", "exit", "channel", "stage", "code",
+            "recipe", "entry", "caps", "exit", "channel", "result", "stage", "code",
             "message", "message-contains", "session", "profile", "diagnostics",
             "package", "module", "kind", "fn", "leg", "tier", "steps",
             "typed-fixture", "typed-args", "typed",
@@ -2621,6 +2637,7 @@ fn decode_h3_section(
             let mut caps = Vec::new();
             let mut exit = None;
             let mut channel = None;
+            let mut result = None;
             let mut stage = None;
             let mut code = None;
             let mut message = None;
@@ -2652,6 +2669,7 @@ fn decode_h3_section(
                     "caps" => caps = want_list(a)?,
                     "exit" => exit = Some(want_int(a)?),
                     "channel" => channel = Some((want_str(a)?, a.line)),
+                    "result" => result = Some((want_str(a)?, a.line)),
                     "stage" => stage = Some((want_str(a)?, a.line)),
                     "code" => code = Some((want_str(a)?, a.line)),
                     "message" => message = Some((want_str(a)?, a.line)),
@@ -2715,6 +2733,7 @@ fn decode_h3_section(
                 caps,
                 exit,
                 channel,
+                result,
                 stage,
                 code,
                 message,

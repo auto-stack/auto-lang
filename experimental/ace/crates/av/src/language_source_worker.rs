@@ -4,7 +4,7 @@
 //! console observation. Reports observations, never expected values or PASS.
 use ace_av_core::abc::encode_abc;
 use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits};
-use ace_av_core::contract::{fnv1a64, ExecOutcome, Value};
+use ace_av_core::contract::{fnv1a64, ExecOutcome, ObjectKey, Value};
 use ace_av_core::verify_mir;
 use base64::Engine;
 use serde_json::{json, Value as Json};
@@ -75,22 +75,39 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             step["diag"] = diag;
         }
         Ok(outcome) => match outcome {
-            ExecOutcome::Success {
-                value: Value::I32(n),
-                ..
-            } => {
+            ExecOutcome::Success { value, .. } => {
+                let value = match &value {
+                    Value::Dyn(dynamic) => dynamic.as_value(),
+                    other => other,
+                };
                 step["outcome"] = json!("success");
-                step["channel"] = json!("value");
-                step["value"] = json!(n);
-            }
-            ExecOutcome::Success {
-                value: Value::Unit, ..
-            } => {
-                step["outcome"] = json!("success");
-                step["channel"] = json!("unit");
-            }
-            ExecOutcome::Success { .. } => {
-                return Err("language-source returned a non-entry result type".into())
+                match value {
+                    Value::I32(value) => {
+                        step["channel"] = json!("value");
+                        step["value"] = json!(value);
+                    }
+                    Value::Unit => step["channel"] = json!("unit"),
+                    Value::Str(_) | Value::Object(_) => match display_result(value) {
+                        Some(text) => {
+                            step["channel"] = json!(if matches!(value, Value::Str(_)) {
+                                "text"
+                            } else {
+                                "object"
+                            });
+                            step["value_text"] = json!(text);
+                        }
+                        None => {
+                            step["outcome"] = json!("resource");
+                            step["diag"] = json!({"stage":"run", "code":"av.resource.result-display", "message":"result display exceeds its bounded value domain"});
+                        }
+                    },
+                    other => {
+                        return Err(format!(
+                            "language-source returned unsupported result {}",
+                            other.type_name()
+                        ))
+                    }
+                }
             }
             ExecOutcome::Trap { kind, .. } => {
                 step["outcome"] = json!("trap");
@@ -131,6 +148,64 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     Ok(
         json!({"recipe":RECIPE,"steps":[step],"worker_version":"avworker/1.0","av_core_version":AV_LANGUAGE_PROFILE}),
     )
+}
+
+fn display_result(value: &Value) -> Option<String> {
+    enum Part {
+        Value(Value),
+        Key(ObjectKey),
+        Text(&'static str),
+    }
+    const MAX_BYTES: usize = 1 << 20;
+    let mut result = String::new();
+    let mut stack = vec![Part::Value(value.clone())];
+    let mut visited = 0usize;
+    while let Some(part) = stack.pop() {
+        visited += 1;
+        if visited + stack.len() > ace_av_core::dynamic::MAX_DYN_NODES as usize {
+            return None;
+        }
+        let mut append = |text: &str| {
+            if result.len().saturating_add(text.len()) > MAX_BYTES {
+                return None;
+            }
+            result.push_str(text);
+            Some(())
+        };
+        match part {
+            Part::Text(text) => append(text)?,
+            Part::Key(ObjectKey::Text(text)) => append(std::str::from_utf8(text.bytes()).ok()?)?,
+            Part::Key(ObjectKey::Int(value)) | Part::Value(Value::I32(value)) => {
+                append(&value.to_string())?
+            }
+            Part::Key(ObjectKey::Bool(value)) | Part::Value(Value::Bool(value)) => {
+                append(if value { "true" } else { "false" })?
+            }
+            Part::Value(Value::Nil) => append("None")?,
+            Part::Value(Value::Str(text)) => append(std::str::from_utf8(text.bytes()).ok()?)?,
+            Part::Value(Value::Dyn(value)) => stack.push(Part::Value(value.as_value().clone())),
+            Part::Value(Value::Object(cell)) => {
+                let cell = cell.borrow();
+                if cell.entries.len().saturating_mul(4) + stack.len() + visited
+                    > ace_av_core::dynamic::MAX_DYN_NODES as usize
+                {
+                    return None;
+                }
+                append("{")?;
+                stack.push(Part::Text("}"));
+                for (index, (key, value)) in cell.entries.iter().enumerate().rev() {
+                    stack.push(Part::Value(value.clone()));
+                    stack.push(Part::Text(": "));
+                    stack.push(Part::Key(key.clone()));
+                    if index > 0 {
+                        stack.push(Part::Text(", "));
+                    }
+                }
+            }
+            Part::Value(_) => return None,
+        }
+    }
+    Some(result)
 }
 
 /// The full producer→consumer chain: Auto-profile compile → closures

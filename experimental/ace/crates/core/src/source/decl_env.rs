@@ -123,6 +123,7 @@ fn vt_token(v: &super::resolve::VT) -> String {
         // PLAN-964: object identity is its interned elem index; nil is nil.
         VT::Object(i) => format!("object:{i}"),
         VT::Nil => "nil".into(),
+        VT::Dyn => "dyn".into(),
     }
 }
 

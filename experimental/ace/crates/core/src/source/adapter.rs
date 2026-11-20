@@ -1712,6 +1712,7 @@ fn ty_name_t(
         // `t_nil` row.
         VT::Object(i) => format!("t_object_{}", i),
         VT::Nil => "t_nil".to_string(),
+        VT::Dyn => "t_dyn".to_string(),
         VT::Variant(i) => variant_atom_id(i, variants),
         // PLAN-968: task handles / ask futures are opaque i32 ids.
         VT::Task(_) | VT::Future(_) => "t_i32".to_string(),
@@ -1894,6 +1895,9 @@ enum EKind {
         value: usize,
     },
     NilLit,
+    DynCast {
+        operand: usize,
+    },
     TextDisplay {
         operand: usize,
     },
@@ -3595,6 +3599,15 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            RExprKind::DynCast { operand } => {
+                let operand = self.plan_expr(plan, f, operand);
+                plan.exprs.push(ENode {
+                    kind: EKind::DynCast { operand },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::TextDisplay { operand } => {
                 let o = self.plan_expr(plan, f, operand);
                 plan.exprs.push(ENode {
@@ -4499,6 +4512,15 @@ impl<'p> Emitter<'p> {
         // program actually uses a nil literal (an unused nil row would
         // force every aggregates/closures module — even object-free ones —
         // to carry the Nil type into the backends' slot surfaces).
+        let uses_dyn = self
+            .plans
+            .iter()
+            .any(|p| p.exprs.iter().any(|e| e.vt == VT::Dyn));
+        if uses_dyn {
+            frag!("type t_dyn dyn {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+        }
         let uses_nil = self
             .plans
             .iter()
@@ -5551,6 +5573,12 @@ impl<'p> Emitter<'p> {
                         }
                         EKind::NilLit => {
                             format!("expr e{} nil_lit {{ type: t_nil }}", ei)
+                        }
+                        EKind::DynCast { operand } => {
+                            format!(
+                                "expr e{} dyn_cast {{ type: {}; operand: e{} }}",
+                                ei, ty, operand
+                            )
                         }
                         EKind::TextDisplay { operand } => {
                             format!(

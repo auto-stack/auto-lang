@@ -317,6 +317,7 @@ fn sig_debug_of(m: &hir::Module, d: &hir::Def) -> String {
                 Some(hir::TypeKind::Record(_)) => "rec".to_string(),
                 // PLAN-964: nil/object shapes.
                 Some(hir::TypeKind::Nil) => "nil".to_string(),
+                Some(hir::TypeKind::Dyn) => "dyn".to_string(),
                 Some(hir::TypeKind::Object { .. }) => "object".to_string(),
                 None => "oob".to_string(),
             },

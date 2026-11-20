@@ -77,7 +77,8 @@ def invocations(groups, test_name=None):
     merged = {}
     for g in groups:
         key = (g['runner'], g['workspace'], tuple(g['args']), g['domain'], tuple(g['tools']),
-               g.get('file'), g.get('suite'), g.get('check'), bool(g.get('respect_default_filter')), g.get('timeout_seconds'))
+               g.get('file'), g.get('suite'), g.get('check'), g.get('target'),
+               bool(g.get('respect_default_filter')), g.get('timeout_seconds'))
         if key not in merged:
             merged[key] = {**g, 'groups': [], 'expressions': []}
         merged[key]['groups'].append(g['name'])
@@ -326,11 +327,7 @@ def run_python(group, output, env, discover_only=False):
     return {'outcome': 'PASS' if valid else 'FAIL', 'execution': execution, 'executed': len(active), 'report': report}
 
 
-def run_case(group, output, env, prepared, discover_only=False, source_state=None):
-    from prepare_tools import prepare, case_tools
-    from case_artifacts import create_runtime, archive_runtime
-    extra, _ = prepare(ROOT, ['case-parent'], output / 'tools', prepared, source_state)
-    env = {**env, **extra}
+def case_inventory(group, output, env):
     binary = str(ROOT / 'target/debug' / ('auto-case.exe' if os.name == 'nt' else 'auto-case'))
     suite = str(ROOT / group['suite'])
     inventory, _ = invoke([binary, 'inventory', '--suite', suite], ROOT, env, output, 'inventory')
@@ -344,21 +341,44 @@ def run_case(group, output, env, prepared, discover_only=False, source_state=Non
     # the named check ids (e.g. the public corpus AV view runs `--check av`
     # only; legacy-reference rows stay with the explicit avm comparison).
     check_filter = group.get('check')
+    target_filter = group.get('target')
     if check_filter:
         checks = [c for c in checks if c['check'] == check_filter]
+    if target_filter == 'av':
+        checks = [c for c in checks if c['adapter'] == 'probe' and c['action'] == 'run'
+                  and (c['recipe'] or '').startswith('ac-av/')]
+        if not any(c['state'] == 'RUN' for c in checks):
+            raise ValueError('AV target selection has no active check')
+    return binary, suite, checks
+
+
+def run_case(group, output, env, prepared, discover_only=False, source_state=None, prepared_entry=None):
+    from prepare_tools import prepare, case_tools
+    from case_artifacts import create_runtime, archive_runtime
+    if prepared_entry is None:
+        extra, _ = prepare(ROOT, ['case-parent'], output / 'tools', prepared, source_state)
+        env.update(extra)
+    binary, suite, checks = case_inventory(group, output, env)
+    check_filter, target_filter = group.get('check'), group.get('target')
     if discover_only:
         return {'outcome': 'DISCOVERED', 'executed': 0, 'selected': checks}
     if not any(row['state'] == 'RUN' for row in checks):
         return {'outcome': 'NOT_APPLICABLE', 'executed': 0, 'excluded': checks}
-    tools = case_tools([{'adapter': r['adapter'], 'case_recipe': r['recipe']} for r in checks])
+    tools = case_tools([{'adapter': r['adapter'], 'case_recipe': r['recipe']} for r in checks if r['state'] == 'RUN'])
     if group['domain'] != 'ace' and set(tools) - {'case-parent'}:
         raise ValueError('legacy suite requested ACE tools; correct its explicit group')
-    extra, receipts = prepare(ROOT, tools, output / 'tools', prepared, source_state)
-    env.update(extra)
+    receipts = []
+    if prepared_entry is None:
+        extra, receipts = prepare(ROOT, tools, output / 'tools', prepared, source_state)
+        env.update(extra)
+    elif not set(tools).issubset(prepared_entry['tools']):
+        raise ValueError('PREPARATION_REQUIRED: selected TestCase tool set was not prepared')
     runtime = create_runtime()
     run_argv = [binary, 'run', '--suite', suite, '--out', str(runtime.path)]
     if check_filter:
         run_argv += ['--check', check_filter]
+    if target_filter:
+        run_argv += ['--target', target_filter]
     result, execution = invoke(run_argv, ROOT, env, output, 'run')
     report = json.loads((runtime.path / 'report.json').read_text(encoding='utf-8'))
     overrides = json.loads((ROOT / 'scripts/test-governance/case-control-oracles.json').read_text())['overrides']
@@ -366,10 +386,12 @@ def run_case(group, output, env, prepared, discover_only=False, source_state=Non
     for row in overrides:
         if any(c['suite'] == row['suite'] for c in checks) and (row['case'], row['check']) in expectations:
             expectations[(row['case'], row['check'])] = row['expected_status']
-    actual = {(r['case'], r['check']): r for r in report['results'] if r['status'] != 'NOT_RUN'}
-    selected_report_rows = [r for r in report['results'] if r['status'] != 'NOT_RUN']
+    selected_report_rows = [r for r in report['results'] if r['status'] not in ('NOT_RUN', 'SKIP')]
+    actual = {(r['case'], r['check']): r for r in selected_report_rows}
     valid = len(actual) == len(selected_report_rows) and actual.keys() == expectations.keys()
     valid = valid and not report['load_errors'] and not report['coverage_gaps']
+    if target_filter:
+        valid = valid and report.get('selected_target') == target_filter
     for key, status in expectations.items():
         row = actual.get(key, {})
         valid = valid and row.get('status') == status and (status != 'FAIL' or bool(row.get('mismatches')))
@@ -558,7 +580,7 @@ def prepare_plan(plan, output, summary, args):
                  'expressions': group.get('expressions') or [group['expression']],
                  'tools': group['tools'], 'tool_env': {},
                  'file': group.get('file'), 'suite': group.get('suite'),
-                 'check': group.get('check'),
+                 'check': group.get('check'), 'target': group.get('target'),
                  'timeout_seconds': group.get('timeout_seconds')}
         if group['runner'] == 'nextest':
             entry['archive'] = build_archive(group, destination, env, index)
@@ -566,7 +588,21 @@ def prepare_plan(plan, output, summary, args):
     # Phase 2 — tools (and their content-bound warm-up), after every archive.
     for entry in entries:
         destination = output / str(entry['index'])
-        extra, receipts = prepare(ROOT, entry['tools'], destination / 'tools', prepared, before)
+        extra, receipts = {}, []
+        remaining = entry['tools']
+        if entry['runner'] == 'case' and entry.get('target'):
+            from prepare_tools import case_tools
+            parent_env, parent_receipts = prepare(ROOT, ['case-parent'], destination / 'tools', prepared, before)
+            extra.update(parent_env)
+            receipts.extend(parent_receipts)
+            env = {**os.environ, **extra, 'AUTO_TEST_DOMAIN': entry['domain']}
+            _, _, checks = case_inventory(entry, destination, env)
+            entry['tools'] = case_tools([{'adapter': r['adapter'], 'case_recipe': r['recipe']}
+                                         for r in checks if r['state'] == 'RUN'])
+            remaining = [name for name in entry['tools'] if name != 'case-parent']
+        tool_env, tool_receipts = prepare(ROOT, remaining, destination / 'tools', prepared, before)
+        extra.update(tool_env)
+        receipts.extend(tool_receipts)
         entry['tool_env'] = extra
         entry['receipts'] = receipts
         entry['tool_identity'] = {name: tool_identity(tools[name], (ROOT / tools[name]['target']).resolve(), before)
@@ -628,7 +664,7 @@ def plan_from_manifest(manifest):
                  'expression': entry['expression'],
                  'expressions': entry.get('expressions') or [entry['expression']],
                  'tools': entry.get('tools', []), 'file': entry.get('file'),
-                 'suite': entry.get('suite'), 'check': entry.get('check')}
+                 'suite': entry.get('suite'), 'check': entry.get('check'), 'target': entry.get('target')}
         if entry.get('timeout_seconds'):
             group['timeout_seconds'] = entry['timeout_seconds']
         plan.append(group)
@@ -745,7 +781,7 @@ def main(argv=None):
 
 
 def execute_plan(plan, output, summary, args, prepared_by_index=None):
-    prepared = set()
+    prepared = {tool for entry in (prepared_by_index or {}).values() for tool in entry['tools']}
     before = checkout_state()
     summary['source_state'] = before
     if hashlib.sha256((ROOT / 'scripts/test-groups.toml').read_bytes()).hexdigest() != summary['config_sha256']:
@@ -779,7 +815,8 @@ def execute_plan(plan, output, summary, args, prepared_by_index=None):
             elif group['runner'] == 'python':
                 result = run_python(group, destination, env, args.discover_only)
             else:
-                result = run_case(group, destination, env, prepared, args.discover_only, before)
+                case_entry = entry if group.get('target') else None
+                result = run_case(group, destination, env, prepared, args.discover_only, before, case_entry)
             result['tools'] = receipts + result.get('tools', [])
             if entry is not None:
                 result['prepared'] = True

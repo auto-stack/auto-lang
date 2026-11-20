@@ -161,6 +161,7 @@ pub struct Selection {
     pub case: Option<String>,
     pub adapter: Option<String>,
     pub check: Option<String>,
+    pub target: Option<String>,
 }
 
 impl Selection {
@@ -174,6 +175,9 @@ impl Selection {
         }
         if let Some(c) = &self.check {
             parts.push(format!("check={}", c));
+        }
+        if let Some(target) = &self.target {
+            parts.push(format!("target={target}"));
         }
         if parts.is_empty() {
             "full run".to_string()
@@ -190,7 +194,14 @@ impl Selection {
                 .map(|a| a == check.adapter.as_str())
                 .unwrap_or(true)
             && self.check.as_deref().map(|c| c == check.id).unwrap_or(true)
+            && self.target.as_deref().is_none_or(|target| target == "av" && is_av_run(check))
     }
+}
+
+fn is_av_run(check: &CheckSpec) -> bool {
+    check.adapter == Adapter::Probe
+        && check.action == auto_test_case::contract::Action::Run
+        && check.options.probe_recipe.as_deref().is_some_and(|recipe| recipe.starts_with("ac-av/"))
 }
 
 /// Run every check of every case of a suite (full selection).
@@ -259,6 +270,9 @@ fn run_suite_selected_impl(
         }
     }
 
+    if selection.target.as_deref().is_some_and(|target| target != "av") {
+        return Err("bad selector: target must be av".into());
+    }
     let loaded = load_suite(suite_path, limits).map_err(|e| format!("suite load: {}", e))?;
 
     // Resolve the selection against the DECLARED inventory: zero selected
@@ -266,11 +280,16 @@ fn run_suite_selected_impl(
     let mut selected_count = 0usize;
     for case_file in &loaded.cases {
         for spec in &case_file.specs {
-            for check in &spec.checks {
-                if selection.matches(&spec.id, check) {
-                    selected_count += 1;
-                }
+            let selected_checks = spec.checks.iter().filter(|check| selection.matches(&spec.id, check));
+            if selection.target.is_some() && selection.case.as_deref().is_none_or(|id| id == spec.id)
+                && spec.tags.iter().any(|tag| tag == "av-language-parity")
+                && (spec.status_skip.is_some() || !selected_checks.clone().any(|check| check.skip.is_none()))
+            {
+                return Err(format!("{} lacks an active required AV run check", spec.id));
             }
+            selected_count += selected_checks.filter(|check| {
+                selection.target.is_none() || (spec.status_skip.is_none() && check.skip.is_none())
+            }).count();
         }
     }
     if selected_count == 0 {
@@ -323,9 +342,11 @@ fn run_suite_selected_impl(
         .suite
         .required_adapters
         .iter()
+        .filter(|adapter| selection.target.is_none() || **adapter == Adapter::Probe)
         .map(|a| a.as_str().to_string())
         .collect();
     let mut report = RunReport::new(&loaded.suite.id, &loaded.suite_sha256, &required);
+    report.selected_target = selection.target.clone();
     // R1 (F06): a v2 suite produces a v2 report — the schema follows the
     // suite version every case of the run decoded under.
     if loaded.suite.schema == auto_test_case::suite::SUITE_SCHEMA_V2 {
@@ -411,7 +432,7 @@ fn run_suite_selected_impl(
     let mut case_adapters: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
     let mut selected_cases: Vec<String> = Vec::new();
     for r in &report.results {
-        if r.status == Status::NotRun {
+        if r.status == Status::NotRun || (selection.target.is_some() && r.status == Status::Skip) {
             continue;
         }
         if !selected_cases.contains(&r.case_id) {
@@ -425,15 +446,13 @@ fn run_suite_selected_impl(
         }
     }
     for case_id in &selected_cases {
-        for req in &loaded.suite.required_adapters {
+        for req in &report.required_adapters {
             let declared = case_adapters
                 .get(case_id)
-                .map(|set| set.contains(req.as_str()))
+                .map(|set| set.contains(req))
                 .unwrap_or(false);
             if !declared {
-                report
-                    .coverage_gaps
-                    .push((case_id.clone(), req.as_str().to_string()));
+                report.coverage_gaps.push((case_id.clone(), req.clone()));
             }
         }
     }
@@ -455,7 +474,10 @@ fn run_case(
     // suite-declared fixture base (imports keep legacy files in place).
     let ref_base = loaded.fixture_base.clone();
 
-    let any_selected = spec.checks.iter().any(|c| selection.matches(&spec.id, c));
+    let any_selected = spec.checks.iter().any(|check| {
+        selection.matches(&spec.id, check)
+            && (selection.target.is_none() || (spec.status_skip.is_none() && check.skip.is_none()))
+    });
 
     // Resolve payloads only when some check of this case will run; a
     // partial run must not read (or fail on) fixtures it never touches.
@@ -466,6 +488,12 @@ fn run_case(
                 // Resolution failure is a contract/infrastructure error for
                 // every SELECTED check; unselected checks stay NOT_RUN.
                 for check in &spec.checks {
+                    if selection.target.is_some() {
+                        if let Some(row) = scoped_skip(loaded, case_file, spec, check, selection) {
+                            out.push(row);
+                            continue;
+                        }
+                    }
                     if selection.matches(&spec.id, check) {
                         out.push(error_outcome(
                             loaded,
@@ -499,6 +527,13 @@ fn run_case(
 
     for check in &spec.checks {
         let (check, _origins) = apply_defaults(check, &loaded.suite.defaults);
+
+        if selection.target.is_some() {
+            if let Some(row) = scoped_skip(loaded, case_file, spec, &check, selection) {
+                out.push(row);
+                continue;
+            }
+        }
 
         if !selection.matches(&spec.id, &check) {
             // F-04: unselected checks never execute — no scratch dirs, no
@@ -1338,4 +1373,18 @@ fn not_run_outcome(
         contract: fingerprint(spec),
     };
     o
+}
+
+fn scoped_skip(
+    loaded: &LoadedSuite,
+    case_file: &CaseFile,
+    spec: &CaseSpec,
+    check: &CheckSpec,
+    selection: &Selection,
+) -> Option<CheckOutcome> {
+    let skip = spec.status_skip.as_ref().or(check.skip.as_ref())?;
+    let mut row = not_run_outcome(loaded, case_file, spec, check, &selection.describes());
+    row.status = Status::Skip;
+    row.detail = Some(format!("skip: {} (issue {})", skip.reason, skip.issue));
+    Some(row)
 }

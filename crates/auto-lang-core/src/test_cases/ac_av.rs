@@ -700,6 +700,8 @@ struct StepOut {
     #[serde(default)]
     value: Option<i32>,
     #[serde(default)]
+    value_text: Option<String>,
+    #[serde(default)]
     typed: Option<TypedOut>,
     #[serde(default)]
     trap: Option<String>,
@@ -1989,6 +1991,11 @@ fn run_check_with_transport(
             if oracle.stdout.is_some() || oracle.stderr.is_some() {
                 return Err("scheduler error completions assert no console streams".into());
             }
+        } else if family == RecipeFamily::LanguageSource {
+            auto_test_case::contract::validate_language_oracle(
+                oracle.stdout.as_ref(), oracle.stderr.as_ref(), oracle.exit,
+                oracle.av_channel.as_deref(), oracle.result.as_ref(), &oracle.completion,
+            )?;
         } else {
             auto_test_case::contract::validate_console_oracle(
                 oracle.stdout.as_ref(),
@@ -5122,6 +5129,18 @@ fn judge_expectation(
                     _ => {}
                 }
             }
+            if let Some(expected) = &expect.result {
+                let actual = step.value_text.as_deref();
+                if actual != Some(expected.text.as_str()) {
+                    mismatches.push(Mismatch {
+                        observation: "result".into(),
+                        kind: "text".into(),
+                        expected: expected.text.clone(),
+                        actual: actual.unwrap_or("<missing>").to_owned(),
+                        first_diff: None,
+                    });
+                }
+            }
             // PLAN-914: the MARK TRACE oracle. The worker reports the
             // executed `hir.test.trace.v1` events in execution order; the
             // parent compares that observed sequence to the declared bytes
@@ -5394,6 +5413,7 @@ mod judge_tests {
             op: "run".into(),
             outcome: "success".into(),
             value,
+            value_text: None,
             typed,
             trap: None,
             diag: None,
@@ -5704,6 +5724,7 @@ mod closures_judge_tests {
             op: "run".into(),
             outcome: "success".into(),
             value: None,
+            value_text: None,
             typed: None,
             trap: None,
             diag: None,
@@ -5788,6 +5809,7 @@ mod closures_source_judge_tests {
             op: "run".into(),
             outcome: "success".into(),
             value,
+            value_text: None,
             typed: None,
             trap: None,
             diag: None,
@@ -5941,8 +5963,8 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
     {
         return steps
             .iter()
-            .any(|s| s.console.is_some())
-            .then(|| "console capture on a non-console recipe".into());
+            .any(|s| s.console.is_some() || s.value_text.is_some())
+            .then(|| "console capture or language result on a non-console recipe".into());
     }
     if steps.len() != 1 || steps[0].op != "run" {
         return Some("console response requires exactly one run".into());
@@ -5986,11 +6008,22 @@ fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> 
     {
         return Some("foreign result face on a console recipe".into());
     }
+    let text_result = step.value_text.as_deref();
+    if text_result.is_some_and(|text| text.len() > super::ac::MAX_STREAM_BYTES)
+        || (text_result.is_some() && family != RecipeFamily::LanguageSource)
+    {
+        return Some("invalid language result text on console response".into());
+    }
+    if text_result.is_some() && step.outcome != "success" {
+        return Some("result text on a failed language response".into());
+    }
     match step.outcome.as_str() {
         "success"
             if matches!(
-                (step.channel.as_deref(), step.value),
-                (Some("value"), Some(_)) | (Some("unit"), None)
+                (step.channel.as_deref(), step.value, text_result),
+                (Some("value"), Some(_), None)
+                    | (Some("unit"), None, None)
+                    | (Some("text" | "object"), None, Some(_))
             ) && step.trap.is_none()
                 && step.diag.is_none() =>
         {
@@ -6440,6 +6473,7 @@ mod resource_915_tests {
             op: "run".into(),
             outcome: "success".into(),
             value: None,
+            value_text: None,
             typed: None,
             trap: None,
             diag: None,

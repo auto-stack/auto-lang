@@ -235,6 +235,8 @@ pub enum TypeKind {
     /// from `unit` (unit is the no-value RESULT). Only Nil-typed equality
     /// is admitted at the source; other operators are named rejects.
     Nil,
+    /// Checked value with an erased, independently recoverable type tag.
+    Dyn,
     /// PLAN-964 (L-16/L-20): a shared mutable string-keyed object map.
     /// `elem` is the homogeneous entry value type (the source resolve
     /// freezes it); entries may be nil (`elem = Nil`).
@@ -733,6 +735,10 @@ pub enum ExprKind {
     },
     /// PLAN-964 (L-21): the nil literal — a zero-width null value.
     NilLit,
+    /// Pack a value into Dyn or recover its checked declared type.
+    DynCast {
+        operand: ExprId,
+    },
     /// PLAN-964 (L-16/L-20): object literal construction. `eval_args` is
     /// the source-order evaluation list (side effects left-to-right as
     /// written); `keys` aligns with `eval_args` by index (static literal
@@ -1221,6 +1227,7 @@ fn discriminant(k: &TypeKind) -> u8 {
         // discriminants — a Nil/Object type never equals another kind.
         TypeKind::Nil => 17,
         TypeKind::Object { .. } => 18,
+        TypeKind::Dyn => 19,
     }
 }
 

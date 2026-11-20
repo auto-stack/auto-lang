@@ -87,3 +87,657 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: heterogeneous-object
+id: "av.parity.1084.heterogeneous-object"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ var o = { n: 40, title: "ok", enabled: true }
+ o["n"] = 42
+ if o["title"] == "ok" && o["enabled"] { return o["n"] }
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-07-objects-001-object-field
+id: "legacy.07_objects.001_object_field"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "object_field.at"
+```auto
+var a = { name: "auto", age: 18 }
+a.name
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+auto
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "auto"
+
+## Case: legacy-07-objects-002-object-field-int-key
+id: "legacy.07_objects.002_object_field_int_key"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "object_field_int_key.at"
+```auto
+var a = { 1: 2, 3: 4 }
+a.3
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+4
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 4
+
+## Case: legacy-07-objects-003-object-field-bool-key
+id: "legacy.07_objects.003_object_field_bool_key"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "object_field_bool_key.at"
+```auto
+var a = { true: 2, false: 4 }
+a.false
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+4
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 4
+
+## Case: legacy-07-objects-004-obj-set
+id: "legacy.07_objects.004_obj_set"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "obj_set.at"
+```auto
+var a = { name: "Alice" }
+a.name = "Bob"
+a.name
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+Bob
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "Bob"
+
+## Case: legacy-07-objects-005-nested-object
+id: "legacy.07_objects.005_nested_object"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "nested_object.at"
+```auto
+var obj = { inner: { x: 10, y: 20 } }
+obj.inner.x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+## Case: legacy-07-objects-006-inline-map
+id: "legacy.07_objects.006_inline_map"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "inline_map.at"
+```auto
+fn main() {
+    // Inline map/object literal
+    let m = {name: "Alice", age: 30}
+
+    assert_eq(m.name, "Alice")
+    assert_eq(m.age, 30)
+
+    // Nested inline map
+    let data = {user: "Bob", info: {x: 1, y: 2}}
+    assert_eq(data.user, "Bob")
+
+    print("inline_map: all assertions passed")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+inline_map: all assertions passed
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+inline_map: all assertions passed
+```
+
+## Case: legacy-07-objects-006-nested-object-y
+id: "legacy.07_objects.006_nested_object_y"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "nested_object_y.at"
+```auto
+var obj = { inner: { x: 10, y: 20 } }
+obj.inner.y
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+20
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 20
+
+## Case: legacy-07-objects-007-json
+id: "legacy.07_objects.007_json"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "json.at"
+```auto
+var services = [
+    { name: "ClearDiagnosticInformation", port: 8090 }
+    { name: "UpdateData", port: 8091 }
+]
+services[0].name
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+ClearDiagnosticInformation
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "text"
+result: "ClearDiagnosticInformation"
+
+## Case: legacy-07-objects-008-last-block-or-object
+id: "legacy.07_objects.008_last_block_or_object"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "last_block_or_object.at"
+```auto
+{ a: 1, b: 2 }
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+{a: 1, b: 2}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "object"
+result: "{a: 1, b: 2}"
+
+## Case: legacy-07-objects-009-multiple-field-mutations
+id: "legacy.07_objects.009_multiple_field_mutations"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "multiple_field_mutations.at"
+```auto
+var obj = { x: 100, y: 200, z: 300 }
+obj.x = 100
+obj.y = 200
+obj.z = 300
+obj.x + obj.y + obj.z
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+600
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 600
+
+## Case: legacy-07-objects-010-map-bracket-write
+id: "legacy.07_objects.010_map_bracket_write"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "map_bracket_write.at"
+```auto
+// PLAN-661 T-01: map bracket write (m[k] = v) — write/read symmetry.
+// Before the fix, SET_ELEM only downcast ListData, so writing to an
+// object/map target aborted with "Invalid array ID" (078 repro).
+var obj = { x: 100 }
+obj["y"] = 200
+var k = "z"
+obj[k] = 300
+obj["y"] + obj[k] + obj["x"]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+600
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 600
+
+## Case: legacy-15-nested-mutation-001-object-field
+id: "legacy.15_nested_mutation.001_object_field"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "object_field.at"
+```auto
+var obj = { x: 10, y: 20 }
+obj.x = 30
+obj.x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 30
+
+## Case: legacy-15-nested-mutation-003-multiple-fields
+id: "legacy.15_nested_mutation.003_multiple_fields"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "multiple_fields.at"
+```auto
+var obj = { x: 100, y: 200, z: 300 }
+obj.x = 100
+obj.y = 200
+obj.z = 300
+obj.x + obj.y + obj.z
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+600
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 600
+
+## Case: legacy-15-nested-mutation-006-nested-object
+id: "legacy.15_nested_mutation.006_nested_object"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "nested_object.at"
+```auto
+var obj = { inner: { x: 10 } }
+obj.inner.x = 30
+obj.inner.x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+30
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 30
+
+## Case: legacy-15-nested-mutation-007-array-of-obj-field
+id: "legacy.15_nested_mutation.007_array_of_obj_field"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "array_of_obj_field.at"
+```auto
+var arr = [{ x: 1 }, { x: 2 }]
+arr[0].x = 10
+arr[0].x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+## Case: legacy-15-nested-mutation-008-obj-array-element
+id: "legacy.15_nested_mutation.008_obj_array_element"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "obj_array_element.at"
+```auto
+var obj = { items: [1, 2, 3] }
+obj.items[0] = 10
+obj.items[0]
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+10
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+## Case: legacy-15-nested-mutation-011-three-level
+id: "legacy.15_nested_mutation.011_three_level"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "three_level.at"
+```auto
+var obj = { a: { b: { c: 100 } } }
+obj.a.b.c = 200
+obj.a.b.c
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+200
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 200
+
+## Case: legacy-15-nested-mutation-012-deep-array-obj
+id: "legacy.15_nested_mutation.012_deep_array_obj"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "deep_array_obj.at"
+```auto
+var arr = [[{ x: 5 }, { x: 10 }], [{ x: 15 }, { x: 20 }]]
+arr[0][1].x = 25
+arr[0][1].x
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+25
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 25
+
+## Case: legacy-15-nested-mutation-014-out-of-bounds-error
+id: "legacy.15_nested_mutation.014_out_of_bounds_error"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "out_of_bounds_error.at"
+```auto
+var obj = { items: [1, 2, 3] }
+obj.items[10] = 100
+```
+
+### VM diagnostic
+#ignore
+check-id: "vm-error"
+stage: "run"
+code: "legacy.error-presence"
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+## Case: object-alias-and-independent-cell
+id: "av.parity.1084.object-alias-and-independent-cell"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let original = { inner: { amount: 19, title: "ready" } }
+    let other = { inner: { amount: 19, title: "ready" } }
+    let same_inner = original.inner
+    same_inner.amount = 23
+    if original.inner.title != "ready" { return 0 }
+    return original.inner.amount + other.inner.amount
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: wrong-object-value-type
+id: "av.parity.1084.wrong-object-value-type"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let obj = { payload: "not an integer" }
+    return obj.payload
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.dyn-type"
+
+## Case: missing-object-key
+id: "av.parity.1084.missing-object-key"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let obj = { present: 42 }
+    return obj["missing"]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.dyn.object-missing"

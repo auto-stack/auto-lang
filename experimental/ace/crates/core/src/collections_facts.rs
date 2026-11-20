@@ -152,7 +152,7 @@ impl TypeClassifier {
                     }
                     // PLAN-964: the object cell releases through a generated
                     // deep free keyed by its own type id (elem-typed).
-                    hir::TypeKind::Object { .. } => Some(OwnedKind::Deep(tid)),
+                    hir::TypeKind::Object { .. } | hir::TypeKind::Dyn => Some(OwnedKind::Deep(tid)),
                 };
                 if kind.get(&(i as u32)) != Some(&next) {
                     kind.insert(i as u32, next);
@@ -334,7 +334,7 @@ impl<'a> Walker<'a> {
             E::ObjectCtor { eval_args, .. } => eval_args.clone(),
             E::ObjectGet { base, key } => vec![*base, *key],
             E::ObjectSet { base, key, value } => vec![*base, *key, *value],
-            E::TextDisplay { operand } => vec![*operand],
+            E::TextDisplay { operand } | E::DynCast { operand } => vec![*operand],
             E::ReadLocal { .. }
             | E::Constant { .. }
             | E::Unit
@@ -719,7 +719,7 @@ impl<'a> Walker<'a> {
                 self.expr(key);
                 self.owned_value_child(value);
             }
-            E::TextDisplay { operand } => self.expr(operand),
+            E::TextDisplay { operand } | E::DynCast { operand } => self.expr(operand),
         }
     }
 
@@ -1191,6 +1191,10 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
             h.u32(base.0);
             h.u32(key.0);
             h.u32(value.0);
+        }
+        E::DynCast { operand } => {
+            h.str("dyn-cast");
+            h.u32(operand.0);
         }
         E::TextDisplay { operand } => {
             h.str("td");

@@ -2582,7 +2582,9 @@ fn dyn_type_equal(
             | (DynType::F32, DynType::F32)
             | (DynType::F64, DynType::F64)
             | (DynType::Char, DynType::Char)
-            | (DynType::Str, DynType::Str) => {}
+            | (DynType::Str, DynType::Str)
+            | (DynType::Nil, DynType::Nil)
+            | (DynType::Object, DynType::Object) => {}
             _ => return Ok(false),
         }
     }
@@ -2665,6 +2667,8 @@ fn resolve_dyn_type<V: ModuleView>(
             MirType::F64 => Some(DynType::F64),
             MirType::Char => Some(DynType::Char),
             MirType::Str => Some(DynType::Str),
+            MirType::Nil => Some(DynType::Nil),
+            MirType::Object { .. } => Some(DynType::Object),
             MirType::List(l) => match go(
                 v,
                 func,
@@ -3234,6 +3238,7 @@ fn mir_kind_matches(value: &Value, ty: &crate::mir::MirType) -> bool {
         (Value::Char(_), T::Char) => true,
         (Value::Str(_), T::Str) => true,
         (Value::Nil, T::Nil) => true,
+        (Value::Dyn(_), T::Dyn) => true,
         (Value::Object(_), T::Object { .. }) => true,
         (Value::Closure(_), T::Closure(_)) => true,
         (Value::Record(_), T::Record(_)) => true,
@@ -3258,6 +3263,7 @@ fn want_label(ty: &crate::mir::MirType) -> &'static str {
         T::Char => "char",
         T::Str => "Str",
         T::Nil => "nil",
+        T::Dyn => "dyn",
         T::Object { .. } => "object",
         T::Closure(_) => "closure",
         T::Record(_) => "record",
@@ -3587,6 +3593,18 @@ fn list_index_of(iv: &Value) -> Option<usize> {
         Value::I32(i) if *i >= 0 => Some(*i as usize),
         _ => None,
     }
+}
+
+fn dynamic_list_index(value: &Value, len: usize) -> Option<usize> {
+    let index = i64::from(value.as_i32()?);
+    let position = if index < 0 {
+        i64::try_from(len).ok()? + index
+    } else {
+        index
+    };
+    usize::try_from(position)
+        .ok()
+        .filter(|position| *position < len)
 }
 
 fn list_index_trap(
@@ -7072,10 +7090,44 @@ fn dispatch_with_host<V: ModuleView>(
                             fr.slots[*key as usize].clone(),
                         )
                     };
-                    let Value::Object(cell) = &ov else {
+                    let base = match &ov {
+                        Value::Dyn(d) => match (d.as_value(), d.ty()) {
+                            (Value::List(list), crate::dynamic::DynType::List(element_type)) => {
+                                let buf = list.rc.borrow();
+                                let index = match dynamic_list_index(&kv, buf.elems.len()) {
+                                    Some(index) => index,
+                                    None => return Some(list_index_trap(v, func_idx, func, flat)),
+                                };
+                                let value = buf.elems[index].clone();
+                                drop(buf);
+                                let value = Value::Dyn(std::rc::Rc::new(
+                                    crate::dynamic::DynValue::from_parts(
+                                        value,
+                                        (**element_type).clone(),
+                                    ),
+                                ));
+                                if let Err(out) =
+                                    commit_slot_write(st, *dst as usize, value, limits)
+                                {
+                                    return Some(out);
+                                }
+                                st.steps += 1;
+                                continue;
+                            }
+                            (inner @ Value::Object(_), _) => inner,
+                            _ => {
+                                return Some(ExecOutcome::Trap {
+                                    kind: TrapKind::DynTypeMismatch,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                })
+                            }
+                        },
+                        other => other,
+                    };
+                    let Value::Object(cell) = base else {
                         return Some(ExecOutcome::Infra(format!(
                             "object-get operand holds {} (admission violation)",
-                            ov.type_name()
+                            base.type_name()
                         )));
                     };
                     let key = match ObjectKeyOperand::resolve(v, func_idx, kv) {
@@ -7127,14 +7179,93 @@ fn dispatch_with_host<V: ModuleView>(
                             fr.slots[*value as usize].clone(),
                         )
                     };
-                    let Value::Object(cell) = &ov else {
+                    let at = || span_of(func, flat).map(|sp| v.map_span(func_idx, sp));
+                    let base = match &ov {
+                        Value::Dyn(d) => match (d.as_value(), d.ty()) {
+                            (
+                                list_value @ Value::List(list),
+                                crate::dynamic::DynType::List(element_type),
+                            ) => {
+                                let index =
+                                    match dynamic_list_index(&kv, list.rc.borrow().elems.len()) {
+                                        Some(index) => index,
+                                        None => {
+                                            return Some(list_index_trap(v, func_idx, func, flat))
+                                        }
+                                    };
+                                let Value::Dyn(boxed) = &vv else {
+                                    return Some(ExecOutcome::Infra(
+                                        "dynamic index write expected a packed value".into(),
+                                    ));
+                                };
+                                match dyn_type_equal(
+                                    boxed.ty(),
+                                    element_type,
+                                    st,
+                                    limits,
+                                    cancel,
+                                    started,
+                                ) {
+                                    Ok(true) => {}
+                                    Ok(false) => {
+                                        return Some(ExecOutcome::Trap {
+                                            kind: TrapKind::DynTypeMismatch,
+                                            span: at(),
+                                        })
+                                    }
+                                    Err(out) => return Some(out),
+                                }
+                                let value = boxed.as_value().clone();
+                                if let Err(out) = check_container_cycle(
+                                    list_value, &value, st, limits, cancel, started, at,
+                                ) {
+                                    return Some(out);
+                                }
+                                let old = list.rc.borrow().elems[index].clone();
+                                let mut visited = 0;
+                                let new_bytes = value.deep_size(&mut visited);
+                                let old_bytes = old.deep_size(&mut visited);
+                                st.steps += visited;
+                                let candidate = st
+                                    .slot_bytes
+                                    .saturating_sub(old_bytes)
+                                    .saturating_add(new_bytes);
+                                if candidate > limits.max_slot_bytes {
+                                    return Some(ExecOutcome::Resource {
+                                        kind: ResourceKind::SlotBytes,
+                                        message: format!("list replacement would use {candidate} bytes, above budget {}", limits.max_slot_bytes),
+                                    });
+                                }
+                                let mut buffer = list.rc.borrow_mut();
+                                let removed = std::mem::replace(&mut buffer.elems[index], value);
+                                buffer.elem_gens[index] = buffer.elem_gens[index].wrapping_add(1);
+                                drop(buffer);
+                                drop(old);
+                                drop_owned_reverse(st, removed);
+                                st.slot_bytes = candidate;
+                                st.trace.peak_slot_bytes =
+                                    st.trace.peak_slot_bytes.max(candidate as u64);
+                                st.steps += 1;
+                                continue;
+                            }
+                            (inner @ Value::Object(_), _) => inner,
+                            _ => {
+                                return Some(ExecOutcome::Trap {
+                                    kind: TrapKind::DynTypeMismatch,
+                                    span: at(),
+                                })
+                            }
+                        },
+                        other => other,
+                    };
+                    let Value::Object(cell) = base else {
                         return Some(ExecOutcome::Infra(format!(
                             "object-set operand holds {} (admission violation)",
-                            ov.type_name()
+                            base.type_name()
                         )));
                     };
                     if let Err(out) =
-                        check_container_cycle(&ov, &vv, st, limits, cancel, started, || {
+                        check_container_cycle(base, &vv, st, limits, cancel, started, || {
                             span_of(func, flat).map(|sp| v.map_span(func_idx, sp))
                         })
                     {

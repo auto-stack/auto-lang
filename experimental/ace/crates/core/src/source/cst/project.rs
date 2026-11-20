@@ -8939,7 +8939,7 @@ impl<'a> Engine<'a> {
             // 旧门 = surface.is_entry_unit()（含 HostConsole——控制台脚本面）。
             // 旧 stmt head 的表达式候选只从 ident/true/false/int 起始——其余
             // 起始（如 `(`）是"expected statement, found X"（c03 差分）。
-            if !self.cx.profile.is_entry_unit() {
+            if !self.cx.profile.is_entry_unit() && self.cx.profile != SourceProfile::Auto {
                 let first_leaf = lex::collect_leaves(&self.cx.tree)
                     .into_iter()
                     .filter(|l| l.start >= self.cx.tree.abs_range(value_n).0)
@@ -9385,14 +9385,34 @@ impl<'a> Engine<'a> {
                         .field_child(elems_n, "head")
                         .expect("array head element");
                     expr_nodes.push(head);
+                    let mut previous_end = self.cx.span_of(head).end;
                     for t in self.cx.children(elems_n) {
                         if t == head {
                             continue;
                         }
-                        for ec in self.cx.children(t) {
-                            if self.cx.tree.kind(ec) != self.cx.k.tok_comma {
-                                expr_nodes.push(ec);
+                        let mut comma = false;
+                        for child in self.cx.children(t) {
+                            if self.cx.tree.kind(child) == self.cx.k.tok_comma {
+                                comma = true;
+                                continue;
                             }
+                            let element = self.cx.span_of(child);
+                            if !comma
+                                && self.cx.profile == SourceProfile::Auto
+                                && self.cx.line_of_pos(previous_end.saturating_sub(1) as u64)
+                                    == self.cx.line_of_pos(element.start as u64)
+                            {
+                                self.cx.reject(element, || {
+                                    Diagnostic::new(
+                                        Stage::Text,
+                                        "source.syntax",
+                                        "array elements require a comma or a newline",
+                                        element,
+                                    )
+                                });
+                            }
+                            previous_end = element.end;
+                            expr_nodes.push(child);
                         }
                     }
                     expr_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);

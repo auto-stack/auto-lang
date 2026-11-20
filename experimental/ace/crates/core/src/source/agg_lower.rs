@@ -165,6 +165,17 @@ pub(super) fn dummy_expr_for_vt(
             vt,
             kind: RExprKind::Unit,
         },
+        VT::Dyn => ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::DynCast {
+                operand: Box::new(ResolvedExpr {
+                    span,
+                    vt: VT::Nil,
+                    kind: RExprKind::NilLit,
+                }),
+            },
+        },
         VT::Nil => ResolvedExpr {
             span,
             vt,
@@ -747,6 +758,7 @@ fn rewrite_expr_reads_to_st(
         | RExprKind::ListLen { list: operand }
         | RExprKind::ListClear { list: operand }
         | RExprKind::TextDisplay { operand }
+        | RExprKind::DynCast { operand }
         | RExprKind::TupleGet { base: operand, .. } => {
             rewrite_expr_reads_to_st(
                 operand,
@@ -1121,6 +1133,7 @@ fn collect_guard_locals_expr(e: &ResolvedExpr, exclude: &mut BTreeSet<usize>) {
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
+            | RExprKind::DynCast { operand }
             | RExprKind::TupleGet { base: operand, .. }
             | RExprKind::FieldGet { base: operand, .. } => stack.push(operand),
             RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
@@ -1226,6 +1239,7 @@ fn remap_locals_expr(e: &mut ResolvedExpr, map: &BTreeMap<usize, LocalRef>) {
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
+            | RExprKind::DynCast { operand }
             | RExprKind::TupleGet { base: operand, .. }
             | RExprKind::FieldGet { base: operand, .. } => stack.push(&mut **operand),
             RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
@@ -1417,6 +1431,7 @@ fn offset_step_locals_expr(e: &mut ResolvedExpr, offset: usize) {
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
+            | RExprKind::DynCast { operand }
             | RExprKind::TupleGet { base: operand, .. }
             | RExprKind::FieldGet { base: operand, .. } => stack.push(&mut **operand),
             RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {

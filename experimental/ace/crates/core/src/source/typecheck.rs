@@ -827,7 +827,7 @@ fn check_expr(
                 stack.push(value);
             }
             RExprKind::NilLit => {}
-            RExprKind::TextDisplay { operand } => stack.push(operand),
+            RExprKind::TextDisplay { operand } | RExprKind::DynCast { operand } => stack.push(operand),
             RExprKind::FStr { parts } => {
                 for p in parts {
                     let (FStrPart::Text(e) | FStrPart::Expr(e)) = p;
