@@ -712,6 +712,13 @@ struct SourceSpan {
     end: usize,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageErrorObservation {
+    kind: String,
+    span: Option<SourceSpan>,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StepOut {
@@ -723,6 +730,8 @@ struct StepOut {
     value_text: Option<String>,
     #[serde(default)]
     source_span: Option<SourceSpan>,
+    #[serde(default)]
+    language_error: Option<LanguageErrorObservation>,
     #[serde(default)]
     typed: Option<TypedOut>,
     #[serde(default)]
@@ -2544,7 +2553,7 @@ fn run_check_with_transport(
                 infra_detail = Some("missing original source span for language error".to_owned());
                 break 'admit;
             }
-            if let Some(span) = &step.source_span {
+            let valid_span = |span: &SourceSpan| {
                 let source_len = if request.get("project").is_some() {
                     case.files
                         .iter()
@@ -2553,13 +2562,30 @@ fn run_check_with_transport(
                 } else {
                     (span.path == case.entry_path).then_some(input_bytes.len())
                 };
+                span.start <= span.end && source_len.is_some_and(|len| span.end <= len)
+            };
+            if let Some(span) = &step.source_span {
                 if family != RecipeFamily::LanguageSource
-                    || span.start > span.end
-                    || source_len.is_none_or(|len| span.end > len)
                     || !matches!(step.outcome.as_str(), "diag" | "trap")
+                    || !valid_span(span)
                 {
                     infra_detail =
                         Some("invalid worker source span for the submitted source".to_owned());
+                    break 'admit;
+                }
+            }
+            if let Some(error) = &step.language_error {
+                let valid_kind = matches!(error.kind.as_str(), "explicit" | "list-index")
+                    || error.kind.strip_prefix("python.").is_some_and(|class| {
+                        class
+                            .parse::<u8>()
+                            .is_ok_and(|class| (1..=10).contains(&class))
+                    });
+                if family != RecipeFamily::LanguageSource
+                    || !valid_kind
+                    || error.span.as_ref().is_some_and(|span| !valid_span(span))
+                {
+                    infra_detail = Some("invalid worker language error observation".to_owned());
                     break 'admit;
                 }
             }
@@ -2999,6 +3025,7 @@ fn run_check_with_transport(
             "trap": step.trap,
             "diag": step.diag,
             "source_span": step.source_span,
+            "language_error": step.language_error,
             "owned": step.owned,
             "closures_source": step.closures_source,
         "recovery": step.recovery,
@@ -5494,6 +5521,7 @@ mod judge_tests {
             value,
             value_text: None,
             source_span: None,
+            language_error: None,
             typed,
             trap: None,
             diag: None,
@@ -5806,6 +5834,7 @@ mod closures_judge_tests {
             value: None,
             value_text: None,
             source_span: None,
+            language_error: None,
             typed: None,
             trap: None,
             diag: None,
@@ -5892,6 +5921,7 @@ mod closures_source_judge_tests {
             value,
             value_text: None,
             source_span: None,
+            language_error: None,
             typed: None,
             trap: None,
             diag: None,
@@ -6568,6 +6598,7 @@ mod resource_915_tests {
             value: None,
             value_text: None,
             source_span: None,
+            language_error: None,
             typed: None,
             trap: None,
             diag: None,

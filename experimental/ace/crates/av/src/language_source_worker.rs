@@ -3,8 +3,8 @@
 //! the aggregates surface) onto the closures-family lowering/runtime with
 //! console observation. Reports observations, never expected values or PASS.
 use ace_av_core::abc::encode_abc;
-use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits};
-use ace_av_core::contract::{fnv1a64, ExecOutcome, ObjectKey, Value};
+use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits, ExecTrace};
+use ace_av_core::contract::{fnv1a64, ExecOutcome, LanguageErrorKind, ObjectKey, SpanInfo, Value};
 use ace_av_core::mir_verify::MirVerifyError;
 use ace_av_core::verify_mir;
 use ace_core::atom_text::Diagnostic;
@@ -88,6 +88,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "source_hash":format!("{:016x}",fnv1a64(source.as_bytes())), "wall_ms":0.0});
 
     let mut store_writes = Some(0);
+    let mut handled_errors = 0;
     let (result, capture) = if let Some(project) = object.get("project") {
         store_writes = None;
         let project: SourceProject =
@@ -119,6 +120,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             Ok(observation) => {
                 store_writes = Some(observation.store_writes);
                 step["trace"] = json!(observation.trace);
+                handled_errors = observation.handled_errors;
+                if let Some(error) = observation.language_error {
+                    step["language_error"] = error;
+                }
                 if let Some(span) = observation.source_span {
                     step["source_span"] = span;
                 }
@@ -127,7 +132,16 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             Err(diag) => (Err(diag), capture),
         }
     } else {
-        run_chain(&source, path, &caps)
+        let mut capture = ConsoleCapture::default();
+        let result = run_chain(&source, path, &caps, &mut capture).map(|(outcome, trace)| {
+            handled_errors = trace.handled_language_errors;
+            let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
+            if let Some(error) = observed_language_error(&trace, locate) {
+                step["language_error"] = error;
+            }
+            outcome
+        });
+        (result, capture)
     };
     match result {
         Err(diag) => {
@@ -217,6 +231,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "stdout_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stdout),
         "stderr_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stderr)});
     step["counters"] = json!({"host_dispatches":capture.dispatches});
+    step["counters"]["handled_language_errors"] = json!(handled_errors);
     if let Some(writes) = store_writes {
         step["counters"]["store_writes"] = json!(writes);
     }
@@ -377,6 +392,18 @@ struct ProjectObservation {
     trace: Vec<&'static str>,
     source_span: Option<Json>,
     store_writes: u64,
+    handled_errors: u64,
+    language_error: Option<Json>,
+}
+
+fn observed_language_error(trace: &ExecTrace, locate: impl Fn(SpanInfo) -> Json) -> Option<Json> {
+    let origin = trace.last_language_error?;
+    let kind = match origin.kind {
+        LanguageErrorKind::Explicit => "explicit".to_string(),
+        LanguageErrorKind::ListIndex => "list-index".to_string(),
+        LanguageErrorKind::Python(class) => format!("python.{class}"),
+    };
+    Some(json!({"kind":kind,"span":origin.span.map(locate)}))
 }
 
 fn run_project(
@@ -453,11 +480,7 @@ fn run_project(
             ace_av_core::mir::TraceEvent::MarkB => "b",
         })
         .collect();
-    let source_span = match &outcome {
-        ExecOutcome::Trap { span, .. } | ExecOutcome::Error { span, .. } => *span,
-        _ => None,
-    }
-    .map(|span| {
+    let locate = |span: SpanInfo| {
         use ace_core::atom_text::{Span, Stage};
         let located = compiled.bound.locate(Diagnostic::new(
             Stage::Text,
@@ -473,12 +496,18 @@ fn run_project(
             .map_or(entry_path, String::as_str);
         let span = located.diagnostic.span;
         json!({"path":path, "start":span.start, "end":span.end})
-    });
+    };
+    let source_span = match &outcome {
+        ExecOutcome::Trap { span, .. } | ExecOutcome::Error { span, .. } => span.map(locate),
+        _ => None,
+    };
     Ok(ProjectObservation {
         outcome,
         trace: marks,
         source_span,
         store_writes: target.lowered,
+        handled_errors: trace.handled_language_errors,
+        language_error: observed_language_error(&trace, locate),
     })
 }
 
@@ -490,9 +519,8 @@ fn run_chain(
     source: &str,
     path: &str,
     caps: &[String],
-) -> (Result<ExecOutcome, Json>, ConsoleCapture) {
-    let mut capture = ConsoleCapture::default();
-    let outcome = (|| -> Result<ExecOutcome, Json> {
+    capture: &mut ConsoleCapture,
+) -> Result<(ExecOutcome, ExecTrace), Json> {
         let compiled = ace_core::source::compile_language_source(source, path, caps)
             .map_err(|ds| diagnostic(&ds[0], path))?;
         // PLAN-1080: the ordinary language face lowers through the same
@@ -522,13 +550,10 @@ fn run_chain(
         let flat = abc.to_flat();
         let loaded = ace_av_core::abc_verify::verify_abc_bytes(&flat, &mir.owner)
             .map_err(|e| json!({"stage":"admit","code":"abc","message":e.to_string()}))?;
-        let (out, _trace) = execute_sched(
-            &loaded,
-            &ExecLimits::default(),
-            &CancelFlag::new(false),
-            &mut capture,
-        );
-        Ok(out)
-    })();
-    (outcome, capture)
+    Ok(execute_sched(
+        &loaded,
+        &ExecLimits::default(),
+        &CancelFlag::new(false),
+        capture,
+    ))
 }
