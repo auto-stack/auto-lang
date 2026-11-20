@@ -4059,7 +4059,18 @@ fn unwind_to_invoke(
     let caller = st.frames.last().expect("handler frame present").func;
     let zero = v.zero_of(caller, result_type);
     owned_kill_slot(st, result_slot as usize, zero);
-    let destination = destination as usize;
+    write_language_error(st, limits, message, origin, destination as usize, target)?;
+    Ok(true)
+}
+
+fn write_language_error(
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    message: &str,
+    origin: crate::contract::LanguageErrorOrigin,
+    destination: usize,
+    target: u32,
+) -> Result<(), ExecOutcome> {
     owned_alloc_precheck(
         st,
         std::mem::size_of::<Value>() + message.len(),
@@ -4079,7 +4090,7 @@ fn unwind_to_invoke(
     let frame = st.frames.last_mut().expect("handler frame present");
     frame.block = target;
     frame.ip = 0;
-    Ok(true)
+    Ok(())
 }
 
 fn dispatch_list_index_error(
@@ -8790,6 +8801,40 @@ fn dispatch_with_host<V: ModuleView>(
                 let frame = st.frames.last_mut().expect("frame present");
                 frame.block = *normal;
                 frame.ip = 0;
+            }
+            Terminator::Raise {
+                message,
+                source: (start, end),
+                target,
+                destination,
+            } => {
+                let value =
+                    st.frames.last().expect("handler frame").slots[*message as usize].clone();
+                let Value::Str(message) = &value else {
+                    return Some(ExecOutcome::Infra(
+                        "verified raise message is not owned Str".into(),
+                    ));
+                };
+                let origin =
+                    message
+                        .error_origin()
+                        .unwrap_or(crate::contract::LanguageErrorOrigin {
+                            kind: crate::contract::LanguageErrorKind::Explicit,
+                            span: Some(v.map_span(
+                                func_idx,
+                                SpanInfo {
+                                    func: func_idx,
+                                    start: *start,
+                                    end: *end,
+                                },
+                            )),
+                        });
+                let text = std::str::from_utf8(message.bytes()).expect("Str invariant");
+                if let Err(outcome) =
+                    write_language_error(st, limits, text, origin, *destination as usize, *target)
+                {
+                    return Some(outcome);
+                }
             }
             Terminator::LangFail { message, source } => {
                 let msg_val = {

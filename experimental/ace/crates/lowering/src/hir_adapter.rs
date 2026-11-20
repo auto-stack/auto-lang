@@ -4266,37 +4266,47 @@ k 0
                 unwind: rejected,
                 message: unwind.message,
             });
-            self.cur = rejected;
-            self.terminated = false;
-            // The rejected arm never consumes the call's result or executes
-            // its success-side write-back. End the borrowed argument views
-            // before entering catch/finally.
-            let tokens = self.pending_temp_views.clone();
-            for &token in tokens.iter().rev() {
-                if Some(token) != result {
-                    self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
-                }
-            }
-            self.pending_temp_views = tokens;
-            let scoped_views = self.scoped_views.clone();
-            for &token in scoped_views.iter().skip(unwind.enclosing_views).rev() {
-                self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
-            }
-            self.scoped_views = scoped_views;
-            let value = self.const_i32(4)?;
-            self.emit_instr(
-                MirInstr::Const {
-                    dst: unwind.kind,
-                    value,
-                },
-                None,
-            )?;
-            self.set_term(Terminator::Jump {
-                target: unwind.exit,
-            });
+            self.finish_unwind_edge(rejected, unwind, result)?;
             self.cur = normal;
             self.terminated = false;
         }
+        Ok(())
+    }
+
+    fn finish_unwind_edge(
+        &mut self,
+        rejected: u32,
+        unwind: UnwindTarget,
+        result: Option<u32>,
+    ) -> Result<(), AdapterError> {
+        self.cur = rejected;
+        self.terminated = false;
+        // The rejected arm never consumes the call's result or executes
+        // its success-side write-back. End the borrowed argument views
+        // before entering catch/finally.
+        let tokens = self.pending_temp_views.clone();
+        for &token in tokens.iter().rev() {
+            if Some(token) != result {
+                self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
+            }
+        }
+        self.pending_temp_views = tokens;
+        let scoped_views = self.scoped_views.clone();
+        for &token in scoped_views.iter().skip(unwind.enclosing_views).rev() {
+            self.emit_instr(MirInstr::BorrowEnd { token }, None)?;
+        }
+        self.scoped_views = scoped_views;
+        let value = self.const_i32(4)?;
+        self.emit_instr(
+            MirInstr::Const {
+                dst: unwind.kind,
+                value,
+            },
+            None,
+        )?;
+        self.set_term(Terminator::Jump {
+            target: unwind.exit,
+        });
         Ok(())
     }
 
@@ -8034,10 +8044,21 @@ fn lower_function_with_emission(
                     } else {
                         None
                     };
-                    lower.set_term(Terminator::LangFail {
-                        message: msg,
-                        source,
-                    });
+                    if let (Some(unwind), Some(source)) = (lower.unwind, source) {
+                        let target = lower.new_block()?;
+                        lower.set_term(Terminator::Raise {
+                            message: msg,
+                            target,
+                            destination: unwind.message,
+                            source,
+                        });
+                        lower.finish_unwind_edge(target, unwind, None)?;
+                    } else {
+                        lower.set_term(Terminator::LangFail {
+                            message: msg,
+                            source,
+                        });
+                    }
                     break;
                 }
             }

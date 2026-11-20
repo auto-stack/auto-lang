@@ -434,7 +434,7 @@ fn emit_admitted(m: &MirModule, layouts: &[Descriptor]) -> Result<emit::UnitObje
                     lower.checked("mn_coll_frame_leave", &[(frame, types::I64)])?;
                     lower.fb.ins().return_(&[]);
                 }
-                Terminator::Invoke { .. } => {
+                Terminator::Invoke { .. } | Terminator::Raise { .. } => {
                     return Err(unsupported(
                         "mn.invoke",
                         "language-error unwind is supported by AV",

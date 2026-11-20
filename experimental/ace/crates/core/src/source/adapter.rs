@@ -4163,8 +4163,8 @@ fn stmt_term_memo(s: &RStmt, terms: &BTreeMap<usize, Option<Term>>) -> Term {
             }
             None => Term::No,
         },
-        RStmt::Loop { body, .. } => {
-            if flow_of(body) == Some(Term::Ret) {
+        RStmt::Loop { body, unwind, .. } => {
+            if unwind.is_none() && flow_of(body) == Some(Term::Ret) {
                 Term::Ret
             } else {
                 Term::No

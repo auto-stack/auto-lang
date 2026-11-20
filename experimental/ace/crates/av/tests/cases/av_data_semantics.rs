@@ -979,7 +979,11 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // PLAN-975 B1: + STR_FROM_CHAR (0x4C, char -> owned Str) = 58.
     // PLAN-1085: + GLOBAL_TAKE, gated by av.globals.take/1.
     // PLAN-1086: two typed text scan operations gated by av.text.scan/1.
-    assert_eq!(all_mnemonics.len(), 61);
+    // PLAN-1087: the ordinary source profile emits three language-error terminators.
+    assert_eq!(all_mnemonics.len(), 64);
+    for mnemonic in ["INVOKE", "LANG_FAIL_AT", "RAISE"] {
+        assert!(all_mnemonics.contains(&mnemonic));
+    }
     assert!(all_mnemonics.contains(&"GLOBAL_TAKE"));
     assert!(all_mnemonics.contains(&"STR_FIND"));
     assert!(all_mnemonics.contains(&"STR_TRIM"));

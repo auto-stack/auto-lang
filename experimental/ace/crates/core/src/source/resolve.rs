@@ -8162,7 +8162,8 @@ F:{d}
 
     fn emit_fail_to_out(&mut self, err: ResolvedExpr, span: Span, out: &mut Vec<RStmt>) {
         let err_owned = self.coerce_err_to_str_owned(err, span);
-        if self.has_enclosing_try() {
+        let inside_try = self.has_enclosing_try();
+        if inside_try && (!self.profile.is_auto_language() || self.is_generator) {
             let cs = self.ensure_ctrl_state(span);
             out.push(RStmt::Assign {
                 local: cs.kind,
@@ -8185,7 +8186,9 @@ F:{d}
                 span,
             });
         } else {
-            self.emit_close_active_iters_to_out(out, span);
+            if !inside_try {
+                self.emit_close_active_iters_to_out(out, span);
+            }
             out.push(RStmt::Fail {
                 value: err_owned,
                 span,

@@ -2948,6 +2948,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
             // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
             alt(profiles: [auto, auto-packages]) { empty-array-lit() {} }
+            alt(profiles: [auto, auto-packages]) { auto-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) { array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
             alt(profiles: [auto, auto-packages]) { if-value() {} }
@@ -2986,6 +2987,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
             // PLAN-1082：空 `[]` 语法收录（resolve 具名拒）。
             alt(profiles: [auto, auto-packages]) { empty-array-lit() {} }
+            alt(profiles: [auto, auto-packages]) { auto-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) { array-lit() {} }
             // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
@@ -3057,17 +3059,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         grid-row(profiles: [aggregates, auto, scheduler, auto-packages]) {
             lbracket(same-line: true) {}
-            grid-cells(field: "cells")
+            array-elems(field: "cells")
             rbracket() {}
-        }
-        grid-cells(profiles: [aggregates, auto, scheduler, auto-packages]) {
-            expr(field: "head")
-            many { grid-cell-tail() {} }
-            opt(profiles: [auto, auto-packages]) { comma() {} }
-        }
-        grid-cell-tail(profiles: [aggregates, auto, scheduler, auto-packages]) {
-            alt { comma() {} expr() {} }
-            alt(profiles: [auto, auto-packages]) { expr() {} }
         }
         // PLAN-962（L-16）：`[e1, e2, ...]`——非空元素表（空字面量无元素类型，
         // 由 resolve 具名拒）。语句位脱糖 List<T>.new()+push 链（见 resolve）。
@@ -3088,19 +3081,32 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         empty-array-lit(profiles: [auto, auto-packages]) {
             lbracket() {}
             rbracket() {}
-        }
-        array-elems(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
-            array-elem(field: "head")
+        }        array-elems(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
+            expr(field: "head")
             many { array-elem-tail() {} }
             opt(profiles: [auto, auto-packages]) { comma() {} }
         }
         array-elem-tail(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
-            alt { comma() {} array-elem() {} }
-            alt(profiles: [auto, auto-packages]) { array-elem() {} }
+            alt { comma() {} expr() {} }
+            alt(profiles: [auto, auto-packages]) { expr() {} }
         }
-        array-elem(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) {
+        auto-array-lit(profiles: [auto, auto-packages]) {
+            lbracket() {}
+            auto-array-elems(field: "elems")
+            rbracket() {}
+        }
+        auto-array-elems(profiles: [auto, auto-packages]) {
+            auto-array-elem(field: "head")
+            many { auto-array-elem-tail() {} }
+            opt { comma() {} }
+        }
+        auto-array-elem-tail(profiles: [auto, auto-packages]) {
+            opt { comma() {} }
+            auto-array-elem() {}
+        }
+        auto-array-elem(profiles: [auto, auto-packages]) {
             alt { expr() {} }
-            alt(profiles: [auto, auto-packages]) { array-conditional-elem() {} }
+            alt { array-conditional-elem() {} }
         }
         array-conditional-elem(profiles: [auto, auto-packages]) {
             if(field: "kw")

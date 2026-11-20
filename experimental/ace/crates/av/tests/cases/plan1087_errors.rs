@@ -122,7 +122,7 @@ fn main() int { try { return leaf() } catch { rethrow() } }
     let origin = trace.last_language_error.expect("origin preserved");
     assert_eq!(origin.kind, LanguageErrorKind::ListIndex);
     assert_eq!(origin.span, Some(span));
-    assert_eq!(trace.handled_language_errors, 1);
+    assert_eq!(trace.handled_language_errors, 2);
     assert_released(&trace, 1);
 }
 
@@ -220,4 +220,37 @@ fn main() int {
     assert_eq!(trace.handled_language_errors, 0);
     assert_eq!(trace.frames_remaining, 0);
     assert_eq!(host.writes, [b"entered\n".to_vec()]);
+}
+
+#[test]
+fn local_error_origin_survives_cross_activation_rethrow() {
+    let source = r#"
+fn leaf() int {
+    try { fail("original error") } catch { rethrow() }
+    return 0
+}
+fn main() int { try { return leaf() } catch { rethrow() } }
+"#;
+    let mir = lower(source);
+    let module = load(&mir);
+    let (outcome, trace) =
+        execute_observed(&module, &ExecLimits::default(), &CancelFlag::new(false));
+    let ExecOutcome::Error {
+        message,
+        span: Some(span),
+    } = outcome
+    else {
+        panic!("expected the original error and its site, got {outcome:?}");
+    };
+    assert_eq!(message, "original error");
+    assert_eq!(
+        &source[span.start as usize..span.end as usize],
+        r#""original error""#
+    );
+    let origin = trace
+        .last_language_error
+        .expect("original error observation");
+    assert_eq!(origin.kind, LanguageErrorKind::Explicit);
+    assert_eq!(origin.span, Some(span));
+    assert_released(&trace, 1);
 }

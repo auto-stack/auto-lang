@@ -1000,6 +1000,13 @@ pub enum Terminator {
         unwind: BlockId,
         message: SlotId,
     },
+    /// Deliver an explicit failure to a handler in the current activation.
+    Raise {
+        message: SlotId,
+        target: BlockId,
+        destination: SlotId,
+        source: (u32, u32),
+    },
     /// Language-level error unwind (`fail(msg)` / uncaught `.?`).
     LangFail {
         message: SlotId,
@@ -1011,7 +1018,7 @@ pub enum Terminator {
 impl Terminator {
     pub(crate) fn successors(&self) -> Vec<BlockId> {
         match *self {
-            Self::Jump { target } => vec![target],
+            Self::Jump { target } | Self::Raise { target, .. } => vec![target],
             Self::Branch { then, else_, .. } if then == else_ => vec![then],
             Self::Branch { then, else_, .. } => vec![then, else_],
             Self::Invoke { normal, unwind, .. } => vec![normal, unwind],

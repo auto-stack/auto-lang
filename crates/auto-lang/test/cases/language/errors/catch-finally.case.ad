@@ -1255,3 +1255,58 @@ exit: 42
 first
 second
 ```
+
+
+## Case: local-origin-rethrow
+id: "av.parity.1087.local-origin-rethrow"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() int {
+    try { fail("original error") } catch { rethrow() }
+    return 0
+}
+fn main() int { try { return leaf() } catch { rethrow() } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "original error"
+
+## Case: iterator-finally-and-catch
+id: "av.parity.1087.iterator-finally-and-catch"
+tags: ["av-language-parity", "plan-1087"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn boom() int { fail("iteration error") }
+fn main() int {
+    var n = 0
+    try {
+        let xs = [1,2]
+        for i in xs {
+            try { n = n + boom() } finally { n = n + i }
+        }
+    } catch e {
+        if e == "iteration error" { return 41 + n }
+    }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

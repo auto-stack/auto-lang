@@ -7904,6 +7904,7 @@ impl Verifier {
             },
             AwaitLoop {
                 body_slot: usize,
+                protected: bool,
             },
         }
         enum Action {
@@ -8049,7 +8050,11 @@ impl Verifier {
                                 else_slot,
                             };
                         }
-                        hir::Stmt::Loop { id, body: b, .. } => {
+                        hir::Stmt::Loop {
+                            id,
+                            body: b,
+                            unwind,
+                        } => {
                             let cur_in = frame.cur.clone();
                             let parent_idx = frames.len() - 1;
                             loops.push(id);
@@ -8061,7 +8066,10 @@ impl Verifier {
                                 loops.len(),
                                 cur_in,
                             );
-                            frames[parent_idx].state = WState::AwaitLoop { body_slot };
+                            frames[parent_idx].state = WState::AwaitLoop {
+                                body_slot,
+                                protected: unwind.is_some(),
+                            };
                         }
                         hir::Stmt::Assign { place, value } => {
                             self.walk_value(value, body, &frame.cur);
@@ -8179,14 +8187,17 @@ impl Verifier {
                                 frame.cur = merged;
                             }
                         }
-                        WState::AwaitLoop { body_slot } => {
+                        WState::AwaitLoop {
+                            body_slot,
+                            protected,
+                        } => {
                             let (body_f, _body_init) =
                                 results[body_slot].clone().expect("loop body result");
                             // A `return` inside the loop body leaves the loop;
                             // a body that completes or diverges via
                             // break/continue hands control back to the loop /
                             // after-loop code.
-                            frame.flow = if body_f == Flow::Returned {
+                            frame.flow = if body_f == Flow::Returned && !protected {
                                 Flow::Returned
                             } else {
                                 Flow::Continue

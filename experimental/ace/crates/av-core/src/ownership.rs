@@ -1935,7 +1935,7 @@ fn verify_owned_function_impl(
                         ));
                     }
                 }
-                Terminator::LangFail { message, .. } => {
+                Terminator::LangFail { message, .. } | Terminator::Raise { message, .. } => {
                     let vs = *message as usize;
                     if !st.init.get(vs) {
                         fail = Some(err(
@@ -1949,6 +1949,18 @@ fn verify_owned_function_impl(
                             format!("lang fail on consumed slot `{}`", slot_name(f, vs)),
                             flat,
                         ));
+                    } else if let Terminator::Raise { destination, .. } = f.blocks[b as usize].term
+                    {
+                        let ds = destination as usize;
+                        if root_has_live_token(&st, ds) {
+                            fail = Some(err(
+                                "mir.mut-conflict",
+                                format!("raise destination {} is borrowed", slot_name(f, ds)),
+                                flat,
+                            ));
+                        } else {
+                            st.define_slot(ds);
+                        }
                     }
                 }
             }

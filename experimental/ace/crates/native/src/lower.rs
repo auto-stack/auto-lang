@@ -217,7 +217,7 @@ pub fn emit_function(
                     remaining[*else_ as usize] += 1;
                 }
             }
-            Terminator::Invoke { .. } => {
+            Terminator::Invoke { .. } | Terminator::Raise { .. } => {
                 return Err("mn.invoke: language-error unwind is supported by AV".into())
             }
             Terminator::Return { .. } | Terminator::LangFail { .. } => {}
@@ -523,7 +523,7 @@ pub fn emit_function(
                     touch(&mut fx, *else_, &mut sealed, &mut remaining);
                 }
             }
-            Terminator::Invoke { .. } => {
+            Terminator::Invoke { .. } | Terminator::Raise { .. } => {
                 return Err("mn.invoke: language-error unwind is supported by AV".into())
             }
             Terminator::Return { .. } | Terminator::LangFail { .. } => {}
@@ -4396,7 +4396,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     }
                 }
             }
-            Terminator::Invoke { .. } => {
+            Terminator::Invoke { .. } | Terminator::Raise { .. } => {
                 return Err("mn.invoke: language-error unwind is supported by AV".into())
             }
             Terminator::LangFail { .. } => {

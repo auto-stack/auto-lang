@@ -95,7 +95,9 @@ pub(super) fn check_init(
             match &b.term {
                 Terminator::Branch { cond, .. } => Some((*cond, flat)),
                 Terminator::Return { value } => Some((*value, flat)),
-                Terminator::LangFail { message, .. } => Some((*message, flat)),
+                Terminator::LangFail { message, .. } | Terminator::Raise { message, .. } => {
+                    Some((*message, flat))
+                }
                 Terminator::Jump { .. } | Terminator::Invoke { .. } => None,
             }
         })

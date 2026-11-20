@@ -9445,7 +9445,8 @@ impl<'a> Engine<'a> {
                 }));
                 return;
             }
-            if ck == self.cx.k.array_lit.unwrap_or(u32::MAX) {
+            let ordinary_array = Some(ck) == self.rule_kind_of("auto-array-lit");
+            if ordinary_array || Some(ck) == self.cx.k.array_lit {
                 let mut elems: Vec<Expr> = Vec::new();
                 let mut span = self.cx.span_of(c);
                 if let Some(elems_n) = self.cx.field_child(c, "elems") {
@@ -9490,7 +9491,11 @@ impl<'a> Engine<'a> {
                     expr_nodes.sort_by_key(|&n| self.cx.tree.abs_range(n).0);
                     let conditional = self.rule_kind_of("array-conditional-elem");
                     for element in expr_nodes {
-                        let node = self.unwrap_child(element);
+                        let node = if ordinary_array {
+                            self.unwrap_child(element)
+                        } else {
+                            element
+                        };
                         let expr = if Some(self.cx.tree.kind(node)) == conditional {
                             let cond = self
                                 .cx

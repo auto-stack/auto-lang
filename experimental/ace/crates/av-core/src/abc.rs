@@ -237,6 +237,7 @@ pub const TERM_RETURN: u8 = 0x12;
 pub const TERM_LANG_FAIL: u8 = 0x40;
 pub const TERM_INVOKE: u8 = 0x50;
 pub const TERM_LANG_FAIL_AT: u8 = 0x51;
+pub const TERM_RAISE: u8 = 0x52;
 
 // PLAN-968: the scheduler operations — additive opcodes on the closures
 // wire family (the 965 LANG_FAIL precedent: only the scheduler lowering
@@ -2466,6 +2467,19 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     put_u32(&mut w, *unwind);
                     put_u32(&mut w, *message);
                 }
+                Terminator::Raise {
+                    message,
+                    target,
+                    destination,
+                    source: (start, end),
+                } => {
+                    put_u8(&mut w, TERM_RAISE);
+                    put_u32(&mut w, *message);
+                    put_u32(&mut w, *target);
+                    put_u32(&mut w, *destination);
+                    put_u32(&mut w, *start);
+                    put_u32(&mut w, *end);
+                }
                 Terminator::LangFail { message, source } => {
                     let tag = if source.is_some() {
                         TERM_LANG_FAIL_AT
@@ -4187,6 +4201,12 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 TERM_LANG_FAIL_AT => Terminator::LangFail {
                     message: c.u32()?,
                     source: Some((c.u32()?, c.u32()?)),
+                },
+                TERM_RAISE => Terminator::Raise {
+                    message: c.u32()?,
+                    target: c.u32()?,
+                    destination: c.u32()?,
+                    source: (c.u32()?, c.u32()?),
                 },
                 TERM_INVOKE => Terminator::Invoke {
                     normal: c.u32()?,

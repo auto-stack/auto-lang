@@ -1912,7 +1912,8 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 crate::mir::Terminator::Jump { .. } | crate::mir::Terminator::Invoke { .. } => {
                     vec![]
                 }
-                crate::mir::Terminator::LangFail { message, .. } => vec![*message],
+                crate::mir::Terminator::LangFail { message, .. }
+                | crate::mir::Terminator::Raise { message, .. } => vec![*message],
             };
             for (slot, _) in aliases.iter() {
                 if term_uses.contains(slot) {
@@ -4733,6 +4734,23 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             "mir.invoke-target",
                             "invoke requires distinct in-range successors".into(),
                         ));
+                    }
+                }
+                Terminator::Raise {
+                    message,
+                    target,
+                    destination,
+                    source: (start, end),
+                } => {
+                    let mt = slot_ty_of(f, *message, sp, "raise message")?;
+                    let dt = slot_ty_of(f, *destination, sp, "raise destination")?;
+                    if !self.is_closures
+                        || start > end
+                        || *target as usize >= f.blocks.len()
+                        || mt != dt
+                        || self.module.types.get(mt as usize) != Some(&MirType::Str)
+                    {
+                        return Err(err("mir.raise", "invalid local language-error edge".into()));
                     }
                 }
                 Terminator::LangFail { message, source } => {

@@ -504,7 +504,7 @@ fn emit_admitted(
                     }
                     lower.fb.ins().return_(&[]);
                 }
-                Terminator::Invoke { .. } => {
+                Terminator::Invoke { .. } | Terminator::Raise { .. } => {
                     return Err(unsupported(
                         "mn.invoke",
                         "language-error unwind is supported by AV",

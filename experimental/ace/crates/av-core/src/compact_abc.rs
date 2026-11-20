@@ -31,8 +31,6 @@ const TERM_BRANCH: u8 = 0x11;
 const TERM_RETURN: u8 = 0x12;
 /// PLAN-965: language-level error unwind; `0x40` stays outside the instruction space.
 const TERM_LANG_FAIL: u8 = 0x40;
-const TERM_INVOKE: u8 = 0x50;
-const TERM_LANG_FAIL_AT: u8 = 0x51;
 
 #[derive(Debug)]
 pub struct DecodedCompactAbc {
@@ -209,7 +207,7 @@ fn encode_instr(out: &mut Vec<u8>, instr: &MirInstr) -> Result<(), AbcDecodeErro
     Ok(())
 }
 
-fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) {
+fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) -> Result<(), AbcDecodeError> {
     match term {
         Terminator::Jump { target } => {
             out.push(TERM_JUMP);
@@ -225,30 +223,25 @@ fn encode_terminator(out: &mut Vec<u8>, term: &Terminator) {
             out.push(TERM_RETURN);
             put_uleb(out, *value);
         }
-        Terminator::Invoke {
-            normal,
-            unwind,
+        Terminator::LangFail {
             message,
+            source: None,
         } => {
-            out.push(TERM_INVOKE);
-            put_uleb(out, *normal);
-            put_uleb(out, *unwind);
+            out.push(TERM_LANG_FAIL);
             put_uleb(out, *message);
         }
-        Terminator::LangFail { message, source } => {
-            let tag = if source.is_some() {
-                TERM_LANG_FAIL_AT
-            } else {
-                TERM_LANG_FAIL
-            };
-            out.push(tag);
-            put_uleb(out, *message);
-            if let Some((start, end)) = source {
-                put_uleb(out, *start);
-                put_uleb(out, *end);
-            }
+        Terminator::Invoke { .. }
+        | Terminator::Raise { .. }
+        | Terminator::LangFail {
+            source: Some(_), ..
+        } => {
+            return Err(format_err(
+                "compact.encode.profile",
+                "terminator is outside av.core-i32/1",
+            ));
         }
     }
+    Ok(())
 }
 
 fn encode_function(f: &MirFunction) -> Result<Vec<u8>, AbcDecodeError> {
@@ -294,7 +287,7 @@ fn encode_function(f: &MirFunction) -> Result<Vec<u8>, AbcDecodeError> {
         for instr in &block.instrs {
             encode_instr(&mut out, instr)?;
         }
-        encode_terminator(&mut out, &block.term);
+        encode_terminator(&mut out, &block.term)?;
     }
     Ok(out)
 }
@@ -970,15 +963,6 @@ fn decode_function(
             TERM_LANG_FAIL => Terminator::LangFail {
                 message: c.uleb()?,
                 source: None,
-            },
-            TERM_LANG_FAIL_AT => Terminator::LangFail {
-                message: c.uleb()?,
-                source: Some((c.uleb()?, c.uleb()?)),
-            },
-            TERM_INVOKE => Terminator::Invoke {
-                normal: c.uleb()?,
-                unwind: c.uleb()?,
-                message: c.uleb()?,
             },
             other => {
                 return Err(format_err(

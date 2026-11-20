@@ -47,4 +47,4 @@ pub use hir_adapter::*;
 /// float console lanes reuse it rather than adding it.)
 pub const MIR_LOWERING_VERSION: &str = "5";
 /// Ordinary Auto lowering identity, including the checked error edges.
-pub const AUTO_LANGUAGE_MIR_LOWERING_VERSION: &str = "6";
+pub const AUTO_LANGUAGE_MIR_LOWERING_VERSION: &str = "7";

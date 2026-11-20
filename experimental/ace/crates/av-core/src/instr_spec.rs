@@ -715,6 +715,17 @@ pub const SPECS: &[InstructionSpec] = &[
         profiles: &["closures"],
         ownership: "Read message then transfer control to the caller's exceptional edge",
     },
+    InstructionSpec {
+        opcode: 0x52,
+        name: "RAISE",
+        family: "term",
+        operands: &[("message", "R"), ("target", "U"), ("destination", "R"), ("start", "U"), ("end", "U")],
+        type_rule: "message and destination are owned Str slots in the current activation",
+        traps: false,
+        fuel: 1,
+        profiles: &["closures"],
+        ownership: "Define the handler message with the original error origin",
+    },
 ];
 
 /// The V-11 coverage gate: every instruction/terminator variant carries
@@ -806,6 +817,7 @@ pub fn coverage_check() -> Result<(), String> {
         "LANG_FAIL",
         "INVOKE",
         "LANG_FAIL_AT",
+        "RAISE",
     ];
     for e in expected {
         if !seen_names.contains(e) {
@@ -913,6 +925,7 @@ pub fn mnemonic_of_term(t: &Terminator) -> &'static str {
         } => "LANG_FAIL_AT",
         Terminator::LangFail { source: None, .. } => "LANG_FAIL",
         Terminator::Invoke { .. } => "INVOKE",
+        Terminator::Raise { .. } => "RAISE",
     }
 }
 
