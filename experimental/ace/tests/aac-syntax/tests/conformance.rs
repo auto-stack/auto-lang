@@ -452,6 +452,18 @@ fn aac1046_typed_age_and_scheduler_profile_parity() {
 }
 
 #[test]
+fn explicit_type_arguments_require_an_adjacent_angle_token() {
+    let prefix = "fn id<T>(x T) T { return x }\n";
+    for call in ["id<int>(2)", "id <int>(2)", "id/* gap */<int>(2)"] {
+        let source = format!("{prefix}fn main() int {{ return {call} }}");
+        assert_eq!(obs("parse", "aac", &source), rust_oracle("aac", &source));
+        let ast = run_native_projection("aac", &source, (0, 0), None).unwrap();
+        assert_eq!(ast, rust_ast_report("aac", &source, 0, 0));
+        assert_eq!(ast.contains(" generic-call "), call == "id<int>(2)", "{ast}");
+    }
+}
+
+#[test]
 fn aac1046_source_bytes_and_lossless_reconstruction() {
     let source = "// α 😀\r\nfn main() int { return 1 }\r\n";
     let actual = obs("parse-source", "scalar", source);

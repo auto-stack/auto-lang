@@ -37,6 +37,7 @@ use app.syntax_program.rule_alt_count
 use app.syntax_program.alt_step_start
 use app.syntax_program.alt_step_count
 use app.syntax_program.step_atom_tag
+use app.syntax_program.atom_adjacent_tag
 use app.syntax_program.step_atom_ref
 use app.syntax_program.step_repeat
 use app.syntax_program.step_same_line
@@ -248,7 +249,7 @@ fn fsp_step(pg List<int>, firsts List<int>, nullable List<int>, nt int, ri int, 
     let mtag = step_atom_tag(pg, si)
     let ref = step_atom_ref(pg, si)
     var changed = 0
-    if (mtag == 0) {
+    if (mtag == 0 || mtag == atom_adjacent_tag()) {
         if (firsts.get(ri * nt + ref) == 0) {
             firsts.set(ri * nt + ref, 1)
             changed = 1
@@ -1179,11 +1180,15 @@ fn step_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
 fn rule_once(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>, si int, field int) int {
     let mtag = step_atom_tag(pg, si)
     let ref = step_atom_ref(pg, si)
-    if (mtag == 0) {
+    if (mtag == 0 || mtag == atom_adjacent_tag()) {
         let ti = peek(pg, toks, mc, pending)
         var m = 0
         if (ti >= 0) {
-            if (tok_token(toks, ti) == ref) {
+            var adjacent = true
+            if (mtag == atom_adjacent_tag()) {
+                adjacent = mc.get(m_plen()) == 0 && ti > 0 && tok_end(toks, ti - 1) == tok_start(toks, ti)
+            }
+            if (adjacent && tok_token(toks, ti) == ref) {
                 m = 1
             }
         }
@@ -1600,7 +1605,9 @@ fn atom_starts(pg List<int>, firsts List<int>, si int, tk int, nt int) bool {
     }
     let mtag = step_atom_tag(pg, si)
     let ref = step_atom_ref(pg, si)
-    if (mtag == 0) {
+    // Token-set probes have no current byte position. The actual Once step
+    // checks adjacency before it consumes the token.
+    if (mtag == 0 || mtag == atom_adjacent_tag()) {
         return ref == tk
     }
     if (mtag == 1) {
@@ -1807,7 +1814,8 @@ fn delim_after_empty_list(pg List<int>, rule int, alt_no int, step_idx int, fr L
         return false
     }
     let si = alt_step_start(pg, alt) + step_idx
-    if (step_atom_tag(pg, si) != 0) {
+    let delimiter = step_atom_tag(pg, si)
+    if (delimiter != 0 && delimiter != atom_adjacent_tag()) {
         return false
     }
     if (step_idx == 0) {

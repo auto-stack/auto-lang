@@ -80,6 +80,7 @@ pub fn mtag_charset() int { return 1 }
 pub fn mtag_line() int { return 2 }
 pub fn mtag_block() int { return 3 }
 pub fn mtag_strlit() int { return 4 }
+pub fn atom_adjacent_tag() int { return 4 }
 
 // Error codes (decode/validate refusals; 0 = ok).
 pub fn e_ok() int { return 0 }
@@ -661,7 +662,7 @@ fn dec_rule_steps(b List<int>, pos List<int>, steps List<int>, one List<int>, er
         }
         let atag = b.get(pos.get(0))
         let aref = rd_u32(b, pos.get(0) + 1)
-        if (atag > 3) {
+        if (atag > atom_adjacent_tag()) {
             err.set(0, e_bad_tag())
             return false
         }
@@ -1660,8 +1661,11 @@ pub fn validate_references(pg List<int>) int {
                 let si = sstart + s
                 let mtag = step_atom_tag(pg, si)
                 let ref = step_atom_ref(pg, si)
-                if (mtag == 0) {
+                if (mtag == 0 || mtag == atom_adjacent_tag()) {
                     if (ref >= nt) {
+                        return e_bad_ref()
+                    }
+                    if (mtag == atom_adjacent_tag() && step_repeat(pg, si) != 0) {
                         return e_bad_ref()
                     }
                 }
