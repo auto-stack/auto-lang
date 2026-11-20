@@ -177,6 +177,15 @@ fn av_object_self_cycle_rejected_statically() {
 /// Rc::ptr_eq 确定性 trap —— 循环永不形成，无 GC，最后 owner 释放恒成立。
 #[test]
 fn av_object_cycle_runtime_defense_traps() {
+    assert_object_cycle_runtime(false);
+}
+
+#[test]
+fn av_object_indirect_cycle_runtime_defense_traps() {
+    assert_object_cycle_runtime(true);
+}
+
+fn assert_object_cycle_runtime(indirect: bool) {
     let owner = ace_av_core::mir::OwnerScope {
         schema: ace_av_core::contract::MIR_CLOSURES_SCHEMA.to_string(),
         module: "p964".to_string(),
@@ -240,6 +249,36 @@ fn av_object_cycle_runtime_defense_traps() {
         spans: vec![],
         env: None,
     });
+    if indirect {
+        let function = &mut m.funcs[0];
+        function.slots.push(ace_av_core::mir::MirSlot {
+            kind: ace_av_core::mir::SlotKind::Local,
+            ty: 1,
+            name: None,
+        });
+        // Make a distinct second object point to the root. Inserting that
+        // second cell into the root closes a two-object cycle.
+        function.blocks[0].instrs.splice(
+            2..3,
+            [
+                ace_av_core::mir::MirInstr::ObjectNew {
+                    dst: 3,
+                    keys: vec![],
+                    vals: vec![],
+                },
+                ace_av_core::mir::MirInstr::ObjectSet {
+                    obj: 3,
+                    key: 1,
+                    value: 0,
+                },
+                ace_av_core::mir::MirInstr::ObjectSet {
+                    obj: 0,
+                    key: 1,
+                    value: 3,
+                },
+            ],
+        );
+    }
     let wire = encode_abc(&m).expect("encode").to_flat();
     let decoded = decode_abc(&wire).expect("decode");
     let loaded = abc_verify::verify_abc(decoded, &m.owner).expect("admission");

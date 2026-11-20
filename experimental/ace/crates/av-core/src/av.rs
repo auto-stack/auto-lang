@@ -2434,6 +2434,81 @@ fn dyn_exec_work(
     Ok(())
 }
 
+// A mutation may attach a new edge only if its value cannot already
+// reach the mutable cell. The walk tracks visited shared nodes, bills
+// every edge before queuing it, and leaves every source owner untouched.
+fn check_container_cycle(
+    target: &Value,
+    value: &Value,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+    span: impl FnOnce() -> Option<SpanInfo>,
+) -> Result<(), ExecOutcome> {
+    use std::rc::Rc;
+
+    fn identity(value: &Value) -> Option<usize> {
+        match value {
+            Value::Object(cell) => Some(Rc::as_ptr(cell) as usize),
+            Value::List(list) => Some(Rc::as_ptr(&list.rc) as usize),
+            Value::Record(record) => Some(Rc::as_ptr(record) as usize),
+            Value::Variant(variant) => variant.payload.as_ref().map(|p| Rc::as_ptr(p) as usize),
+            Value::Dyn(dynamic) => Some(Rc::as_ptr(dynamic) as usize),
+            _ => None,
+        }
+    }
+
+    let (Some(target), Some(first)) = (identity(target), identity(value)) else {
+        return Ok(());
+    };
+    let mut seen = std::collections::HashSet::from([first]);
+    let mut stack = vec![(first, value.clone())];
+    while let Some((id, node)) = stack.pop() {
+        dyn_exec_work(st, limits, cancel, started)?;
+        if id == target {
+            return Err(ExecOutcome::Trap {
+                kind: TrapKind::ObjectCycle,
+                span: span(),
+            });
+        }
+        let mut enqueue = |child: &Value| -> Result<(), ExecOutcome> {
+            dyn_exec_work(st, limits, cancel, started)?;
+            if let Some(id) = identity(child) {
+                if seen.insert(id) {
+                    stack.push((id, child.clone()));
+                }
+            }
+            Ok(())
+        };
+        match &node {
+            Value::Object(cell) => {
+                for (_, child) in &cell.borrow().entries {
+                    enqueue(child)?;
+                }
+            }
+            Value::List(list) => {
+                for child in &list.rc.borrow().elems {
+                    enqueue(child)?;
+                }
+            }
+            Value::Record(record) => {
+                for child in &record.fields {
+                    enqueue(child)?;
+                }
+            }
+            Value::Variant(variant) => {
+                if let Some(payload) = &variant.payload {
+                    enqueue(payload)?;
+                }
+            }
+            Value::Dyn(dynamic) => enqueue(dynamic.as_value())?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Compare only after charging every visited node and every field/arm,
 /// including payload-less arms, to the executor's fuel and poll cadence.
 fn dyn_type_equal(
@@ -5904,6 +5979,19 @@ fn dispatch_with_host<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*value as usize].clone()
                     };
+                    let root_value =
+                        st.frames.last().expect("frame present").slots[*root as usize].clone();
+                    if let Err(out) = check_container_cycle(
+                        &root_value,
+                        &val,
+                        st,
+                        limits,
+                        cancel,
+                        started,
+                        || span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                    ) {
+                        return Some(out);
+                    }
                     // Per-element fuel + budget BEFORE any mutation (a
                     // failure leaves the list and source untouched).
                     let mut visited = 0u64;
@@ -6005,6 +6093,19 @@ fn dispatch_with_host<V: ModuleView>(
                             fr.slots[*value as usize].clone(),
                         )
                     };
+                    let root_value =
+                        st.frames.last().expect("frame present").slots[*root as usize].clone();
+                    if let Err(out) = check_container_cycle(
+                        &root_value,
+                        &val,
+                        st,
+                        limits,
+                        cancel,
+                        started,
+                        || span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                    ) {
+                        return Some(out);
+                    }
                     let idx = match list_index_of(&iv) {
                         Some(i) => i,
                         None => return Some(list_index_trap(v, func_idx, func, flat)),
@@ -6103,6 +6204,19 @@ fn dispatch_with_host<V: ModuleView>(
                             fr.slots[*value as usize].clone(),
                         )
                     };
+                    let root_value =
+                        st.frames.last().expect("frame present").slots[*root as usize].clone();
+                    if let Err(out) = check_container_cycle(
+                        &root_value,
+                        &val,
+                        st,
+                        limits,
+                        cancel,
+                        started,
+                        || span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                    ) {
+                        return Some(out);
+                    }
                     let idx = match list_index_of(&iv) {
                         Some(i) => i,
                         None => return Some(list_index_trap(v, func_idx, func, flat)),
@@ -7019,17 +7133,12 @@ fn dispatch_with_host<V: ModuleView>(
                             ov.type_name()
                         )));
                     };
-                    // PLAN-964 cycle strategy: inserting a value whose
-                    // cell IS the target cell (or a value that will reach
-                    // it) is rejected deterministically — cycles never
-                    // form, no GC, last-owner release always fires.
-                    if let Value::Object(vc) = &vv {
-                        if std::rc::Rc::ptr_eq(vc, cell) {
-                            return Some(ExecOutcome::Trap {
-                                kind: crate::contract::TrapKind::ObjectCycle,
-                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
-                            });
-                        }
+                    if let Err(out) =
+                        check_container_cycle(&ov, &vv, st, limits, cancel, started, || {
+                            span_of(func, flat).map(|sp| v.map_span(func_idx, sp))
+                        })
+                    {
+                        return Some(out);
                     }
                     let key = match ObjectKeyOperand::resolve(v, func_idx, kv) {
                         Ok(key) => key,
