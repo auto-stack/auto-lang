@@ -50,6 +50,8 @@ const DECLARED: &[&str] = &[
     // PLAN-1078：普通 AV 语言面（aggregates 面身份；声明序紧随
     // aggregates——`ac-av/language-source-run-v1` 的 Auto profile 裁剪）。
     "auto",
+    // PLAN-1085: ordinary Auto bodies in the shared package graph.
+    "auto-packages",
     // PLAN-968：调度器面（task/on 语句域；声明序紧随 aggregates——
     // 972 rebase 接收侧按 master 已交付现实刷新冻结集，合同语义不变）。
     "scheduler",

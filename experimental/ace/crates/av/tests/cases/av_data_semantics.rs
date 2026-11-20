@@ -977,7 +977,9 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // outside the instruction space so the 0x3D..0x3F `m2-dynamic` rows stay
     // unambiguous) = 57.
     // PLAN-975 B1: + STR_FROM_CHAR (0x4C, char -> owned Str) = 58.
-    assert_eq!(all_mnemonics.len(), 58);
+    // PLAN-1085: + GLOBAL_TAKE, gated by av.globals.take/1.
+    assert_eq!(all_mnemonics.len(), 59);
+    assert!(all_mnemonics.contains(&"GLOBAL_TAKE"));
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));

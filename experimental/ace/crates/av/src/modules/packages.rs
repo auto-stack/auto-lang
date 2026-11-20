@@ -68,7 +68,6 @@ impl PackageAvTarget {
             )
         }
         .map_err(|e| format!("{e:?}"))?;
-        ace_av_core::verify_mir(&mir).map_err(|e| format!("{e:?}"))?;
         let slot_names: std::collections::BTreeMap<String, Vec<Option<String>>> = mir
             .funcs
             .iter()
@@ -81,6 +80,8 @@ impl PackageAvTarget {
             .collect();
         let store = ManagedStore::open(path).map_err(|e| e.to_string())?;
         let mut codes = Vec::new();
+        // Admit host imports per portable unit as in the regular package
+        // lane. Linked global ordinals and types are checked across units.
         for unit in split_units(&mir)? {
             let mint = package_span(bound, &unit.funcs[0].name)?;
             let (_record, code) =
