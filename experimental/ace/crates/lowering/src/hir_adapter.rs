@@ -551,11 +551,9 @@ pub fn lower_checked_closures(
     lower_checked_collection_family(checked, entry_name, source_snapshot, true, false)
 }
 
-/// PLAN-1080: lower a checked ordinary-Auto-language bundle. Same frozen
-/// av.closures/1 MIR profile and instruction set as the closures entry;
-/// the only difference is the record-method def admission (methods lower
-/// as ordinary functions under the owner-based `m.<Rec>.<name>` unit,
-/// the PLAN-881 data-path rule).
+/// Lower checked ordinary Auto through the av.closures/1 wire family.
+/// Record methods become ordinary functions under the owner-qualified
+/// `m.<Rec>.<name>` unit, and additional instructions carry capabilities.
 pub fn lower_checked_auto_language(
     checked: &CheckedModule,
     entry_name: &str,

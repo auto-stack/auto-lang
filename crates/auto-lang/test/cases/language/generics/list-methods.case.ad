@@ -349,3 +349,46 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 stage: "verify"
 code: "source.type-mismatch"
+
+## Case: conditional-list-typed-construction
+id: "av.parity.1088.conditional-list-typed-construction"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let items = List<int>.new([19, if false { 95 }, if true { 23 }])
+    return items[0] + items[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: conditional-list-type-mismatch
+id: "av.parity.1088.conditional-list-type-mismatch"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let items = List<int>.new([if false { true }])
+    return items.len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.type-mismatch"

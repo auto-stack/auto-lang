@@ -1,19 +1,89 @@
 use ace_av_core::abc::encode_abc;
 use ace_av_core::abc_verify::{verify_abc_bytes, LoadedModule};
-use ace_av_core::av::{execute_observed, execute_with_arena, CancelFlag, ExecLimits, ExecTrace};
+use ace_av_core::av::{
+    execute_observed, execute_sched, execute_with_arena, CancelFlag, ExecLimits, ExecTrace,
+};
 use ace_av_core::contract::{ExecOutcome, ResourceKind, Value, TEXT_CASE_CAPABILITY};
+use ace_av_core::host::{ConsoleHost, HostError, Stream};
 use ace_av_core::mir::{MirInstr, MirModule};
 use ace_av_core::owned_text::StrArena;
 use ace_core::source::adapter::compile_language_source_with;
 
 fn lower(source: &str) -> MirModule {
-    let caps = ["ac.source.language.av/v1".into()];
+    let caps = ["ac.source.language.av/v1".into(), "console.stdout".into()];
     let path = "generics.at";
     let checked = compile_language_source_with(source, path, &caps, |program| {
         ace_source_query::instances::instantiate_auto_program(program, path, &caps)
     })
     .expect("compile ordinary source");
     ace_lowering::lower_checked_auto_language(&checked.checked, "d_main", 0).expect("lower to MIR")
+}
+
+#[derive(Default)]
+struct GenericOwnerConsole {
+    cancel_on_write: bool,
+    writes: usize,
+}
+
+impl ConsoleHost for GenericOwnerConsole {
+    fn retained_bytes(&self) -> usize {
+        0
+    }
+
+    fn write(
+        &mut self,
+        stream: Stream,
+        bytes: &[u8],
+        cancel: &CancelFlag,
+    ) -> Result<(), HostError> {
+        assert_eq!(stream, Stream::Stdout);
+        assert_eq!(bytes, b"live\n");
+        self.writes += 1;
+        if self.cancel_on_write {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            return Err(HostError::Cancelled);
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn cancelled_callback_releases_the_generic_owner_and_replays() {
+    let module = load(&lower(
+        r#"
+fn keep<T>(move value T) T { return value.move }
+fn main() int {
+    let held = keep("live".clone())
+    print(held)
+    return 38 + held.len()
+}
+"#,
+    ));
+    let mut host = GenericOwnerConsole {
+        cancel_on_write: true,
+        ..Default::default()
+    };
+    let limits = ExecLimits::default();
+    let (outcome, trace) = execute_sched(&module, &limits, &CancelFlag::new(false), &mut host);
+    assert!(matches!(outcome, ExecOutcome::Cancelled));
+    assert_eq!(host.writes, 1);
+    let cancelled_allocations = assert_released(trace);
+    assert!(
+        cancelled_allocations >= 1,
+        "the provider saw a live generic owner"
+    );
+
+    let mut host = GenericOwnerConsole::default();
+    let (outcome, trace) = execute_sched(&module, &limits, &CancelFlag::new(false), &mut host);
+    assert!(matches!(
+        outcome,
+        ExecOutcome::Success {
+            value: Value::I32(42),
+            ..
+        }
+    ));
+    assert_eq!(host.writes, 1);
+    assert_eq!(assert_released(trace), cancelled_allocations);
 }
 
 fn load(mir: &MirModule) -> LoadedModule {

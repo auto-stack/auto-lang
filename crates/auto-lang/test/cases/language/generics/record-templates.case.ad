@@ -307,3 +307,56 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: imported-record-extension
+id: "av.parity.1088.imported-record-extension"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.Counter
+fn main() int { return (Counter { value: 21 }).twice() }
+```
+
+#### lib.at
+
+```auto
+pub type Counter { value int }
+ext Counter { fn twice() int { return .value * 2 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: private-record-extension
+id: "av.parity.1088.private-record-extension"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.Counter
+fn main() int { return (Counter { value: 21 }).twice() }
+```
+
+#### lib.at
+
+```auto
+type Counter { value int }
+ext Counter { fn twice() int { return .value * 2 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-private"

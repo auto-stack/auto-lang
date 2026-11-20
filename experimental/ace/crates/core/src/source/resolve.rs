@@ -1808,6 +1808,7 @@ pub(crate) fn resolve_with_foreign_source(
         Some(&supply),
         None,
         script_errors,
+        None,
     )?;
     Ok(ResolvedProgram {
         foreign_slots: Vec::new(),
@@ -12782,7 +12783,7 @@ F:{d}
             .iter()
             .any(|elem| matches!(elem.kind, ExprKind::ArrayConditionalElem { .. }))
         {
-            return self.resolve_conditional_array(elems, span, publish_script_result);
+            return self.resolve_conditional_array(elems, span, publish_script_result, explicit_list);
         }
         let mut rs = Vec::with_capacity(elems.len());
         for el in elems {
@@ -12798,7 +12799,6 @@ F:{d}
             let elem_vt = self.array_element_type(&mut rs);
             self.coll.intern_list(elem_vt)
         });
-        let elem_vt = self.coll.lists[li];
         let temp = self.agg_temp("arr_lit", VT::List(li), false, span);
         self.emit_stmt(RStmt::Let {
             local: temp,
@@ -12809,20 +12809,10 @@ F:{d}
             },
             span,
         });
-        for (mut r, ast_el) in rs.into_iter().zip(elems.iter()) {
-            if explicit_list.is_some() {
-                retag_literal(&mut r, elem_vt);
-                if r.vt != elem_vt {
-                    self.bind_err(
-                        "source.type-mismatch",
-                        format!("expected list element `{}`, found `{}`", elem_vt.as_str(), r.vt.as_str()),
-                        ast_el.span,
-                    );
-                    continue;
-                }
+        for (value, source) in rs.into_iter().zip(elems) {
+            if let Some(push) = self.array_push(temp, li, source, value, explicit_list.is_some()) {
+                self.emit_stmt(push);
             }
-            let push = self.array_push(temp, li, ast_el, r);
-            self.emit_stmt(push);
         }
         ResolvedExpr {
             span,
@@ -12836,6 +12826,7 @@ F:{d}
         elems: &[Expr],
         span: Span,
         publish_script_result: bool,
+        explicit_list: Option<usize>,
     ) -> ResolvedExpr {
         let mut items = Vec::with_capacity(elems.len());
         let mut values = Vec::with_capacity(elems.len());
@@ -12857,8 +12848,10 @@ F:{d}
             });
             items.push((guard, prelude, source_value, diverges));
         }
-        let elem_vt = self.array_element_type(&mut values);
-        let list = self.coll.intern_list(elem_vt);
+        let list = explicit_list.unwrap_or_else(|| {
+            let elem_vt = self.array_element_type(&mut values);
+            self.coll.intern_list(elem_vt)
+        });
         let temp = self.agg_temp("arr_lit", VT::List(list), false, span);
         self.emit_stmt(RStmt::Let {
             local: temp,
@@ -12871,7 +12864,7 @@ F:{d}
         });
         for ((guard, mut prelude, source_value, diverges), value) in items.into_iter().zip(values) {
             if !diverges {
-                prelude.push(self.array_push(temp, list, source_value, value));
+                prelude.extend(self.array_push(temp, list, source_value, value, explicit_list.is_some()));
             }
             if let Some((condition_prelude, cond)) = guard {
                 for stmt in condition_prelude {
@@ -12911,7 +12904,21 @@ F:{d}
         list: usize,
         source: &Expr,
         mut value: ResolvedExpr,
-    ) -> RStmt {
+        explicit_element_type: bool,
+    ) -> Option<RStmt> {
+        let span = source.span;
+        let element_type = self.coll.lists[list];
+        if explicit_element_type {
+            retag_literal(&mut value, element_type);
+            if value.vt != element_type {
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!("expected list element `{}`, found `{}`", element_type.as_str(), value.vt.as_str()),
+                    span,
+                );
+                return None;
+            }
+        }
         if self.profile.is_auto_language()
             && matches!(source.kind, ExprKind::ArrayLit(_))
             && matches!(value.kind, RExprKind::ReadLocal(_))
@@ -12925,10 +12932,8 @@ F:{d}
                 },
             };
         }
-        let span = source.span;
-        let element_type = self.coll.lists[list];
         self.check_push_value(&element_type, &mut value, span);
-        RStmt::ExprStmt {
+        Some(RStmt::ExprStmt {
             value: ResolvedExpr {
                 span,
                 vt: VT::Unit,
@@ -12942,7 +12947,7 @@ F:{d}
                 },
             },
             span,
-        }
+        })
     }
 
     /// PLAN-864: push/insert/set values of owned element type must be a

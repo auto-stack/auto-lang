@@ -21,7 +21,7 @@ use crate::console_host::ConsoleCapture;
 
 pub const RECIPE: &str = "ac-av/language-source-run-v1";
 /// The ordinary language source lowers through the same closures-superset
-/// wire family as the aggregates face (no new MIR/ABC generation).
+/// wire family as the aggregates face, with capability-gated operations.
 pub const AV_LANGUAGE_PROFILE: &str = "av.closures/1";
 
 pub fn serve(request: &Json) -> Result<Json, String> {
