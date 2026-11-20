@@ -1043,45 +1043,31 @@ pub fn execute_program_platform(
     };
     // module inits run under the same platform provider (a platform-using
     // init is legal — e.g. seeding from the environment).
-    if !prog.initialized() {
-        let slots = prog.init_slots().to_vec();
-        if slots.is_empty() {
-            prog.mark_initialized();
-        } else {
-            prog.reset_global_cells();
-            for slot in slots {
-                let view = prog.unit_view_at(slot);
-                // console/1 hosts stay with the entry dispatch in the
-                // packages lane (module inits run platform-only; a console
-                // import inside an init is a named unwired boundary).
-                let out = dispatch_with_host(
-                    &view,
-                    &limits,
-                    cancel,
-                    &[],
-                    &mut st,
-                    None,
-                    false,
-                    None,
-                    Some((&mut ledger, backend)),
-                    None,
-                )
-                .expect("no budget: the loop always terminates with an outcome");
-                if !matches!(out, ExecOutcome::Success { .. }) {
-                    finish_trace(&mut st, &limits);
-                    let summary = PlatformSessionSummary {
-                        session_id,
-                        last_os_error: ledger.last_os_error,
-                        written_total_bytes: ledger.written_total_bytes,
-                        leaked_regions_cleaned: ledger.active_regions(),
-                        live_mapped_at_exit: ledger.live_mapped_bytes,
-                    };
-                    ledger.cleanup(backend);
-                    return Ok((out, st.trace, summary));
-                }
-            }
-            prog.mark_initialized();
-        }
+    if let Some(out) = run_module_inits_with(prog, &mut st, |slot, st| {
+        dispatch_with_host(
+            &prog.unit_view_at(slot),
+            &limits,
+            cancel,
+            &[],
+            st,
+            None,
+            false,
+            None,
+            Some((&mut ledger, backend)),
+            None,
+        )
+        .expect("no budget: the loop always terminates with an outcome")
+    }) {
+        finish_trace(&mut st, &limits);
+        let summary = PlatformSessionSummary {
+            session_id,
+            last_os_error: ledger.last_os_error,
+            written_total_bytes: ledger.written_total_bytes,
+            leaked_regions_cleaned: ledger.active_regions(),
+            live_mapped_at_exit: ledger.live_mapped_bytes,
+        };
+        ledger.cleanup(backend);
+        return Ok((out, st.trace, summary));
     }
     let view = prog.unit_view();
     let out = dispatch_with_host(
@@ -1254,43 +1240,32 @@ pub fn execute_program_text_platform(
     };
     // init 链零参不变（初始化顺序 = link 序；console/1 宿主仍随入口分派——
     // 与 execute_program_platform 同纪律）。
-    if !prog.initialized() {
-        let slots = prog.init_slots().to_vec();
-        if slots.is_empty() {
-            prog.mark_initialized();
-        } else {
-            prog.reset_global_cells();
-            for slot in slots {
-                let view = prog.unit_view_at(slot);
-                let out = dispatch_with_host(
-                    &view,
-                    &limits,
-                    cancel,
-                    &[],
-                    &mut st,
-                    None,
-                    false,
-                    None,
-                    Some((&mut ledger, backend)),
-                    None,
-                )
-                .expect("no budget: the loop always terminates with an outcome");
-                if !matches!(out, ExecOutcome::Success { .. }) {
-                    drop(args);
-                    finish_trace(&mut st, &limits);
-                    let summary = PlatformSessionSummary {
-                        session_id,
-                        last_os_error: ledger.last_os_error,
-                        written_total_bytes: ledger.written_total_bytes,
-                        leaked_regions_cleaned: ledger.active_regions(),
-                        live_mapped_at_exit: ledger.live_mapped_bytes,
-                    };
-                    ledger.cleanup(backend);
-                    return Ok((out, st.trace, summary));
-                }
-            }
-            prog.mark_initialized();
-        }
+    if let Some(out) = run_module_inits_with(prog, &mut st, |slot, st| {
+        dispatch_with_host(
+            &prog.unit_view_at(slot),
+            &limits,
+            cancel,
+            &[],
+            st,
+            None,
+            false,
+            None,
+            Some((&mut ledger, backend)),
+            None,
+        )
+        .expect("no budget: the loop always terminates with an outcome")
+    }) {
+        drop(args);
+        finish_trace(&mut st, &limits);
+        let summary = PlatformSessionSummary {
+            session_id,
+            last_os_error: ledger.last_os_error,
+            written_total_bytes: ledger.written_total_bytes,
+            leaked_regions_cleaned: ledger.active_regions(),
+            live_mapped_at_exit: ledger.live_mapped_bytes,
+        };
+        ledger.cleanup(backend);
+        return Ok((out, st.trace, summary));
     }
     let view = prog.unit_view();
     let out = dispatch_with_host(
@@ -1506,35 +1481,37 @@ fn run_module_inits(
     st: &mut LoopState,
     optimize: bool,
 ) -> Option<ExecOutcome> {
-    if prog.initialized() {
-        return None;
-    }
-    let slots = prog.init_slots().to_vec();
-    if slots.is_empty() {
-        prog.mark_initialized();
-        return None;
-    }
-    prog.reset_global_cells();
-    for slot in slots {
+    run_module_inits_with(prog, st, |slot, st| {
         let view = if optimize {
             prog.unit_view_at(slot)
         } else {
             prog.reference_unit_view_at(slot)
         };
-        let out = dispatch(&view, limits, cancel, &[], st, None, false)
-            .expect("no budget: the loop always terminates with an outcome");
+        dispatch(&view, limits, cancel, &[], st, None, false)
+            .expect("no budget: the loop always terminates with an outcome")
+    })
+}
+
+fn run_module_inits_with(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    st: &mut LoopState,
+    mut run: impl FnMut(u32, &mut LoopState) -> ExecOutcome,
+) -> Option<ExecOutcome> {
+    let init = match prog.begin_initialization() {
+        Ok(Some(init)) => init,
+        Ok(None) => return None,
+        Err(message) => return Some(ExecOutcome::Infra(message.into())),
+    };
+    for &slot in prog.init_slots() {
+        let out = run(slot, st);
         if !st.frames.is_empty() {
             cleanup_owned_frames(st);
         }
-        match out {
-            ExecOutcome::Success { .. } => {}
-            other => {
-                prog.reset_global_cells();
-                return Some(other);
-            }
+        if !matches!(out, ExecOutcome::Success { .. }) {
+            return Some(out);
         }
     }
-    prog.mark_initialized();
+    init.commit();
     None
 }
 

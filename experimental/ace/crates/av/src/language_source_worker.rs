@@ -112,7 +112,13 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             Path::new(store),
             &mut capture,
         );
-        (result, capture)
+        match result {
+            Ok((outcome, trace)) => {
+                step["trace"] = json!(trace);
+                (Ok(outcome), capture)
+            }
+            Err(diag) => (Err(diag), capture),
+        }
     } else {
         run_chain(&source, path, &caps)
     };
@@ -330,7 +336,7 @@ fn run_project(
     caps: &[String],
     store: &Path,
     capture: &mut ConsoleCapture,
-) -> Result<ExecOutcome, Json> {
+) -> Result<(ExecOutcome, Vec<&'static str>), Json> {
     let path_diagnostic = |path: &str| {
         json!({
             "stage": "bind", "code": "source.module-path",
@@ -381,7 +387,7 @@ fn run_project(
         .cloned()
         .collect();
     let mut backend = ace_av_core::platform_io::CapturePlatformIo::default();
-    let (outcome, _, _) = ace_av_core::av::execute_program_platform(
+    let (outcome, trace, _) = ace_av_core::av::execute_program_platform(
         &target.current,
         &ExecLimits::default(),
         &CancelFlag::default(),
@@ -390,7 +396,15 @@ fn run_project(
         &mut backend,
     )
     .map_err(|e| json!({"stage":"admit","code":e.code,"message":e.message}))?;
-    Ok(outcome)
+    let marks = trace
+        .events
+        .iter()
+        .map(|event| match event {
+            ace_av_core::mir::TraceEvent::MarkA => "a",
+            ace_av_core::mir::TraceEvent::MarkB => "b",
+        })
+        .collect();
+    Ok((outcome, marks))
 }
 
 /// The full producer→consumer chain: Auto-profile compile → closures

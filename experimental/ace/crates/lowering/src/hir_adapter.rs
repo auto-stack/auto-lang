@@ -654,7 +654,10 @@ fn lower_checked_collection_family(
                 if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
                     continue;
                 }
-                if auto_language && symbol.starts_with("module.global.") {
+                if auto_language
+                    && (symbol.starts_with("module.global.")
+                        || matches!(symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b"))
+                {
                     let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
                     let idx = out.intern_import(MirImport {
                         symbol: symbol.clone(),

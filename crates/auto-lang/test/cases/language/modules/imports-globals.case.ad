@@ -129,3 +129,122 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 stage: "resolve"
 code: "source.module-private"
+
+## Case: diamond-initializer-order
+id: "av.parity.1085.diamond-initializer-order"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use left.result as left_result
+use right.result as right_result
+var both = left_result() + right_result()
+fn main() int { return both + 38 }
+```
+
+#### left.at
+
+```auto
+use leaf.read
+var n = read() + mark_b()
+pub fn result() int { return n }
+```
+
+#### right.at
+
+```auto
+use leaf.read
+var n = read() + mark_a() - 1
+pub fn result() int { return n }
+```
+
+#### leaf.at
+
+```auto
+var n int = mark_a()
+pub fn read() int { return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "hir.test.trace.v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### trace
+final-newline: false
+
+```text
+aba
+```
+
+## Case: same-module-name-in-two-packages
+id: "av.parity.1085.same-module-name-in-two-packages"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use one.values.bump as bump_one
+use two.values.bump as bump_two
+fn main() int { return bump_one() * 10 + bump_two() }
+```
+
+#### one/values.at
+
+```auto
+var n = 3
+pub fn bump() int { n = n + 1; return n }
+```
+
+#### two/values.at
+
+```auto
+var n = 1
+pub fn bump() int { n = n + 1; return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: cyclic-import
+id: "av.parity.1085.cyclic-import"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use a.one
+fn main() int { return one() }
+```
+
+#### a.at
+
+```auto
+use b.two
+pub fn one() int { return two() }
+```
+
+#### b.at
+
+```auto
+use a.one
+pub fn two() int { return one() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.module-cycle"

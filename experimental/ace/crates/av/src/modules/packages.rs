@@ -370,6 +370,34 @@ mod tests {
         )
         .unwrap();
         let av = PackageAvTarget::cold(&dir, &product).unwrap();
+        let mut backend = ace_av_core::platform_io::CapturePlatformIo::default();
+        for _ in 0..2 {
+            let (out, trace, _) = ace_av_core::av::execute_program_platform(
+                &av.current,
+                &ace_av_core::ExecLimits::default(),
+                &ace_av_core::CancelFlag::default(),
+                &[],
+                None,
+                &mut backend,
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    out,
+                    ace_av_core::contract::ExecOutcome::Trap {
+                        kind: ace_av_core::contract::TrapKind::DivByZero,
+                        ..
+                    }
+                ),
+                "{out:?}"
+            );
+            assert!(!av.current.initialized());
+            assert_eq!(trace.frames_remaining, 0);
+            assert!(av
+                .global_cells()
+                .iter()
+                .all(|value| *value == ace_av_core::contract::Value::I32(0)));
+        }
         let out = av.run_value();
         assert!(out.is_err(), "{out:?}");
         assert!(!av.current.initialized());

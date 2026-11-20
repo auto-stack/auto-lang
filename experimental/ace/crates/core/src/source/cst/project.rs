@@ -3679,6 +3679,22 @@ enum Frame {
         then: Block,
         node: u32,
     },
+    ScopeFinish,
+    IfValueCond {
+        span: Span,
+        then_node: u32,
+        else_node: u32,
+    },
+    IfValueThen {
+        span: Span,
+        cond: Expr,
+        else_node: u32,
+    },
+    IfValueElse {
+        span: Span,
+        cond: Expr,
+        then_block: Block,
+    },
     WhileCond {
         body_n: u32,
         node: u32,
@@ -8580,6 +8596,9 @@ impl<'a> Engine<'a> {
             let value_n = self.cx.field_child(inner, "value").expect("return value");
             self.stack.push(Frame::ReturnFinish { kw });
             self.stack.push(Frame::ExprEnter(value_n));
+        } else if self.cx.profile.is_auto_language() && kind == self.cx.k.block {
+            self.stack.push(Frame::ScopeFinish);
+            self.enter_block(inner);
         } else if kind == self.cx.k.if_stmt {
             let kw = self
                 .cx
@@ -9667,6 +9686,19 @@ impl<'a> Engine<'a> {
                         }));
                     }
                 }
+                return;
+            }
+            if Some(ck) == self.cx.k.if_value {
+                let span = self.cx.span_of(c);
+                let cond_node = self.cx.field_child(c, "cond").expect("if value condition");
+                let then_node = self.cx.field_child(c, "then").expect("if value then");
+                let else_node = self.cx.field_child(c, "else").expect("if value else");
+                self.stack.push(Frame::IfValueCond {
+                    span,
+                    then_node,
+                    else_node,
+                });
+                self.stack.push(Frame::ExprEnter(cond_node));
                 return;
             }
             // PLAN-965 (M2-A): `is` expression atom (aggregates only).
@@ -11715,6 +11747,70 @@ impl<'a> Engine<'a> {
                     cond,
                     then,
                     els: Some(els),
+                    span,
+                }));
+            }
+            Frame::ScopeFinish => {
+                let then = self.pop_b();
+                let span = then.span;
+                // A bare statement block uses the existing lexical branch scope.
+                let cond = Expr {
+                    kind: ExprKind::BoolLit(true),
+                    span,
+                };
+                self.vals.push(Val::S(Stmt::If {
+                    cond,
+                    then,
+                    els: None,
+                    span,
+                }));
+            }
+            Frame::IfValueCond {
+                span,
+                then_node,
+                else_node,
+            } => {
+                let cond = self.pop_e();
+                self.stack.push(Frame::IfValueThen {
+                    span,
+                    cond,
+                    else_node,
+                });
+                self.enter_block(then_node);
+            }
+            Frame::IfValueThen {
+                span,
+                cond,
+                else_node,
+            } => {
+                let then_block = self.pop_b();
+                self.stack.push(Frame::IfValueElse {
+                    span,
+                    cond,
+                    then_block,
+                });
+                self.enter_block(else_node);
+            }
+            Frame::IfValueElse {
+                span,
+                cond,
+                then_block,
+            } => {
+                let else_block = self.pop_b();
+                let arms = [(true, then_block), (false, else_block)]
+                    .into_iter()
+                    .map(|(value, block)| AggMatchArm {
+                        pat: MatchPattern::BoolLit(value),
+                        span: block.span,
+                        body: AggArmBody::Block(block),
+                        guard: None,
+                    })
+                    .collect();
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::IsExpr {
+                        scrutinee: Box::new(cond),
+                        arms,
+                    },
                     span,
                 }));
             }

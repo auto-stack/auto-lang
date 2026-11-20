@@ -27,6 +27,31 @@ use crate::mir::{
 };
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InitState {
+    Pending,
+    Running,
+    Ready,
+}
+
+/// Reset the unpublished cells if initialization does not reach commit.
+pub(crate) struct Initialization<'a>(&'a ProgramSnapshot);
+
+impl Initialization<'_> {
+    pub(crate) fn commit(self) {
+        self.0.initialization.set(InitState::Ready);
+    }
+}
+
+impl Drop for Initialization<'_> {
+    fn drop(&mut self) {
+        if self.0.initialization.get() == InitState::Running {
+            self.0.reset_global_cells();
+            self.0.initialization.set(InitState::Pending);
+        }
+    }
+}
+
 /// One immutable program revision: resident code set + link-time bindings.
 #[derive(Debug)]
 pub struct ProgramSnapshot {
@@ -54,7 +79,7 @@ pub struct ProgramSnapshot {
     globals: Vec<crate::mir::MirGlobal>,
     cells: std::cell::RefCell<Vec<crate::contract::Value>>,
     init_slots: Vec<u32>,
-    initialized: std::cell::Cell<bool>,
+    initialization: std::cell::Cell<InitState>,
     /// PLAN-946 (T-02): link-computed — EVERY linked unit is a
     /// collections-family MIR profile (`av.collections/1`/`av.closures/1`).
     /// Drives the unit view's shared-param answer so a List/Variant
@@ -88,14 +113,23 @@ impl ProgramSnapshot {
         snap.cells = std::cell::RefCell::new(vec![crate::contract::Value::I32(0); globals.len()]);
         snap.globals = globals;
         snap.init_slots = slots;
-        snap.initialized = std::cell::Cell::new(false);
         Ok(snap)
     }
     pub fn initialized(&self) -> bool {
-        self.initialized.get()
+        self.initialization.get() == InitState::Ready
     }
-    pub(crate) fn mark_initialized(&self) {
-        self.initialized.set(true);
+    pub(crate) fn begin_initialization(&self) -> Result<Option<Initialization<'_>>, &'static str> {
+        match self.initialization.get() {
+            InitState::Ready => Ok(None),
+            InitState::Running => {
+                Err("av.module.init-reentrant: module initialization is already running")
+            }
+            InitState::Pending => {
+                self.initialization.set(InitState::Running);
+                self.reset_global_cells();
+                Ok(Some(Initialization(self)))
+            }
+        }
     }
     pub(crate) fn init_slots(&self) -> &[u32] {
         &self.init_slots
@@ -353,7 +387,7 @@ impl ProgramSnapshot {
             globals: Vec::new(),
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
-            initialized: std::cell::Cell::new(false),
+            initialization: std::cell::Cell::new(InitState::Pending),
             collections_family,
         })
     }
@@ -375,7 +409,7 @@ impl ProgramSnapshot {
             globals: Vec::new(),
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
-            initialized: std::cell::Cell::new(false),
+            initialization: std::cell::Cell::new(InitState::Pending),
             collections_family: false,
         }
     }

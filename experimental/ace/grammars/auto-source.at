@@ -2430,6 +2430,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-968: the go and reply statements (reserved-word heads).
             alt(profiles: [scheduler]) { go-stmt() {} }
             alt(profiles: [scheduler]) { reply-stmt() {} }
+            alt(profiles: [auto, auto-packages]) { block() {} }
             alt { expr-stmt() {} }
         }
         let-stmt {
@@ -2552,6 +2553,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             if-cond(field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
+        }
+        if-value(profiles: [auto, auto-packages]) {
+            if(field: "kw")
+            if-cond(field: "cond")
+            block(field: "then")
+            else() {}
+            block(field: "else")
         }
         // PLAN-964：if 条件两种游走——组合面（collections/closures/
         // aggregates, auto）用 condition-expr，其余面用普通 expr。原实现两条规则
@@ -2854,6 +2862,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [auto, auto-packages]) { empty-array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, config-document, auto-packages]) { array-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
+            alt(profiles: [auto, auto-packages]) { if-value() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt { condition-ctor() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
@@ -2896,6 +2905,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
             alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { nil-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
+            alt(profiles: [auto, auto-packages]) { if-value() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [record, record-instances, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { typed-ctor-expr() {} }
             alt(profiles: [collections, closures, record, record-instances, text-record, age-h0, age-component, text-record-instances, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { ctor-expr() {} }

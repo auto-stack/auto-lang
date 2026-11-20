@@ -1227,6 +1227,7 @@ fn bind_package_syntax_inner(
             tyvars: BTreeSet::new(),
             aggregates,
             asm_lane: in_face && aggregates,
+            auto_language: face == Faces::Auto,
         };
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
@@ -2191,6 +2192,7 @@ struct Walker<'a> {
     /// 类型注解（参数/结果位）与闭包字面量按 972 域放行（其余面保持
     /// PLAN-964 的具名拒绝）。
     asm_lane: bool,
+    auto_language: bool,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -2811,6 +2813,8 @@ impl<'a> Walker<'a> {
                         // eprint/say）在包体原样透传给 resolver（其按 profile
                         // 绑定为 console 内在调用——同 PLAN-1041 平台保留名
                         // 纪律）。
+                    } else if self.auto_language && matches!(callee.name.as_str(), "mark_a" | "mark_b") {
+                        // Capability admission remains the shared resolver's job.
                     } else if self.aggregates
                         && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
                     {

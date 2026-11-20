@@ -13037,7 +13037,9 @@ F:{d}
                     }
                     retag_literal(&mut value, rule);
                     let vt = self.binding_ty(*span, rule);
-                    if self.scopes.last().unwrap().names.contains_key(&name.name) {
+                    if !self.profile.is_auto_language()
+                        && self.scopes.last().unwrap().names.contains_key(&name.name)
+                    {
                         self.bind_err(
                             "source.duplicate",
                             format!(
