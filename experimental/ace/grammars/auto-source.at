@@ -1948,7 +1948,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `source.instances-unsupported` 而不是语法错。
             alt { r-const(field: "const_kw") {} ident(field: "name") opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { const-param-ty(field: "ty") } }
         }
-        const-param-ty(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        const-param-ty(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, age-package, auto-packages]) {
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -1994,6 +1995,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 解析失败（model 字段位另由 `age-model-ty` 承载）。只开 `f32` 拼写：
             // `float` 保持关键字但不在注解位（同词异名不引入第二宽度语义）。
             alt(profiles: [age-package]) { f32-kw(field: "word") }
+            // PLAN-105 T-02（U03 真语料 012）：三层面的注解类型也收列表形
+            //（`var rows []str = []` 在 handler 体里）与泛型形（`List<str>`）。
+            alt(profiles: [age-component, age-package]) { age-list-ty(field: "list") }
+            alt(profiles: [age-component]) { generic-ty(field: "generic") }
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2024,6 +2029,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             //（fn 参数 / `let` / `const` 注解）——两规则必须同词，否则返回位与
             // 参数位会一边能写一边不能写。
             alt(profiles: [age-package]) { f32-kw(field: "word") }
+            // PLAN-105 T-02（U03 真语料 012）：三层面的注解类型也收列表形
+            //（`var rows []str = []` 在 handler 体里）与泛型形（`List<str>`）。
+            alt(profiles: [age-component, age-package]) { age-list-ty(field: "list") }
+            alt(profiles: [age-component]) { generic-ty(field: "generic") }
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2082,6 +2091,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         type-arg-tail(profiles: [record, record-instances, collections, closures, numeric, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, age-package, auto-packages, age-component]) { comma() {} type-arg() {} }
         type-arg(profiles: [record, record-instances, collections, closures, numeric, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, age-package, auto-packages, age-component]) {
 
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2107,7 +2117,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             question(field: "q")
             optional-inner(field: "inner")
         }
-        optional-inner(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) {
+        optional-inner(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, auto-packages]) {
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2139,6 +2150,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             err-inner(field: "inner")
         }
         err-inner(profiles: [aggregates, auto, scheduler, auto-packages]) {
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2183,6 +2195,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             fn-type-result(field: "result")
         }
         fn-type-result(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) {
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
@@ -2192,6 +2205,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         fn-type-params(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { fn-type-param() {} many { fn-type-param-tail() {} } }
         fn-type-param-tail(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { comma() {} fn-type-param() {} }
         fn-type-param(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) {
+
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
