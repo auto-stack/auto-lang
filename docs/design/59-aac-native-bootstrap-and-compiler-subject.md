@@ -104,7 +104,7 @@ AAC计划同时承担两件不同的事：用Auto实现编译器主体；使该�
 | 现有 AC 差额 | 实施和正式证据来源 |
 |---|---|
 | 框架及原后延账 | [1044](../plans/1044-aac-baseline-and-stage-contracts.md) T-01 起固定正式 M2A-08、CS/CL、任务和逐行独立预期。 |
-| 语法、模块、共享声明、全局初值 | [1046](../plans/archive/1046-aac-syntax-source-and-modules.md) T-02/04；[1047](../plans/1047-aac-binding-types-and-checked-hir.md) T-02/04/09 交共享绑定/HIR/标注签名；否则正确的 global storage 仍由 1051 验。 |
+| 语法、模块、共享声明、全局初值 | [1046](../plans/archive/1046-aac-syntax-source-and-modules.md) T-02/04；[1047](../plans/archive/1047-aac-binding-types-and-checked-hir.md) T-02/04/09 交共享绑定/HIR/标注签名；否则正确的 global storage 仍由 1051 验。 |
 | 泛型/spec/ext、CTE 和 required 标注 | [1048](../plans/1048-aac-generics-meta-and-cte.md) T-02/03/04/09 负责共享 query/实例化、meta 语义、CT 执行编排、生成与重绑定。1055 先交有界 LowerCt，1050 接高级 LowerCt，1051/967 和实际标注消费者各交执行证据。 |
 | ~T/?T/!T、动态/对象、闭包、控制和资源 | [1049](../plans/1049-aac-control-dynamic-and-resource-semantics.md) T-02/03/04/09 修共享语义与各类合法/非法组合。 |
 | 共享 HIR→MIR | [1050](../plans/1050-aac-shared-typed-mir-lowering.md) T-03/04/05/09 交 global/dynamic/object、调用/调度/控制流、资源清理、错误阶段和源位置，补现 AC 所经共享构建层并复跑同源机器程序。 |

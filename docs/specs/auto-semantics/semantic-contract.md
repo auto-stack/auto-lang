@@ -109,3 +109,10 @@ producer=`plan817/cte-probe` 绑定真实 AV 成功），契约见
 - `Ann` 增 `TyParam(u16)`（模板签名位索引，仅实例发现路径的中立输入）；
   `InputFn` 增 `type_params`。求解器调用钩子按类型参数 mint 共享 var 真
   unify——plain 路径输入不含 `TyParam`，行为逐字节不变。
+
+## AAC 单次语义事实（PLAN-1047）
+
+`aac.semantic-facts/1` 记录拼接源码的字节数和 BLAKE3、按输入编号的逻辑模块范围，
+以及绑定、类型、全局、声明标注、已准入外部页和具名待办。事实行以该次有序输入解释，
+源字节发生变化须重新产出。读回 HIR 仍要经过内容校验。旧查询页的 LogicalId、
+内容版本和逐查询准入沿上文合同。接口见 [AAC 语义权威](../auto-ac/aac-semantic-authority.md)。

@@ -42,7 +42,7 @@ flowchart TD
 | 3 | [1045：hosted标准库与SDK](../../plans/1045-aac-hosted-stdlib-and-sdk.md) | 1044+1056；消费M2-A库/OS/FFI/SDK，不实现第二套标准库 |
 | 3A | [1046：Auto语法、源码与模块](../../plans/archive/1046-aac-syntax-source-and-modules.md) | 1044+1045；第一批Auto主体，先独立语法/模块验收 |
 | 3B | [1051：native后端与CTE服务桥](../../plans/1051-aac-native-backend-and-cte-bridges.md) | 1044+1045；transport有限试验后冻结，不等完整前端/MIR才做服务边界 |
-| 4 | [1047：绑定、类型与受检HIR](../../plans/1047-aac-binding-types-and-checked-hir.md) | 1046；接已冻结HIR/语义接口，不依Rustsolver运行 |
+| 4 | [1047：绑定、类型与受检HIR](../../plans/archive/1047-aac-binding-types-and-checked-hir.md) | 1046；接已冻结HIR/语义接口，不依Rustsolver运行 |
 | 4B | [1055：基础MIR与CT启动闭环](../../plans/1055-aac-early-typed-mir-and-ct-bootstrap.md) | 1047+1051；Auto受检基础闭包→Auto MIR/verify→真AV/native；不等1048/1049/1050 |
 | 5A | [1048：泛型、meta与CT编排](../../plans/1048-aac-generics-meta-and-cte.md) | 1047+1051+1055；完整算法/基础CT工厂真跑，advanced CT组合具名交1050/T-09和1053，不反import完整1050 |
 | 5B | [1049：控制、dynamic与资源语义](../../plans/1049-aac-control-dynamic-and-resource-semantics.md) | 1047+1048；高级语义私有准备可先，最终生成/资源组合取已交1048，不把它移出CL |

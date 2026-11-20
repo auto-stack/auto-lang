@@ -188,3 +188,11 @@ text-record 域（auto.hir.text-record.draft）到 av.owned/1 的实际消费面
 FIELDMOVE/MOVE 回写（永久例 808/810/8917/801，mut 循环 9）；owned Str 文本
 接收者 view 派发；语句尾临时 view 终结。多参 `.move` 调用标记关联错位为
 782 源域已知缝（KNOWN-DEBT 归 782 owner）。
+
+## AAC 基础语义的 S0–S4（PLAN-1047，已验证切片）
+
+Auto 主体从严格源码 AST 建立绑定与类型事实，生成 core-i32/text-record 候选。
+该入口与 Atom 读回共用 HIR 内容校验，验证 owner、DefRef、图与表达式唯一归属、
+调用映射、控制流、局部初始化和借位。涉及全局时与实际来源布局、访问与初值绑定。
+受检凭证只由进程内校验形成，运输输入仍须复验。外部语义权限与阶段支持范围见
+[AAC 语义权威](../auto-ac/aac-semantic-authority.md)。

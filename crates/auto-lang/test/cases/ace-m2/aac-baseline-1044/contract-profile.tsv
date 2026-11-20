@@ -1,14 +1,14 @@
 row_id	kind	key	value	unit	note
 profile.identity.a-receipt	identity	a-receipt	docs/specs/ace-migration/m2-certification.md:045340642830E6B0	path:sha16	PLAN-985 T-A05 正式 M2A-08 收据（delivery 95c7fbad8）；G-AAC 开工门
-profile.identity.design59	identity	design59	docs/design/59-aac-native-bootstrap-and-compiler-subject.md:3AA594A1FA903392	path:sha16	AAC 主体/需求审计设计（1047 阶段重绑）
-profile.identity.roadmap	identity	roadmap	docs/design/strategy/aac-delivery-roadmap.md:B064953F55199E43	path:sha16	AAC 落地与独立验收路线（1047 阶段重绑）
+profile.identity.design59	identity	design59	docs/design/59-aac-native-bootstrap-and-compiler-subject.md:D13A42C8056BAC9F	path:sha16	AAC 主体/需求审计设计（1047 阶段重绑）
+profile.identity.roadmap	identity	roadmap	docs/design/strategy/aac-delivery-roadmap.md:63CDD3D65C5CBA2F	path:sha16	AAC 落地与独立验收路线（1047 阶段重绑）
 profile.identity.source-mod	identity	source-mod	experimental/ace/crates/core/src/source/mod.rs:A152E0306D63EF3F	path:sha16	前端源码身份（1047 阶段重绑）
 profile.identity.source-hir	identity	source-hir	experimental/ace/crates/core/src/hir.rs:6E121377086CC0E9	path:sha16	受检 HIR 源码身份（1047 阶段重绑）
 profile.identity.mir	identity	mir	experimental/ace/crates/av-core/src/mir.rs:0B9AB327AB76FF4F	path:sha16	共享 Typed MIR 源码身份（1047 阶段重绑）
 profile.identity.source-query	identity	source-query	experimental/ace/crates/source-query/src/lib.rs:FB71ABCC2DF0EFB3	path:sha16	语义事实/查询源码身份（1047 阶段重绑）
 profile.identity.grammar	identity	grammar	experimental/ace/grammars/auto-source.at:EEBE77C36BEE5A75	path:sha16	共享语法单文件规则源（1047 阶段重绑）
 profile.identity.spec-ac-project	identity	spec-ac-project	docs/specs/auto-ac/project.md:A5AD36CCC03E3D77	path:sha16	AC 项目 Spec（1047 阶段重绑）
-profile.identity.spec-hir-stage	identity	spec-hir-stage	docs/specs/auto-hir/stage-contract.md:8BE44EA7473E1954	path:sha16	HIR 阶段合同 Spec
+profile.identity.spec-hir-stage	identity	spec-hir-stage	docs/specs/auto-hir/stage-contract.md:DE3BF1BC2602D8A3	path:sha16	HIR 阶段合同 Spec
 profile.identity.spec-abi	identity	spec-abi	docs/specs/auto-abi/project.md:8B75935B41FA1882	path:sha16	AutoABI 候选 profile Spec（1047 阶段重绑）
 profile.host	profile	host	windows-x64	axis	首版独立 AAC 基线 host（x86_64-pc-windows-msvc）
 profile.target	profile	target	windows-x64	axis	首版 target 与 host 同轴；host≠target 场景属后续扩面
