@@ -7,6 +7,7 @@ use app.binding.constant_decl
 use app.binding.decl_category
 use app.binding.decl_name
 use app.binding.direct_callee
+use app.binding.external_signature
 use app.binding.field_decl
 use app.binding.function_decl
 use app.binding.global_var_decl
@@ -42,6 +43,7 @@ use app.types.init_types
 use app.types.integer_type
 use app.types.intern_type
 use app.types.intern_sequence
+use app.types.list_kind
 use app.types.owned_text_type
 use app.types.text_view_type
 use app.types.tuple_type
@@ -58,6 +60,7 @@ pub fn type_argument() int { return -24 }
 pub fn type_branch() int { return -25 }
 pub fn type_condition() int { return -26 }
 pub fn type_member() int { return -27 }
+pub fn type_empty_list() int { return -36 }
 
 fn failure(errors List<int>, row int, code int) int {
     errors.push(row)
@@ -181,6 +184,36 @@ fn conditional_value(pg List<int>, ast List<int>, links List<int>, facts List<in
     return when_true
 }
 
+fn array_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, row int, auto_elements bool, fuel List<int>, deadline i64) int {
+    let elements = child_with_role(pg, ast, links, row, "elems")
+    if (elements < 0) { return type_empty_list() }
+    var element_name = "expr"
+    var tail_name = "array-elem-tail"
+    if (auto_elements) {
+        element_name = "auto-array-elem"
+        tail_name = "auto-array-elem-tail"
+    }
+    let head = child_with_role(pg, ast, links, elements, "head")
+    if (head < 0) { return type_empty_list() }
+    let expected = facts.get(head)
+    if (expected == 0) { return 0 }
+    var at = next_sibling(links, head)
+    for (at >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (kind(pg, ast, at) == tail_name) {
+            let element = child_with_kind(pg, ast, links, at, element_name.clone())
+            if (element < 0) { return type_value() }
+            let actual = facts.get(element)
+            if (actual == 0) { return 0 }
+            if (actual != expected) { return type_value() }
+        }
+        at = next_sibling(links, at)
+    }
+    let result = intern_type(types, list_kind(), expected, 0, fuel, deadline)
+    if (result < 0) { return bind_budget() }
+    return result
+}
+
 fn wrapped_value(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int) int {
     let value = child_with_role(pg, ast, links, row, "value")
     if (value >= 0) { return facts.get(value) }
@@ -263,7 +296,23 @@ fn postfix_type(pg List<int>, ast List<int>, links List<int>, src List<int>, dec
     return current
 }
 
-fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+fn foreign_callable(external List<int>, at int, types List<int>, fuel List<int>, deadline i64) int {
+    var lanes = List<int>.new()
+    let count = external.get(at + 1)
+    var index = 0
+    for (index < count) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        lanes.push(external.get(at + index + 2))
+        index = index + 1
+    }
+    let sequence = intern_sequence(types, lanes, fuel, deadline)
+    if (sequence < 0) { return bind_budget() }
+    let callable = intern_type(types, function_kind(), external.get(at), sequence, fuel, deadline)
+    if (callable < 0) { return bind_budget() }
+    return callable
+}
+
+fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, external List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
     let node_kind = kind(pg, ast, row)
     let category = decl_category(declarations, row)
     if (initializer_category(category)) {
@@ -273,6 +322,8 @@ fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarati
     }
     if (node_kind == "ident") {
         let target = uses.get(row)
+        let foreign = external_signature(target)
+        if (foreign >= 0) { return foreign_callable(external, foreign, types, fuel, deadline) }
         if (target < 0) { return 0 }
         if (function_category(decl_category(declarations, target))) {
             return signature(pg, ast, links, facts, types, target, fuel, deadline)
@@ -292,6 +343,24 @@ fn derive(pg List<int>, ast List<int>, links List<int>, src List<int>, declarati
         let result = tuple_type(pg, ast, links, facts, types, row, true, fuel, deadline)
         if (result < 0) { return bind_budget() }
         return result
+    }
+    if (node_kind == "array-lit" || node_kind == "auto-array-lit") {
+        return array_type(pg, ast, links, facts, types, row, node_kind == "auto-array-lit", fuel, deadline)
+    }
+    if (node_kind == "empty-array-lit") { return type_empty_list() }
+    if (node_kind == "auto-array-elem") {
+        let value = first_child(links, row)
+        if (value < 0) { return 0 }
+        return facts.get(value)
+    }
+    if (node_kind == "array-conditional-elem") {
+        let test = child_with_role(pg, ast, links, row, "cond")
+        let value = child_with_role(pg, ast, links, row, "value")
+        if (test < 0 || value < 0) { return type_value() }
+        let condition = facts.get(test)
+        if (condition == 0) { return 0 }
+        if (condition != boolean_type()) { return type_condition() }
+        return facts.get(value)
     }
     if (node_kind == "postfix-expr" || node_kind == "condition-postfix") {
         return postfix_type(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
@@ -499,7 +568,7 @@ fn map_methods(pg List<int>, ast List<int>, links List<int>, src List<int>, decl
     return 0
 }
 
-pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, external List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let count = row_count(ast)
     var row = 0
     var explicit_returns = List<int>.new()
@@ -555,7 +624,7 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
         for (row >= 0) {
             if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
             if (facts.get(row) == 0) {
-                let type_id = derive(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
+                let type_id = derive(pg, ast, links, src, declarations, uses, external, facts, types, row, fuel, deadline)
                 if (type_id < 0) { return failure(errors, row, type_id) }
                 if (type_id > 0) {
                     facts.set(row, type_id)

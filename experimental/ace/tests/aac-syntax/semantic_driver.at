@@ -21,6 +21,11 @@ use app.declarations.annotation_owner_error
 use app.declarations.annotation_stride
 use app.declarations.collect_declaration_inputs
 use app.declarations.deferred_stride
+use app.declarations.pending_foreign
+use app.foreign_contract.admit_foreign_provider
+use app.foreign_contract.foreign_authority_error
+use app.foreign_contract.foreign_provider_error
+use app.foreign_contract.foreign_signature_error
 use app.initializers.initialize_order
 use app.initializers.initializer_cycle
 use app.initializers.initializer_module_order
@@ -29,6 +34,7 @@ use app.numeric_literal.literal_syntax
 use app.semantic_tree.add_module_name
 use app.semantic_tree.append_source
 use app.semantic_tree.build_child_index
+use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
 use app.semantic_tree.parse_semantic_source
@@ -46,6 +52,7 @@ use app.typecheck.infer_source
 use app.typecheck.type_argument
 use app.typecheck.type_branch
 use app.typecheck.type_condition
+use app.typecheck.type_empty_list
 use app.typecheck.type_member
 use app.typecheck.type_operator
 use app.typecheck.type_return
@@ -92,6 +99,10 @@ fn diagnostic_name(code int) Str {
     if (code == type_branch()) { return "type.branch" }
     if (code == type_condition()) { return "type.condition" }
     if (code == type_member()) { return "type.member" }
+    if (code == type_empty_list()) { return "type.empty-list" }
+    if (code == foreign_authority_error()) { return "foreign.authority" }
+    if (code == foreign_provider_error()) { return "foreign.provider" }
+    if (code == foreign_signature_error()) { return "foreign.signature" }
     if (code == literal_range()) { return "type.literal-range" }
     if (code == literal_syntax()) { return "type.literal-syntax" }
     if (code == hir_unsupported()) { return "hir.unsupported" }
@@ -184,6 +195,44 @@ fn declaration_report(ast List<int>, src List<int>, bases List<int>, annotations
     return join_rows(lines, lines.len())
 }
 
+fn admit_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, bases List<int>, pending List<int>, names List<int>, signatures List<int>, fuel List<int>, deadline i64) Str {
+    var at = 0
+    for (at < pending.len()) {
+        let row = pending.get(at + 1)
+        let language = child_with_role(pg, ast, links, row, "lang")
+        let provider = child_with_role(pg, ast, links, row, "provider")
+        if (pending.get(at) != pending_foreign() || language < 0 || provider < 0 || spelling(src, ast, language) != "rs") {
+            return "pending"
+        }
+        at = at + deferred_stride()
+    }
+    let path = get("AAC1047_FOREIGN_PATH")
+    let authority = get("AAC1047_FOREIGN_AUTHORITY")
+    if (path.len() == 0) { return "pending" }
+    let length = size(path.clone())
+    if (length < 0i64) { return "ERROR os.read\n" }
+    if (length > fuel.get(0).to(i64)) { return "ERROR resource.semantic\n" }
+    let page = read_bytes(path)
+    is page {
+        Some(bytes) -> {
+            at = 0
+            for (at < pending.len()) {
+                let row = pending.get(at + 1)
+                let token = child_with_role(pg, ast, links, row, "provider")
+                let provider = spelling(src, ast, token)
+                let status = admit_foreign_provider(bytes, authority.clone(), provider, source_id(ast, row), names, signatures, fuel, deadline)
+                if (status != 0) {
+                    return "ERROR " + diagnostic_name(status) + " " + location(ast, token, bases) + "\n"
+                }
+                at = at + deferred_stride()
+            }
+            return ""
+        }
+        None -> {}
+    }
+    return "ERROR os.read\n"
+}
+
 fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
@@ -202,8 +251,14 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     if (cataloged != 0) {
         return "ERROR " + diagnostic_name(cataloged) + " " + location(ast, errors.get(0), bases) + "\n"
     }
-    if (pending.len() > 0) { return declaration_report(ast, src, bases, metadata, pending) }
-    let status = bind_source(pg, ast, links, src, modules, roots, declarations, uses, mappings, errors, fuel, deadline)
+    var foreign_names = List<int>.new()
+    var foreign_signatures = List<int>.new()
+    if (pending.len() > 0) {
+        let imports = admit_imports(pg, ast, links, src, bases, pending, foreign_names, foreign_signatures, fuel, deadline)
+        if (imports == "pending") { return declaration_report(ast, src, bases, metadata, pending) }
+        if (imports.len() > 0) { return imports }
+    }
+    let status = bind_source(pg, ast, links, src, modules, roots, foreign_names, declarations, uses, mappings, errors, fuel, deadline)
     if (status != 0) {
         return "ERROR " + diagnostic_name(status) + " " + location(ast, errors.get(0), bases) + "\n"
     }
@@ -212,11 +267,14 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     if (get("AAC1047_TYPED") == "1" || hir_mode.len() > 0) {
         var facts = List<int>.new()
         var types = List<int>.new()
-        let typed = infer_source(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+        let typed = infer_source(pg, ast, links, src, declarations, uses, mappings, foreign_signatures, facts, types, errors, fuel, deadline)
         if (typed != 0) {
             return "ERROR " + diagnostic_name(typed) + " " + location(ast, errors.get(0), bases) + "\n"
         }
         if (hir_mode.len() > 0) {
+            if (pending.len() > 0) {
+                return type_report(ast, bases, facts, types) + declaration_report(ast, src, bases, metadata, pending)
+            }
             if (roots.len() != 1) { return "ERROR hir.unsupported\n" }
             var control = 0
             if (hir_mode == "owner") { control = 1 }

@@ -37,6 +37,14 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/declarations.at").into(),
         ),
         (
+            "foreign_contract.at".into(),
+            include_str!("../../../aac/semantics/foreign_contract.at").into(),
+        ),
+        (
+            "foreign_json.at".into(),
+            include_str!("../../../aac/semantics/foreign_json.at").into(),
+        ),
+        (
             "types.at".into(),
             include_str!("../../../aac/semantics/types.at").into(),
         ),
@@ -225,7 +233,9 @@ fn semantic_command(
         .env_remove("AAC1047_PROJECT")
         .env_remove("AAC1047_STEPS")
         .env_remove("AAC1047_ARTIFACT")
-        .env_remove("AAC1047_STAGED");
+        .env_remove("AAC1047_STAGED")
+        .env_remove("AAC1047_FOREIGN_PATH")
+        .env_remove("AAC1047_FOREIGN_AUTHORITY");
     if let Some(steps) = steps {
         cmd.env("AAC1047_STEPS", steps.to_string());
     }

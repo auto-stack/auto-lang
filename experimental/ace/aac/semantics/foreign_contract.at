@@ -1,0 +1,155 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.digest.blake3_hex_bytes
+use app.foreign_json.foreign_field_kind
+use app.foreign_json.foreign_field_text
+use app.foreign_json.foreign_field_true
+use app.syntax_frontend.str_to_bytes
+use app.types.boolean_type
+use app.types.char_type
+use app.types.f64_type
+use app.types.i64_type
+use app.types.integer_type
+use app.types.text_view_type
+use app.types.u32_type
+use app.types.u64_type
+use app.types.unit_type
+use std.conv.from_int
+
+pub fn foreign_authority_error() int { return -37 }
+pub fn foreign_signature_error() int { return -38 }
+pub fn foreign_provider_error() int { return -39 }
+
+fn language_lane(lane Str) int {
+    if (lane == "I32") { return integer_type() }
+    if (lane == "U32") { return u32_type() }
+    if (lane == "I64") { return i64_type() }
+    if (lane == "U64") { return u64_type() }
+    if (lane == "F64") { return f64_type() }
+    if (lane == "Bool") { return boolean_type() }
+    if (lane == "Char") { return char_type() }
+    if (lane == "ViewText") { return text_view_type() }
+    return 0
+}
+
+fn lane_at(page List<int>, path Str) int {
+    return language_lane(foreign_field_text(page, path))
+}
+
+fn parameter_lanes(page List<int>, path Str, out List<int>, fuel List<int>, deadline i64) int {
+    if (foreign_field_kind(page, path.clone()) != 5) { return foreign_signature_error() }
+    var at = 0
+    for (take_step(fuel, deadline)) {
+        let lane_path = path.clone() + "." + from_int(at)
+        if (foreign_field_kind(page, lane_path.clone()) == 0) { return 0 }
+        let code = lane_at(page, lane_path)
+        if (code == 0) { return foreign_signature_error() }
+        out.push(code)
+        at = at + 1
+    }
+    return bind_budget()
+}
+
+// SourceDecl is provided by the 967 admission host. Its current authority
+// digest is independent of the transported bytes; swapping any physical
+// layout, context, resource owner, or error model invalidates the page.
+fn foreign_page_status(bytes List<int>, authority Str, fuel List<int>, deadline i64) int {
+    if (!take_step(fuel, deadline) || bytes.len() > fuel.get(0)) { return bind_budget() }
+    fuel.set(0, fuel.get(0) - bytes.len())
+    if (authority.len() != 64 || blake3_hex_bytes(bytes) != authority) { return foreign_authority_error() }
+    return 0
+}
+
+fn foreign_result(page List<int>, form Str, pure bool, resource bool, fn_path Str) int {
+    if (pure) {
+        if (foreign_field_kind(page, fn_path + ".error_model") != 1) { return foreign_signature_error() }
+        return lane_at(page, form + ".Pure.ret")
+    }
+    let err = fn_path + ".error_model"
+    if (foreign_field_text(page, err.clone() + ".kind") != "status-i32" || foreign_field_kind(page, err + ".codes.0") != 5) {
+        return foreign_signature_error()
+    }
+    let fallible = form + ".Fallible"
+    // Scalar/view calls here have no implicit source context argument.
+    // Other context and multi-out forms require separate language facts.
+    if (foreign_field_kind(page, fallible.clone() + ".ctx") != 1) { return foreign_signature_error() }
+    if (resource) {
+        let out = fallible + ".out"
+        if (foreign_field_kind(page, out.clone()) == 1) { return unit_type() }
+        return lane_at(page, out)
+    }
+    let outs = fallible + ".outs"
+    if (foreign_field_kind(page, outs.clone()) != 5 || foreign_field_kind(page, outs.clone() + ".1") != 0) {
+        return foreign_signature_error()
+    }
+    if (foreign_field_kind(page, outs.clone() + ".0") == 0) { return unit_type() }
+    return lane_at(page, outs + ".0")
+}
+
+// For the scalar and noescape text-view contract, the source callable has
+// precisely the admitted parameter lanes and success-result lane. The full
+// original declaration remains the foreign consumer's authority.
+fn project_signature(page List<int>, entry Str, signature List<int>, fuel List<int>, deadline i64) int {
+    let fn_path = entry + ".function"
+    let resource_path = fn_path.clone() + ".resource"
+    let resource = foreign_field_kind(page, resource_path.clone()) == 6
+    var form = fn_path.clone() + ".form"
+    if (resource) {
+        if (foreign_field_text(page, resource_path.clone() + ".format") != "autoabi.contract.resource-sig/1") { return foreign_signature_error() }
+        if (!foreign_field_true(page, resource_path.clone() + ".noescape")) { return foreign_signature_error() }
+        form = resource_path.clone() + ".form"
+    }
+    let pure = foreign_field_kind(page, form.clone() + ".Pure") == 6
+    if (!pure && foreign_field_kind(page, form.clone() + ".Fallible") != 6) { return foreign_signature_error() }
+    let result = foreign_result(page, form.clone(), pure, resource, fn_path.clone())
+    if (result <= 0) { return foreign_signature_error() }
+    var params = form + ".Fallible.params"
+    if (pure) { params = fn_path.clone() + ".form.Pure.params" }
+    if (resource) { params = resource_path + ".params" }
+    let start = signature.len()
+    signature.push(result)
+    signature.push(0)
+    let status = parameter_lanes(page, params, signature, fuel, deadline)
+    if (status != 0) { return status }
+    signature.set(start + 1, signature.len() - start - 2)
+    return 0
+}
+
+// Entries: module identity, signature offset, byte count, source name.
+// Signatures: result type, parameter count, parameter types in slot order.
+fn project_provider(page List<int>, provider Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+    if (page.len() == 0 || page.get(0) != 91) { return foreign_authority_error() }
+    var index = 0
+    var found = false
+    for (take_step(fuel, deadline)) {
+        let entry = from_int(index)
+        if (foreign_field_kind(page, entry.clone()) == 0) {
+            if (found) { return 0 }
+            return foreign_provider_error()
+        }
+        if (foreign_field_text(page, entry.clone() + ".provider") == provider) {
+            let name = str_to_bytes(foreign_field_text(page, entry.clone() + ".name"))
+            if (name.len() == 0) { return foreign_signature_error() }
+            let start = signatures.len()
+            let status = project_signature(page, entry, signatures, fuel, deadline)
+            if (status != 0) { return status }
+            names.push(module_id)
+            names.push(start)
+            names.push(name.len())
+            var offset = 0
+            for (offset < name.len()) {
+                names.push(name.get(offset))
+                offset = offset + 1
+            }
+            found = true
+        }
+        index = index + 1
+    }
+    return bind_budget()
+}
+
+pub fn admit_foreign_provider(bytes List<int>, authority Str, provider Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+    let trusted = foreign_page_status(bytes, authority, fuel, deadline)
+    if (trusted != 0) { return trusted }
+    return project_provider(bytes, provider, module_id, names, signatures, fuel, deadline)
+}

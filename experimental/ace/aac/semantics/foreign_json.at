@@ -1,0 +1,136 @@
+// Cursor for the 967 host's authenticated SourceDecl JSON. Only field paths
+// are read here. The host already consumes and validates the full format,
+// including values AAC does not project into the language signature.
+use app.semantic_tree.span_text
+use std.conv.to_int
+use std.text.split
+
+fn whitespace(byte_value int) bool {
+    return byte_value == 32 || byte_value == 9 || byte_value == 10 || byte_value == 13
+}
+
+fn first_byte(page List<int>, start int) int {
+    var at = start
+    for (at < page.len() && whitespace(page.get(at))) { at = at + 1 }
+    return at
+}
+
+fn after_quote(page List<int>, start int) int {
+    var at = start + 1
+    for (at < page.len()) {
+        let byte_value = page.get(at)
+        if (byte_value == 34) { return at + 1 }
+        if (byte_value == 92) { at = at + 1 }
+        at = at + 1
+    }
+    return -1
+}
+
+fn after_value(page List<int>, start int) int {
+    let first = page.get(start)
+    if (first == 34) { return after_quote(page, start) }
+    var at = start
+    if (first == 91 || first == 123) {
+        var depth = 0
+        for (at < page.len()) {
+            let byte_value = page.get(at)
+            if (byte_value == 34) {
+                at = after_quote(page, at)
+                if (at < 0) { return -1 }
+            } else {
+                if (byte_value == 91 || byte_value == 123) { depth = depth + 1 }
+                if (byte_value == 93 || byte_value == 125) { depth = depth - 1 }
+                at = at + 1
+                if (depth == 0) { return at }
+            }
+        }
+        return -1
+    }
+    for (at < page.len()) {
+        let byte_value = page.get(at)
+        if (whitespace(byte_value) || byte_value == 44 || byte_value == 93 || byte_value == 125) { break }
+        at = at + 1
+    }
+    if (at == start) { return -1 }
+    return at
+}
+
+fn following_member(page List<int>, value int) int {
+    let end = after_value(page, value)
+    if (end < 0) { return -1 }
+    let delimiter = first_byte(page, end)
+    if (delimiter >= page.len() || page.get(delimiter) != 44) { return -1 }
+    return first_byte(page, delimiter + 1)
+}
+
+fn object_member(page List<int>, start int, name Str) int {
+    var at = first_byte(page, start + 1)
+    for (at >= 0 && at < page.len() && page.get(at) == 34) {
+        let end = after_quote(page, at)
+        if (end < 0) { return -1 }
+        let colon = first_byte(page, end)
+        if (colon >= page.len() || page.get(colon) != 58) { return -1 }
+        let value = first_byte(page, colon + 1)
+        if (value >= page.len()) { return -1 }
+        if (span_text(page, at + 1, end - 1) == name) { return value }
+        at = following_member(page, value)
+    }
+    return -1
+}
+
+fn array_member(page List<int>, start int, index int) int {
+    var at = first_byte(page, start + 1)
+    var item = 0
+    for (at >= 0 && at < page.len() && page.get(at) != 93) {
+        if (item == index) { return at }
+        at = following_member(page, at)
+        item = item + 1
+    }
+    return -1
+}
+
+fn field_position(page List<int>, path Str) int {
+    var pieces = split(path, ".")
+    var at = first_byte(page, 0)
+    for (pieces.len() > 0) {
+        if (at < 0 || at >= page.len()) { return -1 }
+        let piece = pieces.remove(0)
+        let kind = page.get(at)
+        if (kind == 123) {
+            at = object_member(page, at, piece)
+        } else {
+            if (kind != 91) { return -1 }
+            let index = to_int(piece)
+            is index {
+                Some(value) -> { at = array_member(page, at, value) }
+                None -> { return -1 }
+            }
+        }
+    }
+    return at
+}
+
+pub fn foreign_field_kind(page List<int>, path Str) int {
+    let at = field_position(page, path)
+    if (at < 0 || at >= page.len()) { return 0 }
+    let value = page.get(at)
+    if (value == 110) { return 1 }
+    if (value == 116 || value == 102) { return 2 }
+    if (value == 34) { return 4 }
+    if (value == 91) { return 5 }
+    if (value == 123) { return 6 }
+    return 3
+}
+
+pub fn foreign_field_text(page List<int>, path Str) Str {
+    let at = field_position(page, path)
+    if (at < 0 || at >= page.len() || page.get(at) != 34) { return "" }
+    let end = after_quote(page, at)
+    if (end < 0) { return "" }
+    return span_text(page, at + 1, end - 1)
+}
+
+pub fn foreign_field_true(page List<int>, path Str) bool {
+    let at = field_position(page, path)
+    return at >= 0 && at < page.len() && page.get(at) == 116
+}

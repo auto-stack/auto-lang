@@ -708,6 +708,21 @@ fn preserves_nested_payload_types_through_public_fields_and_calls() {
 }
 
 #[test]
+fn builds_a_list_of_nested_futures_and_rejects_distinct_payloads() {
+    let source = "fn collect(a Future<Result<?int,bool>>, b Future<Result<?int,bool>>) \
+                  List<Future<Result<?int,bool>>> { return [a, b] }";
+    let report = type_report(source);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let bad = source.replace("b Future<Result<?int,bool>>", "b Future<Result<?int,int>>");
+    let start = bad.find("[a, b]").unwrap();
+    let report = type_report(&bad);
+    assert_eq!(
+        report,
+        format!("ERROR type.value 0 {start}..{}\n", start + 6)
+    );
+}
+
+#[test]
 fn completes_implicit_signatures_and_rejects_a_conflicting_call() {
     let document = include_str!(
         "../../../../../crates/auto-lang/test/cases/language/calls/binding-pipeline.case.ad"
