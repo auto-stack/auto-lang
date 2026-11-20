@@ -1600,6 +1600,15 @@ pub fn compile_age_component(
     for (ni, n) in candidates.iter().enumerate() {
         for (ti, leaf) in n.view.texts.iter().enumerate() {
             let name = format!("{AGE_COMPONENT_HIDDEN_PREFIX}{}", leaves.len());
+            // PLAN-105 T-02（U03 真语料 012/016/022）：**视图循环变量**作文本叶
+            // （`for r in .rows { text r }`）——动态列表展开是独立里程碑，此处先
+            // 以**空串占位叶**保住叶序（不静默丢叶；叶值待展开面）。
+            if let Some(v) = unbound_leaf_var(&leaf.expr, &n.fields) {
+                items.push(Item::Fn(empty_text_fn(&name, leaf.expr.span)));
+                leaves.push((name, ni, ti));
+                let _ = v;
+                continue;
+            }
             items.push(Item::Fn(hidden_fn(
                 &name,
                 &leaf.expr,
@@ -1808,6 +1817,63 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
     out
 }
 
+/// 文本叶是否是**自由变量**（视图循环变量等，不在 model 字段/形参里）。
+fn unbound_leaf_var(e: &Expr, fields: &[ComponentField]) -> Option<String> {
+    match &e.kind {
+        ExprKind::Var(v) => {
+            if fields.iter().any(|f| f.name == v.name) || v.name == "self" {
+                None
+            } else {
+                Some(v.name.clone())
+            }
+        }
+        // `.name` 形态：`self.<name>` 且 `<name>` 不是 model 字段 → 同样视为
+        // 未绑定（视图循环变量在投影里可能已是字段形态）。
+        ExprKind::Field { base, name } => match unbound_leaf_var(base, fields) {
+            Some(_) => None,
+            None => {
+                if matches!(&base.kind, ExprKind::Var(v) if v.name == "self")
+                    && !fields.iter().any(|f| f.name == name.name)
+                {
+                    Some(name.name.clone())
+                } else {
+                    None
+                }
+            }
+        },
+        _ => None,
+    }
+}
+
+/// 空串占位叶（叶序保持；动态列表展开前的显式占位）。
+fn empty_text_fn(name: &str, span: Span) -> FnItem {
+    FnItem {
+        name: Ident {
+            name: name.to_string(),
+            span,
+        },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn {
+            kind: TypeRef::Builtin(TypeWord::StrOwned),
+            span,
+        },
+        body: Block {
+            stmts: vec![Stmt::Return {
+                value: Expr {
+                    span,
+                    kind: ExprKind::StrLit(String::new()),
+                },
+                span,
+            }],
+            span,
+        },
+        span,
+        script: false,
+        owner: None,
+        receiver: crate::source::ast::Receiver::Free,
+    }
+}
 fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool, owned_text: bool) -> FnItem {
     if owned_text {
         if let ExprKind::StrLit(_) = expr.kind {
