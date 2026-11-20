@@ -1247,3 +1247,179 @@ channel: "unit"
 ```text
 5
 ```
+
+## Case: legacy-99-plan231-003-simple-for-option
+id: "legacy.99_plan231.003_simple_for_option"
+entry-mode: "program"
+
+### Auto
+path: "simple_for_option.at"
+```auto
+// Minimal test: mut fn + for loop + Option
+type Counter {
+    count int
+
+    mut fn next() ?int {
+        if self.count > 0 {
+            self.count = self.count - 1
+            return Some(self.count + 1)
+        }
+        return None
+    }
+
+    mut fn drain() int {
+        var total = 0
+        var val = self.next()
+        for val != None {
+            is val {
+                Some(v) -> total = total + v,
+                None -> {}
+            }
+            val = self.next()
+        }
+        return total
+    }
+}
+
+fn main() {
+    var c = Counter(3)
+    let result = c.drain()
+    print(f"total: $result")
+    print("for-option OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+total: 6
+for-option OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+total: 6
+for-option OK
+```
+
+## Case: legacy-99-plan231-004-for-option-no-is
+id: "legacy.99_plan231.004_for_option_no_is"
+entry-mode: "program"
+
+### Auto
+path: "for_option_no_is.at"
+```auto
+// Ultra-minimal: mut fn + for loop + Option comparison, no is matching
+type Counter {
+    count int
+
+    mut fn next() ?int {
+        if self.count > 0 {
+            self.count = self.count - 1
+            return Some(self.count + 1)
+        }
+        return None
+    }
+}
+
+fn main() {
+    var c = Counter(2)
+    var val = c.next()
+    for val != None {
+        print(f"got: $val")
+        val = c.next()
+    }
+    print("done")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got: 2
+got: 1
+done
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got: 2
+got: 1
+done
+```
+
+## Case: legacy-99-plan231-005-mutfn-no-loop
+id: "legacy.99_plan231.005_mutfn_no_loop"
+entry-mode: "program"
+
+### Auto
+path: "mutfn_no_loop.at"
+```auto
+// Test: mut fn without for loop
+type Counter {
+    count int
+
+    mut fn next() ?int {
+        if self.count > 0 {
+            self.count = self.count - 1
+            return Some(self.count + 1)
+        }
+        return None
+    }
+}
+
+fn main() {
+    var c = Counter(2)
+    let v1 = c.next()
+    print(f"v1: $v1")
+    let v2 = c.next()
+    print(f"v2: $v2")
+    let v3 = c.next()
+    print(f"v3: $v3")
+    print("mutfn no loop OK")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+v1: 2
+v2: 1
+v3: None
+mutfn no loop OK
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+v1: 2
+v2: 1
+v3: None
+mutfn no loop OK
+```

@@ -8410,6 +8410,60 @@ F:{d}
         (stmts, val, div)
     }
 
+    /// Comparing a local Option with its empty constructor reads the tag
+    /// without transferring or materializing its payload.
+    fn compare_empty_option(
+        &self,
+        value: &ResolvedExpr,
+        empty: &ResolvedExpr,
+        op: BinOp,
+        span: Span,
+    ) -> Option<ResolvedExpr> {
+        let RExprKind::ReadLocal(local) = value.kind else {
+            return None;
+        };
+        let RExprKind::VariantCtor {
+            variant,
+            disc,
+            payload: None,
+        } = empty.kind
+        else {
+            return None;
+        };
+        let declaration = &self.coll.variants[variant];
+        if value.vt != VT::Variant(variant)
+            || declaration.name != "Option"
+            || declaration
+                .arms
+                .get(disc as usize)
+                .map(|arm| arm.0.as_str())
+                != Some("None")
+        {
+            return None;
+        }
+        let guard = ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::VariantGuardTest {
+                local,
+                variant,
+                disc,
+            },
+        };
+        Some(if op == BinOp::Eq {
+            guard
+        } else {
+            ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Unary {
+                    op: UnaryOp::Not,
+                    operand: Box::new(guard),
+                },
+            }
+        })
+    }
+
     fn resolve_condition(&mut self, expression: &ast::Expr) -> ResolvedExpr {
         let expect = (!self.profile.is_auto_language()).then_some(VT::Bool);
         let value = self.expr_with_expect(expression, expect);
@@ -17146,6 +17200,15 @@ F:{d}
                         out[dest] = self.compare_null(l, r, op, span);
                         continue;
                     }
+                    if self.profile.is_auto_language() && matches!(op, BinOp::Eq | BinOp::Ne) {
+                        if let Some(guard) = self
+                            .compare_empty_option(&l, &r, op, span)
+                            .or_else(|| self.compare_empty_option(&r, &l, op, span))
+                        {
+                            out[dest] = guard;
+                            continue;
+                        }
+                    }
                     let script_arithmetic = self.coll.script_errors
                         && matches!(
                             op,
@@ -18222,6 +18285,20 @@ F:{d}
                             },
                         };
                         parts.push(FStrPart::Expr(display));
+                    }
+                    (_, VT::Variant(variant))
+                        if self.profile.is_auto_language()
+                            && self.coll.variants[variant].name == "Option"
+                            && self.coll.variants[variant].arms.first().and_then(|arm| arm.1)
+                                == Some(VT::I32) =>
+                    {
+                        parts.push(FStrPart::Expr(ResolvedExpr {
+                            span: a.value.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::TextDisplay {
+                                operand: Box::new(a.value.clone()),
+                            },
+                        }));
                     }
                     (_, other_vt) => {
                         self.bind_err(

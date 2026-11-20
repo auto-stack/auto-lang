@@ -3787,9 +3787,7 @@ enum Frame {
         /// PLAN-1083: `pat if cond -> body` — the guard expression (pops
         /// before the rhs value when present).
         has_guard: bool,
-        /// PLAN-1083: `pat -> return e` — the rhs is a return statement;
-        /// the popped expr wraps into a synthetic one-stmt block.
-        is_return: bool,
+        statement_span: Option<Span>,
     },
     TryFinish {
         has_catch: bool,
@@ -11450,58 +11448,28 @@ impl<'a> Engine<'a> {
                         .and_then(|g| self.cx.field_child(g, "cond"));
                     let rhs_n = self.cx.field_child(arm_n, "rhs").expect("agg arm rhs");
                     let arm_start = self.cx.span_of(pat_n);
-                    // PLAN-1083: `pat -> return e` rhs — wrap the projected
-                    // expr into a synthetic one-statement return block.
-                    let ret_n = self.cx.field_child(rhs_n, "stmt");
-                    if let Some(body_n) = self.cx.field_child(rhs_n, "body") {
-                        self.stack.push(Frame::AggIsArmRhs {
-                            ctx: Box::new(AggIsMatchCtx {
-                                remaining: rest,
-                                ..ctx
-                            }),
-                            pats: pats.clone(),
-                            arm_start,
-                            is_block: true,
-                            has_guard: guard_expr_n.is_some(),
-                            is_return: false,
-                        });
-                        if let Some(g) = guard_expr_n {
-                            self.stack.push(Frame::ExprEnter(g));
-                        }
+                    let statement_n = self.cx.field_child(rhs_n, "stmt");
+                    let body_n = self.cx.field_child(rhs_n, "body");
+                    self.stack.push(Frame::AggIsArmRhs {
+                        ctx: Box::new(AggIsMatchCtx {
+                            remaining: rest,
+                            ..ctx
+                        }),
+                        pats,
+                        arm_start,
+                        is_block: body_n.is_some(),
+                        has_guard: guard_expr_n.is_some(),
+                        statement_span: statement_n.map(|stmt| self.cx.span_of(stmt)),
+                    });
+                    if let Some(g) = guard_expr_n {
+                        self.stack.push(Frame::ExprEnter(g));
+                    }
+                    if let Some(body_n) = body_n {
                         self.enter_block(body_n);
-                    } else if let Some(rn) = ret_n {
-                        let value_n = self.cx.field_child(rn, "value").expect("return value");
-                        self.stack.push(Frame::AggIsArmRhs {
-                            ctx: Box::new(AggIsMatchCtx {
-                                remaining: rest,
-                                ..ctx
-                            }),
-                            pats: pats.clone(),
-                            arm_start,
-                            is_block: false,
-                            has_guard: guard_expr_n.is_some(),
-                            is_return: true,
-                        });
-                        if let Some(g) = guard_expr_n {
-                            self.stack.push(Frame::ExprEnter(g));
-                        }
-                        self.stack.push(Frame::ExprEnter(value_n));
+                    } else if statement_n.is_some() {
+                        self.enter_stmt(rhs_n, false);
                     } else {
                         let expr_n = self.cx.field_child(rhs_n, "expr").expect("agg arm expr");
-                        self.stack.push(Frame::AggIsArmRhs {
-                            ctx: Box::new(AggIsMatchCtx {
-                                remaining: rest,
-                                ..ctx
-                            }),
-                            pats: pats.clone(),
-                            arm_start,
-                            is_block: false,
-                            has_guard: guard_expr_n.is_some(),
-                            is_return: false,
-                        });
-                        if let Some(g) = guard_expr_n {
-                            self.stack.push(Frame::ExprEnter(g));
-                        }
                         self.stack.push(Frame::ExprEnter(expr_n));
                     }
                 } else {
@@ -11530,36 +11498,28 @@ impl<'a> Engine<'a> {
                 arm_start,
                 is_block,
                 has_guard,
-                is_return,
+                statement_span,
             } => {
                 // PLAN-1083: the guard value (pushed above the rhs frames)
                 // pops first; it rides every expanded or-arm copy.
-                let guard = if has_guard {
-                    Some(self.pop_e())
-                } else {
-                    None
-                };
+                let guard = if has_guard { Some(self.pop_e()) } else { None };
                 let (body, end_span) = if is_block {
                     let b = self.pop_b();
                     let s = b.span;
                     (AggArmBody::Block(b), s)
+                } else if let Some(span) = statement_span {
+                    let statement = self.pop_s();
+                    (
+                        AggArmBody::Block(Block {
+                            stmts: vec![statement],
+                            span,
+                        }),
+                        span,
+                    )
                 } else {
                     let e = self.pop_e();
-                    let s = e.span;
-                    if is_return {
-                        // `pat -> return e` — a synthetic one-statement
-                        // return block (arm bodies are blocks here).
-                        let span = s;
-                        (
-                            AggArmBody::Block(Block {
-                                stmts: vec![Stmt::Return { value: e, span }],
-                                span,
-                            }),
-                            s,
-                        )
-                    } else {
-                        (AggArmBody::Expr(e), s)
-                    }
+                    let span = e.span;
+                    (AggArmBody::Expr(e), span)
                 };
                 let mut ctx = *ctx;
                 let span = arm_start.join(end_span);

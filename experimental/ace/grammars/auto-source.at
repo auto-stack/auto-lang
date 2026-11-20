@@ -2703,6 +2703,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         agg-arm-rhs(profiles: [aggregates, auto, scheduler, auto-packages]) {
             alt { block(field: "body") }
+            alt(profiles: [auto, auto-packages]) { assign-stmt(field: "stmt") }
             alt { expr(field: "expr") }
             alt(profiles: [auto, auto-packages]) { return-stmt(field: "stmt") }
         }

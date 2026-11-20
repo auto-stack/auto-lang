@@ -4459,6 +4459,71 @@ k 0
         })
     }
 
+    fn display_value(
+        &mut self,
+        dst: SlotId,
+        src: SlotId,
+        span: Option<SpanInfo>,
+    ) -> Result<(), AdapterError> {
+        let src_ty = self.slot_ty_all(src);
+        let Some(MirType::Variant(variant)) = self.out.types.get(src_ty as usize) else {
+            return self.emit(MirInstr::TextDisplay { dst, src }, span);
+        };
+        if !matches!(
+            variant.arms.as_slice(),
+            [some, none] if some.name == "Some" && some.payload == Some(self.t_i32)
+                && none.name == "None" && none.payload.is_none()
+        ) {
+            return Err(AdapterError::uns(
+                "lower.text-display",
+                "only an Option with an int payload can be interpolated".to_owned(),
+            ));
+        }
+
+        let present = self.temp(ScalarShape::Bool)?;
+        self.emit(
+            MirInstr::VariantGuard {
+                dst: present,
+                src,
+                disc: 0,
+            },
+            span,
+        )?;
+        let some = self.new_block()?;
+        let none = self.new_block()?;
+        let join = self.new_block()?;
+        self.set_term(Terminator::Branch {
+            cond: present,
+            then: some,
+            else_: none,
+        });
+        self.cur = some;
+        self.terminated = false;
+        let payload = self.temp(ScalarShape::I32)?;
+        self.emit(
+            MirInstr::VariantProject {
+                dst: payload,
+                root: src,
+                disc: 0,
+            },
+            span,
+        )?;
+        self.emit(MirInstr::TextDisplay { dst, src: payload }, span)?;
+        self.set_term(Terminator::Jump { target: join });
+
+        self.cur = none;
+        self.terminated = false;
+        let value = self
+            .out
+            .intern_const(MirConst::Str(b"None".as_slice().into()));
+        self.emit(MirInstr::Const { dst, value }, span)?;
+        self.set_term(Terminator::Jump { target: join });
+
+        self.cur = join;
+        self.terminated = false;
+        Ok(())
+    }
+
     /// Evaluate one expression into a slot (existing local slot or fresh
     /// temp), emitting into the current block. Short-circuit `Logical`
     /// opens new blocks; the cursor lands on the join.
@@ -6879,7 +6944,7 @@ k 0
             hir::ExprKind::TextDisplay { operand } if self.collections() => {
                 let s = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
-                self.emit(MirInstr::TextDisplay { dst, src: s }, sp)?;
+                self.display_value(dst, s, sp)?;
                 Ok(dst)
             }
             other => Err(AdapterError::uns(
