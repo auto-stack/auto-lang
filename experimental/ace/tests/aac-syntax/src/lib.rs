@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 mod native;
 
 pub use native::{
-    native_fingerprint, run_native_case, run_native_projection, DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE,
+    native_fingerprint, run_native_case, run_native_catalog, run_native_projection, DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE,
 };
 
 pub const SYNTAX_PROFILES: [&str; 7] = [
@@ -59,6 +59,8 @@ pub const PARSE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_parse.at
 pub const SNAPSHOT_SOURCE: &str = include_str!("../../../aac/syntax/syntax_snapshot.at");
 pub const INCREMENTAL_SOURCE: &str = include_str!("../../../aac/syntax/syntax_incremental.at");
 pub const GRAMMAR_DATA_SOURCE: &str = include_str!("../../../aac/syntax/syntax_grammar_data.at");
+pub const SYNTAX_FRONTEND: &str = include_str!("../../../aac/syntax/syntax_frontend.at");
+pub const SOURCE_CATALOG: &str = include_str!("../../../aac/source/source_catalog.at");
 pub const SOURCE_AST: &str = include_str!("../../../aac/source/source_ast.at");
 pub const SMOKE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_smoke.at");
 
@@ -76,7 +78,9 @@ pub fn syntax_av_modules() -> Vec<(String, String)> {
             "syntax_grammar_data.at".to_string(),
             GRAMMAR_DATA_SOURCE.to_string(),
         ),
+        ("syntax_frontend.at".to_string(), SYNTAX_FRONTEND.to_string()),
         ("source_ast.at".to_string(), SOURCE_AST.to_string()),
+        ("source_catalog.at".to_string(), SOURCE_CATALOG.to_string()),
         ("syntax_smoke.at".to_string(), SMOKE_SOURCE.to_string()),
     ]
 }

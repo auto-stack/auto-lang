@@ -2,6 +2,9 @@
 // Gen0-compiled Auto stage driver. Every case returns an owned Str so each
 // observation is byte-exact.
 //
+use app.syntax_frontend.fetch_parts
+use app.syntax_frontend.str_to_bytes
+use app.syntax_frontend.parse_cst
 use app.source_ast.project_ast
 use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
@@ -31,21 +34,12 @@ use app.syntax_program.n_rules
 use app.syntax_program.n_scan
 use app.syntax_program.n_pratt
 use app.syntax_program.validate_references
-use app.syntax_grammar_data.auto_parts
-use app.syntax_grammar_data.age_package_parts
-use app.syntax_grammar_data.packages_ct_parts
-use app.syntax_grammar_data.packages_modules_parts
-use app.syntax_grammar_data.text_record_instances_parts
-use app.syntax_grammar_data.scalar_parts
-use app.syntax_grammar_data.scheduler_parts
 use app.syntax_program.hex_to_bytes
 use app.syntax_program.hex_to_bytes_parts
 use app.syntax_program.rule_name
 use app.syntax_program.rule_expect
 use app.syntax_program.ctx_spelling
 use app.syntax_program.ctx_role
-use std.bytes.utf8_len
-use std.bytes.byte_of
 use app.syntax_lexer.use_count_pass
 use app.syntax_parse.parse_tokens
 
@@ -81,31 +75,6 @@ pub fn decode_dbg_case(name Str) Str {
         return "ERR " + itoa(pg_err(pg)) + " SEC " + itoa(dbg.get(0))
     }
     return "OK"
-}
-
-pub fn fetch_parts(name Str) List<Str> {
-    if (name == "auto") {
-        return auto_parts()
-    }
-    if (name == "age-package") {
-        return age_package_parts()
-    }
-    if (name == "packages-ct") {
-        return packages_ct_parts()
-    }
-    if (name == "packages-modules") {
-        return packages_modules_parts()
-    }
-    if (name == "text-record-instances") {
-        return text_record_instances_parts()
-    }
-    if (name == "scalar") {
-        return scalar_parts()
-    }
-    if (name == "scheduler") {
-        return scheduler_parts()
-    }
-    return List<Str>.new()
 }
 
 pub fn decode_case(name Str) Str {
@@ -160,22 +129,6 @@ pub fn hex_roundtrip_case(name Str) Str {
 // ---------------------------------------------------------------------------
 
 
-
-pub fn str_to_bytes(s Str) List<int> {
-    var out = List<int>.new()
-    var i = 0
-    for (i < s.len()) {
-        let c = s.char_at(i).to_codepoint()
-        let n = utf8_len(c)
-        var k = 0
-        for (k < n) {
-            out.push(byte_of(c, k))
-            k = k + 1
-        }
-        i = i + 1
-    }
-    return out
-}
 
 fn render_diag(pg List<int>, dmsg List<int>) Str {
     var out = ""
@@ -378,21 +331,6 @@ pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
         None -> {}
     }
     return "SOURCE_ERR UTF8"
-}
-
-fn parse_cst(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
-    let cs = compile_scanner(pg)
-    var toks = List<int>.new()
-    var lexd = List<int>.new()
-    lex_all(pg, cs, srcb, -1, toks, lexd)
-    var firsts = List<int>.new()
-    var nullable = List<int>.new()
-    if (first_sets_into(pg, firsts, nullable) != 0) {
-        return -6
-    }
-    var cold = List<int>.new()
-    cold.push(0)
-    return parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
 }
 
 fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {

@@ -102,8 +102,17 @@ fn run_native(
     origin: (i32, i32),
 ) -> Result<String, String> {
     let exe = prepared_exe()?;
+    with_fixture(case, |root| {
+        run_in(exe, root, case, profile, sample, edit, origin)
+    })
+}
+
+fn with_fixture<F>(case: &str, run: F) -> Result<String, String>
+where
+    F: FnOnce(&Path) -> Result<String, String>,
+{
     let root = scratch(case);
-    let result = run_in(exe, &root, case, profile, sample, edit, origin);
+    let result = run(&root);
     let cleanup = std::fs::remove_dir_all(&root);
     match (result, cleanup) {
         (Err(err), _) => Err(err),
@@ -139,6 +148,44 @@ fn run_in(
         .env("AAC1046_START", start.to_string())
         .env("AAC1046_END", end.to_string())
         .env("AAC1046_INSERT", &insert_path);
+    execute_report(cmd, &output, case)
+}
+
+pub fn run_native_catalog(
+    profile: &str,
+    package: &str,
+    files: &[(&str, &str)],
+    inventory: &[&str],
+) -> Result<String, String> {
+    let exe = prepared_exe()?;
+    with_fixture("catalog", |root| {
+        let sources = root.join("sources");
+        std::fs::create_dir(&sources).map_err(|err| err.to_string())?;
+        for (name, source) in files {
+            let mut parts = Path::new(name).components();
+            if !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+                || parts.next().is_some()
+            {
+                return Err(format!("invalid fixture filename: {name}"));
+            }
+            std::fs::write(sources.join(name), source).map_err(|err| err.to_string())?;
+        }
+        let input = root.join("inventory.txt");
+        let output = root.join("report.txt");
+        std::fs::write(&input, inventory.join("\n")).map_err(|err| err.to_string())?;
+        let mut cmd = Command::new(exe);
+        cmd.current_dir(root)
+            .env("AAC1046_CASE", "catalog")
+            .env("AAC1046_PROFILE", profile)
+            .env("AAC1046_INPUT", input)
+            .env("AAC1046_OUTPUT", &output)
+            .env("AAC1046_PACKAGE", package)
+            .env("AAC1046_PROJECT", sources);
+        execute_report(cmd, &output, "catalog")
+    })
+}
+
+fn execute_report(cmd: Command, output: &Path, case: &str) -> Result<String, String> {
     let run = run_command_capture(cmd, TreeScope::ProcessTree, Some(Duration::from_secs(8)))
         .map_err(|err| format!("run AAC native case {case}: {err}"))?;
     let stdout = run.stdout_lossy().unwrap_or_default();

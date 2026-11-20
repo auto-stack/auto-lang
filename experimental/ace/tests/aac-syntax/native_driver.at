@@ -1,3 +1,4 @@
+use app.source_catalog.catalog_directory
 use app.syntax_smoke.bucket_count_case
 use app.syntax_smoke.byte_len_case
 use app.syntax_smoke.decode_case
@@ -99,6 +100,10 @@ fn main() int {
     let case_name = get("AAC1046_CASE")
     let profile = get("AAC1046_PROFILE")
     let input = get("AAC1046_INPUT")
+    if (case_name == "catalog") {
+        let report = catalog_directory(profile, get("AAC1046_PACKAGE"), get("AAC1046_PROJECT"), read_text(input))
+        return write_text(get("AAC1046_OUTPUT"), report)
+    }
     if (case_name == "parse-source" || case_name == "parse-source-depth" || case_name == "parse-source-work") {
         let report = observe_byte_source(case_name, profile, input)
         return write_text(get("AAC1046_OUTPUT"), report)

@@ -1,0 +1,69 @@
+use app.syntax_grammar_data.auto_parts
+use app.syntax_grammar_data.age_package_parts
+use app.syntax_grammar_data.packages_ct_parts
+use app.syntax_grammar_data.packages_modules_parts
+use app.syntax_grammar_data.text_record_instances_parts
+use app.syntax_grammar_data.scalar_parts
+use app.syntax_grammar_data.scheduler_parts
+use app.syntax_lexer.compile_scanner
+use app.syntax_lexer.lex_all
+use app.syntax_parse.first_sets_into
+use app.syntax_parse.parse_tokens
+use std.bytes.utf8_len
+use std.bytes.byte_of
+
+pub fn fetch_parts(name Str) List<Str> {
+    if (name == "auto") {
+        return auto_parts()
+    }
+    if (name == "age-package") {
+        return age_package_parts()
+    }
+    if (name == "packages-ct") {
+        return packages_ct_parts()
+    }
+    if (name == "packages-modules") {
+        return packages_modules_parts()
+    }
+    if (name == "text-record-instances") {
+        return text_record_instances_parts()
+    }
+    if (name == "scalar") {
+        return scalar_parts()
+    }
+    if (name == "scheduler") {
+        return scheduler_parts()
+    }
+    return List<Str>.new()
+}
+
+pub fn str_to_bytes(s Str) List<int> {
+    var out = List<int>.new()
+    var i = 0
+    for (i < s.len()) {
+        let c = s.char_at(i).to_codepoint()
+        let n = utf8_len(c)
+        var k = 0
+        for (k < n) {
+            out.push(byte_of(c, k))
+            k = k + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+pub fn parse_cst(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
+    let cs = compile_scanner(pg)
+    var toks = List<int>.new()
+    var lexd = List<int>.new()
+    lex_all(pg, cs, srcb, -1, toks, lexd)
+    var firsts = List<int>.new()
+    var nullable = List<int>.new()
+    if (first_sets_into(pg, firsts, nullable) != 0) {
+        return -6
+    }
+    var cold = List<int>.new()
+    cold.push(0)
+    return parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
+}

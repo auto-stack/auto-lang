@@ -600,3 +600,68 @@ fn aac1046_incremental_ast_retains_origin_and_byte_spans() {
         assert!(facts.starts_with(" ok=1 fb=0 "), "fixture must exercise splicing: {facts}");
     }
 }
+
+
+#[test]
+fn aac1046_module_provider_and_conditional_catalog() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+    use ace_core::source::packages::{classify_provider_file_name, ProviderFileKind};
+
+    let files = [
+        (
+            "entry.at",
+            "use math.calc\n#in sys is current {\n Windows -> use win.call\n Linux -> use lnx.call\n}\nfn main() int { return calc() }",
+        ),
+        ("math.at", "pub spec fn calc() int"),
+        ("math.at.at", "fn calc() int { return 1 }"),
+        ("math.c.at", "fn calc() int { return 2 }"),
+        ("math.py.at", "fn calc() int { return 3 }"),
+        ("math.rs.at", "fn calc() int { return 4 }"),
+    ];
+    let inventory: Vec<_> = files.iter().map(|(name, _)| *name).collect();
+    let out = run_native_catalog("packages-ct", "app", &files, &inventory).unwrap();
+    let expected: Vec<_> = inventory.iter().enumerate().map(|(idx, name)| {
+        let (kind, module) = classify_provider_file_name(name).unwrap();
+        let provider = match kind {
+            ProviderFileKind::Public => "public",
+            ProviderFileKind::Provider(kind) => kind.label(),
+        };
+        format!("MODULE {idx} app.{module} {provider} {name}")
+    }).collect();
+    assert_eq!(out.lines().filter(|line| line.starts_with("MODULE ")).collect::<Vec<_>>(), expected);
+    assert!(out.lines().any(|line| line == "USE 0 -1 math.calc"), "{out}");
+    for path in ["win.call", "lnx.call"] {
+        assert!(out.lines().any(|line| line.starts_with("USE 0 ")
+            && !line.starts_with("USE 0 -1 ")
+            && line.ends_with(path)), "missing guarded import {path}");
+    }
+    assert_eq!(
+        out.lines().filter(|line| line.contains(" in-arm ")).count(),
+        2,
+        "both target arms retain their own AST node",
+    );
+}
+
+#[test]
+fn aac1046_module_catalog_missing_duplicate_and_import_cycle() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+
+    let first = ("alpha.at", "use beta.y\nfn x() int { return y() }");
+    let second = ("beta.at", "use alpha.x\nfn y() int { return x() }");
+    assert_eq!(
+        run_native_catalog("packages-ct", "app", &[first], &["alpha.at"]).unwrap(),
+        "MODULE_ERR MISSING beta",
+    );
+    let single = ("alpha.at", "fn x() int { return 1 }");
+    assert_eq!(
+        run_native_catalog("packages-ct", "app", &[single], &["alpha.at", "alpha.at"]).unwrap(),
+        "MODULE_ERR DUPLICATE alpha.at",
+    );
+    assert_eq!(
+        run_native_catalog("packages-ct", "app", &[first, second], &["alpha.at", "beta.at"]).unwrap(),
+        "MODULE_ERR IMPORT_CYCLE",
+    );
+    let no_import = ("beta.at", "pub fn y() int { return 1 }");
+    let accepted = run_native_catalog("packages-ct", "app", &[first, no_import], &["alpha.at", "beta.at"]).unwrap();
+    assert!(accepted.starts_with("CATALOG\n"), "{accepted}");
+}

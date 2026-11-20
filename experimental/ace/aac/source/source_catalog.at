@@ -1,0 +1,243 @@
+use app.source_ast.ast_canonical
+use app.source_ast.ast_end
+use app.source_ast.ast_kind
+use app.source_ast.ast_kind_name
+use app.source_ast.ast_parent
+use app.source_ast.ast_start
+use app.source_ast.ast_stride
+use app.source_ast.project_ast
+use app.syntax_frontend.fetch_parts
+use app.syntax_frontend.parse_cst
+use app.syntax_program.decode_program_parts
+use app.syntax_program.pg_ok
+use std.bytes.decode_utf8
+use std.conv.from_int
+use std.file.read_bytes
+use std.path.join
+use std.text.ends_with
+use std.text.split
+use std.text.starts_with
+use std.text.trim
+
+fn file_kind(name Str) int {
+    if (ends_with(name.clone(), ".vm.at")) { return -1 }
+    if (ends_with(name.clone(), ".at.at")) { return 1 }
+    if (ends_with(name.clone(), ".c.at")) { return 2 }
+    if (ends_with(name.clone(), ".rs.at")) { return 3 }
+    if (ends_with(name.clone(), ".py.at")) { return 4 }
+    if (ends_with(name, ".at")) { return 0 }
+    return -1
+}
+
+fn provider_name(kind int) Str {
+    if (kind == 1) { return "at" }
+    if (kind == 2) { return "c" }
+    if (kind == 3) { return "rs" }
+    if (kind == 4) { return "py" }
+    return "public"
+}
+
+fn module_name(name Str, kind int) Str {
+    var suffix = 6
+    if (kind == 0) { suffix = 3 }
+    if (kind == 2) { suffix = 5 }
+    return name.slice(0, name.len() - suffix).clone()
+}
+
+fn identifier(name Str) bool {
+    if (name.len() == 0) { return false }
+    var i = 0
+    for (i < name.len()) {
+        let c = name.char_at(i).to_codepoint()
+        let alpha = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+        if (!alpha && !(i > 0 && c >= 48 && c <= 57)) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+// The inventory is an immutable list of relative source filenames in
+// source-id order, one name per line. Provider variants share a public
+// module name and still receive separate source ids and ASTs.
+fn inventory_id(inventory Str, name Str) int {
+    var entries = split(inventory, "\n")
+    var id = 0
+    for (entries.len() > 0) {
+        let entry = entries.remove(0)
+        if (entry == name) { return id }
+        id = id + 1
+    }
+    return -1
+}
+
+fn seen_file(seen List<int>, id int) bool {
+    var i = 0
+    for (i < seen.len()) {
+        if (seen.get(i) == id) { return true }
+        i = i + 1
+    }
+    return false
+}
+
+fn byte_text(src List<int>, start int, end int) Str {
+    var bytes = List<int>.new()
+    var i = start
+    for (i < end) {
+        bytes.push(src.get(i))
+        i = i + 1
+    }
+    let decoded = decode_utf8(bytes)
+    is decoded {
+        Some(text) -> { return text }
+        None -> {}
+    }
+    return ""
+}
+
+fn import_guard(pg List<int>, ast List<int>, index int) int {
+    var parent = ast.get(index * ast_stride() + ast_parent())
+    for (parent >= 0) {
+        let node = parent * ast_stride()
+        let name = ast_kind_name(pg, ast.get(node + ast_kind()))
+        if (name == "in-item" || name == "ct-if-item" || name == "ct-is-item" || name == "ct-for-item") {
+            return parent
+        }
+        parent = ast.get(node + ast_parent())
+    }
+    return -1
+}
+
+fn local_target(path Str, package Str) Str {
+    var segments = split(path, ".")
+    var count = 0
+    var first = ""
+    var second = ""
+    for (segments.len() > 0) {
+        let segment = segments.remove(0)
+        if (count == 0) { first = trim(segment.clone()) }
+        if (count == 1) { second = trim(segment.clone()) }
+        count = count + 1
+    }
+    if (count == 2) { return first }
+    if (count == 3 && first == package) { return second }
+    return ""
+}
+
+fn import_report(pg List<int>, ast List<int>, src List<int>, source_id int, kind int, package Str, inventory Str, graph List<int>) Str {
+    var out = ""
+    var row = 0
+    for (row < ast.len() / ast_stride()) {
+        let at = row * ast_stride()
+        let grammar_kind = ast_kind_name(pg, ast.get(at + ast_kind()))
+        if (grammar_kind == "use-path") {
+            let path = byte_text(src, ast.get(at + ast_start()), ast.get(at + ast_end()))
+            let guard = import_guard(pg, ast, row)
+            let module = local_target(path.clone(), package.clone())
+            if (module.len() > 0 && kind == 0 && guard < 0) {
+                let target = inventory_id(inventory.clone(), module.clone() + ".at")
+                if (target < 0) { return "MODULE_ERR MISSING " + module }
+                graph.push(source_id)
+                graph.push(target)
+            }
+            out = out + "USE " + from_int(source_id) + " " + from_int(guard) + " " + path + "\n"
+        }
+        row = row + 1
+    }
+    return out
+}
+
+fn catalog_file(pg List<int>, src List<int>, name Str, source_id int, kind int, package Str, inventory Str, graph List<int>) Str {
+    let valid = decode_utf8(src)
+    is valid {
+        Some(_) -> {}
+        None -> { return "MODULE_ERR UTF8 " + name }
+    }
+    var t = List<int>.new()
+    var edges = List<int>.new()
+    var decls = List<int>.new()
+    var diags = List<int>.new()
+    let root = parse_cst(pg, src, t, edges, decls, diags, 1048576, 67108864)
+    if (root == -2 || root == -3) { return "MODULE_ERR RESOURCE " + name }
+    if (root < 0) { return "MODULE_ERR PARSER " + name }
+    if (diags.len() > 0) { return "MODULE_ERR SYNTAX " + name }
+    var ast = List<int>.new()
+    if (project_ast(t, edges, decls, root, src.len(), source_id, 0, ast) < 0) {
+        return "MODULE_ERR PROJECTION " + name
+    }
+    let refs = import_report(pg, ast, src, source_id, kind, package.clone(), inventory, graph)
+    if (starts_with(refs.clone(), "MODULE_ERR ")) { return refs }
+    let module = module_name(name.clone(), kind)
+    return "MODULE " + from_int(source_id) + " " + package + "." + module + " " + provider_name(kind) + " " + name + "\n" + refs + ast_canonical(pg, ast)
+}
+
+fn graph_has_cycle(graph List<int>, count int) bool {
+    var indegree = List<int>.new()
+    var i = 0
+    for (i < count) {
+        indegree.push(0)
+        i = i + 1
+    }
+    i = 1
+    for (i < graph.len()) {
+        let target = graph.get(i)
+        indegree.set(target, indegree.get(target) + 1)
+        i = i + 2
+    }
+    var ready = List<int>.new()
+    i = 0
+    for (i < count) {
+        if (indegree.get(i) == 0) { ready.push(i) }
+        i = i + 1
+    }
+    var head = 0
+    for (head < ready.len()) {
+        let current = ready.get(head)
+        i = 0
+        for (i < graph.len()) {
+            if (graph.get(i) == current) {
+                let target = graph.get(i + 1)
+                let next = indegree.get(target) - 1
+                indegree.set(target, next)
+                if (next == 0) { ready.push(target) }
+            }
+            i = i + 2
+        }
+        head = head + 1
+    }
+    return head < count
+}
+
+pub fn catalog_directory(profile Str, package Str, directory Str, inventory Str) Str {
+    let pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) { return "MODULE_ERR GRAMMAR" }
+    var names = split(inventory.clone(), "\n")
+    let count = names.len()
+    var seen = List<int>.new()
+    var graph = List<int>.new()
+    var out = "CATALOG\n"
+    for (names.len() > 0) {
+        let name = names.remove(0)
+        let kind = file_kind(name.clone())
+        if (kind >= 0) {
+            let module = module_name(name.clone(), kind)
+            if (!identifier(module.clone())) { return "MODULE_ERR NAME " + name.clone() }
+            let id = inventory_id(inventory.clone(), name.clone())
+            if (seen_file(seen, id)) { return "MODULE_ERR DUPLICATE " + name.clone() }
+            seen.push(id)
+            if (kind > 0 && inventory_id(inventory.clone(), module + ".at") < 0) {
+                return "MODULE_ERR PUBLIC " + name
+            }
+            let file = read_bytes(join(directory.clone(), name.clone()))
+            is file {
+                Some(src) -> {
+                    let result = catalog_file(pg, src, name.clone(), id, kind, package.clone(), inventory.clone(), graph)
+                    if (starts_with(result.clone(), "MODULE_ERR ")) { return result }
+                    out = out + result
+                }
+                None -> { return "MODULE_ERR READ " + name.clone() }
+            }
+        }
+    }
+    if (graph_has_cycle(graph, count)) { return "MODULE_ERR IMPORT_CYCLE" }
+    return out
+}
