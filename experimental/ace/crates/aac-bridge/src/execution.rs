@@ -4,9 +4,11 @@ use ace_av_core::abc::{decode_abc, AbcDecodeError};
 use ace_av_core::abc_verify::AbcAdmissionError;
 use ace_av_core::av::{CancelFlag, ExecLimits};
 use ace_av_core::contract::TEXT_RUNTIME_CAPABILITY;
-use ace_av_core::mir::{MirGlobal, MirModule, MirType, OwnerScope};
+use ace_av_core::mir::{MirGlobal, MirInstr, MirModule, MirType, OwnerScope};
 use ace_av_core::{ExecOutcome, MirVerifyError, Value as AvValue};
 use ace_native::{emit, MnError};
+use std::collections::BTreeSet;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub(crate) fn run(
@@ -22,7 +24,7 @@ pub(crate) fn run(
             "build, host, target, execution domain or ABI is outside the Windows x64 service contract",
         ));
     }
-    let budget = remaining(&request, started)?;
+    remaining(&request, started)?;
     let mut decoded = decode_abc(bytes).map_err(abc_decode_failure)?;
     let module = &mut decoded.module;
     let expected_schema = match module.profile.as_str() {
@@ -54,27 +56,15 @@ pub(crate) fn run(
         ));
     }
     if request.capabilities != module.capabilities
-        || module
-            .capabilities
-            .iter()
-            .any(|cap| cap != TEXT_RUNTIME_CAPABILITY)
+        || module.capabilities.iter().any(|cap| !pure_capability(cap))
         || !module.host_imports.is_empty()
     {
         return Err(Failure::admission(
             "bridge.capability",
-            "service profile grants only guest-owned text and no host imports",
+            "service profile grants guest-only execution capabilities and no host imports",
         ));
     }
-    module.globals = request
-        .globals
-        .iter()
-        .map(|global| MirGlobal {
-            name: global.name.clone(),
-            ty: global.ty,
-            mutable: global.mutable,
-        })
-        .collect();
-    module.init.clone_from(&request.initializers);
+    bind_program_state(&request, module)?;
     let owner = OwnerScope {
         schema: request.mir_schema.clone(),
         module: request.owner.clone(),
@@ -86,18 +76,86 @@ pub(crate) fn run(
             "a complete closure with resolved functions is required",
         ));
     }
-    // The service owns execution only. Hostless baseline accepts a closure
-    // without program-owned state; those cells need an explicit runtime lane.
-    if !loaded.module().globals.is_empty() || !loaded.module().init.is_empty() {
-        return Err(Failure::admission(
-            "bridge.program-state",
-            "the selected execution lane has no program state provider",
-        ));
-    }
+    let budget = remaining(&request, started)?;
     match request.mode {
         Mode::NativeObjects => native_objects(loaded.module()),
-        Mode::CompileTime => ct(&loaded, budget.min(remaining(&request, started)?)),
+        Mode::CompileTime => ct(&loaded, budget),
     }
+}
+
+fn pure_capability(capability: &str) -> bool {
+    matches!(
+        capability,
+        TEXT_RUNTIME_CAPABILITY
+            | "av.aggregates/1"
+            | ace_av_core::contract::GLOBAL_TAKE_CAPABILITY
+            | ace_av_core::contract::LANGUAGE_VALUES_CAPABILITY
+    )
+}
+
+fn bind_program_state(request: &Request, module: &mut MirModule) -> Result<(), Failure> {
+    let mut names = BTreeSet::new();
+    for global in &request.globals {
+        if global.name.is_empty()
+            || !names.insert(&global.name)
+            || module.types.get(global.ty as usize).is_none()
+        {
+            return Err(Failure::admission(
+                "bridge.global-declaration",
+                "invalid name or type in the typed global table",
+            ));
+        }
+    }
+    let mut initializers = BTreeSet::new();
+    for initializer in &request.initializers {
+        let signature = module
+            .funcs
+            .get(*initializer as usize)
+            .and_then(|function| module.sig_of(function.sig));
+        if *initializer == module.entry
+            || !initializers.insert(*initializer)
+            || signature.is_none_or(|signature| !signature.params.is_empty())
+        {
+            return Err(Failure::admission(
+                "bridge.initializer",
+                "initializer must be a distinct zero-argument function in the closure",
+            ));
+        }
+    }
+    for (function_index, function) in module.funcs.iter().enumerate() {
+        for instruction in function.blocks.iter().flat_map(|block| &block.instrs) {
+            let (global, may_write) = match instruction {
+                MirInstr::GlobalGet { global, .. } => (*global, false),
+                MirInstr::GlobalTake { global, .. } | MirInstr::GlobalSet { global, .. } => {
+                    (*global, true)
+                }
+                _ => continue,
+            };
+            let decl = request.globals.get(global as usize).ok_or_else(|| {
+                Failure::admission(
+                    "global.reference",
+                    format!("{} references absent cell #{global}", function.name),
+                )
+            })?;
+            if may_write && !decl.mutable && !initializers.contains(&(function_index as u32)) {
+                return Err(Failure::admission(
+                    "global.immutable",
+                    format!("{} writes immutable cell {}", function.name, decl.name),
+                ));
+            }
+        }
+    }
+    module.globals = request
+        .globals
+        .iter()
+        .map(|global| MirGlobal {
+            name: global.name.clone(),
+            ty: global.ty,
+            mutable: global.mutable,
+        })
+        .collect();
+    module.init.clone_from(&request.initializers);
+    Ok(())
 }
 
 fn remaining(request: &Request, started: Instant) -> Result<Duration, Failure> {
@@ -180,6 +238,10 @@ fn append_object(object: emit::UnitObject, payload: &mut Vec<u8>) -> Result<Obje
 }
 
 fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
+    let stateful = !module.globals.is_empty() || !module.init.is_empty();
+    if stateful {
+        emit::admit_program_startup(module).map_err(native_failure)?;
+    }
     let entry = &module.funcs[module.entry as usize];
     let sig = module.sig_of(entry.sig).expect("verified entry signature");
     if !sig.params.is_empty()
@@ -202,14 +264,24 @@ fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
     let mut payload = Vec::new();
     let mut objects = Vec::with_capacity(units.len());
     for unit in &units {
-        let object = emit::emit_unit_coff(unit).map_err(native_failure)?;
+        let object = if stateful {
+            emit::emit_program_unit_coff(unit)
+        } else {
+            emit::emit_unit_coff(unit)
+        }
+        .map_err(native_failure)?;
         objects.push(append_object(object, &mut payload)?);
     }
     let wrapper = append_object(
         emit::UnitObject {
             symbol: ace_native::config::START_SYMBOL.into(),
             imports: Vec::new(),
-            bytes: emit::emit_wrapper_coff(&entry).map_err(native_failure)?,
+            bytes: if stateful {
+                emit::emit_program_wrapper_coff(module)
+            } else {
+                emit::emit_wrapper_coff(&entry)
+            }
+            .map_err(native_failure)?,
         },
         &mut payload,
     )?;
@@ -228,12 +300,71 @@ fn native_objects(module: &MirModule) -> Result<(Outcome, Vec<u8>), Failure> {
     ))
 }
 
+fn ct_program(
+    module: &MirModule,
+    limits: ExecLimits,
+) -> Result<(ExecOutcome, ace_av_core::ExecTrace), Failure> {
+    let started = Instant::now();
+    let units = ace_av::cache::split_units(module)
+        .map_err(|message| Failure::admission("bridge.ct-units", message))?;
+    let mut code = Vec::with_capacity(units.len());
+    for unit in units {
+        if started.elapsed() >= limits.wall {
+            return Err(Failure::resource(
+                "bridge.deadline",
+                "CT function admission exhausted the execution budget",
+            ));
+        }
+        let wire = ace_av_core::encode_abc(&unit).map_err(abc_decode_failure)?;
+        let mut decoded = decode_abc(&wire.to_flat()).map_err(abc_decode_failure)?;
+        decoded.module.globals = unit.globals;
+        let loaded =
+            ace_av_core::verify_abc(decoded, &module.owner).map_err(abc_admission_failure)?;
+        let function = ace_av_core::FunctionCode::admit_unit(loaded, 0)
+            .map_err(|message| Failure::admission("bridge.ct-function", message))?;
+        code.push(Arc::new(function));
+    }
+    let init_names = module
+        .init
+        .iter()
+        .map(|&index| module.funcs[index as usize].name.clone())
+        .collect::<Vec<_>>();
+    let span_maps = vec![Default::default(); code.len()];
+    let entry = &module.funcs[module.entry as usize].name;
+    let program = ace_av_core::ProgramSnapshot::link_with_checked_globals(
+        code,
+        entry,
+        0,
+        span_maps,
+        module,
+        &init_names,
+    )
+    .map_err(|message| Failure::admission("bridge.ct-program", message))?;
+    let wall = limits.wall.saturating_sub(started.elapsed());
+    if wall.is_zero() {
+        return Err(Failure::resource(
+            "bridge.deadline",
+            "CT program linking exhausted the execution budget",
+        ));
+    }
+    Ok(ace_av_core::execute_program(
+        &program,
+        &ExecLimits { wall, ..limits },
+        &CancelFlag::default(),
+    ))
+}
+
 fn ct(loaded: &ace_av_core::LoadedModule, wall: Duration) -> Result<(Outcome, Vec<u8>), Failure> {
     let limits = ExecLimits {
         wall: wall.min(ExecLimits::default().wall),
         ..Default::default()
     };
-    let (outcome, trace) = ace_av_core::execute(loaded, &limits, &CancelFlag::default());
+    let module = loaded.module();
+    let (outcome, trace) = if module.globals.is_empty() && module.init.is_empty() {
+        ace_av_core::execute(loaded, &limits, &CancelFlag::default())
+    } else {
+        ct_program(module, limits)?
+    };
     match outcome {
         ExecOutcome::Success { value, steps } => {
             let (value, bytes) = portable(value)?;

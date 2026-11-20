@@ -3,66 +3,20 @@
 
 #![cfg(all(windows, target_arch = "x86_64", target_env = "msvc"))]
 
-use ace_aac_bridge::{Domains, InputIdentity, Mode, Options, Request};
-use ace_av_core::contract::MIR_SCHEMA;
-use ace_av_core::mir::*;
+mod support;
+
+use ace_aac_bridge::{Client, Mode, Outcome};
 use auto_tool_execution::{run_bounded, BoundedPolicy, ExecutionSpec, ExitKind, TreeScope};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use support::{fixture, request, scalar_globals};
 
-fn input() -> (Request, Vec<u8>) {
-    let owner = OwnerScope {
-        schema: MIR_SCHEMA.into(),
-        module: "aac-hosted".into(),
-    };
-    let mut mir = MirModule::new(owner.clone());
-    mir.types = vec![
-        MirType::I32,
-        MirType::Fn(FnSig {
-            params: Vec::new(),
-            result: 0,
-        }),
-    ];
-    mir.consts = vec![MirConst::I32(7)];
-    mir.funcs = vec![MirFunction {
-        owner: owner.clone(),
-        name: "entry".into(),
-        sig: 1,
-        slots: vec![MirSlot {
-            kind: SlotKind::Temp,
-            ty: 0,
-            name: None,
-        }],
-        blocks: vec![MirBlock {
-            instrs: vec![MirInstr::Const { dst: 0, value: 0 }],
-            term: Terminator::Return { value: 0 },
-        }],
-        entry: 0,
-        source_snapshot: 0,
-        spans: Vec::new(),
-        env: None,
-    }];
-    let bytes = ace_av_core::encode_abc(&mir).unwrap().to_flat();
-    let request = Request {
-        id: [1; 16],
-        mode: Mode::CompileTime,
-        domains: Domains::windows(Mode::CompileTime),
-        inputs: InputIdentity {
-            source: *blake3::hash(&bytes).as_bytes(),
-            grammar: [2; 32],
-            passes: [3; 32],
-            stdlib: [4; 32],
-            dependencies: [5; 32],
-        },
-        owner: owner.module,
-        mir_schema: owner.schema,
-        options: Options { remaining_ms: 5000 },
-        capabilities: vec![],
-        globals: vec![],
-        initializers: vec![],
-    };
-    (request, bytes)
+fn stage() -> tempfile::TempDir {
+    match std::env::var_os("AUTO_PLAN_ARTIFACTS") {
+        Some(root) => tempfile::tempdir_in(root).unwrap(),
+        None => tempfile::tempdir().unwrap(),
+    }
 }
 
 fn file_literal(path: &Path) -> String {
@@ -81,14 +35,15 @@ fn gen0_native_auto_client_executes_ct_and_releases_its_exchange() {
         std::env::var_os("ACE_AAC_COLLECTIONS_LIB").expect("prepare ACE_AAC_COLLECTIONS_LIB"),
     );
     let runtime_identity = ace_native::collections_runtime::file_hash(&runtime).unwrap();
-    let stage = match std::env::var_os("AUTO_PLAN_ARTIFACTS") {
-        Some(root) => tempfile::tempdir_in(root).unwrap(),
-        None => tempfile::tempdir().unwrap(),
-    };
+    let stage = stage();
     let request_path = stage.path().join("输入 request.bin");
     let response_path = stage.path().join("输出 response.bin");
     let bridge = Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"));
-    let (request, abc) = input();
+    let mir = fixture(false);
+    let abc = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    let mut request = request(Mode::CompileTime, &mir, 1);
+    request.options.remaining_ms = 5000;
+    request.inputs.source = *blake3::hash(&abc).as_bytes();
     let metadata = serde_json::to_string(&request).unwrap();
     let mut main = String::from(
         r#"
@@ -177,6 +132,162 @@ fn main() int {
     stage.close().unwrap();
     eprintln!(
         "gen0_native_auto_client_executes_ct_and_releases_its_exchange {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn native_scalar_global_objects_link_and_run_initializers() {
+    let started = Instant::now();
+    let (mut request, mir) = scalar_globals(Mode::NativeObjects);
+    let abc = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    let bridge = Client::new(Path::new(env!("CARGO_BIN_EXE_ace-aac-bridge"))).unwrap();
+    let (response, bytes) = bridge.run(&request, &abc).unwrap();
+    let Outcome::Objects {
+        units,
+        wrapper,
+        text_runtime,
+        ..
+    } = response.outcome
+    else {
+        panic!("not a linked-program object bundle: {:?}", response.outcome);
+    };
+    assert!(!text_runtime);
+    assert_eq!(units.len(), 2);
+    let mut remaining = bytes.as_slice();
+    let mut objects = Vec::new();
+    for object in units {
+        let (unit, rest) = remaining.split_at(object.len as usize);
+        objects.push(ace_native::link_driver::ObjectInput {
+            name: object.symbol,
+            bytes: unit.to_vec(),
+        });
+        remaining = rest;
+    }
+    assert_eq!(remaining.len(), wrapper.len as usize);
+    let stage = stage();
+    let image = ace_native::link_driver::link_only(
+        &objects,
+        remaining,
+        &wrapper.symbol,
+        stage.path(),
+        &[],
+        "aac-scalar-global",
+    )
+    .unwrap();
+    let mut spec = ExecutionSpec::new([image.exe_path.as_os_str()]);
+    spec.tree_scope = TreeScope::ProcessTree;
+    let result = run_bounded(
+        &spec,
+        &BoundedPolicy {
+            exec_deadline: Duration::from_secs(3),
+            cleanup_deadline: Duration::from_secs(1),
+            stdout_cap: Some(4096),
+            stderr_cap: Some(4096),
+        },
+    )
+    .unwrap();
+    assert_eq!(result.kind, ExitKind::Failure(7));
+    assert!(result.stderr.unwrap().is_empty());
+
+    request.id = [43; 16];
+    request.globals.clear();
+    let (response, bytes) = bridge.run(&request, &abc).unwrap();
+    assert!(
+        matches!(response.outcome, Outcome::Failure { error } if error.code == "global.reference")
+    );
+    assert!(bytes.is_empty());
+    stage.close().unwrap();
+    eprintln!(
+        "native_scalar_global_objects_link_and_run_initializers {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn scheduler_and_win32_page_probe_run_in_one_native_product() {
+    use ace_av_core::mir::{
+        FnSig, MirHostImport, MirInstr, MirSlot, MirType, SlotKind, Terminator,
+    };
+    use ace_av_core::platform_io::{lookup_symbol, PlatformIoBackend, Win32PlatformIo};
+
+    let started = Instant::now();
+    let runtime =
+        PathBuf::from(std::env::var_os("ACE_AAC_SCHED_LIB").expect("prepare ACE_AAC_SCHED_LIB"));
+    let runtime_identity = ace_native::sched_runtime::file_hash(&runtime).unwrap();
+    let source = r#"
+fn worker(n int) {
+    print("go:")
+    print(n)
+}
+fn main() int {
+    go worker(7)
+    return 0
+}
+"#;
+    let mut module = ace_native::sched::sched_compile(source, "d_main").unwrap();
+    let platform = lookup_symbol("auto.platform.mem.page_size.v1").unwrap();
+    let scalar = module.intern_type(MirType::I32);
+    let signature = module.intern_type(MirType::Fn(FnSig {
+        params: Vec::new(),
+        result: scalar,
+    }));
+    let host = module.host_imports.len() as u32;
+    module.host_imports.push(MirHostImport {
+        category: platform.category.into(),
+        symbol: platform.symbol.into(),
+        sig: signature,
+        capability: platform.capability.into(),
+        max_call_bytes: platform.max_call_bytes,
+    });
+    module.capabilities.push(platform.capability.into());
+    let entry = &mut module.funcs[module.entry as usize];
+    let slot = entry.slots.len() as u32;
+    entry.slots.push(MirSlot {
+        kind: SlotKind::Temp,
+        ty: scalar,
+        name: None,
+    });
+    for block in &mut entry.blocks {
+        if matches!(block.term, Terminator::Return { .. }) {
+            block.instrs.push(MirInstr::PlatformCall {
+                dst: slot,
+                host,
+                args: vec![],
+            });
+            block.term = Terminator::Return { value: slot };
+        }
+    }
+
+    let stage = stage();
+    let image = ace_native::sched::sched_native_build_prepared(
+        &module,
+        "d_main",
+        stage.path(),
+        &runtime,
+        &runtime_identity,
+    )
+    .unwrap();
+    let mut spec = ExecutionSpec::new([image.exe_path.as_os_str()]);
+    spec.tree_scope = TreeScope::ProcessTree;
+    let observed = run_bounded(
+        &spec,
+        &BoundedPolicy {
+            exec_deadline: Duration::from_secs(4),
+            cleanup_deadline: Duration::from_secs(1),
+            stdout_cap: Some(4096),
+            stderr_cap: Some(4096),
+        },
+    )
+    .unwrap();
+    let (page, _) = Win32PlatformIo::default().system_info();
+    assert!(page > 0);
+    assert_eq!(observed.kind, ExitKind::Failure(page as i32));
+    assert_eq!(observed.stdout.as_deref(), Some(&b"go:\n7\n"[..]));
+    assert_eq!(observed.stderr.as_deref(), Some(&b""[..]));
+    stage.close().unwrap();
+    eprintln!(
+        "scheduler_and_win32_page_probe_run_in_one_native_product {:?}",
         started.elapsed()
     );
 }

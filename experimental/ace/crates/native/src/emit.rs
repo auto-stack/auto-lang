@@ -10,7 +10,7 @@ use crate::symbols;
 use crate::MnError;
 use ace_av_core::contract::{AV_DATA_PROFILE, AV_OWNED_PROFILE, AV_PROFILE};
 use ace_av_core::mir::{MirModule, MirType};
-use cranelift_codegen::ir::{AbiParam, InstBuilder, Signature};
+use cranelift_codegen::ir::{self, AbiParam, InstBuilder, Signature};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::Configurable;
 use cranelift_module::{default_libcall_names, Linkage, Module};
@@ -313,9 +313,8 @@ pub fn admit_console_unit(unit: &MirModule) -> Result<(), MnError> {
 /// surface are the closures lane's; the additions are the scheduler
 /// intrinsics (lowered to SCHED_* operations, so their declared import
 /// entries are inert) and console/1 host imports (scheduler modules print
-/// from main and from task drivers). `platform.*` calls stay a named
-/// rejection until the timer/OS-wait slice (T-05) wires real completion
-/// ports.
+/// from main and from task drivers). Selected stateless Win32 platform calls
+/// can be linked into the same product without sharing platform ledger state.
 pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
     if unit.profile != ace_av_core::contract::AV_CLOSURES_PROFILE {
         return Err(MnError::Unsupported(
@@ -355,12 +354,39 @@ pub fn admit_sched_unit(unit: &MirModule) -> Result<(), MnError> {
                         ));
                     }
                 }
-                ace_av_core::mir::MirInstr::PlatformCall { .. } => {
-                    return Err(MnError::Unsupported(
-                        "native.sched-platform",
-                        "platform.* calls are outside the scheduler lane's first cut (PLAN-1067 T-05)"
-                            .into(),
-                    ));
+                ace_av_core::mir::MirInstr::PlatformCall { host, args, .. } => {
+                    use ace_av_core::platform_io::{self, PlatformOpKind};
+                    let decl = unit.host_imports.get(*host as usize).ok_or_else(|| {
+                        MnError::Unsupported(
+                            "native.sched-platform",
+                            "missing platform declaration".into(),
+                        )
+                    })?;
+                    let spec = platform_io::lookup_symbol(&decl.symbol).ok_or_else(|| {
+                        MnError::Unsupported(
+                            "native.sched-platform",
+                            format!("unknown platform symbol {}", decl.symbol),
+                        )
+                    })?;
+                    if !matches!(
+                        spec.kind,
+                        PlatformOpKind::MemPageSize
+                            | PlatformOpKind::MemAllocGranularity
+                            | PlatformOpKind::SleepMs
+                    ) || args.len() != spec.params.len()
+                        || !unit.capabilities.iter().any(|cap| cap == spec.capability)
+                    {
+                        return Err(MnError::Unsupported(
+                            "native.sched-platform",
+                            format!("{} lacks a scheduler-safe platform provider", decl.symbol),
+                        ));
+                    }
+                    platform_io::validate_import(unit, decl, spec).map_err(|error| {
+                        MnError::Unsupported(
+                            "native.sched-platform",
+                            format!("{}: {}", error.code, error.message),
+                        )
+                    })?;
                 }
                 _ => {}
             }
@@ -484,6 +510,84 @@ pub fn emit_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
         None,
     )
     .map(|(object, _)| object)
+}
+
+pub fn emit_program_unit_coff(unit: &MirModule) -> Result<UnitObject, MnError> {
+    emit_unit_coff_impl(
+        unit,
+        None,
+        None,
+        lower::LowerMode::Program,
+        false,
+        crate::mn_target::MnOsTarget::WinMsvc,
+        None,
+    )
+    .map(|(object, _)| object)
+}
+
+pub(crate) fn scalar_global_carrier(ty: Option<&MirType>) -> Option<ir::Type> {
+    match ty {
+        Some(
+            MirType::I32
+            | MirType::Bool
+            | MirType::Char
+            | MirType::I8
+            | MirType::U8
+            | MirType::U32
+            | MirType::F32,
+        ) => Some(ir::types::I32),
+        Some(MirType::I64 | MirType::U64 | MirType::F64) => Some(ir::types::I64),
+        _ => None,
+    }
+}
+
+pub fn admit_program_startup(module: &MirModule) -> Result<(), MnError> {
+    for global in &module.globals {
+        if scalar_global_carrier(module.types.get(global.ty as usize)).is_none() {
+            return Err(MnError::Unsupported(
+                "global-carrier",
+                format!("{} lacks a scalar global carrier", global.name),
+            ));
+        }
+    }
+    for &initializer in &module.init {
+        let signature = module
+            .funcs
+            .get(initializer as usize)
+            .and_then(|f| module.sig_of(f.sig));
+        if !signature.is_some_and(|sig| {
+            sig.params.is_empty()
+                && matches!(module.types.get(sig.result as usize), Some(MirType::I32))
+        }) {
+            return Err(MnError::Unsupported(
+                "global-initializer",
+                "native initializer requires a zero-argument I32 return".into(),
+            ));
+        }
+    }
+    if module
+        .funcs
+        .iter()
+        .flat_map(|func| &func.blocks)
+        .flat_map(|block| &block.instrs)
+        .any(|ins| matches!(ins, ace_av_core::mir::MirInstr::GlobalTake { .. }))
+    {
+        return Err(MnError::Unsupported(
+            "global-take",
+            "the scalar global lane cannot move owned global values".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn emit_program_wrapper_coff(module: &MirModule) -> Result<Vec<u8>, MnError> {
+    admit_program_startup(module)?;
+    let entry = module
+        .funcs
+        .get(module.entry as usize)
+        .ok_or_else(|| MnError::Unsupported("entry", "missing program entry".into()))?;
+    let symbol = symbols::function_symbol(&module.owner, &entry.name);
+    emit_wrapper_coff_impl(&symbol, None, Some(module)).map(|(bytes, _)| bytes)
 }
 
 /// PLAN-947: lower and emit one host-console unit. Console admission is a
@@ -853,7 +957,7 @@ pub(crate) fn event_symbol(e: ace_av_core::mir::TraceEvent) -> &'static str {
 /// the full 32-bit exit code). Emitted per request — it is not a cached
 /// unit artifact (contract-decision §8 note).
 pub fn emit_wrapper_coff(entry_symbol: &str) -> Result<Vec<u8>, MnError> {
-    emit_wrapper_coff_impl(entry_symbol, None).map(|(bytes, _)| bytes)
+    emit_wrapper_coff_impl(entry_symbol, None, None).map(|(bytes, _)| bytes)
 }
 
 /// A tiny object resolving the CRT/EH metadata symbols the no_std runtime
@@ -916,7 +1020,7 @@ pub fn emit_wrapper_coff_reserved(
     entry_symbol: &str,
     resources: &ace_source_query::resources::Resources,
 ) -> Result<ReservedWrapper, MnError> {
-    let (bytes, allocation) = emit_wrapper_coff_impl(entry_symbol, Some(resources))?;
+    let (bytes, allocation) = emit_wrapper_coff_impl(entry_symbol, Some(resources), None)?;
     Ok(ReservedWrapper {
         bytes,
         _allocation: allocation.expect("reserved wrapper output"),
@@ -931,6 +1035,7 @@ const WRAPPER_WORKSPACE_BOUND: usize = (96 << 10) + (8 << 10);
 fn emit_wrapper_coff_impl(
     entry_symbol: &str,
     resources: Option<&ace_source_query::resources::Resources>,
+    program: Option<&MirModule>,
 ) -> Result<(Vec<u8>, Option<ace_source_query::resources::Reservation>), MnError> {
     let mut workspace = match resources {
         Some(resources) => Some(
@@ -950,6 +1055,31 @@ fn emit_wrapper_coff_impl(
     let entry_id = om
         .declare_function(entry_symbol, Linkage::Import, &entry_sig)
         .map_err(|e| MnError::Backend(format!("declare entry {entry_symbol}: {e}")))?;
+    let mut initializers = Vec::new();
+    if let Some(program) = program {
+        for (index, global) in program.globals.iter().enumerate() {
+            let symbol = symbols::global_symbol(&program.owner, index as u32);
+            let id = om
+                .declare_data(&symbol, Linkage::Export, true, false)
+                .map_err(|error| MnError::Backend(format!("declare {symbol}: {error}")))?;
+            let size = scalar_global_carrier(program.types.get(global.ty as usize))
+                .expect("checked scalar global")
+                .bytes() as usize;
+            let mut storage = cranelift_module::DataDescription::new();
+            storage.define_zeroinit(size);
+            storage.set_align(size as u64);
+            om.define_data(id, &storage)
+                .map_err(|error| MnError::Backend(format!("define {symbol}: {error}")))?;
+        }
+        for &index in &program.init {
+            let symbol =
+                symbols::function_symbol(&program.owner, &program.funcs[index as usize].name);
+            let id = om
+                .declare_function(&symbol, Linkage::Import, &entry_sig)
+                .map_err(|error| MnError::Backend(format!("declare {symbol}: {error}")))?;
+            initializers.push(id);
+        }
+    }
     let exit_id = om
         .declare_function("ExitProcess", Linkage::Import, &exit_sig())
         .map_err(|e| MnError::Backend(format!("declare ExitProcess: {e}")))?;
@@ -971,6 +1101,10 @@ fn emit_wrapper_coff_impl(
         fb.seal_block(blk);
         let entry_ref = om.declare_func_in_func(entry_id, &mut fb.func);
         let exit_ref = om.declare_func_in_func(exit_id, &mut fb.func);
+        for initializer in initializers {
+            let callee = om.declare_func_in_func(initializer, fb.func);
+            fb.ins().call(callee, &[]);
+        }
         let call = fb.ins().call(entry_ref, &[]);
         let result = fb.inst_results(call)[0];
         fb.ins().call(exit_ref, &[result]);

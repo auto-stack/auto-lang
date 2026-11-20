@@ -311,6 +311,37 @@ pub fn sched_native_build(
     entry: &str,
     workdir: &Path,
 ) -> Result<link_driver::PeLink, MnError> {
+    sched_native_build_inner(module, entry, workdir, None)
+}
+
+/// Link a real scheduler PE with a source-bound runtime prepared by the
+/// caller. The object/link phase never invokes Cargo to create the runtime.
+pub fn sched_native_build_prepared(
+    module: &MirModule,
+    entry: &str,
+    workdir: &Path,
+    runtime: &Path,
+    runtime_hash: &str,
+) -> Result<link_driver::PeLink, MnError> {
+    sched_native_build_inner(module, entry, workdir, Some((runtime, runtime_hash)))
+}
+
+fn sched_native_build_inner(
+    module: &MirModule,
+    entry: &str,
+    workdir: &Path,
+    prepared: Option<(&Path, &str)>,
+) -> Result<link_driver::PeLink, MnError> {
+    ace_av_core::verify_mir(module)
+        .map_err(|error| MnError::Unsupported("sched.mir", format!("{error:?}")))?;
+    if let Some((runtime, hash)) = prepared {
+        if crate::sched_runtime::file_hash(runtime)? != hash {
+            return Err(MnError::Admit(
+                "runtime-content",
+                "prepared scheduler runtime has changed".into(),
+            ));
+        }
+    }
     let entry_unit = module
         .funcs
         .get(module.entry as usize)
@@ -326,6 +357,9 @@ pub fn sched_native_build(
         .map_err(|d| MnError::Unsupported("sched.value", format!("{}: {}", d.code, d.message)))?;
     let units = ace_av::cache::split_units(module)
         .map_err(|e| MnError::Backend(format!("scheduler split: {e}")))?;
+    for unit in &units {
+        emit::admit_sched_unit(unit)?;
+    }
     let mut objects = Vec::with_capacity(units.len() + 2);
     for (i, unit) in units.iter().enumerate() {
         let object = emit::emit_sched_unit_coff(unit, &callees)?;
@@ -340,20 +374,41 @@ pub fn sched_native_build(
             bytes: crate::console::emit_console_shim_coff()?,
         });
     }
+    let uses_platform = module.funcs.iter().any(|function| {
+        function
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instrs)
+            .any(|instruction| matches!(instruction, MirInstr::PlatformCall { .. }))
+    });
+    if uses_platform {
+        objects.push(ObjectInput {
+            name: "mn-platform-shim".into(),
+            bytes: crate::platform_io::emit_platform_shim_coff()?,
+        });
+    }
     let wrapper = emit_sched_wrapper_coff(&entry_symbol)?;
     let _ = has_text_ops(module);
     // ONE Rust support staticlib: the scheduler runtime embeds the owned-text
     // runtime as a dependency (its text/alloc ABI + the compiler-generated
     // mem* intrinsics). Two separate Rust staticlibs collide on the panic /
     // unwind runtime symbols.
-    let support_libs = vec![crate::sched_runtime::prepare()?.library];
+    let library = match prepared {
+        Some((runtime, _)) => runtime.to_path_buf(),
+        None => crate::sched_runtime::prepare()?.library,
+    };
+    let support_libs = [library];
     link_driver::link_only(
         &objects,
         &wrapper,
         START_SYMBOL,
         workdir,
         &support_libs,
-        "plan1067-sched-lane",
+        if uses_platform {
+            "sched-platform/1"
+        } else {
+            "plan1067-sched-lane"
+        },
     )
 }
 

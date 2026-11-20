@@ -19,6 +19,10 @@ pub fn function_symbol(owner: &OwnerScope, unit_name: &str) -> String {
     format!("ac8.{}.{}", owner_axis(owner), unit_name)
 }
 
+pub(crate) fn global_symbol(owner: &OwnerScope, ordinal: u32) -> String {
+    format!("acg.{}.{ordinal}", owner_axis(owner))
+}
+
 /// Export symbol of one TYPED unit (PLAN-891): the `ac9.` domain is
 /// deliberately distinct from the scalar `ac8.` domain — a typed import
 /// can never resolve against a scalar object or vice versa, so the two

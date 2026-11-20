@@ -52,6 +52,8 @@ pub enum LowerMode {
     /// conversion matrix. Objects for numeric-free programs are identical
     /// to Legacy.
     Numeric,
+    /// Numeric units linked with the checked program's scalar global storage.
+    Program,
     /// PLAN-1000 F-1000-01 (owner option a): the trap-probe observation
     /// build — the `Numeric` value surface point for point, except trap
     /// branches carry their bounded reason to the typed runtime's
@@ -83,7 +85,7 @@ impl LowerMode {
     pub fn numeric_lane(self) -> bool {
         matches!(
             self,
-            LowerMode::Numeric | LowerMode::TrapProbe | LowerMode::Sched
+            LowerMode::Numeric | LowerMode::Program | LowerMode::TrapProbe | LowerMode::Sched
         )
     }
 
@@ -91,7 +93,11 @@ impl LowerMode {
     pub fn wide_carriers(self) -> bool {
         matches!(
             self,
-            LowerMode::Typed | LowerMode::Numeric | LowerMode::TrapProbe | LowerMode::Sched
+            LowerMode::Typed
+                | LowerMode::Numeric
+                | LowerMode::Program
+                | LowerMode::TrapProbe
+                | LowerMode::Sched
         )
     }
 
@@ -3370,6 +3376,21 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::SchedStopping { .. } => {
                 return Err("native.sched-unsupported: the task scheduler surface is not part of the native backend".into())
             }
+            MirInstr::GlobalGet { dst, global } if self.mode == LowerMode::Program => {
+                let (address, carrier) = self.global_address(*global)?;
+                let bits = self.fb.ins().load(carrier, MemFlags::new(), address, 0);
+                self.def_num(*dst, bits)?;
+            }
+            MirInstr::GlobalSet { dst, global, src } if self.mode == LowerMode::Program => {
+                let (address, carrier) = self.global_address(*global)?;
+                let bits = self.v_num(*src)?;
+                if self.fb.func.dfg.value_type(bits) != carrier {
+                    return Err("global store carrier differs from its declared type".into());
+                }
+                self.fb.ins().store(MemFlags::new(), bits, address, 0);
+                let result = self.fb.ins().iconst(types::I32, 0);
+                self.def_scalar(*dst, result)?;
+            }
             MirInstr::GlobalGet { .. } | MirInstr::GlobalTake { .. } | MirInstr::GlobalSet { .. } => {
                 return Err(
                     "module global cells are outside the mn surface first cut (PLAN-960 follow-up)"
@@ -3394,6 +3415,29 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+    fn global_address(
+        &mut self,
+        ordinal: u32,
+    ) -> Result<(Value, cranelift_codegen::ir::Type), String> {
+        let global = self
+            .unit
+            .globals
+            .get(ordinal as usize)
+            .ok_or_else(|| format!("missing global cell #{ordinal}"))?;
+        let carrier = crate::emit::scalar_global_carrier(self.unit.types.get(global.ty as usize))
+            .ok_or_else(|| {
+            format!("unsupported native global cell type for {}", global.name)
+        })?;
+        let symbol = crate::symbols::global_symbol(&self.unit.owner, ordinal);
+        let id = self
+            .om
+            .declare_data(&symbol, Linkage::Import, true, false)
+            .map_err(|error| format!("declare {symbol}: {error}"))?;
+        let global = self.om.declare_data_in_func(id, self.fb.func);
+        let address = self.fb.ins().global_value(types::I64, global);
+        Ok((address, carrier))
     }
 
     /// PLAN-939: marshal ONE resource foreign call at its call site.

@@ -2844,12 +2844,13 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // PLAN-973: packages-lane system-library modules lower
                 // platform ops on the closures family (the frozen op table
                 // is the signature/capability authority).
-                let sys_platform_module = self
+                let sys_platform_module = self.module.host_imports.iter().all(|h| {
+                    h.symbol.starts_with("auto.platform.") || h.symbol.starts_with("auto.console.")
+                }) && self
                     .module
                     .host_imports
                     .iter()
-                    .all(|h| h.symbol.starts_with("auto.platform."))
-                    && !self.module.host_imports.is_empty();
+                    .any(|h| h.symbol.starts_with("auto.platform."));
                 if !self.module.is_host_console_profile() && !sys_platform_module {
                     return Err(err(
                         "host.profile",
