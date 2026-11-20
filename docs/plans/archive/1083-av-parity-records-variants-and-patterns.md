@@ -374,6 +374,8 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 ## 9. 复审记录
 
+`stage: goal | plan_id: PLAN-1083 | plan_revision: r3 | round: 3 | from: reviewed | to: archived | status: archived | outcome: pass | worktree: (removed) | commit: e4e856c33→dcbbdee60 | next: done`
+
 `stage: merge(cleaned) | plan_id: PLAN-1083 | plan_revision: r3 | outcome: pass | completion_kind: delivered | cleaned: wt-guard clean→worktree D:/autostack/.wt/lang-1083/auto-lang 移除、分支 plan-1083-dev 删除(e4e856c33已合)、组目录空删；plan-artifacts/plan-1083 全scope删除（无artifact持有，具名hold均在计划/map行内：AVP-08×5行+10.036腿/AVP-10/stdlib）；登记表 .retention/policy.json 刷新（deleted-at-merge记录）；批量回归到期检查：不到期（1083%5≠0；receipt last_covered_plan_id=1098 后无%5合并；<48h——docs/plans/.last-batch-regression.json）；部署观察：无production-facing工件属本包范围（语言/语料/规范交付，无release产物需刷新） |
 
 `stage: merge | plan_id: PLAN-1083 | plan_revision: r3 | outcome: pass | delivery_commit: e4e856c336d3d050379551c2fb801f8044bc334b（master tip=delivery，ff-only无合并提交） | rebase映射: 5a76167cc..670f85703旧→master..e4e856c33新，range-diff全10提交=（补丁等价证明；reviewed 10350a3d7→14801c0fe） | canonical: docs/specs/auto-av/language-parity.md@88be70cb666c1e63、ace-migration/m2-aggregates.md@6e381b3615f05283、ace-migration/m2-control-effects.md@c4d53b015ffabad5、auto-test-case/feature-organized-corpus.md@a8830392873497c1（四增量在交付提交内核验） | gates: 冻结并集证据44d2eb5f0（5组PASS+3继承红分账）+受影响复验14801c0fe（twin2/2、1081 21/21、corpus PASS、告警对账）+落主检查main上corpus PASS（复用依据：10350a3d7→e4e856c33仅docs增量，代码/依赖/配置零变）；rebase基master漂移仅他包docs/plans簿记（路径零交叠） | findings: 0新增 | evidence: 本收据+§9前序 | next: 完成（归档+清理）`
