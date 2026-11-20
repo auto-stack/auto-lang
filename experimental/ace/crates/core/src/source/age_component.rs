@@ -3660,13 +3660,27 @@ fn hook_stmts_lower(
                     _ => false,
                 };
                 if is_list_method {
+                    let mut renamed = rename_expr_with_params(
+                        call,
+                        FieldBinding::Local(inst),
+                        &node.fields,
+                        &scope,
+                    )?;
+                    // PLAN-105 T-02（U03 真语料 013）：`xs.push(t)` 的整局部值是
+                    // owned 元素 → 按 `.move` 形式发射（隐式转移被拒）。
+                    if let ExprKind::MethodCall { name, args, .. } = &mut renamed.kind {
+                        if name.name == "push" {
+                            for a in args.iter_mut() {
+                                if let crate::source::ast::Arg::Pos(e) = a {
+                                    if matches!(e.kind, ExprKind::Var(_)) {
+                                        *a = crate::source::ast::Arg::MovePos(e.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
                     out.push(Stmt::ExprStmt {
-                        value: rename_expr_with_params(
-                            call,
-                            FieldBinding::Local(inst),
-                            &node.fields,
-                            &scope,
-                        )?,
+                        value: renamed,
                         span: *span,
                     });
                     continue;
@@ -4161,6 +4175,51 @@ pub(crate) fn rename_expr_with_params(
         // PLAN-105 T-02：泛型类型接收位（`List<int>.new()` 的 `List<int>`）——
         // 类型不是值，原样透传（类型实参由共享 resolver 校验）。
         ExprKind::GenericType { .. } => expr.clone(),
+        // PLAN-105 T-02（U03 真语料 013）：记录构造 `Todo { id: 1, … }` ——
+        // 字段值递归重命名（类型名/字段名原样）。
+        ExprKind::CtorNamed { ty, args, fields: ctor_fields } => Expr {
+            span: expr.span,
+            kind: ExprKind::CtorNamed {
+                ty: ty.clone(),
+                args: args.clone(),
+                fields: ctor_fields
+                    .iter()
+                    .map(|f| {
+                        Ok(crate::source::ast::NamedCtorField {
+                            name: f.name.clone(),
+                            value: rename_expr_with_params(&f.value, binding, fields, param_locals)?,
+                            span: f.span,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+            },
+        },
+        // PLAN-105 T-02（U03 真语料 013）：记录构造/自由调用 `Todo { … }` →
+        // `Call { callee, args }`：实参递归重命名（callee 是类型名/函数名，原样）。
+        ExprKind::Call { callee, args } => Expr {
+            span: expr.span,
+            kind: ExprKind::Call {
+                callee: callee.clone(),
+                args: args
+                    .iter()
+                    .map(|a| match a {
+                        crate::source::ast::Arg::Pos(x) => Ok(crate::source::ast::Arg::Pos(
+                            rename_expr_with_params(x, binding, fields, param_locals)?,
+                        )),
+                        crate::source::ast::Arg::MovePos(x) => Ok(crate::source::ast::Arg::MovePos(
+                            rename_expr_with_params(x, binding, fields, param_locals)?,
+                        )),
+                        crate::source::ast::Arg::Named { name, value, span } => {
+                            Ok(crate::source::ast::Arg::Named {
+                                name: name.clone(),
+                                value: rename_expr_with_params(value, binding, fields, param_locals)?,
+                                span: *span,
+                            })
+                        }
+                    })
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+            },
+        },
         // PLAN-105 T-02（U03 真语料 013/015）：下标 `base[index]`（`.todos[idx]`
         // / `.grid[i].field` 链）——基与下标都递归重命名，读语义交共享 resolver。
         ExprKind::Index { base, index } => Expr {
