@@ -282,14 +282,22 @@ fn run_semantic_source(
 }
 
 pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> {
-    run_project(modules, false)
+    run_project(modules, false, None)
 }
 
 pub fn run_type_project(modules: &[(&str, &str)]) -> Result<String, String> {
-    run_project(modules, true)
+    run_project(modules, true, None)
 }
 
-fn run_project(modules: &[(&str, &str)], typed: bool) -> Result<String, String> {
+pub fn run_core_hir_project(modules: &[(&str, &str)]) -> Result<String, String> {
+    run_project(modules, true, Some("verify"))
+}
+
+fn run_project(
+    modules: &[(&str, &str)],
+    typed: bool,
+    hir_mode: Option<&str>,
+) -> Result<String, String> {
     let exe = prepared_semantic()?;
     with_fixture("semantic-project", |root| {
         let output = root.join("report.txt");
@@ -317,7 +325,12 @@ fn run_project(modules: &[(&str, &str)], typed: bool) -> Result<String, String> 
             .env_remove("AAC1047_HIR")
             .env_remove("AAC1047_STEPS")
             .env_remove("AAC1047_ARTIFACT")
-            .env_remove("AAC1047_STAGED");
+            .env_remove("AAC1047_STAGED")
+            .env_remove("AAC1047_FOREIGN_PATH")
+            .env_remove("AAC1047_FOREIGN_AUTHORITY");
+        if let Some(mode) = hir_mode {
+            cmd.env("AAC1047_HIR", mode);
+        }
         execute_report(cmd, &output, "semantic-project")
     })
 }

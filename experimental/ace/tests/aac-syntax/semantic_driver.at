@@ -279,11 +279,10 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             if (pending.len() > 0) {
                 return type_report(ast, bases, facts, types) + declaration_report(ast, src, bases, metadata, pending)
             }
-            if (roots.len() != 1) { return "ERROR hir.unsupported\n" }
             var control = 0
             if (hir_mode == "owner") { control = 1 }
             if (hir_mode == "defref") { control = 2 }
-            let document = checked_core_atom(pg, ast, links, src, declarations, uses, mappings, facts, fuel, deadline, errors, control)
+            let document = checked_core_atom(pg, ast, links, src, roots, modules, declarations, uses, mappings, facts, fuel, deadline, errors, control)
             if (document.len() == 0) {
                 return "ERROR " + diagnostic_name(errors.get(1)) + " " + location(ast, errors.get(0), bases) + "\n"
             }

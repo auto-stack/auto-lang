@@ -1,8 +1,8 @@
 #![cfg(windows)]
 
 use ace_aac_syntax_conformance::{
-    observe_hir_publication, run_core_hir_case, run_semantic_case, run_semantic_project,
-    run_type_case, run_type_project,
+    observe_hir_publication, run_core_hir_case, run_core_hir_project, run_semantic_case,
+    run_semantic_project, run_type_case, run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -148,6 +148,42 @@ fn resolves_a_reexport_to_its_own_package_namespace() {
     assert_eq!(
         report,
         format!("ERROR bind.private 1 {start}..{}\n", start + "answer".len())
+    );
+}
+
+#[test]
+fn verifies_the_autodown_cross_package_reexport() {
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/modules/imports-globals.case.ad"
+    );
+    let section = corpus
+        .split_once("## Case: dependency-reexport-alias")
+        .unwrap()
+        .1;
+    let case = section.split_once("## Case:").unwrap().0;
+    let sources: Vec<_> = case
+        .split("```auto")
+        .skip(1)
+        .map(|source| source.split_once("```").unwrap().0)
+        .collect();
+    assert_eq!(sources.len(), 3);
+    let document = run_core_hir_project(&[
+        ("main", sources[0]),
+        ("facade", sources[1]),
+        ("support/lib", sources[2]),
+    ])
+    .expect("Auto HIR project");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &document)
+        .unwrap_or_else(|error| panic!("{error:?}\n{document}"));
+    ace_core::verify::verify(bound).expect("reference verifies the cross-package call");
+    assert!(
+        document.contains("name: \"support.lib.answer\""),
+        "{document}"
+    );
+    assert!(document.contains("value: 42i32"), "{document}");
+    assert_eq!(
+        run_core_hir_case(document.as_bytes(), "descriptor").expect("Auto descriptor admission"),
+        "ADMITTED core-i32-draft\n"
     );
 }
 
