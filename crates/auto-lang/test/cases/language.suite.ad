@@ -10,5 +10,7 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/calls/binding-pipeline.case.ad",
   "language/functions/references-closures.case.ad",
   "language/collections/list-places.case.ad",
+  "language/types/variants.case.ad",
+  "language/patterns/nested-match.case.ad",
 ] }
 ```

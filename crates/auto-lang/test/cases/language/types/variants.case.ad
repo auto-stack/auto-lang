@@ -1,0 +1,1340 @@
+# PLAN-1083 — AV 名义类型、枚举载荷与标量判别（语言共享语料 types 面）
+
+The canonical author of the variants/types language family. Every case
+carries ONE Auto source; the `av` check runs the ordinary AV language
+chain (`ac-av/language-source-run-v1`); legacy `VM result`/`VM stdout`
+checks keep their original oracles and owners with the AV-phase `#ignore`
+marker (AV-ONLY-1078-1096) — not executed in this phase, never blocking
+the AV gate; their backend tasks remove the marker when they land.
+
+Auditable normalizations (recorded per row in
+`language/migration/legacy-map.tsv`, same policy as PLAN-1082's fn-main
+wrapping and PLAN-1081's typed-lambda annotations):
+
+- Legacy fn-local `enum` declarations (09_functions.016..019) hoist to
+  module scope in the canonical spelling — the enum names are distinct
+  and capture-free; the legacy local spelling stays the row's original
+  oracle in the map.
+- Legacy `enum Color { Red = 1, Green = 2 }` comma separators parse on
+  this face (PLAN-1083 arm-comma absorption); the canonical keeps the
+  legacy spelling byte-for-byte.
+- Legacy str-returning `is` expressions (10_types.011/012: `1 -> "red"`)
+  normalize to int-coded arms (red→10, green→20, blue→30, unknown→0) —
+  the printed digits map 1:1 onto the legacy words; the legacy word
+  oracle stays the row's original oracle.
+- Method receivers are read-only views on this face: legacy field-WRITE
+  methods (m01 `inc`/`set_to`, m08 setters, m09 `set`) are held for the
+  borrows batch (AVP-08 `&mut self` seam); the READ faces (get, chained
+  reads, method-values) are asserted green here.
+- `.helper(3)` implicit-self method calls normalize to the explicit
+  `self.helper(3)` (identical semantics; the legacy implicit spelling
+  stays in the frozen row).
+
+## Case: named-enum-payload
+id: "av.parity.1083.named-enum-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Answer { Yes { code int, text Str }; No }
+fn main() int {
+ let a = Answer.Yes(code: 42, text: "ok")
+ is a { Answer.Yes(code, text) -> { if text == "ok" { return code }; return 0 }; Answer.No -> { return 0 } }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case 1: a NAMED multi-field payload — declaration, named
+construction (in order), multi-binding destructuring and the bare arm in
+one program. The §6 draft verbatim; landed byte-for-byte.
+
+## Case: multi-field-positional
+id: "av.parity.1083.multi-field-positional"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Shape {
+    Rect { w int, h int }
+}
+fn main() {
+    let s = Shape.Rect(10, 20)
+    is s {
+        Shape.Rect(w, h) -> {
+            print(w)
+            print(h)
+        }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+10
+20
+```
+
+### Notes
+
+legacy.09_functions.016 (Rect leg): positional construction of a
+named-field payload + two-binding destructuring; the fn-local enum
+declaration hoists to module scope (auditable).
+
+## Case: single-named-payload
+id: "av.parity.1083.single-named-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Shape {
+    Circle { r int }
+}
+fn main() {
+    let c = Shape.Circle(5)
+    is c {
+        Shape.Circle(r) -> print(r)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+5
+```
+
+### Notes
+
+legacy.09_functions.016 (Circle leg): a single named field binds the one
+field (`Circle(r)` destructures `r`, never the synthesized record).
+
+## Case: bare-scalar-arm
+id: "av.parity.1083.bare-scalar-arm"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Shape {
+    Point
+}
+fn main() {
+    let p = Shape.Point
+    is p {
+        Shape.Point -> print("point")
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+point
+```
+
+### Notes
+
+legacy.09_functions.016 (Point leg): payload-less arm construction via
+the qualified path (`Shape.Point`, no call) and its dispatch.
+
+## Case: named-construct-ordered
+id: "av.parity.1083.named-construct-ordered"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum ApiError {
+    Http { code int, msg Str }
+}
+fn main() {
+    let e1 = ApiError.Http(code: 404, msg: "not found")
+    is e1 {
+        ApiError.Http(c, m) -> print(c)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+404
+```
+
+### Notes
+
+legacy.09_functions.017 (in-order leg): named construction arguments in
+declaration order.
+
+## Case: named-construct-reordered
+id: "av.parity.1083.named-construct-reordered"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum ApiError {
+    Http { code int, msg Str }
+}
+fn main() {
+    let e2 = ApiError.Http(msg: "timeout", code: 503)
+    is e2 {
+        ApiError.Http(c, m) -> print(c)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+503
+```
+
+### Notes
+
+legacy.09_functions.017 (reordered leg): named construction arguments
+out of declaration order.
+
+## Case: positional-tuple-payload
+id: "av.parity.1083.positional-tuple-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum ApiError {
+    Timeout { millis int }
+}
+fn main() {
+    let e3 = ApiError.Timeout(5000)
+    is e3 {
+        ApiError.Timeout(ms) -> print(ms)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+5000
+```
+
+### Notes
+
+legacy.09_functions.017 (Timeout leg): a one-field named payload
+constructed positionally.
+
+## Case: no-binding-arm
+id: "av.parity.1083.no-binding-arm"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Color {
+    RGB { r int, g int, b int }
+}
+fn main() {
+    let c1 = Color.RGB(100, 150, 200)
+    is c1 {
+        Color.RGB -> print("rgb")
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+rgb
+```
+
+### Notes
+
+legacy.09_functions.018 (no-binding leg): a payload arm matched WITHOUT
+bindings (the payload is never projected).
+
+## Case: multi-field-arith-destructuring
+id: "av.parity.1083.multi-field-arith-destructuring"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Color {
+    RGB { r int, g int, b int }
+}
+fn main() {
+    let c3 = Color.RGB(255, 128, 0)
+    is c3 {
+        Color.RGB(r, g, b) -> print(r + g + b)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+383
+```
+
+### Notes
+
+legacy.09_functions.018 (arithmetic leg): all three bindings feed one
+expression (255+128+0=383).
+
+## Case: float-payload
+id: "av.parity.1083.float-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Shape {
+    Circle(float)
+}
+fn main() {
+    let s = Shape.Circle(3.14)
+    is s {
+        Shape.Circle(r) -> print(r)
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+3.14
+```
+
+### Notes
+
+legacy.09_functions.019 (Circle leg): a float payload prints its exact
+value (the PLAN-961 numeric face).
+
+## Case: two-elem-tuple-payload
+id: "av.parity.1083.two-elem-tuple-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Shape {
+    Rect(int, int)
+}
+fn main() {
+    let r = Shape.Rect(10, 20)
+    is r {
+        Shape.Rect(w, h) -> {
+            print(w)
+            print(h)
+        }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+10
+20
+```
+
+### Notes
+
+legacy.09_functions.019 (Rect leg): a MULTI-element tuple payload
+(declaration `(int, int)`, positional construction, two-binding
+destructuring) rides the PLAN-962 tuple machinery.
+
+## Case: scalar-enum-value
+id: "av.parity.1083.scalar-enum-value"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Color { Red = 1, Green = 2, Blue = 3 }
+fn main() int { let c = Color.Red
+ is c { Color.Red -> return 1; Color.Green -> return 2; else -> return 0 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 1
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+1
+```
+
+### Notes
+
+legacy.10_types.002: an explicit-discriminant scalar enum — `Color.Red`
+IS the int 1; the qualified arms match by value on the int scrutinee.
+
+## Case: int-literal-arms
+id: "av.parity.1083.int-literal-arms"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn check(c int) int {
+    return is c {
+        1 -> 10
+        3 -> 30
+        else -> 0
+    }
+}
+fn main() int { return check(1) + check(3) + check(9) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 40
+
+### Notes
+
+legacy.10_types.011: int literal arms + else on an int scrutinee, the
+`is` EXPRESSION as a return operand. The legacy str words normalize to
+int codes (red→10, blue→30, unknown→0; 10+30+0=40) — the legacy word
+oracle stays the row's original oracle in the map.
+
+## Case: enum-static-style-method
+id: "av.parity.1083.enum-static-style-method"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Color {
+    Red
+    Green
+    fn name() Str {
+        return "called-ok"
+    }
+}
+fn main() {
+    print(Color.Red.name())
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+called-ok
+```
+
+### Notes
+
+legacy.28_enum_methods.001: a method on the enum body called through the
+variant value (the implicit receiver is unused here).
+
+## Case: enum-instance-method
+id: "av.parity.1083.enum-instance-method"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Light {
+    Red
+    Green
+    fn is_red() bool {
+        is self {
+            Light.Red -> return true
+        }
+        return false
+    }
+}
+fn main() {
+    if Light.Red.is_red() { print("yes") } else { print("no") }
+    if Light.Green.is_red() { print("yes") } else { print("no") }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+yes
+no
+```
+
+### Notes
+
+legacy.28_enum_methods.002: `is self` dispatch inside an enum instance
+method — the receiver is the variant value; a non-exhaustive STATEMENT
+`is` falls through to the trailing `return false` (the auto-face
+fall-through contract).
+
+## Case: payload-variant-method
+id: "av.parity.1083.payload-variant-method"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Reg {
+    Yes(int)
+    No
+    fn is_yes() bool {
+        is self {
+            Reg.Yes -> return true
+        }
+        return false
+    }
+}
+fn main() {
+    if Reg.Yes(42).is_yes() { print("yes") } else { print("no") }
+    if Reg.No.is_yes() { print("yes") } else { print("no") }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+yes
+no
+```
+
+### Notes
+
+legacy.28_enum_methods.003: an instance method on a MIXED
+payload/scalar enum; the payload arm matches without binding.
+
+## Case: wildcard-arm
+id: "av.parity.1083.wildcard-arm"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Light {
+    Red
+    Green
+    Blue
+}
+fn label(l Light) {
+    is l {
+        Light.Red -> print("red")
+        _ -> print("other")
+    }
+}
+fn main() {
+    label(Light.Red)
+    label(Light.Green)
+    label(Light.Blue)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+red
+other
+other
+```
+
+### Notes
+
+legacy.28_enum_methods.004: the `_` wildcard catch-all arm (projects to
+the unconditional Else pattern; must be last).
+
+## Case: option-family
+id: "av.parity.1083.option-family"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let a = Some(42)
+    let b = None
+    is a { Some(v) -> { return v }; None -> { return -1 } }
+    let _ = b
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+legacy.16_option_result.001/003/004/013 (the Some half: binding returns
+42) and the `?int`-annotated faces of .002/.005/.006 asserted by
+result-family/err-str below. The None leg (-1) rides
+option-none-match in patterns/nested-match.case.ad.
+
+## Case: option-none-match
+id: "av.parity.1083.option-none-match"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let opt = None
+ is opt { Some(v) -> return v; None -> return -1 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: -1
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+-1
+```
+
+### Notes
+
+legacy.16_option_result.014: the None arm wins (script-top source in the
+legacy row; the value oracle -1 preserved).
+
+## Case: result-family
+id: "av.parity.1083.result-family"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let res = Err("fail")
+    is res {
+        Ok(v) -> return v
+        Err(e) -> return -2
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: -2
+
+### Notes
+
+legacy.16_option_result.015 (Ok half asserted by option-family) and .016
+(the Err half, oracle -2).
+
+## Case: unwrap-or-default
+id: "av.parity.1083.unwrap-or-default"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let a = Some(42)
+ let b = a.?(0)
+ let c = None
+ let d = c.?(99)
+ return b + d
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 141
+
+### Notes
+
+legacy.16_option_result.017: `.?(default)` on both arms (42+99=141);
+the legacy assert_eq spelling normalizes to the arithmetic observation.
+
+## Case: option-or
+id: "av.parity.1083.option-or"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let a = Some(42)
+ let b = a.or(0)
+ let c = None
+ let d = c.or(99)
+ return b + d
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 141
+
+### Notes
+
+legacy.16_option_result.018: the `.or(default)` method — `.?(default)`
+semantics as a method call (42+99=141).
+
+## Case: result-fn-str-error
+id: "av.parity.1083.result-fn-str-error"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn try_divide(a int, b int) !int {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a / b)
+}
+fn main() int {
+    let r1 = try_divide(10, 2)
+    is r1 {
+        Ok(n) -> return n
+        Err(e) -> return 0
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 5
+
+### Notes
+
+legacy.16_option_result.019 (the success leg 10/2=5; the error leg rides
+the same machinery and prints "error" in the frozen row). The `return
+Ok` spelling is the PLAN-1083 tail normalization (identical semantics).
+
+## Case: err-enum-payload
+id: "av.parity.1083.err-enum-payload"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum ParseError {
+    UnexpectedEnd
+}
+fn parse(s Str) !int {
+    if s == "" {
+        return Err(ParseError.UnexpectedEnd)
+    }
+    return Ok(42)
+}
+fn main() {
+    let r = parse("")
+    is r {
+        Ok(n) -> print(n)
+        Err(e) -> {
+            is e {
+                ParseError.UnexpectedEnd -> print("unexpected end")
+                else -> print("other error")
+            }
+        }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+unexpected end
+```
+
+### VM stdout
+#ignore
+check-id: "legacy-stdout"
+
+```text
+unexpected end
+42
+```
+
+### Notes
+
+legacy.16_option_result.021: an Err arm carrying a DECLARED ENUM payload
+— the `!int` sugar rewrites to the explicit `Result<int, ParseError>`
+spelling (all Err payloads name one enum) and the nested `is` dispatches
+on the payload. The r2 success leg (42) is asserted by
+multi-error-family below.
+
+## Case: multi-error-family
+id: "av.parity.1083.multi-error-family"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum ApiError {
+    Http { code int, msg Str }
+    Timeout
+}
+fn fetch(url Str) !int {
+    if url == "" {
+        return Err(ApiError.Http(code: 404, msg: "not found"))
+    }
+    if url == "slow" {
+        return Err(ApiError.Timeout)
+    }
+    return Ok(200)
+}
+fn main() {
+    let r1 = fetch("")
+    is r1 {
+        Ok(data) -> print(data)
+        Err(e) -> {
+            is e {
+                ApiError.Http(code, msg) -> print(code)
+                ApiError.Timeout -> print("timeout")
+            }
+        }
+    }
+    let r2 = fetch("slow")
+    is r2 {
+        Ok(data) -> print(data)
+        Err(e) -> {
+            is e {
+                ApiError.Http(code, msg) -> print(code)
+                ApiError.Timeout -> print("timeout")
+            }
+        }
+    }
+    let r3 = fetch("ok")
+    is r3 {
+        Ok(data) -> print(data)
+        Err(e) -> print("error")
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+404
+timeout
+200
+```
+
+### VM stdout
+#ignore
+check-id: "legacy-stdout"
+
+```text
+404
+timeout
+200
+```
+
+### Notes
+
+legacy.16_option_result.022 byte-faithful (named construction through
+the Err payload, bare Timeout arm, the Ok leg).
+
+## Case: record-method-reads
+id: "av.parity.1083.record-method-reads"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Step {
+    v int
+    fn add(n int) Step { return Step.new(.v + n) }
+    fn get() int { return .v }
+    static fn new(v int) Step { return Step(v) }
+}
+fn main() {
+    print(f"chain=${Step.new(1).add(2).add(3).get()}")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+chain=6
+```
+
+### Notes
+
+legacy.99_idiom2.m03: the full static-new chain (green face). The
+field-WRITE method faces of m01/m08/m09 are research-holds for AVP-08
+(reads and chains are green here).
+
+## Case: positional-ctor-family
+id: "av.parity.1083.positional-ctor-family"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Point {
+    x int
+    y int
+    fn sum() int { return .x + .y }
+    static fn origin() Point { return Point(0, 0) }
+}
+fn build(v int) Point {
+    return Point(v, v * 2)
+}
+fn main() {
+    let p = build(3)
+    print(f"build=${p.sum()}")
+    let o = Point.origin()
+    print(f"origin=${o.sum()}")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+build=9
+origin=0
+```
+
+### Notes
+
+legacy.99_idiom2.m04 (build=9, origin=0; the make=9 leg is the same
+construction path). legacy.10_types.006/007/008 (field reads, nested
+record instances) ride the same machinery.
+
+## Case: list-elem-method
+id: "av.parity.1083.list-elem-method"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Item {
+    v int
+    fn get() int { return .v }
+    static fn new(v int) Item { return Item(v) }
+}
+fn total(items List<Item>) int {
+    var t = 0
+    for it in items {
+        t = t + it.get()
+    }
+    return t
+}
+fn main() {
+    let xs = [Item.new(1), Item.new(2), Item.new(3)]
+    print(f"total=${total(xs)}")
+    print(f"idx1=${xs[1].get()}")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+total=6
+idx1=2
+```
+
+### Notes
+
+legacy.99_idiom2.m05 byte-faithful: records as list elements, the
+for-in element method and the indexed element method call.
+
+## Case: method-value-family
+id: "av.parity.1083.method-value-family"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Cube {
+    v int
+    fn get() int { return .v }
+    fn twice() int { return self.get() * 2 }
+    static fn new(v int) Cube { return Cube(v) }
+}
+fn apply(b Cube) int { return b.get() }
+fn make(v int) Cube { return Cube.new(v) }
+fn main() {
+    print(apply(Cube.new(7)))
+    print(make(8).get())
+    let b = Cube.new(6)
+    print(b.twice())
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+7
+8
+12
+```
+
+### Notes
+
+legacy.99_idiom2.m06: records as arguments/returns, the method-on-call
+result and the self-explicit method call (the legacy f-string spellings
+normalize to direct prints; 7/8/12 preserved). m02's read legs
+(`self.helper`) ride the same dispatch.
+
+## Case: str-field-record
+id: "av.parity.1083.str-field-record"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Note { id int; title Str }
+fn make_note(i int, t Str) Note {
+    Note { id: i, title: t }
+}
+fn main() {
+    let n = Note { id: 1, title: "hello" }
+    if n.title == "hello" {
+        print("title ok")
+    }
+    if n.id == 1 {
+        print("id ok")
+    }
+    let m = make_note(42, "world")
+    if m.title == "world" {
+        print("from fn ok")
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+title ok
+id ok
+from fn ok
+```
+
+### Notes
+
+legacy.10_types.034 (.035's from-fn leg folded in): a Str-field record
+constructed named and returned from a function.
+
+## Case: record-array-fields
+id: "av.parity.1083.record-array-fields"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Note { id int; title Str }
+fn main() {
+    let notes = [
+        Note { id: 0, title: "Welcome" },
+        Note { id: 1, title: "Shopping" },
+    ]
+    if notes[0].title == "Welcome" {
+        print("array field ok")
+    }
+    if notes[1].id == 1 {
+        print("second id ok")
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+array field ok
+second id ok
+```
+
+### Notes
+
+legacy.10_types.036: records in array literals (trailing comma kept) —
+fields read THROUGH the element projection (the whole-owned-element
+bind `let n = notes[0]` is the frozen 962 view rule; the field
+projection spelling is the auditable normalization).
+
+## Case: nested-type-instance
+id: "av.parity.1083.nested-type-instance"
+tags: ["av-language-parity", "plan-1083", "types"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Inner { val int }
+type Outer { inner Inner }
+fn main() int {
+    let o = Outer { inner: Inner { val: 10 } }
+    return o.inner.val
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 10
+
+### Notes
+
+legacy.10_types.008: a nested record instance through named
+construction.

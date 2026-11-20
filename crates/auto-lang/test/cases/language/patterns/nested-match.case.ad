@@ -1,0 +1,416 @@
+# PLAN-1083 — AV 嵌套模式、守卫与组合（语言共享语料 patterns 面）
+
+The canonical author of the nested-patterns language family. Every case
+carries ONE Auto source; the `av` check runs the ordinary AV language
+chain (`ac-av/language-source-run-v1`); legacy `VM result` checks keep
+their original oracles and owners with the AV-phase `#ignore` marker.
+
+Contract faces (§6 + PATTERN-BIND): the four §6 draft cases verbatim,
+nested `is` destructuring with shadowing, guards (evaluated only after
+the pattern matched, false falls through to the next arm), or-arms,
+wildcards, duplicate/non-exhaustive named rejections and the tuple
+across a call boundary.
+
+## Case: nested-result-option
+id: "av.parity.1083.nested-result-option"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn obtain(ok bool) !?int {
+    if ok {
+        return Ok(Some(42))
+    }
+    return Err("bad")
+}
+fn main() int {
+ is obtain(true) {
+  Ok(v) -> {
+   is v {
+    Some(n) -> { return n }
+    None -> { return 0 }
+   }
+  }
+  Err(e) -> { return 0 }
+ }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case 2: `!?int` — a Result<Option<int>> with nested `is`
+destructuring through both layers. The §6 draft verbatim.
+
+## Case: tuple-across-call
+id: "av.parity.1083.tuple-across-call"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn pair() (int, int) { return (19, 23) }
+fn main() int { let (a, b) = pair(); return a + b }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+§6 contract case 3: a tuple returned from a function and destructured at
+the binding — element values observed by position (19+23=42).
+
+## Case: duplicate-pattern
+id: "av.parity.1083.duplicate-pattern"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return is 1 { 1 -> 40, 1 -> 42, else -> 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.pattern-duplicate"
+
+### Notes
+
+§6 contract case 4: a duplicate literal arm is the frozen
+`bind/source.pattern-duplicate` rejection (PLAN-864 code; stage Bind on
+the recipe chain).
+
+## Case: nested-is-shadowing
+id: "av.parity.1083.nested-is-shadowing"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Outer {
+    Wrap(int)
+}
+fn main() int {
+    let v = 7
+    let o = Outer.Wrap(42)
+    is o {
+        Outer.Wrap(v) -> {
+            return v
+        }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+PATTERN-BIND shadowing: the payload binding `v` shadows the outer `v`
+inside the arm scope (returns 42, not 7).
+
+## Case: guard-arm
+id: "av.parity.1083.guard-arm"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Reg {
+    Yes(int)
+    No
+}
+fn main() int {
+    let r = Reg.Yes(42)
+    is r {
+        Reg.Yes(v) if v > 100 -> { return 1 }
+        Reg.Yes(v) -> { return v }
+        Reg.No -> { return 0 }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Notes
+
+PATTERN-BIND guard false continues: the guarded arm shares its disc with
+the plain arm; guard false (42 ≤ 100) falls through to the plain Yes arm
+(42). A guard after a plain arm stays the frozen duplicate rejection.
+
+## Case: guard-not-evaluated
+id: "av.parity.1083.guard-not-evaluated"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Reg {
+    Yes(int)
+    No
+}
+fn side() bool { print("g")
+ return true }
+fn main() {
+    let r = Reg.No
+    is r {
+        Reg.Yes(v) if side() -> { print("y") }
+        Reg.No -> { print("n") }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+n
+```
+
+### Notes
+
+PATTERN-BIND 未选guard不求值: the guard on the UNMATCHED arm never
+evaluates (`side()` prints nothing); the No arm runs (`n`).
+
+## Case: or-arm
+id: "av.parity.1083.or-arm"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Light {
+    Red
+    Green
+}
+fn main() int {
+    let l = Light.Green
+    is l {
+        Light.Red | Light.Green -> { return 1 }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 1
+
+### Notes
+
+PATTERN-BIND or-arm: `A | B -> body` — the second alternative matches;
+both alternatives share the rhs (binding arity must agree).
+
+## Case: nonexhaustive-expr-rejects
+id: "av.parity.1083.nonexhaustive-expr-rejects"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return is 1 { 1 -> 40 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.pattern-nonexhaustive"
+
+### Notes
+
+PATTERN-BIND 穷尽性: a VALUE-producing `is` without an else/complete
+cover is the frozen `bind/source.pattern-nonexhaustive` rejection — the
+auto face relaxes exhaustiveness only for the fall-through STATEMENT
+form (see statement-fallthrough).
+
+## Case: statement-fallthrough
+id: "av.parity.1083.statement-fallthrough"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var hit = 0
+    let x = 5
+    is x {
+        1 -> { hit = 1 }
+    }
+    return hit
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+### Notes
+
+PATTERN-BIND statement fall-through (auto face): a non-exhaustive
+STATEMENT `is` with no matching arm continues to the following code
+(legacy 28_enum_methods spelling); the frozen profiles keep the
+exhaustive statement contract.
+
+## Case: exhaustiveness-else
+id: "av.parity.1083.exhaustiveness-else"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let x = 5
+ is x {
+  1 -> { return 10 }
+  else -> { return 0 }
+ }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+0
+```
+
+### Notes
+
+The else arm completes the cover (the return-armed tail keeps the
+statement form; x=5 falls to else → 0).
+
+## Case: fn-tail-is-value
+id: "av.parity.1083.fn-tail-is-value"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn check(c int) int {
+    return is c {
+        1 -> 10
+        2 -> 20
+        else -> 0
+    }
+}
+fn main() int { return check(1) + check(2) + check(9) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 30
+
+### Notes
+
+legacy.10_types.011 shape: the `is` expression feeds a return operand
+across a call boundary (10+20+0=30); the int-coded arms carry the
+legacy's red/green/unknown mapping.
+
+## Case: script-tail-is-value
+id: "av.parity.1083.script-tail-is-value"
+tags: ["av-language-parity", "plan-1083", "patterns"]
+links: ["PLAN-1083"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+let opt = Some(42)
+is opt {
+  Some(v) -> v
+  None -> 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### VM result
+#ignore
+check-id: "legacy-reference"
+final-newline: false
+
+```text
+42
+```
+
+### Notes
+
+legacy.16_option_result.013 spelling verbatim: the script-top `is` IS the
+script's tail value (expression arms, no fn wrapper).
