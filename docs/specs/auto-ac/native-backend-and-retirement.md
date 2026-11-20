@@ -23,6 +23,10 @@
 （见 [linux-native-platform.md](linux-native-platform.md)）。旧结论"唯一目标
 x86_64-pc-windows-msvc"由本节修订为"双 admitted 目标"；Windows 车道全部冻结不变。
 
+## 1c. AAC 对象服务（PLAN-1051）
+
+Windows AAC 调用方可向[独立服务进程](aac-service-boundary.md)提交 Typed MIR 的 ABC 编码及显式全局表和初始化序列。消费侧重验后复用现有 `ac-mn` 发射单元和启动 COFF；标量与 collections 各沿其运行库载体。collections 的 owned 全局 cell 注册在运行时根 frame，正常或 trap 退出时清理。Gen0 用于准备和比对参考输入，服务协议本身只消费 IR。
+
 ## 2. 后端选择（冻结于 T-02 F1，T-06 收口）
 
 环境变量 `AC_NATIVE_BACKEND`，**每次请求读取**（无进程级缓存）：

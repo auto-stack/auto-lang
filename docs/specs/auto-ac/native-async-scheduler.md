@@ -1,6 +1,6 @@
 # 原生调度车道（`mn.sched.runtime/1`，Windows AC 后端）
 
-> PLAN-1067（M2-B）。本文件只记录**已验证**的支持、接口、终态与边界；未列出的能力不视为已支持。
+> PLAN-1067（M2-B）及 PLAN-1051。记录已验证的支持、接口、终态与边界。
 > 语言面与语义合同沿用 [m2-scheduler.md](../ace-migration/m2-scheduler.md)（PLAN-968）冻结的
 > `task`/`on`/`Task.spawn`/`send`/`ask`/`reply`/`await`/`go`/`sleep`/`stop` 语义与 `SCHED_*` MIR（0x41–0x4B）；
 > 本文件记录这些语义在 **MIR-native（AC）** 车道上的真实机器执行实现、ABI、所有权/终态规则与证据。
@@ -53,7 +53,7 @@ panic/unwind 符号上冲突。
 
 ## 4. 依赖与 ABI 审计
 
-- 车道 PE 的导入**仅** `kernel32.dll`，且每个符号必须在 `SCHED_KERNEL32_IMPORTS`（18 项：
+- 普通调度 PE 的导入仅 `kernel32.dll`，且每个符号必须在 `SCHED_KERNEL32_IMPORTS`（18 项：
   `CreateThread`/`WaitForSingleObject`/`CloseHandle`/`TlsAlloc`/`TlsSetValue`/`TlsGetValue`/
   `AcquireSRWLockExclusive`/`ReleaseSRWLockExclusive`/`SleepConditionVariableSRW`/
   `WakeConditionVariable`/`WakeAllConditionVariable`/`Sleep`/`GetProcessHeap`/`HeapAlloc`/`HeapFree`/
@@ -61,8 +61,7 @@ panic/unwind 符号上冲突。
   `vcruntime*`/`api-ms-win-crt*`）与其它 DLL。
 - 审计入口 `native::sched::audit_sched_pe_imports`；共享 `native::platform_io::audit_pe_imports`
   保持原冻结表不变（已参数化为按车道 allowlist）。
-- `platform.*`（clock/timer 等）在调度单元仍为**具名拒绝** `native.sched-platform`；源级
-  `std.time.*` 模块入口属库/FFI 接面（PLAN-1068/T-03），本车道不声称支持。
+- 普通调度 PE 保 kernel32 导入审计。[AAC 调度组合](aac-service-boundary.md)另外准入已受检的 Windows 内存、W16 文件和 [WinSock TCP](../ace-migration/m2-stdlib-network.md) 操作，调用按平台台账串行化。按原 profile 具名拒绝其它平台调用，源级 `std.time.*` 模块入口归 PLAN-1068/T-03。
 - guest 不得经 AV/旧 VM/A2C 转译；本车道产物是真实 PE，业务与状态机均由机器码执行。
 
 ## 5. 证据（Windows，2026-11-17）
@@ -83,7 +82,7 @@ panic/unwind 符号上冲突。
 - **邮箱容量**：`cap >= 1`；`cap < 1` 为具名语言错误（native/A2R stderr+trap 70、AV `ExecOutcome::Error`，
   文本统一 `task mailbox capacity must be at least 1`）。
 
-`native.sched-unsupported`（非调度车道遇 `SCHED_*`）、`native.sched-platform`（`platform.*`）、
+`native.sched-unsupported`（非调度车道遇 `SCHED_*`）、`native.sched-platform`（所选车道未准入的平台操作）、
 `native.sched-value`/`native.sched-arity`/`native.sched-callee`/`native.sched-context`（值/元数/
 callee 表/上下文形状）、`mn.unsupported.pe.audit.forbidden-dll|forbidden-symbol|ordinal-import`、
 `mn.admit.runtime-content`（未审计 runtime 内容）；语言面沿用 `source.sched-task`/
@@ -94,7 +93,7 @@ callee 表/上下文形状）、`mn.unsupported.pe.audit.forbidden-dll|forbidden
 | 项 | 现状 | owner |
 |---|---|---|
 | Linux 调度腿 | 本 lane 只为冻结 Windows triple 降 COFF/kernel32，无 Linux 分支与用例 | 1063：写实现＋原完整用例后验；Windows 证据不外推 |
-| owned-text **消息/回复** | 共享前端具名拒绝（内建签名要 owned `Str`，表面只产 borrowed view）：`source.sched-argument` | 1068/T-02：在 scheduler 参数投影处插入 `text_to_owned`；关闭时改本包边界钉并补三端正例 |
-| `platform.*` / 源级 OS timer | 调度单元具名拒绝；`sleep` 已是真实 OS 等待 | 1068/T-03（库/FFI 接面） |
-| 进程外取消源 | 内部终止语义已验（closed future、stop 不复活、drain 立即完成）；无宿主取消句柄/超时中断在跑任务 | 后续宿主/产品计划 |
-| owned-text 循环内临时 | 循环体**第二次迭代**重建文本临时未逐次释放（退出 sweep 只释放最后一次写）；本车道 drain 审计以 exit 72 捕获（`print(f"a=${n}")` 收两条 → 72；改 `print(n)` → 0） | 共享 owned-text native 降层（774/870） |
+| owned-text **消息/回复的源语法** | 受检 MIR 的 send/ask/reply/await 在真 PE 执行。源级由 borrowed view 形成 owned `Str` 的参数投影独立验收 | 1068/T-02 |
+| 源级 OS timer | `sleep` 真实等待，AAC 的受检平台组合见 §4 | 1068/T-03（库/FFI 接面） |
+
+PLAN-1051 在共享降层中每次替换 owning 文本槽时释放旧值，借用切片保留借用语义。Gen0 循环中的 `print(f"a=${n}")` 两次迭代后零残留。AAC scope 审计继续在 drain 后检查活跃拥有值和平台句柄。活动调度 PE 可由宿主 Job 外部取消，回收后丢弃迟到回复，下一请求正常执行。受检调度指令的失败可返回 function/字节范围，原普通调度诊断输出格式继续兼容。

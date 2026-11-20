@@ -33,6 +33,10 @@ P90≤2000ms；计时和原资源、正确性约束详见 [conformance-cache.md]
 - 工具链发现：`locate_second_toolchain`（rustup toolchains 目录真发现第二 rustc）、
   `locate_pinned_sqlite`（SQLITE_VERSION 内容钉版）。
 
+## AAC 外部调用接缝（PLAN-1051）
+
+在 [Windows AAC 服务](../auto-ac/aac-service-boundary.md)中，SDK 启动器独立提供 967 provider 的配置路径及内容摘要，配置绑定声明、导出、目标和库文件字节。CT worker 重验纯 `view-text → I32` 形状，装载实际 DLL，记录 provider 读集。native 对象服务在批准的无全局状态模块中为外部调用发射显式导入，SDK 在链接和部署阶段供给相应库。实际证据覆盖含 NUL 的 9 字节 F0 和 SQLite 事务回滚；有状态的 SQLite 帧在 CT 准入拒绝。
+
 ## 目标与范围
 
 - 冻结首个有界 Windows x64 候选 profile 的域/版本/符号/descriptor/类型

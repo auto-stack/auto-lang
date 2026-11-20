@@ -12,7 +12,9 @@
 | client 面 | `net_tcp_connect(host,port)`/`net_tcp_write_some(sock,Str)`/`net_tcp_read_into(sock,region,off,len)`/`net_tcp_write_region(sock,region,off,len)`(**raw字节面**——RFC6455 帧字节等非UTF-8载荷的必然通道)/`net_tcp_close(sock)`;caps `platform.net.connect/write/read/close` | `av-core/src/platform_io.rs` |
 | server 面 | `net_tcp_listen(port)`(0=临时口)/`net_tcp_accept(listener)`(**铸造新socket台账条目**)/`net_tcp_local_port(listener)`;cap `platform.net.listen` | 同上 |
 | 纪律 | 16-socket/监听器台账单属主账本(代次编码);call 64KiB/net-run 1MiB 预算;混源校验(read_into/write_region 沿 console_write16 律);具名错误码 -1..-10(**-10=可重试静默窗**);**paced有界等待**:accept≤50ms/read≤500ms(5ms 步进),静默窗返回 -10 由 guest 轮询——不烧墙/步数;Win32 std::net(5s 连/读/写超时);connect 拒绝=**具名-8不挂起** | 同上 |
-| 准入 | mir_verify 四+一 net caps(host-console platform profile 同 io/mem 纪律);缺授权=**准入拒绝 host.unauthorized 零 dispatch**;native 道全部 net ops **具名拒**(穷尽匹配防静默穿透) | `mir_verify.rs`/`native/*` |
+| 准入 | MIR verifier 核四项 client cap 及 listen cap，缺授权为 `host.unauthorized` 零 dispatch。Windows [AAC 原生调度组合](../auto-ac/aac-service-boundary.md)支持下列 WinSock 接缝，其它 native 车道沿各自明确准入。 | `mir_verify` / `native` |
+
+PLAN-1051 让同一调度 PE 执行已受检的 `platform.net/1`，使用 Windows WinSock，和内存、文件共用平台台账。真回环验证 `accept` 静默窗 `-10`、文本及 raw 字节、错 origin `-3` 和重复关闭 `-6`。监听器在 drain 关闭，未关闭流计入退出 scope 审计。
 
 ## std.net / std.url(已验 Auto 面,PLAN-1041 内联约定)
 
