@@ -450,6 +450,11 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-artifacts
 
   归档路径 `docs/plans/archive/1085-av-parity-modules-and-global-state.md`。迁入后校验本计划真实相对链接和四个发布规范链接，路线路径与原语料表改指归档。T-08 等待合法清理完成。主检出的 release AV worker 文件时间 2026-11-19 11:10:13，当前交付通过绑定源码的 debug 验收。
 
+
+- 2026-11-20 `stage: merge | key: PLAN-1085:r3 | archive_commit: 274f86183bfb5dce7118e95ccbd517c392873bdd | checkpoints: archived, worktrees_removed | pending: artifact_scope_removed, registry_refreshed, T-08`。归档已在 master，17 个从归档向外的路径及四个规范和两处导航均核对。主、伴随工作树属于 lang-1085，清洁、身份符合并在删除前分别通过 `wt-guard.ps1`。普通主工作树 101,669 文件、22,225,226,257 字节，伴随工作树 1,294 文件、26,841,767 字节，目录和中间产物已随树移除，合入分支与空组目录已移除。
+
+  路径对账：T-02 早期系统临时执行根 `C:/Users/zhaop/AppData/Local/Temp/tmcase-wwhk0o_3` 核实不存在。早期显式工具准备根 `C:/Users/zhaop/AppData/Local/Temp/fixed-admission-62ikuv6t` 的 JSON 指向唯一 1085 worktree，确认无 reparse point 后移除 5 文件、71,625 字节，路径不存在。其余各轮源码探针、AV store、Cargo/nextest 日志、运行输出、准备归档及临时产物在 Plan 专属材料或已移除的工作树。材料目录 owner 和在途登记确认，保护扫描 clean，15,477 文件、362,329,193 字节，即将按政策全删。
+
 ## 10. 待澄清事项
 
 不需再次确认已经授权的规划范围。已定语言规范/数值宽度/安全边界沿原来源；T-01对真实旧用例与Spec冲突做具名裁定或有界机制探测，属于本包必要工作。涉及改变已批准公共语义、资源承诺或验收阈值时提交具体差异再决定；不得以“未定”无限延期本包required行。默认支持同一合法源或已批准、可审计的兼容规范化，不承诺复制旧bug或尚无语言构造。
