@@ -183,6 +183,18 @@ pub(crate) fn admit_layouts(
                     "collection units require imported function calls",
                 ));
             }
+            if let MirInstr::GlobalGet { global, .. }
+            | MirInstr::GlobalTake { global, .. }
+            | MirInstr::GlobalSet { global, .. } = i
+            {
+                if m.globals.get(*global as usize).is_none() {
+                    return Err(unsupported(
+                        "global.reference",
+                        "missing typed collection global",
+                    ));
+                }
+                continue;
+            }
             if let MirInstr::PlatformCall { host, args, .. } = i {
                 scalar_platform_import(m, *host, args.len())?;
                 continue;
@@ -222,6 +234,7 @@ pub(crate) fn admit_layouts(
                     // PLAN-972 (T-03): the text/char expression surface
                     // (mn_coll_* over TEXT cells; char rides its codepoint).
                     | MirInstr::StrLenBytes { .. }
+                    | MirInstr::StrCmp { .. }
                     | MirInstr::StrCharAt { .. }
                     | MirInstr::StrSlice { .. }
                     | MirInstr::StrToOwned { .. }
@@ -678,7 +691,8 @@ impl Lower<'_, '_> {
             | VariantGuard { src, .. }
             | DynPack { src, .. }
             | DynIs { src, .. }
-            | DynTake { src, .. } => vec![*src],
+            | DynTake { src, .. }
+            | GlobalSet { src, .. } => vec![*src],
             // PLAN-923: a place access re-validates the token before the
             // runtime touches the buffer; the base list + index are reads.
             ListPlace { base, index, .. } => vec![*base, *index],
@@ -692,6 +706,7 @@ impl Lower<'_, '_> {
             BorrowEnd { .. } => vec![],
             Drop { slot } => vec![*slot],
             StrLen { view, .. } => vec![*view],
+            StrCmp { lhs, rhs, .. } => vec![*lhs, *rhs],
             FieldGet { base, .. } | FieldMove { root: base, .. } => vec![*base],
             FieldSet { root, value, .. } => vec![*root, *value],
             Aggregate { operands, .. } | Call { args: operands, .. } => operands.clone(),
@@ -731,6 +746,8 @@ impl Lower<'_, '_> {
             | DynTake { dst, .. }
             | ObjectNew { dst, .. }
             | ObjectGet { dst, .. }
+            | GlobalGet { dst, .. }
+            | GlobalTake { dst, .. }
             // PLAN-972 (T-08): the round-6 text arms allocate FRESH nodes
             // (slice own-clones its view; concat / to_owned deep-copy) —
             // they must carry a dst binding like every other allocation,
@@ -821,6 +838,25 @@ impl Lower<'_, '_> {
     fn instruction_inner(&mut self, instruction: &MirInstr) -> Result<(), MnError> {
         use MirInstr::*;
         match instruction {
+            GlobalGet { dst, global } | GlobalTake { dst, global } => {
+                let cell = self.addr(*dst);
+                let index = self.i64(i64::from(*global));
+                let take = self.i32(i32::from(matches!(instruction, GlobalTake { .. })));
+                self.checked(
+                    "mn_coll_global_get",
+                    &[(cell, types::I64), (index, types::I64), (take, types::I32)],
+                )?;
+            }
+            GlobalSet { dst, global, src } => {
+                let cell = self.addr(*src);
+                let index = self.i64(i64::from(*global));
+                let result = self.checked(
+                    "mn_coll_global_set",
+                    &[(cell, types::I64), (index, types::I64)],
+                )?;
+                self.scalar_to(*dst, result);
+            }
+
             Const { dst, value } => match &self.m.consts[*value as usize] {
                 MirConst::I32(n) => {
                     let v = self.i32(*n);
@@ -992,6 +1028,18 @@ impl Lower<'_, '_> {
             Drop { slot } => {
                 let p = self.addr(*slot);
                 self.call("mn_coll_drop", &[(p, types::I64)], None)?;
+            }
+            StrCmp { eq, dst, lhs, rhs } => {
+                let left = self.bits(*lhs);
+                let right = self.bits(*rhs);
+                let equal =
+                    self.checked("mn_coll_str_eq", &[(left, types::I64), (right, types::I64)])?;
+                let result = if *eq {
+                    equal
+                } else {
+                    self.fb.ins().bxor_imm(equal, 1)
+                };
+                self.scalar_to(*dst, result);
             }
             StrLen { dst, view } => {
                 let v = self.bits(*view);
@@ -1875,6 +1923,45 @@ pub struct WrapperKnobs {
 /// Adapt the collection internal out-cell ABI to the unchanged zero-argument
 /// i32 process result. No expected value is supplied to the child.
 pub fn emit_wrapper_coff(entry_symbol: &str, knobs: &WrapperKnobs) -> Result<Vec<u8>, MnError> {
+    emit_wrapper(entry_symbol, knobs, &[], 0)
+}
+
+pub fn emit_program_wrapper_coff(module: &MirModule) -> Result<Vec<u8>, MnError> {
+    let entry = module
+        .funcs
+        .get(module.entry as usize)
+        .ok_or_else(|| unsupported("entry", "missing collections entry"))?;
+    let mut initializers = Vec::with_capacity(module.init.len());
+    for &index in &module.init {
+        let function = module
+            .funcs
+            .get(index as usize)
+            .ok_or_else(|| unsupported("global-initializer", "missing collections initializer"))?;
+        if !module.sig_of(function.sig).is_some_and(|sig| {
+            sig.params.is_empty()
+                && matches!(module.types.get(sig.result as usize), Some(MirType::I32))
+        }) {
+            return Err(unsupported(
+                "global-initializer",
+                "collections initializer needs zero arguments and I32 result",
+            ));
+        }
+        initializers.push(symbols::function_symbol(&module.owner, &function.name));
+    }
+    emit_wrapper(
+        &symbols::function_symbol(&module.owner, &entry.name),
+        &WrapperKnobs::default(),
+        &initializers,
+        module.globals.len(),
+    )
+}
+
+fn emit_wrapper(
+    entry_symbol: &str,
+    knobs: &WrapperKnobs,
+    initializers: &[String],
+    globals: usize,
+) -> Result<Vec<u8>, MnError> {
     let mut om = ObjectModule::new(
         ObjectBuilder::new(emit::make_isa()?, "mn-coll-start", default_libcall_names())
             .map_err(backend)?,
@@ -1989,9 +2076,47 @@ pub fn emit_wrapper_coff(entry_symbol: &str, knobs: &WrapperKnobs) -> Result<Vec
                 fb.ins().call(r, &[v]);
             }
         }
+        let globals_frame = if globals > 0 {
+            let slot =
+                fb.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 40, 3));
+            let frame = fb.ins().stack_addr(types::I64, slot, 0);
+            let sig = Signature {
+                call_conv: CallConv::WindowsFastcall,
+                params: vec![AbiParam::new(types::I64), AbiParam::new(types::I64)],
+                returns: vec![],
+            };
+            let open = om
+                .declare_function("mn_coll_globals_open", Linkage::Import, &sig)
+                .map_err(backend)?;
+            let open = om.declare_func_in_func(open, fb.func);
+            let count = fb.ins().iconst(types::I64, globals as i64);
+            fb.ins().call(open, &[frame, count]);
+            Some(frame)
+        } else {
+            None
+        };
+        for symbol in initializers {
+            let callee = om
+                .declare_function(symbol, Linkage::Import, &signature(0))
+                .map_err(backend)?;
+            let callee = om.declare_func_in_func(callee, fb.func);
+            fb.ins().call(callee, &[out]);
+        }
         let r = om.declare_func_in_func(entry, fb.func);
         fb.ins().call(r, &[out]);
         let result = fb.ins().load(types::I32, MemFlags::new(), out, 0);
+        if let Some(frame) = globals_frame {
+            let sig = Signature {
+                call_conv: CallConv::WindowsFastcall,
+                params: vec![AbiParam::new(types::I64)],
+                returns: vec![],
+            };
+            let close = om
+                .declare_function("mn_coll_globals_close", Linkage::Import, &sig)
+                .map_err(backend)?;
+            let close = om.declare_func_in_func(close, fb.func);
+            fb.ins().call(close, &[frame]);
+        }
         let summary_sig = Signature {
             call_conv: CallConv::WindowsFastcall,
             params: vec![],

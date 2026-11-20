@@ -19,8 +19,16 @@ pub fn request(mode: Mode, mir: &MirModule, id: u8) -> Request {
         options: Options { remaining_ms: 2000 },
         capabilities: mir.capabilities.clone(),
         external_provider: None,
-        globals: vec![],
-        initializers: vec![],
+        globals: mir
+            .globals
+            .iter()
+            .map(|global| ace_aac_bridge::WireGlobal {
+                name: global.name.clone(),
+                ty: global.ty,
+                mutable: global.mutable,
+            })
+            .collect(),
+        initializers: mir.init.clone(),
     }
 }
 

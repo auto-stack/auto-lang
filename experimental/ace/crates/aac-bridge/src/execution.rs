@@ -330,13 +330,7 @@ fn native_objects(
 ) -> Result<(Outcome, Vec<u8>), Failure> {
     let collections = mode == Mode::NativeCollections;
     let stateful = !module.globals.is_empty() || !module.init.is_empty();
-    if collections && stateful {
-        return Err(Failure::admission(
-            "bridge.collections-program-state",
-            "collection object ABI needs a program-owned cell provider",
-        ));
-    }
-    if stateful {
+    if stateful && !collections {
         emit::admit_program_startup(module).map_err(native_failure)?;
     }
     let entry = &module.funcs[module.entry as usize];
@@ -384,7 +378,9 @@ fn native_objects(
         emit::UnitObject {
             symbol: ace_native::config::START_SYMBOL.into(),
             imports: Vec::new(),
-            bytes: if collections {
+            bytes: if collections && stateful {
+                ace_native::collections_lower::emit_program_wrapper_coff(module)
+            } else if collections {
                 ace_native::collections_lower::emit_wrapper_coff(&entry, &Default::default())
             } else if stateful {
                 emit::emit_program_wrapper_coff(module)

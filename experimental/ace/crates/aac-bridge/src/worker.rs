@@ -36,18 +36,28 @@ fn serve_inner(
     let id = frame.metadata.id;
     let (outcome, payload) = crate::execution::run(frame.metadata, &frame.bytes, started, permit)
         .unwrap_or_else(|error| (Outcome::Failure { error }, Vec::new()));
-    let response = Response {
+    let mut response = Response {
         id,
         request_hash: frame.hash,
         outcome,
     };
-    write_frame(
+    match write_frame(
         &mut output,
         RESPONSE_MAGIC,
         RESPONSE_CAP,
         &response,
         &payload,
-    )?;
+    ) {
+        Ok(_) => {}
+        // Frame bounds are checked before any writer call. A typed resource
+        // failure preserves the request binding even when objects plus
+        // metadata exceed the aggregate output cap.
+        Err(error) if error.kind == crate::FailureKind::Resource => {
+            response.outcome = Outcome::Failure { error };
+            write_frame(&mut output, RESPONSE_MAGIC, RESPONSE_CAP, &response, &[])?;
+        }
+        Err(error) => return Err(error),
+    }
     Ok(())
 }
 

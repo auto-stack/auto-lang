@@ -991,6 +991,79 @@ pub unsafe extern "system" fn mn_coll_drop(c: *mut Cell) {
     clear(c);
 }
 
+// The program startup owns these cells as its bottom registered frame.
+// Consequently the same trap cleanup sweeps globals and local frames.
+// A second Cell per global records the moved bit without changing Cell ABI.
+static mut GLOBAL_CELLS: *mut Cell = null_mut();
+static mut GLOBAL_COUNT: u64 = 0;
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_globals_open(frame: *mut Frame, count: u64) {
+    let Some(physical) = count.checked_mul(2) else {
+        mn_coll_abort(RESOURCE);
+    };
+    let cells = mn_coll_frame_open(frame, physical);
+    if cells.is_null() {
+        mn_coll_abort(RESOURCE);
+    }
+    GLOBAL_CELLS = cells;
+    GLOBAL_COUNT = count;
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_globals_close(frame: *mut Frame) {
+    GLOBAL_CELLS = null_mut();
+    GLOBAL_COUNT = 0;
+    if mn_coll_frame_leave(frame) != 0 {
+        mn_coll_abort(RESOURCE);
+    }
+}
+
+const GLOBAL_MOVED: i32 = -34;
+
+unsafe fn global_slot(index: u64) -> Option<*mut Cell> {
+    if index < GLOBAL_COUNT && !GLOBAL_CELLS.is_null() {
+        Some(GLOBAL_CELLS.add(index as usize * 2))
+    } else {
+        None
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_global_get(
+    dst: *mut Cell,
+    index: u64,
+    take_value: i32,
+) -> i32 {
+    let Some(slot) = global_slot(index) else {
+        return GLOBAL_MOVED;
+    };
+    let moved = slot.add(1);
+    if read(moved).bits != 0 {
+        return GLOBAL_MOVED;
+    }
+    if take_value == 0 {
+        return mn_coll_share(dst, slot);
+    }
+    let status = mn_coll_move(dst, slot);
+    if status == 0 {
+        write(moved, Cell { bits: 1, owned: 0 });
+    }
+    status
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_global_set(src: *const Cell, index: u64) -> i32 {
+    let Some(slot) = global_slot(index) else {
+        return GLOBAL_MOVED;
+    };
+    let status = mn_coll_share(slot, src);
+    if status == 0 {
+        write(slot.add(1), EMPTY);
+    }
+    status
+}
+
 #[no_mangle]
 pub unsafe extern "system" fn mn_coll_literal(dst: *mut Cell, bytes: *const u8, len: i32) -> i32 {
     status((|| {
@@ -1033,6 +1106,21 @@ pub unsafe extern "system" fn mn_coll_str_len_bytes(bits: u64) -> i32 {
         Ok(p) => (*p).len as i32,
         Err(e) => e,
     }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn mn_coll_str_eq(lhs: u64, rhs: u64) -> i32 {
+    let result = (|| {
+        let a = of_kind(lhs, TEXT)?;
+        let b = of_kind(rhs, TEXT)?;
+        Ok(ac_text_runtime::ac_rt_text_eq(
+            (*a).data,
+            (*a).len as i32,
+            (*b).data,
+            (*b).len as i32,
+        ))
+    })();
+    result.unwrap_or_else(|code| code)
 }
 
 #[no_mangle]

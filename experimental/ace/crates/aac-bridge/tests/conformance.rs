@@ -122,6 +122,11 @@ fn ct_rejects_target_and_host_capability_changes() {
     assert_eq!(error.code, "bridge.domains");
 
     input = request(Mode::CompileTime, &mir, 21);
+    input.domains.abi = "win32-foreign-width".into();
+    let (outcome, _) = execute(&client, &input, &mir);
+    assert!(matches!(outcome, Outcome::Failure { error } if error.code == "bridge.domains"));
+
+    input = request(Mode::CompileTime, &mir, 22);
     input.capabilities.push("host.fs/1".into());
     let (outcome, _) = execute(&client, &input, &mir);
     let Outcome::Failure { error } = outcome else {
@@ -129,7 +134,7 @@ fn ct_rejects_target_and_host_capability_changes() {
     };
     assert_eq!(error.code, "bridge.capability");
 
-    let (outcome, _) = execute(&client, &request(Mode::CompileTime, &mir, 22), &mir);
+    let (outcome, _) = execute(&client, &request(Mode::CompileTime, &mir, 23), &mir);
     assert!(matches!(
         outcome,
         Outcome::Value {
@@ -200,6 +205,80 @@ fn ct_links_initializer_and_rejects_a_missing_global_table() {
     assert!(matches!(outcome, Outcome::Failure { error } if error.code == "bridge.initializer"));
     eprintln!(
         "ct_links_initializer_and_rejects_a_missing_global_table {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn file_exchange_preserves_existing_bytes_and_admits_the_next_request() {
+    let started = Instant::now();
+    let stage = match std::env::var_os("AUTO_PLAN_ARTIFACTS") {
+        Some(root) => tempfile::tempdir_in(root).unwrap(),
+        None => tempfile::tempdir().unwrap(),
+    };
+    let request_path = stage.path().join("request-frame");
+    let response_path = stage.path().join("response-frame");
+    let mir = fixture(false);
+    let request = request(Mode::CompileTime, &mir, 45);
+    let meta = serde_json::to_vec(&request).unwrap();
+    let payload = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    let lengths = [
+        (meta.len() as u32).to_le_bytes(),
+        (payload.len() as u32).to_le_bytes(),
+    ]
+    .concat();
+    let hash = blake3::hash(&[lengths.as_slice(), &meta, &payload].concat());
+    let good = [
+        b"AQ01".as_slice(),
+        &lengths,
+        hash.as_bytes(),
+        &meta,
+        &payload,
+    ]
+    .concat();
+    let mut bad = good.clone();
+    bad[12] ^= 1;
+    std::fs::write(&request_path, bad).unwrap();
+    std::fs::write(&response_path, b"previous-output").unwrap();
+    let client = client();
+    assert_eq!(
+        client
+            .exchange_file(&request_path, &response_path)
+            .unwrap_err()
+            .code,
+        "bridge.stage"
+    );
+    assert_eq!(std::fs::read(&response_path).unwrap(), b"previous-output");
+    std::fs::remove_file(&response_path).unwrap();
+    assert_eq!(
+        client
+            .exchange_file(&request_path, &response_path)
+            .unwrap_err()
+            .code,
+        "bridge.frame-checksum"
+    );
+    assert!(!response_path.exists());
+    assert_eq!(std::fs::read_dir(stage.path()).unwrap().count(), 1);
+
+    std::fs::write(&request_path, good).unwrap();
+    client.exchange_file(&request_path, &response_path).unwrap();
+    let frame = std::fs::read(&response_path).unwrap();
+    assert_eq!(&frame[..4], b"AR01");
+    let size = u32::from_le_bytes(frame[4..8].try_into().unwrap()) as usize;
+    let response: ace_aac_bridge::Response = serde_json::from_slice(&frame[44..44 + size]).unwrap();
+    assert_eq!(response.id, request.id);
+    assert_eq!(response.request_hash, *hash.as_bytes());
+    assert!(matches!(
+        response.outcome,
+        Outcome::Value {
+            value: Value::I32(7),
+            ..
+        }
+    ));
+    assert_eq!(std::fs::read_dir(stage.path()).unwrap().count(), 2);
+    stage.close().unwrap();
+    eprintln!(
+        "file_exchange_preserves_existing_bytes_and_admits_the_next_request {:?}",
         started.elapsed()
     );
 }

@@ -1553,3 +1553,124 @@ fn main() int {
         started.elapsed()
     );
 }
+
+#[test]
+fn native_bridge_replaces_and_reclaims_the_canonical_global_object() {
+    let started = Instant::now();
+    let library = PathBuf::from(
+        std::env::var_os("ACE_AAC_COLLECTIONS_LIB").expect("prepare ACE_AAC_COLLECTIONS_LIB"),
+    );
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/modules/imports-globals.case.ad"
+    );
+    let case = corpus.split_once("## Case: object-global\n").unwrap().1;
+    let source = case
+        .split_once("```auto\n")
+        .unwrap()
+        .1
+        .split_once("```")
+        .unwrap()
+        .0;
+    let caps = [
+        "ac.source.language.av/v1".into(),
+        "ac.source.modules.packages/v1".into(),
+        "console.stdout".into(),
+        "console.stderr".into(),
+    ];
+    let product = ace_source_query::modules::packages::compile_package_product_auto(
+        &[ace_core::source::packages::PackageModuleInput {
+            package: "auto".into(),
+            version: "0".into(),
+            id: "main".into(),
+            source: source.into(),
+            provider: None,
+        }],
+        &ace_core::source::packages::unit_key("auto", "main"),
+        &caps,
+        ace_core::source::cst::FrontBudget::WORK_OWNED_64MIB,
+    )
+    .expect("compile the canonical PLAN-1085 package");
+    let init = product
+        .bound
+        .module_init_order
+        .iter()
+        .filter_map(|key| {
+            product
+                .bound
+                .module_init_fns
+                .get(key)
+                .map(|name| format!("d_{name}"))
+        })
+        .collect::<Vec<_>>();
+    let mut mir = ace_lowering::lower_checked_auto_language_with_init(
+        &product.compiled.checked,
+        "d_main",
+        1051,
+        &init,
+    )
+    .unwrap();
+    assert_eq!(mir.globals.len(), 1);
+    assert!(!mir.init.is_empty());
+    let stage = stage();
+    let result = native_object_image(
+        &mir,
+        128,
+        Mode::NativeCollections,
+        &library,
+        &stage.path().join("object-global"),
+    );
+    assert_eq!(result.kind, ExitKind::Failure(42), "{result:?}");
+    let summary = String::from_utf8_lossy(result.stderr.as_deref().unwrap_or_default());
+    assert!(
+        summary.lines().any(|line| line == "MN-COLL live=0"),
+        "{summary}"
+    );
+
+    mir.capabilities
+        .push(ace_av_core::contract::GLOBAL_TAKE_CAPABILITY.into());
+    let entry = &mut mir.funcs[mir.entry as usize];
+    let block = entry
+        .blocks
+        .iter_mut()
+        .find(|block| {
+            block
+                .instrs
+                .iter()
+                .any(|i| matches!(i, MirInstr::GlobalGet { .. }))
+        })
+        .unwrap();
+    let index = block
+        .instrs
+        .iter()
+        .position(|i| matches!(i, MirInstr::GlobalGet { .. }))
+        .unwrap();
+    let MirInstr::GlobalGet { dst, global } = block.instrs[index] else {
+        unreachable!()
+    };
+    block
+        .instrs
+        .insert(index, MirInstr::GlobalTake { dst, global });
+    entry.spans.clear();
+    let result = native_object_image(
+        &mir,
+        129,
+        Mode::NativeCollections,
+        &library,
+        &stage.path().join("moved-global"),
+    );
+    assert_eq!(result.kind, ExitKind::Failure(70), "{result:?}");
+    let summary = String::from_utf8_lossy(result.stderr.as_deref().unwrap_or_default());
+    assert!(
+        summary.lines().any(|line| line == "MN-COLL-TRAP code=34"),
+        "{summary}"
+    );
+    assert!(
+        summary.lines().any(|line| line == "MN-COLL live=0"),
+        "{summary}"
+    );
+    stage.close().unwrap();
+    eprintln!(
+        "native_bridge_replaces_and_reclaims_the_canonical_global_object {:?}",
+        started.elapsed()
+    );
+}
