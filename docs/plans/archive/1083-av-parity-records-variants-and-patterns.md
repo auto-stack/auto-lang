@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1083
-status: drafting
+status: archived
 feature_name: AV名义类型、枚举与模式组合补齐
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
+updated_at: 2026-11-20
 plan_revision: 3
-current_step: 0
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080]
 supersedes_spec_components: [docs/specs/ace-migration/m2-aggregates.md, docs/specs/ace-migration/m2-control-effects.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -48,6 +48,8 @@ AV–AutoVM语言齐平路线批次 **AVP-05**，r3，仅设计/计划；本轮�
 AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo组，ACE共享Rust实现。唯一实施树拟`D:/autostack/.wt/lang-1083/auto-lang`，分支`plan-1083-dev`；本轮不创建。只有确需跨仓改动才加同组兄弟树且先读其AGENTS，禁止junction/symlink。材料唯一`D:/autostack/plan-artifacts/plan-1083/`，开工登记owner/用途/在途，收尾折摘要并删除；本轮纯文档工具在系统临时目录。
 
 ## 4. 需求分析与背景调查
+
+2026-11-20 goal授权（`/auto-plan-goal 完成计划1083`）：用户授权全链交付——work（含建worktree `D:/autostack/.wt/lang-1083/auto-lang`@`plan-1083-dev`，基面master `5a76167cc`；材料scope `D:/autostack/plan-artifacts/plan-1083/`）、独立复审、有界修复、merge（Spec沉淀/归档/清理）。不改变本Plan目标/验收/范围/预算。
 
 2026-11-19新增阶段授权：本系列只以AV检查验收，用户允许给非AV检查先加`#ignore`并在其开发阶段打开；该临时阶段策略覆盖此前要求最小AC真运行或“所有已接入目标都需本轮运行”的文字。共享文档/源码、AV必需公共编译与语义验证仍应正确，本轮未授权执行施工或批量修改已有非AV测试。
 
@@ -328,8 +330,8 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 - [ ] **AC-04｜owner_stage: work**：本包原case/check与L行映射有唯一owner/预期/状态；AV required行必须有actual，AV未知/未跑阻AV出口。非AV保持#ignore/NOT_RUN及后续owner，迁移数据不得丢，但不要求本轮actual、不阻AV出口。
 - [ ] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [ ] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
-- [ ] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -346,18 +348,55 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 本轮任务状态（全部未施工）：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
+- [x] **T-01** work：已完成 2026-11-20（goal授权施工，`/auto-plan-goal 完成计划1083`）。观察矩阵真实运行：`plan1083_records_variants_patterns.rs`（O1..O54 + B1..B32 bisect，worktree 提交 `6e0337167`；日志 `plan-artifacts/plan-1083/logs/t01-observe-matrix.txt`、`t01-bisect.txt`）。canonical位置冻结：`language/types/variants.case.ad`、`language/patterns/nested-match.case.ad`（1078 suite只增引用）；判等条件=FC合同（同一Auto源/工程闭包，AV检查+非AV `#ignore`/NOT_RUN分列）。冻结记录+决策D-1083-01..08见§9。
+- [x] **T-02** work：已完成 2026-11-20，提交 `ef2506b55`+`2900e015f`+`2b6f5d0`（实现见§9 T-02记录）。落地：命名多字段payload（合成record `__enum_<E>_<A>`载荷+命名/位置构造序乱序+多绑定解构+单字段绑定+无绑定臂）、多元组payload（TypeRef::Tuple折叠）、标量`= N`枚举（i32常量折叠+int scrutinee上qualified臂按值匹配+逗号分隔吸收）、bare臂qualified构造、`_`通配/`else`、or臂（投影展开共享rhs）、guard臂（模式命中后求值/绑定可见/false继续下一臂/未选不求值）、return臂体、enum实例方法（`is self`+变异接收者按值传递+方法表/签名/适配器接线）、语句`is` fall-through（auto面穷尽性/填充按has_following门控）、fn尾is→Return(IsExpr)/script尾is→ExprStmt(IsExpr)规范化（infer::complete）、`!T`+全枚举Err载荷→`Result<T,E>`显式改写+尾Ok归一、`.or(default)`builtin、隐式self字段写`.f (op)= v`语法（self-place规则+投影）、数组字面量尾逗号、字段/臂逗号吸收。留待AVP-08：方法字段写接收者可变性（B2-B4 verify.immutable-write/list-value-context——&mut self借阅缝，m01/m08/m09写腿6行research-hold）。
+- [x] **T-03** work：已完成 2026-11-20（随T-02提交）。Option/Result边界全绿：`?int`/`!int`/`!?int`注解、bare None/Some/Ok/Err、is Some/None/Ok/Err绑定、`.?(default)`(141)、`.or`(141)、`!int` fn+return Err+隐式Ok尾(5)、Err枚举载荷嵌套is("unexpected end")、多错误族(404/timeout/200)。HIR/MIR/ABC准入：全部经`compile_language_source`→`lower_checked_auto_language`→`verify_mir`→`encode_abc`→`verify_abc_bytes`→`execute_sched`真实链（probe `compile_and_load`同链）。
+- [x] **T-04** work：已完成 2026-11-20。union/tag/grid普通入口：v08全源经`compile_language_source`直跑=42（B32，union/tag语法已在auto面）；grid（v05）经既有aggregates链（962冻结面，不动）；§6 extra oracle：PATTERN-BIND五面（嵌套解构O54=42/遮蔽、guard B34=42、guard未选不求值B36="n"、穷尽 B37=pattern-nonexhaustive拒/B38语句fall-through=0、or臂B53...O53=1）与LAYOUT-RESOURCE的owned-element读经投影断言（10.036行，整元素绑定=冻结962 view规则D-1083-12）。重复模式拒=§6 case#4（bind/source.pattern-duplicate）。
+- [x] **T-05** work：已完成 2026-11-20（红元控制随T-06待跑）。canonical唯一作者：`language/types/variants.case.ad`（23 Case）与`language/patterns/nested-match.case.ad`（12 Case）；suite只增两引用；legacy-map新增52行（45 mapped含7具名拒/7 research-hold：28.005泛型→AVP-10、28.006 use auto.result→stdlib/modules、m01/m02/m08/m09写腿+10.036 Str-through-element腿→AVP-08），跨批1行（15_nested_mutation.015）owner改AVP-08。normalization台账：fn-local enum提升(D-1083-09)、fstr包裹去包裹(D-1083-06)、display oracle留map(D-1083-08)、整owned元素绑定→经元素投影(D-1083-12)、`.helper(3)`→`self.helper(3)`(D-1083-13)、str词臂→int码(D-1083-14)、wildcard去helper内联（未类型尾调用未类型函数为1080既有推导缺口，C3探针复现——canonical避免该拼写）。
+- [x] **T-06** work：已完成 2026-11-20，冻结提交 `44d2eb5f0`（树clean；含981 grammar-id重冻结Collections/Aggregates/Scheduler+1081 nested-fn fn_vowner数组回归修复+oracle-parser构造补齐）。§6固定组并集实测（`plan-artifacts/plan-1083/logs/t06-frozen-union.txt`）：`case-av-language-parity` PASS（101 Case含本包35）、`ace-source` PASS（931）、`ace-syntax` PASS、`ace-semantics` 294/295（1继承红=PLAN-1062 base，同PLAN-1082 T-06证据）、`ace-av` 1482/1484（2继承红=host_console entry-policy，同1082 base证据；23跳过=条件排除）、`ace-lowering` PASS。红元控制：nested-result-option exit 42→43变异→套件FAIL exit=1（`logs/meta-red.txt`），还原后复绿。占用说明：与另一会话auto-ui串行(-j1)作业共存（隔离worktree/target），首试前~15min有界等待。
+
+  **IF-AV-PARITY-TYPE 收据（T-06交付接口）**：
+  - 枚举载荷面：命名多字段`Arm { f T, .. }`（合成record载荷`__enum_<E>_<A>`、命名构造序/乱序、位置构造、多绑定解构、单字段绑定、无绑定臂）、多元组`Arm(T1, T2, ..)`（TypeRef::Tuple折叠、位置构造、多绑定）、标量`= N`（i32常量折叠、`E.A`即int、int scrutinee上qualified臂按值、auto面逗号臂分隔吸收）。
+  - 模式面：`_`通配（投影Else）、or臂`A | B ->`（共享rhs、绑定元数一致）、guard臂`pat if cond ->`（模式命中后求值/绑定可见/false继续下一臂/未选不求值）、return臂体、语句`is` auto面fall-through（值位/冻结面保穷尽合同，filler按has_following门控）、fn尾is→Return(IsExpr)、script尾is→尾值、重复臂`bind/source.pattern-duplicate`、非穷尽值位`bind/source.pattern-nonexhaustive`。
+  - enum方法面：实例方法（隐式variant接收者、`is self`分派、变异接收者按值传参、`m.<Enum>.<name>`单元）、体fn成员（auto面）。
+  - Option/Result面：`?T`/`!T`/`!?int`注解、bare构造子、is分派、`.?(default)`、`.or(default)`、`!T`+全枚举Err载荷→`Result<T,E>`显式改写（尾Ok归一）。
+  - canonical语料：`language/types/variants.case.ad`（23 Case）+ `language/patterns/nested-match.case.ad`（12 Case）+ suite 2引用 + legacy-map 52行（45 mapped/7 research-hold）；AV视图固定组`case-av-language-parity`全绿。
+  - 诊断面：`source.pattern-bindings`（载荷元数不匹配）、`source.enum-mixed-arms`、`source.or-arm`邻域=展开后undefined、既有`pattern-duplicate/nonexhaustive/argument/type-mismatch`边界保持。
+  - 具名hold（后续owner）：方法字段写接收者可变性与Str-through-element读→AVP-08(PLAN-1086)；泛型enum→AVP-10(PLAN-1088)；`use auto.result`→stdlib/modules；fstr record display→文本面。
 - [ ] **T-03** work：见上表唯一任务合同。
 - [ ] **T-04** work：见上表唯一任务合同。
 - [ ] **T-05** work：见上表唯一任务合同。
 - [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-07** review：已完成 2026-11-20（final pass，R-1/R-2发现-修复-复验关闭）。复审记录见§9。
+- [x] **T-08** merge：已完成 2026-11-20（merge pass，收据见§9）。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
+
+`stage: merge | plan_id: PLAN-1083 | plan_revision: r3 | outcome: pass | delivery_commit: e4e856c336d3d050379551c2fb801f8044bc334b（master tip=delivery，ff-only无合并提交） | rebase映射: 5a76167cc..670f85703旧→master..e4e856c33新，range-diff全10提交=（补丁等价证明；reviewed 10350a3d7→14801c0fe） | canonical: docs/specs/auto-av/language-parity.md@88be70cb666c1e63、ace-migration/m2-aggregates.md@6e381b3615f05283、ace-migration/m2-control-effects.md@c4d53b015ffabad5、auto-test-case/feature-organized-corpus.md@a8830392873497c1（四增量在交付提交内核验） | gates: 冻结并集证据44d2eb5f0（5组PASS+3继承红分账）+受影响复验14801c0fe（twin2/2、1081 21/21、corpus PASS、告警对账）+落主检查main上corpus PASS（复用依据：10350a3d7→e4e856c33仅docs增量，代码/依赖/配置零变）；rebase基master漂移仅他包docs/plans簿记（路径零交叠） | findings: 0新增 | evidence: 本收据+§9前序 | next: 完成（归档+清理）`
+
+  **merge收据检查点**：prepared=reviewed基线10350a3d7+冻结Spec增量四文件（worktree内提交670f85703，docs-only后代）；landed=master ff-only至e4e856c33（range-diff=×10）；canonical_verified=四路径哈希如上；archived=本git mv+status archived+簿记提交；cleaned=guard clean+worktree/分支/组目录移除+plan-artifacts scope删除+登记表刷新（见下）。
+
+  本session（merge）测试台账：main落主检查 `case-av-language-parity` PASS（101+例av检查；准备=prepare-on-main冷构建未计时、运行含于固定组执行；占用=11并发进程并存下完成，main自身target隔离）。无新增Case（merge阶段零代码）。复用：冻结并集（44d2eb5f0）与受影响复验（14801c0fe）证据显式复用，非本session重跑。
+
+`stage: review | review_scope: final | reviewer_identity: 与实施同会话（目标环轮次上下文；无独立模型可用——按技能要求从工件重构判定并独立重放，局限已记） | plan_id: PLAN-1083 | plan_revision: r3 | outcome: pass（R-1/R-2修复复验后） | worktree_path: D:/autostack/.wt/lang-1083/auto-lang | branch: plan-1083-dev | reviewed_commit: 10350a3d7（修复提交；union证据基线44d2eb5f0） | base_commit: 5a76167cc | dependency_revisions: 1078/1079/1080/1082已归档于base | spec_inputs: docs/specs/auto-av/language-parity.md、ace-migration/m2-aggregates.md、m2-control-effects.md、auto-test-case/feature-organized-corpus.md（四目标存在；worktree零spec改动=merge按§5增量沉淀） | acceptance_results: AC-AV-ONLY/FC/01..06 ✅、AC-07本记录、AC-08=merge | pending_closeout_gates: merge落主检查（landing checks） | findings: R-1 stray debug eprintln(resolve.rs)/R-2 unused_mut ablock——均已修复复验关闭 | evidence: 见下 | next: merge(T-08)`
+
+  复审证据（独立重放，非转述自检）：冻结复核（44d2eb5f0→修复10350a3d7，树clean）；canonical孪生2/2 PASS重跑；1081 nested-fn 21/21（修复邻域sibling）；corpus组PASS重跑（111 av检查PASS/41 NOT_RUN显式分列；max 884ms/案≤10s门；总65s；host_dispatches=0）；`crates/auto-lang/test/vm/`零改动；生产代码零`av.parity.1083`特判；suite仅+2引用；legacy-map 52行=45 mapped/7 research-hold计数复核；告警对账4条既有/新增0；规范增量SD-01..SD-FC目标存在且与实现相符（无提前implemented宣称）。红元复用work证据（变异→FAIL exit1）。局限：同会话评审，以工件重构+独立重放缓解。
+
+`stage: goal | plan_id: PLAN-1083 | plan_revision: r3 | round: 1 | from: drafting | to: executing | status: executing | outcome: pass | worktree: D:/autostack/.wt/lang-1083/auto-lang | commit: 6e0337167 | next: work(T-02..)`
+
+- 2026-11-20 T-02..T-05（work）：实现提交 `ef2506b55`（T-02 core）、`2900e015f`（enum方法/标量/.or/Err枚举改写）、`2b6f5d0`(guard链clone+has_following门控+PATTERN-BIND探针)、T-05 canonical（types 23 Case/patterns 12 Case/suite 2引用/legacy-map 52行+跨批1行改owner）。观察矩阵终态：54面中40绿、5具名拒（O13/14/15/16语法或unsupported=legacy error-presence冻结、O50=§6#4合同拒）、9具名hold/规范化（O1/O7/O8方法字段写→AVP-08、O2隐式self调用→self显式规范化、O6 fstr自由函数调用→去fstr、O12整owned元素绑定→经元素投影、O17 fn-local enum→模块提升、O35泛型→AVP-10、O36 use auto.result→stdlib/modules）、0未预期红。新增决策：D-1083-09 fn-local enum提升（capture-free名，legacy拼写留map）；D-1083-11 `!T`+全枚举Err→`Result<T,E>`改写（infer::complete，Str错误保持糖，尾Ok归一为return）；D-1083-12 整owned元素绑定→经元素字段投影（冻结962 view规则）；D-1083-13 `.helper(3)`→`self.helper(3)`（同语义，隐式拼写留冻结行）；D-1083-14 str词臂→int码（red→10等，词oracle留map）；D-1083-15 语句`is`穷尽性auto面fall-through（值位/冻结面保持穷尽合同；filler按has_following门控避免尾码不可达）。
+
+`stage: work | plan_id: PLAN-1083 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1083/auto-lang | branch: plan-1083-dev | base: 5a76167cc | code: 44d2eb5f0（冻结提交，树clean） | dependency_revisions: master 5a76167cc（1078/1079/1080/1082已归档在base内） | task_ids: T-01..T-06 ✅ | evidence: t06-frozen-union.txt + meta-red.txt + probe矩阵 + canonical twin 35/35 | blockers: 无 | next_responsible_role: review(T-07)`
+
+  本session测试台账（实际执行；准备时间未单列处=未观测）：| 模块/范围 | 结果与执行/排除数 | 准备 | 发现 | 运行 | 清理 | 总计 |：case-av-language-parity PASS 101 Case（av检查全执行；legacy VM检查#ignore NOT_RUN不充PASS；准备=prepare两次未计时；运行<10s×多次）；ace-source PASS 931（1 skip条件排除；运行6.2s）；ace-syntax PASS；ace-semantics 294/295（10 skip条件；2.3s；1继承红PLAN-1062）；ace-av 1482/1484（23 skip条件；34.4s；2继承红host_console）；ace-lowering PASS。新增Case计时：全部≤1s（in-process孪生35 Case合计<0.5s；canonical套件单Case远低于10s门）。红元：变异→FAIL exit1。
+
+- 2026-11-20 T-01 冻结（work，goal授权）：观察矩阵O1..O54+B1..B32全量真实运行（`ac-av` conformance 内 `plan1083_records_variants_patterns.rs`，worktree `D:/autostack/.wt/lang-1083/auto-lang`@`plan-1083-dev` 提交 `6e0337167`，基面 master `5a76167cc`）。
+  - **已绿（不重复实现）**：§6草案#2(O48 ok:42)/#3(O49 ok:42)/#4(O50 `bind:source.pattern-duplicate`)；方法字段读(B1)/静态ctor与链(O3/O4)/List元素方法(O5)/嵌套record payload(B22)/Str字段与payload(O11/B24)/record数组字面量(B14)/bare None/Some/Ok/Err(B7/B8/B28)/`?int`/`!int`/`!?int`注解(B19/O48)/`;`臂分隔(B20)/float payload(O26)/`.?(0)`(O43)/嵌套is遮蔽(O54)/int字面量臂+else+bind期穷尽拒(B12/B16/B17)/隐式Ok尾(B11)/print臂(B10)/union/tag普通入口直跑v08=42(B32)。
+  - **待实现面（T-02..04）**：命名多字段payload `{w int,h int}`声明/命名构造(序/乱序)/多绑定解构/无绑定臂(O18-25,O47,B15)；多元组payload `(int,int)`(O27,B21)；标量`= N`判别值+`Color.Red`作int+int scrutinee上qualified臂(O28/O30/B25)；`_`通配臂(O34)；`return`/语句臂体(B9=O39-45语法根因)；is语句作函数尾值(O29)/is-expr script尾(B18)；guard臂(O52)/or臂(O53)；enum静态/实例`is self`/payload receiver方法(O31-33)；`.or(default)`(O44)；方法字段写`.value=`/`self.a=`(B2/B3/B4)与隐式self方法调用`.helper(3)`(B5)；数组字面量尾逗号(B26/B27)；fstr内自由函数调用(B29)。
+  - **具名hold/named**：O35泛型enum→AVP-10(PLAN-1088)；O36 `use auto.result`+`Result.is_ok/is_err`→模块/stdlib面后续owner；O13 `fn Point.sum(self)`/O14 `type Duck has Wing`/O15 `ext`/O16 `struct`误用→现语法拒即legacy error-presence oracle（诊断码冻结`source.syntax`/`source.unsupported`）；B13 fstr record display→规范化（013行display oracle 'p=Point { x: 42 }' 留map原值，canonical观察`p.x=42`）。
+  - **决策**：D-1083-01 多字段/多元组payload=record payload（arm payload扩为`Single(VT)|Record(rec)`，复用VT::Rec构造/字段机制，运行时仍discriminant+单payload，864臂序=判别序不变）；命名解构按声明序绑定，命名构造按record ctor参数语义（可乱序）。D-1083-02 标量`= N`枚举在resolve层折叠为i32常量（`Color.Red`→I32(N)），qualified臂在int scrutinee按值匹配，不引入新VT。D-1083-03 臂体统一：语句is臂体允许expression/statement并归一为block；is在函数/脚本尾位置产生值（is-expr语义），保持bind期`source.pattern-nonexhaustive`。D-1083-04 guard在模式命中后求值（绑定可见），false继续下一臂；or臂按序尝试且绑定形状须一致；穷尽性=else/`_`或全臂覆盖。D-1083-05 `.or(default)`沿`.?`builtin机制（Option/Result）。D-1083-06 fstr插值域不扩（B13/B29规范化：canonical去fstr包裹直接观察值，display/调用in-fstr留原oracle于map）。D-1083-07 数组字面量尾逗号收录（036行canonical保legacy拼写）。D-1083-08 52行legacy-map由本包T-05新增（mapped/hold如上），跨批1行（15_nested_mutation.015 mut方法）随T-02落地转mapped。
 
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
