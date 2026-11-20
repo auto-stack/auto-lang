@@ -2087,9 +2087,15 @@ impl GlobalValue {
         Ok(Self { value, closure })
     }
 
-    fn load(self, st: &mut LoopState, dst: usize, limits: &ExecLimits) -> Result<(), ExecOutcome> {
-        let Some(entry) = self.closure else {
-            return commit_slot_write(st, dst, self.value, limits);
+    fn load(
+        mut self,
+        st: &mut LoopState,
+        dst: usize,
+        limits: &ExecLimits,
+    ) -> Result<(), ExecOutcome> {
+        let Some(entry) = self.closure.take() else {
+            let value = std::mem::replace(&mut self.value, Value::Unit);
+            return commit_slot_write(st, dst, value, limits);
         };
         let mut visited = 0;
         let env_bytes = {
@@ -2127,6 +2133,27 @@ impl GlobalValue {
             return Err(outcome);
         }
         Ok(())
+    }
+}
+
+impl Drop for GlobalValue {
+    fn drop(&mut self) {
+        // Cell replacement, init rollback and generation close own the final
+        // handle when the dispatcher has already returned. Use the same
+        // iterative release as frame cleanup for owned aggregate chains.
+        let mut cleanup_steps = 0;
+        if matches!(
+            self.value,
+            Value::List(_) | Value::Record(_) | Value::Variant(_)
+        ) {
+            let value = std::mem::replace(&mut self.value, Value::Unit);
+            release_owned_worklist(&mut cleanup_steps, vec![value]);
+        }
+        if let Some(entry) = self.closure.take() {
+            if let Ok(env) = std::rc::Rc::try_unwrap(entry.env) {
+                release_owned_worklist(&mut cleanup_steps, env.into_inner().into_fields());
+            }
+        }
     }
 }
 
@@ -9333,6 +9360,23 @@ mod tests {
         m.entry = 0;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
         crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit")
+    }
+
+    #[test]
+    fn global_value_releases_deep_owned_payload() {
+        let arena = crate::owned_text::StrArena::new();
+        let mut value = Value::Str(arena.alloc(b"global"));
+        for _ in 0..20_000 {
+            value = Value::Variant(crate::contract::VariantValue {
+                ty: 0,
+                disc: 0,
+                payload: Some(std::rc::Rc::new(value)),
+            });
+        }
+        let global = GlobalValue::plain(value);
+        assert_eq!(arena.live(), 1);
+        drop(global);
+        assert_eq!(arena.live(), 0);
     }
 
     #[test]
