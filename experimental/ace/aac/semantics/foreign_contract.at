@@ -21,9 +21,14 @@ pub fn foreign_signature_error() int { return -38 }
 pub fn foreign_provider_error() int { return -39 }
 pub fn foreign_handle_error() int { return -44 }
 pub fn foreign_callback_error() int { return -45 }
+pub fn foreign_layout_error() int { return -46 }
 pub fn foreign_callback_lane() int { return -1 }
 pub fn foreign_pending_lane() int { return -2 }
-pub fn foreign_handle_lane(lane int) bool { return lane <= -1000 }
+pub fn foreign_handle_lane(lane int) bool { return lane <= -1000000 }
+pub fn foreign_record_index(lane int) int {
+    if (lane > -1000 || foreign_handle_lane(lane)) { return -1 }
+    return -1000 - lane
+}
 
 fn language_lane(lane Str) int {
     if (lane == "I32") { return integer_type() }
@@ -47,19 +52,73 @@ fn lane_at(page List<int>, path Str, provider Str, owner int, resource bool) int
     let handle = path.clone() + ".Handle.provider"
     if (foreign_field_kind(page, handle.clone()) == 4) {
         if (foreign_field_text(page, handle) != provider) { return foreign_pending_lane() }
-        return -1000 - owner
+        return -1000000 - owner
     }
     if (foreign_field_kind(page, path.clone() + ".Callback") == 6) { return foreign_callback_lane() }
     return foreign_pending_lane()
 }
 
-fn parameter_lanes(page List<int>, path Str, provider Str, owner int, resource bool, out List<int>, fuel List<int>, deadline i64) int {
+fn append_name(target List<int>, name List<int>, fuel List<int>, deadline i64) bool {
+    var index = 0
+    for (index < name.len()) {
+        if (!take_step(fuel, deadline)) { return false }
+        target.push(name.get(index))
+        index = index + 1
+    }
+    return true
+}
+
+// Record layout table: name length, field count, record-name bytes, then
+// each field's name length, source type and name bytes in ABI order.
+fn bind_record_view(page List<int>, path Str, layouts List<int>, fuel List<int>, deadline i64) int {
+    let access = foreign_field_text(page, path.clone() + ".role")
+    if (access != "const") { return foreign_pending_lane() }
+    let name = str_to_bytes(foreign_field_text(page, path.clone() + ".rec"))
+    if (name.len() == 0) { return foreign_layout_error() }
+    if (layouts.len() >= 999000) { return bind_budget() }
+    let start = layouts.len()
+    layouts.push(name.len())
+    layouts.push(0)
+    if (!append_name(layouts, name, fuel, deadline)) { return bind_budget() }
+    let fields = path + ".fields"
+    if (foreign_field_kind(page, fields.clone()) != 5) { return foreign_layout_error() }
+    var index = 0
+    for (take_step(fuel, deadline)) {
+        let entry = fields.clone() + "." + from_int(index)
+        let item = foreign_field_kind(page, entry.clone())
+        if (item == 0) {
+            layouts.set(start + 1, index)
+            return -1000 - start
+        }
+        if (item != 5 || foreign_field_kind(page, entry.clone() + ".2") != 0) { return foreign_layout_error() }
+        let label = str_to_bytes(foreign_field_text(page, entry.clone() + ".0"))
+        let field_type = foreign_field_text(page, entry + ".1")
+        var lane = 0
+        if (field_type == "i32") { lane = integer_type() }
+        if (field_type == "bool") { lane = boolean_type() }
+        if (lane == 0 || label.len() == 0) { return foreign_layout_error() }
+        layouts.push(label.len())
+        layouts.push(lane)
+        if (!append_name(layouts, label, fuel, deadline)) { return bind_budget() }
+        index = index + 1
+    }
+    return bind_budget()
+}
+
+fn parameter_lanes(page List<int>, path Str, provider Str, owner int, resource bool, layouts List<int>, out List<int>, fuel List<int>, deadline i64) int {
     if (foreign_field_kind(page, path.clone()) != 5) { return foreign_signature_error() }
     var at = 0
     for (take_step(fuel, deadline)) {
         let lane_path = path.clone() + "." + from_int(at)
         if (foreign_field_kind(page, lane_path.clone()) == 0) { return 0 }
-        let code = lane_at(page, lane_path, provider.clone(), owner, resource)
+        let record_path = lane_path.clone() + ".Rec"
+        var code = 0
+        if (resource && foreign_field_kind(page, record_path.clone()) == 6) {
+            code = bind_record_view(page, record_path, layouts, fuel, deadline)
+            if (code == bind_budget() || code == foreign_layout_error()) { return code }
+        } else {
+            code = lane_at(page, lane_path, provider.clone(), owner, resource)
+        }
         if (code == 0) { return foreign_signature_error() }
         out.push(code)
         at = at + 1
@@ -106,7 +165,7 @@ fn foreign_result(page List<int>, form Str, pure bool, resource bool, fn_path St
 // For the scalar and noescape text-view contract, the source callable has
 // precisely the admitted parameter lanes and success-result lane. The full
 // original declaration remains the foreign consumer's authority.
-fn project_signature(page List<int>, entry Str, provider Str, owner int, signature List<int>, fuel List<int>, deadline i64) int {
+fn project_signature(page List<int>, entry Str, provider Str, owner int, layouts List<int>, signature List<int>, fuel List<int>, deadline i64) int {
     let fn_path = entry + ".function"
     let resource_path = fn_path.clone() + ".resource"
     let resource = foreign_field_kind(page, resource_path.clone()) == 6
@@ -127,7 +186,7 @@ fn project_signature(page List<int>, entry Str, provider Str, owner int, signatu
     let start = signature.len()
     signature.push(result)
     signature.push(0)
-    let status = parameter_lanes(page, params, provider, owner, resource, signature, fuel, deadline)
+    let status = parameter_lanes(page, params, provider, owner, resource, layouts, signature, fuel, deadline)
     if (status != 0) { return status }
     signature.set(start + 1, signature.len() - start - 2)
     return 0
@@ -145,7 +204,7 @@ fn provider_language(page List<int>, entry Str, provider Str, language Str) bool
     return matched
 }
 
-fn project_provider(page List<int>, provider Str, language Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+fn project_provider(page List<int>, provider Str, language Str, module_id int, names List<int>, signatures List<int>, layouts List<int>, fuel List<int>, deadline i64) int {
     if (page.len() == 0 || page.get(0) != 91) { return foreign_authority_error() }
     var index = 0
     var owner = -1
@@ -161,16 +220,12 @@ fn project_provider(page List<int>, provider Str, language Str, module_id int, n
             if (name.len() == 0) { return foreign_signature_error() }
             let start = signatures.len()
             if (owner < 0) { owner = index }
-            let status = project_signature(page, entry, provider.clone(), owner, signatures, fuel, deadline)
+            let status = project_signature(page, entry, provider.clone(), owner, layouts, signatures, fuel, deadline)
             if (status != 0) { return status }
             names.push(module_id)
             names.push(start)
             names.push(name.len())
-            var offset = 0
-            for (offset < name.len()) {
-                names.push(name.get(offset))
-                offset = offset + 1
-            }
+            if (!append_name(names, name, fuel, deadline)) { return bind_budget() }
             found = true
         }
         index = index + 1
@@ -178,8 +233,8 @@ fn project_provider(page List<int>, provider Str, language Str, module_id int, n
     return bind_budget()
 }
 
-pub fn admit_foreign_provider(bytes List<int>, authority Str, provider Str, language Str, module_id int, names List<int>, signatures List<int>, fuel List<int>, deadline i64) int {
+pub fn admit_foreign_provider(bytes List<int>, authority Str, provider Str, language Str, module_id int, names List<int>, signatures List<int>, layouts List<int>, fuel List<int>, deadline i64) int {
     let trusted = foreign_page_status(bytes, authority, fuel, deadline)
     if (trusted != 0) { return trusted }
-    return project_provider(bytes, provider, language, module_id, names, signatures, fuel, deadline)
+    return project_provider(bytes, provider, language, module_id, names, signatures, layouts, fuel, deadline)
 }

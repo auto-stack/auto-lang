@@ -112,3 +112,57 @@ fn checks_c_provider_handle_credentials_and_callback_targets() {
         )
     );
 }
+
+#[test]
+fn compares_c_record_name_field_order_and_lane_types() {
+    let (page, authority) = prepared_page("AAC1047_C_FIXTURE");
+    let run =
+        |source: &str| run_semantic_foreign_case(source, &page, &authority).expect("Auto frontend");
+    let source = concat!(
+        "use.c f0_c\n",
+        "type f0c_point { x int; y int }\n",
+        "fn main() int {\n",
+        "    let p f0c_point = f0c_point(3, 4)\n",
+        "    return f0c_point_sum(p)\n}",
+    );
+    let accepted = run(source);
+    assert!(accepted.starts_with("aac.type-report/1\n"), "{accepted}");
+    assert!(accepted.contains("PENDING 4 "), "{accepted}");
+    for candidate in [
+        source.replace("x int; y int", "y int; x int"),
+        source.replace("x int; y int", "x bool; y int"),
+        source
+            .replace(" f0c_point ", " my_point ")
+            .replace("f0c_point(", "my_point("),
+    ] {
+        let site = candidate.find("f0c_point_sum").unwrap();
+        assert_eq!(
+            run(&candidate),
+            format!(
+                "ERROR foreign.layout 0 {site}..{}\n",
+                site + "f0c_point_sum".len()
+            )
+        );
+    }
+}
+
+#[test]
+fn keeps_credentials_distinct_between_admitted_c_providers() {
+    let (page, authority) = prepared_page("AAC1047_C_ALTERNATE_FIXTURE");
+    let source = concat!(
+        "use.c f0_c\nuse.c f0_alternate\n",
+        "fn main() int {\n",
+        "    let h int = alternative_counter_create(7)\n",
+        "    return alternative_counter_get(h)\n}",
+    );
+    let run =
+        |source: &str| run_semantic_foreign_case(source, &page, &authority).expect("Auto frontend");
+    let accepted = run(source);
+    assert!(accepted.starts_with("aac.type-report/1\n"), "{accepted}");
+    let foreign = source.replace("alternative_counter_create(", "f0c_counter_create(");
+    let site = foreign.find("get(h)").unwrap() + "get(".len();
+    assert_eq!(
+        run(&foreign),
+        format!("ERROR foreign.handle-owner 0 {site}..{}\n", site + 1)
+    );
+}

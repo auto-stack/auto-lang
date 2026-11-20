@@ -512,6 +512,27 @@ pub fn call_parameter_slots(pg List<int>, ast List<int>, links List<int>, functi
     return result
 }
 
+pub fn field_owner(ast List<int>, field int) int {
+    let form = parent(ast, field)
+    if (form < 0) { return -1 }
+    let member = parent(ast, form)
+    if (member < 0) { return -1 }
+    return parent(ast, member)
+}
+
+pub fn record_fields(ast List<int>, declarations List<int>, definition int, fields List<int>, fuel List<int>, deadline i64) int {
+    let end = end_of(ast, definition)
+    var row = definition + 1
+    for (row < row_count(ast) && start_of(ast, row) < end) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (decl_category(declarations, row) == field_decl() && field_owner(ast, row) == definition) {
+            fields.push(row)
+        }
+        row = row + 1
+    }
+    return 0
+}
+
 pub fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
     var child = first_child(links, call)
     for (child >= 0) {
@@ -578,9 +599,13 @@ fn named_slot(src List<int>, ast List<int>, declarations List<int>, params List<
 pub fn call_mapping_stride() int { return 3 }
 
 pub fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, call int, function int, declarations List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    let params = call_parameter_slots(pg, ast, links, function)
+    return map_argument_slots(pg, ast, links, src, call, params, declarations, mappings, errors, fuel, deadline)
+}
+
+pub fn map_argument_slots(pg List<int>, ast List<int>, links List<int>, src List<int>, call int, params List<int>, declarations List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let args = call_args(pg, ast, links, call)
     if (args < 0) { return fail(errors, call, bind_arguments()) }
-    let params = call_parameter_slots(pg, ast, links, function)
     var used = List<int>.new()
     var i = 0
     for (i < params.len()) {
