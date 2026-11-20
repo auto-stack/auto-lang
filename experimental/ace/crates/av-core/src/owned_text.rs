@@ -126,6 +126,18 @@ impl StrArena {
     /// the attempt number — no buffer, no ledger entry, nothing
     /// half-committed (V-03: attempt exists, successful_alloc unchanged).
     pub fn try_alloc(&self, bytes: &[u8]) -> Result<StrHandle, u64> {
+        self.try_alloc_from(bytes.len(), || bytes.to_vec().into_boxed_slice())
+    }
+
+    pub(crate) fn try_alloc_boxed(&self, bytes: Box<[u8]>) -> Result<StrHandle, u64> {
+        self.try_alloc_from(bytes.len(), || bytes)
+    }
+
+    fn try_alloc_from(
+        &self,
+        len: usize,
+        make_bytes: impl FnOnce() -> Box<[u8]>,
+    ) -> Result<StrHandle, u64> {
         let mut g = self.core.borrow_mut();
         g.attempts += 1;
         if g.fault_at == Some(g.attempts) {
@@ -135,16 +147,12 @@ impl StrArena {
         g.next_id += 1;
         g.allocs.push(AllocEvent {
             id,
-            bytes: bytes.len(),
+            bytes: len,
         });
         g.live_ids.insert(id);
         let core = std::rc::Rc::clone(&self.core);
         drop(g);
-        Ok(StrHandle::attached(
-            id,
-            bytes.to_vec().into_boxed_slice(),
-            core,
-        ))
+        Ok(StrHandle::attached(id, make_bytes(), core))
     }
 
     /// PLAN-822: fallible LIST buffer allocation over the same ledger

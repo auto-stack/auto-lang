@@ -1020,6 +1020,7 @@ fn verify_owned_function_impl(
                                     | MirInstr::StrLenBytes { dst, .. }
                                     | MirInstr::StrFind { dst, .. }
                                     | MirInstr::StrTrim { dst, .. }
+                                    | MirInstr::StrUpper { dst, .. }
                                     | MirInstr::StrCharAt { dst, .. }
                                     | MirInstr::StrSlice { dst, .. }
                                     | MirInstr::StrConcat { dst, .. }
@@ -1418,10 +1419,10 @@ fn verify_owned_function_impl(
                     check_read!(start, "str-find start");
                     st.define_slot(*dst as usize);
                 }
-                MirInstr::StrTrim { dst, view } => {
-                    check_read!(view, "str-trim view");
+                MirInstr::StrTrim { dst, view } | MirInstr::StrUpper { dst, view } => {
+                    check_read!(view, "text conversion view");
                     if is_rootable[*dst as usize] {
-                        check_def_conflict!(dst, "str-trim destination");
+                        check_def_conflict!(dst, "text conversion destination");
                     }
                     st.define_slot(*dst as usize);
                 }

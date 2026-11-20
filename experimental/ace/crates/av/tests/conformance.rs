@@ -195,6 +195,8 @@ mod plan1083_records_variants_patterns;
 mod plan1083_canonical_verify;
 #[path = "cases/plan1086_ownership.rs"]
 mod plan1086_ownership;
+#[path = "cases/plan1088_generics.rs"]
+mod plan1088_generics;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]

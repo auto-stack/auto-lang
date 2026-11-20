@@ -15,9 +15,9 @@
 //!
 //! Known M2-A boundary: the transform rewrites the source, so spans INSIDE
 //! an f-string may shift (diagnostics still identify the construct; spans
-//! outside any f-string are byte-exact). `${...}` segments must not nest
-//! braces or contain string literals in this slice (`source.fstr-syntax`
-//! rejects them). `\$` is a literal dollar.
+//! outside any f-string are byte-exact). The ordinary surface also admits
+//! quoted literals inside `${...}` interpolation expressions. `\$` is a
+//! literal dollar.
 
 use super::SourceProfile;
 
@@ -45,10 +45,11 @@ fn split_fstring_dialect(
     src: &str,
     i: usize,
     bare_braces: bool,
+    quoted_interpolations: bool,
 ) -> Result<(Vec<Part>, usize), String> {
     let bytes = src.as_bytes();
     debug_assert!(bytes[i] == b'f');
-    split_quoted_dialect(src, i + 2, b'"', bare_braces, i)
+    split_quoted_dialect(src, i + 2, b'"', bare_braces, quoted_interpolations, i)
 }
 
 /// PLAN-980（B-DIALECT-I）：widget 方言反引号 f-string 的分割（`` `text ${expr}` `
@@ -56,7 +57,7 @@ fn split_fstring_dialect(
 fn split_widget_fstring(src: &str, start: usize) -> Result<(Vec<Part>, usize), String> {
     let bytes = src.as_bytes();
     debug_assert!(bytes[start - 1] == b'`');
-    split_quoted_dialect(src, start, b'`', false, start - 1)
+    split_quoted_dialect(src, start, b'`', false, false, start - 1)
 }
 
 fn split_quoted_dialect(
@@ -64,6 +65,7 @@ fn split_quoted_dialect(
     start: usize,
     quote: u8,
     bare_braces: bool,
+    quoted_interpolations: bool,
     origin: usize,
 ) -> Result<(Vec<Part>, usize), String> {
     let bytes = src.as_bytes();
@@ -120,6 +122,14 @@ fn split_quoted_dialect(
                                 if depth == 0 {
                                     break;
                                 }
+                            }
+                            q @ (b'"' | b'\'') if quoted_interpolations => {
+                                let end = quoted_end(src, k, q).ok_or_else(|| {
+                                    "unterminated quoted literal in an FStr interpolation".to_owned()
+                                })?;
+                                expr.push_str(&src[k..end]);
+                                k = end;
+                                continue;
                             }
                             b'"' => {
                                 // no string literals inside `${...}` in this
@@ -195,11 +205,30 @@ fn split_quoted_dialect(
 /// PLAN-968: the scheduler face's f-string desugar (adds the legacy
 /// bare-brace `{ident}` interpolation of the task sources).
 pub fn desugar_fstrings_sched(src: &str) -> Result<String, String> {
-    desugar_fstrings_dialect(src, true)
+    desugar_fstrings_dialect(src, true, false)
 }
 
 pub fn desugar_fstrings(src: &str) -> Result<String, String> {
-    desugar_fstrings_dialect(src, false)
+    desugar_fstrings_dialect(src, false, false)
+}
+
+pub(super) fn desugar_fstrings_auto(src: &str) -> Result<String, String> {
+    desugar_fstrings_dialect(src, false, true)
+}
+
+fn quoted_end(src: &str, start: usize, quote: u8) -> Option<usize> {
+    let mut pos = start + 1;
+    let bytes = src.as_bytes();
+    while let Some(&c) = bytes.get(pos) {
+        pos += 1;
+        if c == quote {
+            return Some(pos);
+        }
+        if c == b'\\' {
+            pos += src.get(pos..)?.chars().next()?.len_utf8();
+        }
+    }
+    None
 }
 
 /// PLAN-980（B-DIALECT-I）：widget 工程源的反引号 f-string desugar。逐字节扫描：
@@ -308,7 +337,11 @@ pub fn desugar_fstrings_widget(src: &str) -> Result<String, String> {
     Ok(out)
 }
 
-fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, String> {
+fn desugar_fstrings_dialect(
+    src: &str,
+    bare_braces: bool,
+    quoted_interpolations: bool,
+) -> Result<String, String> {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut i = 0;
@@ -352,7 +385,7 @@ fn desugar_fstrings_dialect(src: &str, bare_braces: bool) -> Result<String, Stri
         // f-string start: `f"` with a non-ident char before the `f`
         if c == b'f' && bytes.get(i + 1) == Some(&b'"') && (i == 0 || !is_ident_char(bytes[i - 1]))
         {
-            let (parts, len) = match split_fstring_dialect(src, i, bare_braces) {
+            let (parts, len) = match split_fstring_dialect(src, i, bare_braces, quoted_interpolations) {
                 Ok(x) => x,
                 Err(e) => return Err(e),
             };
@@ -495,7 +528,7 @@ pub fn desugar_config_templates(src: &str) -> Result<String, String> {
                 i = j;
                 continue;
             }
-            let (parts, len) = split_quoted_dialect(src, i + 1, b'"', false, i)?;
+            let (parts, len) = split_quoted_dialect(src, i + 1, b'"', false, false, i)?;
             out.push_str("__fstr(");
             let mut first = true;
             for p in parts {

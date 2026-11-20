@@ -63,6 +63,7 @@ struct UntypedFn {
     ret: Ty,
 }
 
+#[derive(Default)]
 struct Ctx<'p> {
     records: BTreeMap<String, &'p TypeItem>,
     /// Typed free-function returns by name.
@@ -78,6 +79,7 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     normalize_auto_face(program);
     merge_prototypes(program, &mut diags);
+    complete_owned_text_results(program);
     for item in &mut program.items {
         let Item::Type(record) = item else {
             continue;
@@ -121,13 +123,7 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
         return if diags.is_empty() { Ok(()) } else { Err(diags) };
     }
 
-    let mut ctx = Ctx {
-        records: BTreeMap::new(),
-        typed_rets: BTreeMap::new(),
-        method_rets: BTreeMap::new(),
-        untyped_idx: BTreeMap::new(),
-        untyped: BTreeMap::new(),
-    };
+    let mut ctx = Ctx::default();
     for (idx, item) in program.items.iter().enumerate() {
         match item {
             Item::Fn(f) => {
@@ -159,13 +155,10 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
                 }
             }
             Item::Type(t) => {
-                for m in &t.methods {
-                    ctx.method_rets
-                        .entry(format!("{}::{}", t.name.name, m.name.name))
-                        .or_insert_with(|| Ty::of_ann(&m.ret));
-                }
+                register_method_returns(&mut ctx, &t.name.name, &t.methods);
                 ctx.records.entry(t.name.name.clone()).or_insert(t);
             }
+            Item::Enum(e) => register_method_returns(&mut ctx, &e.name.name, &e.methods),
             Item::Store(crate::source::ast::StoreItem { name, ty, .. })
             | Item::Const(crate::source::ast::ConstItem { name, ty, .. }) => {
                 ctx.typed_rets
@@ -329,6 +322,83 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
         Ok(())
     } else {
         Err(diags)
+    }
+}
+
+/// Legacy str result annotations can describe an owning expression body.
+/// Determine the ABI before binding callers, preserving borrowed results.
+fn complete_owned_text_results(program: &mut Program) {
+    let candidate = |function: &FnItem| {
+        !function.proto
+            && function.ret.kind == TypeRef::Builtin(TypeWord::Str)
+            && matches!(
+                function.body.stmts.as_slice(),
+                [Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. }]
+                    if matches!(&value.kind, ExprKind::Call { .. } | ExprKind::MethodCall { .. })
+            )
+    };
+    if !program.items.iter().any(|item| match item {
+        Item::Fn(f) => candidate(f),
+        Item::Type(t) => t.methods.iter().any(candidate),
+        Item::Enum(e) => e.methods.iter().any(candidate),
+        _ => false,
+    }) {
+        return;
+    }
+    let owned = Ty::Concrete(TypeRef::Builtin(TypeWord::StrOwned));
+    loop {
+        let mut ctx = Ctx::default();
+        for item in &program.items {
+            match item {
+                Item::Fn(f) if !f.proto => {
+                    ctx.typed_rets
+                        .insert(f.name.name.clone(), Ty::of_ann(&f.ret));
+                }
+                Item::Type(t) => {
+                    ctx.records.insert(t.name.name.clone(), t);
+                    register_method_returns(&mut ctx, &t.name.name, &t.methods);
+                }
+                Item::Enum(e) => register_method_returns(&mut ctx, &e.name.name, &e.methods),
+                _ => {}
+            }
+        }
+        let mut promoted = Vec::new();
+        for (item_index, item) in program.items.iter().enumerate() {
+            let functions = match item {
+                Item::Fn(f) => std::slice::from_ref(f),
+                Item::Type(t) => &t.methods,
+                Item::Enum(e) => &e.methods,
+                _ => continue,
+            };
+            for (index, f) in functions.iter().enumerate().filter(|(_, f)| candidate(f)) {
+                let env = fn_env(f, &ctx);
+                let mut tails = Vec::new();
+                collect_block_value(&f.body, &env, &mut ctx, &mut Vec::new(), &mut tails);
+                if tails == [owned.clone()] {
+                    promoted.push((item_index, index));
+                }
+            }
+        }
+        if promoted.is_empty() {
+            break;
+        }
+        for (item, index) in promoted {
+            let function = match &mut program.items[item] {
+                Item::Fn(f) => f,
+                Item::Type(t) => &mut t.methods[index],
+                Item::Enum(e) => &mut e.methods[index],
+                _ => unreachable!("recorded function declaration"),
+            };
+            function.ret.kind = TypeRef::Builtin(TypeWord::StrOwned);
+        }
+    }
+}
+
+fn register_method_returns(ctx: &mut Ctx, owner: &str, methods: &[FnItem]) {
+    for method in methods {
+        ctx.method_rets
+            .entry(format!("{owner}::{}", method.name.name))
+            .or_insert_with(|| Ty::of_ann(&method.ret));
     }
 }
 
@@ -581,6 +651,12 @@ fn estimate(
             if let Some(rec) = ctx.records.get(&callee.name) {
                 return Ty::Concrete(TypeRef::Record(rec.name.clone()));
             }
+            if callee.name == "__fstr"
+                && !ctx.typed_rets.contains_key(&callee.name)
+                && !ctx.untyped_idx.contains_key(&callee.name)
+            {
+                return Ty::Concrete(TypeRef::Builtin(TypeWord::StrOwned));
+            }
             // The console builtins are Unit-result intrinsics (not user
             // fns); a trailing `print(..)` therefore types a void body.
             if matches!(callee.name.as_str(), "print" | "eprint" | "say")
@@ -672,11 +748,20 @@ fn estimate(
             for a in args {
                 estimate_arg(a, env, ctx, sites);
             }
-            if let Ty::Concrete(TypeRef::Record(r)) = rt {
+            if let Ty::Concrete(TypeRef::Record(r)) = &rt {
                 let key = format!("{}::{}", r.name, name.name);
                 if let Some(t) = ctx.method_rets.get(&key) {
                     return t.clone();
                 }
+            }
+            if name.name == "to_upper"
+                && args.is_empty()
+                && matches!(
+                    rt,
+                    Ty::Concrete(TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned))
+                )
+            {
+                return Ty::Concrete(TypeRef::Builtin(TypeWord::StrOwned));
             }
             Ty::Unknown
         }

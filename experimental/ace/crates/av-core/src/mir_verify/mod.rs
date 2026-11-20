@@ -673,7 +673,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             if let MirType::Record(r) = t {
-                if r.fields.is_empty() {
+                if r.fields.is_empty() && !self.aggregates_admission() {
                     return Err(MirVerifyError::inv(
                         "mir.record-empty",
                         format!(
@@ -865,6 +865,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
                 || (self.is_closures && c == crate::contract::GLOBAL_TAKE_CAPABILITY)
                 || (self.is_closures && c == crate::contract::TEXT_SCAN_CAPABILITY)
+                || (self.is_closures && c == crate::contract::TEXT_CASE_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -4266,6 +4267,27 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
+            MirInstr::StrUpper { dst, view } => {
+                if !self.is_closures
+                    || !self
+                        .module
+                        .capabilities
+                        .iter()
+                        .any(|c| c == crate::contract::TEXT_CASE_CAPABILITY)
+                {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "STR_UPPER requires av.text.case/1".into(),
+                    ));
+                }
+                let dst_ty = slot_ty_of(f, *dst, sp, "STR_UPPER destination")?;
+                let src_ty = slot_ty_of(f, *view, sp, "STR_UPPER view")?;
+                if self.module.types.get(dst_ty as usize) != Some(&MirType::Str)
+                    || self.module.types.get(src_ty as usize) != Some(&MirType::StrView)
+                {
+                    return Err(err("mir.operand-type", "STR_UPPER slot type mismatch".into()));
+                }
+            }
             MirInstr::StrCharAt { dst, view, index } => {
                 if !self.is_owned && !self.collections_surface() {
                     return Err(err(
@@ -4816,6 +4838,7 @@ impl MirInstr {
             | MirInstr::StrLenBytes { dst, .. }
             | MirInstr::StrFind { dst, .. }
             | MirInstr::StrTrim { dst, .. }
+            | MirInstr::StrUpper { dst, .. }
             | MirInstr::StrCharAt { dst, .. }
             | MirInstr::StrSlice { dst, .. }
             | MirInstr::StrConcat { dst, .. }
@@ -4964,7 +4987,7 @@ impl MirInstr {
                 start,
                 ..
             } => vec![*text, *pattern, *start],
-            MirInstr::StrTrim { view, .. } => vec![*view],
+            MirInstr::StrTrim { view, .. } | MirInstr::StrUpper { view, .. } => vec![*view],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
             MirInstr::StrSlice {
                 view, start, end, ..

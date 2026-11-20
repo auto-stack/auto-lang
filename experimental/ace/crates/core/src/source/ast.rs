@@ -397,6 +397,8 @@ pub struct EnumItem {
     pub name: Ident,
     pub type_params: Vec<TypeParamDecl>,
     pub instance: Option<EnumInstance>,
+    /// Variants synthesized from verified spec conformance witnesses.
+    pub spec_witnesses: bool,
     pub arms: Vec<EnumArm>,
     pub methods: Vec<FnItem>,
     /// `enum` keyword through the closing brace.

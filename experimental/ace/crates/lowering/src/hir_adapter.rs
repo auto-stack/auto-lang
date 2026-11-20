@@ -653,7 +653,11 @@ fn lower_checked_collection_family(
                 // call sites emit their MIR directly; no CalleeRef.
                 if auto_language && ace_core::source::adapter::text_scan_signature(symbol).is_some()
                 {
-                    let cap = ace_av_core::contract::TEXT_SCAN_CAPABILITY;
+                    let cap = if symbol == "__ace_text_upper" {
+                        ace_av_core::contract::TEXT_CASE_CAPABILITY
+                    } else {
+                        ace_av_core::contract::TEXT_SCAN_CAPABILITY
+                    };
                     if !out.capabilities.iter().any(|value| value == cap) {
                         out.capabilities.push(cap.into());
                     }
@@ -4925,6 +4929,9 @@ k 0
                                     ) =>
                                 {
                                     MirInstr::StrTrim { dst, view: *view }
+                                }
+                                [Some(view)] if symbol == "__ace_text_upper" => {
+                                    MirInstr::StrUpper { dst, view: *view }
                                 }
                                 _ => {
                                     return Err(AdapterError::inv(

@@ -162,6 +162,8 @@ fn parse_program_with_mode(
                 // bare-brace `{ident}` dialect of the task sources.
                 let desugared = if profile.is_scheduler() {
                     super::fstr::desugar_fstrings_sched(src)
+                } else if profile.is_auto_language() {
+                    super::fstr::desugar_fstrings_auto(src)
                 } else {
                     super::fstr::desugar_fstrings(src)
                 };
@@ -2733,6 +2735,7 @@ impl<'s> Parser<'s> {
             name,
             type_params: Vec::new(),
             instance: None,
+            spec_witnesses: false,
             arms,
             methods: Vec::new(),
             span: kw.join(close),

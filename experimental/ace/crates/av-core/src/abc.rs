@@ -228,6 +228,7 @@ pub const OP_GLOBAL_GET: u8 = 0x38;
 pub const OP_GLOBAL_SET: u8 = 0x39;
 pub const OP_STR_FIND: u8 = 0x4E;
 pub const OP_STR_TRIM: u8 = 0x4F;
+pub const OP_STR_UPPER: u8 = 0x53;
 pub const OP_GLOBAL_TAKE: u8 = 0x4D;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
@@ -1835,6 +1836,17 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                             ));
                         }
                         put_u8(&mut w, OP_STR_TRIM);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *view);
+                    }
+                    MirInstr::StrUpper { dst, view } => {
+                        if !family.allows_owned_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "text conversion in a non-owned profile".into(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_STR_UPPER);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *view);
                     }
@@ -3835,6 +3847,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         start: c.u32()?,
                     },
                     OP_STR_TRIM if family.allows_owned_tags() => MirInstr::StrTrim {
+                        dst: c.u32()?,
+                        view: c.u32()?,
+                    },
+                    OP_STR_UPPER if family.allows_owned_tags() => MirInstr::StrUpper {
                         dst: c.u32()?,
                         view: c.u32()?,
                     },

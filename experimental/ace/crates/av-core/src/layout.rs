@@ -110,7 +110,7 @@ pub struct LayoutDesc {
 /// `Cycle` is by-value recursion (defense in depth behind `mir.type-cycle`).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LayoutError {
-    /// The type index does not name a non-empty record in the table.
+    /// The type index does not name a record in the table.
     NotRecord(TypeIdx),
     /// A field count exceeds the frozen per-record guard.
     TooManyFields(usize),
@@ -196,9 +196,6 @@ fn compute_layout_impl(
             Some(MirType::Record(r)) => r,
             _ => return Err(LayoutError::NotRecord(cur)),
         };
-        if r.fields.is_empty() {
-            return Err(LayoutError::NotRecord(cur)); // empty records unsupported (§2)
-        }
         if r.fields.len() > MAX_RECORD_FIELDS {
             return Err(LayoutError::TooManyFields(r.fields.len()));
         }

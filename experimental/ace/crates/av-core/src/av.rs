@@ -6222,6 +6222,45 @@ fn dispatch_with_host<V: ModuleView>(
                         }
                     }
                 }
+                MirInstr::StrUpper { dst, view } => {
+                    let value =
+                        st.frames.last().expect("frame present").slots[*view as usize].clone();
+                    let (bytes, view) = match borrowed_text_source(&value) {
+                        Ok(source) => source,
+                        Err(out) => return Some(out),
+                    };
+                    let result = (|| {
+                        charge_exec_work(st, bytes.len() as u64, limits, cancel, started)?;
+                        let text = text_scan_range(bytes, view)?;
+                        let mut length = 0usize;
+                        for ch in text.chars().flat_map(char::to_uppercase) {
+                            let width = ch.len_utf8();
+                            charge_exec_work(st, width as u64, limits, cancel, started)?;
+                            length = length.saturating_add(width);
+                        }
+                        let deep = std::mem::size_of::<Value>().saturating_add(length);
+                        owned_alloc_precheck(st, deep, *dst as usize, limits)?;
+                        let mut converted = Vec::new();
+                        converted.try_reserve_exact(length).map_err(|_| ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: "unable to allocate uppercase text".into(),
+                        })?;
+                        for ch in text.chars().flat_map(char::to_uppercase) {
+                            let mut encoded = [0; 4];
+                            let bytes = ch.encode_utf8(&mut encoded).as_bytes();
+                            charge_exec_work(st, bytes.len() as u64, limits, cancel, started)?;
+                            converted.extend_from_slice(bytes);
+                        }
+                        let owned = st.arena.try_alloc_boxed(converted.into_boxed_slice())
+                            .map_err(|attempt| ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{attempt}"
+                            )))?;
+                        commit_slot_write(st, *dst as usize, Value::Str(owned), limits)
+                    })();
+                    if let Err(out) = result {
+                        return Some(out);
+                    }
+                }
                 MirInstr::StrCharAt { dst, view, index } => {
                     let (vv, iv) = {
                         let fr = st.frames.last().expect("frame present");

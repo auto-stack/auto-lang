@@ -407,6 +407,7 @@ pub fn text_scan_signature(symbol: &str) -> Option<(&'static [VT], VT)> {
         "__ace_text_find" => Some((&[VT::Str, VT::Str, VT::I32], VT::I32)),
         "__ace_text_trim" => Some((&[VT::Str], VT::StrOwned)),
         "__ace_text_trim_len" => Some((&[VT::Str], VT::I32)),
+        "__ace_text_upper" => Some((&[VT::Str], VT::StrOwned)),
         _ => None,
     }
 }

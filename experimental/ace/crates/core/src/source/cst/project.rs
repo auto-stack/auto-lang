@@ -539,6 +539,11 @@ pub(crate) fn project_program_with_caps(
     for d in apply_spec_conformance(&mut items, &specs, profile.is_auto_language()) {
         eng.cx.diags.push((d.span.start as u64, d));
     }
+    if profile.is_auto_language() && !defer_templates && eng.cx.first_diag().is_none() {
+        for d in materialize_spec_values(&mut items, &specs) {
+            eng.cx.diags.push((d.span.start as u64, d));
+        }
+    }
     // PLAN-963（T-03）：spec 默认体注入的类型注解未经过首遍展开（spec 声明不在
     // `items` 里），这里再展开一遍——只影响刚注入的方法，普通类型第二遍为空转。
     for d in expand_type_aliases(&mut items, &aliases) {
@@ -7643,6 +7648,7 @@ impl<'a> Engine<'a> {
             name,
             type_params,
             instance: None,
+            spec_witnesses: false,
             arms,
             methods,
             span: self.cx.span_of(node),
@@ -8009,7 +8015,7 @@ impl<'a> Engine<'a> {
                 methods.push(self.run_fn_item(c, Some(name.clone()), receiver));
             }
         }
-        if fields.is_empty() {
+        if fields.is_empty() && !self.cx.profile.is_auto_language() {
             let span = self.cx.span_of(node);
             self.cx.reject(span, || {
                 Diagnostic::new(
@@ -8205,6 +8211,7 @@ impl<'a> Engine<'a> {
         }
         SpecDecl {
             name,
+            span: self.cx.span_of(node),
             type_params,
             supers,
             assoc,
@@ -12551,9 +12558,11 @@ fn self_param(span: Span) -> Diagnostic {
 // 方法解析——不需要 witness/dyn 表示，也不引入第二套语义。
 // ---------------------------------------------------------------------------
 
-/// 投影侧 `spec Name { .. }`（不进入 AST；下游看不到 spec）。
+/// Spec declarations are checked here. The ordinary surface can produce
+/// concrete dispatch variants from the verified conformance declarations.
 struct SpecDecl {
     name: Ident,
+    span: Span,
     /// PLAN-963（T-03）：通用 spec 的类型参数（`spec Storage<T>`）；实例化
     /// 发生在 `as Storage<int>` 处，注入方法已是具体签名。
     type_params: Vec<Ident>,
@@ -12939,6 +12948,154 @@ fn apply_spec_conformance(
         t.methods.extend(injected);
     }
     diags
+}
+
+fn materialize_spec_values(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Diagnostic> {
+    let by_name: BTreeMap<_, _> = specs.iter().map(|s| (s.name.name.as_str(), s)).collect();
+    let mut diags = Vec::new();
+    let mut witnesses: BTreeMap<&str, Vec<Ident>> = BTreeMap::new();
+    for record in items.iter().filter_map(|item| match item {
+        Item::Type(record) if record.type_params.is_empty() => Some(record),
+        _ => None,
+    }) {
+        let mut seen = BTreeSet::new();
+        for claim in &record.conforms {
+            let Some(spec) = by_name.get(claim.name.name.as_str()) else {
+                continue;
+            };
+            for inherited in spec_obligations(spec, &by_name, &mut diags) {
+                if seen.insert(inherited.name.name.as_str())
+                    && spec_obligations(inherited, &by_name, &mut diags)
+                        .iter()
+                        .all(|s| s.type_params.is_empty() && s.assoc.is_empty())
+                {
+                    witnesses
+                        .entry(inherited.name.name.as_str())
+                        .or_default()
+                        .push(record.name.clone());
+                }
+            }
+        }
+    }
+    for spec in specs {
+        let Some(records) = witnesses.get(spec.name.name.as_str()) else {
+            continue;
+        };
+        let arms = records
+            .iter()
+            .map(|record| EnumArm {
+                name: record.clone(),
+                payload: Some(TypeAnn {
+                    span: record.span,
+                    kind: TypeRef::Record(record.clone()),
+                }),
+                fields: Vec::new(),
+                disc: None,
+                span: record.span,
+            })
+            .collect();
+        let mut seen = BTreeSet::new();
+        let methods = spec_obligations(spec, &by_name, &mut diags)
+            .into_iter()
+            .flat_map(|obligation| &obligation.methods)
+            .filter(|method| seen.insert(method.name.name.as_str()))
+            .map(|method| spec_dispatch_method(spec, method, records))
+            .collect();
+        items.push(Item::Enum(EnumItem {
+            name: spec.name.clone(),
+            type_params: Vec::new(),
+            instance: None,
+            spec_witnesses: true,
+            arms,
+            methods,
+            span: spec.span,
+        }));
+    }
+    diags
+}
+
+fn spec_dispatch_method(spec: &SpecDecl, method: &SpecMethodDecl, records: &[Ident]) -> FnItem {
+    let span = method.span;
+    let binding = Ident {
+        name: "$spec_receiver".to_owned(),
+        span,
+    };
+    let arms = records
+        .iter()
+        .map(|record| {
+            let args = method
+                .params
+                .iter()
+                .map(|param| {
+                    let value = Expr {
+                        kind: ExprKind::Var(param.name.clone()),
+                        span: param.name.span,
+                    };
+                    if param.mode == ParamMode::Move {
+                        Arg::MovePos(value)
+                    } else {
+                        Arg::Pos(value)
+                    }
+                })
+                .collect();
+            let value = Expr {
+                kind: ExprKind::MethodCall {
+                    recv: Box::new(Expr {
+                        kind: ExprKind::Var(binding.clone()),
+                        span,
+                    }),
+                    name: method.name.clone(),
+                    args,
+                    instance: None,
+                },
+                span,
+            };
+            AggMatchArm {
+                pat: MatchPattern::Variant {
+                    qual: Some(spec.name.clone()),
+                    name: record.clone(),
+                    bindings: vec![binding.clone()],
+                },
+                body: AggArmBody::Block(Block {
+                    stmts: vec![Stmt::Return { value, span }],
+                    span,
+                }),
+                guard: None,
+                span,
+            }
+        })
+        .collect();
+    FnItem {
+        name: method.name.clone(),
+        type_params: Vec::new(),
+        params: method.params.clone(),
+        ret: TypeAnn {
+            kind: match &method.ret.kind {
+                TypeRef::Builtin(TypeWord::Str) => TypeRef::Builtin(TypeWord::StrOwned),
+                kind => kind.clone(),
+            },
+            span: method.ret.span,
+        },
+        body: Block {
+            stmts: vec![Stmt::AggIsMatch {
+                scrutinee: Expr {
+                    kind: ExprKind::Var(Ident {
+                        name: "self".to_owned(),
+                        span,
+                    }),
+                    span,
+                },
+                arms,
+                span,
+            }],
+            span,
+        },
+        span,
+        receiver: Receiver::View,
+        owner: Some(spec.name.clone()),
+        script: false,
+        proto: false,
+    }
 }
 
 /// PLAN-963（T-05）：spec 及其 super-spec 的方法义务闭包（自身在前，随后按

@@ -1100,6 +1100,7 @@ pub struct CollTables {
     pub variants: Vec<ResolvedVariant>,
     pub function_types: Vec<ClosureFnType>,
     variant_names: BTreeMap<String, usize>,
+    spec_variants: BTreeSet<usize>,
     enum_instances: BTreeMap<usize, ast::EnumInstance>,
     enum_type_templates: BTreeMap<String, Vec<String>>,
     enum_type_requests: Vec<instances::AutoEnumDemand>,
@@ -2391,6 +2392,9 @@ fn resolve_detailed_in_mode(
                 let index = coll.intern_variant(&e.name.name, e.name.span, Vec::new());
                 enum_indices.insert(item_index, index);
                 enum_variant_index.insert(e.name.name.clone(), index);
+                if e.spec_witnesses {
+                    coll.spec_variants.insert(index);
+                }
                 if let Some(instance) = &e.instance {
                     coll.enum_instances.insert(index, instance.clone());
                 }
@@ -4732,6 +4736,8 @@ pub(crate) fn resolve_lambda_in_context(
                 text_mut_aliases: BTreeMap::new(),
             }],
             declared_names: BTreeSet::new(),
+            implicit_record_fields: false,
+            owned_spec_result: false,
             fn_result: site.result,
             legacy_text_result: false,
             legacy_text_lists: BTreeSet::new(),
@@ -6176,6 +6182,8 @@ struct FnResolver<'a, 's> {
     /// Every local name declared anywhere in this function (any scope), to
     /// distinguish "never declared" from "declared in a scope that ended".
     declared_names: BTreeSet<String>,
+    implicit_record_fields: bool,
+    owned_spec_result: bool,
     /// Result type of the function being resolved (retag context).
     fn_result: VT,
     legacy_text_result: bool,
@@ -6417,6 +6425,7 @@ fn resolve_fn_reuse<'a, 's>(
     // coll moves into the FnResolver below).
     let var_owner_name: Option<String> =
         owner_var.map(|vi| coll.variants[vi].name.clone());
+    let owned_spec_result = owner_var.is_some_and(|index| coll.spec_variants.contains(&index));
     let fn_result = if is_coll {
         vt_of_ann_coll(&f.ret, rec_index, coll, diags, TypePos::Result)
     } else {
@@ -6444,6 +6453,8 @@ fn resolve_fn_reuse<'a, 's>(
             text_mut_aliases: BTreeMap::new(),
         }],
         declared_names: BTreeSet::new(),
+        implicit_record_fields: surface.is_auto_language() && receiver.is_instance() && owner_rec.is_some(),
+        owned_spec_result,
         fn_result,
         legacy_text_result: surface.is_auto_language() && is_legacy_text_list(&f.ret),
         legacy_text_lists: BTreeSet::new(),
@@ -12230,7 +12241,10 @@ F:{d}
                 self.resolve_bare_ctor(cname, payload, expect, v.span)
             }
             None => {
-                let value = self.expr_iterative_with_hint(v, expect);
+                let mut value = self.expr_iterative_with_hint(v, expect);
+                if let Some(expected) = expect {
+                    self.adapt_spec_value(&mut value, expected);
+                }
                 match expect {
                     Some(expected)
                         if recover_dynamic
@@ -14379,6 +14393,9 @@ F:{d}
                             continue;
                         }
                         self.reject_elem_view_use(&value, "the returned value");
+                        if self.owned_spec_result && self.fn_result == VT::StrOwned {
+                            value = Self::own_dynamic_text(value);
+                        }
                         retag_literal(&mut value, self.fn_result);
                         if matches!(
                             &value.kind,
@@ -15924,6 +15941,8 @@ F:{d}
                                 path: Vec::new(),
                             },
                         };
+                    } else if let Some(field) = self.implicit_record_field(id) {
+                        return field;
                     } else if self.nested.no_capture.contains(&id.name) {
                         // PLAN-1081 (T-03): a nested fn body referencing an
                         // ENCLOSING local — Rust nested-fn semantics: the
@@ -16123,6 +16142,16 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
+        if self.profile.is_auto_language()
+            && !rargs.is_empty()
+            && rargs.iter().all(|arg| arg.name.is_some())
+        {
+            let values = rargs
+                .into_iter()
+                .map(|arg| (arg.name.expect("named arguments"), arg.span, arg.value))
+                .collect();
+            return self.ctor_named_out(ty, values, span);
+        }
         let desc = |t: VT, records: &[ResolvedRecord]| match t {
             VT::Rec(i) => match records.get(i) {
                 Some(r) => format!("record `{}`", r.name),
@@ -18943,6 +18972,19 @@ F:{d}
                 }
             }
             if recv.vt.is_text() && to_word.is_none() {
+                if name.name == "to_upper" && args.is_empty() {
+                    let mut view = recv;
+                    self.adapt_argument_type(&mut view, VT::Str);
+                    self.used_intrinsics.insert("__ace_text_upper");
+                    return ResolvedExpr {
+                        span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::CallIntrinsic {
+                            symbol: "__ace_text_upper",
+                            args: vec![view],
+                        },
+                    };
+                }
                 if matches!(name.name.as_str(), "find" | "trim" | "split" | "substr") {
                     return self.resolve_std_text_method(name, recv, args, span);
                 }
@@ -19662,47 +19704,62 @@ F:{d}
             }
         }
         if self.profile == SourceProfile::Auto
-            && callee.name == "assert_eq"
+            && matches!(callee.name.as_str(), "assert" | "assert_eq")
             && self.lookup(&callee.name).is_none()
             && !self.sigs.contains_key(&callee.name)
         {
-            if rargs.len() != 2 || rargs.iter().any(|arg| arg.name.is_some() || arg.moved) {
+            let equality = callee.name == "assert_eq";
+            let arity = if equality { 2 } else { 1 };
+            if rargs.len() != arity || rargs.iter().any(|arg| arg.name.is_some() || arg.moved) {
                 self.bind_err(
                     "source.assert-arity",
-                    "assert_eq requires two positional values",
+                    if equality {
+                        "assert_eq requires two positional values"
+                    } else {
+                        "assert requires one positional condition"
+                    },
                     call_span,
                 );
             } else {
-                let mut rhs = rargs.pop().expect("arity checked").value;
-                let mut lhs = rargs.pop().expect("arity checked").value;
-                if lhs.vt == VT::Dyn {
-                    let expected = if rhs.vt == VT::Dyn { VT::I32 } else { rhs.vt };
-                    lhs = Self::coerce_dynamic(lhs, expected);
-                }
-                if rhs.vt == VT::Dyn {
-                    rhs = Self::coerce_dynamic(rhs, lhs.vt);
-                }
-                if lhs.vt.is_text() && rhs.vt.is_text() {
-                    let lt = lhs.vt;
-                    let rt = rhs.vt;
-                    retag_literal(&mut lhs, rt);
-                    retag_literal(&mut rhs, lt);
-                }
-                let condition = ResolvedExpr {
-                    span: call_span,
-                    vt: VT::Bool,
-                    kind: RExprKind::Binary {
+                let operand = rargs.pop().expect("arity checked").value;
+                let kind = if equality {
+                    let mut rhs = operand;
+                    let mut lhs = rargs.pop().expect("arity checked").value;
+                    if lhs.vt == VT::Dyn {
+                        let expected = if rhs.vt == VT::Dyn { VT::I32 } else { rhs.vt };
+                        lhs = Self::coerce_dynamic(lhs, expected);
+                    }
+                    if rhs.vt == VT::Dyn {
+                        rhs = Self::coerce_dynamic(rhs, lhs.vt);
+                    }
+                    if lhs.vt.is_text() && rhs.vt.is_text() {
+                        let lt = lhs.vt;
+                        let rt = rhs.vt;
+                        retag_literal(&mut lhs, rt);
+                        retag_literal(&mut rhs, lt);
+                    }
+                    RExprKind::Binary {
                         op: BinOp::Ne,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
-                    },
+                    }
+                } else {
+                    RExprKind::Unary {
+                        op: UnaryOp::Not,
+                        operand: Box::new(Self::coerce_dynamic(operand, VT::Bool)),
+                    }
+                };
+                let condition = ResolvedExpr {
+                    span: call_span,
+                    vt: VT::Bool,
+                    kind,
                 };
                 let mut failure = Vec::new();
                 self.emit_fail_to_out(
                     ResolvedExpr {
                         span: call_span,
                         vt: VT::StrOwned,
-                        kind: RExprKind::StrLit("assert_eq failed".to_owned()),
+                        kind: RExprKind::StrLit(format!("{} failed", callee.name)),
                     },
                     call_span,
                     &mut failure,
@@ -20961,8 +21018,66 @@ F:{d}
     /// owning formal (D-03 / AP-4): the same contextual typing a `let s Str`
     /// initializer gets, applied to METHOD call arguments — regular function
     /// calls retag in their own arm; `from` skips the receiver param.
+    fn implicit_record_field(&self, name: &ast::Ident) -> Option<ResolvedExpr> {
+        if !self.implicit_record_fields {
+            return None;
+        }
+        let receiver = self.lookup("self")?;
+        let VT::Rec(record) = self.locals[receiver.0].vt else {
+            return None;
+        };
+        let (index, field) = self.records[record]
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, field)| field.name == name.name)?;
+        Some(ResolvedExpr {
+            span: name.span,
+            vt: field.vt,
+            kind: RExprKind::FieldGet {
+                base: Box::new(ResolvedExpr {
+                    span: name.span,
+                    vt: VT::Rec(record),
+                    kind: RExprKind::ReadLocal(receiver),
+                }),
+                path: vec![(record, index)],
+            },
+        })
+    }
+
+    fn adapt_spec_value(&self, value: &mut ResolvedExpr, want: VT) {
+        let (VT::Rec(_), VT::Variant(variant)) = (value.vt, want) else {
+            return;
+        };
+        if !self.coll.spec_variants.contains(&variant) {
+            return;
+        }
+        let Some(disc) = self.coll.variants[variant]
+            .arms
+            .iter()
+            .position(|(_, payload)| *payload == Some(value.vt))
+        else {
+            return;
+        };
+        let original = std::mem::replace(value, instances::pending_expression(value.span));
+        let payload = if self.vt_is_coll_owned(original.vt)
+            && !matches!(original.kind, RExprKind::Move { .. })
+        {
+            self.clone_collection_value(original)
+        } else {
+            original
+        };
+        value.kind = RExprKind::VariantCtor {
+            variant,
+            disc: disc as u32,
+            payload: Some(Box::new(payload)),
+        };
+        value.vt = want;
+    }
+
     fn adapt_argument_type(&self, value: &mut ResolvedExpr, want: VT) {
         retag_literal(value, want);
+        self.adapt_spec_value(value, want);
         if self.profile.is_auto_language() && want == VT::Str && value.vt == VT::StrOwned {
             let span = value.span;
             let owned = std::mem::replace(

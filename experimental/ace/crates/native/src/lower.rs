@@ -3446,6 +3446,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::StrFind { .. } | MirInstr::StrTrim { .. } => {
                 return Err("av.text.scan/1 instructions are outside the native profile".into());
             }
+            MirInstr::StrUpper { .. } => {
+                return Err("av.text.case/1 instructions are outside the native profile".into());
+            }
         }
         Ok(())
     }

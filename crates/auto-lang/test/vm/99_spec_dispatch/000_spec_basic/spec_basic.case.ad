@@ -1,51 +1,5 @@
-# Legacy vm corpus: 99_spec_dispatch/000_spec_basic
+# Canonical VM case
 
-## Case: legacy-99-spec-dispatch-000-spec-basic
-id: "legacy.99_spec_dispatch.000_spec_basic"
-entry-mode: "program"
+[legacy.99_spec_dispatch.000_spec_basic](../../../cases/language/generics/spec-dispatch.case.ad)
 
-### Auto
-path: "spec_basic.at"
-```auto
-spec Tool {
-    fn execute(input str) str
-}
-
-type EchoTool as Tool {
-    name str
-    fn execute(input str) str {
-        f"${name}: ${input}"
-    }
-}
-
-type ReverseTool as Tool {
-    prefix str
-    fn execute(input str) str {
-        f"${prefix} reversed(${input})"
-    }
-}
-
-fn use_tool(t Tool, input str) {
-    let result = t.execute(input)
-    print(result)
-}
-
-fn main() {
-    let e = EchoTool(name: "echo")
-    let r = ReverseTool(prefix: ">>")
-    use_tool(e, "hello")
-    use_tool(r, "hello")
-    use_tool(e, "world")
-    use_tool(r, "world")
-}
-```
-
-### VM result
-check-id: "vm-stdout"
-
-```text
-echo: hello
->> reversed(hello)
-echo: world
->> reversed(world)
-```
+The language migration map resolves this path to the case and its original VM check.

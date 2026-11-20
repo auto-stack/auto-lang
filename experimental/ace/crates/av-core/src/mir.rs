@@ -626,6 +626,11 @@ pub enum MirInstr {
         dst: SlotId,
         view: SlotId,
     },
+    /// Unicode uppercase of a borrowed view, materialized as owned text.
+    StrUpper {
+        dst: SlotId,
+        view: SlotId,
+    },
     StrCharAt {
         dst: SlotId,
         view: SlotId,

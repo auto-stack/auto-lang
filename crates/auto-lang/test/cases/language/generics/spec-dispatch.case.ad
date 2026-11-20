@@ -1,0 +1,620 @@
+# Spec conformance and dispatch
+
+## Case: legacy-99-spec-dispatch-000-spec-basic
+id: "legacy.99_spec_dispatch.000_spec_basic"
+entry-mode: "program"
+
+### Auto
+path: "spec_basic.at"
+```auto
+spec Tool {
+    fn execute(input str) str
+}
+
+type EchoTool as Tool {
+    name str
+    fn execute(input str) str {
+        f"${name}: ${input}"
+    }
+}
+
+type ReverseTool as Tool {
+    prefix str
+    fn execute(input str) str {
+        f"${prefix} reversed(${input})"
+    }
+}
+
+fn use_tool(t Tool, input str) {
+    let result = t.execute(input)
+    print(result)
+}
+
+fn main() {
+    let e = EchoTool(name: "echo")
+    let r = ReverseTool(prefix: ">>")
+    use_tool(e, "hello")
+    use_tool(r, "hello")
+    use_tool(e, "world")
+    use_tool(r, "world")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+echo: hello
+>> reversed(hello)
+echo: world
+>> reversed(world)
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+echo: hello
+>> reversed(hello)
+echo: world
+>> reversed(world)
+```
+
+## Case: legacy-99-spec-dispatch-20-tool-registry
+id: "legacy.99_spec_dispatch.20_tool_registry"
+entry-mode: "program"
+
+### Auto
+path: "tool_registry.at"
+```auto
+/// Tool registry — VM-compatible rewrite of ac-examples/20_tool_registry.
+/// Original preserved as original.at
+/// Tests spec dispatch with multiple tool types and execute method
+/// Note: VM currently only supports single spec method call per function
+
+spec Tool {
+    fn execute(input str) str
+}
+
+type EchoTool as Tool {
+    fn execute(input str) str {
+        f"echo: ${input}"
+    }
+}
+
+type UpperTool as Tool {
+    fn execute(input str) str {
+        input.to_upper()
+    }
+}
+
+type WriteTool as Tool {
+    fn execute(input str) str {
+        f"wrote: ${input}"
+    }
+}
+
+fn use_tool(t Tool, input str) {
+    print(t.execute(input))
+}
+
+fn main() {
+    let e = EchoTool()
+    let u = UpperTool()
+    let w = WriteTool()
+
+    // Dispatch through spec-typed parameter
+    use_tool(e, "hello")
+    use_tool(u, "hello")
+    use_tool(w, "hello")
+
+    use_tool(e, "world")
+    use_tool(u, "world")
+    use_tool(w, "world")
+
+    print("20_tool_registry: all assertions passed")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+echo: hello
+HELLO
+wrote: hello
+echo: world
+WORLD
+wrote: world
+20_tool_registry: all assertions passed
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+echo: hello
+HELLO
+wrote: hello
+echo: world
+WORLD
+wrote: world
+20_tool_registry: all assertions passed
+```
+
+## Case: legacy-99-spec-dispatch-31-tool-exec-with-perm
+id: "legacy.99_spec_dispatch.31_tool_exec_with_perm"
+entry-mode: "program"
+
+### Auto
+path: "tool_exec_with_perm.at"
+```auto
+/// Permission-gated tool execution — VM-compatible rewrite of ac-examples/31.
+/// Original preserved as original.at
+/// Simplified: no enum with payload, no Result(!str), no Map, no closures
+/// Uses spec dispatch with permission checks
+
+spec Tool {
+    fn execute(input str) str
+    fn is_read_only() bool
+}
+
+type BashTool as Tool {
+    fn execute(input str) str {
+        f"ran: ${input}"
+    }
+    fn is_read_only() bool { false }
+}
+
+type ReadTool as Tool {
+    fn execute(input str) str {
+        f"read: ${input}"
+    }
+    fn is_read_only() bool { true }
+}
+
+fn check_permission(mode str, is_read_only bool) bool {
+    if mode == "allow" {
+        return true
+    }
+    if mode == "readonly" {
+        return is_read_only
+    }
+    false
+}
+
+fn run_tool(t Tool, input str) str {
+    t.execute(input)
+}
+
+fn tool_is_readonly(t Tool) bool {
+    t.is_read_only()
+}
+
+fn main() {
+    let bash = BashTool()
+    let read = ReadTool()
+
+    // Allow mode: everything works
+    assert(check_permission("allow", tool_is_readonly(bash)))
+    assert(check_permission("allow", tool_is_readonly(read)))
+    print(run_tool(bash, "ls"))
+    print(run_tool(read, "file.txt"))
+
+    // ReadOnly mode: Bash blocked, Read allowed
+    assert(check_permission("readonly", tool_is_readonly(bash)) == false)
+    assert(check_permission("readonly", tool_is_readonly(read)))
+
+    // Execute only read tool in readonly mode
+    if check_permission("readonly", tool_is_readonly(read)) {
+        print(run_tool(read, "data.txt"))
+    }
+
+    // Batch execute with permission checks
+    print("--- batch ---")
+    // bash + "ls": blocked (not read-only)
+    if check_permission("readonly", tool_is_readonly(bash)) {
+        print(f"ok: ${run_tool(bash, "ls")}")
+    } else {
+        print("blocked: Bash not read-only")
+    }
+    // read + "a.txt": allowed
+    if check_permission("readonly", tool_is_readonly(read)) {
+        print(f"ok: ${run_tool(read, "a.txt")}")
+    }
+
+    print("31_tool_exec_with_perm: all assertions passed")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+ran: ls
+read: file.txt
+read: data.txt
+--- batch ---
+blocked: Bash not read-only
+ok: read: a.txt
+31_tool_exec_with_perm: all assertions passed
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+ran: ls
+read: file.txt
+read: data.txt
+--- batch ---
+blocked: Bash not read-only
+ok: read: a.txt
+31_tool_exec_with_perm: all assertions passed
+```
+
+## Case: dispatch-two-claims
+id: "av.parity.1088.dispatch-two-claims"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn value(x int) int }
+type Add as Op { n int; fn value(x int) int { return .n + x } }
+type Mul as Op { n int; fn value(x int) int { return .n * x } }
+fn invoke(op Op, x int) int { return op.value(x) }
+fn main() int { return invoke(Add(2),3) + invoke(Mul(7),5) + 2 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-inherited-default
+id: "av.parity.1088.dispatch-inherited-default"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Base { fn value(x int) int { return x + 1 } }
+spec Derived: Base { fn delta(x int) int }
+type Plus as Derived { n int; fn delta(x int) int { return .n + x } }
+fn base(op Base) int { return op.value(20) }
+fn derived(op Derived) int { return op.delta(20) + op.value(0) }
+fn main() int { let p = Plus(0); return base(p) + derived(p) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-record-reuse
+id: "av.parity.1088.dispatch-record-reuse"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn value() int }
+type Named as Op { n int; title str; fn value() int { return .n } }
+fn invoke(op Op) int { return op.value() }
+fn main() int { let named = Named(21, "owned"); return invoke(named) + invoke(named) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-return-and-annotation
+id: "av.parity.1088.dispatch-return-and-annotation"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn value(x int) int }
+type Add as Op { n int; fn value(x int) int { return .n + x } }
+type Mul as Op { n int; fn value(x int) int { return .n * x } }
+fn invoke(op Op, x int) int { return op.value(x) }
+fn new_op() Op { return Add(19) }
+fn main() int {
+    let op Op = Mul(7)
+    return invoke(op,3) + invoke(new_op(),2)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-owned-multiple-methods
+id: "av.parity.1088.dispatch-owned-multiple-methods"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn first() int; fn second() int }
+type Named as Op {
+    n int
+    text str
+    fn first() int { return .n }
+    fn second() int { return .text.len() }
+}
+fn invoke(op Op) int { return op.first() + op.second() }
+fn main() int { return invoke(Named(39,"abc")) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-default-explicit
+id: "av.parity.1088.dispatch-default-explicit"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn value() int { return 14 } }
+type X as S {}
+type Y as S {}
+ext Y { fn value() int { return 28 } }
+fn invoke(s S) int { return s.value() }
+fn main() int { return invoke(X()) + invoke(Y()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: associated-super-explicit-default
+id: "av.parity.1088.associated-super-explicit-default"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Picker {
+    type Item
+    fn pick(x Item) Item { return x }
+}
+spec Main: Picker { fn extra() int { return 1 } }
+type Counter as Main<Item=int> { n int }
+ext Counter { fn pick(x int) int { return .n + x } }
+fn main() int { let c = Counter(20); return c.pick(21) + c.extra() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: dispatch-unclaimed
+id: "av.parity.1088.dispatch-unclaimed"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn value(x int) int }
+type Add as Op { n int; fn value(x int) int { return .n + x } }
+type Mul as Op { n int; fn value(x int) int { return .n * x } }
+fn invoke(op Op, x int) int { return op.value(x) }
+
+type Other { n int; fn value(x int) int { return .n + x } }
+fn main() int { return invoke(Other(2),3) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"
+
+## Case: dispatch-false-assert
+id: "av.parity.1088.dispatch-false-assert"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn value() bool }
+type No as S { fn value() bool { false } }
+fn check(s S) { assert(s.value()); print("unexpected") }
+fn main() { check(No()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "assert failed"
+
+## Case: dispatch-text-method
+id: "av.parity.1088.dispatch-text-method"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec Op { fn value(t str) str }
+type Named as Op { n int; fn value(t str) str { f"value: ${t}" } }
+fn invoke(op Op, input str) { print(op.value(input)) }
+fn main() { invoke(Named(1), "test") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+value: test
+```
+
+## Case: dispatch-borrowed-implementation
+id: "av.parity.1088.dispatch-borrowed-implementation"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn read(s str) str }
+type X as S { fn read(s str) str { return s.slice(1,3) } }
+fn read(x S, s str) str { x.read(s) }
+fn main() { let x = X(); let s = "abcd".clone(); print(read(x, s)); print(s) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+bc
+abcd
+```
+
+## Case: implicit-field-fstr
+id: "av.parity.1088.implicit-field-fstr"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Named { title str; fn value() str { f"value: ${title}" } }
+fn main() { print(Named("test").value()) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+value: test
+```
+
+## Case: fstr-nested-quote
+id: "av.parity.1088.fstr-nested-quote"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn label(t str) str { f"quote ${t}" }
+fn main() { print(f"outer ${label("test")}") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+outer quote test
+```
+
+## Case: uppercase-unicode-view
+id: "av.parity.1088.uppercase-unicode-view"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+    let name = "xStraße café ωﬃy".clone()
+    print(name.slice(1,15).to_upper())
+    print(name)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+STRASSE CAFÉ ΩFFI
+xStraße café ωﬃy
+```
