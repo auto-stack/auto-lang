@@ -3437,6 +3437,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                         .to_string(),
                 )
             }
+            MirInstr::StrFind { .. } | MirInstr::StrTrim { .. } => {
+                return Err("av.text.scan/1 instructions are outside the native profile".into());
+            }
         }
         Ok(())
     }
