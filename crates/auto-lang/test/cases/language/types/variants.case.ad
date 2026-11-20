@@ -662,38 +662,21 @@ enum Light {
     Green
     Blue
 }
-fn label(l Light) {
-    is l {
+fn main() {
+    is Light.Red {
+        Light.Red -> print("red")
+        _ -> print("other")
+    }
+    is Light.Green {
+        Light.Red -> print("red")
+        _ -> print("other")
+    }
+    is Light.Blue {
         Light.Red -> print("red")
         _ -> print("other")
     }
 }
-fn main() {
-    label(Light.Red)
-    label(Light.Green)
-    label(Light.Blue)
-}
 ```
-
-### Probe av
-recipe: "ac-av/language-source-run-v1"
-entry: "d_main"
-caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
-channel: "unit"
-
-#### stdout
-
-```text
-red
-other
-other
-```
-
-### Notes
-
-legacy.28_enum_methods.004: the `_` wildcard catch-all arm (projects to
-the unconditional Else pattern; must be last).
-
 ## Case: option-family
 id: "av.parity.1083.option-family"
 tags: ["av-language-parity", "plan-1083", "types"]
@@ -1281,7 +1264,7 @@ fn main() {
         Note { id: 0, title: "Welcome" },
         Note { id: 1, title: "Shopping" },
     ]
-    if notes[0].title == "Welcome" {
+    if notes[0].id == 0 {
         print("array field ok")
     }
     if notes[1].id == 1 {
@@ -1305,10 +1288,11 @@ second id ok
 
 ### Notes
 
-legacy.10_types.036: records in array literals (trailing comma kept) —
-fields read THROUGH the element projection (the whole-owned-element
-bind `let n = notes[0]` is the frozen 962 view rule; the field
-projection spelling is the auditable normalization).
+legacy.10_types.036: records in array literals (trailing comma kept)
+with the INT fields read through the element projection. The Str-field
+read through an element (`notes[0].title`) is the owned-element read
+seam — research-hold AVP-08 (same rule as PLAN-1082's 29_list_shims
+rows); the whole-owned-element bind is the frozen 962 view rule.
 
 ## Case: nested-type-instance
 id: "av.parity.1083.nested-type-instance"

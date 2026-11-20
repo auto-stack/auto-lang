@@ -191,6 +191,8 @@ mod plan1081_function_values;
 mod plan1082_collections_places;
 #[path = "cases/plan1083_records_variants_patterns.rs"]
 mod plan1083_records_variants_patterns;
+#[path = "cases/plan1083_canonical_verify.rs"]
+mod plan1083_canonical_verify;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]

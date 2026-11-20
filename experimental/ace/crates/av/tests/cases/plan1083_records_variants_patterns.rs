@@ -1295,6 +1295,18 @@ fn t02_infra_diag() {
             ),
         ),
         (
+            "C1 named-enum-payload canonical",
+            "enum Answer { Yes { code int, text Str }; No }\nfn main() int {\n let a = Answer.Yes(code: 42, text: \"ok\")\n is a { Answer.Yes(code, text) -> { if text == \"ok\" { return code }; return 0 }; Answer.No -> { return 0 } }\n}\n",
+        ),
+        (
+            "C2 multi-field-positional canonical",
+            "enum Shape {\n    Rect { w int, h int }\n}\nfn main() {\n    let s = Shape.Rect(10, 20)\n    is s {\n        Shape.Rect(w, h) -> {\n            print(w)\n            print(h)\n        }\n    }\n}\n",
+        ),
+        (
+            "C3 wildcard canonical",
+            "enum Light {\n    Red\n    Green\n    Blue\n}\nfn label(l Light) {\n    is l {\n        Light.Red -> print(\"red\")\n        _ -> print(\"other\")\n    }\n}\nfn main() {\n    label(Light.Red)\n    label(Light.Green)\n    label(Light.Blue)\n}\n",
+        ),
+        (
             "O47 multi-error nested is",
             concat!(
                 "enum ApiError {\n",
