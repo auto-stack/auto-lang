@@ -189,6 +189,8 @@ mod plan1080_calls_binding;
 mod plan1081_function_values;
 #[path = "cases/plan1082_collections_places.rs"]
 mod plan1082_collections_places;
+#[path = "cases/plan1083_records_variants_patterns.rs"]
+mod plan1083_records_variants_patterns;
 #[path = "cases/resource_915.rs"]
 mod resource_915;
 #[path = "cases/resources_tier.rs"]
