@@ -4,6 +4,7 @@ use app.syntax_smoke.decode_case
 use app.syntax_smoke.decode_dbg_case
 use app.syntax_smoke.decode_truncated_case
 use app.syntax_smoke.edit_case
+use app.syntax_smoke.edit_project_case
 use app.syntax_smoke.firstsets_case
 use app.syntax_smoke.hex_roundtrip_case
 use app.syntax_smoke.identity_case
@@ -48,7 +49,7 @@ fn observe(case_name Str, profile Str, sample Str) Str {
         return parse_case(profile, sample)
     }
     if (case_name == "project") {
-        return project_case(profile, sample, offset("AAC1046_START"), offset("AAC1046_END"))
+        return project_case(profile, sample, offset("AAC1046_SOURCE_ID"), offset("AAC1046_ORIGIN_ID"))
     }
     if (case_name == "lex") {
         return lex_case(profile, sample)
@@ -67,6 +68,9 @@ fn observe(case_name Str, profile Str, sample Str) Str {
     }
     if (case_name == "edit") {
         return edit_case(profile, sample, offset("AAC1046_START"), offset("AAC1046_END"), read_text(get("AAC1046_INSERT")))
+    }
+    if (case_name == "project-edit") {
+        return edit_project_case(profile, sample, offset("AAC1046_START"), offset("AAC1046_END"), read_text(get("AAC1046_INSERT")), offset("AAC1046_SOURCE_ID"), offset("AAC1046_ORIGIN_ID"))
     }
     if (case_name == "identity") {
         return identity_case(sample, offset("AAC1046_START"))

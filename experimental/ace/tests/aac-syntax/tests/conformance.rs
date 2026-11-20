@@ -5,7 +5,7 @@
 
 #![cfg(all(windows, target_arch = "x86_64"))]
 
-use ace_aac_syntax_conformance::{run_native_case, SYNTAX_PROFILES};
+use ace_aac_syntax_conformance::{run_native_case, run_native_projection, SYNTAX_PROFILES};
 
 fn obs(case: &str, profile: &str, source: &str) -> String {
     run_native_case(case, profile, source, None).expect("prepared AAC native run")
@@ -550,7 +550,7 @@ fn aac1046_ast_source_and_domain_projection() {
         ("packages-ct", "fn id<T>(x T) T { return x }", 33, 0),
         ("scalar", "fn broken( -> int { return 1 }\nfn ok(x int) int { return x }", 34, 0),
     ] {
-        let actual = run_native_case("project", profile, source, Some((file, origin, ""))).unwrap();
+        let actual = run_native_projection(profile, source, (file, origin), None).unwrap();
         assert_eq!(actual, rust_ast_report(profile, source, file, origin), "{profile}");
     }
 }
@@ -569,7 +569,7 @@ fn aac1046_ast_type_roles_match_rust_projection() {
     assert!(matches!(&function.params[1].ty.kind, TypeRef::Stream(_)));
     assert!(matches!(&function.params[2].ty.kind, TypeRef::Generic { name, .. } if name.name == "Future"));
     assert!(matches!(&function.ret.kind, TypeRef::ResultBang(inner) if matches!(inner.kind, TypeRef::Optional(_))));
-    let actual = run_native_case("project", "auto", code, Some((9, 2, ""))).unwrap();
+    let actual = run_native_projection("auto", code, (9, 2), None).unwrap();
     for (kind, span) in [
         ("optional-ty", function.params[0].ty.span),
         ("tilde-ty", function.params[1].ty.span),
@@ -578,5 +578,25 @@ fn aac1046_ast_type_roles_match_rust_projection() {
     ] {
         let role_and_span = format!(" {kind} {}..{} 9 2 ", span.start, span.end);
         assert!(actual.contains(&role_and_span), "missing projected type {role_and_span}");
+    }
+}
+
+
+#[test]
+fn aac1046_incremental_ast_retains_origin_and_byte_spans() {
+    let source = "// α note\r\nfn a(x int) int { return x }\r\nfn b(y int) int { return y }\r\n";
+    let at = source.find('α').unwrap();
+    let mut edited = source.to_owned();
+    edited.insert(at, ' ');
+    for (input, expected, end, insert) in [
+        (source, edited.as_str(), at, " "),
+        (edited.as_str(), source, at + 1, ""),
+    ] {
+        let actual = run_native_projection(
+            "scalar", input, (19, 3), Some((at as i32, end as i32, insert)),
+        ).unwrap();
+        let (ast, facts) = actual.split_once("SPLICE").unwrap_or_else(|| panic!("{actual}"));
+        assert_eq!(ast.strip_prefix("INCR|").unwrap(), rust_ast_report("scalar", expected, 19, 3));
+        assert!(facts.starts_with(" ok=1 fb=0 "), "fixture must exercise splicing: {facts}");
     }
 }

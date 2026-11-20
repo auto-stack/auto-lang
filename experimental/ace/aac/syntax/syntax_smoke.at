@@ -428,8 +428,12 @@ pub fn project_case(profile Str, sample Str, source_id int, origin_id int) Str {
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
     }
+    return project_report(pg, t, ef, decls, dmsg, root, srcb.len(), source_id, origin_id)
+}
+
+fn project_report(pg List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, root int, size int, source_id int, origin_id int) Str {
     var ast = List<int>.new()
-    if (project_ast(t, ef, decls, root, srcb.len(), source_id, origin_id, ast) < 0) {
+    if (project_ast(t, ef, decls, root, size, source_id, origin_id, ast) < 0) {
         return "PROJECTION_ERR"
     }
     return ast_canonical(pg, ast) + "DIAGS\n" + render_diag(pg, dmsg)
@@ -530,6 +534,17 @@ fn build_gcand(decls1 List<int>, t1 List<int>, ef1 List<int>, toks1 List<int>, s
 }
 
 pub fn edit_case(profile Str, sample Str, start int, end int, insert Str) Str {
+    return edit_observation(profile, sample, start, end, insert, List<int>.new())
+}
+
+pub fn edit_project_case(profile Str, sample Str, start int, end int, insert Str, source_id int, origin_id int) Str {
+    var origin = List<int>.new()
+    origin.push(source_id)
+    origin.push(origin_id)
+    return edit_observation(profile, sample, start, end, insert, origin)
+}
+
+fn edit_observation(profile Str, sample Str, start int, end int, insert Str, origin List<int>) Str {
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
         return "DECODE_ERR"
@@ -599,7 +614,11 @@ pub fn edit_case(profile Str, sample Str, start int, end int, insert Str) Str {
     if (!reconstructs_input(nodes, edges, decls, root, snap, new_len)) {
         return "LOSSLESS_ERR"
     }
-    return "INCR|CANON\n" + canonical(nodes, edges, decls, root) + "DIAGS\n" + render_diag(pg, diags) + "SPLICE ok=" + itoa(splice.get(0)) + " fb=" + itoa(splice.get(1)) + " rescan=" + itoa(splice.get(2)) + " grafted=" + itoa(graft.get(4))
+    let facts = "SPLICE ok=" + itoa(splice.get(0)) + " fb=" + itoa(splice.get(1)) + " rescan=" + itoa(splice.get(2)) + " grafted=" + itoa(graft.get(4))
+    if (origin.len() == 2) {
+        return "INCR|" + project_report(pg, nodes, edges, decls, diags, root, new_len, origin.get(0), origin.get(1)) + facts
+    }
+    return "INCR|CANON\n" + canonical(nodes, edges, decls, root) + "DIAGS\n" + render_diag(pg, diags) + facts
 }
 
 fn edit_graft_candidates(decls List<int>, nodes List<int>, edges List<int>, toks List<int>, splice List<int>, old_len int, start int, end int) List<int> {

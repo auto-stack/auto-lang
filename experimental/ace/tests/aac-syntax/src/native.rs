@@ -77,9 +77,33 @@ pub fn run_native_case(
     sample: impl AsRef<[u8]>,
     edit: Option<(i32, i32, &str)>,
 ) -> Result<String, String> {
+    run_native(case, profile, sample.as_ref(), edit, (0, 0))
+}
+
+pub fn run_native_projection(
+    profile: &str,
+    sample: &str,
+    origin: (i32, i32),
+    edit: Option<(i32, i32, &str)>,
+) -> Result<String, String> {
+    let case = if edit.is_some() {
+        "project-edit"
+    } else {
+        "project"
+    };
+    run_native(case, profile, sample.as_bytes(), edit, origin)
+}
+
+fn run_native(
+    case: &str,
+    profile: &str,
+    sample: &[u8],
+    edit: Option<(i32, i32, &str)>,
+    origin: (i32, i32),
+) -> Result<String, String> {
     let exe = prepared_exe()?;
     let root = scratch(case);
-    let result = run_in(exe, &root, case, profile, sample.as_ref(), edit);
+    let result = run_in(exe, &root, case, profile, sample, edit, origin);
     let cleanup = std::fs::remove_dir_all(&root);
     match (result, cleanup) {
         (Err(err), _) => Err(err),
@@ -95,6 +119,7 @@ fn run_in(
     profile: &str,
     sample: &[u8],
     edit: Option<(i32, i32, &str)>,
+    origin: (i32, i32),
 ) -> Result<String, String> {
     let input = root.join("input.at");
     let output = root.join("report.txt");
@@ -109,6 +134,8 @@ fn run_in(
         .env("AAC1046_PROFILE", profile)
         .env("AAC1046_INPUT", &input)
         .env("AAC1046_OUTPUT", &output)
+        .env("AAC1046_SOURCE_ID", origin.0.to_string())
+        .env("AAC1046_ORIGIN_ID", origin.1.to_string())
         .env("AAC1046_START", start.to_string())
         .env("AAC1046_END", end.to_string())
         .env("AAC1046_INSERT", &insert_path);
