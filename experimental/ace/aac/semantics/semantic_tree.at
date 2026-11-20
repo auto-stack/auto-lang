@@ -13,6 +13,7 @@ use app.syntax_frontend.parse_cst
 use app.syntax_frontend.str_to_bytes
 use app.syntax_program.field_name
 use std.bytes.decode_utf8
+use std.text.split
 
 pub fn row_count(ast List<int>) int { return ast.len() / ast_stride() }
 pub fn parent(ast List<int>, row int) int { return ast.get(row * ast_stride() + ast_parent()) }
@@ -83,6 +84,11 @@ pub fn module_name_at(names List<int>, id int) Str {
         current = current + 1
     }
     return ""
+}
+
+pub fn module_package_at(names List<int>, id int) Str {
+    var parts = split(module_name_at(names, id), ".")
+    return parts.remove(0)
 }
 
 // The index only contains navigation within the 1046 preorder projection.

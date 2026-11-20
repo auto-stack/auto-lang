@@ -15,6 +15,7 @@ use app.semantic_tree.row_count
 use app.semantic_tree.source_id
 use app.semantic_tree.spelling
 use std.conv.from_int
+use std.text.split
 
 pub fn initializer_cycle() int { return -18 }
 pub fn initializer_module_order() int { return -19 }
@@ -111,9 +112,11 @@ fn before(a Str, b Str) bool {
 }
 
 fn global_key(ast List<int>, src List<int>, modules List<int>, declarations List<int>, row int) Str {
-    let module_name = module_name_at(modules, source_id(ast, row))
+    var parts = split(module_name_at(modules, source_id(ast, row)), ".")
+    let package = parts.remove(0)
+    let module_name = parts.remove(0)
     let name = spelling(src, ast, decl_name(declarations, row))
-    return from_int(module_name.len()) + "_" + module_name + "_" + name
+    return from_int(package.len()) + "_" + package + "m" + from_int(module_name.len()) + "_" + module_name + "_" + name
 }
 
 fn add_global(ast List<int>, src List<int>, modules List<int>, declarations List<int>, globals List<int>, row int, fuel List<int>, deadline i64) bool {

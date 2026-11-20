@@ -182,7 +182,7 @@ fn declaration_report(ast List<int>, src List<int>, bases List<int>, annotations
     return join_rows(lines, lines.len())
 }
 
-fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package Str, steps int) Str {
+fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
     var declarations = List<int>.new()
@@ -201,7 +201,7 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
         return "ERROR " + diagnostic_name(cataloged) + " " + location(ast, errors.get(0), bases) + "\n"
     }
     if (pending.len() > 0) { return declaration_report(ast, src, bases, metadata, pending) }
-    let status = bind_source(pg, ast, links, src, modules, package, roots, declarations, uses, mappings, errors, fuel, deadline)
+    let status = bind_source(pg, ast, links, src, modules, roots, declarations, uses, mappings, errors, fuel, deadline)
     if (status != 0) {
         return "ERROR " + diagnostic_name(status) + " " + location(ast, errors.get(0), bases) + "\n"
     }
@@ -272,22 +272,28 @@ fn project(steps int) Str {
     if (directory.len() == 0) {
         let result = load_source(pg, get("AAC1047_INPUT"), 0, src, ast, bases, roots)
         if (result.len() > 0) { return result }
-        add_module_name(names, "main")
+        add_module_name(names, "app.main")
     } else {
         package = get("AAC1047_PACKAGE")
         if (!identifier(package.clone())) { return "ERROR source.package\n" }
         var requested = split(get("AAC1047_INVENTORY"), "\n")
         for (requested.len() > 0) {
             let name = requested.remove(0)
-            if (!identifier(name.clone())) { return "ERROR source.module\n" }
-            if (find_module_name(names, name.clone()) >= 0) { return "ERROR source.module-duplicate\n" }
+            var parts = split(name.clone(), "/")
+            if (parts.len() < 1 || parts.len() > 2) { return "ERROR source.module\n" }
+            var owner = package.clone()
+            if (parts.len() == 2) { owner = parts.remove(0) }
+            let module_name = parts.remove(0)
+            if (!identifier(owner.clone()) || !identifier(module_name.clone())) { return "ERROR source.module\n" }
+            let key = owner + "." + module_name
+            if (find_module_name(names, key.clone()) >= 0) { return "ERROR source.module-duplicate\n" }
             let path = join(directory.clone(), name.clone() + ".at")
             let result = load_source(pg, path, roots.len(), src, ast, bases, roots)
             if (result.len() > 0) { return result }
-            add_module_name(names, name)
+            add_module_name(names, key)
         }
     }
-    return observe(pg, src, ast, bases, roots, names, package, steps)
+    return observe(pg, src, ast, bases, roots, names, steps)
 }
 
 fn admit_document(path Str, steps int) Str {

@@ -4,6 +4,7 @@ use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
 use app.semantic_tree.first_child
 use app.semantic_tree.kind
+use app.semantic_tree.module_package_at
 use app.semantic_tree.next_sibling
 use app.semantic_tree.parent
 use app.semantic_tree.role
@@ -156,8 +157,8 @@ fn visible(ast List<int>, declarations List<int>, decl int, occurrence int) bool
     return true
 }
 
-fn module_of(src List<int>, ast List<int>, modules List<int>, token int) int {
-    return find_module_name(modules, spelling(src, ast, token))
+fn module_of(src List<int>, ast List<int>, modules List<int>, package Str, token int) int {
+    return find_module_name(modules, package + "." + spelling(src, ast, token))
 }
 
 fn publicly_declared(pg List<int>, ast List<int>, row int) bool {
@@ -199,7 +200,7 @@ fn push_import(src List<int>, ast List<int>, imports List<int>, token int, local
     return 0
 }
 
-fn collect_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, imports List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn collect_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, imports List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
@@ -220,10 +221,12 @@ fn collect_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, 
                 }
                 segment = next_sibling(links, segment)
             }
-            if (number < 1 || number > 2 || (number == 2 && spelling(src, ast, head) != package)) {
+            if (number < 1 || number > 2) {
                 return fail(errors, path, bind_module())
             }
-            let target = module_of(src, ast, modules, module_token)
+            var target_package = module_package_at(modules, source_id(ast, row))
+            if (number == 2) { target_package = spelling(src, ast, head) }
+            let target = module_of(src, ast, modules, target_package, module_token)
             let alias_node = child_with_kind(pg, ast, links, row, "use-alias")
             var local_name = exported
             if (alias_node >= 0) { local_name = child_with_role(pg, ast, links, alias_node, "alias") }
@@ -232,11 +235,12 @@ fn collect_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, 
         }
         if (node_kind == "age-use-sym-item" || node_kind == "age-use-module-item") {
             var module_token = child_with_role(pg, ast, links, row, "module")
+            var target_package = module_package_at(modules, source_id(ast, row))
             if (node_kind == "age-use-module-item") {
-                if (spelling(src, ast, module_token) != package) { return fail(errors, module_token, bind_module()) }
+                target_package = spelling(src, ast, module_token)
                 module_token = child_with_role(pg, ast, links, row, "name")
             }
-            let target = module_of(src, ast, modules, module_token)
+            let target = module_of(src, ast, modules, target_package, module_token)
             var member = first_child(links, row)
             for (member >= 0) {
                 let member_role = role(pg, ast, member)
@@ -351,10 +355,25 @@ fn resolve_imports(pg List<int>, ast List<int>, src List<int>, roots List<int>, 
     for (entry < imports.len()) {
         let token = imports.get(entry + 3)
         if (waits.get(imports.get(entry)) > 0) { return fail(errors, token, bind_import_cycle()) }
-        let resolved = exported_decl(pg, ast, src, roots, heads, declarations, imports, imports.get(entry + 2), token, fuel, deadline)
-        if (resolved < 0) { return fail(errors, token, resolved) }
-        imports.set(entry + 5, resolved)
         entry = entry + import_stride()
+    }
+    // Resolve exporters before users so an invalid re-export is diagnosed at
+    // the edge that introduced it, independent of the input inventory order.
+    head = 0
+    for (head < ready.len()) {
+        let module_index = ready.get(head)
+        entry = 0
+        for (entry < imports.len()) {
+            let token = imports.get(entry + 3)
+            if (!take_step(fuel, deadline)) { return fail(errors, token, bind_budget()) }
+            if (imports.get(entry) == module_index) {
+                let resolved = exported_decl(pg, ast, src, roots, heads, declarations, imports, imports.get(entry + 2), token, fuel, deadline)
+                if (resolved < 0) { return fail(errors, token, resolved) }
+                imports.set(entry + 5, resolved)
+            }
+            entry = entry + import_stride()
+        }
+        head = head + 1
     }
     return 0
 }
@@ -378,7 +397,7 @@ fn lookup(src List<int>, ast List<int>, scopes List<int>, heads List<int>, decla
     return bind_unresolved()
 }
 
-fn qualified_ref(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, heads List<int>, declarations List<int>, imports List<int>, row int, fuel List<int>, deadline i64) int {
+fn qualified_ref(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, roots List<int>, heads List<int>, declarations List<int>, imports List<int>, row int, fuel List<int>, deadline i64) int {
     let atom = parent(ast, row)
     let postfix = parent(ast, atom)
     if (postfix < 0) { return bind_unresolved() }
@@ -388,19 +407,22 @@ fn qualified_ref(pg List<int>, ast List<int>, links List<int>, src List<int>, mo
     if (first_member < 0) { return bind_unresolved() }
     var module_token = row
     var export_token = first_member
-    if (spelling(src, ast, row) == package) {
-        let next = next_sibling(links, step)
-        if (next < 0 || kind(pg, ast, next) != "postfix-step") { return bind_unresolved() }
-        export_token = child_with_role(pg, ast, links, next, "member")
-        if (export_token < 0) { return bind_unresolved() }
-        module_token = first_member
+    var package = module_package_at(modules, source_id(ast, row))
+    let next = next_sibling(links, step)
+    if (next >= 0 && kind(pg, ast, next) == "postfix-step") {
+        let second_member = child_with_role(pg, ast, links, next, "member")
+        if (second_member >= 0) {
+            export_token = second_member
+            module_token = first_member
+            package = spelling(src, ast, row)
+        }
     }
-    let target = module_of(src, ast, modules, module_token)
+    let target = module_of(src, ast, modules, package, module_token)
     if (target < 0) { return bind_module() }
     return exported_decl(pg, ast, src, roots, heads, declarations, imports, target, export_token, fuel, deadline)
 }
 
-fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, scopes List<int>, heads List<int>, declarations List<int>, imports List<int>, uses List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, roots List<int>, scopes List<int>, heads List<int>, declarations List<int>, imports List<int>, uses List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }
@@ -418,7 +440,7 @@ fn bind_occurrences(pg List<int>, ast List<int>, links List<int>, src List<int>,
                     if (local_name >= 0) { target = imports.get(local_name + 5) }
                 }
                 if (target == bind_unresolved() && !write && !type_name) {
-                    target = qualified_ref(pg, ast, links, src, modules, package.clone(), roots, heads, declarations, imports, row, fuel, deadline)
+                    target = qualified_ref(pg, ast, links, src, modules, roots, heads, declarations, imports, row, fuel, deadline)
                 }
                 if (type_name && target == bind_unresolved()) {
                     target = -1
@@ -454,7 +476,7 @@ pub fn call_parameter_slots(pg List<int>, ast List<int>, links List<int>, functi
     return result
 }
 
-fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
+pub fn call_args(pg List<int>, ast List<int>, links List<int>, call int) int {
     var child = first_child(links, call)
     for (child >= 0) {
         if (kind(pg, ast, child) == "args") { return child }
@@ -573,7 +595,7 @@ pub fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, cal
     return 0
 }
 
-pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, roots List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, roots List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let max_steps = fuel.get(0)
     if (max_steps <= 0 || max_steps > 1000000 || row_count(ast) > max_steps) {
         return fail(errors, 0, bind_budget())
@@ -583,11 +605,11 @@ pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, 
     let indexed = build_declarations(pg, ast, links, src, scopes, heads, declarations, errors, fuel, deadline)
     if (indexed != 0) { return indexed }
     var imports = List<int>.new()
-    let collected = collect_imports(pg, ast, links, src, modules, package.clone(), imports, errors, fuel, deadline)
+    let collected = collect_imports(pg, ast, links, src, modules, imports, errors, fuel, deadline)
     if (collected != 0) { return collected }
     let imported = resolve_imports(pg, ast, src, roots, heads, declarations, imports, errors, fuel, deadline)
     if (imported != 0) { return imported }
-    let bound = bind_occurrences(pg, ast, links, src, modules, package, roots, scopes, heads, declarations, imports, uses, errors, fuel, deadline)
+    let bound = bind_occurrences(pg, ast, links, src, modules, roots, scopes, heads, declarations, imports, uses, errors, fuel, deadline)
     if (bound != 0) { return bound }
     var row = 0
     for (row < row_count(ast)) {

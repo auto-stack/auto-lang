@@ -201,16 +201,29 @@ fn run_semantic_source(
 }
 
 pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> {
+    run_project(modules, false)
+}
+
+pub fn run_type_project(modules: &[(&str, &str)]) -> Result<String, String> {
+    run_project(modules, true)
+}
+
+fn run_project(modules: &[(&str, &str)], typed: bool) -> Result<String, String> {
     let exe = prepared_semantic()?;
     with_fixture("semantic-project", |root| {
         let output = root.join("report.txt");
         let mut names = Vec::with_capacity(modules.len());
         for (name, source) in modules {
-            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+            if name.split('/').count() > 2
+                || name.split('/').any(|part| {
+                    part.is_empty() || !part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                })
+            {
                 return Err(format!("invalid fixture module name: {name}"));
             }
-            std::fs::write(root.join(format!("{name}.at")), source)
-                .map_err(|err| err.to_string())?;
+            let input = root.join(format!("{name}.at"));
+            std::fs::create_dir_all(input.parent().unwrap()).map_err(|err| err.to_string())?;
+            std::fs::write(input, source).map_err(|err| err.to_string())?;
             names.push(*name);
         }
         let mut cmd = Command::new(exe);
@@ -219,7 +232,7 @@ pub fn run_semantic_project(modules: &[(&str, &str)]) -> Result<String, String> 
             .env("AAC1047_PACKAGE", "app")
             .env("AAC1047_INVENTORY", names.join("\n"))
             .env("AAC1047_OUTPUT", &output)
-            .env_remove("AAC1047_TYPED")
+            .env("AAC1047_TYPED", if typed { "1" } else { "0" })
             .env_remove("AAC1047_HIR")
             .env_remove("AAC1047_STEPS");
         execute_report(cmd, &output, "semantic-project")

@@ -80,7 +80,72 @@ pub fn primitive(name Str) int {
 }
 
 pub fn annotation_wrapper(node_kind Str) bool {
-    return node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner"
+    let named = node_kind == "ann-ty" || node_kind == "ret-ty" || node_kind == "type-arg" || node_kind == "optional-inner" || node_kind == "err-inner"
+    return named || node_kind == "fn-type-param" || node_kind == "fn-type-result"
+}
+
+// Type sequences are interned from the last element back to the first.
+// Empty is 0, with the enclosing tuple/function node preserving its kind.
+pub fn intern_sequence(types List<int>, elements List<int>, fuel List<int>, deadline i64) int {
+    var index = elements.len() - 1
+    var chain = 0
+    for (index >= 0) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        chain = intern_type(types, type_chain_kind(), elements.get(index), chain, fuel, deadline)
+        if (chain < 0) { return -1 }
+        index = index - 1
+    }
+    return chain
+}
+
+fn child_types(pg List<int>, ast List<int>, links List<int>, facts List<int>, row int, element_kind Str, tail_kind Str, output List<int>, fuel List<int>, deadline i64) int {
+    var child = first_child(links, row)
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        let shape = kind(pg, ast, child)
+        var element = -1
+        if (shape == element_kind) { element = child }
+        if (shape == tail_kind) {
+            element = child_with_kind(pg, ast, links, child, element_kind.clone())
+        }
+        if (element >= 0) {
+            let value = facts.get(element)
+            if (value == 0) { return 0 }
+            output.push(value)
+        }
+        child = next_sibling(links, child)
+    }
+    return 1
+}
+
+pub fn tuple_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, row int, literal bool, fuel List<int>, deadline i64) int {
+    var items = List<int>.new()
+    var element_kind = "ann-ty"
+    var tail_kind = "tuple-ty-tail"
+    if (literal) {
+        element_kind = "expr"
+        tail_kind = "tuple-lit-tail"
+    }
+    let found = child_types(pg, ast, links, facts, row, element_kind, tail_kind, items, fuel, deadline)
+    if (found <= 0) { return found }
+    if (items.len() < 2) { return 0 }
+    let chain = intern_sequence(types, items, fuel, deadline)
+    if (chain < 0) { return -1 }
+    return intern_type(types, tuple_kind(), chain, 0, fuel, deadline)
+}
+
+fn function_type(pg List<int>, ast List<int>, links List<int>, facts List<int>, types List<int>, row int, fuel List<int>, deadline i64) int {
+    let result_row = child_with_role(pg, ast, links, row, "result")
+    if (result_row < 0 || facts.get(result_row) == 0) { return 0 }
+    var items = List<int>.new()
+    let params = child_with_role(pg, ast, links, row, "params")
+    if (params >= 0) {
+        let found = child_types(pg, ast, links, facts, params, "fn-type-param", "fn-type-param-tail", items, fuel, deadline)
+        if (found <= 0) { return found }
+    }
+    let chain = intern_sequence(types, items, fuel, deadline)
+    if (chain < 0) { return -1 }
+    return intern_type(types, function_kind(), facts.get(result_row), chain, fuel, deadline)
 }
 
 fn type_arg_at(pg List<int>, ast List<int>, links List<int>, node int) int {
@@ -142,6 +207,8 @@ fn annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
         return wrapped_annotation(pg, ast, links, src, declarations, uses, facts, types, row, fuel, deadline)
     }
     if (node_kind == "generic-ty") { return apply_type(pg, ast, links, src, facts, types, row, fuel, deadline) }
+    if (node_kind == "tuple-ty") { return tuple_type(pg, ast, links, facts, types, row, false, fuel, deadline) }
+    if (node_kind == "fn-type") { return function_type(pg, ast, links, facts, types, row, fuel, deadline) }
     if (node_kind == "optional-ty" || node_kind == "err-ty") {
         let inner = child_with_role(pg, ast, links, row, "inner")
         let payload = facts.get(inner)

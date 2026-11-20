@@ -1,7 +1,7 @@
 #![cfg(windows)]
 
 use ace_aac_syntax_conformance::{
-    run_core_hir_case, run_semantic_case, run_semantic_project, run_type_case,
+    run_core_hir_case, run_semantic_case, run_semantic_project, run_type_case, run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -113,6 +113,41 @@ fn resolves_aliases_and_qualified_recursive_calls_across_modules() {
         "{report}"
     );
     assert!(report.contains(&format!("USE {target} app 2 ")), "{report}");
+}
+
+#[test]
+fn resolves_a_reexport_to_its_own_package_namespace() {
+    let main = "use facade.result as total\nfn main() int { return total() }";
+    let facade = "pub use support.lib.answer as result";
+    let support = "pub fn answer() int { return 42 }";
+    let local = "pub fn answer() int { return 99 }";
+    let report = project(&[
+        ("main", main),
+        ("facade", facade),
+        ("support/lib", support),
+        ("lib", local),
+    ]);
+    let target = report
+        .lines()
+        .find(|line| line.starts_with("DECL ") && line.contains(" 1 answer 2 "))
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or_else(|| panic!("{report}"));
+    assert!(
+        report.contains(&format!("USE {target} total 0 ")),
+        "{report}"
+    );
+    let private = support.strip_prefix("pub ").unwrap();
+    let report = project(&[
+        ("main", main),
+        ("facade", facade),
+        ("support/lib", private),
+        ("lib", local),
+    ]);
+    let start = facade.find("answer").unwrap();
+    assert_eq!(
+        report,
+        format!("ERROR bind.private 1 {start}..{}\n", start + "answer".len())
+    );
 }
 
 #[test]
@@ -457,4 +492,48 @@ fn emits_core_arithmetic_traps_and_rejects_an_erased_overflow_policy() {
     let corrupted = atom.replacen("overflow: trap; ", "", 1);
     let report = run_core_hir_case(corrupted.as_bytes(), "descriptor").expect("Auto admission");
     assert_eq!(report, "ERROR hir.unsupported\n");
+}
+
+#[test]
+fn preserves_tuple_order_and_checks_indirect_signature() {
+    let source = concat!(
+        "fn invoke(f fn(int) -> bool) bool { return f(7) }\n",
+        "fn positive(x int) bool { return x > 0 }\n",
+        "fn pair() (int,bool) { return (7, invoke(positive)) }\n",
+    );
+    let report = type_report(source);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    assert!(report
+        .lines()
+        .any(|line| line.starts_with("TYPE ") && line.split_whitespace().nth(2) == Some("27")));
+    let bad = source.replace("f(7)", "f(false)");
+    let from = bad.find("false").unwrap();
+    assert_eq!(
+        type_report(&bad),
+        format!("ERROR type.argument 0 {from}..{}\n", from + 5)
+    );
+}
+
+#[test]
+fn preserves_nested_payload_types_through_public_fields_and_calls() {
+    let source = concat!(
+        "use payload.CargoBox\n",
+        "fn transfer(x Future<Result<List<?int>,bool>>) Future<Result<List<?int>,bool>> { return x }\n",
+        "fn load(boxed CargoBox) Future<Result<List<?int>,bool>> { return transfer(boxed.content) }\n",
+    );
+    let payload = "pub type CargoBox { content Future<Result<List<?int>,bool>> }";
+    let run = |definition: &str| {
+        run_type_project(&[("main", source), ("payload", definition)]).expect("Auto project typing")
+    };
+    let report = run(payload);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let incorrect = payload.replacen("List<?int>,bool", "List<?int>,int", 1);
+    let start = source.find("boxed.content").unwrap();
+    assert_eq!(
+        run(&incorrect),
+        format!(
+            "ERROR type.argument 0 {start}..{}\n",
+            start + "boxed.content".len()
+        )
+    );
 }
