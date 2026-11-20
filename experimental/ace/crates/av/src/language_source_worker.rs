@@ -525,11 +525,7 @@ fn run_chain(
             source,
             path,
             caps,
-            |program| {
-                let instances = ace_source_query::instantiate_program(program, "", path, caps)?;
-                *program = instances.program;
-                Ok(())
-            },
+            |program| ace_source_query::instantiate_auto_program(program, path, caps),
         )
         .map_err(|ds| diagnostic(&ds[0], path))?;
         // PLAN-1080: the ordinary language face lowers through the same

@@ -21,6 +21,10 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "agg_lower.rs"]
 mod agg_lower;
 
+#[path = "resolve_instances.rs"]
+mod instances;
+pub use instances::{discover_auto_instance_calls, AutoInstanceDemand};
+
 /// Value type of the profile: `int`/`i32` are the same exact signed 32-bit
 /// type; `bool` is distinct with no implicit conversions.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -1646,6 +1650,7 @@ pub(crate) fn resolve_with_source_mode(
         None,
         None,
         script_errors,
+        None,
     )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
@@ -2182,7 +2187,7 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
-    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false)
+    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false, None)
 }
 
 fn resolve_detailed_in_mode(
@@ -2193,6 +2198,7 @@ fn resolve_detailed_in_mode(
     supply: Option<&dyn TypeSupply>,
     sched: Option<&super::sched_desugar::SchedSurface>,
     script_errors: bool,
+    instance_probe: Option<&instances::InstanceProbe<'_>>,
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -2993,6 +2999,9 @@ fn resolve_detailed_in_mode(
             continue;
         }
         crate::body_work::record_resolve(&f.name.name);
+        if let Some(probe) = instance_probe {
+            probe.begin_body(diags.len());
+        }
         let lambdas_before = closure_fns.len();
         let mut sites = Vec::new();
         let gen_meta = agg_iter_reg.gen_fns.get(&i).copied();
@@ -3073,6 +3082,7 @@ fn resolve_detailed_in_mode(
             },
             sched,
             nested_ctx,
+            instance_probe,
         );
         // A scoped constructor may execute the pre-suspension prefix
         // for a direct for-in consumer. No borrowed formal may enter the
@@ -3162,6 +3172,11 @@ fn resolve_detailed_in_mode(
     // and a frozen accept/reject set (`entry-contract.md` §2). Runs after
     // Pass 2 so a script's result type can be derived from its tail
     // statement's RESOLVED type.
+    if instance_probe.is_some() {
+        // Discovery may have unfinished call sites. Its result is consumed
+        // only by the instance worklist, before any body normalization.
+        return Err(diags);
+    }
     if surface.is_entry_unit() {
         // PLAN-982（983 组合入口，用户裁定）：**host-console 面**的入口可以收
         // **借用 `str`** 形参（`execute_entry_text_platform` 的文本实参通道）；
@@ -4669,6 +4684,7 @@ pub(crate) fn resolve_lambda_in_context(
     crate::body_work::record_resolve(&site.name);
     let lb = {
         let mut r = FnResolver {
+            instance_probe: None,
             sigs: &env.sigs,
             trace_enabled: env.trace_enabled,
             meta_enabled: false,
@@ -4926,6 +4942,7 @@ pub(crate) fn resolve_owner_in_env(
         None,
         None,
         NestedCtx::default(),
+        None,
     );
     if !diags.is_empty() {
         return Err(diags);
@@ -6088,6 +6105,7 @@ enum RecvClass {
 }
 
 struct FnResolver<'a, 's> {
+    instance_probe: Option<&'a instances::InstanceProbe<'a>>,
     sigs: &'a BTreeMap<String, FnSig>,
     trace_enabled: bool,
     /// PLAN-936（T-04）：meta 查询能力（cte.meta.fields/v1）已授予。
@@ -6244,6 +6262,7 @@ fn resolve_fn_agg(
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&super::sched_desugar::SchedSurface>,
     nested: NestedCtx,
+    instance_probe: Option<&instances::InstanceProbe<'_>>,
 ) -> ResolvedFn {
     resolve_fn_reuse(
         f,
@@ -6270,6 +6289,7 @@ fn resolve_fn_agg(
         gen_try_finals,
         sched,
         nested,
+        instance_probe,
     )
 }
 
@@ -6318,6 +6338,7 @@ fn resolve_fn(
         None,
         None,
         NestedCtx::default(),
+        None,
     )
 }
 
@@ -6350,6 +6371,7 @@ fn resolve_fn_reuse<'a, 's>(
     gen_try_finals: Option<&mut Vec<(LoopRef, LoopRef)>>,
     sched: Option<&'a super::sched_desugar::SchedSurface>,
     nested: NestedCtx,
+    instance_probe: Option<&'a instances::InstanceProbe<'a>>,
 ) -> ResolvedFn {
     let is_coll = surface.is_collections();
     // PLAN-1083: an enum instance method's owner name (precomputed —
@@ -6366,6 +6388,7 @@ fn resolve_fn_reuse<'a, 's>(
         .clone()
         .unwrap_or_else(|| f.name.name.clone());
     let mut r = FnResolver {
+        instance_probe,
         sigs,
         trace_enabled,
         meta_enabled,
@@ -16439,7 +16462,7 @@ F:{d}
         rargs: &mut Vec<ResolvedArg>,
         call_span: Span,
     ) {
-        if defaults.iter().all(|d| d.is_none()) || rargs.len() >= params.len() {
+        if defaults.iter().all(|d| d.is_none()) || rargs.len() >= names.len() {
             return;
         }
         let all_named = !rargs.is_empty() && rargs.iter().all(|a| a.name.is_some());
@@ -16447,7 +16470,7 @@ F:{d}
             // 混合形式：由 check_args 报同一诊断，不在此处再报一次。
             return;
         }
-        let mut covered = vec![false; params.len()];
+        let mut covered = vec![false; names.len()];
         for (i, a) in rargs.iter().enumerate() {
             let pos = match &a.name {
                 Some(n) => names.iter().position(|p| p == &n.name),
@@ -16514,6 +16537,7 @@ F:{d}
             /// `dest` (R5: nested calls must not recurse through call()).
             CallOut {
                 callee: &'a ast::Ident,
+                consts: Option<&'a [ast::ConstArgUse]>,
                 dest: usize,
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
@@ -16653,20 +16677,28 @@ F:{d}
                         }
                         continue;
                     }
-                    if let ExprKind::Call { callee, args } = &node.kind {
+                    let call = match &node.kind {
+                        ExprKind::Call { callee, args } => Some((callee, args, None)),
+                        ExprKind::ConstCall { callee, args, consts } if self.instance_probe.is_some() => {
+                            Some((callee, args, Some(consts.as_slice())))
+                        }
+                        _ => None,
+                    };
+                    if let Some((callee, args, consts)) = call {
                         // PLAN-936（T-04）：meta 查询内在——selector 实参在
                         // 调度前拦截（不作为子表达式任务解析）。
                         // With no meta grant an actual user declaration keeps
                         // its ordinary meaning, including inside a CT demand.
-                        if self.meta_enabled
-                            || (self.ct_depth > 0 && !self.sigs.contains_key(&callee.name))
+                        if consts.is_none()
+                            && (self.meta_enabled
+                                || (self.ct_depth > 0 && !self.sigs.contains_key(&callee.name)))
                         {
                             if let Some(op) = meta_intrinsic(&callee.name) {
                                 out[slot] = self.meta_query(op, callee, args, node.span);
                                 continue;
                             }
                         }
-                        if args.is_empty() {
+                        if args.is_empty() && consts.is_none() {
                             out[slot] = self.call(callee, &[], node.span);
                             continue;
                         }
@@ -16699,6 +16731,7 @@ F:{d}
                         }
                         subtasks.push(Task::CallOut {
                             callee,
+                            consts,
                             dest: slot,
                             arg_slots,
                             names,
@@ -17763,6 +17796,7 @@ F:{d}
                 }
                 Task::CallOut {
                     callee,
+                    consts,
                     dest,
                     arg_slots,
                     names,
@@ -17793,7 +17827,12 @@ F:{d}
                         });
                     }
                     // the node's own span already covers callee..
-                    out[dest] = self.resolve_call(callee, rargs, node_span);
+                    out[dest] = match consts {
+                        Some(values) => self
+                            .probe_template_call(callee, rargs, Some(values), node_span)
+                            .expect("explicit value call dispatched only in discovery"),
+                        None => self.resolve_call(callee, rargs, node_span),
+                    };
                 }
                 Task::CallValueOut {
                     dest,
@@ -19201,6 +19240,11 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        if self.is_template_call(callee) {
+            return self
+                .probe_template_call(callee, rargs, None, call_span)
+                .expect("known template in discovery");
+        }
         if self.profile.is_auto_language()
             && self.lookup(&callee.name).is_none()
             && !self.sigs.contains_key(&callee.name)
@@ -20595,6 +20639,17 @@ F:{d}
         call_span: Span,
     ) {
         // PLAN-962: an argument may not materialize a whole-element view.
+        self.check_argument_shape(callee, param_names, params.len(), args, call_span);
+    }
+
+    fn check_argument_shape(
+        &mut self,
+        callee: &str,
+        param_names: &[String],
+        param_count: usize,
+        args: &[ResolvedArg],
+        call_span: Span,
+    ) {
         for a in args {
             self.reject_elem_view_use(&a.value, "the argument");
         }
@@ -20613,13 +20668,13 @@ F:{d}
             return;
         }
         if named == 0 {
-            if args.len() != params.len() {
+            if args.len() != param_count {
                 self.bind_err(
                     "source.argument",
                     format!(
                         "`{}` expects {} argument(s), found {}",
                         callee,
-                        params.len(),
+                        param_count,
                         args.len()
                     ),
                     call_span,

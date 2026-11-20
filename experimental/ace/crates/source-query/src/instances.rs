@@ -357,23 +357,32 @@ fn concretize(
     name: &str,
     span_map: Option<&BTreeMap<(String, u32, u32), (String, String)>>,
 ) -> FnItem {
-    let self_name = &template.name.name;
-    let concrete_self = name.to_string();
-    let subst_ann = |a: &TypeAnn| -> TypeAnn { subst_ann_declared(a, args) };
-    let subst_block = |b: &Block| -> Block { subst_block_anns(b, &subst_ann) };
-    // 体：注解位替换 + 值参数代入（`N` → 字面量）+ 同实例自调用重绑（同-ty
-    // 幂等）+ 跨模板调用按需求表重绑（fixpoint 轮发现的具体体内模板调用——
-    // None = fixpoint 工作程序（模板 stub 仍在，供再发现）；Some = 最终脱糖
-    // （模板移除））。
-    let mut body = subst_block(&template.body);
-    subst_block_consts(&mut body, consts);
-    rebind_self_calls(&mut body, self_name, &concrete_self);
+    let subst_ann = |a: &TypeAnn| -> TypeAnn {
+        substitute_annotation(a, &|id| {
+            args.iter()
+                .find(|x| x.param == id.name)
+                .map(|arg| ty_ref_of(&arg.ty, id.span))
+        })
+    };
+    let mut concrete = materialize_instance(template, &subst_ann, consts, name);
+    rebind_self_calls(&mut concrete.body, &template.name.name, name);
     if let Some(map) = span_map {
-        rebind_callsites_owned(&mut body, &concrete_self, map);
+        rebind_callsites_owned(&mut concrete.body, name, map);
     }
+    concrete
+}
+
+fn materialize_instance(
+    template: &FnItem,
+    subst_ann: &impl Fn(&TypeAnn) -> TypeAnn,
+    consts: &[InstanceConstArg],
+    name: &str,
+) -> FnItem {
+    let mut body = subst_block_anns(&template.body, subst_ann);
+    subst_block_consts(&mut body, consts);
     FnItem {
         name: Ident {
-            name: concrete_self,
+            name: name.to_string(),
             span: template.name.span,
         },
         type_params: Vec::new(),
@@ -412,35 +421,51 @@ fn ty_ref_of(ty: &InstanceTy, span: Span) -> TypeRef {
 }
 
 /// 声明序替换：已声明类型参数 → 具体类型词；嵌套类型形状递归。
-fn subst_ann_declared(a: &TypeAnn, args: &[InstanceArg]) -> TypeAnn {
+fn substitute_annotation(a: &TypeAnn, lookup: &impl Fn(&Ident) -> Option<TypeRef>) -> TypeAnn {
     match &a.kind {
-        TypeRef::TyVar(id) => match args.iter().find(|x| x.param == id.name) {
-            Some(arg) => TypeAnn {
-                kind: ty_ref_of(&arg.ty, a.span),
-                span: a.span,
-            },
+        TypeRef::TyVar(id) => match lookup(id) {
+            Some(kind) => TypeAnn { kind, span: a.span },
             None => a.clone(),
         },
         TypeRef::Optional(inner) => TypeAnn {
-            kind: TypeRef::Optional(Box::new(subst_ann_declared(inner, args))),
+            kind: TypeRef::Optional(Box::new(substitute_annotation(inner, lookup))),
             span: a.span,
         },
         TypeRef::Generic { name, args: targs } => TypeAnn {
             kind: TypeRef::Generic {
                 name: name.clone(),
-                args: targs.iter().map(|t| subst_ann_declared(t, args)).collect(),
+                args: targs
+                    .iter()
+                    .map(|t| substitute_annotation(t, lookup))
+                    .collect(),
             },
             span: a.span,
         },
         TypeRef::Tuple(elems) => TypeAnn {
-            kind: TypeRef::Tuple(elems.iter().map(|t| subst_ann_declared(t, args)).collect()),
+            kind: TypeRef::Tuple(
+                elems
+                    .iter()
+                    .map(|t| substitute_annotation(t, lookup))
+                    .collect(),
+            ),
             span: a.span,
         },
         TypeRef::Function { params, result } => TypeAnn {
             kind: TypeRef::Function {
-                params: params.iter().map(|t| subst_ann_declared(t, args)).collect(),
-                result: Box::new(subst_ann_declared(result, args)),
+                params: params
+                    .iter()
+                    .map(|t| substitute_annotation(t, lookup))
+                    .collect(),
+                result: Box::new(substitute_annotation(result, lookup)),
             },
+            span: a.span,
+        },
+        TypeRef::ResultBang(inner) => TypeAnn {
+            kind: TypeRef::ResultBang(Box::new(substitute_annotation(inner, lookup))),
+            span: a.span,
+        },
+        TypeRef::Stream(inner) => TypeAnn {
+            kind: TypeRef::Stream(Box::new(substitute_annotation(inner, lookup))),
             span: a.span,
         },
         _ => a.clone(),
@@ -793,6 +818,174 @@ fn program_has_value_call(prog: &Program) -> bool {
         }
     }
     found
+}
+
+/// Expand ordinary Auto source from real binder argument types. The worklist
+/// only rewrites calls after their inputs resolve, then replays the concrete
+/// program. No provisional call body reaches Checked HIR or the cache.
+pub fn instantiate_auto_program(
+    program: &mut Program,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    instantiate_auto_program_scoped(program, capabilities, |name| {
+        sq_hash(
+            "ac1088/local-template/v1",
+            &[module_path.as_bytes(), name.as_bytes()],
+        )
+    })
+    .map(|_| ())
+}
+
+/// Return the origin of each concrete symbol so a package can retain source
+/// associations after templates are removed from the executable AST.
+pub(crate) fn instantiate_auto_program_scoped(
+    program: &mut Program,
+    capabilities: &[String],
+    template_identity: impl Fn(&str) -> String,
+) -> Result<BTreeMap<String, String>, Vec<Diagnostic>> {
+    use ace_core::source::resolve::discover_auto_instance_calls;
+    use std::time::Instant;
+
+    let mut templates = BTreeMap::new();
+    let mut names = BTreeSet::new();
+    for item in &program.items {
+        if let Item::Fn(f) = item {
+            if !names.insert(f.name.name.clone()) {
+                // Non-template duplicate declarations still go through normal binding.
+                if !f.type_params.is_empty() || templates.contains_key(&f.name.name) {
+                    return Err(vec![Diagnostic::new(
+                        Stage::Bind,
+                        "source.duplicate",
+                        format!("duplicate function `{}`", f.name.name),
+                        f.name.span,
+                    )]);
+                }
+            }
+            if !f.type_params.is_empty() {
+                templates.insert(f.name.name.clone(), f.clone());
+            }
+        }
+    }
+    program
+        .items
+        .retain(|item| !matches!(item, Item::Fn(f) if !f.type_params.is_empty()));
+    let mut expanded = BTreeMap::<String, String>::new();
+    let mut origins = BTreeMap::new();
+    let limit = ProduceLimits::default();
+    let start = Instant::now();
+    let mut steps = 0;
+    loop {
+        let demands = discover_auto_instance_calls(program, &templates, capabilities)?;
+        if demands.is_empty() {
+            return Ok(origins);
+        }
+        steps += demands.len() as u64;
+        if steps > limit.max_steps || start.elapsed() >= limit.wall {
+            return Err(vec![Diagnostic::new(
+                Stage::Text,
+                "source.instances-resource",
+                "ordinary instance discovery budget exhausted",
+                demands[0].call,
+            )]);
+        }
+        let mut rewrites = BTreeMap::new();
+        for demand in demands {
+            let template = &templates[&demand.callee];
+            let mut consts = Vec::new();
+            let mut values = demand.consts.iter();
+            let mut key = Vec::new();
+            for param in &template.type_params {
+                match param.kind {
+                    TypeParamKind::Const => {
+                        let value = *values.next().expect("binder checked value arity");
+                        key.push(b'v');
+                        key.extend_from_slice(&value.to_le_bytes());
+                        consts.push(InstanceConstArg {
+                            param: param.name.name.clone(),
+                            value,
+                        });
+                    }
+                    TypeParamKind::Type => {
+                        let ty = &demand.types[&param.name.name];
+                        if let Some(bound) = &param.bound {
+                            let satisfied = matches!(&ty.kind, TypeRef::Record(id) if program.items.iter().any(|item| {
+                                matches!(item, Item::Type(t) if t.name.name == id.name && t.conforms.iter().any(|c| c.name.name == bound.name))
+                            }));
+                            if !satisfied {
+                                return Err(vec![Diagnostic::new(Stage::Bind, "source.instances-bound",
+                                    format!("type argument `{}` does not satisfy `{}` (bound of `{}` in `{}`)",
+                                        spell_ty(&ty.kind), bound.name, param.name.name, demand.callee), demand.call)]);
+                            }
+                        }
+                        key.push(b't');
+                        crate::ident::type_canonical(ty, &mut key);
+                    }
+                }
+            }
+            let template_key = template_identity(&demand.callee);
+            let identity = sq_hash("ac1088/auto-instance/v1", &[template_key.as_bytes(), &key]);
+            let name = expanded.entry(identity.clone()).or_insert_with(|| {
+                let base = format!("{}_{}", demand.callee, &identity[..16]);
+                let mut name = base.clone();
+                let mut suffix = 1;
+                while !names.insert(name.clone()) {
+                    suffix += 1;
+                    name = format!("{base}__{suffix}");
+                }
+                let concrete = materialize_instance(
+                    template,
+                    &|ann| {
+                        substitute_annotation(ann, &|id| {
+                            demand.types.get(&id.name).map(|ty| ty.kind.clone())
+                        })
+                    },
+                    &consts,
+                    &name,
+                );
+                program.items.push(Item::Fn(concrete));
+                origins.insert(name.clone(), demand.callee.clone());
+                name
+            });
+            rewrites.insert(
+                (
+                    demand.owner,
+                    demand.call.start as u32,
+                    demand.call.end as u32,
+                ),
+                (demand.callee, name.clone()),
+            );
+        }
+        let mut rewritten = 0;
+        for item in &mut program.items {
+            match item {
+                Item::Fn(f) => {
+                    rewritten += rebind_callsites_owned(&mut f.body, &f.name.name, &rewrites)
+                }
+                Item::Type(t) => {
+                    for method in &mut t.methods {
+                        rewritten +=
+                            rebind_callsites_owned(&mut method.body, &method.name.name, &rewrites);
+                    }
+                }
+                Item::Enum(e) => {
+                    for method in &mut e.methods {
+                        rewritten +=
+                            rebind_callsites_owned(&mut method.body, &method.name.name, &rewrites);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if rewritten != rewrites.len() {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.instances-rebind",
+                "ordinary instance demand could not be rebound to its source call",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+    }
 }
 
 /// 实例化一个（可能含模板的）程序。无模板时恒等返回（plain 模块经实例

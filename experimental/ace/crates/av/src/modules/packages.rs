@@ -413,6 +413,88 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_packages_share_instances_and_bind_restore_to_version() {
+        use ace_av_core::contract::Value;
+        use ace_core::source::ast::Item;
+        use ace_source_query::modules::{packages::compile_package_product_auto, PackageStore};
+
+        let inputs = [
+            input(
+                "app",
+                "main",
+                "use support.lib.identity
+use support.lib.nineteen
+fn main() int { return nineteen() + identity(23) }",
+            ),
+            input(
+                "support",
+                "lib",
+                "pub fn identity<T>(x T) T { return x }
+pub fn nineteen() int { return identity(19) }",
+            ),
+        ];
+        let caps = [ace_core::source::AUTO_SOURCE_ADMISSION_CAP.into()];
+        let compile = |inputs: &[PackageModuleInput]| {
+            compile_package_product_auto(inputs, "app::main", &caps, FrontBudget::WORK_OWNED_64MIB)
+        };
+        let only_instance = |product: &PackageProduct| {
+            let bound = &product.bound;
+            let names: Vec<_> = bound
+                .program
+                .items
+                .iter()
+                .filter_map(|item| {
+                    let Item::Fn(f) = item else { return None };
+                    let origin = bound.origins.get(&f.name.name)?;
+                    (origin.0 == "support" && origin.1 == "lib" && origin.2 == "identity")
+                        .then(|| f.name.name.clone())
+                })
+                .collect();
+            assert_eq!(
+                names.len(),
+                1,
+                "both callers must share one instance: {names:?}"
+            );
+            names[0].clone()
+        };
+        let dir = tmp("ordinary-generic-identity");
+        let baseline = compile(&inputs).unwrap();
+        let instance = only_instance(&baseline);
+        let receipt = PackageStore::prepare(&dir, &baseline, &inputs, &[]).unwrap();
+        let run = |product| PackageAvTarget::cold(&dir, product).unwrap().run_value();
+        assert_eq!(run(&baseline), Ok(Value::I32(42)));
+
+        let mut edited = inputs.clone();
+        edited[1].source = edited[1].source.replace("return x }", "return x + 1 }");
+        let changed_body = compile(&edited).unwrap();
+        assert_eq!(only_instance(&changed_body), instance);
+        assert_ne!(
+            changed_body.compiled.input_hash,
+            baseline.compiled.input_hash
+        );
+        assert_eq!(run(&changed_body), Ok(Value::I32(44)));
+
+        edited[1].version = "2.0.0".into();
+        let upgraded = compile(&edited).unwrap();
+        assert_ne!(only_instance(&upgraded), instance);
+        let upgrade_receipt = PackageStore::prepare(&dir, &upgraded, &edited, &[]).unwrap();
+        let (restored, _) = PackageStore::restore(&dir, &receipt).unwrap();
+        let (restored_new, _) = PackageStore::restore(&dir, &upgrade_receipt).unwrap();
+        assert_eq!(only_instance(&restored), instance);
+        assert_eq!(only_instance(&restored_new), only_instance(&upgraded));
+        assert_eq!(run(&restored), Ok(Value::I32(42)));
+        assert_eq!(run(&restored_new), run(&upgraded));
+        assert_eq!(run(&restored_new), Ok(Value::I32(44)));
+
+        let mut wrong_receipt = upgrade_receipt;
+        wrong_receipt.digest = receipt.digest.clone();
+        assert!(
+            matches!(PackageStore::restore(&dir, &wrong_receipt), Err(e) if e == "packages root receipt mismatch")
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn ordinary_packages_keep_owned_globals_per_generation() {
         use ace_av_core::contract::{ExecOutcome, Value};
         use ace_source_query::modules::{packages::compile_package_product_auto, PackageStore};

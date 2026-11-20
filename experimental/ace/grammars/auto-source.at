@@ -1374,7 +1374,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [auto, auto-packages]) {
                 fn(field: "kw")
                 ident(field: "name")
-                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto]) { type-params(field: "type_params") }
+                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto, auto-packages]) { type-params(field: "type_params") }
                 lparen() {}
                 params(repeat: "opt", field: "params")
                 rparen() {}
@@ -1745,7 +1745,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // Let `double` name an ordinary function or member.
             alt(profiles: [auto, auto-packages]) {
                 double-kw(field: "name")
-                opt(profiles: [auto]) { type-params(field: "type_params") }
+                opt(profiles: [auto, auto-packages]) { type-params(field: "type_params") }
                 lparen() {}
                 params(repeat: "opt", field: "params")
                 rparen() {}
@@ -1757,7 +1757,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级
                 // 门控——被裁 profile 该步缺席 = 形状与旧 fn-tail 逐字节等价）。
                 // PLAN-963（T-02）：record-instances 面同样在此步启用模板参数。
-                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto]) { type-params(field: "type_params") }
+                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto, auto-packages]) { type-params(field: "type_params") }
                 lparen() {}
                 params(repeat: "opt", field: "params")
                 rparen() {}
@@ -1802,7 +1802,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
             alt { bool(field: "word") }
-            alt(profiles: [auto]) { u32-kw(field: "word") }
+            alt(profiles: [auto, auto-packages]) { u32-kw(field: "word") }
             alt { ident(field: "word") }
         }
         type-param-constraint(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record, record-instances, text-record-instances, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { r-has(field: "kw") {} ident(field: "bound") }
@@ -2973,7 +2973,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, aggregates, auto, scheduler, auto-packages]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -3018,7 +3018,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -3041,7 +3041,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
         // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
         // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
-        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) {
+        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) {
             ident(field: "name")
             lt() {}
             const-args(field: "cargs")
@@ -3050,9 +3050,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             args(field: "args")
             rparen() {}
         }
-        const-args(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) { const-arg() {} many { const-arg-tail() {} } }
-        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) { comma() {} const-arg() {} }
-        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, auto, aac]) { int-lit(field: "lit") }
+        const-args(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { const-arg() {} many { const-arg-tail() {} } }
+        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { comma() {} const-arg() {} }
+        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
         generic-atom(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) {
             ident(field: "name")

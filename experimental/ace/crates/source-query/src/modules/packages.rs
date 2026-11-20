@@ -55,16 +55,57 @@ pub fn compile_package_product_auto(
     if !caps.iter().any(|cap| cap == packages) {
         caps.push(packages.into());
     }
-    let bound = ace_core::source::packages::bind_packages_auto(inputs, entry, &caps, budget)
+    let mut bound = ace_core::source::packages::bind_packages_auto(inputs, entry, &caps, budget)
         .map_err(|e| vec![e])?;
     let profile = SourceProfile::Auto;
-    let resolved = ace_core::source::adapter::resolve_auto_package(&bound.program, &caps)
+    ace_core::source::adapter::complete_auto_signatures(&mut bound.program)
         .map_err(|ds| locate_all(&bound, ds))?;
+    if bound
+        .program
+        .items
+        .iter()
+        .any(|item| matches!(item, ace_core::source::ast::Item::Fn(f) if !f.type_params.is_empty()))
+    {
+        let origins = &bound.origins;
+        let version_by_module: std::collections::BTreeMap<_, _> = inputs
+            .iter()
+            .map(|unit| {
+                (
+                    (unit.package.as_str(), unit.id.as_str()),
+                    unit.version.as_str(),
+                )
+            })
+            .collect();
+        let linked = crate::instances::instantiate_auto_program_scoped(
+            &mut bound.program,
+            &caps,
+            |symbol| {
+                let (package, module, name) = &origins[symbol];
+                let version = version_by_module[&(package.as_str(), module.as_str())];
+                crate::ident::sq_hash(
+                    "ac1088/package-template/v1",
+                    &[
+                        package.as_bytes(),
+                        version.as_bytes(),
+                        module.as_bytes(),
+                        name.as_bytes(),
+                    ],
+                )
+            },
+        )
+        .map_err(|ds| locate_all(&bound, ds))?;
+        for (concrete, template) in linked {
+            let origin = bound.origins[&template].clone();
+            bound.origins.insert(concrete, origin);
+        }
+    }
+    let resolved =
+        resolve_with(&bound.program, &caps, profile).map_err(|ds| locate_all(&bound, ds))?;
     typecheck_with(&resolved, profile).map_err(|ds| locate_all(&bound, ds))?;
     let parts = emit_resolved_packages_parts_profile(&resolved, &bound, "packages", profile)
         .map_err(|ds| locate_all(&bound, ds))?;
-    let checked =
-        ace_core::verify::verify_auto_language(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
+    let checked = ace_core::verify::verify_auto_language(parts.bundle)
+        .map_err(|ds| locate_all(&bound, ds))?;
     Ok(PackageProduct {
         compiled: CompiledSource {
             profile: parts.profile,

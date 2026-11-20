@@ -63,7 +63,9 @@ pub(crate) fn project_program_deferring_templates(
     profile: SourceProfile,
     age_face: bool,
 ) -> Result<Program, Vec<Diagnostic>> {
-    project_program_with_caps(p, k, tree, snap, profile, false, false, true, age_face)
+    project_program_with_caps(
+        p, k, tree, snap, profile, false, profile.is_auto_language(), true, age_face,
+    )
 }
 
 /// PLAN-980 P3：把**单个**表达式 CST 节点投影为 AST 表达式（style 值等由包前门

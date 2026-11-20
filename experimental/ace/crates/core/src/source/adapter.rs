@@ -1789,8 +1789,13 @@ pub fn resolve_auto_package(
     capabilities: &[String],
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
     let mut program = program.clone();
-    super::infer::complete(&mut program)?;
+    complete_auto_signatures(&mut program)?;
     super::resolve_with(&program, capabilities, SourceProfile::Auto)
+}
+
+/// Complete legacy omitted signatures before ordinary package specialization.
+pub fn complete_auto_signatures(program: &mut super::ast::Program) -> Result<(), Vec<Diagnostic>> {
+    super::infer::complete(program)
 }
 
 /// PLAN-946（T-02）：aggregates packages 线的部件发射——List/Variant 类型表

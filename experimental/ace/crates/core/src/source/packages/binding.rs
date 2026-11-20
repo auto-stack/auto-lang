@@ -1276,13 +1276,15 @@ fn bind_package_syntax_inner(
                     ))
                 }
                 Item::Fn(original) => {
-                    if let Some(tp) = original.type_params.first() {
-                        return Err(fail(
-                            key,
-                            "source.module-templates",
-                            "template functions in package modules close in PLAN-963",
-                            tp.name.span,
-                        ));
+                    if !walker.auto_language {
+                        if let Some(tp) = original.type_params.first() {
+                            return Err(fail(
+                                key,
+                                "source.module-templates",
+                                "template functions in package modules close in PLAN-963",
+                                tp.name.span,
+                            ));
+                        }
                     }
                     let owner = fn_symbol(pkg, module, &original.name.name, entry);
                     let mut f = original.clone();
@@ -2301,15 +2303,24 @@ impl<'a> Walker<'a> {
         self.global_reads
             .entry(self.current_owner.clone())
             .or_default();
+        let enclosing_tyvars = self.tyvars.clone();
+        self.tyvars.extend(f.type_params.iter().filter_map(|p| {
+            (p.kind == TypeParamKind::Type).then(|| p.name.name.clone())
+        }));
         self.walk_ann(&mut f.ret)?;
         for p in &mut f.params {
             self.walk_ann(&mut p.ty)?;
         }
         let mut locals: BTreeSet<String> = f.params.iter().map(|p| p.name.name.clone()).collect();
+        locals.extend(f.type_params.iter().filter_map(|p| {
+            (p.kind == TypeParamKind::Const).then(|| p.name.name.clone())
+        }));
         if f.receiver.is_instance() {
             locals.insert("self".into());
         }
-        self.walk_block(&mut f.body, locals)
+        let result = self.walk_block(&mut f.body, locals);
+        self.tyvars = enclosing_tyvars;
+        result
     }
 
     fn walk_ann(&mut self, ann: &mut TypeAnn) -> Result<(), PackageDiagnostic> {
@@ -2970,7 +2981,27 @@ impl<'a> Walker<'a> {
                 "indirect calls belong to the closures surface (PLAN-964)",
                 span,
             )),
-            // PLAN-963（T-04）：值实参调用只属实例面（本面语法不产出）。
+            ExprKind::ConstCall { callee, args, .. } if self.auto_language => {
+                // Bind the declaration before instance selection. Unlike an
+                // ordinary call, an explicit value call cannot target a local,
+                // a constructor, a global or an intrinsic.
+                let symbol = if locals.contains(&callee.name) {
+                    None
+                } else if self.my_decls().fns.contains_key(&callee.name) {
+                    Some(fn_symbol(self.pkg(), self.module(), &callee.name, self.entry))
+                } else {
+                    self.binds.get(&callee.name)
+                        .filter(|b| !b.is_module && !b.is_const && !b.is_type)
+                        .map(|b| b.symbol.clone())
+                };
+                let Some(symbol) = symbol else {
+                    return Err(fail(self.key, "source.instances-unsupported",
+                        format!("`{}` is not a visible function template", callee.name), callee.span));
+                };
+                self.record_call(&symbol);
+                callee.name = symbol;
+                self.walk_args(args, locals)
+            }
             ExprKind::ConstCall { .. } => Err(fail(
                 self.key,
                 "source.module-surface",

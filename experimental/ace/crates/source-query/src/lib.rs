@@ -87,7 +87,7 @@ pub use instance_host::{
     InstanceSink, ManagedInstanceSink, MemoryInstanceSink, INSTANCE_LAYER, INSTANCE_ROOT_KIND,
 };
 pub use instances::{
-    instantiate_program, instantiate_program_limited, InstanceArg, InstanceRecord, InstanceTy,
+    instantiate_auto_program, instantiate_program, instantiate_program_limited, InstanceArg, InstanceRecord, InstanceTy,
     InstantiateOutcome, INSTANCES_ALGO, INSTANCES_KEY_DOMAIN, INSTANCES_LOGICAL_DOMAIN,
     INSTANCES_PRODUCER, INSTANCES_SCHEMA,
 };

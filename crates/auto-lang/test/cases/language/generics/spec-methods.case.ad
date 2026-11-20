@@ -379,3 +379,147 @@ channel: "unit"
 ```text
 2
 ```
+
+## Case: owned-text-instance
+id: "av.parity.1088.owned-text-instance"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(move x T) T { return x.move }
+fn main() int { let s = identity("test".clone()); return s.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 4
+
+## Case: typed-list-instance
+id: "av.parity.1088.typed-list-instance"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(move x T) T { return x.move }
+fn main() int { let xs = identity(List<int>.new([19, 23])); return xs[0] + xs[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: function-value-instance
+id: "av.parity.1088.function-value-instance"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(x T) T { return x }
+fn twice(x int) int { return x * 2 }
+fn main() int { let f = identity(twice); return f(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: variant-instance
+id: "av.parity.1088.variant-instance"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Entry { Found(int); Absent }
+fn identity<T>(x T) T { return x }
+fn main() int { let v = identity(Entry.Found(42)); is v { Entry.Found(n) -> return n; Entry.Absent -> return 0 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: nested-instance-demand
+id: "av.parity.1088.nested-instance-demand"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(x T) T { return x }
+fn main() int { let n = identity(identity(19)); return n + identity(23) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: conflicting-inferred-arguments
+id: "av.parity.1088.conflicting-inferred-arguments"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn first<T>(a T, b T) T { return a }
+fn main() int { return first(42, true) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "type-mismatch"
+
+## Case: cross-module-instance
+id: "av.parity.1088.cross-module-instance"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.identity
+use lib.nineteen
+fn main() int { return nineteen() + identity(23) }
+```
+
+#### lib.at
+
+```auto
+pub fn identity<T>(x T) T { return x }
+pub fn nineteen() int { return identity(19) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
