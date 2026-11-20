@@ -1048,8 +1048,8 @@ pub(crate) fn project_packages_front(
                 for inst in 0..state_instances {
                     for f in &node.fields {
                         // PLAN-105 T-02（S1 首片）：状态函数只承载标量/文本字段
-                        // （`int/i32/bool/str/Str/f32`）；列表字段没有标量状态函数，
-                        // 直接跳过（`instance_stmts` 仍按 `field_ann` 校验其初值）。
+                        // （`int/i32/bool/str/Str/f32`）；列表字段的状态函数需要
+                        // AGE 包面走 collections HIR 域（下一里程碑），此处跳过。
                         let Some(state_word) = crate::source::age_component::field_type(f) else {
                             continue;
                         };

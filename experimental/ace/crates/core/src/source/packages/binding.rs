@@ -1270,7 +1270,10 @@ fn bind_package_syntax_inner(
             depth: 0,
             set_counter: 0,
             tyvars: BTreeSet::new(),
-            aggregates: aggregates || face == Faces::Auto,
+            // PLAN-105 T-02（U03 真语料 013）：AGE 包面同样把 `List<T>` 当作
+            // 内建参数化名义类型（`[]T` 注解投影为 `List<T>`），否则报
+            // `unknown type `List``。
+            aggregates: aggregates || face == Faces::Auto || face == Faces::Age,
             asm_lane: (in_face && aggregates) || face == Faces::Auto,
             auto_language: face == Faces::Auto,
         };
