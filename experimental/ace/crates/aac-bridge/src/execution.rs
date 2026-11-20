@@ -8,7 +8,7 @@ use ace_av_core::abc::{decode_abc, AbcDecodeError};
 use ace_av_core::abc_verify::AbcAdmissionError;
 use ace_av_core::av::{CancelFlag, ExecLimits};
 use ace_av_core::contract::TEXT_RUNTIME_CAPABILITY;
-use ace_av_core::mir::{MirGlobal, MirInstr, MirModule, MirType, OwnerScope};
+use ace_av_core::mir::{CalleeRef, MirGlobal, MirInstr, MirModule, MirType, OwnerScope};
 use ace_av_core::{ExecOutcome, MirVerifyError, Value as AvValue};
 use ace_native::{emit, MnError};
 use std::collections::BTreeSet;
@@ -210,9 +210,40 @@ fn bind_program_state(request: &Request, module: &mut MirModule) -> Result<(), F
     }
     for (function_index, function) in module.funcs.iter().enumerate() {
         for instruction in function.blocks.iter().flat_map(|block| &block.instrs) {
+            match instruction {
+                MirInstr::Call {
+                    callee: CalleeRef::Func(target),
+                    ..
+                }
+                | MirInstr::CreateClosure {
+                    callee: CalleeRef::Func(target),
+                    ..
+                }
+                | MirInstr::SchedSpawn { callee: target, .. }
+                | MirInstr::SchedGo { callee: target, .. }
+                    if initializers.contains(target) =>
+                {
+                    return Err(Failure::admission(
+                        "bridge.initializer-reference",
+                        format!("{} refers to a startup-only initializer", function.name),
+                    ));
+                }
+                _ => {}
+            }
             let (global, may_write) = match instruction {
                 MirInstr::GlobalGet { global, .. } => (*global, false),
-                MirInstr::GlobalTake { global, .. } | MirInstr::GlobalSet { global, .. } => {
+                MirInstr::GlobalTake { global, .. } => (*global, true),
+                MirInstr::GlobalSet { dst, global, .. } => {
+                    let result = function
+                        .slots
+                        .get(*dst as usize)
+                        .and_then(|slot| module.types.get(slot.ty as usize));
+                    if !matches!(result, Some(MirType::I32)) {
+                        return Err(Failure::admission(
+                            "global.result-type",
+                            format!("{} requires an i32 global store result", function.name),
+                        ));
+                    }
                     (*global, true)
                 }
                 _ => continue,

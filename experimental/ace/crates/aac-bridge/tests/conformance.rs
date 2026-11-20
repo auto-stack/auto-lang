@@ -203,6 +203,34 @@ fn ct_links_initializer_and_rejects_a_missing_global_table() {
     request.initializers[0] = 63;
     let (outcome, _) = execute(&client, &request, &mir);
     assert!(matches!(outcome, Outcome::Failure { error } if error.code == "bridge.initializer"));
+
+    request.id = [43; 16];
+    request.initializers[0] = 1;
+    let mut reentered = mir.clone();
+    reentered.funcs[0].blocks[0].instrs.insert(
+        0,
+        MirInstr::Call {
+            callee: CalleeRef::Func(1),
+            dst: 0,
+            args: vec![],
+        },
+    );
+    let (outcome, _) = execute(&client, &request, &reentered);
+    assert!(
+        matches!(outcome, Outcome::Failure { ref error } if error.code == "bridge.initializer-reference"),
+        "{outcome:?}"
+    );
+
+    request.id = [44; 16];
+    let mut wrong_type = mir;
+    let bool_ty = wrong_type.intern_type(MirType::Bool);
+    wrong_type.funcs[1].slots[1].ty = bool_ty;
+    wrong_type.funcs[1].blocks[0].term = Terminator::Return { value: 0 };
+    let (outcome, _) = execute(&client, &request, &wrong_type);
+    assert!(
+        matches!(outcome, Outcome::Failure { ref error } if error.code == "global.result-type"),
+        "{outcome:?}"
+    );
     eprintln!(
         "ct_links_initializer_and_rejects_a_missing_global_table {:?}",
         started.elapsed()
