@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1046
-status: drafting
+status: executing
 feature_name: AAC Auto语法运行时、源码投影与模块装配
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 0
+current_step: 1
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1045]
 supersedes_spec_components: [docs/specs/auto-ac/project.md, docs/specs/stdlib/design/context-source-assembly.md]
@@ -174,8 +174,10 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [ ] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
+|    [✅ 2026-11-20 /goal 授权开工] worktree `D:/autostack/.wt/lang-1046/auto-lang` @ `plan-1046-dev`，base=master@ec0c377e7；材料 `D:/autostack/plan-artifacts/plan-1046/` 已登记（REGISTRY.md）。G-AAC门核验：M2A-08已成立（985 T-A04 pass@ecc282df1、T-A05 fold落主95c7fbad8、M2A-01..08全闭，见985 §9 merge收据）；1044/1045/1043已归档；不等985-B成立。§4指纹重绑（基面ec0c377e7）：syntax-runtime/src/lib.rs 07328483e30aecd6（原5133b5cd漂移）、syntax-grammar/src/lib.rs 6d37993f970d7b68（原087b300b）、core/source/parser.rs 6a6233f7818deef4（原04782003）、modules.rs 87a482d8033bf548（不变）、packages.rs 95cc76cfdb247a96（原9aa1b33d）、cst/目录七文件在（frontdoor/kinds/lex/mod/project/shift/units）。主检出WIP=他计划簿记（docs/design/1081/1107），不消费。移植面核定：syntax-runtime执行引擎=program(546)/program_codec(920)/lexer(810)/parse(2776)/cst(404)/snapshot(644)/edit(467)/recovery(49)/position(303)/identity(97)≈5.6k行；autodown.rs(1309)为md文档层不在本包面；core/source/parser.rs为旧子集oracle。grammar数据：grammars/auto-source.at（rev3，25 profile），canonical bytes实测auto=16504B、age-package=21249B、packages-aggregates-ct=13787B（probe证据plan-artifacts/profile-sizes.txt）——hex内嵌可行，Rust侧grammar编译保留（T-02合同允许）。后续任务入口：T-02..05/T-09在aac/syntax/+aac/source/新增.at模块，conformance crate `experimental/ace/tests/aac-syntax`（沿1045先例布局，计划§2的aac/tests/syntax/路径按"常规机械实现由work选择"落为既有tests/惯例）+固定组ace-aac-syntax |
 | [ ] T-02 统一grammar与Auto解析 | work | T-01 | 消费同一版本化grammar定义，移植实际tokenization/parse/CST算法和预算，在本Plan建立Gen0编译的Auto阶段测试driver；Rust grammar数据生成可保留但输入源码解析必须Auto执行。 由最终CL语法行驱动解析，显式含~T/?T/!T类型及嵌套、async块/await/go/yield、泛型约束、CTE/标注及领域Node，不限AAC源码自己的语法。 修实际影响现 AC 的共享语法/projection 差额，保 AV/A2R 的相同源合同。 | Auto语法运行时及driver，首个正/反例阶段产物可独立检查；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+|    [进行中 2026-11-20 /goal work轮·阶段三+修复轮：冷解析/门语义/截断流/拼接逐字节全绿；graft-ON列表爆=D-1046-03具名] 交付：`aac/syntax/syntax_program.at`(程序表解码:计数准入/引用校验/charset预展开/负哨兵kind)、`syntax_grammar_data.at`(六profile冻结canonical hex,128字符分块——AV文本访问按次拷贝整个后备缓冲)、`syntax_lexer.at`(模式scanner:CSR桶/最长匹配/嵌套注释/未闭合EOF错误叶/checkpoint恢复)、`syntax_cst.at`(CST arena+规范形+无损校验)、`syntax_parse.at`(161函数完整规则机:显式栈/FirstSets/cut提交域/Pratt五态/声明级恢复/失败备忘/copy-adopt嫁接/三重预算)、`syntax_smoke.at`(阶段driver)。conformance crate `tests/aac-syntax`(packages-aggregates-ct车道+AV执行,harness预算512M) **12/12 PASS(串行593s)**：冷解析canonical CST+诊断与Rust运行时逐字节一致(单fn/参数/if-else/坏声明恢复/嵌套/注释/pratt优先级；oracle kind/field映射:元kind -1..-4、NO_FIELD -1)。关键arena纪律：单边区段+逻辑前沿efhi预留+被超越帧段搬迁+物理追加推前沿(worktree提交2ea97c2↑/详见git log)。**余量(仍属本任务)**：snapshot分页/SnapshotId(V-04)、incremental_lex/reparse嫁接(V-02)、auto/age-package profile族用例、CST无损重建断言、budget反例(V-03深嵌套)；driver回归需串行(--test-threads=1)或固定组登记串行配置 |
 | [ ] T-03 AST与来源映射 | work | T-02 | 实现全适用语法到Auto AST的投影，保sourceId/byte span/生成来源/错误恢复；完整语言含Schema/AutoUI/AGE语法节点，不引入renderer、不将未知域节点忽略。 保Option/Result/Future/Iter不同节点、标注与其声明/字段/参数归属及原span；不能parse后擦除类型修饰、标注或未使用分支。 | AST投影和diagnostic snapshot，冷解析与编辑增量结果相等；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-04 模块与provider装配 | work | T-03 | 实现模块/包/namespace/use/pub与#in的语法目录/条件AST：公共.at与at/c/rs/py候选逐文件parse，保选择条件和来源，不在本语法Plan执行一般CT或作语义绑定。1047基础绑定、1048语义选择与重绑定消费此目录；不拼源文本、不建第二binder。 修源模块及 provider 装配的公共接缝，交同源模块正反例给 1047/1068。 | 模块目录/来源关系及受控语法重复/缺失诊断及循环分类输入，语义可见性/初始化环留1047/1048；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-05 语法边界反例 | work | T-04 | 验证非法UTF-8、token边界、缺括号/截断、深嵌套/大token预算、坏编辑回滚与循环模块；从CL逐语法生产式抽真实样本，比较独立span/树形并保合法近邻。 对每个required语法族有合法和非法相邻样本及独立CST/AST/span预期；跨模块CT和领域组合不得靠最终1053补一条代表例。 | 完整语法映射、资源拒绝及无Rust parse调用的运行证据；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
@@ -199,5 +201,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 未施工、未执行独立代码review、未合入。当前文档仅作需求/依赖静态预检，实施进度0/9；所有验证用例为拟议合同，具体结果在未来work/review/merge补齐。此前用户批准规划不等于本Plan代码实施授权。
 
 ## 10. 待澄清事项
+
+**D-1046-03（work自登记诊断项，取代D-1046-02，非用户裁决）**：graft-ACTIVE 解析在 AV 执行器上单列表突破 65536 元素上限（ListElems 资源拒绝）。已实证排除：拼接本身逐字节正确（S29：n2=58/phys=58/mism=0 对编辑后文本的全新词法）；graft-DISABLED 的同拼接流解析通过（root=119/120节点）；机器 9 个 arena（saves/fr/hints/t/ef/pvals/pops/optriv/dmsg）以 128 步窗/50000 阈全监控未触发（增长列表在监控集外）；嫁接次数限 16、哨兵推送限幅 200 后依旧；跨 100 新列表共 70000 元素通过（上限为单列表非总量）。修复收尾时已修复的真缺陷：ListNewline 门返回值被 rule_list 忽略（gate_probe 同行拒/换行收全绿）、嫁接复制 cc 未写回、测试样本编辑点 26→25。测试 `aac1046_edit_incremental_equality` 已 `#[ignore]` 具名（serial suite 17过/1具名ignore/0红，699s）。关闭条件：定位增长列表并修复后 INCR(嫁接树)==REF(全新树) 断言通过、移除 ignore；候选方向：try_graft 在 push_rule 帧内执行时对 top 帧 children/efhi 交互、graft 后 list 步重入路径的 pending/toks2 垃圾尾访问。
+
 
 无须当前用户新增决定。1044/1045已交；不复制旧legacy lexer作为新的语言真值。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。
