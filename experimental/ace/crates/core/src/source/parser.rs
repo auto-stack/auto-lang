@@ -2689,6 +2689,8 @@ impl<'s> Parser<'s> {
                     arms.push(EnumArm {
                         name: an,
                         payload,
+                        fields: Vec::new(),
+                        disc: None,
                         span: arm_span,
                     });
                     while matches!(
@@ -2714,6 +2716,7 @@ impl<'s> Parser<'s> {
         Ok(EnumItem {
             name,
             arms,
+            methods: Vec::new(),
             span: kw.join(close),
         })
     }
