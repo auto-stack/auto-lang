@@ -276,3 +276,11 @@ after`（d01 静默失效债闭） | PASS |
 异构列表使用逐元素 Dyn 标签。对象与列表可嵌套并共享引用，跨别名的写入可见。执行出口记录 int、unit、文本或对象通道，父端独立比较结果和两股输出。编译和运行诊断绑定虚拟入口文件与原字节区间。`.as` 的 nil 类型错误进入语言 catch，资源耗尽和取消保各自的终态。
 
 `language/dynamic/objects-null.case.ad` 收录本包 42 个实际 AV Case，含 11 个旧对象主用例及 1082 移交的 8 个混合集合用例。对应的老检查、预期和 owner 见 `legacy-map.tsv`。旧脚本中的 Python/宿主组合由 PLAN-1094 承接，HashMap/HashSet API 行保现有标准库容器职责。验收来源见 [PLAN-1084](../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。
+
+## PLAN-1085 增量（AVP-07，模块与全局状态）
+
+普通 `ac-av/language-source-run-v1` 接收同一 AutoDown Case 的工程闭包。入口和依赖采用 `module.at` 或 `package/module.at` 虚拟路径，同目录裸文件隶属 `auto` 包。单文件可携带 `ac.source.modules.packages/v1` 选择包语义。公共语法和绑定支持 `use`、导入别名、公开声明、公开重导出和同名模块的包隔离。包图拒绝缺失模块、私有导入与循环，诊断保留原文件和字节跨度。工程身份覆盖全部虚拟路径和源码。包入口可使用类型化 `fn main` 或入口模块顶层脚本，依赖模块脚本和同一工程内竞争的两个入口具名拒绝。
+
+程序代持有各自的全局单元，覆盖 `Str`、List、record、variant、带 owned 捕获的闭包和异构对象。整格赋值替换旧值。显式移动清空源格，未回填前读取给 `av.trap.global-moved`。依赖初始化按受检顺序执行，钻石叶只运行一次。初始化完成前的错误、预算耗尽或取消保持未发布，释放已写入的 owned 值。重试、关闭、新会话与从源码收据冷恢复都使用各自代的单元。配置文档保持 `IF-982-CONFIG-ACE` 的已有 producer。
+
+`language/modules/imports-globals.case.ad` 收录本包 AV 观察及九条原检查，分母、原预期和 owner 见 `language/migration/legacy-map.tsv`。Parser/emit 的 bootstrap 组合仍由 PLAN-1095 承接。交付接口为 `IF-AV-PARITY-MODULE`，冻结工具身份与结果见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。

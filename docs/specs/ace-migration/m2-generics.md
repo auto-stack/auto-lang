@@ -108,8 +108,7 @@ ext 与自有方法同名）、`source.argument`（缺位/超元数/中段缺席
 - **D-963-C3 `#[with(T)]` 遵从注解形**：ACE 无语言属性语法（`visibility.attributes` 仍
   `MetaSupport::SchemaOnly`，owner 为 language attribute grammar plan），963 以
   `source.unsupported` 具名迁移拒；规范形 `fn f<T>` / `fn f<T has S>` / `type N as Spec`。
-- **D-963-C4 记录类型模块全局 `.move` 转移**：`module.global.set:<sym>` 伪签名只有借用形，
-  owned 跨参转移未实现；native mn 亦不支持 module globals。owner：960 模块面 follow-up。
+- **D-963-C4 记录类型模块全局 `.move` 转移**：普通 Auto AV 包通过 `av.globals.take/1` 实现。`GlobalTake` 验证 mutable cell 和目标型别，成功后清空源格，重读给 `av.trap.global-moved`，整格赋值可回填。窄域与 native 的 module globals 能力仍按各自合同。具 owned 字段的记录真跨参移动及反例见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
 - **D-963-C5 默认实参求值作用域**：见上节（本文件已明写边界）。owner：963 T-08 后续。
 - **D-963-C6 ACE workspace 无 rustfmt 门禁**：master 基线已非 clean，本计划 20 个触碰文件
   同状。owner：ACE workspace 治理。

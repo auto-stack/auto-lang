@@ -82,3 +82,7 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 `language/dynamic/objects-null.case.ad` 是对象、混合集合与 null 的活跃作者。19 份迁入源字节和原检查 ID 均保留；AV 与旧 VM 参考共用作者源。原纸本路径保历史签章；普通 legacy 文档读者按精确迁移行读取活跃作者。
 
 固定组 `case-av-language-parity` 以运行目标和 recipe 家族选择实际检查。显式阶段忽略报告 SKIP，其他未选报告 NOT_RUN。具 AV required 标签的 Case 必须有活跃的 AV run 检查。源码变更使旧 AV 结果陈旧，陈旧性检查按普通 AV worker 的实际身份对账。控制与复现摘要见 [PLAN-1084](../../plans/archive/1084-av-parity-dynamic-objects-and-null.md)。
+
+## PLAN-1085 增量（modules 家族）
+
+`language/modules/imports-globals.case.ad` 是本包统一作者，含 `03_variables` 八个原例与 `17_modules/001_use_fn` 的原 case/check、源和原 VM oracle。单独的 AV probe 共享工程文件闭包。原 VM 文档按 1066 保留为历史，生产清单与 Rust 包装读者沿迁移映射访问 canonical 文档。阶段 `#ignore` 仅作用于原 VM 检查。AV 切片用 `--target av` 按动作和 recipe 选择。工程依赖文件内容变化使旧证据陈旧，坏公共结构和缺必需 AV 检查使 AV 门失败。来源见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。

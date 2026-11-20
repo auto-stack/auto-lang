@@ -79,3 +79,7 @@ const/store 的初始化值在运行期求值：绑定器把读写改写为 `mod
 具名边界（非静默回退）：934 事实页 `PortableTy` 仅标量，本面直接跑同一 resolver，增量仅绑定账本
 （D-960-1）；mn 全局 cell 具名拒（D-960-2）；a2x 全局 cell 发射与类型方法片段为后继；恢复首刀重
 投影+重编译（无 solver 复用）。其他平台/资源/标准库族不据此声明支持。
+
+## 普通 Auto AV 工程（PLAN-1085）
+
+`compile_package_product_auto` 使用公共 CST、包图绑定与普通 Auto 类型检查进入 `av.closures/1`。项目文件集按原虚拟路径和内容校验。初始化合成到包图并全链重新准入每个 ABC 单元。链接时，单元中的全局读、写、取出按 ordinal 与 producer 类型表重新匹配。`av.globals.take/1` 标记可移动 cell 的新指令准入。每代全局状态在内存持有，包根包含源身份和编译 profile，冷恢复沿同一前门而得到新代。初始化失败释放已取得的 owned 值，同代重试重新执行初始化。公开 ABI、类型/环境表和平台/host 权限沿共享契约。原词法/包规则和其它 target 范围见上文，普通工程实测与来源见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
