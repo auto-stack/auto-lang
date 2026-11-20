@@ -343,7 +343,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-a
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -367,9 +367,9 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-a
 - [x] **T-05** work：canonical 语料、八条原义务迁移、读者和元控制见检查点 6–10。
 - [x] **T-06** work：冻结实现和适用组结果见检查点 10，语义组既有失败单列。
 - [x] **T-07** review：§9 最终复审定位实际入口、反控、源身份、唯一作者及规范。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：§9 记录了落主、规范字节验证、归档及材料清理。
 
-已落主、验证规范并归档。T-08 的清理收据待核验。
+已落主、归档并完成清理。验证及交付收据见 §9。
 
 ## 9. 复审记录
 
@@ -567,6 +567,14 @@ T-01 的组合探针证实，963 的求解适配器无法作为普通 AV 全体�
 - [公开 suite](../../../crates/auto-lang/test/cases/language.suite.ad) 引用四个 [泛型 canonical 作者](../../../crates/auto-lang/test/cases/language/generics)。[旧义务映射](../../../crates/auto-lang/test/cases/language/migration/legacy-map.tsv) 保留原路径、check、预期与阶段责任。路线和旧清单导航指向本归档。
 - 输出对账：独立探针与日志、冻结测试、子进程临时目录及本次落主报告均在 `D:/autostack/plan-artifacts/plan-1088`，预清点 14726 文件、607311484 字节。开发和准备的 target 位于 `D:/autostack/.wt/lang-1088/auto-lang/{target,experimental/ace/target}`，连检出共 56235 文件、19226744693 字节；同组仅另有 detached 的 `auto-down` 检出，1318 文件、27021855 字节。逐轮命令与已登记路径对账未发现外置 target、安装/消费根或其他计划输出路径。清点未发现 reparse point 或该组活动构建/测试进程。
 - `stage: merge | plan_id: PLAN-1088 | plan_revision: r4 | checkpoint: landed, specs_verified, archive pending commit | delivery_commit: 50fa8e0180457068c798c247d015afb89a6c91e6 | spec_commit: 36cd653454093acac2f40ee7ca4db946856ca271 | archive: docs/plans/archive/1088-av-parity-generics-specs-and-methods.md | cleanup: pending`。
+
+### 清理与最终交付
+
+- 归档提交 `cc750068779591ed7766864a9206e985a59f41ad`。从实际归档目录验证任务表与清单一一对应、22 个出站链接与锚点、路线和旧义务清单及三份规范的 5 个入站链接。主检出其他 25 个既有状态条目逐项对账一致。
+- 两个已核验的 worktree 均在临删除前以 PowerShell 重跑 `wt-guard.ps1` 得到 clean。已移除 `D:/autostack/.wt/lang-1088/{auto-lang,auto-down}`、空组目录及本地已合入分支 `plan-1088-dev`。折叠证据后用 PowerShell 删除整个 `D:/autostack/plan-artifacts/plan-1088`，用时 3.334s。检出、分支、Git worktree 注册和材料目录均已验证不存在。材料索引 `D:/autostack/plan-artifacts/.retention/policy.json` 将该 scope 设为 `deleted-at-merge`，关闭时间 2026-11-20T15:56:00Z，无具名持有。
+- 本次交付源码和规范。主检出既有 release `av-worker.exe` 构建于 2026-11-19T03:10:13Z，早于本次合入。批量回归收据 2026-11-20T00:00:00Z，覆盖号 1098，约 15.93h，无超过覆盖号的 %5 归档，尚未到期。
+- `stage: merge | plan_id: PLAN-1088 | plan_revision: r4 | outcome: pass | checkpoints: landed, specs_verified, archived, cleaned | delivery_commit: 50fa8e0180457068c798c247d015afb89a6c91e6 | spec_commit: 36cd653454093acac2f40ee7ca4db946856ca271 | archive_commit: cc750068779591ed7766864a9206e985a59f41ad | archive: docs/plans/archive/1088-av-parity-generics-specs-and-methods.md | tasks: 8/8 | acceptance: 10/10 | cleanup: verified | next: done`。
+- `stage: goal | plan_id: PLAN-1088 | plan_revision: r4 | round: 12 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 50fa8e0180457068c798c247d015afb89a6c91e6 | next: done`。
 
 ## 10. 待澄清事项
 
