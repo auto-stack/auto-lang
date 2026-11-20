@@ -1,3 +1,8 @@
+## D-1084-BASE-01 — Windows 标量前门深层 `!` 栈溢出（OPEN，2026-11-20）
+
+- 父提交 `384609645cfc092da66e7d005ee1b052e0a547f2` 与 PLAN-1084 候选在 `ace-core::conformance scalar_source::deep_not_chain_reaches_checked_bundle` 的原 20,000 层样本均报 `0xc00000fd`。候选的前门观察在 parse 完成前中止。跑法与收据见 [PLAN-1084](archive/1084-av-parity-dynamic-objects-and-null.md)。
+- Owner 为 ACE 共享 CST/标量前门。关闭要求默认 Windows 测试栈通过同一合法深链，并保留原畸形输入和浅层控制。当前归继承红。
+
 ## DEBT-1098-BATCH-PREPARE — 批量全量门准备路径三处 infra 红（OPEN，2026-11-19）
 
 - **owner/后继**：PLAN-1098 测试治理线（prepare/run 握手与构件 pin）fix-forward 任务；由 PLAN-1080 合入触发的到期批量回归首次在 1098 新握手下运行时发现（receipt run-amzo64ib）。
