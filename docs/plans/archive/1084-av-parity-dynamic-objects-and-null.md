@@ -365,9 +365,17 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-07** review：按冻结提交、原结果及独立反例核 r3 各 AC 与四条规范增量，PASS。
 - [ ] **T-08** merge：见上表唯一任务合同。
 
-交付已合入并归档。T-08 清理与路径对账待完成。
+交付已合入并归档。T-08 尚需按已核归属移除专属材料目录并刷新登记。
 
 ## 9. 复审记录
+
+- 2026-11-20 `stage: merge | key: PLAN-1084:r3 | outcome: blocked | delivery_commit: cf033adc4defcd6b4194ce180f6f973abed87cc2 | archive_commit: 907d558ace582f6a31404a89858a80b8aec015c3 | checkpoints: prepared, landed, canonical_verified, archived, worktrees_removed | pending: plan-artifacts deletion and final registry refresh`。主检出仍有其它会话文档改动，未纳入本计划提交。两个 worktree 的绝对路径、注册/提交、清洁状态与各自 `wt-guard.ps1` 均核为 clean，借用的 auto-down 只有 detached 依赖身份。主/伴随 worktree、plan-1084-dev 分支和已空的组目录均已移除；树内 target/.pdb/可执行文件随树移除。
+
+  路径对账：已归档的 TestCase 系统临时运行根 `C:/Users/zhaop/AppData/Local/Temp/tmcase-ahqle6_x` 核实不存在。首次固定组输出审计在 `C:/Users/zhaop/AppData/Local/Temp/fixed-admission-18zxid_3` 留下 3 个普通文件、784 字节。其 JSON 写明唯一 1084 worktree 的 suite 与本计划 out；三文件及空目录已定向移除。最终固定组的临时、准备归档、源码探针、编译日志与结果均在唯一材料 scope 或已移除的工作树中。
+
+  专属 scope `D:/autostack/plan-artifacts/plan-1084` 的登记 owner、绝对路径和 reparse guard 已核，目录共 9,086 个普通文件、629,949,585 字节，材料摘要已折叠。工具自动审批拒绝该精确范围的递归删除，随后也拒绝经文件校验后逐项移除的方案，出具 `blocked by policy`。两次命令都未执行，目录仍在，不属于实施问题持有。恢复时只需移除该目录、验证不存在、刷新登记，加盖 `cleaned` 并关闭 AC-08/T-08。旧台账资料未写入。
+
+  主检出的 release AV worker 是 2026-11-19 11:10 的制品。验收和落主 smoke 使用绑定冻结代码的 debug worker。批量收据覆盖 1098，2026-11-20 00:00，核对到本次落主时没有超出该收据的整五 Plan 已归档，且不足 48 小时，批量门未到期。
 
 - 2026-11-20 `stage: merge | key: PLAN-1084:r3 | reviewed_commit: 680188280bd5f333facc39e89bab74f6f33d7c16 | delivery_commit: cf033adc4defcd6b4194ce180f6f973abed87cc2 | checkpoints: prepared, landed, canonical_verified`。7 个实现提交和 4 个 Spec 的文档子提交线性快进到 master，交付签名与 T-06 代码、配置及输入相同。Git 更正 Spec 的换行表示，按 LF 字节重核原审文字无改；规范增量 SHA256 `c961089d6796079cb8c2af3572ecce05f3401c2d9728ab18ad727a351623d2cb`。逐 Spec 校验 worktree、主检出和 Git 对象一致。
 
