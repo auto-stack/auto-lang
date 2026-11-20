@@ -760,6 +760,17 @@ impl Ctx {
                         }
                     }
                 };
+                let atom = if pbool(src_props, "adjacent").unwrap_or(false) {
+                    match atom {
+                        Atom::Tok(token) if repeat == Repeat::Once => Atom::TokAdjacent(token),
+                        _ => {
+                            ctx.err(rule_path, "adjacent requires a single token step".into());
+                            atom
+                        }
+                    }
+                } else {
+                    atom
+                };
                 steps.push(Step {
                     atom,
                     field,
@@ -1042,7 +1053,7 @@ impl Ctx {
                     // 步可空 = 原子可空 **或** repeat 为 opt/many/list（fixpoint 语义）。
                     let alt_nullable = alt.steps.iter().all(|s| {
                         let atom_null = match s.atom {
-                            Atom::Tok(_) | Atom::CtxName(_) => false,
+                            Atom::Tok(_) | Atom::TokAdjacent(_) | Atom::CtxName(_) => false,
                             Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                             Atom::Pratt(_) => false,
                         };
@@ -1067,7 +1078,7 @@ impl Ctx {
             for alt in &r.alts {
                 for s in &alt.steps {
                     let item_null = match s.atom {
-                        Atom::Tok(_) | Atom::CtxName(_) => false,
+                        Atom::Tok(_) | Atom::TokAdjacent(_) | Atom::CtxName(_) => false,
                         Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                         Atom::Pratt(_) => false,
                     };
@@ -1113,7 +1124,7 @@ impl Ctx {
                         dfs(sub as usize, rules, nullable, state, diags, path);
                     }
                     let snull = match s.atom {
-                        Atom::Tok(_) | Atom::CtxName(_) => false,
+                        Atom::Tok(_) | Atom::TokAdjacent(_) | Atom::CtxName(_) => false,
                         Atom::Rule(sub) => nullable[sub as usize],
                         Atom::Pratt(_) => false,
                     };

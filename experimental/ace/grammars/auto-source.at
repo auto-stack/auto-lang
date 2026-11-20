@@ -3039,16 +3039,35 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { lparen() {} expr() {} rparen() {} }
         }
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
-        // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
-        // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
+        // Angle arguments must be followed by a call. Integer literals are
+        // accepted by both the ordinary and the frozen value-only profiles.
         generic-call(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) {
-            ident(field: "name")
-            lt() {}
-            const-args(field: "cargs")
-            gt() {}
-            lparen() {}
-            args(field: "args")
-            rparen() {}
+            // Ordinary explicit type arguments use a joint opening `<` so
+            // a spaced comparison can keep going through the Pratt parser.
+            alt(profiles: [auto, auto-packages]) {
+                ident(field: "name")
+                lt(adjacent: true) {}
+                instance-args(field: "iargs")
+                gt() {}
+                lparen() {}
+                args(field: "args")
+                rparen() {}
+            }
+            alt {
+                ident(field: "name")
+                lt() {}
+                const-args(field: "cargs")
+                gt() {}
+                lparen() {}
+                args(field: "args")
+                rparen() {}
+            }
+        }
+        instance-args(profiles: [auto, auto-packages]) { instance-arg() {} many { instance-arg-tail() {} } }
+        instance-arg-tail(profiles: [auto, auto-packages]) { comma() {} instance-arg() {} }
+        instance-arg(profiles: [auto, auto-packages]) {
+            alt { int-lit(field: "lit") }
+            alt { ann-ty(field: "ty") }
         }
         const-args(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { const-arg() {} many { const-arg-tail() {} } }
         const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { comma() {} const-arg() {} }

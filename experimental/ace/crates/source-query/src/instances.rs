@@ -379,6 +379,13 @@ fn materialize_instance(
     name: &str,
 ) -> FnItem {
     let mut body = subst_block_anns(&template.body, subst_ann);
+    for_each_block_mut(&mut body, &mut |expr| {
+        if let ExprKind::ConstCall { types, .. } = &mut expr.kind {
+            for ty in types {
+                *ty = subst_ann(ty);
+            }
+        }
+    });
     subst_block_consts(&mut body, consts);
     FnItem {
         name: Ident {

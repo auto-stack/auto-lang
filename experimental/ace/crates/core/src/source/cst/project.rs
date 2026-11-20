@@ -7696,6 +7696,32 @@ impl<'a> Engine<'a> {
         }
     }
 
+    // Value arguments have u32 identity but materialize into an i32 body.
+    fn project_const_argument(&mut self, leaf: u32) -> ConstArgUse {
+        let span = self.cx.span_of(leaf);
+        let text = self.cx.spelling(leaf);
+        let value = match text.parse::<u64>() {
+            Ok(value) if value <= i32::MAX as u64 => value,
+            value => {
+                let domain = if value.is_ok_and(|n| n <= u32::MAX as u64) {
+                    "exceeds the i32 body domain"
+                } else {
+                    "is outside the u32 domain"
+                };
+                self.cx.reject(span, move || {
+                    Diagnostic::new(
+                        Stage::Text,
+                        "source.literal-range",
+                        format!("value argument `{text}` {domain}"),
+                        span,
+                    )
+                });
+                0
+            }
+        };
+        ConstArgUse { value, span }
+    }
+
     /// PLAN-928（T-03）：类型位的参数化名义 `List<T>` / `Result<T, E>`。
     fn project_generic_ty(&mut self, node: u32) -> TypeAnn {
         let name_leaf = self
@@ -9620,55 +9646,23 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.generic_call.unwrap_or(u32::MAX) {
                 let name_leaf = self.cx.field_child(c, "name").expect("generic call name");
                 let name = ident_of(&mut self.cx, name_leaf);
-                let mut consts: Vec<ConstArgUse> = Vec::new();
-                if let Some(cn) = self.cx.field_child(c, "cargs") {
-                    let ca_kind = self.cx.k.const_arg.unwrap_or(u32::MAX);
-                    for item in collect_seq(&self.cx, cn, ca_kind, "const-arg-tail") {
-                        let (value, span) = match self.cx.field_child(item, "lit") {
-                            Some(l) => {
-                                let span = self.cx.span_of(l);
-                                let text = self.cx.spelling(l);
-                                match text.parse::<u64>() {
-                                    // 身份域是 u32，但值最终要代进 ACE `int`
-                                    // （i32）表达式；超出 i32 的值无处表达，
-                                    // 具名拒而不是静默截断（PLAN-963 T-04 §9）。
-                                    Ok(v) if v <= i32::MAX as u64 => (v, span),
-                                    Ok(v) if v <= u32::MAX as u64 => {
-                                        self.cx.reject(span, move || {
-                                            Diagnostic::new(
-                                                Stage::Text,
-                                                "source.literal-range",
-                                                format!(
-                                                    "value argument `{}` exceeds the i32 body domain",
-                                                    v
-                                                ),
-                                                span,
-                                            )
-                                        });
-                                        (0, span)
-                                    }
-                                    _ => {
-                                        let shown = text.clone();
-                                        self.cx.reject(span, move || {
-                                            Diagnostic::new(
-                                                Stage::Text,
-                                                "source.literal-range",
-                                                format!(
-                                                    "value argument `{}` is outside the u32 domain",
-                                                    shown
-                                                ),
-                                                span,
-                                            )
-                                        });
-                                        (0, span)
-                                    }
-                                }
-                            }
-                            // `<const N>` 之外的形（如 `<N u32>` 位置的值实参）由
-                            // 语法拒绝；此处只作防御占位。
-                            None => (0, self.cx.span_of(item)),
-                        };
-                        consts.push(ConstArgUse { value, span });
+                let mut consts = Vec::new();
+                let mut types = Vec::new();
+                if let Some(group) = self.cx.field_child(c, "cargs") {
+                    let kind = self.cx.k.const_arg.unwrap_or(u32::MAX);
+                    for item in collect_seq(&self.cx, group, kind, "const-arg-tail") {
+                        let leaf = self.cx.field_child(item, "lit").expect("constant argument");
+                        consts.push(self.project_const_argument(leaf));
+                    }
+                }
+                if let Some(group) = self.cx.field_child(c, "iargs") {
+                    let kind = self.rule_kind_of("instance-arg").expect("instance argument kind");
+                    for item in collect_seq(&self.cx, group, kind, "instance-arg-tail") {
+                        if let Some(leaf) = self.cx.field_child(item, "lit") {
+                            consts.push(self.project_const_argument(leaf));
+                        } else if let Some(ty) = self.cx.field_child(item, "ty") {
+                            types.push(self.classify_word(ty, false, false));
+                        }
                     }
                 }
                 let mut args: Vec<Arg> = Vec::new();
@@ -9696,6 +9690,7 @@ impl<'a> Engine<'a> {
                     span,
                     kind: ExprKind::ConstCall {
                         callee: name,
+                        types,
                         consts,
                         args,
                     },
@@ -13442,6 +13437,14 @@ impl GenericExpand {
             }
             ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
                 self.resolve_typed_ctors_in_expr(recv);
+                for a in args.iter_mut() {
+                    self.resolve_typed_ctors_in_arg(a);
+                }
+            }
+            ExprKind::ConstCall { types, args, .. } => {
+                for ty in types {
+                    *ty = self.ann(ty);
+                }
                 for a in args.iter_mut() {
                     self.resolve_typed_ctors_in_arg(a);
                 }

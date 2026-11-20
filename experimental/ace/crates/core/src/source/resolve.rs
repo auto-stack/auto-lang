@@ -16537,7 +16537,7 @@ F:{d}
             /// `dest` (R5: nested calls must not recurse through call()).
             CallOut {
                 callee: &'a ast::Ident,
-                consts: Option<&'a [ast::ConstArgUse]>,
+                explicit: Option<(&'a [ast::TypeAnn], &'a [ast::ConstArgUse])>,
                 dest: usize,
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
@@ -16679,17 +16679,22 @@ F:{d}
                     }
                     let call = match &node.kind {
                         ExprKind::Call { callee, args } => Some((callee, args, None)),
-                        ExprKind::ConstCall { callee, args, consts } if self.instance_probe.is_some() => {
-                            Some((callee, args, Some(consts.as_slice())))
+                        ExprKind::ConstCall {
+                            callee,
+                            args,
+                            types,
+                            consts,
+                        } if self.instance_probe.is_some() => {
+                            Some((callee, args, Some((types.as_slice(), consts.as_slice()))))
                         }
                         _ => None,
                     };
-                    if let Some((callee, args, consts)) = call {
+                    if let Some((callee, args, explicit)) = call {
                         // PLAN-936（T-04）：meta 查询内在——selector 实参在
                         // 调度前拦截（不作为子表达式任务解析）。
                         // With no meta grant an actual user declaration keeps
                         // its ordinary meaning, including inside a CT demand.
-                        if consts.is_none()
+                        if explicit.is_none()
                             && (self.meta_enabled
                                 || (self.ct_depth > 0 && !self.sigs.contains_key(&callee.name)))
                         {
@@ -16698,7 +16703,7 @@ F:{d}
                                 continue;
                             }
                         }
-                        if args.is_empty() && consts.is_none() {
+                        if args.is_empty() && explicit.is_none() {
                             out[slot] = self.call(callee, &[], node.span);
                             continue;
                         }
@@ -16731,7 +16736,7 @@ F:{d}
                         }
                         subtasks.push(Task::CallOut {
                             callee,
-                            consts,
+                            explicit,
                             dest: slot,
                             arg_slots,
                             names,
@@ -17796,7 +17801,7 @@ F:{d}
                 }
                 Task::CallOut {
                     callee,
-                    consts,
+                    explicit,
                     dest,
                     arg_slots,
                     names,
@@ -17827,10 +17832,10 @@ F:{d}
                         });
                     }
                     // the node's own span already covers callee..
-                    out[dest] = match consts {
-                        Some(values) => self
-                            .probe_template_call(callee, rargs, Some(values), node_span)
-                            .expect("explicit value call dispatched only in discovery"),
+                    out[dest] = match explicit {
+                        Some(explicit) => self
+                            .probe_template_call(callee, rargs, Some(explicit), node_span)
+                            .expect("explicit template call dispatched only in discovery"),
                         None => self.resolve_call(callee, rargs, node_span),
                     };
                 }

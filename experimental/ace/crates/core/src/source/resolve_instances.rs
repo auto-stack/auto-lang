@@ -5,8 +5,8 @@
 //! before any dependent argument can contribute a type.
 
 use super::{
-    resolve_detailed_in_mode, CollTables, FnResolver, RExprKind, ResolvedArg, ResolvedExpr,
-    ResolvedRecord, VT,
+    resolve_detailed_in_mode, vt_of_ann_coll, CollTables, FnResolver, RExprKind, ResolvedArg,
+    ResolvedExpr, ResolvedRecord, TypePos, VT,
 };
 use crate::atom_text::{Diagnostic, Span};
 use crate::source::ast::{
@@ -82,7 +82,7 @@ impl FnResolver<'_, '_> {
         &mut self,
         callee: &Ident,
         mut args: Vec<ResolvedArg>,
-        consts: Option<&[ConstArgUse]>,
+        explicit: Option<(&[TypeAnn], &[ConstArgUse])>,
         call: Span,
     ) -> Option<ResolvedExpr> {
         let probe = self.instance_probe?;
@@ -108,29 +108,11 @@ impl FnResolver<'_, '_> {
             );
             return Some(unresolved);
         };
-        let count = template
-            .type_params
-            .iter()
-            .filter(|p| p.kind == TypeParamKind::Const)
-            .count();
-        let consts = consts.unwrap_or_default();
-        if count != consts.len() {
-            let code = if consts.is_empty() {
-                "value-argument-required"
-            } else {
-                "value-arity-mismatch"
-            };
-            self.bind_err(
-                code,
-                format!(
-                    "`{}` needs {count} value argument(s), found {}",
-                    callee.name,
-                    consts.len()
-                ),
-                call,
-            );
+        let (explicit_types, consts) = explicit.unwrap_or_default();
+        let Some(mut types) = self.explicit_instance_types(template, explicit_types, consts, call)
+        else {
             return Some(unresolved);
-        }
+        };
         let names: Vec<_> = template
             .params
             .iter()
@@ -142,25 +124,26 @@ impl FnResolver<'_, '_> {
         if self.diags.len() != probe.body_diagnostics.get() {
             return Some(unresolved);
         }
-        let mut types = BTreeMap::new();
-        for (index, arg) in args.iter().enumerate() {
-            let slot = arg
-                .name
-                .as_ref()
-                .and_then(|name| names.iter().position(|n| n == &name.name))
-                .unwrap_or(index);
-            let formal = &template.params[slot].ty;
-            if let Some(actual) = source_annotation(arg.value.vt, self.records, self.coll) {
-                if !collect_type_arguments(formal, &actual, &mut types) {
-                    self.bind_err(
-                        "type-mismatch",
-                        format!(
-                            "conflicting types for `{}` at template `{}`",
-                            names[slot], callee.name
-                        ),
-                        arg.span,
-                    );
-                    return Some(unresolved);
+        if explicit_types.is_empty() {
+            for (index, arg) in args.iter().enumerate() {
+                let slot = arg
+                    .name
+                    .as_ref()
+                    .and_then(|name| names.iter().position(|n| n == &name.name))
+                    .unwrap_or(index);
+                let formal = &template.params[slot].ty;
+                if let Some(actual) = source_annotation(arg.value.vt, self.records, self.coll) {
+                    if !collect_type_arguments(formal, &actual, &mut types) {
+                        self.bind_err(
+                            "type-mismatch",
+                            format!(
+                                "conflicting types for `{}` at template `{}`",
+                                names[slot], callee.name
+                            ),
+                            arg.span,
+                        );
+                        return Some(unresolved);
+                    }
                 }
             }
         }
@@ -200,6 +183,94 @@ impl FnResolver<'_, '_> {
             call,
         );
         Some(unresolved)
+    }
+
+    fn explicit_instance_types(
+        &mut self,
+        template: &FnItem,
+        explicit_types: &[TypeAnn],
+        consts: &[ConstArgUse],
+        call: Span,
+    ) -> Option<BTreeMap<String, TypeAnn>> {
+        let value_count = template
+            .type_params
+            .iter()
+            .filter(|p| p.kind == TypeParamKind::Const)
+            .count();
+        if value_count != consts.len() {
+            self.bind_err(
+                if consts.is_empty() {
+                    "value-argument-required"
+                } else {
+                    "value-arity-mismatch"
+                },
+                format!(
+                    "`{}` needs {value_count} value argument(s), found {}",
+                    template.name.name,
+                    consts.len()
+                ),
+                call,
+            );
+            return None;
+        }
+        let mut types = BTreeMap::new();
+        if explicit_types.is_empty() {
+            // The existing value-only form can infer its type arguments.
+            return Some(types);
+        }
+        let count = template.type_params.len() - value_count;
+        if count != explicit_types.len() {
+            self.bind_err(
+                "type-arity-mismatch",
+                format!(
+                    "`{}` needs {count} type argument(s), found {}",
+                    template.name.name,
+                    explicit_types.len()
+                ),
+                call,
+            );
+            return None;
+        }
+        let mut positioned: Vec<_> = explicit_types
+            .iter()
+            .map(|ann| (ann.span, Some(ann)))
+            .chain(consts.iter().map(|c| (c.span, None)))
+            .collect();
+        positioned.sort_by_key(|(span, _)| span.start);
+        for (param, (span, argument)) in template.type_params.iter().zip(positioned) {
+            match (param.kind, argument) {
+                (TypeParamKind::Type, Some(ann)) => {
+                    let before = self.diags.len();
+                    let ty =
+                        vt_of_ann_coll(ann, self.rec_index, self.coll, self.diags, TypePos::Local);
+                    if self.diags.len() != before {
+                        return None;
+                    }
+                    let Some(canonical) = source_annotation(ty, self.records, self.coll) else {
+                        self.bind_err(
+                            "source.instances-unsupported",
+                            "unsupported explicit instance type",
+                            span,
+                        );
+                        return None;
+                    };
+                    types.insert(param.name.name.clone(), canonical);
+                }
+                (TypeParamKind::Const, None) => {}
+                _ => {
+                    self.bind_err(
+                        "source.instances-argument-kind",
+                        format!(
+                            "argument kind does not match template parameter `{}`",
+                            param.name.name
+                        ),
+                        span,
+                    );
+                    return None;
+                }
+            }
+        }
+        Some(types)
     }
 }
 

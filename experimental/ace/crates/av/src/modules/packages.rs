@@ -424,7 +424,7 @@ mod tests {
                 "main",
                 "use support.lib.identity
 use support.lib.nineteen
-fn main() int { return nineteen() + identity(23) }",
+fn main() int { return nineteen() + identity<int>(23) }",
             ),
             input(
                 "support",
@@ -473,6 +473,29 @@ pub fn nineteen() int { return identity(19) }",
             baseline.compiled.input_hash
         );
         assert_eq!(run(&changed_body), Ok(Value::I32(44)));
+
+        let mut new_signature = inputs.clone();
+        new_signature[1].source = new_signature[1]
+            .source
+            .replace("(x T) T { return x }", "(x T, delta int) T { return x + delta }");
+        let stale = compile(&new_signature).err().expect("stale callers must fail");
+        assert!(stale.iter().any(|d| d.diagnostic.code == "source.argument"));
+        new_signature[0].source = new_signature[0]
+            .source
+            .replace("identity<int>(23)", "identity<int>(23, 3)");
+        new_signature[1].source = new_signature[1]
+            .source
+            .replace("identity(19)", "identity(19, 4)");
+        let changed_signature = compile(&new_signature).unwrap();
+        assert_ne!(
+            changed_signature.compiled.input_hash,
+            baseline.compiled.input_hash
+        );
+        let signature_receipt =
+            PackageStore::prepare(&dir, &changed_signature, &new_signature, &[]).unwrap();
+        let (restored_signature, _) = PackageStore::restore(&dir, &signature_receipt).unwrap();
+        assert_eq!(run(&changed_signature), Ok(Value::I32(49)));
+        assert_eq!(run(&restored_signature), Ok(Value::I32(49)));
 
         edited[1].version = "2.0.0".into();
         let upgraded = compile(&edited).unwrap();

@@ -667,10 +667,14 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             args: args.iter().filter_map(project_arg).collect(),
         },
         // PLAN-963（T-04）：值实参调用——值按声明序进需求（进实例身份）。
+        core_ast::ExprKind::ConstCall { types, .. } if !types.is_empty() => {
+            InputExprKind::Unsupported { what: "explicit-type-arguments" }
+        }
         core_ast::ExprKind::ConstCall {
             callee,
             consts,
             args,
+            ..
         } => InputExprKind::ConstCall {
             callee: callee.name.clone(),
             consts: consts.iter().map(|c| c.value as u32).collect(),

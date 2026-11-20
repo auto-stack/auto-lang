@@ -143,10 +143,14 @@ fn shift_expr(e: &mut Expr, delta: i64) {
         // PLAN-963（T-04）：值实参调用——名字/实参/值实参 span 同步平移。
         ExprKind::ConstCall {
             callee,
+            types,
             consts,
             args,
         } => {
             shift_ident(callee, delta);
+            for ty in types {
+                shift_type_ann(ty, delta);
+            }
             for c in consts.iter_mut() {
                 shift_span(&mut c.span, delta);
             }

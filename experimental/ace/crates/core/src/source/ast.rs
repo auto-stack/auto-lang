@@ -592,6 +592,9 @@ pub enum ExprKind {
     /// it — a `ConstCall` reaching resolve is a named rejection.
     ConstCall {
         callee: Ident,
+        /// Explicit type arguments on the ordinary surface. Source spans
+        /// retain their order relative to the explicit value arguments.
+        types: Vec<TypeAnn>,
         consts: Vec<ConstArgUse>,
         args: Vec<Arg>,
     },

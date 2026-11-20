@@ -59,6 +59,10 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
                         w.push(3);
                         w.extend_from_slice(&c.to_le_bytes());
                     }
+                    Atom::TokAdjacent(t) => {
+                        w.push(4);
+                        w.extend_from_slice(&t.to_le_bytes());
+                    }
                 }
                 w.push(match s.repeat {
                     Repeat::Once => 0,
@@ -309,6 +313,7 @@ pub fn decode_program(bytes: &[u8], budget: LoadBudget) -> Result<GrammarProgram
                     1 => Atom::Rule(r.u32()?),
                     2 => Atom::Pratt(r.u32()?),
                     3 => Atom::CtxName(r.u32()?),
+                    4 => Atom::TokAdjacent(r.u32()?),
                     t => return Err(RtError::InvalidProgram(format!("bad atom tag {t}"))),
                 };
                 let repeat = match r.u8()? {

@@ -188,7 +188,7 @@ impl FirstSets {
                     let mut all_nullable = true;
                     for s in &alt.steps {
                         match s.atom {
-                            Atom::Tok(t) => {
+                            Atom::Tok(t) | Atom::TokAdjacent(t) => {
                                 if (t as usize) < nt {
                                     if !first[ri][t as usize] {
                                         first[ri][t as usize] = true;
@@ -938,12 +938,21 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
     fn atom_starts(&self, atom: Atom, tok: Token) -> bool {
         match atom {
             Atom::Tok(t) => t == tok.token,
+            Atom::TokAdjacent(t) => t == tok.token && self.adjacent_to_previous(tok),
             Atom::Rule(r) => self.first.starts(r, tok.token),
             Atom::Pratt(x) => self
                 .first
                 .starts(self.p.pratt[x as usize].primary, tok.token),
             Atom::CtxName(c) => self.ctx_name_matches_token(c, tok),
         }
+    }
+
+    fn adjacent_to_previous(&self, token: Token) -> bool {
+        self.pending.is_empty()
+            && self.i
+                .checked_sub(1)
+                .and_then(|i| self.toks.get(i))
+                .is_some_and(|previous| previous.end == token.start)
     }
 
     /// 消费当前非 trivia token；pending trivia flush 到栈顶 frame。
@@ -1221,8 +1230,10 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
 
         match step.repeat {
             Repeat::Once => match step.atom {
-                Atom::Tok(t) => {
-                    let m = self.peek().map(|pk| pk.token == t).unwrap_or(false);
+                Atom::Tok(_) | Atom::TokAdjacent(_) => {
+                    let m = self
+                        .peek()
+                        .is_some_and(|pk| self.atom_starts(step.atom, pk));
                     if !m {
                         self.fail_alt();
                         return Ok(());
@@ -1312,8 +1323,10 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                         self.stack.last_mut().unwrap().step += 1;
                     }
                 }
-                Atom::Tok(t) => {
-                    let m = self.peek().map(|pk| pk.token == t).unwrap_or(false);
+                Atom::Tok(_) | Atom::TokAdjacent(_) => {
+                    let m = self
+                        .peek()
+                        .is_some_and(|pk| self.atom_starts(step.atom, pk));
                     if m {
                         match self.consume_same_line(step.same_line) {
                             Ok(_) => {
@@ -1468,8 +1481,10 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                             self.end_list_step();
                         }
                     }
-                    Atom::Tok(t) => {
-                        let m = self.peek().map(|pk| pk.token == t).unwrap_or(false);
+                    Atom::Tok(_) | Atom::TokAdjacent(_) => {
+                        let m = self
+                            .peek()
+                            .is_some_and(|pk| self.atom_starts(step.atom, pk));
                         if m {
                             match self.consume_same_line(step.same_line) {
                                 Ok(_) => {
@@ -1504,7 +1519,7 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         while si < steps.len() {
             let s = &steps[si];
             let starts = match s.atom {
-                Atom::Tok(t) => t == tok,
+                Atom::Tok(t) | Atom::TokAdjacent(t) => t == tok,
                 Atom::Rule(r) => self.first.starts(r, tok),
                 Atom::Pratt(x) => self.first.starts(self.p.pratt[x as usize].primary, tok),
                 // 无字节比对（仅 token id）：仅用于"垃圾跳过"判定，保守即可。
@@ -1519,7 +1534,7 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
             }
             // 该步可空 → 继续看后续。
             let nullable_step = match s.atom {
-                Atom::Tok(_) | Atom::CtxName(_) => false,
+                Atom::Tok(_) | Atom::TokAdjacent(_) | Atom::CtxName(_) => false,
                 Atom::Rule(r) => self.first.nullable[r as usize],
                 Atom::Pratt(_) => false,
             };
@@ -1684,7 +1699,7 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         // 真正的原因在更深层的项 hint 里，这里不重复报。
         if step > 0 {
             if let Some(steps) = self.p.rules[rule as usize].alts.get(alt).map(|a| &a.steps) {
-                if matches!(steps[step].atom, Atom::Tok(_))
+                if matches!(steps[step].atom, Atom::Tok(_) | Atom::TokAdjacent(_))
                     && matches!(
                         steps[step - 1].repeat,
                         Repeat::ListPlain | Repeat::ListNewline

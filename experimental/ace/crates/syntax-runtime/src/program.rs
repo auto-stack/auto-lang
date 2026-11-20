@@ -155,6 +155,8 @@ pub struct Step {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Atom {
     Tok(TokenId),
+    /// A token whose source starts at the end of the preceding token.
+    TokAdjacent(TokenId),
     Rule(RuleId),
     Pratt(PrattId),
     /// PLAN-979 T-H0-I：上下文名称槽（槽位限定拼写识别，不进入保留字表）。
@@ -393,8 +395,13 @@ impl GrammarProgram {
         for rule in &self.rules {
             for alt in &rule.alts {
                 for s in &alt.steps {
+                    if matches!(s.atom, Atom::TokAdjacent(_)) && s.repeat != Repeat::Once {
+                        return Err(RtError::InvalidProgram(format!(
+                            "rule `{}` uses an adjacent token in a repeated step", rule.name,
+                        )));
+                    }
                     match s.atom {
-                        Atom::Tok(t) => {
+                        Atom::Tok(t) | Atom::TokAdjacent(t) => {
                             if (t as usize) >= n_tok {
                                 return Err(bad_tok(&format!("rule `{}` step", rule.name), t));
                             }

@@ -2124,10 +2124,14 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         // PLAN-963（T-04）：值实参调用（值实参 span 同步平移）。
         ExprKind::ConstCall {
             callee,
+            types,
             consts,
             args,
         } => {
             sh(&mut callee.span, offset);
+            for ty in types {
+                shift_ann(ty, offset);
+            }
             for c in consts.iter_mut() {
                 sh(&mut c.span, offset);
             }
@@ -2981,9 +2985,17 @@ impl<'a> Walker<'a> {
                 "indirect calls belong to the closures surface (PLAN-964)",
                 span,
             )),
-            ExprKind::ConstCall { callee, args, .. } if self.auto_language => {
+            ExprKind::ConstCall {
+                callee,
+                types,
+                args,
+                ..
+            } if self.auto_language => {
+                for ty in types {
+                    self.walk_ann(ty)?;
+                }
                 // Bind the declaration before instance selection. Unlike an
-                // ordinary call, an explicit value call cannot target a local,
+                // ordinary call, an explicit template call cannot target a local,
                 // a constructor, a global or an intrinsic.
                 let symbol = if locals.contains(&callee.name) {
                     None

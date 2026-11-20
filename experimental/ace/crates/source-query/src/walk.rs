@@ -623,6 +623,7 @@ fn walk_expr<'a>(
         // 身份/体版本，实参照常递归（否则仅值不同的两个模板体同版本）。
         ExprKind::ConstCall {
             callee,
+            types,
             consts,
             args,
         } => {
@@ -631,9 +632,27 @@ fn walk_expr<'a>(
             canon.push(0);
             canon.extend_from_slice(callee.name.as_bytes());
             canon.push(0);
-            canon.extend_from_slice(&(consts.len() as u32).to_le_bytes());
-            for c in consts.iter() {
-                canon.extend_from_slice(&c.value.to_le_bytes());
+            if types.is_empty() {
+                canon.extend_from_slice(&(consts.len() as u32).to_le_bytes());
+                for c in consts {
+                    canon.extend_from_slice(&c.value.to_le_bytes());
+                }
+            } else {
+                canon.extend_from_slice(b"explicit-types\0");
+                canon.extend_from_slice(&((types.len() + consts.len()) as u32).to_le_bytes());
+                let mut values = consts.iter().peekable();
+                for ty in types {
+                    while values.peek().is_some_and(|c| c.span.start < ty.span.start) {
+                        canon.push(b'v');
+                        canon.extend_from_slice(&values.next().unwrap().value.to_le_bytes());
+                    }
+                    canon.push(b't');
+                    crate::ident::type_canonical(ty, canon);
+                }
+                for c in values {
+                    canon.push(b'v');
+                    canon.extend_from_slice(&c.value.to_le_bytes());
+                }
             }
             canon.extend_from_slice(&(args.len() as u32).to_le_bytes());
             for a in args.iter().rev() {

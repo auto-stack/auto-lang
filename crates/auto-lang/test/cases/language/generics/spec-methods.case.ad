@@ -523,3 +523,198 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: explicit-result-type
+id: "av.parity.1088.explicit-result-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn answer<T>() T { return 42 }
+fn main() int { return answer<int>() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: explicit-type-value-order
+id: "av.parity.1088.explicit-type-value-order"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn compose<T,const N u32,U>(x T, y U) T { if y { return x * N }; return x }
+fn main() int { return compose<int,2,bool>(21,true) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: explicit-type-forwarding
+id: "av.parity.1088.explicit-type-forwarding"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(x T) T { return x }
+fn wrap<U>(x U) U { return identity<U>(x) }
+fn main() int { return wrap(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: explicit-composite-type
+id: "av.parity.1088.explicit-composite-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(move x T) T { return x.move }
+fn main() int { let xs = identity<List<int>>(List<int>.new([20,22])); return xs[0] + xs[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: explicit-nominal-type
+id: "av.parity.1088.explicit-nominal-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { v T }
+fn value<T>(x T) int { return x.v }
+fn main() int { return value<Box<int>>(Box<int> { v: 42 }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: explicit-type-wrong-order
+id: "av.parity.1088.explicit-type-wrong-order"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn compose<T,const N u32,U>(x T, y U) T { if y { return x * N }; return x }
+fn main() int { return compose<int,bool,2>(21,true) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-argument-kind"
+
+## Case: explicit-type-wrong-count
+id: "av.parity.1088.explicit-type-wrong-count"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn first<T,U>(a T, b U) T { return a }
+fn main() int { return first<int>(42, true) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "type-arity-mismatch"
+
+## Case: explicit-type-incompatible-actual
+id: "av.parity.1088.explicit-type-incompatible-actual"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn identity<T>(x T) T { return x }
+fn main() bool { return identity<bool>(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"
+
+## Case: spaced-comparison-diagnostic
+id: "av.parity.1088.spaced-comparison-diagnostic"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let a = 1; let b = 2; let c = 3; if a < b > (c) { return 0 }; return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"
+
+## Case: spaced-const-argument
+id: "av.parity.1088.spaced-const-argument"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice<T,const N u32>(x T) T { return x * N }
+fn main() int { return twice <2>(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
