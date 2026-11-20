@@ -13098,7 +13098,12 @@ F:{d}
                 to: Some(VT::StrOwned),
                 ..
             } if value.vt == VT::StrOwned => {}
-            RExprKind::StrLit(_) | RExprKind::VariantCtor { .. } => {
+            // PLAN-105 T-02（U03 真语料 012）：**文本拼接/计算出的 owned 文本**
+            // 也是新值（`push(a + " " + b)` 不该要求 `.move`）。
+            RExprKind::Binary { .. }
+            | RExprKind::StrLit(_)
+            | RExprKind::CallFn { .. }
+            | RExprKind::VariantCtor { .. } => {
                 // a fresh rvalue transfers at commit
                 value.vt = *elem;
             }
