@@ -102,6 +102,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-aac-bridge"
+version = "0.1.0"
+dependencies = [
+ "ace-aac-host-conformance",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-native",
+ "auto-tool-execution",
+ "blake3",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ace-aac-host-conformance"
 version = "0.1.0"
 dependencies = [

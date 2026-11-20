@@ -178,6 +178,10 @@ pub(crate) fn admit_layouts(
                     "collection units require imported function calls",
                 ));
             }
+            if let MirInstr::PlatformCall { host, args, .. } = i {
+                scalar_platform_import(m, *host, args.len())?;
+                continue;
+            }
             if !matches!(
                 i,
                 MirInstr::Const { .. }
@@ -246,6 +250,52 @@ pub(crate) fn admit_layouts(
         }
     }
     crate::collections_layout::descriptors(m)
+}
+
+/// The hosted collections lane uses the same Windows I32 status/handle
+/// carriers as the syscall shim. Text-bearing operations require their own
+/// length-aware marshalling and are still refused at admission.
+fn scalar_platform_import(
+    module: &MirModule,
+    host: u32,
+    argc: usize,
+) -> Result<&'static ace_av_core::platform_io::PlatformOpSpec, MnError> {
+    let decl = module
+        .host_imports
+        .get(host as usize)
+        .ok_or_else(|| unsupported("platform-import", "missing platform declaration"))?;
+    let spec = ace_av_core::platform_io::lookup_symbol(&decl.symbol).ok_or_else(|| {
+        unsupported(
+            "platform-import",
+            format!("unknown platform symbol {}", decl.symbol),
+        )
+    })?;
+    let shim = crate::platform_io::cranelift_shim_sig_for(spec.kind, CallConv::WindowsFastcall);
+    if spec.category == ace_av_core::platform_io::CATEGORY_NET
+        || spec.params.len() != argc
+        || shim.params.len() != argc
+        || shim.params.iter().any(|p| p.value_type != types::I32)
+        || shim.returns.len() != 1
+        || shim.returns[0].value_type != types::I32
+    {
+        return Err(unsupported(
+            "platform-carrier",
+            format!("unsupported hosted collections operation {}", decl.symbol),
+        ));
+    }
+    ace_av_core::platform_io::validate_import(module, decl, spec).map_err(|error| {
+        unsupported(
+            "platform-import",
+            format!("{}: {}", error.code, error.message),
+        )
+    })?;
+    if !module.capabilities.iter().any(|cap| cap == spec.capability) {
+        return Err(unsupported(
+            "platform-capability",
+            format!("{} requires {}", decl.symbol, spec.capability),
+        ));
+    }
+    Ok(spec)
 }
 
 fn signature(count: usize) -> Signature {
@@ -1404,6 +1454,18 @@ impl Lower<'_, '_> {
                     }
                 };
                 self.scalar_to(*dst, result);
+            }
+            MirInstr::PlatformCall { dst, host, args } => {
+                let spec = scalar_platform_import(self.m, *host, args.len())?;
+                let args = args
+                    .iter()
+                    .map(|&arg| (self.scalar(arg), types::I32))
+                    .collect::<Vec<_>>();
+                let name = crate::platform_io::shim_symbol_for(spec.kind);
+                let status = self
+                    .call(name, &args, Some(types::I32))?
+                    .expect("platform status carrier");
+                self.scalar_to(*dst, status);
             }
             _ => return Err(unsupported("instruction", "unhandled admitted instruction")),
         }

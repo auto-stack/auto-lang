@@ -8,6 +8,7 @@ members = [
   "crates/a2x-store",
   "crates/a2x-ts",
   "crates/a2x-worker",
+  "crates/aac-bridge",
   "crates/abi",
   "crates/artifacts",
   "crates/av",

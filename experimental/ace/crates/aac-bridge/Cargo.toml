@@ -1,0 +1,21 @@
+[package]
+name = "ace-aac-bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bounded native object and compile-time AV services for AAC"
+
+[dependencies]
+ace-av-core = { path = "../av-core" }
+ace-av = { path = "../av" }
+ace-native = { path = "../native" }
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+blake3 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+tempfile = "3"
+
+[dev-dependencies]
+ace-core = { path = "../core" }
+ace-aac-host-conformance = { path = "../../tests/aac-host" }

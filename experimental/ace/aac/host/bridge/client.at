@@ -1,0 +1,182 @@
+// AAC host-side exchange for the Windows service. The caller owns a private
+// request directory and supplies two unused paths. The returned frame stays
+// owned by Auto, including the service's typed success or failure metadata.
+use app.digest.blake3_bytes
+use app.digest.utf8_bytes
+use std.file.delete
+use std.file.exists
+use std.sysplat_win.OPEN_READ
+use std.sysplat_win.buf_alloc
+use std.sysplat_win.buf_free
+use std.sysplat_win.pf_close
+use std.sysplat_win.pf_open
+use std.sysplat_win.pf_read_some
+use std.syscommon.read_region_bytes
+use std.file.write_bytes
+use std.process.spawn5
+
+type BridgeReply {
+    status int
+    frame List<int>
+}
+
+fn failure(status int) BridgeReply {
+    return BridgeReply { status: status, frame: List<int>.new() }
+}
+
+fn append_u32(out List<int>, value int) int {
+    out.push(value % 256)
+    out.push((value / 256) % 256)
+    out.push((value / 65536) % 256)
+    out.push(value / 16777216)
+    return 0
+}
+
+fn read_length(bytes List<int>, at int) int {
+    let high = bytes.get(at + 3)
+    if (high >= 128) { return -1 }
+    return bytes.get(at) + bytes.get(at + 1) * 256 + bytes.get(at + 2) * 65536 + high * 16777216
+}
+
+// Use the same opened file for the bounded read; observe cap + 1 before
+// appending excess bytes and release both handles on every result.
+fn read_response(path Str, cap int) BridgeReply {
+    let handle = pf_open(path.move, OPEN_READ())
+    if (handle <= 0) { return failure(-4) }
+    let region = buf_alloc(16384)
+    if (region < 0) {
+        pf_close(handle)
+        return failure(-3)
+    }
+    var status = 0
+    let data = List<int>.new()
+    for (status == 0) {
+        var want = cap + 1 - data.len()
+        if (want > 16384) { want = 16384 }
+        let count = pf_read_some(handle, region, 0, want)
+        if (count < 0) {
+            status = -4
+        } else {
+            if (count == 0) { break }
+            if (count > cap - data.len()) {
+                status = -3
+            } else {
+                if (read_region_bytes(region, 0, count, data) != 0) { status = -4 }
+            }
+        }
+    }
+    let freed = buf_free(region)
+    let closed = pf_close(handle)
+    if (freed < 0 || closed < 0) { return failure(-5) }
+    if (status != 0) { return failure(status) }
+    return BridgeReply { status: 0, frame: data.move }
+}
+
+fn append_range(dst List<int>, src List<int>, start int, stop int) int {
+    var i = start
+    for (i < stop) {
+        dst.push(src.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn equal_at(bytes List<int>, start int, expected List<int>) bool {
+    if (start < 0 || expected.len() > bytes.len() - start) { return false }
+    var i = 0
+    for (i < expected.len()) {
+        if (bytes.get(start + i) != expected.get(i)) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+fn append_json_digest(out List<int>, frame List<int>) int {
+    out.push(91)
+    var i = 12
+    for (i < 44) {
+        if (i > 12) { out.push(44) }
+        let v = frame.get(i)
+        if (v >= 100) { out.push(48 + v / 100) }
+        if (v >= 10) { out.push(48 + (v / 10) % 10) }
+        out.push(48 + v % 10)
+        i = i + 1
+    }
+    out.push(93)
+    return 0
+}
+
+// Digest covers lengths and the exact metadata/IR bytes in wire order.
+fn make_request(metadata List<int>, abc List<int>) List<int> {
+    let body = List<int>.new()
+    append_u32(body, metadata.len())
+    append_u32(body, abc.len())
+    append_range(body, metadata, 0, metadata.len())
+    append_range(body, abc, 0, abc.len())
+
+    let hash = blake3_bytes(body)
+    let out = List<int>.new()
+    append_range(out, utf8_bytes("AQ01"), 0, 4)
+    append_range(out, body, 0, 8)
+    append_range(out, hash, 0, hash.len())
+    append_range(out, body, 8, body.len())
+    return out
+}
+
+fn matches_response(frame List<int>, request List<int>) bool {
+    if (frame.len() < 44 || equal_at(frame, 0, utf8_bytes("AR01")) == false) { return false }
+    let metadata_len = read_length(frame, 4)
+    let payload_len = read_length(frame, 8)
+    if (metadata_len < 0 || metadata_len > 65536 || metadata_len > frame.len() - 44) { return false }
+    if (payload_len != frame.len() - 44 - metadata_len) { return false }
+
+    let body = List<int>.new()
+    append_range(body, frame, 4, 12)
+    append_range(body, frame, 44, frame.len())
+    if (equal_at(frame, 12, blake3_bytes(body)) == false) { return false }
+
+    // Canonical Rust response metadata starts with the request ID and the
+    // exact request digest. An earlier response must fail this comparison.
+    let begin = 44
+    let end = begin + metadata_len
+    let id_prefix = utf8_bytes("{\"id\":[")
+    if (end - begin < id_prefix.len() || equal_at(frame, begin, id_prefix) == false) { return false }
+    var pos = begin + id_prefix.len()
+    for (pos < end && frame.get(pos) != 93) {
+        let b = frame.get(pos)
+        if ((b < 48 || b > 57) && b != 44) { return false }
+        pos = pos + 1
+    }
+    let binding = utf8_bytes("],\"request_hash\":")
+    append_json_digest(binding, request)
+    let outcome_key = utf8_bytes(",\"outcome\":")
+    append_range(binding, outcome_key, 0, outcome_key.len())
+    return binding.len() <= end - pos && equal_at(frame, pos, binding)
+}
+
+// Status 0 means the checked response frame is available. Negative values
+// distinguish local staging, deadline, response admission and cleanup.
+// Positive statuses are the supervisor's named transport exit classes.
+pub fn exchange(tool Str, input_path Str, output_path Str, metadata Str, abc List<int>, timeout_ms int, response_cap int) BridgeReply {
+    if (metadata.len_bytes() > 65536 || abc.len() > 4194304 - 44 - metadata.len_bytes()) { return failure(-3) }
+    if (timeout_ms <= 0 || timeout_ms > 10000 || response_cap < 44 || response_cap > 67108864) { return failure(-3) }
+    if (exists(input_path.clone()) || exists(output_path.clone())) { return failure(-2) }
+
+    let request = make_request(utf8_bytes(metadata.move), abc)
+    if (write_bytes(input_path.clone(), request) != 0) {
+        delete(input_path.move)
+        return failure(-2)
+    }
+    let exit = spawn5(tool.move, "--exchange", input_path.clone(), output_path.clone(), "", timeout_ms)
+    let removed_request = delete(input_path.move)
+    if (exit != 0) {
+        if (exists(output_path.clone())) { delete(output_path.move) }
+        return failure(exit)
+    }
+    let response = read_response(output_path.clone(), response_cap)
+    let removed_response = delete(output_path.move)
+    if (removed_request != 0 || removed_response != 0) { return failure(-5) }
+    if (response.status != 0) { return response.move }
+    if (matches_response(response.frame, request) == false) { return failure(-4) }
+    return response.move
+}

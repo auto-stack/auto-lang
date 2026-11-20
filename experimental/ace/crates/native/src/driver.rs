@@ -1376,6 +1376,25 @@ impl MnDriver {
         )
     }
 
+    /// Gen0 hosted packages use the collection ABI plus the Win32 platform
+    /// shim. The caller prepares and pins the collection runtime separately.
+    pub fn build_hosted_collections_checked(
+        &mut self,
+        checked: &ace_core::verify::CheckedModule,
+        entry: &str,
+        workdir: &Path,
+        runtime_library: &Path,
+        runtime_hash: &str,
+        snapshot: u64,
+    ) -> Result<MnBuild, MnError> {
+        let mut obs = Obs::default();
+        let module = obs.span("adapter", |_| {
+            ace_lowering::lower_checked_closures(checked, entry, snapshot)
+                .map_err(|error| MnError::Unsupported("adapter", format!("{error:?}")))
+        })?;
+        self.build_hosted_collections(&module, workdir, runtime_library, runtime_hash, &mut obs)
+    }
+
     /// Build-only entry: lower through the shared MIR chain, emit per-unit
     /// COFFs, link for real, publish exe + link receipt — and STOP. The
     /// caller keeps execution (its budgets, caps and containment), which is

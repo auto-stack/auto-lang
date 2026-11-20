@@ -1751,6 +1751,17 @@ tools = []
 domain = "ace"
 all = false
 [[group]]
+name = "ace-aac-bridge"
+title = "PLAN-1051 AAC机器服务和CT执行桥的单请求准入与隔离"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-bridge", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = true
+
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"

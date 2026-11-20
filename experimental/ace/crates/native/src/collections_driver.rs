@@ -1008,6 +1008,125 @@ impl MnDriver {
         })
     }
 
+    /// Gen0 hosted source was already lowered from CheckedModule. Admit
+    /// each unit's imports independently, as the AV package linker does:
+    /// the number of distinct operations in a whole application is not a
+    /// single unit's host declaration budget.
+    pub(crate) fn build_hosted_collections(
+        &mut self,
+        module: &MirModule,
+        workdir: &Path,
+        runtime_library: &Path,
+        runtime_hash: &str,
+        obs: &mut Obs,
+    ) -> Result<MnBuild, MnError> {
+        if !module.globals.is_empty() || !module.init.is_empty() {
+            return Err(MnError::Unsupported(
+                "hosted-collections-state",
+                "hosted collection module state requires a program-owned cell provider".into(),
+            ));
+        }
+        let entry_name = &module.funcs[module.entry as usize].name;
+        let units = obs.span("mir_split", |_| {
+            ace_av::cache::split_units(module).map_err(bad)
+        })?;
+        // This executable has one entry. Each imported guest function
+        // in its closure was turned into a named unit import by split_units.
+        // The stdlib supplies other public entries for other targets too.
+        let mut by_name = std::collections::BTreeMap::new();
+        for unit in units {
+            if by_name.insert(unit.funcs[0].name.clone(), unit).is_some() {
+                return Err(bad("duplicate hosted collection unit name"));
+            }
+        }
+        let mut pending = vec![entry_name.clone()];
+        let mut needed = std::collections::BTreeSet::new();
+        while let Some(name) = pending.pop() {
+            if !needed.insert(name.clone()) {
+                continue;
+            }
+            let unit = by_name
+                .get(&name)
+                .ok_or_else(|| bad(format!("missing hosted collection unit {name}")))?;
+            for import in &unit.imports {
+                let callee = import.symbol.strip_prefix("fn:").ok_or_else(|| {
+                    bad(format!(
+                        "unresolved hosted collection import {}",
+                        import.symbol
+                    ))
+                })?;
+                pending.push(callee.to_string());
+            }
+        }
+        let units: Vec<_> = by_name
+            .into_iter()
+            .filter_map(|(name, unit)| needed.contains(&name).then_some(unit))
+            .collect();
+        let entry = check_closure(&units, entry_name)?;
+        let observed_hash =
+            obs.span("runtime_identity", |_| runtime::file_hash(runtime_library))?;
+        if observed_hash != runtime_hash {
+            return Err(MnError::Admit(
+                "runtime-content",
+                "prepared hosted collections runtime has changed".into(),
+            ));
+        }
+        let mut identity = blake3::Hasher::new();
+        identity.update(b"mn.hosted-collections/1");
+        identity.update(runtime_hash.as_bytes());
+        let (lld, sdk, kernel32) = link_driver::collections_link_identities()?;
+        for tool in [&lld, &sdk, &kernel32] {
+            identity.update(tool.as_bytes());
+            identity.update(&[0]);
+        }
+
+        let mut objects = Vec::with_capacity(units.len() + 1);
+        let mut total: usize = 0;
+        for unit in &units {
+            let object = obs.span("codegen", |o| {
+                let object = lower::emit_unit_coff(unit)?;
+                o.counter("codegen_emit_units", 1);
+                Ok::<_, MnError>(object)
+            })?;
+            total = total.checked_add(object.bytes.len()).ok_or_else(|| {
+                MnError::Resource("request-objects", "native object total overflow".into())
+            })?;
+            if object.bytes.len() > crate::config::MAX_COFF_BYTES
+                || total > crate::config::MAX_REQUEST_OBJECTS_BYTES
+            {
+                return Err(MnError::Resource(
+                    "request-objects",
+                    "hosted collection objects exceed the existing native budget".into(),
+                ));
+            }
+            identity.update(blake3::hash(&object.bytes).as_bytes());
+            objects.push(ObjectInput {
+                name: object.symbol,
+                bytes: object.bytes,
+            });
+        }
+        let platform = crate::platform_io::emit_platform_shim_coff()?;
+        identity.update(blake3::hash(&platform).as_bytes());
+        objects.push(ObjectInput {
+            name: "mn-platform-shim".into(),
+            bytes: platform,
+        });
+
+        let (build, _) = self.finish_collections(
+            objects,
+            &entry.symbol,
+            &module.owner.module,
+            entry_name,
+            runtime_library,
+            workdir,
+            identity.finalize().to_hex().to_string(),
+            None,
+            obs,
+            false,
+        )?;
+        Ok(build)
+    }
+
     fn finish_collections(
         &mut self,
         objects: Vec<ObjectInput>,
