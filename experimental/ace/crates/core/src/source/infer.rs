@@ -570,14 +570,19 @@ fn estimate(
         ExprKind::ArrayLit(values) => {
             estimate_collection("List", e.span, values.iter(), env, ctx, sites)
         }
-        ExprKind::ObjectLit { fields } => estimate_collection(
-            super::resolve::INFERRED_OBJECT_TYPE,
-            e.span,
-            fields.iter().map(|field| &field.value),
-            env,
-            ctx,
-            sites,
-        ),
+        ExprKind::ObjectLit { fields } => {
+            for field in fields {
+                estimate(&field.value, env, ctx, sites);
+            }
+            // Ordinary Auto object literals use the shared Dyn element type.
+            Ty::Concrete(TypeRef::Generic {
+                name: super::ast::Ident {
+                    name: super::resolve::INFERRED_OBJECT_TYPE.into(),
+                    span: e.span,
+                },
+                args: Vec::new(),
+            })
+        }
         ExprKind::CtorNamed { ty, fields, .. } => {
             for f in fields {
                 estimate(&f.value, env, ctx, sites);

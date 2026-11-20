@@ -63,17 +63,24 @@ pub fn legacy_inventory(test_root: &Path) -> Result<serde_json::Value, String> {
         family: &str,
         id: &str,
     ) -> Result<serde_json::Value, String> {
-        let doc_path = crate::legacy_doc_for_trans::doc_path(case_dir, stem);
+        let (doc_path, source_path, checks) =
+            match crate::legacy_doc_for_trans::load_case(case_dir, stem) {
+                Ok(doc) => {
+                    let source_path = doc.source_path().to_string();
+                    let checks = doc
+                        .check_ids()
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect::<Vec<_>>();
+                    (doc.document_path, source_path, checks)
+                }
+                Err(_) => (
+                    crate::legacy_doc_for_trans::doc_path(case_dir, stem),
+                    format!("{stem}.at"),
+                    Vec::new(),
+                ),
+            };
         let document = file(&doc_path)?;
-        let mut checks: Vec<String> = Vec::new();
-        let mut source_path = format!("{stem}.at");
-        match crate::legacy_doc_for_trans::load_case(case_dir, stem) {
-            Ok(doc) => {
-                source_path = doc.source_path().to_string();
-                checks = doc.check_ids().into_iter().map(|c| c.to_string()).collect();
-            }
-            Err(_) => {}
-        }
         let oracles: Vec<serde_json::Value> = checks
             .iter()
             .map(|check| {

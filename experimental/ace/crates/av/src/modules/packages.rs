@@ -505,6 +505,35 @@ fn main() int { hit = hit + 1; return f(39) + hit }"#,
         drop(current);
         assert_eq!(arena.live(), 0);
         drop(fresh);
+
+        let trapping = [input(
+            "app",
+            "main",
+            r#"var label Str = "temporary".clone()
+fn zero() int { return 0 }
+var result int = label.len() / zero()
+fn main() int { return result }"#,
+        )];
+        let trapping = compile_package_product_auto(&trapping, "app::main", &caps, budget).unwrap();
+        let trapping = PackageAvTarget::cold(&dir, &trapping).unwrap();
+        for _ in 0..2 {
+            let (outcome, trace) = ace_av_core::execute_program(
+                &trapping.current,
+                &ace_av_core::ExecLimits::default(),
+                &ace_av_core::CancelFlag::default(),
+            );
+            assert!(matches!(
+                outcome,
+                ExecOutcome::Trap {
+                    kind: ace_av_core::contract::TrapKind::DivByZero,
+                    ..
+                }
+            ));
+            assert!(!trapping.current.initialized());
+            assert_eq!(trace.frames_remaining, 0);
+            assert_eq!(trace.arena.unwrap().live(), 0);
+        }
+        drop(trapping);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -16,6 +16,7 @@ use auto_test_case::document::CaseDocument;
 
 pub struct LegacyDoc {
     pub case: AuthorCase,
+    pub document_path: PathBuf,
 }
 
 /// The migration document path of one corpus entry.
@@ -33,7 +34,7 @@ pub fn case_stem(dir: &Path) -> Option<String> {
 
 // An identity-preserving VM migration keeps the historical oracle id and
 // routes active legacy readers to the same author as the AV probe.
-fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
+pub fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
     let Some(category) = path.parent().and_then(Path::parent) else {
         return Ok(None);
     };
@@ -89,9 +90,14 @@ fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
     let mut matches = suite
         .cases
         .iter()
-        .flat_map(|file| file.specs.iter().zip(&file.doc_spans))
-        .filter(|(spec, _)| spec.id == identity);
-    let (spec, span) = matches
+        .flat_map(|file| {
+            file.specs
+                .iter()
+                .zip(&file.doc_spans)
+                .map(move |(spec, span)| (spec, span, &file.path))
+        })
+        .filter(|(spec, _, _)| spec.id == identity);
+    let (spec, span, document_path) = matches
         .next()
         .ok_or_else(|| format!("canonical VM case {identity} is absent"))?;
     if matches.next().is_some() {
@@ -104,6 +110,7 @@ fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
         return Err(format!("canonical VM case {identity} lost a legacy check"));
     }
     Ok(Some(LegacyDoc {
+        document_path: document_path.clone(),
         case: AuthorCase {
             spec,
             key: span.key.clone(),
@@ -146,6 +153,7 @@ pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
     }
     Ok(LegacyDoc {
         case: cases.remove(0),
+        document_path: doc_path,
     })
 }
 
@@ -251,7 +259,9 @@ impl DocFacts {
 /// obligation or falling back to frozen sidecars.
 pub fn doc_facts(dir: &Path, stem: &str) -> Result<Option<DocFacts>, String> {
     if !doc_path(dir, stem).is_file() {
-        return Ok(None);
+        return Ok(canonical_vm_case(&doc_path(dir, stem))?
+            .as_ref()
+            .map(DocFacts::from_doc));
     }
     let doc = load_case(dir, stem)?;
     Ok(Some(DocFacts::from_doc(&doc)))

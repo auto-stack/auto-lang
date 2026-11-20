@@ -7,9 +7,7 @@
 //! normal path). Missing docs are hard errors — never a fallback to the old
 //! sidecars.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use auto_test_case::admission::Limits;
 use auto_test_case::author::{decode_document, AuthorCase};
@@ -31,8 +29,11 @@ pub fn load_case(dir: &Path, stem: &str) -> Result<LegacyDoc, String> {
 /// PLAN-1066 T-05: read an explicitly named author document (e.g.
 /// `main.project.case.ad`) and return its single decoded case.
 pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
-    if let Some(canonical) = canonical_vm_case(doc_path)? {
-        return Ok(canonical);
+    if let Some(canonical) = auto_lang_core::legacy_doc_for_trans::canonical_vm_case(doc_path)? {
+        return Ok(LegacyDoc {
+            case: canonical.case,
+            document_path: canonical.document_path,
+        });
     }
     let bytes = std::fs::read(doc_path)
         .map_err(|e| format!("legacy doc {} missing/unreadable: {e} (migration doc required; sidecar fallback is forbidden)", doc_path.display()))?;
@@ -56,65 +57,6 @@ pub fn load_document(doc_path: &Path) -> Result<LegacyDoc, String> {
         case: cases.remove(0),
         document_path: doc_path.to_path_buf(),
     })
-}
-
-/// Resolve exact migrations by their retained case identity. Other rows
-/// record coverage relationships and must not redirect a legacy reader.
-fn canonical_vm_case(path: &Path) -> Result<Option<LegacyDoc>, String> {
-    use auto_test_case::discovery::{load_suite, LoadedSuite};
-
-    static ALIASES: OnceLock<Result<BTreeMap<String, String>, String>> = OnceLock::new();
-    static CORPUS: OnceLock<Result<LoadedSuite, String>> = OnceLock::new();
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    if !path.starts_with(manifest.join("test/vm")) {
-        return Ok(None);
-    }
-    let Some(repo) = manifest.parent().and_then(Path::parent) else { return Ok(None); };
-    let rel = path.strip_prefix(repo).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
-    let cases = manifest.join("test/cases");
-    let aliases = ALIASES.get_or_init(|| {
-        let path = cases.join("language/migration/legacy-map.tsv");
-        let contents = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        let mut aliases = BTreeMap::new();
-        for row in contents.lines().filter(|row| !row.is_empty() && !row.starts_with('#')) {
-            let fields: Vec<_> = row.split('\t').collect();
-            if let [source, old, _, _, _, _, _, canonical, _, _, _, "mapped"] = fields.as_slice() {
-                if old == canonical {
-                    let source = source.strip_prefix("../../../").unwrap_or(source);
-                    if let Some(other) = aliases.insert(source.to_owned(), (*canonical).to_owned()) {
-                        if other != *canonical {
-                            return Err(format!("ambiguous canonical migration for {source}"));
-                        }
-                    }
-                }
-            }
-        }
-        Ok(aliases)
-    }).as_ref().map_err(Clone::clone)?;
-    let Some(id) = aliases.get(&rel) else { return Ok(None); };
-    let suite = CORPUS.get_or_init(|| {
-        let suite = load_suite(&cases.join("language.suite.ad"), &Limits::defaults())
-            .map_err(|err| err.to_string())?;
-        if let Some(first) = suite.errors.first() { return Err(first.to_string()); }
-        Ok(suite)
-    }).as_ref().map_err(Clone::clone)?;
-    for file in &suite.cases {
-        if let Some((index, spec)) = file.specs.iter().enumerate().find(|(_, spec)| &spec.id == id) {
-            let span = file.doc_spans.get(index)
-                .ok_or_else(|| format!("canonical case {id} lacks a document span"))?;
-            return Ok(Some(LegacyDoc {
-                document_path: file.path.clone(),
-                case: AuthorCase {
-                    spec: spec.clone(),
-                    key: span.key.clone(),
-                    heading_line: span.heading_line,
-                    end_line: span.end_line,
-                    check_spans: span.check_spans.clone(),
-                },
-            }));
-        }
-    }
-    Err(format!("migrated legacy case {id} missing from the canonical language suite"))
 }
 
 impl LegacyDoc {

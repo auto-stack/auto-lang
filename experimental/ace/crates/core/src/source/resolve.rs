@@ -5545,7 +5545,7 @@ pub(crate) enum TypePos {
 /// PLAN-864: table-aware annotation resolution — `?T` sugar, `List<T>`,
 /// `Result<T,E>` and record names, with the value-context rejections of
 /// [`TypePos`].
-pub(crate) const INFERRED_OBJECT_TYPE: &str = "__inferred_object";
+pub(crate) const INFERRED_OBJECT_TYPE: &str = "<inferred-object>";
 
 fn vt_of_ann_coll(
     ann: &ast::TypeAnn,
@@ -5664,9 +5664,8 @@ fn vt_of_ann_coll(
             VT::Variant(vi)
         }
         ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
-            (INFERRED_OBJECT_TYPE, 1) if coll.aggregates_admission => {
-                let element = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
-                VT::Object(coll.intern_object(element))
+            (INFERRED_OBJECT_TYPE, 0) if coll.aggregates_admission => {
+                VT::Object(coll.intern_object(VT::Dyn))
             }
             // PLAN-962 (T-08, L-08): `Box<T>` — explicit single-value
             // indirection. Representation: the single-element List cell

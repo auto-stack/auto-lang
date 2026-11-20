@@ -2533,14 +2533,21 @@ fn run_check_with_transport(
                 break 'admit;
             }
             if let Some(span) = &step.source_span {
+                let source_len = if request.get("project").is_some() {
+                    case.files
+                        .iter()
+                        .find(|file| file.virtual_path == span.path)
+                        .map(|file| file.bytes.len())
+                } else {
+                    (span.path == case.entry_path).then_some(input_bytes.len())
+                };
                 if family != RecipeFamily::LanguageSource
-                    || span.path != case.entry_path
                     || span.start > span.end
-                    || span.end > input_bytes.len()
+                    || source_len.is_none_or(|len| span.end > len)
                     || !matches!(step.outcome.as_str(), "diag" | "trap")
                 {
                     infra_detail =
-                        Some("invalid worker source span for the submitted entry".to_owned());
+                        Some("invalid worker source span for the submitted source".to_owned());
                     break 'admit;
                 }
             }

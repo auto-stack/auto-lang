@@ -115,8 +115,8 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         match result {
             Ok(observation) => {
                 step["trace"] = json!(observation.trace);
-                if let Some(location) = observation.trap_location {
-                    step["diag"] = location;
+                if let Some(span) = observation.source_span {
+                    step["source_span"] = span;
                 }
                 (Ok(observation.outcome), capture)
             }
@@ -128,8 +128,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     match result {
         Err(diag) => {
             step["outcome"] = json!("diag");
-            if let Some(span) = diag.get("span") {
-                step["source_span"] = span.clone();
+            if let (Some(path), Some(span)) = (diag.get("path"), diag.get("span")) {
+                step["source_span"] =
+                    json!({"path":path, "start":span["start"], "end":span["end"]});
             }
             step["diag"] = diag;
         }
@@ -171,7 +172,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             ExecOutcome::Trap { kind, span } => {
                 step["outcome"] = json!("trap");
                 step["trap"] = json!(kind.code());
-                if let Some(span) = span {
+                if let Some(span) = span.filter(|_| step["source_span"].is_null()) {
                     step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
                 }
             }
@@ -187,7 +188,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             ExecOutcome::Error { message, span } => {
                 step["outcome"] = json!("diag");
                 step["diag"] = json!({"stage":"run","code":"lang.error","message":message});
-                if let Some(span) = span {
+                if let Some(span) = span.filter(|_| step["source_span"].is_null()) {
                     step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
                 }
             }
@@ -336,7 +337,7 @@ fn project_source_hash(files: &BTreeMap<String, String>) -> String {
 struct ProjectObservation {
     outcome: ExecOutcome,
     trace: Vec<&'static str>,
-    trap_location: Option<Json>,
+    source_span: Option<Json>,
 }
 
 fn run_project(
@@ -413,16 +414,16 @@ fn run_project(
             ace_av_core::mir::TraceEvent::MarkB => "b",
         })
         .collect();
-    let trap_location = if let ExecOutcome::Trap {
-        kind,
-        span: Some(span),
-    } = &outcome
-    {
+    let source_span = match &outcome {
+        ExecOutcome::Trap { span, .. } | ExecOutcome::Error { span, .. } => *span,
+        _ => None,
+    }
+    .map(|span| {
         use ace_core::atom_text::{Span, Stage};
         let located = compiled.bound.locate(Diagnostic::new(
             Stage::Text,
-            kind.code(),
-            kind.code(),
+            "",
+            "",
             Span {
                 start: span.start as usize,
                 end: span.end as usize,
@@ -431,16 +432,13 @@ fn run_project(
         let path = paths
             .get(&located.module)
             .map_or(entry_path, String::as_str);
-        let mut location = diagnostic(&located.diagnostic, path);
-        location["stage"] = json!("run");
-        Some(location)
-    } else {
-        None
-    };
+        let span = located.diagnostic.span;
+        json!({"path":path, "start":span.start, "end":span.end})
+    });
     Ok(ProjectObservation {
         outcome,
         trace: marks,
-        trap_location,
+        source_span,
     })
 }
 

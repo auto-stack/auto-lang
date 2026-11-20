@@ -292,6 +292,35 @@ caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.std
 stage: "run"
 code: "av.trap.global-moved"
 
+## Case: read-moved-dependency-global
+id: "av.parity.1085.read-moved-dependency-global"
+tags: ["av-language-parity", "plan-1085"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.run
+fn main() int { return run() }
+```
+
+#### lib.at
+
+```auto
+type Packet { text Str }
+var packet = Packet("answer".clone())
+fn consume(move p Packet) int { return p.text.len() }
+pub fn run() int { let used = consume(packet.move); return used + packet.text.len() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.global-moved"
+
 ## Case: reassign-moved-global
 id: "av.parity.1085.reassign-moved-global"
 tags: ["av-language-parity", "plan-1085"]
@@ -403,8 +432,12 @@ entry-mode: "program"
 path: "main.at"
 
 ```auto
-var obj = { n: 42 }
-fn main() int { return obj["n"] }
+var obj = { n: 40, title: "ok", enabled: true }
+fn main() int {
+    obj["n"] = 42
+    if obj["title"] == "ok" && obj["enabled"] { return obj["n"] }
+    return 0
+}
 ```
 
 ### Probe av
