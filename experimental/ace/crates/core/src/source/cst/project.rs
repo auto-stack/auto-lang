@@ -13808,8 +13808,24 @@ impl GenericExpand {
                 }
             }
             ExprKind::Binary { lhs, rhs, .. } => {
-                self.resolve_typed_ctors_in_expr(lhs);
-                self.resolve_typed_ctors_in_expr(rhs);
+                // Preserve source order while keeping binary spines off the host stack.
+                let mut pending = vec![rhs.as_mut(), lhs.as_mut()];
+                while let Some(child) = pending.pop() {
+                    match child {
+                        Expr {
+                            kind: ExprKind::Binary { lhs, rhs, .. },
+                            ..
+                        } => {
+                            pending.push(rhs);
+                            pending.push(lhs);
+                        }
+                        Expr {
+                            kind: ExprKind::Unary { operand, .. },
+                            ..
+                        } => pending.push(operand),
+                        other => self.resolve_typed_ctors_in_expr(other),
+                    }
+                }
             }
             ExprKind::CtorNamed { fields, .. } => {
                 for f in fields.iter_mut() {
