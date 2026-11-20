@@ -14,6 +14,7 @@ use app.binding.resolved_function
 use app.binding.take_step
 use app.core_atom_bound.bind_core_atom
 use app.core_globals.add_global_intrinsics
+use app.core_globals.build_global_names
 use app.core_globals.getter_mode
 use app.core_globals.global_definition
 use app.core_globals.global_effect_node
@@ -23,6 +24,7 @@ use app.core_globals.initializer_mode
 use app.core_globals.layout_offset
 use app.core_globals.setter_mode
 use app.hir_schema_data.core_schema
+use app.hir_schema_data.global_schema
 use app.initializers.global_layout_stride
 use app.initializers.global_symbol
 use app.numeric_literal.decode_i32_literal
@@ -54,6 +56,7 @@ pub fn hir_type_error() int { return -33 }
 pub fn hir_shape_error() int { return -34 }
 pub fn hir_initialization_error() int { return -40 }
 pub fn hir_mutability_error() int { return -41 }
+pub fn hir_global_authority_error() int { return -43 }
 
 fn constant_op() int { return 1 }
 fn read_op() int { return 2 }
@@ -443,6 +446,7 @@ fn param_count(parameters List<int>, owner int) int {
 
 fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, layouts List<int>, rows int, fuel List<int>, deadline i64) int {
     let target_id = exprs.get(position + 4)
+    if (global_mode(rows, target_id) == initializer_mode()) { return hir_reference_error() }
     let definition = find_row(defs, 4, target_id, 0)
     if (definition < 0) { return hir_reference_error() }
     if (exprs.get(position + 3) != defs.get(definition + 1)) { return hir_type_error() }
@@ -772,6 +776,36 @@ fn verify_accessor(defs List<int>, parameters List<int>, at int, layouts List<in
     return 0
 }
 
+fn verify_initializer_chain(defs List<int>, parameters List<int>, exprs List<int>, blocks List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) int {
+    var at = 0
+    for (at < layouts.len()) {
+        let source = layouts.get(at)
+        let getter = global_definition(rows, source, getter_mode())
+        let setter = global_definition(rows, source, setter_mode())
+        let initializer = global_definition(rows, source, initializer_mode())
+        let scan = defs.len() / 4 * 3 + blocks.len() / 6 + parameters.len() / 4 + exprs.len() / 5
+        if (!has_budget(fuel, deadline, scan)) { return failed(errors, source, bind_budget()) }
+        let get_def = find_row(defs, 4, getter, 0)
+        let set_def = find_row(defs, 4, setter, 0)
+        let init_def = find_row(defs, 4, initializer, 0)
+        if (get_def < 0 || set_def < 0 || init_def < 0) { return failed(errors, source, hir_global_authority_error()) }
+        if (defs.get(get_def + 2) != -1 || defs.get(set_def + 2) != -1 || defs.get(init_def + 2) != initializer) {
+            return failed(errors, source, hir_owner_error())
+        }
+        if (defs.get(init_def + 1) != integer_type() || param_count(parameters, initializer) != 0) {
+            return failed(errors, source, hir_type_error())
+        }
+        let entry = find_row(blocks, 6, defs.get(init_def + 3), 0)
+        if (entry < 0 || blocks.get(entry + 2) >= 0) { return failed(errors, source, hir_initialization_error()) }
+        let result = find_row(exprs, 5, blocks.get(entry + 5), 0)
+        if (result < 0 || exprs.get(result + 2) != call_op() || exprs.get(result + 4) != setter) {
+            return failed(errors, source, hir_initialization_error())
+        }
+        at = at + global_layout_stride()
+    }
+    return 0
+}
+
 fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
     var position = 0
     for (position < defs.len()) {
@@ -838,6 +872,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         position = position + 5
     }
     if (verify_blocks(defs, exprs, blocks, fuel, deadline, errors) != 0) { return None }
+    if (verify_initializer_chain(defs, parameters, exprs, blocks, layouts, rows, fuel, deadline, errors) != 0) { return None }
     if (verify_usage(defs, exprs, args, blocks, statements, fuel, deadline, errors) != 0) { return None }
     if (verify_statements(parameters, exprs, args, blocks, statements, fuel, deadline, errors) != 0) { return None }
     return Some(VerifiedCore { definitions: defs.len() / 4 })
@@ -1146,7 +1181,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     return ""
 }
 
-pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
+fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows int, module_path Str, fuel List<int>, deadline i64) int {
     if (!has_budget(fuel, deadline, bytes.len())) { return bind_budget() }
     let utf8 = decode_utf8(bytes)
     is utf8 {
@@ -1161,7 +1196,9 @@ pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
     var items = List<int>.new()
     var parser_error = List<int>.new()
     parser_error.push(0)
-    let root = bind_document_shape(str_to_bytes(core_schema()), bytes, parser_error, tokens, values, nodes, sequence, fields, items)
+    var schema = core_schema()
+    if (rows > 0) { schema = global_schema() }
+    let root = bind_document_shape(str_to_bytes(schema), bytes, parser_error, tokens, values, nodes, sequence, fields, items)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (root < 0) { return hir_shape_error() }
     var definitions = List<int>.new()
@@ -1170,15 +1207,28 @@ pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
     var arguments = List<int>.new()
     var blocks = List<int>.new()
     var statements = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, definitions, parameters, expressions, arguments, blocks, statements)
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, names, module_path, definitions, parameters, expressions, arguments, blocks, statements)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status != 0) { return status }
     var errors = List<int>.new()
-    var no_layouts = List<int>.new()
-    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, no_layouts, 0, fuel, deadline, errors)
+    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, layouts, rows, fuel, deadline, errors)
     is verified {
         Some(_) -> { return 0 }
         None -> {}
     }
     return errors.get(1)
+}
+
+pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
+    var layouts = List<int>.new()
+    var names = List<int>.new()
+    return verify_transport(bytes, layouts, names, 0, "", fuel, deadline)
+}
+
+pub fn verify_global_document(bytes List<int>, ast List<int>, src List<int>, modules List<int>, declarations List<int>, layouts List<int>, fuel List<int>, deadline i64) int {
+    if (layouts.len() == 0) { return hir_global_authority_error() }
+    var names = List<int>.new()
+    let loaded = build_global_names(ast, src, modules, declarations, layouts, names, fuel, deadline)
+    if (loaded != 0) { return loaded }
+    return verify_transport(bytes, layouts, names, row_count(ast), module_name_at(modules, 0), fuel, deadline)
 }

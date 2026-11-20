@@ -1,4 +1,12 @@
+use app.core_globals.authorized_global_name
+use app.core_globals.getter_mode
+use app.core_globals.global_mode
+use app.core_globals.global_source
+use app.core_globals.initializer_mode
+use app.core_globals.setter_mode
 use app.semantic_tree.span_text
+use std.conv.from_int
+use std.conv.to_int
 
 pub fn atom_tag(bytes List<int>, tokens List<int>, nodes List<int>, node int) Str {
     if (node < 0) { return "" }
@@ -87,6 +95,24 @@ fn by_id(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, s
         at = at + 1
     }
     return result
+}
+
+// The core descriptor accepts ordinary symbolic IDs. The global transport
+// is bound to an issued source catalog and keeps its canonical d<number>
+// identities so authority for a cell cannot transfer to a different def.
+fn definition_id(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, definition int, rows int) int {
+    if (definition < 0 || rows == 0) { return definition }
+    let name = value_text(bytes, tokens, values, slot(nodes, sequence, definition, 0), 0)
+    if (name.len() < 2 || name.len() > 9 || name.char_at(0).to_codepoint() != 100) { return -1 }
+    let number_text = name.slice(1, name.len()).clone()
+    let parsed = to_int(number_text.clone())
+    is parsed {
+        Some(value) -> {
+            if (value >= 0 && value < rows * 6 && from_int(value) == number_text) { return value }
+        }
+        None -> {}
+    }
+    return -1
 }
 
 fn number(bytes List<int>, tokens List<int>, values List<int>, value int, ending Str, parsed List<int>) bool {
@@ -274,7 +300,7 @@ fn validate_places(bytes List<int>, tokens List<int>, values List<int>, nodes Li
     return 0
 }
 
-fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
+fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, rows int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
     let local_group = child(bytes, tokens, nodes, items, body, "locals")
     let expr_group = child(bytes, tokens, nodes, items, body, "expressions")
     let block_group = child(bytes, tokens, nodes, items, body, "blocks")
@@ -292,7 +318,8 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
     defs.push(owner)
     defs.push(result)
     let owner_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, body, "owner"), 1)
-    defs.push(by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, owner_name))
+    let owner_ref = by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, owner_name)
+    defs.push(definition_id(bytes, tokens, values, nodes, sequence, owner_ref, rows))
     defs.push(entry)
 
     let sig_params = field(bytes, tokens, nodes, fields, signature, "params")
@@ -390,7 +417,8 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
                 if (field_count != 4) { return -30 }
                 operation = 3
                 let name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "callee"), 1)
-                payload = by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, name)
+                let reference = by_id(bytes, tokens, values, nodes, sequence, items, declaration_group, name)
+                payload = definition_id(bytes, tokens, values, nodes, sequence, reference, rows)
                 if (!bind_arguments(bytes, tokens, values, nodes, sequence, fields, items, expr_group, expression, args)) { return -32 }
             }
             if (form == "binary") {
@@ -423,35 +451,95 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
     return bind_blocks(bytes, tokens, values, nodes, sequence, fields, items, owner, expr_group, block_group, local_group, place_group, blocks, statements)
 }
 
-pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
+fn bind_global_intrinsic(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, types int, node int, definition int, signature int, rows int, names List<int>, defs List<int>, params List<int>) int {
+    let mode = global_mode(rows, definition)
+    if (mode != getter_mode() && mode != setter_mode()) { return -43 }
+    let allowed = authorized_global_name(names, global_source(rows, definition))
+    if (allowed.len() == 0) { return -43 }
+    var prefix = "module.global.get:"
+    var effect = "pure"
+    var arity = 0
+    if (mode == setter_mode()) {
+        prefix = "module.global.set:"
+        effect = "observable"
+        arity = 1
+    }
+    let symbol = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, node, "symbol"), 1)
+    let effect_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, node, "effect"), 0)
+    if (symbol != prefix + allowed || effect_name != effect) { return -43 }
+    let result = primitive(bytes, tokens, values, nodes, sequence, items, types, field(bytes, tokens, nodes, fields, signature, "result"))
+    let formals = field(bytes, tokens, nodes, fields, signature, "params")
+    if (result == 0 || list_size(values, formals) != arity) { return -33 }
+    if (arity == 1) {
+        let value = list_entry(values, sequence, formals, 0)
+        let input = primitive(bytes, tokens, values, nodes, sequence, items, types, value)
+        if (input == 0) { return -33 }
+        params.push(definition)
+        params.push(definition)
+        params.push(input)
+        params.push(0)
+    }
+    defs.push(definition)
+    defs.push(result)
+    defs.push(-1)
+    defs.push(-1)
+    return 0
+}
+
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
     let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
     let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
     let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
-    if (schema != "auto.hir.core.draft" || profile != "core-i32-draft" || revision != "1u32") { return -34 }
+    var expected_schema = "auto.hir.core.draft"
+    var expected_profile = "core-i32-draft"
+    if (rows > 0) {
+        expected_schema = "auto.hir.text-record.draft"
+        expected_profile = "text-record-i32-draft"
+    }
+    if (schema != expected_schema || profile != expected_profile || revision != "1u32") { return -34 }
     let capabilities = field(bytes, tokens, nodes, fields, root, "requires")
     if (nodes.get(root * 8 + 2) != 0 || (capabilities >= 0 && list_size(values, capabilities) != 0)) { return -30 }
     let module_node = child(bytes, tokens, nodes, items, root, "module")
     if (module_node < 0 || count_children(nodes, items, root) != 1) { return -30 }
+    if (rows > 0) {
+        let actual_path = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, module_node, "path"), 1)
+        if (actual_path != module_path) { return -43 }
+    }
     let types = child(bytes, tokens, nodes, items, module_node, "types")
     let declarations = child(bytes, tokens, nodes, items, module_node, "declarations")
     let bodies = child(bytes, tokens, nodes, items, module_node, "bodies")
     if (types < 0 || declarations < 0 || bodies < 0 || count_children(nodes, items, module_node) != 3) { return -30 }
-    let count = count_children(nodes, items, declarations)
-    if (count == 0 || count != count_children(nodes, items, bodies)) { return -31 }
+    let body_count = count_children(nodes, items, bodies)
+    if (body_count == 0) { return -31 }
     var at = nodes.get(declarations * 8 + 5)
     let limit = at + nodes.get(declarations * 8 + 6)
     var claimed = List<int>.new()
     for (at < limit) {
         if (items.get(at * 2) == 1) {
             let function = items.get(at * 2 + 1)
-            if (atom_tag(bytes, tokens, nodes, function) != "function") { return -30 }
+            let form = atom_tag(bytes, tokens, nodes, function)
+            if (form != "function" && form != "intrinsic") { return -30 }
             if (nodes.get(function * 8 + 2) != 2 || nodes.get(function * 8 + 4) != 2 || count_children(nodes, items, function) != 0) { return -30 }
-            if (value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, function, "name"), 1).len() == 0) { return -30 }
             let name = value_text(bytes, tokens, values, slot(nodes, sequence, function, 0), 0)
             if (by_id(bytes, tokens, values, nodes, sequence, items, declarations, name) != function) { return -32 }
+            let identity = definition_id(bytes, tokens, values, nodes, sequence, function, rows)
+            if (identity < 0) { return -32 }
             let sig_name = value_text(bytes, tokens, values, slot(nodes, sequence, function, 1), 0)
             let signature = by_id(bytes, tokens, values, nodes, sequence, items, types, sig_name)
             if (value_text(bytes, tokens, values, slot(nodes, sequence, signature, 1), 0) != "function") { return -33 }
+            if (form == "intrinsic") {
+                let admitted = bind_global_intrinsic(bytes, tokens, values, nodes, sequence, fields, items, types, function, identity, signature, rows, global_names, defs, params)
+                if (admitted != 0) { return admitted }
+                at = at + 1
+                continue
+            }
+            let function_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, function, "name"), 1)
+            if (function_name.len() == 0) { return -30 }
+            let mode = global_mode(rows, identity)
+            if (mode != 0) {
+                let allowed = authorized_global_name(global_names, global_source(rows, identity))
+                if (mode != initializer_mode() || allowed.len() == 0 || function_name != "__aac_init_" + allowed) { return -43 }
+            }
             let body_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, function, "body"), 1)
             let body = by_id(bytes, tokens, values, nodes, sequence, items, bodies, body_name)
             if (body < 0 || atom_tag(bytes, tokens, nodes, body) != "body") { return -31 }
@@ -461,10 +549,11 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
                 i = i + 1
             }
             claimed.push(body)
-            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, function, signature, defs, params, expressions, args, blocks, statements)
+            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, identity, signature, rows, defs, params, expressions, args, blocks, statements)
             if (status != 0) { return status }
         }
         at = at + 1
     }
+    if (claimed.len() != body_count) { return -31 }
     return 0
 }

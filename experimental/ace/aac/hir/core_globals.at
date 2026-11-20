@@ -1,6 +1,9 @@
 use app.binding.bind_budget
 use app.binding.take_step
 use app.initializers.global_layout_stride
+use app.initializers.global_symbol
+use app.semantic_tree.span_text
+use app.syntax_frontend.str_to_bytes
 use app.types.integer_type
 
 // Source rows occupy [0, rows). Literal carrier expressions occupy the next
@@ -34,6 +37,35 @@ pub fn layout_offset(layouts List<int>, source int) int {
         index = index + global_layout_stride()
     }
     return -1
+}
+
+pub fn build_global_names(ast List<int>, src List<int>, modules List<int>, declarations List<int>, layouts List<int>, names List<int>, fuel List<int>, deadline i64) int {
+    var index = 0
+    for (index < layouts.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let source = layouts.get(index)
+        let name = str_to_bytes(global_symbol(ast, src, modules, declarations, source))
+        names.push(source)
+        names.push(name.len())
+        var at = 0
+        for (at < name.len()) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            names.push(name.get(at))
+            at = at + 1
+        }
+        index = index + global_layout_stride()
+    }
+    return 0
+}
+
+pub fn authorized_global_name(names List<int>, source int) Str {
+    var at = 0
+    for (at < names.len()) {
+        let end = at + 2 + names.get(at + 1)
+        if (names.get(at) == source) { return span_text(names, at + 2, end) }
+        at = end
+    }
+    return ""
 }
 
 fn intrinsic_definition(defs List<int>, definition int, output_type int) int {

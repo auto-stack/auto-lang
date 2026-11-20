@@ -35,6 +35,7 @@ mod native;
 #[cfg(windows)]
 pub use native::observe_hir_publication;
 pub use native::observe_project_inventory;
+pub use native::run_global_hir_admission;
 #[cfg(all(windows, feature = "aac-foreign-semantics"))]
 pub use native::run_semantic_foreign_case;
 

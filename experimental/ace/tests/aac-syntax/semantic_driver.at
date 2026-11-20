@@ -15,11 +15,13 @@ use app.core_hir.checked_core_atom
 use app.core_hir.hir_owner_error
 use app.core_hir.hir_initialization_error
 use app.core_hir.hir_mutability_error
+use app.core_hir.hir_global_authority_error
 use app.core_hir.hir_reference_error
 use app.core_hir.hir_shape_error
 use app.core_hir.hir_type_error
 use app.core_hir.hir_unsupported
 use app.core_hir.verify_core_document
+use app.core_hir.verify_global_document
 use app.declarations.annotation_owner_error
 use app.declarations.annotation_stride
 use app.declarations.collect_declaration_inputs
@@ -126,6 +128,7 @@ fn diagnostic_name(code int) Str {
     if (code == hir_shape_error()) { return "hir.shape" }
     if (code == hir_initialization_error()) { return "hir.initialization" }
     if (code == hir_mutability_error()) { return "hir.mutability" }
+    if (code == hir_global_authority_error()) { return "hir.global-authority" }
     if (code == annotation_owner_error()) { return "type.annotation-owner" }
     return "internal.semantic"
 }
@@ -296,6 +299,23 @@ fn admit_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, ba
     return "ERROR os.read\n"
 }
 
+fn admit_global_artifact(ast List<int>, src List<int>, modules List<int>, declarations List<int>, layouts List<int>, fuel List<int>, deadline i64) Str {
+    let path = get("AAC1047_HIR_INPUT")
+    let size_bytes = size(path.clone())
+    if (size_bytes < 0i64) { return "ERROR os.read\n" }
+    if (size_bytes > 262144i64) { return "ERROR resource.semantic\n" }
+    let data = read_bytes(path)
+    is data {
+        Some(bytes) -> {
+            let result = verify_global_document(bytes, ast, src, modules, declarations, layouts, fuel, deadline)
+            if (result == 0) { return "ADMITTED text-record-i32-draft\n" }
+            return "ERROR " + diagnostic_name(result) + "\n"
+        }
+        None -> {}
+    }
+    return "ERROR os.read\n"
+}
+
 fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package_source bool, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
@@ -350,6 +370,9 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
         if (hir_mode.len() > 0) {
             if (pending.len() > 0) {
                 return type_report(ast, bases, facts, types) + declaration_report(ast, src, bases, metadata, pending)
+            }
+            if (hir_mode == "admit-globals") {
+                return admit_global_artifact(ast, src, modules, declarations, layouts, fuel, deadline)
             }
             var control = 0
             if (hir_mode == "owner") { control = 1 }
@@ -472,6 +495,11 @@ fn admit_document(path Str, steps int) Str {
 fn publish_verified(report Str, artifact Str) Str {
     let staged = get("AAC1047_STAGED")
     if (staged.len() == 0 || staged == artifact) { return "ERROR os.stage\n" }
+    var profile = "core-i32-draft"
+    let global_prefix = "hir(schema: \"auto.hir.text-record.draft\""
+    if (report.len() > global_prefix.len() && report.slice(0, global_prefix.len()).clone() == global_prefix) {
+        profile = "text-record-i32-draft"
+    }
     if (write_text(staged.clone(), report) != 0) {
         delete(staged)
         return "ERROR os.stage\n"
@@ -480,7 +508,7 @@ fn publish_verified(report Str, artifact Str) Str {
         delete(staged)
         return "ERROR os.replace\n"
     }
-    return "PUBLISHED core-i32-draft\n"
+    return "PUBLISHED " + profile + "\n"
 }
 
 fn write_stage_report(report Str) int {

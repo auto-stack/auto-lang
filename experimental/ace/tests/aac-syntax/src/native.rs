@@ -76,8 +76,9 @@ pub fn semantic_modules() -> Vec<(String, String)> {
     files.push((
         "hir_schema_data.at".into(),
         format!(
-            "pub fn core_schema() Str {{ return {:?} }}\n",
-            include_str!("../../../crates/core/schema/core-i32.atom")
+            "pub fn core_schema() Str {{ return {:?} }}\npub fn global_schema() Str {{ return {:?} }}\n",
+            include_str!("../../../crates/core/schema/core-i32.atom"),
+            include_str!("../../../crates/core/schema/text-record.atom")
         ),
     ));
     files
@@ -185,6 +186,28 @@ pub fn run_type_case(sample: &[u8], steps: Option<u32>) -> Result<String, String
 
 pub fn run_core_hir_case(sample: &[u8], mode: &str) -> Result<String, String> {
     run_semantic_source(sample, None, true, Some(mode))
+}
+
+pub fn run_global_hir_admission(source: &str, artifact: &str) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("semantic-global-hir", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let draft = root.join("artifact.atom");
+        std::fs::write(&input, source).map_err(|err| format!("write source authority: {err}"))?;
+        std::fs::write(&draft, artifact).map_err(|err| format!("write untrusted HIR: {err}"))?;
+        let mut cmd = semantic_command(
+            exe,
+            root,
+            &input,
+            &output,
+            None,
+            true,
+            Some("admit-globals"),
+        );
+        cmd.env("AAC1047_HIR_INPUT", draft);
+        execute_report(cmd, &output, "semantic-global-hir")
+    })
 }
 
 #[cfg(all(windows, feature = "aac-foreign-semantics"))]

@@ -1,5 +1,6 @@
 #![cfg(windows)]
 
+use ace_aac_syntax_conformance::run_global_hir_admission;
 use ace_aac_syntax_conformance::{
     observe_hir_publication, observe_project_inventory, run_core_hir_case, run_core_hir_project,
     run_semantic_case, run_semantic_project, run_type_case, run_type_project,
@@ -57,6 +58,30 @@ fn verifies_global_accessors_and_effectful_named_argument_order() {
         rejection.starts_with("ERROR hir.mutability 0 "),
         "{rejection}"
     );
+}
+
+#[test]
+fn rechecks_global_effects_against_the_source_layout() {
+    let source = "var count int = 40\nfn main() int { count = count + 2\n return count }";
+    let artifact = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR");
+    let admit = |body: &str| run_global_hir_admission(source, body).expect("Auto HIR admission");
+    assert_eq!(admit(&artifact), "ADMITTED text-record-i32-draft\n");
+    let stolen = artifact.replace(
+        "module.global.set:g3_appm4_main_count",
+        "module.global.set:g3_appm4_main_other",
+    );
+    assert_ne!(stolen, artifact);
+    assert_eq!(admit(&stolen), "ERROR hir.global-authority\n");
+    let erased = artifact.replace("effect: observable", "effect: pure");
+    assert_ne!(erased, artifact);
+    assert_eq!(admit(&erased), "ERROR hir.global-authority\n");
+    let changed_initializer =
+        artifact.replace("__aac_init_g3_appm4_main_count", "incorrect_initializer");
+    assert_ne!(changed_initializer, artifact);
+    assert_eq!(admit(&changed_initializer), "ERROR hir.global-authority\n");
+    let wrong_module = artifact.replace("path: \"app.main\"", "path: \"app.foreign\"");
+    assert_ne!(wrong_module, artifact);
+    assert_eq!(admit(&wrong_module), "ERROR hir.global-authority\n");
 }
 
 #[test]
