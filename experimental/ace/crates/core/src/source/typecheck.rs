@@ -338,7 +338,12 @@ fn check_expr(
                     if let Some(c) = callee {
                         if let Some(pos) = param_position(idx, a, c) {
                             let want = c.params[pos];
-                            if a.value.vt != want {
+                            // PLAN-105 T-02（U03 真语料 012）：AGE 入口允许文本实参
+                            // 跨借用/owned（`str` ↔ `Str` 同一文本内容语义）。
+                            let text_cross = age_eq
+                                && want.is_text()
+                                && a.value.vt.is_text();
+                            if a.value.vt != want && !text_cross {
                                 mismatch(diags, want, a.value.vt, a.value.span);
                             }
                         }

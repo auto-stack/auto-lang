@@ -452,7 +452,11 @@ fn verify_function_impl(
                 hir::TypeKind::StrOwned => {
                     matches!(v.domain, HirDomain::Collections | HirDomain::Closures)
                 }
-                hir::TypeKind::Char => v.domain == HirDomain::Closures,
+                // PLAN-105 T-02（U03 真语料 012）：collections 面也承载**借用文本
+                // 视图**（`text_slice`/`char_at` 的结果类型）与 `char`。
+                hir::TypeKind::Str | hir::TypeKind::Char => {
+                    matches!(v.domain, HirDomain::Collections | HirDomain::Closures)
+                }
                 _ => false,
             };
             if text_kind && !admitted {
@@ -2374,7 +2378,17 @@ fn verify_text_record_impl(
 /// `.len()` (the TextLen view shape). Cleanup carries no plan — profile 4
 /// releases frame-owned values at exits.
 pub fn verify_collections(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family(bundle, HirDomain::Collections)
+    // PLAN-105 T-02（U03 真语料 012）：AGE 入口的 collections 面与 text-record 面
+    // 同律——字符串相等性允许跨借用/owned（`t == "light"`）。
+    verify_collection_family_age(bundle, HirDomain::Collections)
+}
+
+/// collections 面的 AGE 入口（`age_eq` 开）：组件面复用同一族验器。
+pub fn verify_collection_family_age(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_impl_age(bundle, expected, false, true)
 }
 
 /// PLAN-865: source closures retain every collections-domain rule while
@@ -2408,11 +2422,29 @@ fn verify_collection_family(
     verify_collection_family_impl(bundle, expected, false, false)
 }
 
+fn verify_collection_family_impl_age(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+    foreign_allowed: bool,
+    age_eq: bool,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq)
+}
+
 fn verify_collection_family_impl(
     bundle: hir::Bundle,
     expected: HirDomain,
     foreign_allowed: bool,
     ordinary_auto: bool,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_inner(bundle, expected, foreign_allowed, false)
+}
+
+fn verify_collection_family_inner(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+    foreign_allowed: bool,
+    age_eq_flag: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     // PLAN-912 §5.4 whole-axis observation: verifying every body is a
     // module-axis attempt (the warm closures path must never reach here).
@@ -2430,7 +2462,7 @@ fn verify_collection_family_impl(
         )]);
     }
     let mut v = Verifier {
-        age_eq: false,
+        age_eq: age_eq_flag,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -5467,6 +5499,7 @@ impl Verifier {
                 ) || (matches!(self.domain, HirDomain::Collections | HirDomain::Closures)
                     && lvt == ValueType::StrOwned)
                     || (self.domain == HirDomain::Closures && lvt == ValueType::Str)
+
                     // PLAN-909:  locals join the CLOSURES domain (the
                     // shared-cell value domain is int/bool/char, SEM-04).
                     || (self.domain == HirDomain::Closures && lvt == ValueType::Char))
@@ -6652,7 +6685,14 @@ impl Verifier {
                                 if let (Some(pt), Some(at)) =
                                     (params.get(b.param as usize), arg_types.get(b.arg as usize))
                                 {
-                                    if at != pt {
+                                    // PLAN-105 T-02（U03 真语料 012）：AGE 入口的文本
+                                    // 实参允许跨借用/owned（同一文本内容语义）。
+                                    let text_cross = matches!(
+                                        (*pt, *at),
+                                        (ValueType::Str, ValueType::StrOwned)
+                                            | (ValueType::StrOwned, ValueType::Str)
+                                    );
+                                    if at != pt && !text_cross {
                                         self.error(
                                             "verify.type-mismatch",
                                             format!(
