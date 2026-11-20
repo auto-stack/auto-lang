@@ -141,6 +141,28 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+## Case: generic-record-nested-from-parameter
+id: "av.parity.1088.generic-record-nested-from-parameter"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { item T }
+type Inner = Box<int>
+fn make<T>(x T) Box<T> { return Box { item: x } }
+fn read<T>(x Box<Box<T>>) T { return x.item.item }
+fn main() int { return read(make<Inner>(make(42))) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
 ## Case: generic-record-owner
 id: "av.parity.1088.generic-record-owner"
 tags: ["av-language-parity", "plan-1088"]

@@ -14405,18 +14405,8 @@ F:{d}
                         if self.owned_spec_result && self.fn_result == VT::StrOwned {
                             value = Self::own_dynamic_text(value);
                         }
-                        if self.profile.is_auto_language()
-                            && value.vt == self.fn_result
-                            && matches!(value.vt, VT::Rec(_))
-                            && !self.vt_is_coll_owned(value.vt)
-                            && matches!(&value.kind, RExprKind::ReadLocal(local)
-                                if self.locals[local.0].is_param && self.locals[local.0].mode != ast::ParamMode::Move)
-                        {
-                            value = ResolvedExpr {
-                                span: value.span,
-                                vt: value.vt,
-                                kind: RExprKind::RecordClone { base: Box::new(value) },
-                            };
+                        if value.vt == self.fn_result {
+                            self.copy_record_parameter(&mut value);
                         }
                         retag_literal(&mut value, self.fn_result);
                         if matches!(
@@ -16228,6 +16218,8 @@ F:{d}
                     ),
                     a.value.span,
                 );
+            } else {
+                self.copy_record_parameter(&mut a.value);
             }
         }
         ResolvedExpr {
@@ -16312,6 +16304,8 @@ F:{d}
                             ),
                             fspan,
                         );
+                    } else {
+                        self.copy_record_parameter(&mut v);
                     }
                     resolved.push((name.name.clone(), v));
                 }
@@ -21081,12 +21075,13 @@ F:{d}
         else {
             return;
         };
-        let original = std::mem::replace(value, instances::pending_expression(value.span));
+        let mut original = std::mem::replace(value, instances::pending_expression(value.span));
         let payload = if self.vt_is_coll_owned(original.vt)
             && !matches!(original.kind, RExprKind::Move { .. })
         {
             self.clone_collection_value(original)
         } else {
+            self.copy_record_parameter(&mut original);
             original
         };
         value.kind = RExprKind::VariantCtor {
@@ -21095,6 +21090,24 @@ F:{d}
             payload: Some(Box::new(payload)),
         };
         value.vt = want;
+    }
+
+    /// A copyable record parameter uses a view in MIR. When an ordinary
+    /// expression needs a record value, copy that view at the boundary.
+    fn copy_record_parameter(&self, value: &mut ResolvedExpr) {
+        if !self.profile.is_auto_language() || !matches!(value.vt, VT::Rec(_)) {
+            return;
+        }
+        let RExprKind::ReadLocal(local) = value.kind else {
+            return;
+        };
+        let local = &self.locals[local.0];
+        if !local.is_param || local.mode == ast::ParamMode::Move || self.vt_is_coll_owned(value.vt) {
+            return;
+        }
+        let base = std::mem::replace(value, instances::pending_expression(value.span));
+        value.vt = base.vt;
+        value.kind = RExprKind::RecordClone { base: Box::new(base) };
     }
 
     fn adapt_argument_type(&self, value: &mut ResolvedExpr, want: VT) {
