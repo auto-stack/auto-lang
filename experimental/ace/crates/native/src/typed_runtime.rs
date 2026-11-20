@@ -115,6 +115,7 @@ pub fn prepare(override_library: Option<&Path>) -> Result<Prepared, MnError> {
     let runtime = root.join("crates/typed-entry-runtime");
     let mut files = vec![
         runtime.join("Cargo.toml"),
+        root.join("crates/text-runtime/src/freestanding_memory.rs"),
         root.join("Cargo.toml"),
         root.join("Cargo.lock"),
     ];

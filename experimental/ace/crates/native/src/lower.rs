@@ -3255,7 +3255,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                     &[p, l, s, e],
                 )?;
                 self.negative_guard(nl)?;
-                self.replace_owned_text(*dst, np, nl)?;
+                // ac_rt_text_slice returns a borrowed view into the original
+                // text. Its previous address has no destructor right.
+                self.def_pair(*dst, np, nl)?;
             }
             MirInstr::StrConcat { dst, lhs, rhs } => {
                 let ap = self.use_ptr(*lhs)?;

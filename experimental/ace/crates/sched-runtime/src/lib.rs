@@ -42,9 +42,9 @@ use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 // runtime; referencing them here keeps their objects in the archive — a
 // second Rust staticlib in the same link would collide on the panic/unwind
 // runtime symbols.
-type CopyFn = unsafe extern "C" fn(*mut u8, *const u8, usize) -> *mut u8;
-type SetFn = unsafe extern "C" fn(*mut u8, i32, usize) -> *mut u8;
-type CmpFn = unsafe extern "C" fn(*const u8, *const u8, usize) -> i32;
+type CopyFn = unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> *mut c_void;
+type SetFn = unsafe extern "C" fn(*mut c_void, i32, usize) -> *mut c_void;
+type CmpFn = unsafe extern "C" fn(*const c_void, *const c_void, usize) -> i32;
 
 #[used]
 static KEEP_MEMCPY: [CopyFn; 1] = [ac_text_runtime::memcpy];
@@ -1084,7 +1084,7 @@ pub extern "system" fn mn_sched_drain() -> i32 {
         DRAINING.store(1, Ordering::SeqCst);
 
         let mut go_slot = 0usize;
-        let mut task_slot = 0usize;
+        let task_slot = 0usize;
         let mut cycles: u32 = 0;
         let mut unjoined_residue: i32 = 0;
         loop {

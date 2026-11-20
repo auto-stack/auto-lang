@@ -474,6 +474,16 @@ fn stack_buf(fb: &mut FunctionBuilder<'_>, bytes: u32) -> Value {
     fb.ins().stack_addr(types::I64, ss, 0)
 }
 
+fn zeroed_stack_buf(fb: &mut FunctionBuilder<'_>, bytes: u32) -> Value {
+    let buffer = stack_buf(fb, bytes);
+    let zero = i64v(fb, 0);
+    for offset in (0..bytes).step_by(8) {
+        fb.ins()
+            .store(MemFlags::trusted(), zero, buffer, offset as i32);
+    }
+    buffer
+}
+
 /// Loop: does any of `count` UTF-16 units at `base + 2*off_units` equal 0?
 /// Returns 1 (found) / 0 (clean) as i32.
 fn units_have_nul(
@@ -2512,7 +2522,7 @@ fn emit_proc_spawn_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resu
             os_fail(om, fb, gle, ctx.state, flags, 8);
             fb.switch_to_block(kj);
 
-            let jobi = stack_buf(fb, JOBI_BYTES);
+            let jobi = zeroed_stack_buf(fb, JOBI_BYTES);
             let _t206 = i32v(fb, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE as i32);
 
             fb.ins().store(flags, _t206, jobi, JOBI_LIMITFLAGS);
@@ -2547,7 +2557,7 @@ fn emit_proc_spawn_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resu
             let use_std = fb.ins().icmp_imm(IntCC::NotEqual, capture, 0);
             let (do_cap, no_cap) = split_open(fb, use_std);
             fb.switch_to_block(do_cap);
-            let sa = stack_buf(fb, SA_BYTES);
+            let sa = zeroed_stack_buf(fb, SA_BYTES);
             let _t212 = i32v(fb, 24);
 
             fb.ins().store(flags, _t212, sa, SA_NLENGTH);
@@ -2612,7 +2622,7 @@ fn emit_proc_spawn_w16(om: &mut ObjModule, src: Src<'_>, conv: CallConv) -> Resu
             let err_w = fb.ins().load(types::I64, flags, err_w_ptr, 0);
 
             // STARTUPINFOW.
-            let si = stack_buf(fb, SI_BYTES);
+            let si = zeroed_stack_buf(fb, SI_BYTES);
             let _t228 = i32v(fb, 104);
 
             fb.ins().store(flags, _t228, si, SI_CB);

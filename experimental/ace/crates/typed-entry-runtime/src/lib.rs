@@ -18,14 +18,17 @@
 //! No_std on purpose: the linked PE carries kernel32 only (no CRT). Like
 //! the other native runtime libraries, this code is POINTER-DISCIPLINED —
 //! no slice indexing, no `copy_from_slice`, no operation that can panic —
-//! so no panicking core code unit is ever pulled out of the static library
-//! (a single such reference would drag in fmt/memcpy/unwind machinery the
-//! PE has no provider for). The process is single-threaded and one-shot
+//! and the shared freestanding memory routines cover compiler-generated
+//! memory calls in development as well as optimized builds. The process
+//! is single-threaded and one-shot
 //! per request; the static request anchor is written once by
 //! `mn_typed_read` before any consumer can run.
 
 #![no_std]
 #![no_builtins]
+
+#[path = "../../text-runtime/src/freestanding_memory.rs"]
+mod freestanding_memory;
 
 use core::ptr::{read_unaligned, read_volatile, write_unaligned, write_volatile};
 
