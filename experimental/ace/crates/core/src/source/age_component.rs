@@ -4305,7 +4305,12 @@ pub(crate) fn instance_stmts(
                 if elems.is_empty() {
                     list_new_from_array(init, &args[0])
                 } else {
-                    let elem_ty = args[0].clone();
+                    let mut elem_ty = args[0].clone();
+                    // 文本元素在 collections 域按 owned `Str` 承载（借用 `str`
+                    // 的整元素是视图，不能从列表读成值）。
+                    if matches!(elem_ty.kind, TypeRef::Builtin(TypeWord::Str)) {
+                        elem_ty.kind = TypeRef::Builtin(TypeWord::StrOwned);
+                    }
                     pushes = elems.clone();
                     list_new_from_array(
                         Expr {
