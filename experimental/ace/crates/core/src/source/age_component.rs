@@ -2677,7 +2677,8 @@ fn compile_component_scenario_full(
     // （`d_<name>`，与 `d___age_drive` 同源），消费者按 def id 逐字段取真值。
     let mut instance_states: Vec<Vec<ComponentStateOut>> = vec![Vec::new(); scenario.instances];
     for inst in 0..scenario.instances {
-        for f in &node.fields {
+        // 列表字段没有状态函数（观测通道只按内建类型取真值）。
+        for f in node.fields.iter().filter(|f| field_type(f).is_some()) {
             let fn_name = state_fn_name(inst, &f.name);
             instance_states[inst].push(ComponentStateOut {
                 field: f.name.clone(),
@@ -3183,6 +3184,7 @@ pub(crate) fn handler_check_fn(
             Ok(v) => v,
             Err(ds) => return Some(Err(ds)),
         };
+        let mut pushes: Vec<Expr> = Vec::new();
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ann.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
@@ -3203,6 +3205,28 @@ pub(crate) fn handler_check_fn(
             value: init,
             span: f.span,
         });
+        for p in pushes {
+            stmts.push(Stmt::ExprStmt {
+                value: Expr {
+                    span: f.span,
+                    kind: ExprKind::MethodCall {
+                        recv: Box::new(Expr {
+                            span: f.span,
+                            kind: ExprKind::Var(Ident {
+                                name: local_name(inst, &f.name),
+                                span: f.span,
+                            }),
+                        }),
+                        name: Ident {
+                            name: "push".to_string(),
+                            span: f.span,
+                        },
+                        args: vec![crate::source::ast::Arg::Pos(p)],
+                    },
+                },
+                span: f.span,
+            });
+        }
     }
     // 赋值体：形参名 → 函数参数名（裸名遮蔽 model；`.field` 恒指字段）。
     let param_locals: Vec<(String, String, Span)> = h
@@ -3346,6 +3370,7 @@ pub(crate) fn lambda_value_fn(
             Ok(v) => v,
             Err(ds) => return Some(Err(ds)),
         };
+        let mut pushes: Vec<Expr> = Vec::new();
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ann.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
@@ -3366,6 +3391,28 @@ pub(crate) fn lambda_value_fn(
             value: init,
             span: f.span,
         });
+        for p in pushes {
+            stmts.push(Stmt::ExprStmt {
+                value: Expr {
+                    span: f.span,
+                    kind: ExprKind::MethodCall {
+                        recv: Box::new(Expr {
+                            span: f.span,
+                            kind: ExprKind::Var(Ident {
+                                name: local_name(inst, &f.name),
+                                span: f.span,
+                            }),
+                        }),
+                        name: Ident {
+                            name: "push".to_string(),
+                            span: f.span,
+                        },
+                        args: vec![crate::source::ast::Arg::Pos(p)],
+                    },
+                },
+                span: f.span,
+            });
+        }
     }
     // PLAN-980 lambda-if 刀：语句面降版——Assign=既有路径（rename_expr，
     // 不加 owned wrap——lambda 面既有发射语义保持）；If=递归分支；Let 在
@@ -4248,12 +4295,26 @@ pub(crate) fn instance_stmts(
             Some(v) => initial_literal(v, f.span),
             None => rename_expr(&f.init, FieldBinding::Local(inst), &node.fields)?,
         };
-        // 列表字段的数组初值规范化为 `List<T>.new(…)`（元素类型取自注解）。
+        // 列表字段的数组初值：空数组 → `List<T>.new()`；非空数组 → `List<T>.new()`
+        // + 逐元素 `push`（数组字面量只允许出现在 let/var 初值位，不能做实参）。
+        let mut pushes: Vec<Expr> = Vec::new();
         let init = match (&ann.kind, &init.kind) {
-            (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
+            (TypeRef::Generic { name, args }, ExprKind::ArrayLit(elems))
                 if name.name == "List" && !args.is_empty() =>
             {
-                list_new_from_array(init, &args[0])
+                if elems.is_empty() {
+                    list_new_from_array(init, &args[0])
+                } else {
+                    let elem_ty = args[0].clone();
+                    pushes = elems.clone();
+                    list_new_from_array(
+                        Expr {
+                            span: init.span,
+                            kind: ExprKind::ArrayLit(Vec::new()),
+                        },
+                        &elem_ty,
+                    )
+                }
             }
             _ => init,
         };
@@ -4268,6 +4329,28 @@ pub(crate) fn instance_stmts(
             value: init,
             span: f.span,
         });
+        for p in pushes {
+            stmts.push(Stmt::ExprStmt {
+                value: Expr {
+                    span: f.span,
+                    kind: ExprKind::MethodCall {
+                        recv: Box::new(Expr {
+                            span: f.span,
+                            kind: ExprKind::Var(Ident {
+                                name: local_name(inst, &f.name),
+                                span: f.span,
+                            }),
+                        }),
+                        name: Ident {
+                            name: "push".to_string(),
+                            span: f.span,
+                        },
+                        args: vec![crate::source::ast::Arg::Pos(p)],
+                    },
+                },
+                span: f.span,
+            });
+        }
     }
     for (seq, op) in scenario.ops.iter().enumerate() {
         // PLAN-981 B-W1（组件级调度）：`ForNode` 限定只在本 node 上重放；
