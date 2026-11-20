@@ -3645,6 +3645,8 @@ fn hook_stmts_lower(
     counter: &mut usize,
 ) -> Result<(), Vec<Diagnostic>> {
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
+    // handler 局部的**构造值**（供 owned 元素推入时按值复制）。
+    let mut let_values: Vec<(String, Expr)> = Vec::new();
     for st in body {
         // PLAN-105 T-02（U03 真语料 012）：handler 局部列表字面量
         // （`var rows []str = []`）——collections 域已承载 List 值语义，
@@ -3654,7 +3656,7 @@ fn hook_stmts_lower(
             // resolver（列表方法脱糖）；其余调用维持具名拒（不静默丢调用）。
             ComponentStmt::Call { call, span } => {
                 let is_list_method = match &call.kind {
-                    ExprKind::MethodCall { name, .. } => {
+                    ExprKind::MethodCall { name, .. } | ExprKind::Method { name, .. } => {
                         matches!(name.name.as_str(), "push" | "get" | "len" | "pop" | "clear" | "set")
                     }
                     _ => false,
@@ -3667,13 +3669,20 @@ fn hook_stmts_lower(
                         &scope,
                     )?;
                     // PLAN-105 T-02（U03 真语料 013）：`xs.push(t)` 的整局部值是
-                    // owned 元素 → 按 `.move` 形式发射（隐式转移被拒）。
-                    if let ExprKind::MethodCall { name, args, .. } = &mut renamed.kind {
+                    // owned 元素（隐式转移被拒、`.move` 标记又不在 resolver 语义里）
+                    // → 用该局部**构造时的值表达式**替代（记录按值复制，语义等价）。
+                    if let ExprKind::MethodCall { name, args, .. }
+                        | ExprKind::Method { name, args, .. } = &mut renamed.kind
+                    {
                         if name.name == "push" {
                             for a in args.iter_mut() {
                                 if let crate::source::ast::Arg::Pos(e) = a {
-                                    if matches!(e.kind, ExprKind::Var(_)) {
-                                        *a = crate::source::ast::Arg::MovePos(e.clone());
+                                    if let ExprKind::Var(v) = &e.kind {
+                                        if let Some((_, init)) =
+                                            let_values.iter().find(|(n, _)| *n == v.name)
+                                        {
+                                            *a = crate::source::ast::Arg::Pos(init.clone());
+                                        }
                                     }
                                 }
                             }
@@ -3900,6 +3909,7 @@ fn hook_stmts_lower(
                         }
                     }
                 }
+                let_values.push((name.name.clone(), bound.clone()));
                 out.push(Stmt::Let {
                     kw: *span,
                     name: Ident {
