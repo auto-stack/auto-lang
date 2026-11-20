@@ -1315,6 +1315,37 @@ fn completes_implicit_signatures_and_rejects_a_conflicting_call() {
         type_report(bad),
         format!("ERROR type.argument 0 {start}..{}\n", start + 5)
     );
+    let complete = canonical_source(document, "forward-decl");
+    let report = type_report(complete);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let body = report
+        .lines()
+        .find(|line| line.contains(" 1 test 0 "))
+        .expect("function body declaration")
+        .split_whitespace()
+        .nth(1)
+        .unwrap();
+    assert!(report.contains(&format!("USE {body} test 0 ")), "{report}");
+    let missing = canonical_source(document, "prototype-no-body");
+    let prototype = "fn test() int;";
+    let start = missing.find(prototype).unwrap();
+    assert_eq!(
+        type_report(missing),
+        format!(
+            "ERROR bind.unresolved 0 {start}..{}\n",
+            start + prototype.len()
+        )
+    );
+    let seeded =
+        "fn add(n int) int;\nfn add(value) { value + 2 }\nfn main() int { return add(40) }";
+    let report = type_report(seeded);
+    assert!(report.starts_with("aac.type-report/1\n"), "{report}");
+    let wrong_tail = seeded.replace("value + 2", "false");
+    let start = wrong_tail.find("false").unwrap();
+    assert_eq!(
+        type_report(&wrong_tail),
+        format!("ERROR type.return 0 {start}..{}\n", start + 5)
+    );
 }
 
 #[test]

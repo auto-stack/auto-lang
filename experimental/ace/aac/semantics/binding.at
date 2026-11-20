@@ -26,6 +26,7 @@ pub fn field_decl() int { return 8 }
 pub fn method_decl() int { return 9 }
 pub fn variant_decl() int { return 10 }
 pub fn pattern_binding_decl() int { return 11 }
+pub fn prototype_decl() int { return 12 }
 
 pub fn bind_duplicate() int { return -10 }
 pub fn bind_unresolved() int { return -11 }
@@ -99,7 +100,7 @@ fn decl_scope(pg List<int>, ast List<int>, links List<int>, scopes List<int>, ro
     return scopes.get(row)
 }
 
-fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int>, package_source bool, scopes List<int>, heads List<int>, declarations List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int>, package_source bool, scopes List<int>, heads List<int>, declarations List<int>, prototypes List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let count = row_count(ast)
     var row = 0
     for (row < count) {
@@ -130,12 +131,19 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
             node_kind = global_var_decl()
         }
         if (tag_name == "fn-item" && child_with_role(pg, ast, links, row, "proto") >= 0) {
-            node_kind = function_decl()
+            node_kind = prototype_decl()
         }
         if (node_kind != 0) {
             var name = child_with_role(pg, ast, links, row, "name")
             if (node_kind == pattern_binding_decl()) { name = child_with_kind(pg, ast, links, row, "ident") }
             if (name >= 0) {
+                if (node_kind == prototype_decl()) {
+                    declarations.set(row * decl_stride(), node_kind)
+                    declarations.set(row * decl_stride() + 1, name)
+                    prototypes.push(row)
+                    row = row + 1
+                    continue
+                }
                 let scope = decl_scope(pg, ast, links, scopes, row, node_kind)
                 var index = -1
                 if (scope >= 0) {
@@ -158,6 +166,34 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
             }
         }
         row = row + 1
+    }
+    return 0
+}
+
+fn bind_prototypes(ast List<int>, src List<int>, scopes List<int>, heads List<int>, declarations List<int>, prototypes List<int>, definitions List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var index = 0
+    for (index < prototypes.len()) {
+        let proto = prototypes.get(index)
+        let name = decl_name(declarations, proto)
+        let scope = scopes.get(proto)
+        if (scope < 0) { return fail(errors, proto, bind_unresolved()) }
+        var candidate = heads.get(scope)
+        var definition = -1
+        for (candidate >= 0) {
+            if (!take_step(fuel, deadline)) { return fail(errors, proto, bind_budget()) }
+            if (decl_category(declarations, candidate) == function_decl()) {
+                let equal = same_name(src, ast, name, decl_name(declarations, candidate), fuel)
+                if (equal < 0) { return fail(errors, proto, equal) }
+                if (equal == 1) {
+                    definition = candidate
+                    break
+                }
+            }
+            candidate = prev_decl(declarations, candidate)
+        }
+        if (definition < 0) { return fail(errors, proto, bind_unresolved()) }
+        definitions.push(definition)
+        index = index + 1
     }
     return 0
 }
@@ -697,8 +733,12 @@ pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, 
     }
     var scopes = List<int>.new()
     var heads = List<int>.new()
-    let indexed = build_declarations(pg, ast, links, src, package_source, scopes, heads, declarations, errors, fuel, deadline)
+    var prototypes = List<int>.new()
+    var definitions = List<int>.new()
+    let indexed = build_declarations(pg, ast, links, src, package_source, scopes, heads, declarations, prototypes, errors, fuel, deadline)
     if (indexed != 0) { return indexed }
+    let associated = bind_prototypes(ast, src, scopes, heads, declarations, prototypes, definitions, errors, fuel, deadline)
+    if (associated != 0) { return associated }
     var imports = List<int>.new()
     let collected = collect_imports(pg, ast, links, src, modules, imports, errors, fuel, deadline)
     if (collected != 0) { return collected }
@@ -706,6 +746,11 @@ pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, 
     if (imported != 0) { return imported }
     let bound = bind_occurrences(pg, ast, links, src, modules, roots, scopes, heads, declarations, imports, external, uses, errors, fuel, deadline)
     if (bound != 0) { return bound }
+    var index = 0
+    for (index < prototypes.len()) {
+        uses.set(prototypes.get(index), definitions.get(index))
+        index = index + 1
+    }
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return fail(errors, row, bind_budget()) }

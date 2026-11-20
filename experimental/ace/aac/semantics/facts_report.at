@@ -3,6 +3,7 @@ use app.binding.builtin_choice_kind
 use app.binding.decl_category
 use app.binding.decl_name
 use app.binding.external_signature
+use app.binding.prototype_decl
 use app.binding.take_step
 use app.declarations.annotation_stride
 use app.declarations.deferred_stride
@@ -42,9 +43,14 @@ pub fn binding_report(ast List<int>, src List<int>, bases List<int>, declaration
         }
         let target = uses.get(row)
         if (target >= 0) {
-            let text = spelling(src, ast, row)
-            let line = "USE " + from_int(target) + " " + text + " " + location(ast, row, bases) + "\n"
-            output.push(line.move)
+            if (decl_category(declarations, row) == prototype_decl()) {
+                let line = "PROTOTYPE " + from_int(row) + " " + from_int(target) + " " + location(ast, row, bases) + "\n"
+                output.push(line.move)
+            } else {
+                let text = spelling(src, ast, row)
+                let line = "USE " + from_int(target) + " " + text + " " + location(ast, row, bases) + "\n"
+                output.push(line.move)
+            }
         }
         if (external_signature(target) >= 0) {
             let text = spelling(src, ast, row)

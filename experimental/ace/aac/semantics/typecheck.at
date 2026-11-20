@@ -20,6 +20,7 @@ use app.binding.map_argument_slots
 use app.binding.map_call
 use app.binding.parameter_decl
 use app.binding.postfix_step
+use app.binding.prototype_decl
 use app.binding.record_fields
 use app.binding.resolved_function
 use app.binding.take_step
@@ -102,6 +103,27 @@ fn annotation_of(pg List<int>, ast List<int>, links List<int>, row int) int {
     let annotation = child_with_role(pg, ast, links, row, "ty")
     if (annotation >= 0) { return annotation }
     return child_with_role(pg, ast, links, row, "ann")
+}
+
+fn apply_prototype(pg List<int>, ast List<int>, links List<int>, facts List<int>, proto int, definition int, errors List<int>, fuel List<int>, deadline i64) int {
+    let returns = annotation_of(pg, ast, links, proto)
+    if (returns < 0 || facts.get(returns) == 0) { return failure(errors, proto, type_unknown()) }
+    if (annotation_of(pg, ast, links, definition) < 0 && facts.get(definition) == 0) {
+        facts.set(definition, facts.get(returns))
+    }
+    let declared = call_parameter_slots(pg, ast, links, proto)
+    let params = call_parameter_slots(pg, ast, links, definition)
+    var index = 0
+    for (index < declared.len() && index < params.len()) {
+        if (!take_step(fuel, deadline)) { return failure(errors, proto, bind_budget()) }
+        let expected = annotation_of(pg, ast, links, declared.get(index))
+        let param = params.get(index)
+        if (expected >= 0 && annotation_of(pg, ast, links, param) < 0 && facts.get(param) == 0) {
+            facts.set(param, facts.get(expected))
+        }
+        index = index + 1
+    }
+    return 0
 }
 
 fn initializer_category(category int) bool {
@@ -782,7 +804,7 @@ fn validate_indirect(pg List<int>, ast List<int>, links List<int>, facts List<in
     return 0
 }
 
-fn validate(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn validate(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, implicit_results List<int>, facts List<int>, types List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     var row = 0
     for (row < row_count(ast)) {
         if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
@@ -791,6 +813,8 @@ fn validate(pg List<int>, ast List<int>, links List<int>, src List<int>, declara
         if ((function_category(category) || category == parameter_decl()) && facts.get(row) == 0) {
             return failure(errors, row, type_unknown())
         }
+        let tail = implicit_results.get(row)
+        if (tail >= 0 && facts.get(tail) != facts.get(row)) { return failure(errors, tail, type_return()) }
         if (initializer_category(category) || node_kind == "return-stmt" || node_kind == "assign-stmt") {
             let value = child_with_role(pg, ast, links, row, "value")
             let actual = facts.get(value)
@@ -912,6 +936,10 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
     row = 0
     for (row < count) {
         if (!take_step(fuel, deadline)) { return failure(errors, row, bind_budget()) }
+        if (decl_category(declarations, row) == prototype_decl()) {
+            let applied = apply_prototype(pg, ast, links, facts, row, uses.get(row), errors, fuel, deadline)
+            if (applied != 0) { return applied }
+        }
         if (kind(pg, ast, row) == "return-stmt") {
             let function = enclosing_function(ast, declarations, row)
             if (function >= 0) { explicit_returns.set(function, 1) }
@@ -929,17 +957,17 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
                 if (type_id == 0) { return failure(errors, annotation, type_unknown()) }
                 facts.set(row, type_id)
             } else {
-                if (function_category(category) && explicit_returns.get(row) == 0) {
-                    let tail = tail_expression(pg, ast, links, row)
-                    if (tail >= 0) {
-                        implicit_results.set(row, tail)
-                    } else {
-                        facts.set(row, unit_type())
-                    }
-                }
                 if (category == type_decl()) {
                     let alias_site = alias_target(pg, ast, links, row)
                     if (alias_site >= 0 && facts.get(row) == 0) { return failure(errors, alias_site, type_unknown()) }
+                }
+            }
+            if (function_category(category) && explicit_returns.get(row) == 0) {
+                let tail = tail_expression(pg, ast, links, row)
+                if (tail >= 0) {
+                    implicit_results.set(row, tail)
+                } else {
+                    if (facts.get(row) == 0) { facts.set(row, unit_type()) }
                 }
             }
         }
@@ -976,7 +1004,7 @@ pub fn infer_source(pg List<int>, ast List<int>, links List<int>, src List<int>,
     if (layouts != 0) { return layouts }
     let calls = map_deferred_calls(pg, ast, links, src, declarations, uses, facts, types, mappings, errors, fuel, deadline)
     if (calls != 0) { return calls }
-    let checked = validate(pg, ast, links, src, declarations, uses, mappings, facts, types, errors, fuel, deadline)
+    let checked = validate(pg, ast, links, src, declarations, uses, mappings, implicit_results, facts, types, errors, fuel, deadline)
     if (checked != 0) { return checked }
     return validate_foreign_resources(pg, ast, links, declarations, uses, external, errors, fuel, deadline)
 }
