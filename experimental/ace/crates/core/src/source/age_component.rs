@@ -3657,7 +3657,10 @@ fn hook_stmts_lower(
             ComponentStmt::Call { call, span } => {
                 let is_list_method = match &call.kind {
                     ExprKind::MethodCall { name, .. } | ExprKind::Method { name, .. } => {
-                        matches!(name.name.as_str(), "push" | "get" | "len" | "pop" | "clear" | "set")
+                        matches!(
+                            name.name.as_str(),
+                            "push" | "get" | "len" | "pop" | "clear" | "set" | "insert" | "remove"
+                        )
                     }
                     _ => false,
                 };
@@ -3698,9 +3701,16 @@ fn hook_stmts_lower(
                     });
                     continue;
                 }
+                let what = match &call.kind {
+                    ExprKind::Call { callee, .. } => format!("call `{}`", callee.name),
+                    ExprKind::MethodCall { name, .. } | ExprKind::Method { name, .. } => {
+                        format!("method `{}`", name.name)
+                    }
+                    _ => "expression call".to_string(),
+                };
                 return Err(vec![text_diag(
                     "source.age.component-unsupported",
-                    "handler body call statements are only wired for `store.<Msg>()` (store inline); other calls are a named pending surface",
+                    format!("handler body {what} is not wired yet (only `store.<Msg>()` and list methods are)"),
                     *span,
                 )]);
             }
