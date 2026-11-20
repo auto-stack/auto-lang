@@ -83,7 +83,8 @@ pub use parser::{
 pub use resolve::{
     env_fn_body_identity, env_fn_count, env_fn_names, env_fn_regions, env_free_fn_index,
     env_method_index, env_note_cold_walks, recheck_function, resolve_closures_cached, resolve_env,
-    resolve_env_with_supply, resolve_with, CachedOwner, CheckedEnv, ClosuresOwnerCache, ResolvedFn,
+    resolve_env_with_supply, resolve_with, resolve_with_view, CachedOwner, CheckedEnv,
+    ClosuresOwnerCache, ResolvedFn,
     ResolvedProgram, VT,
 };
 pub use typecheck::{check_body_in, typecheck_with, typecheck_with_skip};

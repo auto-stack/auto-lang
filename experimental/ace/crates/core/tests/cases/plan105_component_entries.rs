@@ -874,3 +874,21 @@ fn p105_store_method_call_expands_into_handler_stmts() {
         "no call statement should survive expansion: {init:?}"
     );
 }
+
+/// PLAN-105 T-02（W79，013 形状）：循环里读记录元素的 bool/文本字段——
+/// `xs[i].f` 是**元素视图的字段投影**（verify 层按 ElemView 规则判定），
+/// bind 层不得一刀切成 `view-escape`。
+#[test]
+fn p105_elem_view_field_projection_compiles() {
+    let src = "type Todo {\n    id int\n    text Str\n    done bool\n}\nwidget App {\n    msg { M }\n    model { var n int = 0\n var todos []Todo = []\n var preview str = \"\" }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            var t Todo = Todo { id: 1, text: \"a\", done: false }\n            .todos.push(t)\n            var i int = 0\n            for i < .todos.len() {\n                if .todos[i].done == false {\n                    .preview = .todos[i].text\n                    .n = .n + 1\n                }\n                i = i + 1\n            }\n        }\n    }\n}\n";
+    let caps = vec!["ac.runtime.text.v1".to_string()];
+    let scenario = ComponentScenario { instances: 1, ops: Vec::new() };
+    ace_core::source::age_component::compile_component_scenario(
+        src,
+        "app",
+        LegacyWidgetAlias::Accept,
+        &caps,
+        &scenario,
+    )
+    .unwrap_or_else(|ds| panic!("elem view field projection must compile: {ds:?}"));
+}

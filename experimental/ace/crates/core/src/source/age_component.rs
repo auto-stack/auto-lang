@@ -1620,7 +1620,7 @@ pub fn compile_age_component(
         }
     }
     let desugared = Program { items };
-    let parts = match super::adapter::compile_program_parts_age(
+    let parts = match super::adapter::compile_program_parts_age_elem_view(
         &desugared,
         src,
         module_path,
@@ -1631,7 +1631,7 @@ pub fn compile_age_component(
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
     let input_hash = parts.input_hash.clone();
-    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collection_family_age(parts.bundle, crate::hir::HirDomain::Collections) } else { crate::verify::verify_text_record_age(parts.bundle) } {
+    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collection_family_age_elem_view(parts.bundle, crate::hir::HirDomain::Collections) } else { crate::verify::verify_text_record_age(parts.bundle) } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
@@ -2633,7 +2633,7 @@ fn compile_component_scenario_full(
         }));
     }
     let desugared = Program { items };
-    let parts = match super::adapter::compile_program_parts_age(
+    let parts = match super::adapter::compile_program_parts_age_elem_view(
         &desugared,
         src,
         module_path,
@@ -2644,7 +2644,7 @@ fn compile_component_scenario_full(
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
     let input_hash = parts.input_hash.clone();
-    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collection_family_age(parts.bundle, crate::hir::HirDomain::Collections) } else { crate::verify::verify_text_record_age(parts.bundle) } {
+    let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collection_family_age_elem_view(parts.bundle, crate::hir::HirDomain::Collections) } else { crate::verify::verify_text_record_age(parts.bundle) } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };

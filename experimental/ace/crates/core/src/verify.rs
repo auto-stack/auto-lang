@@ -421,6 +421,7 @@ fn verify_function_impl(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
+        elem_view_owned: false,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: closures.map(|c| c.view()),
@@ -724,6 +725,7 @@ fn verify_text_function_impl(
     }
     let m = &bundle.modules[0];
     let mut v = Verifier {
+        elem_view_owned: false,
         age_eq: false,
         foreign_allowed,
         diags: Vec::new(),
@@ -1870,6 +1872,7 @@ pub fn verify_foreign_scalar(
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
     let mut verifier = Verifier {
+        elem_view_owned: false,
         age_eq: false,
         diags: Vec::new(),
         foreign_allowed: true,
@@ -2121,6 +2124,7 @@ fn verify_text_domain(
         )]);
     }
     let mut v = Verifier {
+        elem_view_owned: false,
         age_eq: false,
         foreign_allowed: false,
         diags: Vec::new(),
@@ -2268,6 +2272,7 @@ fn verify_text_record_impl(
     }
     let mut v = Verifier {
         age_eq,
+        elem_view_owned: false,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2391,6 +2396,16 @@ pub fn verify_collection_family_age(
     verify_collection_family_impl_age(bundle, expected, false, true)
 }
 
+/// PLAN-105 T-02（U03 真语料 013）：AGE 组件面的 collections 校验变体——
+/// 在 `age_eq` 之外再允许 **owned 文本字段投影读成值**（013 的
+/// `preview = .todos[i].text`）。仅组件面入口使用。
+pub fn verify_collection_family_age_elem_view(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_impl_age_elem(bundle, expected, false, true, true)
+}
+
 /// PLAN-865: source closures retain every collections-domain rule while
 /// using their own descriptor/verifier identity.
 pub fn verify_closures(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
@@ -2428,7 +2443,17 @@ fn verify_collection_family_impl_age(
     foreign_allowed: bool,
     age_eq: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, false)
+}
+
+fn verify_collection_family_impl_age_elem(
+    bundle: hir::Bundle,
+    expected: HirDomain,
+    foreign_allowed: bool,
+    age_eq: bool,
+    elem_view_owned: bool,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, elem_view_owned)
 }
 
 fn verify_collection_family_impl(
@@ -2437,7 +2462,7 @@ fn verify_collection_family_impl(
     foreign_allowed: bool,
     ordinary_auto: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, false)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, false, false)
 }
 
 fn verify_collection_family_inner(
@@ -2445,6 +2470,7 @@ fn verify_collection_family_inner(
     expected: HirDomain,
     foreign_allowed: bool,
     age_eq_flag: bool,
+    elem_view_owned: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     // PLAN-912 §5.4 whole-axis observation: verifying every body is a
     // module-axis attempt (the warm closures path must never reach here).
@@ -2462,6 +2488,7 @@ fn verify_collection_family_inner(
         )]);
     }
     let mut v = Verifier {
+        elem_view_owned,
         age_eq: age_eq_flag,
         foreign_allowed,
         diags: Vec::new(),
@@ -2594,6 +2621,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
         )]);
     }
     let mut v = Verifier {
+        elem_view_owned: false,
         age_eq: false,
         foreign_allowed: false,
         diags: Vec::new(),
@@ -2823,6 +2851,9 @@ struct TypeMemo {
 
 pub(crate) struct Verifier {
     foreign_allowed: bool,
+    /// PLAN-105 T-02（U03 真语料 013）：AGE 组件面允许把 owned 文本字段投影
+    /// 读成值（`preview = .todos[i].text`）；冻结 profile 保持 `.len()` 消费。
+    elem_view_owned: bool,
     /// PLAN-980 on-if 刀：AGE 检查函数模块的字符串相等性跨借用/owned
     /// 放行旗（仅 verify_text_record_age 入口置位——text 族严格保持）。
     age_eq: bool,
@@ -3263,7 +3294,11 @@ impl Verifier {
                                     Some(hir::TypeUse::Ref(t)) => self.type_reaches_resource(m, t),
                                     _ => false,
                                 };
-                                if owned_term && !len_consumed.contains(&(ei as u32)) {
+                                // PLAN-105 T-02（U03 真语料 013）：AGE 组件面
+                                // （`age_eq` 车道）允许把 owned 文本字段投影读成值
+                                // （`preview = .todos[i].text`）；冻结 profile 保持
+                                // 「只许 `.len()` 消费」。
+                                if owned_term && !len_consumed.contains(&(ei as u32)) && !self.elem_view_owned {
                                     self.error(
                                         "verify.view-escape",
                                         format!(
@@ -8617,6 +8652,7 @@ pub fn verify_host_console(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Dia
             let sig_ok = match m.types.get(ty.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
                     let v = Verifier {
+                        elem_view_owned: false,
                         age_eq: false,
                         foreign_allowed: false,
                         diags: Vec::new(),

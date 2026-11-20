@@ -1134,6 +1134,9 @@ pub struct CollTables {
     /// element kinds are legal. The frozen 822 one-layer element domain
     /// stays in force for every older profile.
     pub aggregates_admission: bool,
+    /// PLAN-105 T-02（U03 真语料 013）：AGE 组件面子集开关——元素视图
+    /// （`xs[i].f` / `xs.get(i).f`）放行；其余域保持冻结语义。
+    pub elem_view_admission: bool,
     /// PLAN-962 (L-15): structural tuple shapes (element VT lists,
     /// interned/deduplicated; `VT::Tuple(i)` indexes here).
     pub tuples: Vec<Vec<VT>>,
@@ -1694,6 +1697,84 @@ pub(crate) fn resolve_with_source_mode(
         None,
         script_errors,
         None,
+        false,
+    )?;
+    Ok(ResolvedProgram {
+        foreign: Vec::new(),
+        ..resolve_with_view(program, capabilities, surface, false, script_errors)
+    })
+}
+
+/// PLAN-105 T-02（U03 真语料 013）：带**元素视图**开关的解析入口。
+pub fn resolve_with_view(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    elem_view: bool,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    resolve_with_view_mode(program, capabilities, surface, elem_view, false)
+}
+
+pub(crate) fn resolve_with_view_mode(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    elem_view: bool,
+    script_errors: bool,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let (fns, records, coll, _) = resolve_detailed_in_mode(
+        program,
+        capabilities,
+        surface,
+        None,
+        None,
+        None,
+        script_errors,
+        None,
+        elem_view,
+    )?;
+    Ok(ResolvedProgram {
+        foreign: Vec::new(),
+    })
+}
+
+pub fn resolve_with_view(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    elem_view: bool,
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    let (fns, records, coll, _) = resolve_detailed_in_mode(
+        program,
+        capabilities,
+        surface,
+        None,
+        None,
+        None,
+        script_errors,
+        None,
+    )?;
+    Ok(ResolvedProgram {
+        foreign: Vec::new(),
+        ..resolve_with_view_inner(program, capabilities, surface, elem_view)
+    })
+}
+
+fn resolve_with_view_inner(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    elem_view: bool,
+) -> ResolvedProgram {
+    let (fns, records, coll, _) = resolve_detailed_in_mode(
+        program,
+        capabilities,
+        surface,
+        None,
+        None,
+        None,
+        false,
+        elem_view,
     )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
@@ -2213,6 +2294,7 @@ fn place_bin_op(op: ast::PlaceOp) -> BinOp {
         ast::PlaceOp::Div => BinOp::Div,
         ast::PlaceOp::Set => unreachable!("Set is not a compound operator"),
     }
+
 }
 
 fn resolve_detailed(
@@ -2231,10 +2313,12 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
-    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false, None)
+    resolve_detailed_inner(program, capabilities, surface, warm, supply, sched, false)
 }
 
-fn resolve_detailed_in_mode(
+#[allow(clippy::too_many_arguments)]
+fn resolve_detailed_inner(
+
     program: &ast::Program,
     capabilities: &[String],
     surface: SourceProfile,
@@ -2243,6 +2327,7 @@ fn resolve_detailed_in_mode(
     sched: Option<&super::sched_desugar::SchedSurface>,
     script_errors: bool,
     instance_probe: Option<&instances::InstanceProbe<'_>>,
+
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -2292,7 +2377,9 @@ fn resolve_detailed_in_mode(
     }
     // PLAN-962: the aggregates surface widens the collections admission.
     coll.aggregates_admission = surface.is_aggregates();
-    coll.ordinary_auto = surface.is_auto_language();
+    // AGE 组件面（`compile_program_parts_age`）声明的能力：元素视图放行。
+    coll.elem_view_admission = elem_view;
+
     let is_coll = surface.is_collections();
 
     // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
@@ -4566,6 +4653,7 @@ pub(crate) fn recheck_swap_with_supply(
         c2.lists = env.program.lists.clone();
         c2.aggregates_admission = env.profile.is_aggregates();
         c2.ordinary_auto = env.profile.is_auto_language();
+        c2.elem_view_admission = false;
         let names2: Vec<(String, usize)> = env
             .program
             .variants
@@ -12386,6 +12474,19 @@ F:{d}
     }
 
     /// PLAN-864: a method call on a List-typed receiver (contract C3).
+    /// PLAN-105 T-02（U03 真语料 013）：AGE 域允许**元素视图**（`xs[i].f` /
+    /// `xs.get(i).f`）——verify 层已有 ElemView 的字段投影/`len()` 消费规则，
+    /// bind 层不再一刀切拒；聚合域（aggregates_admission）保持原语义。
+    fn elem_view_admission(&self) -> bool {
+        // AGE 组件面（第二趟 collections 编译）由适配器打开该开关；其余域保持
+        // 原语义（closures/text_record 的冻结拒绝不受影响）。
+        self.coll.aggregates_admission
+            || self.coll.elem_view_admission
+            || matches!(
+                self.profile,
+                SourceProfile::AgeComponent | SourceProfile::AgePackage | SourceProfile::AgeH0
+            )
+    }
     fn resolve_list_method(
         &mut self,
         li: usize,
@@ -12466,7 +12567,7 @@ F:{d}
                     // element as a VIEW (borrow; materializing uses are
                     // rejected at their sites by `reject_elem_view_use`).
                     // Frozen profiles keep the 822 rejection.
-                    if !self.coll.aggregates_admission {
+                    if !self.elem_view_admission() {
                         self.bind_err(
                             "source.view-escape",
                             "a whole owned element is not a value; project a field (`xs.get(i).f`) or use `xs.remove(i)`".to_string(),
@@ -15691,7 +15792,7 @@ F:{d}
                         }
                         let elem = self.coll.lists[li];
                         if self.vt_is_coll_owned(elem) {
-                            if !self.coll.aggregates_admission {
+                            if !self.elem_view_admission() {
                                 self.bind_err(
                                     "source.view-escape",
                                     "a whole owned element is not a value; project a field (`xs[i].f`) or use `xs.remove(i)`".to_string(),

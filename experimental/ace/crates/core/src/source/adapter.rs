@@ -1026,6 +1026,20 @@ pub fn compile_program_parts_age(
     compile_program_parts_opts(program, src, module_path, capabilities, profile, true)
 }
 
+/// PLAN-105 T-02（U03 真语料 013）：AGE 组件面的**元素视图**变体——
+/// 与 [`compile_program_parts_age`] 相同，另外放行 `xs[i].f` / `xs.get(i).f`
+/// 的元素视图（verify 层按 ElemView 规则判定）。
+pub fn compile_program_parts_age_elem_view(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_parts_opts_view(program, src, module_path, capabilities, profile, true, true)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn compile_program_parts_opts(
     program: &super::ast::Program,
     src: &str,
@@ -1033,6 +1047,19 @@ fn compile_program_parts_opts(
     capabilities: &[String],
     profile: SourceProfile,
     age_eq: bool,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_parts_opts_view(program, src, module_path, capabilities, profile, age_eq, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_program_parts_opts_view(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    age_eq: bool,
+    elem_view: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
     // PLAN-979 F2：领域 profile 只经领域前门消费——这里显式拒绝，避免一个
     // 已投影程序把领域声明静默丢在共享管线之外。
@@ -1043,14 +1070,16 @@ fn compile_program_parts_opts(
     if let Some(d) = crate::source::config_document::config_profile_refusal(profile, src.len()) {
         return Err(vec![d]);
     }
-    compile_program_observed(
+    compile_program_observed_view(
         program,
         src,
         module_path,
         capabilities,
         profile,
         None,
+        None,
         age_eq,
+        elem_view,
     )
 }
 
@@ -1605,7 +1634,56 @@ fn compile_program_observed(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn compile_program_observed_view(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    observer: Option<&mut dyn SourceObserver>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    age_eq: bool,
+    elem_view: bool,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_observed_inner(
+        program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        observer,
+        foreign,
+        age_eq,
+        elem_view,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn compile_program_observed_with_age(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    observer: Option<&mut dyn SourceObserver>,
+    foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
+    age_eq: bool,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_observed_inner(
+        program,
+        src,
+        module_path,
+        capabilities,
+        profile,
+        observer,
+        foreign,
+        age_eq,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_program_observed_inner(
     program: &super::ast::Program,
     src: &str,
     module_path: &str,
@@ -1614,6 +1692,7 @@ fn compile_program_observed_with_age(
     mut observer: Option<&mut dyn SourceObserver>,
     foreign: Option<&ace_foreign_contract::manual::AdmittedForeign>,
     age_eq: bool,
+    elem_view: bool,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
     // The explicit provider supplies checked foreign facts to the
     // aggregates and ordinary Auto faces. Plain sources never add it.
@@ -1630,7 +1709,7 @@ fn compile_program_observed_with_age(
         (SourceProfile::Auto, _) if module_path.ends_with(".as") => {
             super::resolve::resolve_with_source_mode(program, capabilities, profile, true)
         }
-        _ => super::resolve_with(program, capabilities, profile),
+        _ => super::resolve_with_view(program, capabilities, profile, elem_view),
     };
     let resolved = match resolved_in {
         Ok(r) => {
