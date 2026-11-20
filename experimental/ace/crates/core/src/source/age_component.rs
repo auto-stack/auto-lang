@@ -3661,6 +3661,8 @@ fn hook_stmts_lower(
     let mut scope: Vec<(String, String, Span)> = scope_in.to_vec();
     // handler 局部的**构造值**（供 owned 元素推入时按值复制）。
     let mut let_values: Vec<(String, Expr)> = Vec::new();
+    // handler 局部是否为**文本**（决定局部写要不要补 `.clone()`；bool/int 不补）。
+    let mut local_text: Vec<(String, bool)> = Vec::new();
     for st in body {
         // PLAN-105 T-02（U03 真语料 012）：handler 局部列表字面量
         // （`var rows []str = []`）——collections 域已承载 List 值语义，
@@ -3867,9 +3869,13 @@ fn hook_stmts_lower(
                         &node.fields,
                         &scope,
                     )?;
-                    // 局部写同样按 owned-str 位置语义补 `.clone()`（016 的
-                    // `.accent_color = .store.accent_color` 镜像链）。
-                    let value = clone_if_place(value);
+                    // 局部写只在**文本**局部上按 owned-str 位置语义补 `.clone()`
+                    // （016 的 `.accent_color = .store.accent_color` 镜像链）；
+                    // bool/int 局部补 clone 会打成 `clone on bool`。
+                    let is_text_local = local_text
+                        .iter()
+                        .any(|(n, t)| *n == assign.field && *t);
+                    let value = if is_text_local { clone_if_place(value) } else { value };
                     out.push(Stmt::Assign {
                         target: crate::source::ast::AssignTarget {
                             base: Ident {
@@ -3938,6 +3944,11 @@ fn hook_stmts_lower(
                     }
                 }
                 let_values.push((name.name.clone(), bound.clone()));
+                let is_text_local = matches!(
+                    ann.as_ref().map(|a| &a.kind),
+                    Some(TypeRef::Builtin(TypeWord::StrOwned)) | Some(TypeRef::Builtin(TypeWord::Str))
+                );
+                local_text.push((name.name.clone(), is_text_local));
                 out.push(Stmt::Let {
                     kw: *span,
                     name: Ident {
