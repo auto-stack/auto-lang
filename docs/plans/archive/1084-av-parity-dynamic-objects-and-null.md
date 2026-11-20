@@ -339,7 +339,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -363,11 +363,13 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-05** work：40 份活跃作者、19 项原文与双检查映射、改源 stale 和 AV 选择负控核完。
 - [x] **T-06** work：在 680188280 冻结正式 AV 并集，保留四项继承红及一次隔离重放记录。
 - [x] **T-07** review：按冻结提交、原结果及独立反例核 r3 各 AC 与四条规范增量，PASS。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：按已审 Spec 增量落主（`cf033adc4`）并归档（`907d558ac`）；专属材料 scope 已移除、登记已刷新，关闭。
 
-交付已合入并归档。T-08 尚需按已核归属移除专属材料目录并刷新登记。
+交付已合入并归档；专属材料目录 `D:/autostack/plan-artifacts/plan-1084` 已按已核归属移除并刷新登记，T-08 关闭。
 
 ## 9. 复审记录
+
+- 2026-11-20 `stage: merge | key: PLAN-1084:r3 | outcome: cleaned | checkpoints: artifact_scope_removed, registry_refreshed, t08_closed`。用户授权手动移除专属材料 scope `D:/autostack/plan-artifacts/plan-1084`：删除前核 9,086 个普通文件、629,949,585 字节（与 15:27 受阻记录一致）、无进程占用、无 reparse point；递归删除 2.8s 完成，删除后目录与 `plan-artifacts` 父级条目均不存在（D: 剩余 307.7 GB）。登记 `.retention/policy.json` 该条目置 `deleted-at-merge`、`cleanup_status: cleaned`、`closed: 2026-11-20`、`remaining_bytes: 0`，`last_refresh` 同步。AC-08/T-08 关闭，无具名持有。
 
 - 2026-11-20 `stage: merge | key: PLAN-1084:r3 | outcome: blocked | delivery_commit: cf033adc4defcd6b4194ce180f6f973abed87cc2 | archive_commit: 907d558ace582f6a31404a89858a80b8aec015c3 | checkpoints: prepared, landed, canonical_verified, archived, worktrees_removed | pending: plan-artifacts deletion and final registry refresh`。主检出仍有其它会话文档改动，未纳入本计划提交。两个 worktree 的绝对路径、注册/提交、清洁状态与各自 `wt-guard.ps1` 均核为 clean，借用的 auto-down 只有 detached 依赖身份。主/伴随 worktree、plan-1084-dev 分支和已空的组目录均已移除；树内 target/.pdb/可执行文件随树移除。
 
