@@ -1681,6 +1681,9 @@ fn advance_alt(mc List<int>, pending List<int>, fr List<int>, saves List<int>) i
 // dispatch_child_failure: true = the frame also failed (unwind).
 fn dispatch_child_failure(pg List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, child_consumed int, hints List<int>, dmsg List<int>) bool {
     let top = mc.get(m_nframes()) - 1
+    if (fg(fr, top, fs_kind()) == 1) {
+        return true
+    }
     record_expect_hint(pg, toks, srcb, mc, pending, fr, top, saves, hints, dmsg)
     if (child_consumed != 0) {
         fset(fr, top, fs_consumed(), 1)
@@ -1820,10 +1823,10 @@ fn delim_after_empty_list(pg List<int>, rule int, alt_no int, step_idx int, fr L
 // ---------------------------------------------------------------------------
 
 fn handle_frame_failure(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+    record_expect_hint(pg, toks, srcb, mc, pending, fr, mc.get(m_nframes()) - 1, saves, hints, dmsg)
     var probing = 1
     for (probing == 1) {
         let top = mc.get(m_nframes()) - 1
-        record_expect_hint(pg, toks, srcb, mc, pending, fr, top, saves, hints, dmsg)
         let rule = fg(fr, top, fs_rule())
         let frame_save = fg(fr, top, fs_fsave())
         let consumed = fg(fr, top, fs_consumed())
@@ -1972,25 +1975,7 @@ fn recover_decl(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>
         kids2.push(kids.get(j))
         j = j + 1
     }
-    let fc = ef.len() / 2
-    var j2 = 0
-    for (j2 < kids2.len()) {
-        ef.push(kids2.get(j2))
-        ef.push(no_field())
-        j2 = j2 + 1
-    }
-    if (ef.len() / 2 > mc.get(m_efhi())) {
-        mc.set(m_efhi(), ef.len() / 2)
-    }
-    t.push(rule_kind_of(rule))
-    t.push(s0)
-    t.push(e0 - s0)
-    t.push(fc)
-    t.push(kids2.len())
-    t.push(0)
-    t.push(flag_error())
-    t.push(0)
-    let node = t.len() / 8 - 1
+    let node = alloc_kids(t, ef, kids2, rule_kind_of(rule), flag_error(), mc)
     diag(dmsg, diag_recovered(), rule, s0, e0)
     complete_frame_success(ef, saves, mc, fr, node, field)
     return 0
@@ -2218,7 +2203,7 @@ fn pratt_want_op(pg List<int>, cs List<int>, firsts List<int>, nullable List<int
     }
     pratt_reduce_loop(fr, pvals, pops, t, ef, optriv, top, b, mc)
     if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     // children: last = op leaf; the rest = leading trivia (into op trivia)
@@ -2382,12 +2367,12 @@ fn pratt_call_open(pg List<int>, cs List<int>, firsts List<int>, nullable List<i
     let vs = fg(fr, top, fs_pvals_s())
     let vl = fg(fr, top, fs_pvals_l())
     if (vl == 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     let callee = pvals.get(vs + vl - 1)
     if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     let cl = fg(fr, top, fs_clen())
@@ -2427,11 +2412,11 @@ fn close_call(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, 
         }
     }
     if (close_ok == 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     if (consume(pg, toks, t, ef, mc, pending, fr) < 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     let cl = fg(fr, top, fs_clen())
@@ -2588,7 +2573,7 @@ fn finish_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>
     }
     let vl = fg(fr, top, fs_pvals_l())
     if (vl == 0) {
-        fail_pratt(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, mc, pending, fr, saves, pvals, pops, optriv, arule, ai, hints, dmsg, fm, ot, oef, odecls, gcand, gshift, ginfo)
+        fail_pratt(pg, toks, srcb, t, ef, mc, pending, fr, saves, hints, dmsg)
         return 0
     }
     let node = pvals.get(fg(fr, top, fs_pvals_s()) + vl - 1)
@@ -2597,7 +2582,10 @@ fn finish_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>
     return 0
 }
 
-fn fail_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, pvals List<int>, pops List<int>, optriv List<int>, arule List<int>, ai List<int>, hints List<int>, dmsg List<int>, fm List<int>, ot List<int>, oef List<int>, odecls List<int>, gcand List<int>, gshift List<int>, ginfo List<int>) int {
+fn fail_pratt(pg List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, hints List<int>, dmsg List<int>) int {
+    let failed = mc.get(m_nframes()) - 1
+    save_restore(mc, pending, saves, fg(fr, failed, fs_fsave()))
+    mc.set(m_nframes(), failed)
     var probing = 1
     for (probing == 1) {
         if (mc.get(m_nframes()) == 0) {
