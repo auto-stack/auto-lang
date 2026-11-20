@@ -602,6 +602,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             //（如分支体含调用：age-on-branch-stmt 无调用臂→age-on-if 拒→
             // 落本臂→project_view_if 以 body_foreign 承载，980 语义原样）。
             alt { age-view-if-stmt() {} }
+            // Package hosts project call syntax before admitting a supported host command.
+            alt(profiles: [age-package]) { age-view-call-stmt() {} }
         }
         age-on-handler-params(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
@@ -666,7 +668,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             pratt(of: "wide-ops", field: "rhs")
             opt { age-stmt-semi() {} }
         }
-        age-view-call-stmt(profiles: [age-component]) {
+        age-view-call-stmt(profiles: [age-component, age-package]) {
             pratt(of: "wide-ops", field: "call") {}
             opt { age-stmt-semi() {} }
         }

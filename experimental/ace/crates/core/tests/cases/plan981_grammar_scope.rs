@@ -263,7 +263,7 @@ fn p981_age_package_grammar_id_is_frozen() {
         // c337685c…→91c53cde…。
         // PLAN-1072 T-03（age-expose-item / tail 两面同开）：
         // 91c53cde…→06809c84…。
-        // PLAN-124: route link elements in the AGE component and package profiles.
-        "42f0e5b43de7f58b79db19cc485319c60b188a021051b24f5143e1b649e284d6"
+        // PLAN-124: route links and structural projection of package host commands.
+        "65d176e3216bad46fa40698caadc4068f2be355afd906022c28e59701eae1562"
     );
 }
