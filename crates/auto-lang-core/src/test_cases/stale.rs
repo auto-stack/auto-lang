@@ -183,6 +183,7 @@ pub fn check_with_families(
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_abi_source: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe_av: Option<BTreeMap<String, String>> = None;
+    let mut current_probe_av_language: Option<BTreeMap<String, String>> = None;
     let mut current_probe_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_mn_console: Option<BTreeMap<String, String>> = None;
     let mut current_probe_collections: Option<BTreeMap<String, String>> = None;
@@ -210,6 +211,11 @@ pub fn check_with_families(
     }
     let mut verdicts = Vec::new();
     for r in results {
+        if report_json["selected_target"].as_str() == Some("av")
+            && matches!(r["status"].as_str(), Some("SKIP" | "NOT_RUN"))
+        {
+            continue;
+        }
         let case = r
             .get("case")
             .and_then(|v| v.as_str())
@@ -282,6 +288,9 @@ pub fn check_with_families(
             Some("ac") | Some("syntax") | Some("probe")
         ) {
             let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
+            let av_language_row = is_probe
+                && applicability.probe_recipe.as_deref()
+                    == Some(crate::test_cases::ac_av::AV_LANGUAGE_SOURCE_RECIPE);
             // PLAN-797 T-06: probe current identity is RECIPE-SPECIFIC —
             // an ABI row recomputes against the abi worker's axes.
             let mn_console_probe_row = is_probe
@@ -386,6 +395,10 @@ pub fn check_with_families(
             } else if cte_probe_row {
                 current_probe_cte
                     .get_or_insert_with(crate::test_cases::ac_cte::current_toolchain_identity)
+            } else if av_language_row {
+                current_probe_av_language.get_or_insert_with(
+                    crate::test_cases::ac_av::current_language_toolchain_identity,
+                )
             } else if console_probe_row {
                 current_probe_console.get_or_insert_with(
                     crate::test_cases::ac_av::current_console_toolchain_identity,
@@ -477,6 +490,14 @@ pub fn check_with_families(
                             // shared auto-mir-lower crate; the contract axis
                             // is mandatory (missing = stale).
                             "mir-lowering",
+                        ],
+                        Some(false) if av_language_row => vec![
+                            "av-worker-exe-sha256",
+                            "av-worker-version",
+                            "av-protocol",
+                            "recipe",
+                            "mir-lowering",
+                            "av-core-version",
                         ],
                         Some(false) if console_probe_row => vec![
                             "av-worker-exe-sha256",

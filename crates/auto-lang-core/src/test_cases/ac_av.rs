@@ -6000,6 +6000,16 @@ pub fn current_console_toolchain_identity() -> std::collections::BTreeMap<String
     }
 }
 
+pub(crate) fn current_language_toolchain_identity() -> std::collections::BTreeMap<String, String> {
+    worker_exe_sha256()
+        .map(|sha| {
+            probe_toolchain_axes(&sha, RecipeFamily::LanguageSource, None)
+                .into_iter()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Console transport admission is independent of a matching oracle.
 fn console_admission(family: RecipeFamily, steps: &[StepOut]) -> Option<String> {
     if family != RecipeFamily::Console
