@@ -63,9 +63,16 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             SourceProfile::HostConsole,
             "69615a6a506ebd926dafcb7164068956f39af8183996667a1c7e0bfa5c8f61ac",
         ),
+        // PLAN-1083（AVP-05 类型/模式刀）：enum-arm 增 auto 面多元组载荷尾/
+        // 命名字段载荷/`= N` 判别/臂后逗号吸收 + enum 体 fn 成员 + agg 臂
+        // 多绑定/or/guard/return 臂 + 尾逗号（全部 [auto] 门控步骤）——
+        // Collections 裁剪面因 enum-arm 公共 alt 内步骤表变化重冻结
+        // 3e1193e9…→e320297e…、Aggregates 539a8bed…→f31c1e33…、Scheduler f26f3786…→8788b679…；其余邻居逐字节不变（Closures/Numeric/
+        // Scheduler/Core/Scalar/Text/Record/TextRecord/EntryUnit/
+        // HostConsole/age-* 实测不变）。
         (
             SourceProfile::Collections,
-            "3e1193e9b693e0ca02b5ea3ce27578e16046a9cb9a9b80e341221e1966fe1e16",
+            "e320297e9fd301fc828f17c67658cc6f06475f827d1347490f70d15055c5e017",
         ),
         (
             SourceProfile::Closures,
@@ -86,11 +93,11 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             //     aggregates 面（py 通道的 ABI 对齐拼写）；
             //   - 所以只有 aggregates profile 的 grammar id 必须移动；其余
             //     邻居行的字节未变（本表逐行冻结，任何邻居漂移都会红）。
-            "539a8bedcbd0ab4588b20d5fe6bcbf83ee7b304b8fa1675d1a0ce5f993d43d9b",
+            "f31c1e339d01ba723a985aa1a701a3b5599dc669cf4569dd00eddf97ded7a164",
         ),
         (
             SourceProfile::Scheduler,
-            "f26f378633dd7b3df5754ee754836cfc2759c8435df1d04ecb952712c81d0d5e",
+            "8788b6799a322719e4bd47072f44f7695ef3c405591a227da3c0c352fdf550c2",
         ),
         // R65-5（2026-11-16）：**980 WEB #6i（`b043117b8`）的语法域扩**是本次身份
         // 变化的唯一原因，语义差如实记录（不是"把哈希替成当前值"）：

@@ -2599,6 +2599,7 @@ fn resolve_detailed(
                 &mut flat,
                 &mut fn_receiver,
                 &mut fn_owner,
+                &mut fn_vowner,
                 &mut fn_nested,
                 &mut nested_children,
                 &mut nested_decl_starts,
@@ -5135,6 +5136,7 @@ fn collect_nested_fns<'a>(
     flat: &mut Vec<&'a ast::FnItem>,
     fn_receiver: &mut Vec<ast::Receiver>,
     fn_owner: &mut Vec<Option<usize>>,
+    fn_vowner: &mut Vec<Option<usize>>,
     fn_nested: &mut Vec<Option<NestedFnInfo>>,
     nested_children: &mut BTreeMap<String, Vec<(String, String)>>,
     nested_decl_starts: &mut BTreeSet<usize>,
@@ -5157,6 +5159,7 @@ fn collect_nested_fns<'a>(
                 }));
                 fn_receiver.push(ast::Receiver::Free);
                 fn_owner.push(None);
+                fn_vowner.push(None);
                 flat.push(item);
                 // Recurse into the nested item's own body with the grown
                 // chain (its children key on this item's mangled name).
@@ -5168,6 +5171,7 @@ fn collect_nested_fns<'a>(
                     flat,
                     fn_receiver,
                     fn_owner,
+                    fn_vowner,
                     fn_nested,
                     nested_children,
                     nested_decl_starts,
@@ -5180,6 +5184,7 @@ fn collect_nested_fns<'a>(
                     flat,
                     fn_receiver,
                     fn_owner,
+                    fn_vowner,
                     fn_nested,
                     nested_children,
                     nested_decl_starts,
@@ -5191,6 +5196,7 @@ fn collect_nested_fns<'a>(
                         flat,
                         fn_receiver,
                         fn_owner,
+                        fn_vowner,
                         fn_nested,
                         nested_children,
                         nested_decl_starts,
@@ -5207,6 +5213,7 @@ fn collect_nested_fns<'a>(
                     flat,
                     fn_receiver,
                     fn_owner,
+                    fn_vowner,
                     fn_nested,
                     nested_children,
                     nested_decl_starts,
@@ -5224,6 +5231,7 @@ fn collect_nested_fns<'a>(
                     flat,
                     fn_receiver,
                     fn_owner,
+                    fn_vowner,
                     fn_nested,
                     nested_children,
                     nested_decl_starts,
@@ -5235,6 +5243,7 @@ fn collect_nested_fns<'a>(
                         flat,
                         fn_receiver,
                         fn_owner,
+                        fn_vowner,
                         fn_nested,
                         nested_children,
                         nested_decl_starts,
@@ -5247,6 +5256,7 @@ fn collect_nested_fns<'a>(
                         flat,
                         fn_receiver,
                         fn_owner,
+                        fn_vowner,
                         fn_nested,
                         nested_children,
                         nested_decl_starts,

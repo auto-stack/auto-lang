@@ -677,6 +677,29 @@ fn main() {
     }
 }
 ```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+red
+other
+other
+```
+
+### Notes
+
+legacy.28_enum_methods.004: the `_` wildcard catch-all arm (projects to
+the unconditional Else pattern; must be last) over all three values —
+red/other/other bytes kept. The legacy helper-fn spelling inlines (the
+untyped-tail-calls-untyped-fn inference gap keeps the helper spelling
+off this face; auditable).
+
 ## Case: option-family
 id: "av.parity.1083.option-family"
 tags: ["av-language-parity", "plan-1083", "types"]
@@ -923,7 +946,7 @@ channel: "unit"
 unexpected end
 ```
 
-### VM stdout
+### VM result
 #ignore
 check-id: "legacy-stdout"
 
@@ -1006,7 +1029,7 @@ timeout
 200
 ```
 
-### VM stdout
+### VM result
 #ignore
 check-id: "legacy-stdout"
 
