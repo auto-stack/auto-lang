@@ -33,6 +33,15 @@
 - 最长匹配/同长优先级显式声明；规则非前进/歧义无法裁定即编译期拒绝
   （定位错误，不静默改语法，不留半成品）。
 
+- PLAN-1046：`profile(name: "...", includes: [base-a, base-b])` 可声明组合 profile。
+  带 `profiles:` 的项在标签匹配组合名或任一成员时参与编译。
+  组合使用原 DSL 声明与备选顺序，成员清单提供成员关系。
+  空列表、未知或重复成员、自包含及组合嵌套均拒绝。
+  普通 profile 的 canonical bytes 保持各自编译结果，`aac` 有独立规则程序与身份。
+- 共享扫描行为：规则程序含字面 token `..` 时，以 ASCII 数字起始的字符集匹配
+  在首个相邻双点前结束。扫描器下步继续消费区间标点（含适用的 `..=`），
+  单点小数保持原匹配。相关规则由实际编译的 program 决定。
+
 ## 身份与版本
 
 - GrammarId = 名称 + canonical 内容 hash；schema/compiler/runtime/scanner

@@ -19,7 +19,9 @@ AAC（用 Auto 实现 AC 编译器主体）的 CS/CL 分账、主体归属与信
 合同、资源 profile、供应矩阵（F01–F10）与阶段/跨仓交接契约已由 PLAN-1044 冻结，
 规范见 [aac-baseline-and-subject.md](aac-baseline-and-subject.md)（schema
 `autolang.aac-baseline/1`，准入校验器 `crates/auto-lang-core/src/test_cases/aac_baseline.rs`）。
-本文件继续描述**现行 Rust AC 事实**（reference 与历史阶段），不提前写成 AAC 已实现；
+本文件继续描述现行 Rust AC（reference 与历史阶段）。
+PLAN-1046 已交 [AAC 源码前端](aac-source-frontend.md)，含 Auto 实现的规则程序执行、
+源码快照和编辑、CST/AST 投影、位置与模块候选目录，已验证 Windows A2R 与 AC 阶段入口。
 完整 AAC 自举仍由 1053/1054 独立验收，阶段切片由 1045–1052/1056 各包原门关闭。
 
 ## 目标与范围

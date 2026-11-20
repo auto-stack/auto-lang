@@ -13,6 +13,15 @@ parse/CST/span，语义合并在 `ace_core::source::packages`（选择模型
 互不混用（退役归 986/987）；legacy inventory 把 `.at.at`/`.py.at` 归属主
 模块 Other 层。
 
+### AAC 源码候选目录
+
+PLAN-1046 的 `catalog_directory` 逐文件保留 inventory 中公共模块和 provider 候选的
+sourceId、来源 AST 与条件臂。普通导入保作者路径，两类 AGE 符号表和 `#in` 符号表
+按成员顺序形成路径。公共文件中无条件的本包导入进入缺失和环检查；
+外包、条件与 provider 导入作为候选交给后续绑定。
+[AAC 源码前端](../../auto-ac/aac-source-frontend.md) 定义语法与来源。
+上下文选择、绑定和初始化规则沿下文的装配合同。
+
 ## 三轴选择与逻辑模块
 
 `backend`（AV/AC/A2R/A2PY/原A2C）×`provider`（at/c/rs/py）×`target`
