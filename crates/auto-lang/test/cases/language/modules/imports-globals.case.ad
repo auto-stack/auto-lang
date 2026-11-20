@@ -434,8 +434,9 @@ path: "main.at"
 ```auto
 var obj = { n: 40, title: "ok", enabled: true }
 fn main() int {
-    obj["n"] = 42
-    if obj["title"] == "ok" && obj["enabled"] { return obj["n"] }
+    let first int = obj["n"]
+    obj = { n: first + 2, title: "new", enabled: true }
+    if obj["title"] == "new" && obj["enabled"] { return obj["n"] }
     return 0
 }
 ```

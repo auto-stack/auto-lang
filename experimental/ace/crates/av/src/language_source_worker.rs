@@ -36,11 +36,11 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "project",
         "entry",
         "steps",
-        // Present-but-inert optional fields of the shared request builder.
         "caps",
+        "store_root",
+        // The shared request builder reserves these for the resource recipe.
         "limits",
         "cancel_after_ms",
-        "store_root",
     ];
     if let Some(bad) = object.keys().find(|k| !allowed.contains(&k.as_str())) {
         return Err(format!("unknown language-source request field: {bad}"));
@@ -86,7 +86,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut step = json!({"op":"run", "outcome":"infra", "value":null, "trap":null, "diag":null,
         "source_hash":format!("{:016x}",fnv1a64(source.as_bytes())), "wall_ms":0.0});
 
+    let mut store_writes = Some(0);
     let (result, capture) = if let Some(project) = object.get("project") {
+        store_writes = None;
         let project: SourceProject =
             serde_json::from_value(project.clone()).map_err(|e| e.to_string())?;
         let store = request["store_root"]
@@ -114,6 +116,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         );
         match result {
             Ok(observation) => {
+                store_writes = Some(observation.store_writes);
                 step["trace"] = json!(observation.trace);
                 if let Some(span) = observation.source_span {
                     step["source_span"] = span;
@@ -209,7 +212,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "stdout_present":true,"stderr_present":true,"stdout_truncated":false,"stderr_truncated":false,
         "stdout_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stdout),
         "stderr_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stderr)});
-    step["counters"] = json!({"host_dispatches":capture.dispatches,"store_writes":0});
+    step["counters"] = json!({"host_dispatches":capture.dispatches});
+    if let Some(writes) = store_writes {
+        step["counters"]["store_writes"] = json!(writes);
+    }
     step["wall_ms"] = json!(started.elapsed().as_secs_f64() * 1000.0);
     Ok(
         json!({"recipe":RECIPE,"steps":[step],"worker_version":"avworker/1.0","av_core_version":AV_LANGUAGE_PROFILE}),
@@ -338,6 +344,7 @@ struct ProjectObservation {
     outcome: ExecOutcome,
     trace: Vec<&'static str>,
     source_span: Option<Json>,
+    store_writes: u64,
 }
 
 fn run_project(
@@ -439,6 +446,7 @@ fn run_project(
         outcome,
         trace: marks,
         source_span,
+        store_writes: target.lowered,
     })
 }
 
