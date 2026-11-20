@@ -3508,6 +3508,9 @@ fn mark_lets_mutable(stmts: &mut [Stmt], targets: &[String]) {
                     *mutable = true;
                 }
             }
+            Stmt::While { body, .. } => {
+                mark_lets_mutable(&mut body.stmts, targets);
+            }
             Stmt::If { then, els, .. } => {
                 mark_lets_mutable(&mut then.stmts, targets);
                 if let Some(e) = els {
@@ -3630,32 +3633,26 @@ fn hook_stmts_lower(
                         }),
                     },
                 };
-                let mut body_out = vec![Stmt::Let {
-                    kw: *span,
-                    name: Ident {
-                        name: elem.clone(),
-                        span: *span,
-                    },
-                    ann: None,
-                    mutable: false,
-                    value: Expr {
-                        span: *span,
-                        kind: ExprKind::Index {
-                            base: Box::new(iter_local),
-                            index: Box::new(Expr {
-                                span: *span,
-                                kind: ExprKind::Var(Ident {
-                                    name: idx.clone(),
-                                    span: *span,
-                                }),
-                            }),
-                        },
-                    },
+                // 元素表达式：`iter[i]`（collections 域的整元素是**视图**——不能
+                // 绑定到局部，只能在使用点内联；`List<Str>` 的文本元素尤其如此）。
+                let elem_expr = Expr {
                     span: *span,
-                }];
-                let mut scope2 = scope.clone();
-                scope2.push((value.name.clone(), elem, *span));
-                hook_stmts_lower(inst, seq, node, body, &scope2, &mut body_out, counter)?;
+                    kind: ExprKind::Index {
+                        base: Box::new(iter_local),
+                        index: Box::new(Expr {
+                            span: *span,
+                            kind: ExprKind::Var(Ident {
+                                name: idx.clone(),
+                                span: *span,
+                            }),
+                        }),
+                    },
+                };
+                let mut body_subst = body.to_vec();
+                subst_params_stmts(&mut body_subst, &[(value.name.clone(), elem_expr)]);
+                let _ = &elem;
+                let mut body_out: Vec<Stmt> = Vec::new();
+                hook_stmts_lower(inst, seq, node, &body_subst, &scope, &mut body_out, counter)?;
                 body_out.push(Stmt::Assign {
                     target: crate::source::ast::AssignTarget {
                         base: Ident {
