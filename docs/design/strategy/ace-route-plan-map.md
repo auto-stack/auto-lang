@@ -256,7 +256,7 @@ Design58初稿“新A2PY另行规划”的泛称已落后于1042/977当前状态
 | [1056 AAC精确摘要、编译器codec与标准库支撑](../../plans/archive/1056-aac-exact-digests-and-compiler-codecs.md) | 已交付归档 8/8 | 正式交付 `e36131b40`；`aac-support` 1.0.0 已在 Gen0 前端＋AV 执行验证，供 1045 接原生消费 |
 | [1045 AAC hosted标准库需求落地与原生SDK消费](../../plans/1045-aac-hosted-stdlib-and-sdk.md) | 草案 0/9，下一项 | 1044 与 1056 已交。T-01 核当前前端、语法、SDK 与库身份；之后按顺序验 Gen0 AC 的库、系统资源及仓外 SDK |
 | [1046 AAC Auto语法运行时、源码投影与模块装配](../../plans/archive/1046-aac-syntax-source-and-modules.md) | 已归档 | 1045及冻结合同；Auto解析/模块候选/来源，语义选择另验 |
-| [1047 AAC名字绑定、类型推导与受检HIR核心](../../plans/1047-aac-binding-types-and-checked-hir.md) | 草案 0/9 | 1046；Auto绑定/推导/受检HIR |
+| [1047 AAC名字绑定、类型推导与受检HIR核心](../../plans/archive/1047-aac-binding-types-and-checked-hir.md) | 交付已归档 | 已交 Auto 名字绑定、版本化类型事实和基础受检 HIR，1055 可消费受检闭包 |
 | [1051 AAC native后端与CTE执行服务桥](../../plans/1051-aac-native-backend-and-cte-bridges.md) | 草案 0/9 | 1044+1045；与1046/1047可并行的backend/AV薄服务 |
 | [1055 AAC基础Typed MIR与CT启动闭环](../../plans/1055-aac-early-typed-mir-and-ct-bootstrap.md) | 草案 0/8 | 1047+1051；基础Auto MIR与CT工厂，先交以解CT启动依赖 |
 | [1048 AAC泛型、meta与编译期执行编排](../../plans/1048-aac-generics-meta-and-cte.md) | 草案 0/9 | 1047+1051+1055；泛型/meta/CT编排及基础闭环，完整CT组合交1050 |

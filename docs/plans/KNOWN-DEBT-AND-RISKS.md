@@ -1,3 +1,12 @@
+## R1047-01 / R1047-02 — AAC 基础 HIR 的早返回与声明原型（CLOSED，2026-11-21）
+
+- PLAN-1047 r6 复审在真实 Windows 阶段入口观察到两处合法源码在 HIR 生成时被拒。无显式 `else` 的终结 `if` 后有后续返回，`hir.unsupported 0 54..62`。签名原型与同模块正文已成功绑定，HIR 仍在原型 0..18 拒绝。归 PLAN-1047 T-04/T-06。756b79850 修复后，原样真/假分支 PE 分别返回 31、0，原型 PE 返回 42，坏槽位在 Auto descriptor 拒绝。39d092c36 的复审和固定组通过。见 [PLAN-1047 §9](archive/1047-aac-binding-types-and-checked-hir.md#9-复审记录)。
+
+## D-1047-AC-NARROW / D-1047-AC-UNIT — 现行 AC 机器覆盖差额（OPEN，2026-11-21）
+
+- 原样 `av.parity.1079.mixed-width-explicit` 通过普通 Auto 前门和 AAC 基础类型检查。AC collections 后端在 `collections_lower.rs` 拒窄整数运算。ACE native 数值 owner 与 PLAN-1068 联验。关闭要求同一源码真 Windows AC 返回 42，并保持现有错宽度、溢出和转换负例。
+- 原样 `av.parity.1085.module-global-once` 在 AAC 产全局类型、访问与初值事实，AV 返回 42。1051 现行 `NativeCollections` 在准入阶段拒 `Unit`。ACE native collections ABI owner 与 PLAN-1068 联验。关闭要求同一源码真 Windows AC 返回 42，并见证每次装配初始化一次。两项原源码和原预期留在 canonical 语料，阶段记录见 [PLAN-1047 §9](archive/1047-aac-binding-types-and-checked-hir.md#9-复审记录)。
+
 ## R1046-01 / R1046-02 — AAC 符号表导入与临时探针（复审已关闭，2026-11-20）
 
 PLAN-1046 r8 最终复审在真实 A2R `catalog_directory` 确认两种 AGE 符号表导入保留 AST 但缺少模块依赖，导致缺失模块和循环放行。另有两个未登记且只输出诊断的临时 Rust 测试文件。复现、冻结身份和归因见 [PLAN-1046 §9](archive/1046-aac-syntax-source-and-modules.md#9-复审记录)。
@@ -62,7 +71,7 @@ PLAN-1046 r8 最终复审在真实 A2R `catalog_directory` 确认两种 AGE 符�
 - 归属：PLAN-1062 / PLAN-1066（AutoDown 文档语料）与 944 系审计谓词的交互；非 ACE CT 面，非 PLAN-1037 diff。
 - 证据：基面 `e85096628` 的 `git ls-tree` 已含这些 `.document.case.ad`；PLAN-1037 交付 diff（`e85096628..e6973193c`）仅 7 文件、不含该目录或该 crate；该组在 PLAN-1037 冻结并集内为 294/295。
 - 关闭条件：由 1062/1066 owner 决定「文档语料是否携带 executed 状态」或「审计谓词是否排除 document 变体」，并在其正式提交中重跑 ace-semantics 全组；PLAN-1037 不代修、不充 PASS。
-- 状态：open（不阻塞 PLAN-1037 交付；merge 与批量回归继续具名记录，不判绿）。
+- 状态：2026-11-21 在 PLAN-1047 专树修复（`b7d0847d5`）。五个原文档通过原 `auto-case` suite，补回执行状态前后每项源码、检查、oracle 身份及结果一致。`6e6181610` 冻结回归的 `ace-semantics` 为 295/295，原条件跳过 10。见 [PLAN-1047 §9](archive/1047-aac-binding-types-and-checked-hir.md#9-复审记录)。
 
 #### D-981-PROOF-AV-SCENE — 混合 UI+2D/3D 的 AV 观察格（2026-11-17 具名；**2026-11-18 关闭（B-W1 AV 余量批）**）
 
