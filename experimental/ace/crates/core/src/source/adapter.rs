@@ -222,7 +222,7 @@ pub fn compile_language_source(
         super::infer::complete(&mut program)?;
         compile_program_parts(&program, &grafted, module_path, capabilities, profile)?
     };
-    let checked = crate::verify::verify_closures(parts.bundle)?;
+    let checked = crate::verify::verify_auto_language(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::AUTO_SOURCE_PROFILE,
         input_hash: parts.input_hash,

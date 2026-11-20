@@ -64,7 +64,7 @@ pub fn compile_package_product_auto(
     let parts = emit_resolved_packages_parts_profile(&resolved, &bound, "packages", profile)
         .map_err(|ds| locate_all(&bound, ds))?;
     let checked =
-        ace_core::verify::verify_closures(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
+        ace_core::verify::verify_auto_language(parts.bundle).map_err(|ds| locate_all(&bound, ds))?;
     Ok(PackageProduct {
         compiled: CompiledSource {
             profile: parts.profile,

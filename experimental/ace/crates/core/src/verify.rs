@@ -567,7 +567,7 @@ fn verify_function_impl(
         // Collections rules (view-escape / pattern-scrutinee / discarded
         // eval) and, for the closures domain, the borrow-closure non-escape
         // discipline this dispatch owns (`check_closure_borrow_rules`).
-        v.check_collections_rules(m, Some(body_id));
+        v.check_collections_rules(m, Some(body_id), false);
     }
     // PLAN-912 §5.2: the closures cross-body obligations against the
     // resident registry, and the verifier-computed closure facts.
@@ -2383,6 +2383,12 @@ pub fn verify_closures(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnos
     verify_collection_family(bundle, HirDomain::Closures)
 }
 
+/// Ordinary Auto extends the closures surface with an immediate owned
+/// copy of a text element read through a checked list place.
+pub fn verify_auto_language(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_impl(bundle, HirDomain::Closures, false, true)
+}
+
 /// PLAN-1026: the closures family WITH foreign declarations (the py
 /// training lane) — the foreign admission prelude and the
 /// `foreign_allowed` bit are the only differences from the plain entry
@@ -2392,20 +2398,21 @@ pub fn verify_foreign_closures(
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
-    verify_collection_family_impl(bundle, HirDomain::Closures, true)
+    verify_collection_family_impl(bundle, HirDomain::Closures, true, false)
 }
 
 fn verify_collection_family(
     bundle: hir::Bundle,
     expected: HirDomain,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_impl(bundle, expected, false)
+    verify_collection_family_impl(bundle, expected, false, false)
 }
 
 fn verify_collection_family_impl(
     bundle: hir::Bundle,
     expected: HirDomain,
     foreign_allowed: bool,
+    ordinary_auto: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     // PLAN-912 §5.4 whole-axis observation: verifying every body is a
     // module-axis attempt (the warm closures path must never reach here).
@@ -2432,7 +2439,7 @@ fn verify_collection_family_impl(
     v.check_bundle(&bundle);
     for m in &bundle.modules {
         v.check_module(m);
-        v.check_collections_rules(m, None);
+        v.check_collections_rules(m, None, ordinary_auto);
     }
     if v.diags.is_empty() {
         // PLAN-904: whole-module collections facts — the frame-owned LIFO
@@ -3122,7 +3129,12 @@ impl Verifier {
     /// - an owned-terminal field projection is only consumed by `.len()`;
     /// - variant dispatch/project roots are whole-local reads;
     /// - `eval` statement values carry the unit type.
-    fn check_collections_rules(&mut self, m: &hir::Module, selected: Option<BodyId>) {
+    fn check_collections_rules(
+        &mut self,
+        m: &hir::Module,
+        selected: Option<BodyId>,
+        ordinary_auto: bool,
+    ) {
         for (index, body) in m.bodies.iter().enumerate() {
             if selected.is_some_and(|id| id.0 as usize != index) {
                 continue;
@@ -3142,7 +3154,7 @@ impl Verifier {
                     hir::ExprKind::TextLen { operand } => {
                         len_consumed.insert(operand.0);
                     }
-                    hir::ExprKind::TextClone { operand } => {
+                    hir::ExprKind::TextClone { operand } if ordinary_auto => {
                         // Lowering can copy a whole text element directly from
                         // its checked list place into an independent owner.
                         if matches!(
