@@ -136,6 +136,7 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
 
 - 2026-11-20，`stage: work | plan_id: PLAN-1113 | plan_revision: r1 | outcome: blocked | worktree_path: D:/autostack/.wt/lang-1113/auto-lang | branch: plan-1113-dev | base_commit: c6544ee5ebf0b400860676bb09289b8e4be8ee44 | code_commit: c6544ee5ebf0b400860676bb09289b8e4be8ee44 | dependency_revisions: auto-down@72b097006f34db3a871449f10e213820d51abef6 | task_ids: T-01 complete; T-02 pilot only | evidence: §4/§7 | blockers: §10 | next_responsible_role: PLAN-1093 producer, then PLAN-1113 work`。两棵树干净。编译输出在专属树 `experimental/ace/target/`，日志、探针及 TEMP/TMP 均在已登记 scope。无交付提交或 Spec 沉淀。
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 1 | from: work | to: work | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: c6544ee5ebf0b400860676bb09289b8e4be8ee44 | next: user`。用户的 `/goal 完成计划1113` 授权本计划完整 work→review→merge；授权与前置输入对照见 §4。依赖缺口见 §10。
+- `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 2 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: c6544ee5ebf0b400860676bb09289b8e4be8ee44 | next: user`。B-1113-01 连续第 2 轮。主检出 `56bccc41a` 时 1093 仍为 r3 drafting 0/8，无 1093 实施分支或已落主切片，§10 无新裁定。1113 及依赖树干净，停在 T-02，未启动新构建或测试。
 
 ## 10. 待澄清事项
 
