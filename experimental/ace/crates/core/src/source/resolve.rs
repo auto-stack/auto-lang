@@ -17130,6 +17130,8 @@ F:{d}
                 arg_slots: Vec<usize>,
                 names: Vec<Option<ast::Ident>>,
                 spans: Vec<Span>,
+                /// PLAN-105 T-02：每个实参是否带 `.move` 标记。
+                moved_flags: Vec<bool>,
                 node_span: Span,
             },
             /// Both operand slots are filled; combine into `dest`.
@@ -17766,6 +17768,7 @@ F:{d}
                         let mut arg_slots = Vec::with_capacity(args.len());
                         let mut names = Vec::with_capacity(args.len());
                         let mut spans = Vec::with_capacity(args.len());
+                        let mut moved_flags: Vec<bool> = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 1);
                         let mailbox = if self.profile.is_auto_language()
                             && matches!(name.name.as_str(), "send" | "ask")
@@ -17780,8 +17783,15 @@ F:{d}
                             out.push(dummy_resolved());
                             arg_slots.push(sp);
                             match a {
-                                Arg::Pos(e) | Arg::MovePos(e) => {
+                                Arg::Pos(e) => {
                                     names.push(None);
+                                    moved_flags.push(false);
+                                    spans.push(e.span);
+                                    subtasks.push(Task::Visit { node: e, slot: sp });
+                                }
+                                Arg::MovePos(e) => {
+                                    names.push(None);
+                                    moved_flags.push(true);
                                     spans.push(e.span);
                                     subtasks.push(match mailbox {
                                         Some(receiver) => Task::MailboxArg {
@@ -17801,6 +17811,7 @@ F:{d}
                                         name: n.name.clone(),
                                         span: n.span,
                                     }));
+                                    moved_flags.push(false);
                                     spans.push(*span);
                                     subtasks.push(Task::Visit {
                                         node: value,
@@ -17826,6 +17837,7 @@ F:{d}
                             arg_slots,
                             names,
                             spans,
+                            moved_flags,
                             node_span: node.span,
                         });
                         for t in subtasks.into_iter().rev() {
@@ -18104,15 +18116,20 @@ F:{d}
                     arg_slots,
                     names,
                     spans,
+                    moved_flags,
                     node_span,
                 } => {
                     let mut rargs = Vec::with_capacity(arg_slots.len());
                     for (i, sp) in arg_slots.iter().enumerate() {
                         let value = std::mem::replace(&mut out[*sp], dummy_resolved());
+                        // PLAN-105 T-02（U03 真语料 013）：记录接收者上的列表方法
+                        // 也要保留 `.move` 实参标记（`push(<整局部>)`）。
+                        let moved = moved_flags.get(i).copied().unwrap_or(false)
+                            || matches!(value.kind, RExprKind::Move { .. });
                         rargs.push(ResolvedArg {
                             span: spans[i],
                             name: names[i].clone(),
-                            moved: false,
+                            moved,
                             value,
                         });
                     }

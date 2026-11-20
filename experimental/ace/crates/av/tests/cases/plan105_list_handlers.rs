@@ -60,3 +60,11 @@ fn p105_list_local_to_field_assign() {
     let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
     assert!(n.contains('1'), "list local assigned to field: {n}");
 }
+#[test]
+fn p105_record_list_push_and_project_field() {
+    let src = "type Todo {\n    id int\n    text Str\n    done bool\n}\nwidget App {\n    msg { M }\n    model { var n int = 0\n var todos []Todo = [] }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            var t Todo = Todo { id: 1, text: \"a\", done: false }\n            .todos.push(t)\n            .n = .todos.get(0).text.len()\n        }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    println!("[proj] n={n}");
+    assert!(n.contains('1'), "projected field text len: {n}");
+}
