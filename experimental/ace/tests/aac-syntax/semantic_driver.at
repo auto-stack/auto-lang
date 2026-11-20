@@ -31,6 +31,11 @@ use app.foreign_contract.foreign_signature_error
 use app.initializers.initialize_order
 use app.initializers.initializer_cycle
 use app.initializers.initializer_module_order
+use app.initializers.collect_global_facts
+use app.initializers.global_access_stride
+use app.initializers.global_layout_stride
+use app.initializers.global_symbol
+use app.initializers.global_type_error
 use app.numeric_literal.literal_range
 use app.numeric_literal.literal_syntax
 use app.semantic_tree.add_module_name
@@ -93,6 +98,7 @@ fn diagnostic_name(code int) Str {
     if (code == bind_import_cycle()) { return "bind.import-cycle" }
     if (code == initializer_cycle()) { return "bind.initializer-cycle" }
     if (code == initializer_module_order()) { return "bind.initializer-order" }
+    if (code == global_type_error()) { return "type.global" }
     if (code == type_unknown()) { return "type.unresolved" }
     if (code == type_operator()) { return "type.operator" }
     if (code == type_value()) { return "type.value" }
@@ -177,6 +183,27 @@ fn type_report(ast List<int>, bases List<int>, facts List<int>, types List<int>)
     return join_rows(result, result.len())
 }
 
+fn globals_report(ast List<int>, src List<int>, bases List<int>, modules List<int>, declarations List<int>, layouts List<int>, accesses List<int>) Str {
+    if (layouts.len() == 0) { return "" }
+    var result = List<Str>.new()
+    result.push("aac.globals/1\n")
+    var at = 0
+    for (at < layouts.len()) {
+        let definition = layouts.get(at)
+        let symbol = global_symbol(ast, src, modules, declarations, definition)
+        let line = "GLOBAL " + symbol + " " + from_int(definition) + " " + from_int(layouts.get(at + 1)) + " " + from_int(layouts.get(at + 2)) + " " + location(ast, layouts.get(at + 3), bases) + "\n"
+        result.push(line.move)
+        at = at + global_layout_stride()
+    }
+    at = 0
+    for (at < accesses.len()) {
+        let line = "GLOBAL-USE " + from_int(accesses.get(at)) + " " + from_int(accesses.get(at + 1)) + " " + from_int(accesses.get(at + 3)) + " " + location(ast, accesses.get(at + 2), bases) + "\n"
+        result.push(line.move)
+        at = at + global_access_stride()
+    }
+    return join_rows(result, result.len())
+}
+
 fn declaration_report(ast List<int>, src List<int>, bases List<int>, annotations List<int>, pending List<int>) Str {
     var lines = List<Str>.new()
     if (pending.len() > 0) { lines.push("aac.pending-work/1\n") }
@@ -237,7 +264,7 @@ fn admit_imports(pg List<int>, ast List<int>, links List<int>, src List<int>, ba
     return "ERROR os.read\n"
 }
 
-fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, steps int) Str {
+fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package_source bool, steps int) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
     var declarations = List<int>.new()
@@ -262,9 +289,14 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
         if (imports == "pending") { return declaration_report(ast, src, bases, metadata, pending) }
         if (imports.len() > 0) { return imports }
     }
-    let status = bind_source(pg, ast, links, src, modules, roots, foreign_names, declarations, uses, mappings, errors, fuel, deadline)
+    let status = bind_source(pg, ast, links, src, modules, roots, package_source, foreign_names, declarations, uses, mappings, errors, fuel, deadline)
     if (status != 0) {
         return "ERROR " + diagnostic_name(status) + " " + location(ast, errors.get(0), bases) + "\n"
+    }
+    var initializers = List<int>.new()
+    let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
+    if (ordered != 0) {
+        return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
     }
     var typed_report = ""
     let hir_mode = get("AAC1047_HIR")
@@ -274,6 +306,14 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
         let typed = infer_source(pg, ast, links, src, declarations, uses, mappings, foreign_signatures, facts, types, errors, fuel, deadline)
         if (typed != 0) {
             return "ERROR " + diagnostic_name(typed) + " " + location(ast, errors.get(0), bases) + "\n"
+        }
+        var layouts = List<int>.new()
+        var accesses = List<int>.new()
+        if (initializers.len() > 0) {
+            let globals = collect_global_facts(pg, ast, links, declarations, uses, facts, initializers, layouts, accesses, errors, fuel, deadline)
+            if (globals != 0) {
+                return "ERROR " + diagnostic_name(globals) + " " + location(ast, errors.get(0), bases) + "\n"
+            }
         }
         if (hir_mode.len() > 0) {
             if (pending.len() > 0) {
@@ -288,12 +328,7 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             }
             return document
         }
-        typed_report = type_report(ast, bases, facts, types)
-    }
-    var initializers = List<int>.new()
-    let ordered = initialize_order(pg, ast, links, src, modules, roots.len(), declarations, uses, initializers, errors, fuel, deadline)
-    if (ordered != 0) {
-        return "ERROR " + diagnostic_name(ordered) + " " + location(ast, errors.get(0), bases) + "\n"
+        typed_report = type_report(ast, bases, facts, types) + globals_report(ast, src, bases, modules, declarations, layouts, accesses)
     }
     return typed_report + binding_report(ast, src, bases, declarations, uses, mappings, initializers) + declaration_report(ast, src, bases, metadata, pending)
 }
@@ -371,7 +406,7 @@ fn project(steps int) Str {
             add_module_name(names, key)
         }
     }
-    return observe(pg, src, ast, bases, roots, names, steps)
+    return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps)
 }
 
 fn admit_document(path Str, steps int) Str {

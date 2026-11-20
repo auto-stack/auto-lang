@@ -95,7 +95,7 @@ fn decl_scope(pg List<int>, ast List<int>, links List<int>, scopes List<int>, ro
     return scopes.get(row)
 }
 
-fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int>, scopes List<int>, heads List<int>, declarations List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int>, package_source bool, scopes List<int>, heads List<int>, declarations List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let count = row_count(ast)
     var row = 0
     for (row < count) {
@@ -118,6 +118,11 @@ fn build_declarations(pg List<int>, ast List<int>, links List<int>, src List<int
         }
         let tag_name = kind(pg, ast, row)
         var node_kind = category(tag_name.clone())
+        if (package_source && node_kind == local_var_decl() && kind(pg, ast, scopes.get(row)) == "program") {
+            // The shared AAC grammar can project an unannotated module
+            // variable as a statement under the program-level item.
+            node_kind = global_var_decl()
+        }
         if (tag_name == "fn-item" && child_with_role(pg, ast, links, row, "proto") >= 0) {
             node_kind = function_decl()
         }
@@ -626,14 +631,14 @@ pub fn map_call(pg List<int>, ast List<int>, links List<int>, src List<int>, cal
     return 0
 }
 
-pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, roots List<int>, external List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+pub fn bind_source(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, roots List<int>, package_source bool, external List<int>, declarations List<int>, uses List<int>, mappings List<int>, errors List<int>, fuel List<int>, deadline i64) int {
     let max_steps = fuel.get(0)
     if (max_steps <= 0 || max_steps > 1000000 || row_count(ast) > max_steps) {
         return fail(errors, 0, bind_budget())
     }
     var scopes = List<int>.new()
     var heads = List<int>.new()
-    let indexed = build_declarations(pg, ast, links, src, scopes, heads, declarations, errors, fuel, deadline)
+    let indexed = build_declarations(pg, ast, links, src, package_source, scopes, heads, declarations, errors, fuel, deadline)
     if (indexed != 0) { return indexed }
     var imports = List<int>.new()
     let collected = collect_imports(pg, ast, links, src, modules, imports, errors, fuel, deadline)

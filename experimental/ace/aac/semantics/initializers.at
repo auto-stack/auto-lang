@@ -7,6 +7,7 @@ use app.binding.global_var_decl
 use app.binding.method_decl
 use app.binding.resolved_function
 use app.binding.take_step
+use app.semantic_tree.child_with_role
 use app.semantic_tree.kind
 use app.semantic_tree.module_name_at
 use app.semantic_tree.parent
@@ -19,10 +20,17 @@ use std.text.split
 
 pub fn initializer_cycle() int { return -18 }
 pub fn initializer_module_order() int { return -19 }
+pub fn global_type_error() int { return -42 }
+pub fn global_layout_stride() int { return 4 }
+pub fn global_access_stride() int { return 4 }
 
 fn is_global(declarations List<int>, row int) bool {
     let category = decl_category(declarations, row)
     return category == constant_decl() || category == global_var_decl()
+}
+
+fn global_write(pg List<int>, ast List<int>, row int) bool {
+    return kind(pg, ast, parent(ast, row)) == "assign-stmt" && role(pg, ast, row) == "name"
 }
 
 fn is_function(declarations List<int>, row int) bool {
@@ -43,7 +51,7 @@ fn collect_edges(pg List<int>, ast List<int>, links List<int>, declarations List
         if (owner >= 0) {
             let target = uses.get(row)
             if (target >= 0 && is_global(declarations, target)) {
-                let writer = kind(pg, ast, outer) == "assign-stmt" && role(pg, ast, row) == "name"
+                let writer = global_write(pg, ast, row)
                 if (!writer) {
                     edges.push(owner)
                     edges.push(target)
@@ -111,22 +119,22 @@ fn before(a Str, b Str) bool {
     return a.len() < b.len()
 }
 
-fn global_key(ast List<int>, src List<int>, modules List<int>, declarations List<int>, row int) Str {
+pub fn global_symbol(ast List<int>, src List<int>, modules List<int>, declarations List<int>, row int) Str {
     var parts = split(module_name_at(modules, source_id(ast, row)), ".")
     let package = parts.remove(0)
     let module_name = parts.remove(0)
     let name = spelling(src, ast, decl_name(declarations, row))
-    return from_int(package.len()) + "_" + package + "m" + from_int(module_name.len()) + "_" + module_name + "_" + name
+    return "g" + from_int(package.len()) + "_" + package + "m" + from_int(module_name.len()) + "_" + module_name + "_" + name
 }
 
 fn add_global(ast List<int>, src List<int>, modules List<int>, declarations List<int>, globals List<int>, row int, fuel List<int>, deadline i64) bool {
-    let name = global_key(ast, src, modules, declarations, row)
+    let name = global_symbol(ast, src, modules, declarations, row)
     var position = globals.len()
     globals.push(row)
     for (position > 0) {
         if (!take_step(fuel, deadline)) { return false }
         let above = globals.get(position - 1)
-        if (!before(name.clone(), global_key(ast, src, modules, declarations, above))) { break }
+        if (!before(name.clone(), global_symbol(ast, src, modules, declarations, above))) { break }
         globals.set(position, above)
         position = position - 1
     }
@@ -246,6 +254,62 @@ pub fn initialize_order(pg List<int>, ast List<int>, links List<int>, src List<i
             }
         }
         index = index + 1
+    }
+    return 0
+}
+
+// Layout rows contain the declaration, type, mutability, and typed source
+// initializer, in the verified initialization order. Access rows bind an
+// exact source use to its target and enclosing declaration.
+pub fn collect_global_facts(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, order List<int>, layouts List<int>, accesses List<int>, errors List<int>, fuel List<int>, deadline i64) int {
+    var index = 0
+    for (index < order.len()) {
+        let global = order.get(index)
+        if (!take_step(fuel, deadline)) {
+            errors.push(global)
+            return bind_budget()
+        }
+        let initial = child_with_role(pg, ast, links, global, "value")
+        let ty = facts.get(global)
+        if (initial < 0 || ty == 0 || facts.get(initial) != ty) {
+            errors.push(global)
+            return global_type_error()
+        }
+        var mutable_value = 0
+        if (decl_category(declarations, global) == global_var_decl()) { mutable_value = 1 }
+        layouts.push(global)
+        layouts.push(ty)
+        layouts.push(mutable_value)
+        layouts.push(initial)
+        index = index + 1
+    }
+    var owners = List<int>.new()
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) {
+            errors.push(row)
+            return bind_budget()
+        }
+        let parent_row = parent(ast, row)
+        var owner = -1
+        if (parent_row >= 0) { owner = owners.get(parent_row) }
+        if (is_global(declarations, row) || is_function(declarations, row)) { owner = row }
+        owners.push(owner)
+        let target = uses.get(row)
+        if (target >= 0 && is_global(declarations, target)) {
+            let writer = global_write(pg, ast, row)
+            var mode = 0
+            if (writer) { mode = 1 }
+            if (owner < 0 || facts.get(target) == 0 || facts.get(row) != facts.get(target)) {
+                errors.push(row)
+                return global_type_error()
+            }
+            accesses.push(owner)
+            accesses.push(target)
+            accesses.push(row)
+            accesses.push(mode)
+        }
+        row = row + 1
     }
     return 0
 }

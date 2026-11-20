@@ -188,6 +188,45 @@ fn verifies_the_autodown_cross_package_reexport() {
 }
 
 #[test]
+fn reports_exact_global_layout_and_accesses_from_autodown_source() {
+    let corpus = include_str!(
+        "../../../../../crates/auto-lang/test/cases/language/modules/imports-globals.case.ad"
+    );
+    let section = corpus.split_once("## Case: module-global-once").unwrap().1;
+    let case = section.split_once("## Case:").unwrap().0;
+    let sources: Vec<_> = case
+        .split("```auto")
+        .skip(1)
+        .map(|source| source.split_once("```").unwrap().0)
+        .collect();
+    assert_eq!(sources.len(), 2);
+    let report = run_type_project(&[("main", sources[0]), ("state", sources[1])])
+        .expect("Auto global layout");
+    assert!(report.contains("aac.globals/1\n"), "{report}");
+    let declaration = report
+        .lines()
+        .find(|line| line.starts_with("GLOBAL g3_appm5_state_n "))
+        .unwrap_or_else(|| panic!("{report}"));
+    let layout: Vec<_> = declaration.split_whitespace().collect();
+    let initial = sources[1].find("40").unwrap();
+    assert_eq!(
+        layout[3..],
+        ["1", "1", "1", &format!("{initial}..{}", initial + 2)]
+    );
+    let accesses: Vec<_> = report
+        .lines()
+        .filter(|line| line.starts_with("GLOBAL-USE "))
+        .map(|line| {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            assert_eq!(fields[2], layout[2]);
+            assert_eq!(fields[4], "1");
+            fields[3]
+        })
+        .collect();
+    assert_eq!(accesses, ["1", "0", "0"]);
+}
+
+#[test]
 fn rejects_private_import_and_import_cycle_separately() {
     let root = "use beta.hidden\nfn main() int { return hidden() }";
     let private = "fn hidden() int { return 4 }";
