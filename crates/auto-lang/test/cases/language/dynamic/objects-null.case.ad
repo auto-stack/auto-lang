@@ -1250,3 +1250,69 @@ TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'
 ### Notes
 
 Original Auto text from test/null-family/p9_trycatch_baseline.at. The virtual .as entry exercises the script error contract.
+
+## Case: boxed-nil-arithmetic-script-catch
+id: "av.parity.1084.boxed-nil-arithmetic-script-catch"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "errors.as"
+syntax: "auto-script"
+
+```auto
+fn main() int {
+    let values = { missing: null, amount: 1 }
+    try {
+        return values.missing + 1
+    } catch err {
+        if err == "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'" { return 42 }
+    }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: duplicate-int-key
+id: "av.parity.1084.duplicate-int-key"
+tags: ["av-language-parity", "plan-1084"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let box = { 1: 19, true: 20, 1: 23 }; return box[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.object-duplicate"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```

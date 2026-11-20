@@ -8454,6 +8454,37 @@ F:{d}
         }
     }
 
+    fn eval_once(&mut self, value: ResolvedExpr) -> ResolvedExpr {
+        if matches!(value.kind, RExprKind::ReadLocal(_)) {
+            return value;
+        }
+        let value = Self::own_dynamic_text(value);
+        let span = value.span;
+        let vt = value.vt;
+        let local = self.agg_temp("script_operand", vt, false, span);
+        self.emit_stmt(RStmt::Let { local, value, span });
+        ResolvedExpr {
+            span,
+            vt,
+            kind: RExprKind::ReadLocal(local),
+        }
+    }
+
+    fn guard_boxed_nil(&mut self, value: ResolvedExpr, message: String, span: Span) {
+        debug_assert_eq!(value.vt, VT::Dyn);
+        let (failure, _, _) =
+            self.resolve_in_branch(|resolver| resolver.script_type_error(message, VT::Unit, span));
+        self.emit_stmt(RStmt::If {
+            cond: Self::dynamic_nil_test(value, span),
+            then: RBlock {
+                stmts: failure,
+                span,
+            },
+            els: None,
+            span,
+        });
+    }
+
     fn dynamic_nil_test(value: ResolvedExpr, span: Span) -> ResolvedExpr {
         ResolvedExpr {
             span,
@@ -17053,23 +17084,35 @@ F:{d}
                         out[dest] = self.compare_null(l, r, op, span);
                         continue;
                     }
-                    if self.coll.script_errors
-                        && (l.vt == VT::Nil || r.vt == VT::Nil)
+                    let script_arithmetic = self.coll.script_errors
                         && matches!(
                             op,
                             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
-                        )
-                    {
-                        let message = format!(
+                        );
+                    let type_error = |lhs, rhs| {
+                        format!(
                             "TypeError: unsupported operand type(s) for {}: '{}' and '{}'",
                             op.as_str(),
-                            Self::script_type_name(l.vt),
-                            Self::script_type_name(r.vt),
-                        );
+                            Self::script_type_name(lhs),
+                            Self::script_type_name(rhs),
+                        )
+                    };
+                    if script_arithmetic && (l.vt == VT::Nil || r.vt == VT::Nil) {
+                        let message = type_error(l.vt, r.vt);
                         self.eval_for_effect(l);
                         self.eval_for_effect(r);
                         out[dest] = self.script_type_error(message, VT::I32, span);
                         continue;
+                    }
+                    if script_arithmetic && (l.vt == VT::Dyn || r.vt == VT::Dyn) {
+                        l = self.eval_once(l);
+                        r = self.eval_once(r);
+                        if l.vt == VT::Dyn {
+                            self.guard_boxed_nil(l.clone(), type_error(VT::Nil, r.vt), span);
+                        }
+                        if r.vt == VT::Dyn {
+                            self.guard_boxed_nil(r.clone(), type_error(l.vt, VT::Nil), span);
+                        }
                     }
                     if l.vt == VT::Dyn && r.vt == VT::Dyn {
                         let ty = if matches!(op, BinOp::And | BinOp::Or) {
