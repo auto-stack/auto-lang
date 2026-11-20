@@ -16,6 +16,7 @@ use app.syntax_format_edit.prepare_format_edit
 use app.syntax_incremental.fb_unterminated
 use app.source_ast.project_ast
 use app.source_ast.ast_canonical
+use app.source_position.diagnostic_positions
 use app.syntax_program.decode_program_parts
 use std.bytes.decode_utf8
 use std.text.equal
@@ -334,7 +335,11 @@ pub fn dump_case(profile Str, sample Str) Str {
 /// Lex + parse `sample` under `profile`; return "CANON\n<canonical>\nDIAGS\n<diags>"
 /// or a controlled refusal code.
 pub fn parse_case(profile Str, sample Str) Str {
-    return parse_source(profile, str_to_bytes(sample), 1048576, 67108864)
+    return parse_source(profile, str_to_bytes(sample), 1048576, 67108864, false)
+}
+
+pub fn diagnostic_positions_case(profile Str, sample Str) Str {
+    return parse_source(profile, str_to_bytes(sample), 1048576, 67108864, true)
 }
 
 pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
@@ -343,13 +348,13 @@ pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
     }
     let valid = decode_utf8(srcb)
     is valid {
-        Some(_) -> { return parse_source(profile, srcb, depth, work) }
+        Some(_) -> { return parse_source(profile, srcb, depth, work, false) }
         None -> {}
     }
     return "SOURCE_ERR UTF8"
 }
 
-fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
+fn parse_source(profile Str, srcb List<int>, depth int, work int, positions bool) Str {
     let mode = format_mode(profile.clone())
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
@@ -366,6 +371,7 @@ fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
     if (!reconstructs_input(t, ef, decls, root, srcb, srcb.len())) {
         return "LOSSLESS_ERR"
     }
+    if (positions) { return diagnostic_positions(srcb, srcb.len(), dmsg) }
     return "CANON\n" + canonical(t, ef, decls, root) + "DIAGS\n" + render_diag(pg, dmsg)
 }
 
@@ -383,6 +389,9 @@ pub fn project_case(profile Str, sample Str, source_id int, origin_id int) Str {
     let root = parse_cst(pg, mode, srcb, t, ef, decls, dmsg, 1048576, 67108864)
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
+    }
+    if (!reconstructs_input(t, ef, decls, root, srcb, srcb.len())) {
+        return "LOSSLESS_ERR"
     }
     return project_report(pg, t, ef, decls, dmsg, root, srcb.len(), source_id, origin_id)
 }
@@ -490,17 +499,21 @@ fn build_gcand(decls1 List<int>, t1 List<int>, ef1 List<int>, toks1 List<int>, s
 }
 
 pub fn edit_case(profile Str, sample Str, start int, end int, insert Str) Str {
-    return edit_observation(profile, sample, start, end, insert, List<int>.new())
+    return edit_observation(profile, sample, start, end, insert, List<int>.new(), false)
+}
+
+pub fn edit_positions_case(profile Str, sample Str, start int, end int, insert Str) Str {
+    return edit_observation(profile, sample, start, end, insert, List<int>.new(), true)
 }
 
 pub fn edit_project_case(profile Str, sample Str, start int, end int, insert Str, source_id int, origin_id int) Str {
     var origin = List<int>.new()
     origin.push(source_id)
     origin.push(origin_id)
-    return edit_observation(profile, sample, start, end, insert, origin)
+    return edit_observation(profile, sample, start, end, insert, origin, false)
 }
 
-fn edit_observation(profile Str, sample Str, start int, end int, insert Str, origin List<int>) Str {
+fn edit_observation(profile Str, sample Str, start int, end int, insert Str, origin List<int>, positions bool) Str {
     let mode = format_mode(profile.clone())
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
@@ -520,7 +533,7 @@ fn edit_observation(profile Str, sample Str, start int, end int, insert Str, ori
     edit.push(end)
     edit.push(new_len)
     if (mode != 0) {
-        return edit_with_formats(pg, mode, srcb, snap, edit, origin)
+        return edit_with_formats(pg, mode, srcb, snap, edit, origin, positions)
     }
     let cs = compile_scanner(pg)
     var old_toks = List<int>.new()
@@ -531,10 +544,10 @@ fn edit_observation(profile Str, sample Str, start int, end int, insert Str, ori
     var diags = List<int>.new()
     var facts = List<int>.new()
     let root = reparse_edit(pg, cs, old_toks, srcb, snap, edit, nodes, edges, decls, diags, facts, 67108864, false)
-    return edit_report(pg, nodes, edges, decls, diags, root, snap, new_len, origin, facts)
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, new_len, origin, facts, positions)
 }
 
-fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit List<int>, origin List<int>) Str {
+fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit List<int>, origin List<int>, positions bool) Str {
     let work = 67108864
     var old_input = List<int>.new()
     var old_map = List<int>.new()
@@ -542,7 +555,7 @@ fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit
     let old_status = normalize_formats(raw, raw.len(), mode, work, old_input, old_map, old_marks)
     if (old_status == format_resource()) { return "COLD_ERR 3" }
     if (old_status < 0) {
-        return cold_format_edit(pg, mode, snap, edit.get(2), origin, fb_unterminated())
+        return cold_format_edit(pg, mode, snap, edit.get(2), origin, fb_unterminated(), positions)
     }
     if (old_status == 0) { old_input = copy_ints(raw) }
     let old_scratch = (old_input.len() + old_map.len() + old_marks.len()) * 4
@@ -555,7 +568,7 @@ fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit
     var virtual_edit = List<int>.new()
     let reason = prepare_format_edit(raw, snap, edit, mode, work - old_scratch, old_input, old_toks, old_map, old_marks, input, new_map, new_marks, virtual_edit)
     if (reason < 0) { return "INCR_ERR " + itoa(-reason) }
-    if (reason > 0) { return cold_format_edit(pg, mode, snap, edit.get(2), origin, reason) }
+    if (reason > 0) { return cold_format_edit(pg, mode, snap, edit.get(2), origin, reason, positions) }
     let normalized = virtual_edit.get(3)
     let scratch = old_scratch + (input.len() + new_map.len() + new_marks.len()) * 4
     if (scratch > work) { return "INCR_ERR 3" }
@@ -568,10 +581,10 @@ fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit
     let root = reparse_edit(pg, cs, old_toks, old_input, input, virtual_edit, nodes, edges, decls, diags, facts, work - scratch, new_marks.len() > 0)
     if (root >= 0 && new_map.len() > 0) { remap_format_tree(new_map, new_marks, nodes, decls, diags) }
     if (root >= 0) { facts.push(normalized) }
-    return edit_report(pg, nodes, edges, decls, diags, root, snap, edit.get(2), origin, facts)
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, edit.get(2), origin, facts, positions)
 }
 
-fn cold_format_edit(pg List<int>, mode int, snap List<int>, length int, origin List<int>, reason int) Str {
+fn cold_format_edit(pg List<int>, mode int, snap List<int>, length int, origin List<int>, reason int, positions bool) Str {
     for (snap.len() > length) { snap.remove(snap.len() - 1) }
     var nodes = List<int>.new()
     var edges = List<int>.new()
@@ -583,7 +596,7 @@ fn cold_format_edit(pg List<int>, mode int, snap List<int>, length int, origin L
     facts.push(0)
     facts.push(0)
     let root = parse_cst(pg, mode, snap, nodes, edges, decls, diags, 1048576, 67108864)
-    return edit_report(pg, nodes, edges, decls, diags, root, snap, length, origin, facts)
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, length, origin, facts, positions)
 }
 
 fn reparse_edit(pg List<int>, cs List<int>, old_toks List<int>, old_input List<int>, input List<int>, edit List<int>, nodes List<int>, edges List<int>, decls List<int>, diags List<int>, facts List<int>, work int, mapped bool) int {
@@ -639,7 +652,7 @@ fn reparse_edit(pg List<int>, cs List<int>, old_toks List<int>, old_input List<i
     return root
 }
 
-fn edit_report(pg List<int>, nodes List<int>, edges List<int>, decls List<int>, diags List<int>, root int, snap List<int>, new_len int, origin List<int>, info List<int>) Str {
+fn edit_report(pg List<int>, nodes List<int>, edges List<int>, decls List<int>, diags List<int>, root int, snap List<int>, new_len int, origin List<int>, info List<int>, positions bool) Str {
     if (root < 0) {
         return "INCR_ERR " + itoa(-root) + " " + render_diag(pg, diags)
     }
@@ -648,6 +661,7 @@ fn edit_report(pg List<int>, nodes List<int>, edges List<int>, decls List<int>, 
     }
     var facts = "SPLICE ok=" + itoa(info.get(0)) + " fb=" + itoa(info.get(1)) + " rescan=" + itoa(info.get(2)) + " grafted=" + itoa(info.get(3))
     if (info.len() > 4) { facts = facts + " normalized=" + itoa(info.get(4)) }
+    if (positions) { return "INCR|" + diagnostic_positions(snap, new_len, diags) + facts }
     if (origin.len() == 2) {
         return "INCR|" + project_report(pg, nodes, edges, decls, diags, root, new_len, origin.get(0), origin.get(1)) + facts
     }

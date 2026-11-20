@@ -98,3 +98,29 @@ pub fn position_report(bytes List<int>, length int, offset int, reverse_col int)
     let back16 = byte_offset_utf16(bytes, length, index, line, reverse_col)
     return from_int(line) + " " + from_int(coord.get(1)) + " " + from_int(coord.get(2)) + " " + from_int(back8) + " " + from_int(back16)
 }
+
+// Diagnostic rows contain [kind, raw_start, raw_end, parameter]. Both ends
+// are resolved against the raw snapshot that produced the candidate tree.
+pub fn diagnostic_positions(bytes List<int>, length int, diagnostics List<int>) Str {
+    var lines = List<int>.new()
+    build_line_index(bytes, length, lines)
+    var out = "DIAGPOS\n"
+    var at = 0
+    for (at < diagnostics.len()) {
+        let start = diagnostics.get(at + 1)
+        let end = diagnostics.get(at + 2)
+        if (start < 0 || start > end || end > length) { return "POSITION_ERR" }
+        var points = List<int>.new()
+        line_col_at(bytes, length, lines, start, points)
+        line_col_at(bytes, length, lines, end, points)
+        out = out + from_int(diagnostics.get(at)) + " " + from_int(start) + ".." + from_int(end)
+        var position = 0
+        for (position < 6) {
+            out = out + " " + from_int(points.get(position))
+            position = position + 1
+        }
+        out = out + "\n"
+        at = at + 4
+    }
+    return out
+}

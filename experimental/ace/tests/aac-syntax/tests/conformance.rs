@@ -666,6 +666,49 @@ fn aac1046_module_catalog_missing_duplicate_and_import_cycle() {
     assert!(accepted.starts_with("CATALOG\n"), "{accepted}");
 }
 
+#[test]
+fn aac1046_catalog_distinguishes_body_and_initializer_edges() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+    use std::collections::BTreeMap;
+
+    let functions = "fn first() int { return second() }\nfn second() int { return first() }";
+    let values = "var alpha int = beta\nvar beta int = alpha";
+    for input in [functions, values] {
+        assert!(rust_oracle("packages-ct", input).ends_with("DIAGS\n"));
+    }
+    let files = [("functions.at", functions), ("storage.at", values)];
+    let catalog = run_native_catalog("packages-ct", "app", &files, &["functions.at", "storage.at"]).unwrap();
+    assert!(catalog.starts_with("CATALOG\n"), "{catalog}");
+
+    let mut declarations = BTreeMap::new();
+    let mut observed = Vec::new();
+    for line in catalog.lines() {
+        if !line.starts_with("DECL ") && !line.starts_with("CANDIDATE ") {
+            continue;
+        }
+        let fields: Vec<_> = line.split_whitespace().collect();
+        let [tag, id, owner, category, name, span] = fields.as_slice() else { panic!("{line}") };
+        let source = files[id.parse::<usize>().unwrap()].1;
+        let (start, end) = span.split_once("..").unwrap();
+        let start = start.parse::<usize>().unwrap();
+        let end = end.parse::<usize>().unwrap();
+        assert_eq!(&source[start..end], *name);
+        if *tag == "DECL" {
+            assert!(declarations.insert((*id, *owner), (*category, *name)).is_none());
+        } else {
+            let (kind, from) = declarations[&(*id, *owner)];
+            assert_eq!(kind, *category);
+            observed.push((*id, kind, from, *name));
+        }
+    }
+    assert_eq!(observed, [
+        ("0", "function", "first", "second"),
+        ("0", "function", "second", "first"),
+        ("1", "value", "alpha", "beta"),
+        ("1", "value", "beta", "alpha"),
+    ]);
+}
+
 
 fn corpus_source<'a>(document: &'a str, case: &str) -> &'a str {
     let heading = format!("## Case: {case}\n");
@@ -748,8 +791,6 @@ fn aac1046_corpus_text() {
     assert!(parse_program_with(source, SourceProfile::Auto).is_ok());
     assert_eq!(parse_program_with(truncated, SourceProfile::Auto).unwrap_err().code, "source.syntax");
 
-    let full = obs("parse", "auto", source);
-    assert!(full.starts_with("CANON\n") && full.ends_with("DIAGS\n"), "{full}");
     let bad = obs("parse", "auto", truncated);
     let (tree, diagnostics) = bad.split_once("DIAGS\n").unwrap_or_else(|| panic!("{bad}"));
     assert!(tree.starts_with("CANON\n") && !diagnostics.is_empty());
@@ -764,13 +805,13 @@ fn aac1046_corpus_text() {
     let normalized = desugar_fstrings(source).unwrap();
     let expected = rust_ast_report("auto", &normalized, 41, 7);
     let actual = run_native_projection("auto", source, (41, 7), None).unwrap();
+    assert!(actual.starts_with("AST\n") && actual.ends_with("DIAGS\n"), "{actual}");
     let shape = |report: &str| {
         report.lines().skip(1).take_while(|line| *line != "DIAGS").map(|line| {
             line.split_whitespace().take(3).collect::<Vec<_>>().join(" ")
         }).collect::<Vec<_>>()
     };
     assert_eq!(shape(&actual), shape(&expected));
-    assert!(actual.ends_with("DIAGS\n"));
     let generated: Vec<_> = actual.lines().filter(|line| line.ends_with(" 41 7 8")).collect();
     let starts: Vec<_> = source.match_indices("f\"").map(|(index, _)| index).collect();
     assert_eq!(generated.len(), starts.len());
@@ -870,6 +911,12 @@ fn aac1046_format_edits_match_cold_with_reuse() {
         assert!(facts.ends_with(&format!(" normalized={expected_scan}")), "{facts}");
     }
 
+    let cold_ast = run_native_projection("auto", &edited, (55, 9), None).unwrap();
+    let hot_ast = run_native_projection("auto", source, (55, 9), Some((expr as i32, (expr + 5) as i32, "20 + 22"))).unwrap();
+    let (projected, splice) = hot_ast.split_once("SPLICE ").unwrap_or_else(|| panic!("{hot_ast}"));
+    assert_eq!(projected.strip_prefix("INCR|"), Some(cold_ast.as_str()));
+    assert!(splice.starts_with("ok=1 fb=0 "), "{splice}");
+
     let quote = source.find("}\"").unwrap() + 1;
     let mut broken = source.to_owned();
     broken.remove(quote);
@@ -877,6 +924,47 @@ fn aac1046_format_edits_match_cold_with_reuse() {
     let (tree, facts) = hot.split_once("SPLICE ").unwrap_or_else(|| panic!("{hot}"));
     assert_eq!(tree.strip_prefix("INCR|"), Some(obs("parse", "auto", &broken).as_str()));
     assert!(facts.starts_with("ok=0 fb=1 ") && facts.ends_with("grafted=0"), "{facts}");
+}
+
+#[test]
+fn aac1046_recovered_diagnostic_positions_match_raw_snapshot() {
+    use ace_syntax_runtime::{position::LineIndex, snapshot::{PageStore, Snapshot}};
+
+    let source = "// first line\r\nfn main() int { let s = f\"😀 ${1}\"\r\n return 1 }";
+    let close = source.find("}\"").unwrap();
+    let mut malformed = source.to_owned();
+    malformed.remove(close);
+    assert_eq!(obs("diag-positions", "auto", source), "DIAGPOS\n");
+    let cold = obs("diag-positions", "auto", &malformed);
+    let hot = run_native_case("edit-positions", "auto", source, Some((close as i32, close as i32 + 1, ""))).unwrap();
+    let (positions, facts) = hot.split_once("SPLICE ").unwrap_or_else(|| panic!("{hot}"));
+    assert_eq!(positions.strip_prefix("INCR|"), Some(cold.as_str()));
+    assert!(facts.starts_with("ok=0 fb=1 "), "{facts}");
+
+    let pages = std::rc::Rc::new(PageStore::new());
+    let raw = Snapshot::from_text(&pages, &malformed);
+    let index = LineIndex::build(&raw);
+    let mut found_format = false;
+    for row in cold.lines().skip(1) {
+        let fields: Vec<_> = row.split_whitespace().collect();
+        let [kind, span, ..] = fields.as_slice() else { panic!("{row}") };
+        let (start, end) = span.split_once("..").unwrap();
+        let points = [start.parse::<u64>().unwrap(), end.parse::<u64>().unwrap()];
+        let expected: Vec<_> = points.into_iter().flat_map(|offset| {
+            let (line, utf8) = index.line_col_utf8(&raw, offset);
+            let (_, utf16) = index.line_col_utf16(&raw, offset);
+            [line, utf8, utf16].map(|value| value.to_string())
+        }).collect();
+        assert_eq!(fields[2..], expected);
+        if *kind == "10" {
+            assert_eq!(points, [close as u64, close as u64 + 1]);
+            found_format = true;
+        }
+    }
+    assert!(found_format);
+    let inside_emoji = source.find('😀').unwrap() as i32 + 1;
+    let refused = run_native_case("edit-rollback", "auto", source, Some((inside_emoji, inside_emoji, "x"))).unwrap();
+    assert_eq!(refused, "EDIT_REFUSED 4 unchanged");
 }
 
 #[test]

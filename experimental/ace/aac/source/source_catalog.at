@@ -1,15 +1,19 @@
 use app.source_ast.ast_canonical
 use app.source_ast.ast_end
+use app.source_ast.ast_field
+use app.source_ast.ast_flags
 use app.source_ast.ast_kind
 use app.source_ast.ast_kind_name
 use app.source_ast.ast_parent
 use app.source_ast.ast_start
 use app.source_ast.ast_stride
 use app.source_ast.project_ast
+use app.syntax_cst.flag_generated
 use app.syntax_frontend.fetch_parts
 use app.syntax_frontend.format_mode
 use app.syntax_frontend.parse_cst
 use app.syntax_program.decode_program_parts
+use app.syntax_program.field_name
 use app.syntax_program.pg_ok
 use std.bytes.decode_utf8
 use std.conv.from_int
@@ -147,6 +151,72 @@ fn import_report(pg List<int>, ast List<int>, src List<int>, source_id int, kind
     return out
 }
 
+fn declaration_category(pg List<int>, ast List<int>, row int) int {
+    let kind = ast_kind_name(pg, ast.get(row * ast_stride() + ast_kind()))
+    if (kind == "fn-tail") { return 1 }
+    if (kind == "const-item" || kind == "var-item" || kind == "age-let-item") { return 2 }
+    return 0
+}
+
+fn category_name(category int) Str {
+    if (category == 1) { return "function" }
+    return "value"
+}
+
+fn row_role(pg List<int>, ast List<int>, row int) Str {
+    let field = ast.get(row * ast_stride() + ast_field())
+    if (field < 0) { return "" }
+    return field_name(pg, field)
+}
+
+fn expression_owner(pg List<int>, ast List<int>, row int) int {
+    var child = row
+    var parent = ast.get(child * ast_stride() + ast_parent())
+    for (parent >= 0) {
+        let category = declaration_category(pg, ast, parent)
+        if (category != 0) {
+            let role = row_role(pg, ast, child)
+            if ((category == 1 && role == "body") || (category == 2 && role == "value")) { return parent }
+            return -1
+        }
+        child = parent
+        parent = ast.get(child * ast_stride() + ast_parent())
+    }
+    return -1
+}
+
+// Keep declaration roles and unresolved expression sites in the same
+// source/AST coordinate space. Scope and symbol binding belong to the
+// semantic consumer; these candidate edges never reject an initializer.
+fn declaration_report(pg List<int>, ast List<int>, src List<int>, source_id int) Str {
+    var out = ""
+    var row = 0
+    for (row < ast.len() / ast_stride()) {
+        let at = row * ast_stride()
+        let kind = ast_kind_name(pg, ast.get(at + ast_kind()))
+        let parent = ast.get(at + ast_parent())
+        if (kind == "ident" && parent >= 0 && (ast.get(at + ast_flags()) & flag_generated()) == 0) {
+            let parent_kind = ast_kind_name(pg, ast.get(parent * ast_stride() + ast_kind()))
+            var owner = -1
+            var prefix = "DECL "
+            if (row_role(pg, ast, row) == "name" && declaration_category(pg, ast, parent) != 0) { owner = parent }
+            if (parent_kind == "atom-expr") {
+                owner = expression_owner(pg, ast, row)
+                prefix = "CANDIDATE "
+            }
+            if (owner >= 0) {
+                let start = ast.get(at + ast_start())
+                let end = ast.get(at + ast_end())
+                let text = byte_text(src, start, end)
+                let category = category_name(declaration_category(pg, ast, owner))
+                out = out + prefix + from_int(source_id) + " " + from_int(owner) + " " + category + " " + text + " " + from_int(start) + ".." + from_int(end) + "\n"
+            }
+        }
+        row = row + 1
+    }
+    return out
+}
+
 fn catalog_file(pg List<int>, mode int, src List<int>, name Str, source_id int, kind int, package Str, inventory Str, graph List<int>) Str {
     let valid = decode_utf8(src)
     is valid {
@@ -167,8 +237,9 @@ fn catalog_file(pg List<int>, mode int, src List<int>, name Str, source_id int, 
     }
     let refs = import_report(pg, ast, src, source_id, kind, package.clone(), inventory, graph)
     if (starts_with(refs.clone(), "MODULE_ERR ")) { return refs }
+    let declarations = declaration_report(pg, ast, src, source_id)
     let module = module_name(name.clone(), kind)
-    return "MODULE " + from_int(source_id) + " " + package + "." + module + " " + provider_name(kind) + " " + name + "\n" + refs + ast_canonical(pg, ast)
+    return "MODULE " + from_int(source_id) + " " + package + "." + module + " " + provider_name(kind) + " " + name + "\n" + refs + declarations + ast_canonical(pg, ast)
 }
 
 fn graph_has_cycle(graph List<int>, count int) bool {
