@@ -18,8 +18,8 @@
 descriptor(schema: "auto.hir.collections.draft", revision: 1u32, profile: "collections-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, text_len, text_concat, text_clone, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
-        enum TypeKind { cases: [i32, bool, str, Str, function, record, list, variant] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, text_len, text_slice, text_char_at, text_concat, text_display, fstr, text_clone, record_ctor, field_get, borrow_view, move, list_new, list_len, list_push, list_insert, list_get, list_set, list_remove, list_clear, variant_ctor, variant_guard_test, variant_project] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, function, record, list, variant] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
         enum UnaryOp { cases: [neg_i32, not_bool] }
         enum LogicOp { cases: [and, or] }
@@ -97,9 +97,12 @@ descriptor(schema: "auto.hir.collections.draft", revision: 1u32, profile: "colle
                 rhs: ExprRef
                 operand: ExprRef
                 index: ExprRef
+                start: ExprRef
+                end: ExprRef
                 callee: DefRef
                 eval_args: ExprRefList
                 bindings: BindingList
+                parts: ExprRefList
                 record: TypeRef
                 field_args: ExprRefList
                 ctor_bindings: CtorBindingList
@@ -132,6 +135,7 @@ descriptor(schema: "auto.hir.collections.draft", revision: 1u32, profile: "colle
         branch(key: "type.bool") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.str") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.Str") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.char") { forbid: [params, result, fields, elem, arms] }
         branch(key: "type.function") { require: [params, result]; forbid: [fields, elem, arms] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result, elem, arms] }
         branch(key: "type.list") { require: [elem]; forbid: [params, result, fields, arms] }
@@ -209,6 +213,26 @@ descriptor(schema: "auto.hir.collections.draft", revision: 1u32, profile: "colle
         branch(key: "expr.str_lit") {
             require: [type, text]
             forbid: [local, value, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload]
+        }
+        branch(key: "expr.text_concat") {
+            require: [type, lhs, rhs]
+            forbid: [local, value, text, op, overflow, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload]
+        }
+        branch(key: "expr.text_display") {
+            require: [type, operand]
+            forbid: [local, value, text, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.fstr") {
+            require: [type, parts]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key]
+        }
+        branch(key: "expr.text_slice") {
+            require: [type, operand, start, end]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, callee, eval_args, eval, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key, parts]
+        }
+        branch(key: "expr.text_char_at") {
+            require: [type, operand, index]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, callee, eval_args, eval, bindings, record, field_args, ctor_bindings, base, path, list, disc, payload, keys, key, parts]
         }
         branch(key: "expr.text_len") {
             require: [type, operand]

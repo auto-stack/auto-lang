@@ -4659,6 +4659,7 @@ impl<'p> Emitter<'p> {
                     .iter()
                     .any(|plan| plan.exprs.iter().any(|expr| expr.vt == VT::Str))
             {
+
                 frag!("type t_str str {}", program_span);
                 spans.types.push(program_span);
                 nl!(12);
