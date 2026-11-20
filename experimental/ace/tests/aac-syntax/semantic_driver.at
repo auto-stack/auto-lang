@@ -59,6 +59,8 @@ use std.conv.from_int
 use std.conv.to_int
 use std.env.get
 use std.file.read_bytes
+use std.file.delete
+use std.file.replace_atomic
 use std.file.size
 use std.file.write_text
 use std.path.join
@@ -316,6 +318,31 @@ fn admit_document(path Str, steps int) Str {
     return "ERROR os.read\n"
 }
 
+// This driver accepts an independently allocated staging path from its
+// fixture. Diagnostics remain in the report, outside the consumer artifact.
+fn publish_verified(report Str, artifact Str) Str {
+    let staged = get("AAC1047_STAGED")
+    if (staged.len() == 0 || staged == artifact) { return "ERROR os.stage\n" }
+    if (write_text(staged.clone(), report) != 0) {
+        delete(staged)
+        return "ERROR os.stage\n"
+    }
+    if (replace_atomic(staged.clone(), artifact) != 0) {
+        delete(staged)
+        return "ERROR os.replace\n"
+    }
+    return "PUBLISHED core-i32-draft\n"
+}
+
+fn write_stage_report(report Str) int {
+    let artifact = get("AAC1047_ARTIFACT")
+    let output = get("AAC1047_OUTPUT")
+    if (artifact.len() > 0 && report.len() >= 4 && report.slice(0, 4).clone() == "hir(") {
+        return write_text(output, publish_verified(report, artifact))
+    }
+    return write_text(output, report)
+}
+
 fn main() int {
     var limit = 1000000
     let requested = to_int(get("AAC1047_STEPS"))
@@ -327,6 +354,5 @@ fn main() int {
         let report = admit_document(get("AAC1047_INPUT"), limit)
         return write_text(get("AAC1047_OUTPUT"), report)
     }
-    let report = project(limit)
-    return write_text(get("AAC1047_OUTPUT"), report)
+    return write_stage_report(project(limit))
 }

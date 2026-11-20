@@ -32,6 +32,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod native;
 
+#[cfg(windows)]
+pub use native::observe_hir_publication;
+
 pub use native::{
     native_fingerprint, run_core_hir_case, run_native_case, run_native_catalog, run_native_projection,
     run_semantic_case, run_semantic_project, run_type_case, run_type_project, semantic_fingerprint, semantic_modules,

@@ -171,6 +171,70 @@ pub fn run_core_hir_case(sample: &[u8], mode: &str) -> Result<String, String> {
     run_semantic_source(sample, None, true, Some(mode))
 }
 
+#[cfg(windows)]
+pub fn observe_hir_publication(
+    sample: &[u8],
+    old: &[u8],
+    steps: Option<u32>,
+    lock_destination: bool,
+) -> Result<(String, Vec<u8>, bool), String> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let exe = prepared_semantic()?;
+    with_fixture("semantic-publish", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let artifact = root.join("artifact.atom");
+        let staged = root.join("staged.atom");
+        std::fs::write(&input, sample).map_err(|err| format!("write semantic input: {err}"))?;
+        std::fs::write(&artifact, old).map_err(|err| format!("seed consumer artifact: {err}"))?;
+        let locked = lock_destination
+            .then(|| {
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .share_mode(1)
+                    .open(&artifact)
+            })
+            .transpose()
+            .map_err(|err| format!("lock destination without delete sharing: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, steps, true, Some("verify"));
+        cmd.env("AAC1047_ARTIFACT", &artifact)
+            .env("AAC1047_STAGED", &staged);
+        let report = execute_report(cmd, &output, "semantic-publish")?;
+        drop(locked);
+        let contents = std::fs::read(artifact).map_err(|err| format!("read artifact: {err}"))?;
+        Ok((report, contents, staged.exists()))
+    })
+}
+
+fn semantic_command(
+    exe: &Path,
+    root: &Path,
+    input: &Path,
+    output: &Path,
+    steps: Option<u32>,
+    typed: bool,
+    hir_mode: Option<&str>,
+) -> Command {
+    let mut cmd = Command::new(exe);
+    cmd.current_dir(root)
+        .env("AAC1047_INPUT", input)
+        .env("AAC1047_OUTPUT", output)
+        .env("AAC1047_TYPED", if typed { "1" } else { "0" })
+        .env_remove("AAC1047_HIR")
+        .env_remove("AAC1047_PROJECT")
+        .env_remove("AAC1047_STEPS")
+        .env_remove("AAC1047_ARTIFACT")
+        .env_remove("AAC1047_STAGED");
+    if let Some(steps) = steps {
+        cmd.env("AAC1047_STEPS", steps.to_string());
+    }
+    if let Some(mode) = hir_mode {
+        cmd.env("AAC1047_HIR", mode);
+    }
+    cmd
+}
+
 fn run_semantic_source(
     sample: &[u8],
     steps: Option<u32>,
@@ -182,20 +246,7 @@ fn run_semantic_source(
         let input = root.join("input.at");
         let output = root.join("report.txt");
         std::fs::write(&input, sample).map_err(|err| format!("write semantic input: {err}"))?;
-        let mut cmd = Command::new(exe);
-        cmd.current_dir(root)
-            .env("AAC1047_INPUT", input)
-            .env("AAC1047_OUTPUT", &output)
-            .env("AAC1047_TYPED", if typed { "1" } else { "0" })
-            .env_remove("AAC1047_HIR")
-            .env_remove("AAC1047_PROJECT")
-            .env_remove("AAC1047_STEPS");
-        if let Some(steps) = steps {
-            cmd.env("AAC1047_STEPS", steps.to_string());
-        }
-        if let Some(mode) = hir_mode {
-            cmd.env("AAC1047_HIR", mode);
-        }
+        let cmd = semantic_command(exe, root, &input, &output, steps, typed, hir_mode);
         execute_report(cmd, &output, "semantic")
     })
 }
@@ -234,7 +285,9 @@ fn run_project(modules: &[(&str, &str)], typed: bool) -> Result<String, String> 
             .env("AAC1047_OUTPUT", &output)
             .env("AAC1047_TYPED", if typed { "1" } else { "0" })
             .env_remove("AAC1047_HIR")
-            .env_remove("AAC1047_STEPS");
+            .env_remove("AAC1047_STEPS")
+            .env_remove("AAC1047_ARTIFACT")
+            .env_remove("AAC1047_STAGED");
         execute_report(cmd, &output, "semantic-project")
     })
 }
@@ -275,9 +328,9 @@ fn run_native(
     })
 }
 
-fn with_fixture<F>(case: &str, run: F) -> Result<String, String>
+fn with_fixture<T, F>(case: &str, run: F) -> Result<T, String>
 where
-    F: FnOnce(&Path) -> Result<String, String>,
+    F: FnOnce(&Path) -> Result<T, String>,
 {
     let root = scratch(case);
     let result = run(&root);

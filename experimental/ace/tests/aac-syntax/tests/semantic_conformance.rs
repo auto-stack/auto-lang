@@ -1,7 +1,8 @@
 #![cfg(windows)]
 
 use ace_aac_syntax_conformance::{
-    run_core_hir_case, run_semantic_case, run_semantic_project, run_type_case, run_type_project,
+    observe_hir_publication, run_core_hir_case, run_semantic_case, run_semantic_project,
+    run_type_case, run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -628,6 +629,38 @@ fn rejects_an_unreachable_terminating_block() {
         run_core_hir_case(extra.as_bytes(), "descriptor").expect("Auto HIR admission"),
         "ERROR hir.reference\n"
     );
+}
+
+#[test]
+fn preserves_checked_artifact_on_source_resource_and_replace_failures() {
+    let original =
+        run_core_hir_case(b"fn compute() int { return 3 }", "verify").expect("Auto HIR baseline");
+    let update = b"fn compute() int { return 9 }";
+    let controls: &[(&[u8], Option<u32>, bool, &str)] = &[
+        (
+            b"fn compute() int { return true }",
+            None,
+            false,
+            "ERROR type.return ",
+        ),
+        (update, Some(2), false, "ERROR resource.semantic "),
+        (update, None, true, "ERROR os.replace\n"),
+    ];
+    for (source, steps, lock, expected) in controls {
+        let (report, bytes, staged) =
+            observe_hir_publication(source, original.as_bytes(), *steps, *lock).unwrap();
+        assert!(report.starts_with(expected), "{report}");
+        assert_eq!(bytes, original.as_bytes());
+        assert!(!staged);
+    }
+    let (report, updated, staged) =
+        observe_hir_publication(update, original.as_bytes(), None, false).unwrap();
+    assert_eq!(report, "PUBLISHED core-i32-draft\n");
+    assert_ne!(updated, original.as_bytes());
+    assert!(!staged);
+    let text = std::str::from_utf8(&updated).unwrap();
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), text).unwrap();
+    ace_core::verify::verify(bound).expect("replacement is valid HIR");
 }
 
 #[test]

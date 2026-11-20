@@ -734,6 +734,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
 }
 
 pub fn verify_core_document(bytes List<int>, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, bytes.len())) { return bind_budget() }
     let utf8 = decode_utf8(bytes)
     is utf8 {
         Some(_) -> {}
