@@ -458,6 +458,13 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 
 ## 9. 复审记录
 
+- 2026-11-20 goal round 3（waiting×2）：`stage: goal | plan_id: PLAN-1094 | plan_revision: r5 | round: 3
+  | from: user | to: user | status: executing | outcome: waiting | worktree: 保留（clean @ 5a76167cc）
+  | commit: 4438d4933 | next: user`。重读 §10/依赖链无变化（1083 仍 executing current_step 1，
+  无新 master 交付）；按运行时指示再次 AskUserQuestion 请求裁定（①按序完成依赖链/②修订解除硬依赖/
+  ③标记 blocked）——仍未获回答。连续等待计数 2/3；下一轮若仍无裁定/交付变化，按协议以 §10 阻塞问题
+  标记 goal blocked 并保留全部状态。
+
 - 2026-11-20 goal round 2（waiting）：`stage: goal | plan_id: PLAN-1094 | plan_revision: r5 | round: 2
   | from: work(blocked) | to: user | status: executing | outcome: waiting | worktree: 保留（clean @ 5a76167cc）
   | commit: 9938058d0 | next: user`。重读 §10 无新裁定；依赖链侧观测：PLAN-1083 已 executing
