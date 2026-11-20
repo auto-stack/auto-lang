@@ -9,6 +9,7 @@ use app.syntax_smoke.hex_roundtrip_case
 use app.syntax_smoke.identity_case
 use app.syntax_smoke.lex_case
 use app.syntax_smoke.parse_case
+use app.syntax_smoke.project_case
 use app.syntax_smoke.parse_byte_case
 use app.syntax_smoke.raw_case
 use app.syntax_smoke.scan_case
@@ -45,6 +46,9 @@ fn observe(case_name Str, profile Str, sample Str) Str {
     }
     if (case_name == "parse") {
         return parse_case(profile, sample)
+    }
+    if (case_name == "project") {
+        return project_case(profile, sample, offset("AAC1046_START"), offset("AAC1046_END"))
     }
     if (case_name == "lex") {
         return lex_case(profile, sample)

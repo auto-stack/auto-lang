@@ -1,0 +1,147 @@
+use app.syntax_cst.abs_range
+use app.syntax_cst.flag_trivia
+use app.syntax_cst.ncc
+use app.syntax_cst.ndecl
+use app.syntax_cst.nexpected
+use app.syntax_cst.nfc
+use app.syntax_cst.nflags
+use app.syntax_cst.nk
+use app.syntax_program.field_name
+use app.syntax_program.rule_kind
+use app.syntax_program.rule_name
+use app.syntax_program.token_kind
+use app.syntax_program.token_name
+use std.conv.from_int
+
+// Preorder AST rows preserve grammar kind, parent and field role, recovery
+// flags, byte range, source identity and generation origin. Trivia remains
+// owned by the lossless CST. All other grammar nodes and tokens survive,
+// including domain grammar records the semantic passes do not consume yet.
+pub fn ast_stride() int { return 10 }
+pub fn ast_parent() int { return 0 }
+pub fn ast_field() int { return 1 }
+pub fn ast_kind() int { return 2 }
+pub fn ast_flags() int { return 3 }
+pub fn ast_start() int { return 4 }
+pub fn ast_end() int { return 5 }
+pub fn ast_source() int { return 6 }
+pub fn ast_origin() int { return 7 }
+pub fn ast_expected() int { return 8 }
+pub fn ast_decl() int { return 9 }
+
+fn stack_write(stack List<int>, depth int, node int, parent int, field int) int {
+    let base = depth * 3
+    if (base == stack.len()) {
+        stack.push(node)
+        stack.push(parent)
+        stack.push(field)
+    } else {
+        stack.set(base, node)
+        stack.set(base + 1, parent)
+        stack.set(base + 2, field)
+    }
+    return 0
+}
+
+// The caller owns publication. A negative return invalidates the scratch
+// output rows; a successful root is always row 0.
+pub fn project_ast(t List<int>, edges List<int>, decls List<int>, root int, size int, source_id int, origin_id int, out List<int>) int {
+    let total = t.len() / 8
+    var stack = List<int>.new()
+    var range = List<int>.new()
+    range.push(0)
+    range.push(0)
+    stack_write(stack, 0, root, -1, -1)
+    var depth = 1
+    var visited = 0
+    for (depth > 0) {
+        depth = depth - 1
+        let node = stack.get(depth * 3)
+        let parent = stack.get(depth * 3 + 1)
+        let field = stack.get(depth * 3 + 2)
+        visited = visited + 1
+        if (node < 0 || node >= total || visited > total) {
+            return -1
+        }
+        let flags = nflags(t, node)
+        if ((flags & flag_trivia()) == 0) {
+            let decl = ndecl(t, node)
+            if (decl < 0 || decl > decls.len() / 3) {
+                return -1
+            }
+            abs_range(t, decls, node, range)
+            let start = range.get(0)
+            let end = range.get(1)
+            if (start < 0 || end < start || end > size) {
+                return -1
+            }
+            let first = nfc(t, node)
+            let count = ncc(t, node)
+            if (first < 0 || count < 0 || first > edges.len() / 2 - count) {
+                return -1
+            }
+            let index = out.len() / ast_stride()
+            out.push(parent)
+            out.push(field)
+            out.push(nk(t, node))
+            out.push(flags)
+            out.push(start)
+            out.push(end)
+            out.push(source_id)
+            out.push(origin_id)
+            out.push(nexpected(t, node))
+            out.push(decl)
+            var k = count - 1
+            for (k >= 0) {
+                let edge = (first + k) * 2
+                stack_write(stack, depth, edges.get(edge), index, edges.get(edge + 1))
+                depth = depth + 1
+                k = k - 1
+            }
+        }
+    }
+    return out.len() / ast_stride()
+}
+
+pub fn ast_kind_name(pg List<int>, kind int) Str {
+    if (kind >= rule_kind(0)) {
+        return rule_name(pg, kind - rule_kind(0))
+    }
+    if (kind >= token_kind(0)) {
+        return token_name(pg, kind - token_kind(0))
+    }
+    if (kind == -1) { return "error" }
+    if (kind == -2) { return "missing" }
+    if (kind == -3) { return "call" }
+    if (kind == -4) { return "postfix" }
+    return "unknown"
+}
+
+fn edge_role(pg List<int>, field int) Str {
+    if (field < 0) {
+        return "_"
+    }
+    return field_name(pg, field)
+}
+
+fn ast_row(pg List<int>, ast List<int>, base int) Str {
+    let parent = from_int(ast.get(base + ast_parent()))
+    let field = edge_role(pg, ast.get(base + ast_field()))
+    let kind = ast_kind_name(pg, ast.get(base + ast_kind()))
+    let start = from_int(ast.get(base + ast_start()))
+    let end = from_int(ast.get(base + ast_end()))
+    let source_id = from_int(ast.get(base + ast_source()))
+    let origin_id = from_int(ast.get(base + ast_origin()))
+    let flags = from_int(ast.get(base + ast_flags()))
+    return parent + " " + field + " " + kind + " " + start + ".." + end + " " + source_id + " " + origin_id + " " + flags + "\n"
+}
+
+pub fn ast_canonical(pg List<int>, ast List<int>) Str {
+    var out = "AST\n"
+    var base = 0
+    for (base < ast.len()) {
+        out = out + ast_row(pg, ast, base)
+        base = base + ast_stride()
+    }
+    return out
+}

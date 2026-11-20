@@ -2,6 +2,8 @@
 // Gen0-compiled Auto stage driver. Every case returns an owned Str so each
 // observation is byte-exact.
 //
+use app.source_ast.project_ast
+use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
 use std.bytes.decode_utf8
 use app.syntax_snapshot.apply_edit
@@ -378,33 +380,31 @@ pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
     return "SOURCE_ERR UTF8"
 }
 
-fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
-    let pg = decode_program_parts(fetch_parts(profile))
-    if (!pg_ok(pg)) {
-        return "DECODE_ERR " + itoa(pg_err(pg))
-    }
+fn parse_cst(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
     let cs = compile_scanner(pg)
     var toks = List<int>.new()
     var lexd = List<int>.new()
     lex_all(pg, cs, srcb, -1, toks, lexd)
     var firsts = List<int>.new()
     var nullable = List<int>.new()
-    let fsr = first_sets_into(pg, firsts, nullable)
-    if (fsr != 0) {
-        return "FIRSTSETS_ERR"
+    if (first_sets_into(pg, firsts, nullable) != 0) {
+        return -6
+    }
+    var cold = List<int>.new()
+    cold.push(0)
+    return parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
+}
+
+fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
+    let pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR " + itoa(pg_err(pg))
     }
     var t = List<int>.new()
     var ef = List<int>.new()
     var decls = List<int>.new()
     var dmsg = List<int>.new()
-    var ot = List<int>.new()
-    var oef = List<int>.new()
-    var odecls = List<int>.new()
-    var gcand = List<int>.new()
-    var gshift = List<int>.new()
-    var ginfo = List<int>.new()
-    ginfo.push(0)
-    let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, depth, work)
+    let root = parse_cst(pg, srcb, t, ef, decls, dmsg, depth, work)
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
     }
@@ -412,6 +412,27 @@ fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
         return "LOSSLESS_ERR"
     }
     return "CANON\n" + canonical(t, ef, decls, root) + "DIAGS\n" + render_diag(pg, dmsg)
+}
+
+pub fn project_case(profile Str, sample Str, source_id int, origin_id int) Str {
+    let pg = decode_program_parts(fetch_parts(profile))
+    if (!pg_ok(pg)) {
+        return "DECODE_ERR " + itoa(pg_err(pg))
+    }
+    let srcb = str_to_bytes(sample)
+    var t = List<int>.new()
+    var ef = List<int>.new()
+    var decls = List<int>.new()
+    var dmsg = List<int>.new()
+    let root = parse_cst(pg, srcb, t, ef, decls, dmsg, 1048576, 67108864)
+    if (root < 0) {
+        return "PARSE_ERR " + itoa(-root)
+    }
+    var ast = List<int>.new()
+    if (project_ast(t, ef, decls, root, srcb.len(), source_id, origin_id, ast) < 0) {
+        return "PROJECTION_ERR"
+    }
+    return ast_canonical(pg, ast) + "DIAGS\n" + render_diag(pg, dmsg)
 }
 
 fn reconstructs_input(t List<int>, ef List<int>, decls List<int>, root int, src List<int>, size int) bool {

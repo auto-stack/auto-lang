@@ -59,6 +59,7 @@ pub const PARSE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_parse.at
 pub const SNAPSHOT_SOURCE: &str = include_str!("../../../aac/syntax/syntax_snapshot.at");
 pub const INCREMENTAL_SOURCE: &str = include_str!("../../../aac/syntax/syntax_incremental.at");
 pub const GRAMMAR_DATA_SOURCE: &str = include_str!("../../../aac/syntax/syntax_grammar_data.at");
+pub const SOURCE_AST: &str = include_str!("../../../aac/source/source_ast.at");
 pub const SMOKE_SOURCE: &str = include_str!("../../../aac/syntax/syntax_smoke.at");
 
 /// The AV file set: all syntax modules + the smoke driver.
@@ -75,6 +76,7 @@ pub fn syntax_av_modules() -> Vec<(String, String)> {
             "syntax_grammar_data.at".to_string(),
             GRAMMAR_DATA_SOURCE.to_string(),
         ),
+        ("source_ast.at".to_string(), SOURCE_AST.to_string()),
         ("syntax_smoke.at".to_string(), SMOKE_SOURCE.to_string()),
     ]
 }
