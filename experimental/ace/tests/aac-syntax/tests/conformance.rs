@@ -891,29 +891,12 @@ fn corpus_source<'a>(document: &'a str, case: &str) -> &'a str {
     source.split_once("\n```").expect("source block end").0
 }
 
-fn preserve_expected_root_trivia(mut canonical: String, input: &str, space: usize) -> String {
-    // The Rust reference discards one pending space immediately before the
-    // first appended error leaf in these two recovery cases. The independent
-    // expected tree keeps that source byte at root level.
-    assert_eq!(input.as_bytes()[space..space + 2], *b" {");
-    let error = format!(" n1048655^:[{},{}) exp=0 f=[]\n", space + 1, space + 2);
-    let trivia = format!(" n1048576~:[{space},{}) exp=0 f=[]\n", space + 1);
-    assert_eq!(canonical.matches(&error).count(), 1);
-    canonical = canonical.replace(&error, &(trivia + &error));
-    let root = canonical["CANON\n".len()..].find(']').unwrap() + "CANON\n".len();
-    canonical.insert_str(root, "-1,");
-    canonical
-}
-
-fn check_shared_corpus(document: &str, name: &str, tail_space: Option<usize>) {
+fn check_shared_corpus(document: &str, name: &str) {
     let source = corpus_source(document, name);
     let close = source.rfind('}').expect("fixture has a final declaration brace");
     let mut differences = Vec::new();
     for (label, input, valid) in [("full", source, true), ("truncated", &source[..close], false)] {
-        let mut expected = rust_oracle("auto", input);
-        if let (false, Some(space)) = (valid, tail_space) {
-            expected = preserve_expected_root_trivia(expected, input, space);
-        }
+        let expected = rust_oracle("auto", input);
         if expected.ends_with("DIAGS\n") != valid {
             differences.push(format!("{name} {label}: reference has unexpected recovery state"));
         }
@@ -930,7 +913,7 @@ fn check_shared_corpus(document: &str, name: &str, tail_space: Option<usize>) {
 }
 
 macro_rules! shared_corpus_case {
-    ($test:ident, $path:literal, $case:literal, $tail_space:expr) => {
+    ($test:ident, $path:literal, $case:literal) => {
         #[test]
         fn $test() {
             check_shared_corpus(
@@ -939,19 +922,18 @@ macro_rules! shared_corpus_case {
                     $path
                 )),
                 $case,
-                $tail_space,
             );
         }
     };
 }
 
-shared_corpus_case!(aac1046_corpus_basics, "basics/expressions.case.ad", "baseline-value", None);
-shared_corpus_case!(aac1046_corpus_calls, "calls/binding-pipeline.case.ad", "pipe-method-and-field", None);
-shared_corpus_case!(aac1046_corpus_collections, "collections/list-places.case.ad", "bracket-read-write", None);
-shared_corpus_case!(aac1046_corpus_functions, "functions/references-closures.case.ad", "named-function-value", None);
-shared_corpus_case!(aac1046_corpus_numbers, "numbers/literals-conversions.case.ad", "wide-exact", None);
-shared_corpus_case!(aac1046_corpus_patterns, "patterns/nested-match.case.ad", "nested-result-option", Some(194));
-shared_corpus_case!(aac1046_corpus_types, "types/variants.case.ad", "named-enum-payload", Some(198));
+shared_corpus_case!(aac1046_corpus_basics, "basics/expressions.case.ad", "baseline-value");
+shared_corpus_case!(aac1046_corpus_calls, "calls/binding-pipeline.case.ad", "pipe-method-and-field");
+shared_corpus_case!(aac1046_corpus_collections, "collections/list-places.case.ad", "bracket-read-write");
+shared_corpus_case!(aac1046_corpus_functions, "functions/references-closures.case.ad", "named-function-value");
+shared_corpus_case!(aac1046_corpus_numbers, "numbers/literals-conversions.case.ad", "wide-exact");
+shared_corpus_case!(aac1046_corpus_patterns, "patterns/nested-match.case.ad", "nested-result-option");
+shared_corpus_case!(aac1046_corpus_types, "types/variants.case.ad", "named-enum-payload");
 
 #[test]
 fn aac1046_corpus_text() {
