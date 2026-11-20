@@ -1,0 +1,280 @@
+use app.syntax_cst.decl_origin
+use app.syntax_cst.flag_generated
+
+pub fn fstr_default() int { return 1 }
+pub fn fstr_scheduler() int { return 2 }
+
+fn ident_start(c int) bool {
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+}
+
+fn ident_continue(c int) bool {
+    return ident_start(c) || (c >= 48 && c <= 57)
+}
+
+fn ident_end(src List<int>, start int, limit int) int {
+    var end = start
+    for (end < limit && ident_continue(src.get(end))) {
+        end = end + 1
+    }
+    return end
+}
+
+fn plain_quote_end(src List<int>, start int, limit int) int {
+    let quote = src.get(start)
+    var at = start + 1
+    for (at < limit) {
+        let c = src.get(at)
+        at = at + 1
+        if (c == quote) { return at }
+        if (c == 92 && at < limit) { at = at + 1 }
+    }
+    return limit
+}
+
+fn ordinary_end(src List<int>, at int, limit int) int {
+    let c = src.get(at)
+    if (c == 34 || c == 39) { return plain_quote_end(src, at, limit) }
+    if (c == 47 && at + 1 < limit && src.get(at + 1) == 47) {
+        var end = at + 2
+        for (end < limit && src.get(end) != 10) { end = end + 1 }
+        return end
+    }
+    return at + 1
+}
+
+// Ordered interval rows [virtual_start, virtual_end, raw_start, raw_end].
+// Copied intervals retain their exact displacement. A generated interval
+// between copies owns the raw delimiters it replaces.
+fn map_range(map List<int>, vlo int, vhi int, rlo int, rhi int) int {
+    map.push(vlo)
+    map.push(vhi)
+    map.push(rlo)
+    map.push(rhi)
+    return 0
+}
+
+fn copy_bytes(src List<int>, lo int, hi int, out List<int>, map List<int>) int {
+    var vlo = 0
+    var rlo = 0
+    if (map.len() > 0) {
+        vlo = map.get(map.len() - 3)
+        rlo = map.get(map.len() - 1)
+    }
+    let start = out.len()
+    if (start != vlo || lo != rlo) {
+        map_range(map, vlo, start, rlo, lo)
+    }
+    var at = lo
+    for (at < hi) {
+        out.push(src.get(at))
+        at = at + 1
+    }
+    if (at > lo) {
+        map_range(map, start, out.len(), lo, hi)
+    }
+    return 0
+}
+
+fn push_call_open(out List<int>) int {
+    out.push(95)
+    out.push(95)
+    out.push(102)
+    out.push(115)
+    out.push(116)
+    out.push(114)
+    out.push(40)
+    return 0
+}
+
+fn separate_part(out List<int>, parts int) int {
+    if (parts > 0) {
+        out.push(44)
+        out.push(32)
+    }
+    return 0
+}
+
+fn brace_end(src List<int>, at int, limit int) int {
+    var i = at
+    var depth = 1
+    for (i < limit) {
+        let c = src.get(i)
+        if (c == 34) { return -i - 1 }
+        if (c == 123) { depth = depth + 1 }
+        if (c == 125) {
+            depth = depth - 1
+            if (depth == 0) { return i }
+        }
+        i = i + 1
+    }
+    return -limit - 1
+}
+
+fn emit_text(src List<int>, start int, end int, out List<int>, map List<int>) int {
+    out.push(34)
+    var copy_from = start
+    var at = start
+    for (at + 1 < end) {
+        if (src.get(at) == 92) {
+            if (src.get(at + 1) == 36) {
+                copy_bytes(src, copy_from, at, out, map)
+                out.push(92)
+                copy_from = at
+            }
+            at = at + 1
+        }
+        at = at + 1
+    }
+    copy_bytes(src, copy_from, end, out, map)
+    out.push(34)
+    return 0
+}
+
+// Return the first raw byte after the literal, or -(first bad byte + 1).
+fn emit_format(src List<int>, start int, limit int, mode int, out List<int>, map List<int>) int {
+    push_call_open(out)
+    var text = start + 2
+    var at = text
+    var parts = 0
+    for (at < limit) {
+        let c = src.get(at)
+        if (c == 34) {
+            if (text < at || parts == 0) {
+                separate_part(out, parts)
+                emit_text(src, text, at, out, map)
+            }
+            out.push(41)
+            return at + 1
+        }
+        if (c == 92) {
+            at = at + 2
+        } else {
+            var expr = -1
+            var end = -1
+            var after = -1
+            if (at + 1 < limit) {
+                let next = src.get(at + 1)
+                if (c == 36 && ident_start(next)) {
+                    expr = at + 1
+                    end = ident_end(src, expr, limit)
+                    after = end
+                }
+                if (c == 36 && next == 123) {
+                    expr = at + 2
+                    end = brace_end(src, expr, limit)
+                    if (end < 0) { return end }
+                    after = end + 1
+                }
+                if (mode == fstr_scheduler() && c == 123 && ident_start(next)) {
+                    let stop = ident_end(src, at + 1, limit)
+                    if (stop < limit && src.get(stop) == 125) {
+                        expr = at + 1
+                        end = stop
+                        after = stop + 1
+                    }
+                }
+            }
+            if (expr >= 0) {
+                if (text < at) {
+                    separate_part(out, parts)
+                    emit_text(src, text, at, out, map)
+                    parts = parts + 1
+                }
+                separate_part(out, parts)
+                copy_bytes(src, expr, end, out, map)
+                parts = parts + 1
+                text = after
+                at = after
+            } else {
+                at = at + 1
+            }
+        }
+    }
+    return -limit - 1
+}
+
+// Out is filled only if the source contains an authored format string.
+// Marks are virtual offsets of generated __fstr identifiers, in source order.
+pub fn normalize_formats(src List<int>, limit int, mode int, out List<int>, map List<int>, marks List<int>) int {
+    if (mode == 0) { return 0 }
+    var copy_from = 0
+    var at = 0
+    for (at < limit) {
+        let c = src.get(at)
+        if (c == 102 && at + 1 < limit && src.get(at + 1) == 34 && (at == 0 || !ident_continue(src.get(at - 1)))) {
+            copy_bytes(src, copy_from, at, out, map)
+            marks.push(out.len())
+            let end = emit_format(src, at, limit, mode, out, map)
+            if (end < 0) { return end }
+            copy_from = end
+            at = end
+        } else {
+            at = ordinary_end(src, at, limit)
+        }
+    }
+    if (marks.len() == 0) { return 0 }
+    copy_bytes(src, copy_from, limit, out, map)
+    return 1
+}
+
+// Adjacent intervals agree at each shared boundary. For synthesised text,
+// intermediate boundaries are zero-width at the raw delimiters' start.
+pub fn raw_offset(map List<int>, offset int) int {
+    var lo = 0
+    var hi = map.len() / 4 - 1
+    for (lo < hi) {
+        let mid = lo + (hi - lo) / 2
+        if (map.get(mid * 4 + 1) < offset) { lo = mid + 1 } else { hi = mid }
+    }
+    let row = lo * 4
+    let ve = map.get(row + 1)
+    let rs = map.get(row + 2)
+    let re = map.get(row + 3)
+    if (offset >= ve) { return re }
+    let vs = map.get(row)
+    if (ve - vs == re - rs) { return rs + offset - vs }
+    return rs
+}
+
+fn generated_name(marks List<int>, start int, end int) bool {
+    if (end - start != 6) { return false }
+    var lo = 0
+    var hi = marks.len()
+    for (lo < hi) {
+        let mid = lo + (hi - lo) / 2
+        if (marks.get(mid) < start) { lo = mid + 1 } else { hi = mid }
+    }
+    return lo < marks.len() && marks.get(lo) == start
+}
+
+pub fn remap_format_tree(map List<int>, marks List<int>, nodes List<int>, decls List<int>, diags List<int>) int {
+    var at = 0
+    for (at < nodes.len()) {
+        let ordinal = nodes.get(at + 7)
+        var base = 0
+        if (ordinal > 0) { base = decl_origin(decls, ordinal - 1) }
+        let start = base + nodes.get(at + 1)
+        let end = start + nodes.get(at + 2)
+        let raw_start = raw_offset(map, start)
+        let raw_end = raw_offset(map, end)
+        nodes.set(at + 1, raw_start - raw_offset(map, base))
+        nodes.set(at + 2, raw_end - raw_start)
+        if (nodes.get(at + 4) == 0 && generated_name(marks, start, end)) {
+            nodes.set(at + 6, nodes.get(at + 6) | flag_generated())
+        }
+        at = at + 8
+    }
+    at = 0
+    for (at < decls.len()) {
+        decls.set(at, raw_offset(map, decls.get(at)))
+        at = at + 3
+    }
+    at = 0
+    for (at < diags.len()) {
+        diags.set(at + 1, raw_offset(map, diags.get(at + 1)))
+        diags.set(at + 2, raw_offset(map, diags.get(at + 2)))
+        at = at + 4
+    }
+    return 0
+}

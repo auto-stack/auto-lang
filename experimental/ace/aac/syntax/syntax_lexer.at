@@ -23,6 +23,7 @@ use app.syntax_program.scan_trivia
 use app.syntax_program.scan_next_mode
 use app.syntax_program.cs_contains
 use app.syntax_program.n_scan
+use app.syntax_program.n_tokens
 use app.syntax_program.pool_byte
 use app.syntax_program.mtag_lit
 use app.syntax_program.mtag_charset
@@ -96,7 +97,8 @@ pub fn use_count_pass(pg List<int>) int {
     return total
 }
 
-/// Compile the CSR bucket index: [257 bucket offsets][rule ids]. Rules with
+/// Compile the CSR bucket index and token trivia table:
+/// [257 bucket offsets][rule ids][one trivia flag per token]. Rules with
 /// empty literal/comment starts cannot occur (the Rust compiler rejects
 /// them); non-ASCII charsets are refused (ASCII-only language surface).
 pub fn compile_scanner(pg List<int>) List<int> {
@@ -228,6 +230,17 @@ pub fn compile_scanner(pg List<int>) List<int> {
             k = k + 1
         }
         b = b + 1
+    }
+    let trivia = out.len()
+    i = 0
+    for (i < n_tokens(pg)) {
+        out.push(0)
+        i = i + 1
+    }
+    ri = 0
+    for (ri < n_scan(pg)) {
+        if (scan_trivia(pg, ri)) { out.set(trivia + scan_token(pg, ri), 2) }
+        ri = ri + 1
     }
     return out
 }
@@ -486,11 +499,12 @@ pub fn scan_next(pg List<int>, cs List<int>, b List<int>, st List<int>, toks Lis
     advance_past(b, st, end)
     // Multi-line tokens report their END line (matches the Rust scanner's
     // push-time newline accounting; single-line tokens are unchanged).
-    toks.push(scan_token(pg, ri))
+    let token = scan_token(pg, ri)
+    toks.push(token)
     toks.push(start)
     toks.push(end)
     toks.push(st.get(1))
-    toks.push(merr)
+    toks.push(merr | cs.get(cs.get(256) + token))
     return 1
 }
 
@@ -794,5 +808,9 @@ pub fn tok_line(toks List<int>, i int) int {
 }
 
 pub fn tok_error(toks List<int>, i int) bool {
-    return toks.get(i * 5 + 4) != 0
+    return (toks.get(i * 5 + 4) & 1) != 0
+}
+
+pub fn tok_trivia(toks List<int>, i int) bool {
+    return (toks.get(i * 5 + 4) & 2) != 0
 }

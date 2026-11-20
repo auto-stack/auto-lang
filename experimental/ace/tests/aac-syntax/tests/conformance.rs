@@ -737,6 +737,55 @@ shared_corpus_case!(aac1046_corpus_patterns, "patterns/nested-match.case.ad", "n
 shared_corpus_case!(aac1046_corpus_types, "types/variants.case.ad", "named-enum-payload", Some(198));
 
 #[test]
+fn aac1046_corpus_text() {
+    use ace_core::source::{fstr::desugar_fstrings, parse_program_with, SourceProfile};
+
+    let source = corpus_source(
+        include_str!("../../../../../crates/auto-lang/test/cases/language/text/interpolation-unicode.case.ad"),
+        "text-nul-and-format",
+    );
+    let truncated = &source[..source.rfind('}').unwrap()];
+    assert!(parse_program_with(source, SourceProfile::Auto).is_ok());
+    assert_eq!(parse_program_with(truncated, SourceProfile::Auto).unwrap_err().code, "source.syntax");
+
+    let full = obs("parse", "auto", source);
+    assert!(full.starts_with("CANON\n") && full.ends_with("DIAGS\n"), "{full}");
+    let bad = obs("parse", "auto", truncated);
+    let (tree, diagnostics) = bad.split_once("DIAGS\n").unwrap_or_else(|| panic!("{bad}"));
+    assert!(tree.starts_with("CANON\n") && !diagnostics.is_empty());
+    for diagnostic in diagnostics.lines() {
+        let (span, _) = diagnostic.split_once(' ').unwrap();
+        let (start, end) = span.split_once("..").unwrap();
+        assert!(start.parse::<usize>().unwrap() <= end.parse::<usize>().unwrap());
+        assert!(end.parse::<usize>().unwrap() <= truncated.len(), "{diagnostic}");
+    }
+
+    let normalized = desugar_fstrings(source).unwrap();
+    let expected = rust_ast_report("auto", &normalized, 41, 7);
+    let actual = run_native_projection("auto", source, (41, 7), None).unwrap();
+    let shape = |report: &str| {
+        report.lines().skip(1).take_while(|line| *line != "DIAGS").map(|line| {
+            line.split_whitespace().take(3).collect::<Vec<_>>().join(" ")
+        }).collect::<Vec<_>>()
+    };
+    assert_eq!(shape(&actual), shape(&expected));
+    assert!(actual.ends_with("DIAGS\n"));
+    let generated: Vec<_> = actual.lines().filter(|line| line.ends_with(" 41 7 8")).collect();
+    let starts: Vec<_> = source.match_indices("f\"").map(|(index, _)| index).collect();
+    assert_eq!(generated.len(), starts.len());
+    for (row, start) in generated.iter().zip(starts) {
+        assert!(row.contains(&format!(" ident {start}..{start} 41 7 8")), "{row}");
+    }
+    let calls: Vec<_> = ["left()", "right()"].into_iter().map(|call| {
+        let start = source.rfind(call).unwrap();
+        let end = start + call.len();
+        actual.lines().position(|row| row.contains(&format!(" call {start}..{end} ")))
+            .unwrap_or_else(|| panic!("missing interpolation call {call} at {start}..{end}"))
+    }).collect();
+    assert!(calls[0] < calls[1]);
+}
+
+#[test]
 fn aac1046_rejected_edit_retains_snapshot_bytes() {
     let sample = "// α 😀\nfn main() int { return 1 }";
     let scalar = sample.find('α').unwrap() as i32;

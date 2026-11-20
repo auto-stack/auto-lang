@@ -5,6 +5,7 @@
 use app.syntax_frontend.fetch_parts
 use app.syntax_frontend.str_to_bytes
 use app.syntax_frontend.parse_cst
+use app.syntax_frontend.format_mode
 use app.source_ast.project_ast
 use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
@@ -335,6 +336,7 @@ pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
 }
 
 fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
+    let mode = format_mode(profile.clone())
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
         return "DECODE_ERR " + itoa(pg_err(pg))
@@ -343,7 +345,7 @@ fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
     var ef = List<int>.new()
     var decls = List<int>.new()
     var dmsg = List<int>.new()
-    let root = parse_cst(pg, srcb, t, ef, decls, dmsg, depth, work)
+    let root = parse_cst(pg, mode, srcb, t, ef, decls, dmsg, depth, work)
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
     }
@@ -354,6 +356,7 @@ fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
 }
 
 pub fn project_case(profile Str, sample Str, source_id int, origin_id int) Str {
+    let mode = format_mode(profile.clone())
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
         return "DECODE_ERR " + itoa(pg_err(pg))
@@ -363,7 +366,7 @@ pub fn project_case(profile Str, sample Str, source_id int, origin_id int) Str {
     var ef = List<int>.new()
     var decls = List<int>.new()
     var dmsg = List<int>.new()
-    let root = parse_cst(pg, srcb, t, ef, decls, dmsg, 1048576, 67108864)
+    let root = parse_cst(pg, mode, srcb, t, ef, decls, dmsg, 1048576, 67108864)
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
     }

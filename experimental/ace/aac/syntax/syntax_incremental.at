@@ -1,13 +1,13 @@
 // AAC incremental lex: resume at a trusted token boundary, stop at the
 // first aligned run, then translate the untouched old suffix.
 
-use app.syntax_program.is_trivia_token
 use app.syntax_lexer.tok_count
 use app.syntax_lexer.tok_token
 use app.syntax_lexer.tok_start
 use app.syntax_lexer.tok_end
 use app.syntax_lexer.tok_line
 use app.syntax_lexer.tok_error
+use app.syntax_lexer.tok_trivia
 use app.syntax_lexer.scan_next
 use app.syntax_lexer.st_new
 
@@ -19,14 +19,7 @@ pub fn fb_unterminated() int { return 1 }
 pub fn fb_no_convergence() int { return 2 }
 pub fn fb_complex_edits() int { return 3 }
 
-fn is_trivia_tok(pg List<int>, t int) bool {
-    if (t == -1) {
-        return false
-    }
-    return is_trivia_token(pg, t)
-}
-
-fn checkpoint_index(pg List<int>, old List<int>, start int) int {
+fn checkpoint_index(old List<int>, start int) int {
     let count = tok_count(old)
     var lo = 0
     var hi = count
@@ -43,10 +36,10 @@ fn checkpoint_index(pg List<int>, old List<int>, start int) int {
     if (at == count && count > 0) {
         at = count - 1
     }
-    for (at > 0 && is_trivia_tok(pg, tok_token(old, at - 1))) {
+    for (at > 0 && tok_trivia(old, at - 1)) {
         at = at - 1
     }
-    for (at > 0 && !is_trivia_tok(pg, tok_token(old, at - 1)) && tok_end(old, at - 1) == tok_start(old, at)) {
+    for (at > 0 && !tok_trivia(old, at - 1) && tok_end(old, at - 1) == tok_start(old, at)) {
         at = at - 1
     }
     return at
@@ -78,9 +71,9 @@ fn token_aligned(head List<int>, new_index int, old List<int>, old_index int, de
     return ns - os == delta && tok_token(head, new_index) == tok_token(old, old_index) && tok_end(head, new_index) - ns == tok_end(old, old_index) - os && tok_error(head, new_index) == tok_error(old, old_index)
 }
 
-fn alignment_anchor(pg List<int>, head List<int>, j int, old List<int>, cp int, edited_end int, delta int) int {
+fn alignment_anchor(head List<int>, j int, old List<int>, cp int, edited_end int, delta int) int {
     let start = tok_start(head, j)
-    if (start < edited_end || is_trivia_tok(pg, tok_token(head, j))) {
+    if (start < edited_end || tok_trivia(head, j)) {
         return -1
     }
     let oi = old_token_at(old, start - delta, cp)
@@ -90,7 +83,7 @@ fn alignment_anchor(pg List<int>, head List<int>, j int, old List<int>, cp int, 
     if (oi == 0) {
         return oi
     }
-    if (is_trivia_tok(pg, tok_token(old, oi - 1)) || tok_end(old, oi - 1) < tok_start(old, oi)) {
+    if (tok_trivia(old, oi - 1) || tok_end(old, oi - 1) < tok_start(old, oi)) {
         return oi
     }
     return -1
@@ -119,7 +112,7 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
         out.push(0)
         slot = slot + 1
     }
-    let cp = checkpoint_index(pg, old_toks, e_start)
+    let cp = checkpoint_index(old_toks, e_start)
     let old_count = tok_count(old_toks)
     let st = st_new()
     if (old_count > 0) {
@@ -169,7 +162,7 @@ pub fn incremental_lex(pg List<int>, cs List<int>, old_toks List<int>, srcb List
                 return 1
             }
         } else {
-            run_old = alignment_anchor(pg, head, j, old_toks, cp, e_end + delta, delta)
+            run_old = alignment_anchor(head, j, old_toks, cp, e_end + delta, delta)
             run_len = 0
             if (run_old >= 0) {
                 run_len = 1

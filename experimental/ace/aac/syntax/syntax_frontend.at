@@ -7,6 +7,10 @@ use app.syntax_grammar_data.scalar_parts
 use app.syntax_grammar_data.scheduler_parts
 use app.syntax_lexer.compile_scanner
 use app.syntax_lexer.lex_all
+use app.syntax_fstr.fstr_default
+use app.syntax_fstr.fstr_scheduler
+use app.syntax_fstr.normalize_formats
+use app.syntax_fstr.remap_format_tree
 use app.syntax_parse.first_sets_into
 use app.syntax_parse.parse_tokens
 use std.bytes.utf8_len
@@ -54,7 +58,29 @@ pub fn str_to_bytes(s Str) List<int> {
     return out
 }
 
-pub fn parse_cst(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
+pub fn format_mode(profile Str) int {
+    if (equal(profile.clone(), "auto")) { return fstr_default() }
+    if (equal(profile, "scheduler")) { return fstr_scheduler() }
+    return 0
+}
+
+pub fn parse_cst(pg List<int>, mode int, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
+    var virtual = List<int>.new()
+    var mapping = List<int>.new()
+    var marks = List<int>.new()
+    let prepared = normalize_formats(srcb, srcb.len(), mode, virtual, mapping, marks)
+    if (prepared < 0) { return -7 }
+    if (prepared == 0) {
+        return parse_input(pg, srcb, t, ef, decls, dmsg, depth, work)
+    }
+    let extra = (virtual.len() + mapping.len() + marks.len()) * 4
+    if (extra > work) { return -3 }
+    let root = parse_input(pg, virtual, t, ef, decls, dmsg, depth, work - extra)
+    if (root >= 0) { remap_format_tree(mapping, marks, t, decls, dmsg) }
+    return root
+}
+
+fn parse_input(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls List<int>, dmsg List<int>, depth int, work int) int {
     let cs = compile_scanner(pg)
     var toks = List<int>.new()
     var lexd = List<int>.new()

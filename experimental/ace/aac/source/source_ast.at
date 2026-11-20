@@ -1,5 +1,6 @@
 use app.syntax_cst.abs_range
 use app.syntax_cst.flag_trivia
+use app.syntax_cst.join_rows
 use app.syntax_cst.ncc
 use app.syntax_cst.ndecl
 use app.syntax_cst.nexpected
@@ -137,11 +138,13 @@ fn ast_row(pg List<int>, ast List<int>, base int) Str {
 }
 
 pub fn ast_canonical(pg List<int>, ast List<int>) Str {
-    var out = "AST\n"
+    var rows = List<Str>.new()
+    rows.push("AST\n")
     var base = 0
     for (base < ast.len()) {
-        out = out + ast_row(pg, ast, base)
+        let row = ast_row(pg, ast, base)
+        rows.push(row.move)
         base = base + ast_stride()
     }
-    return out
+    return join_rows(rows, rows.len())
 }

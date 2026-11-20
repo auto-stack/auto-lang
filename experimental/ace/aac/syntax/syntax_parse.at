@@ -59,7 +59,7 @@ use app.syntax_program.pratt_op_binding
 use app.syntax_program.pratt_op_assoc
 use app.syntax_program.rule_expect
 use app.syntax_program.rule_name
-use app.syntax_program.is_trivia_token
+use app.syntax_lexer.tok_trivia
 use app.syntax_program.ctx_token
 use app.syntax_lexer.tok_count
 use app.syntax_lexer.tok_token
@@ -142,6 +142,7 @@ fn m_nt() int { return 15 }
 fn m_running() int { return 16 }
 fn m_efhi() int { return 17 }
 fn m_ntoks() int { return 18 }
+fn m_savehi() int { return 19 }
 
 fn w_none() int { return 0 }
 fn w_once() int { return 1 }
@@ -333,7 +334,7 @@ pub fn parse_tokens_n(pg List<int>, cs List<int>, firsts List<int>, nullable Lis
 fn mk_mc(depth int, work int) List<int> {
     var mc = List<int>.new()
     var i = 0
-    for (i < 19) {
+    for (i < 20) {
         mc.push(0)
         i = i + 1
     }
@@ -482,23 +483,9 @@ fn pend_push(mc List<int>, pending List<int>, v int) int {
 fn peek(pg List<int>, toks List<int>, mc List<int>, pending List<int>) int {
     let nt = mc.get(m_ntoks())
     var i = mc.get(m_i())
-    var probing = 1
-    for (probing == 1) {
-        if (i >= nt) {
-            probing = 0
-        } else {
-            let tk = tok_token(toks, i)
-            if (tk != -1) {
-                if (is_trivia_token(pg, tk)) {
-                    pend_push(mc, pending, i)
-                    i = i + 1
-                } else {
-                    probing = 0
-                }
-            } else {
-                probing = 0
-            }
-        }
+    for (i < nt && tok_trivia(toks, i)) {
+        pend_push(mc, pending, i)
+        i = i + 1
     }
     mc.set(m_i(), i)
     if (i >= nt) {
@@ -727,21 +714,34 @@ fn op_assoc_of(pg List<int>, tk int) int {
 // ---------------------------------------------------------------------------
 
 fn save_capture(mc List<int>, pending List<int>, saves List<int>) int {
-    let off = saves.len()
-    saves.push(mc.get(m_i()))
-    saves.push(mc.get(m_lastline()))
-    saves.push(mc.get(m_bracket()))
-    saves.push(mc.get(m_ndecls()))
-    saves.push(mc.get(m_anchor()))
-    saves.push(mc.get(m_slp()))
+    let off = mc.get(m_savehi())
+    save_slot(saves, off, mc.get(m_i()))
+    save_slot(saves, off + 1, mc.get(m_lastline()))
+    save_slot(saves, off + 2, mc.get(m_bracket()))
+    save_slot(saves, off + 3, mc.get(m_ndecls()))
+    save_slot(saves, off + 4, mc.get(m_anchor()))
+    save_slot(saves, off + 5, mc.get(m_slp()))
     let pl = mc.get(m_plen())
-    saves.push(pl)
+    save_slot(saves, off + 6, pl)
     var k = 0
     for (k < pl) {
-        saves.push(pending.get(k))
+        save_slot(saves, off + 7 + k, pending.get(k))
         k = k + 1
     }
+    mc.set(m_savehi(), off + 7 + pl)
     return off
+}
+
+fn save_slot(saves List<int>, at int, value int) int {
+    if (at == saves.len()) { saves.push(value) } else { saves.set(at, value) }
+    return 0
+}
+
+fn pop_frame(mc List<int>, fr List<int>, top int) int {
+    // Each nested frame only owns the suffix after its entry capture.
+    mc.set(m_savehi(), fg(fr, top, fs_fsave()))
+    mc.set(m_nframes(), top)
+    return 0
 }
 
 fn save_restore(mc List<int>, pending List<int>, saves List<int>, off int) int {
@@ -771,14 +771,10 @@ fn save_restore(mc List<int>, pending List<int>, saves List<int>, off int) int {
 
 fn frame_push(mc List<int>, fr List<int>) int {
     let i = mc.get(m_nframes())
-    var k = 0
-    for (k < fs_stride()) {
-        if (fr.len() == i * fs_stride() + k) {
-            fr.push(0)
-        } else {
-            fr.set(i * fs_stride() + k, 0)
-        }
-        k = k + 1
+    // init_frame resets all live fields. Grow only when depth increases.
+    let limit = (i + 1) * fs_stride()
+    for (fr.len() < limit) {
+        fr.push(0)
     }
     mc.set(m_nframes(), i + 1)
     return i
@@ -971,14 +967,13 @@ fn memo_get(fm List<int>, rule int, i int, slp int, bracket int) int {
 }
 
 fn memo_put(fm List<int>, rule int, i int, slp int, bracket int, consumed int) int {
-    let cnt = fm.get(0)
-    if (cnt * 4 >= cap_of(fm) * 3) {
+    if (fm.get(0) * 4 >= cap_of(fm) * 3) {
         memo_clear(fm)
     }
     let cap = fm.get(1)
     var h = memo_hash(rule, i, slp, bracket, cap)
-    var probing = 1
-    for (probing == 1) {
+    var probe = 0
+    for (probe < 64) {
         let slot = 2 + h * 5
         if (fm.get(slot) == memo_empty()) {
             fm.set(slot, rule)
@@ -986,13 +981,17 @@ fn memo_put(fm List<int>, rule int, i int, slp int, bracket int, consumed int) i
             fm.set(slot + 2, slp)
             fm.set(slot + 3, bracket)
             fm.set(slot + 4, consumed)
-            fm.set(0, cnt + 1)
-            probing = 0
+            fm.set(0, fm.get(0) + 1)
+            return 0
+        }
+        if (fm.get(slot) == rule && fm.get(slot + 1) == i && fm.get(slot + 2) == slp && fm.get(slot + 3) == bracket) {
+            return 0
         }
         h = h + 1
         if (h >= cap) {
             h = 0
         }
+        probe = probe + 1
     }
     return 0
 }
@@ -1063,8 +1062,8 @@ fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
             left_rec = 1
         }
     }
-    let save_off = save_capture(mc, pending, saves)
     if (left_rec != 0) {
+        let save_off = save_capture(mc, pending, saves)
         let f = frame_push(mc, fr)
         fset(fr, f, fs_kind(), 0)
         init_frame(fr, f, rule, field, save_off, 0, 0, 0, t.len() / 8, mc.get(m_efhi()))
@@ -1088,6 +1087,7 @@ fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
     if (is_decl == 1) {
         if (ginfo.get(gi_active()) != 0 && fg(fr, 0, fs_wait()) == w_rep()) {
             if (try_graft(toks, t, ef, decls, mc, pending, fr, ginfo, gcand, gshift, ot, oef, odecls, field) != 0) {
+                mc.set(m_savehi(), fg(fr, 0, fs_repsave()))
                 ar_pop(mc)
                 return 0
             }
@@ -1106,6 +1106,7 @@ fn push_rule(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, t
             fail_fast = hit
         }
     }
+    let save_off = save_capture(mc, pending, saves)
     let f = frame_push(mc, fr)
     fset(fr, f, fs_kind(), 0)
     init_frame(fr, f, rule, field, save_off, 1, is_decl, cover_from, t.len() / 8, mc.get(m_efhi()))
@@ -1670,11 +1671,12 @@ fn fail_alt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>, to
 
 fn advance_alt(mc List<int>, pending List<int>, fr List<int>, saves List<int>) int {
     let top = mc.get(m_nframes()) - 1
-    save_restore(mc, pending, saves, fg(fr, top, fs_save()))
+    let entry = fg(fr, top, fs_save())
+    save_restore(mc, pending, saves, entry)
+    mc.set(m_savehi(), entry + 7 + saves.get(entry + 6))
     fset(fr, top, fs_clen(), 0)
     fset(fr, top, fs_alt(), fg(fr, top, fs_alt()) + 1)
     fset(fr, top, fs_step(), 0)
-    fset(fr, top, fs_save(), save_capture(mc, pending, saves))
     return 0
 }
 
@@ -1707,6 +1709,7 @@ fn dispatch_child_failure(pg List<int>, toks List<int>, srcb List<int>, t List<i
             save_restore(mc, pending, saves, fg(fr, top, fs_save()))
         } else {
             save_restore(mc, pending, saves, off)
+            mc.set(m_savehi(), off)
         }
         fset(fr, top, fs_step(), fg(fr, top, fs_step()) + 1)
         return false
@@ -1717,6 +1720,7 @@ fn dispatch_child_failure(pg List<int>, toks List<int>, srcb List<int>, t List<i
         save_restore(mc, pending, saves, fg(fr, top, fs_save()))
     } else {
         save_restore(mc, pending, saves, off)
+        mc.set(m_savehi(), off)
     }
     end_list_step(pg, toks, t, ef, mc, pending, fr, top)
     return false
@@ -1858,7 +1862,7 @@ fn handle_frame_failure(pg List<int>, cs List<int>, firsts List<int>, nullable L
         if (pushed_active != 0) {
             ar_pop(mc)
         }
-        mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+        pop_frame(mc, fr, top)
         if (mc.get(m_nframes()) == 0) {
             root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
             return 0
@@ -1882,23 +1886,9 @@ fn recover_decl(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>
     // rebuild leading trivia leaves from the token stream before base_i
     var lead = List<int>.new()
     var k = base_i - 1
-    var probing = 1
-    for (probing == 1) {
-        if (k < 0) {
-            probing = 0
-        } else {
-            let tk = tok_token(toks, k)
-            if (tk != -1) {
-                if (is_trivia_token(pg, tk)) {
-                    lead.push(k)
-                    k = k - 1
-                } else {
-                    probing = 0
-                }
-            } else {
-                probing = 0
-            }
-        }
+    for (k >= 0 && tok_trivia(toks, k)) {
+        lead.push(k)
+        k = k - 1
     }
     var kids = List<int>.new()
     var bi = lead.len() - 1
@@ -2052,7 +2042,7 @@ fn complete_frame_success(ef List<int>, saves List<int>, mc List<int>, fr List<i
     if (pushed_active != 0) {
         ar_pop(mc)
     }
-    mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+    pop_frame(mc, fr, top)
     if (mc.get(m_nframes()) == 0) {
         mc.set(m_root(), node)
         return 0
@@ -2061,6 +2051,7 @@ fn complete_frame_success(ef List<int>, saves List<int>, mc List<int>, fr List<i
     child_push(ef, fr, parent, node, field, mc)
     let w = fg(fr, parent, fs_wait())
     fset(fr, parent, fs_wait(), w_none())
+    if (w == w_opt()) { mc.set(m_savehi(), fg(fr, parent, fs_optsave())) }
     if (w == w_none() || w == w_once() || w == w_opt()) {
         fset(fr, parent, fs_step(), fg(fr, parent, fs_step()) + 1)
         return 0
@@ -2072,6 +2063,7 @@ fn complete_frame_success(ef List<int>, saves List<int>, mc List<int>, fr List<i
         if (saves.get(mark) != mc.get(m_i())) {
             no_progress = 0
         }
+        mc.set(m_savehi(), mark)
     }
     if (no_progress == 1) {
         fset(fr, parent, fs_step(), fg(fr, parent, fs_step()) + 1)
@@ -2585,7 +2577,7 @@ fn finish_pratt(pg List<int>, cs List<int>, firsts List<int>, nullable List<int>
 fn fail_pratt(pg List<int>, toks List<int>, srcb List<int>, t List<int>, ef List<int>, mc List<int>, pending List<int>, fr List<int>, saves List<int>, hints List<int>, dmsg List<int>) int {
     let failed = mc.get(m_nframes()) - 1
     save_restore(mc, pending, saves, fg(fr, failed, fs_fsave()))
-    mc.set(m_nframes(), failed)
+    pop_frame(mc, fr, failed)
     var probing = 1
     for (probing == 1) {
         if (mc.get(m_nframes()) == 0) {
@@ -2601,7 +2593,7 @@ fn fail_pratt(pg List<int>, toks List<int>, srcb List<int>, t List<int>, ef List
             if (pushed_active != 0) {
                 ar_pop(mc)
             }
-            mc.set(m_nframes(), mc.get(m_nframes()) - 1)
+            pop_frame(mc, fr, top)
         } else {
             probing = 0
         }
@@ -2620,13 +2612,8 @@ fn root_failure_wrap(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc
     mc.set(m_plen(), 0)
     var i = mc.get(m_i())
     for (i < mc.get(m_ntoks())) {
-        let tk = tok_token(toks, i)
         var extra = 0
-        if (tk != -1) {
-            if (is_trivia_token(pg, tk)) {
-                extra = flag_trivia()
-            }
-        }
+        if (tok_trivia(toks, i)) { extra = flag_trivia() }
         kids.push(alloc_leaf(pg, toks, t, i, extra))
         i = i + 1
     }
@@ -2666,14 +2653,9 @@ pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc 
         var tail_error = 0
         var i = mc.get(m_i())
         for (i < mc.get(m_ntoks())) {
-            let tk = tok_token(toks, i)
             var extra = flag_error()
-            if (tk != -1) {
-                if (is_trivia_token(pg, tk)) {
-                    extra = flag_trivia()
-                } else {
-                    tail_error = 1
-                }
+            if (tok_trivia(toks, i)) {
+                extra = flag_trivia()
             } else {
                 tail_error = 1
             }

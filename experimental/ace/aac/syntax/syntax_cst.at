@@ -29,6 +29,7 @@ use app.syntax_program.n_rules
 pub fn flag_missing() int { return 1 }
 pub fn flag_error() int { return 2 }
 pub fn flag_trivia() int { return 4 }
+pub fn flag_generated() int { return 8 }
 
 pub fn node_stride() int { return 8 }
 
@@ -239,7 +240,7 @@ fn one_digit(d int) Str {
 /// The canonical tree text — byte-identical to Rust `CstTree::canonical()`
 /// (kind/structure/spans/fields/flags; allocation ids never participate).
 pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
-    var out = ""
+    var rows = List<Str>.new()
     // Explicit DFS stack of (node, depth): parallel lists with a logical
     // depth cursor (no pop on this lane's List).
     var sn = List<int>.new()
@@ -257,6 +258,7 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
         let node = sn.get(depth - 1)
         let d = sd.get(depth - 1)
         depth = depth - 1
+        var out = ""
         var i = 0
         for (i < d) {
             out = out + " "
@@ -273,6 +275,9 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
         }
         if ((fl & flag_trivia()) != 0) {
             out = out + "~"
+        }
+        if ((fl & flag_generated()) != 0) {
+            out = out + "+"
         }
         var rng = List<int>.new()
         rng.push(0)
@@ -292,7 +297,8 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
             out = out + ","
             k = k + 1
         }
-        out = out + "]\n"
+        let row = out + "]\n"
+        rows.push(row.move)
         var ccx = ncc(t, node)
         if (ccx > 1000) {
             return "BADCC node=" + dig(node) + " cc=" + dig(ccx) + " fc=" + dig(t.get(node * 8 + 3))
@@ -312,7 +318,18 @@ pub fn canonical(t List<int>, ef List<int>, decls List<int>, root int) Str {
             c = c - 1
         }
     }
-    return out
+    return join_rows(rows, rows.len())
+}
+
+// Remove the right half first so each removal is from the end of the list.
+// Balanced concatenation avoids copying all earlier rows for every node.
+pub fn join_rows(rows List<Str>, count int) Str {
+    if (count == 0) { return "" }
+    if (count == 1) { return rows.remove(rows.len() - 1) }
+    let nright = count / 2
+    let right = join_rows(rows, nright)
+    let left = join_rows(rows, count - nright)
+    return left + right
 }
 
 /// Reconstruct the source bytes from the leaf order (lossless tiling).
