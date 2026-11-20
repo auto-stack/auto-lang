@@ -955,6 +955,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // 写入受检产物；运行端从入口所属单元核对能力与
                         // `StrView` 签名——`execute_program_text_platform`）。
                         | crate::contract::TEXT_RUNTIME_CAPABILITY
+                        | crate::contract::AGE_ELEM_VIEW_CAPABILITY
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM

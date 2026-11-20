@@ -10,7 +10,7 @@ use ace_av_core::{abc_verify, mir_verify};
 use ace_core::source::age_component::{
     compile_age_component, compile_component_scenario, compile_component_scenario_observing,
 };
-use ace_lowering::{lower_checked_collections, lower_checked_owned};
+use ace_lowering::{lower_checked_collections_age_component, lower_checked_owned};
 
 // PLAN-980 STATE：消费者（UI 桥）经本模块取组件面的配置/结果类型，不必直接
 // 依赖 ace-core。再导出为纯加法，既有路径不受影响。
@@ -336,9 +336,10 @@ fn execute_text(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Resu
 /// 共享链执行单个 def：lower → MIR verify → ABC admit → AV（PLAN-980 STATE
 /// 起为状态函数/驱动/文本共用的通用执行器）。
 fn execute_value(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<Value, String> {
-    // PLAN-105 T-02：collections HIR 域（组件面列表源）必须走 collections lowering。
+    // PLAN-105 T-02：collections HIR 域（组件面列表源）必须走 collections lowering；
+    // AGE 组件面变体额外带 `ac.age.elem-view.v1`（元素视图的 place lowering）。
     let mir = if checked.domain() == ace_core::hir::HirDomain::Collections {
-        lower_checked_collections(checked, def_id, 0x979)
+        lower_checked_collections_age_component(checked, def_id, 0x979)
     } else {
         lower_checked_owned(checked, def_id, 0x979)
     }

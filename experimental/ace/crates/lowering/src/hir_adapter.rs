@@ -537,8 +537,30 @@ pub fn lower_checked_collections(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    lower_checked_collection_family(checked, entry_name, source_snapshot, false, false)
+    lower_checked_collection_family(checked, entry_name, source_snapshot, false, false, &[])
 }
+
+/// PLAN-105 T-02（U03 真语料 013）：AGE 组件面的 collections lowering 变体——
+/// 追加 `ac.age.elem-view.v1` 能力标记，放行「owned 元素整读/字段视图」的
+/// place lowering（verify 侧已按 ElemView 裁决；此处只是让 lowering 与该
+/// 裁决一致）。
+pub fn lower_checked_collections_age_component(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    lower_checked_collection_family(
+        checked,
+        entry_name,
+        source_snapshot,
+        false,
+        false,
+        &[AGE_ELEM_VIEW_CAPABILITY],
+    )
+}
+
+/// AGE 组件面元素视图能力标记（与 `av.collections/1` 组合使用）。
+pub use ace_av_core::contract::AGE_ELEM_VIEW_CAPABILITY;
 
 /// PLAN-865: lower a checked source-closures bundle to the frozen
 /// av.closures/1 MIR profile. The instruction set and execution contract
@@ -548,7 +570,7 @@ pub fn lower_checked_closures(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    lower_checked_collection_family(checked, entry_name, source_snapshot, true, false)
+    lower_checked_collection_family(checked, entry_name, source_snapshot, true, false, &[])
 }
 
 /// Lower checked ordinary Auto through the av.closures/1 wire family.
@@ -559,7 +581,7 @@ pub fn lower_checked_auto_language(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
-    lower_checked_collection_family(checked, entry_name, source_snapshot, true, true)
+    lower_checked_collection_family(checked, entry_name, source_snapshot, true, true, &[])
 }
 
 fn lower_checked_collection_family(
@@ -568,6 +590,7 @@ fn lower_checked_collection_family(
     source_snapshot: u64,
     closures_profile: bool,
     auto_language: bool,
+    extra_caps: &[&str],
 ) -> Result<MirModule, AdapterError> {
     match (checked.domain(), closures_profile) {
         (hir::HirDomain::Collections, false) | (hir::HirDomain::Closures, true) => {}
@@ -605,6 +628,9 @@ fn lower_checked_collection_family(
         MirModule::new_collections(owner)
     };
     out.capabilities = checked.required_capabilities().to_vec();
+    for c in extra_caps {
+        out.capabilities.push((*c).to_string());
+    }
     if auto_language
         && module
             .types
@@ -6554,8 +6580,16 @@ k 0
                     // (buffer identity + epoch revalidated at every use),
                     // PLACE_GET reads through the borrow. Frozen-profile
                     // bundles keep the controlled rejection below.
+                    // PLAN-105 T-02（U03 真语料 013）：AGE 组件面（collections 域
+                    // + 文本能力）的元素视图已在 verify 层按 ElemView 裁决，lowering
+                    // 用同一 place 机制读整元素/字段视图（`xs[i].text`）。
                     let aggregates = self.out.capabilities.iter().any(|c| c == "av.aggregates/1");
-                    if !aggregates {
+                    let age_component_text = self
+                        .out
+                        .capabilities
+                        .iter()
+                        .any(|c| c == AGE_ELEM_VIEW_CAPABILITY);
+                    if !aggregates && !age_component_text {
                         // verify guarantees this never happens (view-escape);
                         // keep the lowering total for programmatic bundles.
                         return Err(AdapterError::inv(
@@ -6901,7 +6935,10 @@ k 0
                 if let Some(root @ hir::ExprKind::ListGet { list, index }) =
                     list_get_root(self.body, *base)
                 {
-                    if self.hir_elem_owned(list)? {
+                    // PLAN-105 T-02：LIST_FIELD_GET 只承载**标量**字段拷贝
+                    // （verify：owned 字段不得走本形）。文本字段走下方通用
+                    // 元素视图路径（LIST_PLACE/PLACE_GET + FIELD_GET 共享句柄）。
+                    if self.hir_elem_owned(list)? && self.out.type_shape(ty).is_some() {
                         let l = self.eval_expr(list, depth + 1)?;
                         let i = self.eval_expr(index, depth + 1)?;
                         let dst = self.temp_ty(ty)?;

@@ -239,6 +239,11 @@ pub const GLOBAL_TAKE_CAPABILITY: &str = "av.globals.take/1";
 /// Admitted ONLY on owned-profile modules at MIR verification.
 pub const TEXT_RUNTIME_CAPABILITY: &str = "ac.runtime.text.v1";
 
+/// PLAN-105 T-02（U03 真语料 013）：AGE 组件面（collections 域）的**元素视图**
+/// 能力标记——lowering 用它放行 owned 元素整读/字段视图的 place 形状；verify
+/// 侧的元素视图裁决由组件面前门（`elem_view`）给出，本能力不改变运行语义。
+pub const AGE_ELEM_VIEW_CAPABILITY: &str = "ac.age.elem-view.v1";
+
 // ---------------------------------------------------------------------------
 // Frozen budgets (PLAN-798 §3; resource rejection on breach)
 // ---------------------------------------------------------------------------
