@@ -117,7 +117,7 @@ fn main() int { try { return leaf() } catch { rethrow() } }
     else {
         panic!("expected rethrow with a source span, got {outcome:?}");
     };
-    assert_eq!(message, "IndexError: list index out of range");
+    assert_eq!(message, "IndexError: index 9 out of range");
     assert_eq!(&source[span.start as usize..span.end as usize], "xs[9]");
     let origin = trace.last_language_error.expect("origin preserved");
     assert_eq!(origin.kind, LanguageErrorKind::ListIndex);

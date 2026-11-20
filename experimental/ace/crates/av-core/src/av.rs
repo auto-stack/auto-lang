@@ -4098,23 +4098,21 @@ fn dispatch_list_index_error(
     st: &mut LoopState,
     limits: &ExecLimits,
     outcome: ExecOutcome,
+    index: &Value,
 ) -> Option<ExecOutcome> {
     use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
     let ExecOutcome::Trap { span, .. } = outcome else {
         return Some(outcome);
     };
+    let Some(index) = index.as_i32() else {
+        return Some(outcome);
+    };
+    let message = format!("IndexError: index {index} out of range");
     let origin = LanguageErrorOrigin {
         kind: LanguageErrorKind::ListIndex,
         span,
     };
-    match unwind_to_invoke(
-        v,
-        st,
-        limits,
-        "IndexError: list index out of range",
-        origin,
-        true,
-    ) {
+    match unwind_to_invoke(v, st, limits, &message, origin, true) {
         Ok(true) => None,
         Ok(false) => Some(outcome),
         Err(outcome) => Some(outcome),
@@ -6538,7 +6536,9 @@ fn dispatch_with_host<V: ModuleView>(
                     };
                     let Some(elem) = elem else {
                         let outcome = list_index_trap(v, func_idx, func, flat);
-                        if let Some(outcome) = dispatch_list_index_error(v, st, limits, outcome) {
+                        if let Some(outcome) =
+                            dispatch_list_index_error(v, st, limits, outcome, &iv)
+                        {
                             return Some(outcome);
                         }
                         continue;
@@ -7311,7 +7311,9 @@ fn dispatch_with_host<V: ModuleView>(
                     };
                     let Some(place) = place else {
                         let outcome = list_index_trap(v, func_idx, func, flat);
-                        if let Some(outcome) = dispatch_list_index_error(v, st, limits, outcome) {
+                        if let Some(outcome) =
+                            dispatch_list_index_error(v, st, limits, outcome, &iv)
+                        {
                             return Some(outcome);
                         }
                         continue;
