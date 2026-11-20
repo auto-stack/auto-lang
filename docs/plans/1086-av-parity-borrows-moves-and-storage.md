@@ -4,10 +4,10 @@ status: drafting
 feature_name: AV借用、move与资源值组合补齐
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
-plan_revision: 3
+updated_at: 2026-11-20
+plan_revision: 4
 current_step: 0
-total_steps: 8
+total_steps: 9
 depends_on: [PLAN-1078, PLAN-1081, PLAN-1082, PLAN-1083, PLAN-1085]
 supersedes_spec_components: [docs/specs/ace-migration/m2-aggregates.md, docs/specs/auto-test-case/resource-lifecycle-observations.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
 new_spec_components: []
@@ -19,6 +19,13 @@ affects: [ace, auto-av, auto-test-case]
 
 ## 0. 变更摘要
 
+### 2026-11-20 r4 · collections profile 承载 owned `Str`（用户裁定，仅规划）
+
+用户在 105 复工评估中裁定：**1086 施工时顺带把 collections profile 的 `Str` 类型/值接上**，作为 105 解除
+`lower.type-use: type kind Str is outside the av.collections/1 source surface` 的前置。范围限于 `av.collections/1` MIR
+的类型/值面（元素与状态位的 owned 文本、`clone`/拼接/`len` 等最小值语义），不扩张本包其它非目标；本包仍 AV-ONLY，
+非 AV 检查按 §5 #ignore 处理。
+
 ### 2026-11-19 r3 · AV-ONLY与检查级#ignore（用户补充，仅规划）
 
 用户明确1078–1096此轮只开发/验AV；共享源码保留，AC/A2R/A2C/A2PY等非AV检查在本轮不执行、不作为work/review/merge门，采用检查小节`#ignore`暂缓，后续对应后端任务逐项打开。规则见[共享语料AV阶段策略](../design/testing/ace-feature-organized-autodown-corpus.md)；原非AV义务/预期/来源/owner保留，忽略不充PASS，也不阻本包AV出口。本次仍只改计划，不改实际测试或实现。
@@ -27,13 +34,13 @@ affects: [ace, auto-av, auto-test-case]
 
 用户新增组织要求适用于本包全部公共语言测试：[共享语料设计](../design/testing/ace-feature-organized-autodown-corpus.md)为本次合同增量。唯一活跃作者根改为`crates/auto-lang/test/cases/language/`，本包拟写`ownership/borrows-moves.case.ad`；按语言行为命名，不再建立AV/后端/计划号作者副本。保原case ID与72例整体需求、原独立预期、任务ID和进度；本轮不搬任何实际用例、不施工。
 
-AV–AutoVM语言齐平路线批次 **AVP-08**，r3，仅设计/计划；本轮用户授权研究和编订系列计划及AutoDown代码用例，**未授权此轮施工**。全部0/8，拟新增接口、路径、case和命令均未执行。总路线见[AV语言齐平设计与执行路线](../design/strategy/av-autovm-language-parity.md)。
+AV–AutoVM语言齐平路线批次 **AVP-08**，r4，仅设计/计划；本轮用户授权研究和编订系列计划及AutoDown代码用例，**未授权此轮施工**。全部0/8，拟新增接口、路径、case和命令均未执行。总路线见[AV语言齐平设计与执行路线](../design/strategy/av-autovm-language-parity.md)。
 
 ## 1. 目标
 
 补旧合法view/mut/move/Hold与存储值的组合，执行可观察的所有权和释放合同。
 
-本包交付`IF-AV-PARITY-OWNERSHIP`，绑定原源、规范、工具/ABI/provider身份、适用平台与逐case真实结果。非目标：AC/A2R/A2PY完整补齐、新标准库全部功能、UI/2D/3D全demo、AutoOS产品迁移、旧引擎删除和AAC自举；这些由各原owner消费本包能力。共同前门/IR改动本轮验AV及共享正确性；非AV能力检查保留后续owner，不作为本系列AV门。
+本包交付`IF-AV-PARITY-OWNERSHIP`，绑定原源、规范、工具/ABI/provider身份、适用平台与逐case真实结果。范围增量（r4）：`av.collections/1` MIR 承载 owned 文本 `Str`（元素/状态位类型与值、`clone`/拼接/`len` 最小值语义），以解除组件面文本列表的 lowering 阻断。非目标：AC/A2R/A2PY完整补齐、新标准库全部功能、UI/2D/3D全demo、AutoOS产品迁移、旧引擎删除和AAC自举；这些由各原owner消费本包能力。共同前门/IR改动本轮验AV及共享正确性；非AV能力检查保留后续owner，不作为本系列AV门。
 
 ## 2. 架构方案
 
@@ -98,6 +105,7 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 - [mod.rs](../../experimental/ace/crates/av-core/src/mir_verify/mod.rs)：复用/修改当前生产路径；先按本包T-01核所需符号和调用者。
 - [av.rs](../../experimental/ace/crates/av-core/src/av.rs)：复用/修改当前生产路径；先按本包T-01核所需符号和调用者。
 - [borrow.rs](../../crates/auto-lang-core/src/ownership/borrow.rs)：复用/修改当前生产路径；先按本包T-01核所需符号和调用者。
+- [hir_adapter.rs](../../experimental/ace/crates/lowering/src/hir_adapter.rs)：**r4 新增触面**——`av.collections/1` 的类型面（`scalar_shape_of_use` / `scalar_type_idx_of_reserved` 目前只认 i32/bool）需承载 owned `Str`；先核 `MirType`/值表示/`clone`/拼接/`len` 的最小接线面。
 
 拟新增/迁入的长期作者位置为`crates/auto-lang/test/cases/language/ownership/borrows-moves.case.ad`。按本包Case的实际语言主题分配，不能按计划编号生成新副本；若目录已有等价Case，复用并扩其check而不另造源。`crates/auto-lang/test/cases/language.suite.ad`由1078建立公共选择，后续只增canonical引用。旧语料先按共享设计逐case/check/角色判等、迁入唯一作者并切消费者；新旧对照窗口完成后不留双活作者。原位置只保具名冻结历史，禁止继续当新代码作者源。所有未交required目标仍保pending/owner，不因未注册而计PASS。
 
@@ -148,6 +156,7 @@ AutoDown文档式`.case.ad`、现有auto-test-case/auto-case/worker/固定Cargo�
 |---|---|---|---|---|
 | `OWN-EXITS` | AC-03/AC-04 | work / T-04..05 | 正常/return/break/continue/fail/捕获后继续/取消/close逐路实际owner账；owned循环至少2次以暴露漏释放，不只退出一次。 | 原父侧case/worker观察，引用实际输入与assert；不能仅grep或数测试 |
 | `BORROW-ESCAPE` | AC-03/AC-04 | work / T-04..05 | 相同类型合法局部view与非法return/capture-escape反例；错误阶段不能靠不相关类型不匹配抢先证伪。 | 原父侧case/worker观察，引用实际输入与assert；不能仅grep或数测试 |
+| `COLL-STR` | AC-09 | work / T-09 | `av.collections/1` 下 owned 文本 `Str` 作**列表元素/状态位**：`List<T>` 的 `Str` 元素、状态函数返回 `Str`、`clone`/拼接/`len` 不报 `lower.type-use`；与本包既有 `Str` move/clone 语义一致，不引入第二套文本表示。 | 组件面文本列表 lowering 必须从「类型不在 profile 面」变为真实可执行（013 形状的最小复现）。 |
 
 ### AutoDown代码用例（设计草案）
 
@@ -333,6 +342,8 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [ ] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
 - [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
+- [ ] **AC-09｜owner_stage: work**：`av.collections/1` 的 MIR 类型面承载 owned 文本 `Str`（元素/状态位、`clone`/拼接/`len` 最小值语义）；`COLL-STR` 的最小复现（组件面文本列表）从 `lower.type-use` 拒绝变为真实可执行，且不新增第二套文本表示、不弱化既有 AV `Str` 所有权/释放合同。原 T-09。
+
 ## 8. 执行步骤
 
 | task | owner_stage | depends | 实际操作/预期产物 | acceptance |
@@ -345,6 +356,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 | T-06 | work | T-05 | 冻结候选提交，执行§6固定组并核子项/资源/源身份；共享改动仅补AV及共同正确性，非AV功能检查保后继责任，写可复现摘要和待交接口IF-AV-PARITY-OWNERSHIP。未就绪依赖只阻其行，不冒通过。 FC：仅以所选AV实际动作/结果及迁移数据守恒收AV阶段证据，非AV保#ignore/NOT_RUN与具名后续任务，不计PASS、不阻AV出口。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-01..06、AC-FC、AC-AV-ONLY |
 | T-07 | review | T-06 | 独立上下文逐AC追源码→消费者→实际oracle；扫遗漏/未批准延后/临时兼容，必要反例重放；不因勾选或主exit0信任结果。 另独立核AC-FC，实际输入/目标/迁移/消费者与反控均须成立。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-07、AC-FC、AC-AV-ONLY |
 | T-08 | merge | T-07 pass及实施/合入授权 | 按已审Spec增量落主、归档并交正式接口；计划内折证据、清统一材料/guard后移除唯一工作树，不动其它会话文件。 并交本包canonical引用/迁移映射及已验目标来源，公共作者规则由1078统一沉淀。 AV-ONLY：本轮仅AV门，非AV检查#ignore/未选，不以AC/A2X结果阻本包。 | AC-08、AC-FC、AC-AV-ONLY |
+| T-09 | work | T-03 | r4 增量：`av.collections/1` 类型/值面承载 owned `Str`（`scalar_shape_of_use`/`scalar_type_idx_of_reserved` + `MirType`/值表示 + `clone`/拼接/`len`）；以组件面文本列表最小形状验证不再 `lower.type-use`，并与 T-03 的 `Str` move/clone 语义对齐。 | AC-09 |
 
 本轮任务状态（全部未施工）：
 
@@ -360,6 +372,8 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-20 修订 r4：`stage: new`（范围增量）；用户裁定把「collections profile 承载 owned `Str`」并入本包施工（`AC-09`/`T-09`/`COLL-STR`，触面 `crates/lowering/src/hir_adapter.rs`），用于解除 105 的 `lower.type-use` 阻断；`plan_revision: 3 → 4`、`total_steps: 8 → 9`。本修订**仅规划**：所有 0/9，未执行任何施工。
 
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
