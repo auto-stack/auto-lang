@@ -1,4 +1,6 @@
 use app.source_catalog.catalog_directory
+use app.source_position.position_report
+use app.syntax_frontend.str_to_bytes
 use app.syntax_smoke.bucket_count_case
 use app.syntax_smoke.byte_len_case
 use app.syntax_smoke.decode_case
@@ -6,6 +8,7 @@ use app.syntax_smoke.decode_dbg_case
 use app.syntax_smoke.decode_truncated_case
 use app.syntax_smoke.edit_case
 use app.syntax_smoke.edit_project_case
+use app.syntax_smoke.edit_rollback_case
 use app.syntax_smoke.firstsets_case
 use app.syntax_smoke.hex_roundtrip_case
 use app.syntax_smoke.identity_case
@@ -49,6 +52,10 @@ fn observe(case_name Str, profile Str, sample Str) Str {
     if (case_name == "parse") {
         return parse_case(profile, sample)
     }
+    if (case_name == "positions") {
+        let bytes = str_to_bytes(sample)
+        return position_report(bytes, bytes.len(), offset("AAC1046_START"), offset("AAC1046_END"))
+    }
     if (case_name == "project") {
         return project_case(profile, sample, offset("AAC1046_SOURCE_ID"), offset("AAC1046_ORIGIN_ID"))
     }
@@ -72,6 +79,9 @@ fn observe(case_name Str, profile Str, sample Str) Str {
     }
     if (case_name == "project-edit") {
         return edit_project_case(profile, sample, offset("AAC1046_START"), offset("AAC1046_END"), read_text(get("AAC1046_INSERT")), offset("AAC1046_SOURCE_ID"), offset("AAC1046_ORIGIN_ID"))
+    }
+    if (case_name == "edit-rollback") {
+        return edit_rollback_case(sample, offset("AAC1046_START"), offset("AAC1046_END"), read_text(get("AAC1046_INSERT")))
     }
     if (case_name == "identity") {
         return identity_case(sample, offset("AAC1046_START"))

@@ -665,3 +665,97 @@ fn aac1046_module_catalog_missing_duplicate_and_import_cycle() {
     let accepted = run_native_catalog("packages-ct", "app", &[first, no_import], &["alpha.at", "beta.at"]).unwrap();
     assert!(accepted.starts_with("CATALOG\n"), "{accepted}");
 }
+
+
+fn corpus_source<'a>(document: &'a str, case: &str) -> &'a str {
+    let heading = format!("## Case: {case}\n");
+    let (_, section) = document.split_once(&heading).expect("shared case heading");
+    let (_, source) = section.split_once("```auto\n").expect("shared Auto source block");
+    source.split_once("\n```").expect("source block end").0
+}
+
+fn check_shared_corpus(document: &str, name: &str) {
+    let source = corpus_source(document, name);
+    let close = source.rfind('}').expect("fixture has a final declaration brace");
+    let mut differences = Vec::new();
+    for (label, input, valid) in [("full", source, true), ("truncated", &source[..close], false)] {
+        let expected = rust_oracle("auto", input);
+        if expected.ends_with("DIAGS\n") != valid {
+            differences.push(format!("{name} {label}: reference has unexpected recovery state"));
+        }
+        match run_native_case("parse", "auto", input, None) {
+            Ok(actual) if actual != expected => {
+                let row = actual.lines().zip(expected.lines()).find(|(a, e)| a != e);
+                differences.push(format!("{name} {label}: first differing row {row:?}"));
+            }
+            Err(err) => differences.push(format!("{name} {label}: {err}")),
+            Ok(_) => {}
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+macro_rules! shared_corpus_case {
+    ($test:ident, $path:literal, $case:literal) => {
+        #[test]
+        fn $test() {
+            check_shared_corpus(
+                include_str!(concat!(
+                    "../../../../../crates/auto-lang/test/cases/language/",
+                    $path
+                )),
+                $case,
+            );
+        }
+    };
+}
+
+shared_corpus_case!(aac1046_corpus_basics, "basics/expressions.case.ad", "baseline-value");
+shared_corpus_case!(aac1046_corpus_calls, "calls/binding-pipeline.case.ad", "pipe-method-and-field");
+shared_corpus_case!(aac1046_corpus_collections, "collections/list-places.case.ad", "bracket-read-write");
+shared_corpus_case!(aac1046_corpus_functions, "functions/references-closures.case.ad", "named-function-value");
+shared_corpus_case!(aac1046_corpus_numbers, "numbers/literals-conversions.case.ad", "wide-exact");
+
+#[test]
+fn aac1046_rejected_edit_retains_snapshot_bytes() {
+    let sample = "// α 😀\nfn main() int { return 1 }";
+    let scalar = sample.find('α').unwrap() as i32;
+    for (edit, expected) in [
+        ((scalar + 1, scalar + 1, "x"), "EDIT_REFUSED 4 unchanged"),
+        ((0, sample.len() as i32 + 1, ""), "EDIT_REFUSED 3 unchanged"),
+        ((scalar, scalar, " "), "EDIT_ACCEPTED"),
+    ] {
+        let actual = run_native_case("edit-rollback", "scalar", sample, Some(edit)).unwrap();
+        assert_eq!(actual, expected);
+    }
+}
+
+
+#[test]
+fn aac1046_positions_use_byte_and_utf16_units() {
+    use ace_syntax_runtime::{
+        position::LineIndex,
+        snapshot::{PageStore, Snapshot},
+    };
+    let source = "a😀b\r\n第二行 😀\r\n";
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snapshot = Snapshot::from_text(&pages, source);
+    let index = LineIndex::build(&snapshot);
+    let first_emoji = source.find('😀').unwrap() as u64;
+    let line_two = source.find('第').unwrap() as u64;
+    for (offset, column) in [
+        (0, 1),
+        (first_emoji, 3),
+        (first_emoji + 4, 4),
+        (line_two - 1, 100),
+        (line_two, 2),
+        (source.len() as u64, 100),
+    ] {
+        let (line, col8) = index.line_col_utf8(&snapshot, offset);
+        let (_, col16) = index.line_col_utf16(&snapshot, offset);
+        let back8 = index.offset_of_utf8(line, column);
+        let back16 = index.offset_of_utf16(&snapshot, line, column);
+        let actual = run_native_case("positions", "", source, Some((offset as i32, column as i32, ""))).unwrap();
+        assert_eq!(actual, format!("{line} {col8} {col16} {back8} {back16}"));
+    }
+}

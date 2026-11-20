@@ -1,0 +1,100 @@
+use std.conv.from_int
+
+// Store absolute LF offsets. Queries binary-search the line boundary and
+// UTF-16 conversion reads only the requested line.
+pub fn build_line_index(bytes List<int>, length int, index List<int>) int {
+    var at = 0
+    for (at < length) {
+        if (bytes.get(at) == 10) {
+            index.push(at)
+        }
+        at = at + 1
+    }
+    return index.len() + 1
+}
+
+fn line_index_at(index List<int>, offset int) int {
+    var low = 0
+    var high = index.len()
+    for (low < high) {
+        let middle = low + (high - low) / 2
+        if (index.get(middle) < offset) {
+            low = middle + 1
+        } else {
+            high = middle
+        }
+    }
+    return low
+}
+
+fn line_start(index List<int>, line int, length int) int {
+    if (line <= 0) { return 0 }
+    if (line > index.len()) { return length }
+    return index.get(line - 1) + 1
+}
+
+fn line_end(index List<int>, line int, length int) int {
+    if (line < 0) { return 0 }
+    if (line >= index.len()) { return length }
+    return index.get(line)
+}
+
+fn utf8_width(head int) int {
+    if (head < 128) { return 1 }
+    if (head < 224) { return 2 }
+    if (head < 240) { return 3 }
+    return 4
+}
+
+pub fn line_col_at(bytes List<int>, length int, index List<int>, requested int, out List<int>) int {
+    var offset = requested
+    if (offset < 0) { offset = 0 }
+    if (offset > length) { offset = length }
+    let line = line_index_at(index, offset)
+    let start = line_start(index, line, length)
+    var units = 0
+    var at = start
+    for (at < offset) {
+        let width = utf8_width(bytes.get(at))
+        units = units + 1
+        if (width == 4) { units = units + 1 }
+        at = at + width
+    }
+    out.push(line + 1)
+    out.push(offset - start + 1)
+    out.push(units + 1)
+    return 0
+}
+
+pub fn byte_offset_utf8(index List<int>, length int, line int, col int) int {
+    let start = line_start(index, line - 1, length)
+    let end = line_end(index, line - 1, length)
+    if (col < 1) { return start }
+    if (col - 1 > end - start) { return end }
+    return start + col - 1
+}
+
+pub fn byte_offset_utf16(bytes List<int>, length int, index List<int>, line int, col int) int {
+    var at = line_start(index, line - 1, length)
+    let end = line_end(index, line - 1, length)
+    var units = 0
+    for (at < end) {
+        let width = utf8_width(bytes.get(at))
+        units = units + 1
+        if (width == 4) { units = units + 1 }
+        if (units >= col) { return at }
+        at = at + width
+    }
+    return end
+}
+
+pub fn position_report(bytes List<int>, length int, offset int, reverse_col int) Str {
+    var index = List<int>.new()
+    build_line_index(bytes, length, index)
+    var coord = List<int>.new()
+    line_col_at(bytes, length, index, offset, coord)
+    let line = coord.get(0)
+    let back8 = byte_offset_utf8(index, length, line, reverse_col)
+    let back16 = byte_offset_utf16(bytes, length, index, line, reverse_col)
+    return from_int(line) + " " + from_int(coord.get(1)) + " " + from_int(coord.get(2)) + " " + from_int(back8) + " " + from_int(back16)
+}

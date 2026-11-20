@@ -217,10 +217,10 @@ fn fsp_alt(pg List<int>, firsts List<int>, nullable List<int>, nt int, ri int, a
     var s = 0
     for (s < ns) {
         let c = fsp_step(pg, firsts, nullable, nt, ri, sstart + s)
-        if (c == 1) {
+        if ((c & 1) != 0) {
             changed = 1
         }
-        if (c == 2) {
+        if ((c & 2) != 0) {
             all_nullable = 0
         }
         if (all_nullable == 0) {
@@ -241,8 +241,8 @@ fn fsp_alt_tail(nullable List<int>, ri int, all_nullable int, changed int) int {
     return changed
 }
 
-// One step's contribution: 0 = nothing changed, 1 = changed, 2 = not
-// nullable (stop scanning this alt).
+// Bit 0 reports a change to FIRST. Bit 1 ends the alt at a
+// non-nullable step. Both can be set by the same step.
 fn fsp_step(pg List<int>, firsts List<int>, nullable List<int>, nt int, ri int, si int) int {
     let mtag = step_atom_tag(pg, si)
     let ref = step_atom_ref(pg, si)
@@ -1119,7 +1119,17 @@ fn push_pratt(mc List<int>, fr List<int>, saves List<int>, pending List<int>, ta
     fset(fr, f, fs_kind(), 1)
     init_frame(fr, f, 0, field, save_off, 0, 0, 0, 0, mc.get(m_efhi()))
     fset(fr, f, fs_ptable(), table)
-    fset(fr, f, fs_pstage(), ps_primary())
+    // A nested expression borrows the scratch suffix after its nearest
+    // Pratt ancestor's live values and operators. Siblings reuse the suffix.
+    var parent = f - 1
+    for (parent >= 0) {
+        if (fg(fr, parent, fs_kind()) == 1) {
+            fset(fr, f, fs_pvals_s(), fg(fr, parent, fs_pvals_s()) + fg(fr, parent, fs_pvals_l()))
+            fset(fr, f, fs_pops_s(), fg(fr, parent, fs_pops_s()) + fg(fr, parent, fs_pops_l()))
+            return 0
+        }
+        parent = parent - 1
+    }
     return 0
 }
 
@@ -1740,7 +1750,7 @@ fn record_expect_hint(pg List<int>, toks List<int>, srcb List<int>, mc List<int>
             return 0
         }
     }
-    if (rule_expect(pg, rule) == "") {
+    if (rule_expect(pg, rule).len() == 0) {
         return 0
     }
     var s = 0
@@ -2655,9 +2665,17 @@ pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc 
         root_failure_wrap(pg, toks, t, ef, mc, pending, dmsg)
     }
     let root = mc.get(m_root())
+    var kids = List<int>.new()
+    // Recovery and lookahead can reach EOF while holding the final trivia.
+    // Preserve it at root level without changing the root's semantic span.
+    var pending_index = 0
+    for (pending_index < mc.get(m_plen())) {
+        kids.push(alloc_leaf(pg, toks, t, pending.get(pending_index), flag_trivia()))
+        pending_index = pending_index + 1
+    }
+    mc.set(m_plen(), 0)
     if (mc.get(m_i()) < mc.get(m_ntoks())) {
         var tail_error = 0
-        var kids = List<int>.new()
         var i = mc.get(m_i())
         for (i < mc.get(m_ntoks())) {
             let tk = tok_token(toks, i)
@@ -2688,15 +2706,14 @@ pub fn parse_finish(pg List<int>, toks List<int>, t List<int>, ef List<int>, mc 
         if (failed != 0) {
             merge_hints(hints, dmsg)
         }
-        // extend the root's child list (the root's edges are the LAST
-        // contiguous segment in ef)
-        var k = 0
-        for (k < kids.len()) {
-            ef.push(kids.get(k))
-            ef.push(no_field())
-            t.set(root * 8 + 4, t.get(root * 8 + 4) + 1)
-            k = k + 1
-        }
+    }
+    // The root's edge slice is the last contiguous segment in ef.
+    var k = 0
+    for (k < kids.len()) {
+        ef.push(kids.get(k))
+        ef.push(no_field())
+        t.set(root * 8 + 4, t.get(root * 8 + 4) + 1)
+        k = k + 1
     }
     t.set(root * 8 + 7, 0)
     return root

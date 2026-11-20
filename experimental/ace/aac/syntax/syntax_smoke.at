@@ -9,6 +9,7 @@ use app.source_ast.project_ast
 use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
 use std.bytes.decode_utf8
+use std.text.equal
 use app.syntax_snapshot.apply_edit
 use app.syntax_snapshot.snapshot_id
 use app.syntax_incremental.incremental_lex
@@ -604,6 +605,25 @@ fn subtree_has_error(t List<int>, ef List<int>, node int) int {
     return 0
 }
 
+pub fn edit_rollback_case(sample Str, start int, end int, insert Str) Str {
+    let snap = str_to_bytes(sample)
+    let original_size = snap.len()
+    let original_id = snapshot_id(snap, original_size)
+    var size = List<int>.new()
+    size.push(original_size)
+    let rc = apply_edit(snap, original_size, start, end, insert, size)
+    if (rc == 0) {
+        return "EDIT_ACCEPTED"
+    }
+    if (size.get(0) != original_size || snap.len() != original_size) {
+        return "EDIT_CHANGED_SIZE"
+    }
+    if (!equal(snapshot_id(snap, original_size), original_id)) {
+        return "EDIT_CHANGED_SNAPSHOT"
+    }
+    return "EDIT_REFUSED " + itoa(rc) + " unchanged"
+}
+
 /// V-04: identity behavior — insert one ASCII space at `alpha_at`, then
 /// undo; the content SnapshotId must change and restore.
 pub fn identity_case(sample Str, alpha_at int) Str {
@@ -630,13 +650,13 @@ pub fn identity_case(sample Str, alpha_at int) Str {
         q = q + 1
     }
     var out = "changed="
-    if (id1 != id0) {
+    if (!equal(id1.clone(), id0.clone())) {
         out = out + "1"
     } else {
         out = out + "0"
     }
     out = out + " restored="
-    if (id2 == id0) {
+    if (equal(id2.clone(), id0.clone())) {
         out = out + "1"
     } else {
         out = out + "0"

@@ -11,27 +11,28 @@ use app.syntax_parse.first_sets_into
 use app.syntax_parse.parse_tokens
 use std.bytes.utf8_len
 use std.bytes.byte_of
+use std.text.equal
 
 pub fn fetch_parts(name Str) List<Str> {
-    if (name == "auto") {
+    if (equal(name.clone(), "auto")) {
         return auto_parts()
     }
-    if (name == "age-package") {
+    if (equal(name.clone(), "age-package")) {
         return age_package_parts()
     }
-    if (name == "packages-ct") {
+    if (equal(name.clone(), "packages-ct")) {
         return packages_ct_parts()
     }
-    if (name == "packages-modules") {
+    if (equal(name.clone(), "packages-modules")) {
         return packages_modules_parts()
     }
-    if (name == "text-record-instances") {
+    if (equal(name.clone(), "text-record-instances")) {
         return text_record_instances_parts()
     }
-    if (name == "scalar") {
+    if (equal(name.clone(), "scalar")) {
         return scalar_parts()
     }
-    if (name == "scheduler") {
+    if (equal(name.clone(), "scheduler")) {
         return scheduler_parts()
     }
     return List<Str>.new()
