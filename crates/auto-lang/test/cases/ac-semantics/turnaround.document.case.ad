@@ -40,3 +40,7 @@ steps: [{op: "query"}]
 cache: "published"
 compute-calls: 1
 stages-include: ["request", "cache-read-validate", "infer", "publish"]
+
+### Notes
+
+status: executed
