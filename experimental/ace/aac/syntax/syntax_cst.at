@@ -177,7 +177,7 @@ pub fn leaves_in_order(t List<int>, ef List<int>, decls List<int>, root int, out
 }
 
 /// Lossless check: leaves must tile [0, snapshot_len) exactly.
-/// Returns 0 = ok, else the offending offset (or -1 = bad span).
+/// Returns 0 for exact coverage and -1 for an invalid range or gap.
 pub fn assert_lossless(t List<int>, ef List<int>, decls List<int>, root int, total_len int) int {
     var lv = List<int>.new()
     leaves_in_order(t, ef, decls, root, lv)
@@ -186,17 +186,20 @@ pub fn assert_lossless(t List<int>, ef List<int>, decls List<int>, root int, tot
     for (i < lv.len() / 4) {
         let s = lv.get(i * 4)
         let e = lv.get(i * 4 + 1)
-        if (s != expect) {
-            return s
-        }
-        if (e < s) {
+        if (s < 0 || e < s || e > total_len) {
             return -1
         }
-        expect = e
+        // Empty productions and inserted missing tokens consume no bytes.
+        if (e > s) {
+            if (s != expect) {
+                return -1
+            }
+            expect = e
+        }
         i = i + 1
     }
     if (expect != total_len) {
-        return expect
+        return -1
     }
     return 0
 }

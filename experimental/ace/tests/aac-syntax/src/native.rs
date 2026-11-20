@@ -74,12 +74,12 @@ fn prepared_exe() -> Result<&'static Path, String> {
 pub fn run_native_case(
     case: &str,
     profile: &str,
-    sample: &str,
+    sample: impl AsRef<[u8]>,
     edit: Option<(i32, i32, &str)>,
 ) -> Result<String, String> {
     let exe = prepared_exe()?;
     let root = scratch(case);
-    let result = run_in(exe, &root, case, profile, sample, edit);
+    let result = run_in(exe, &root, case, profile, sample.as_ref(), edit);
     let cleanup = std::fs::remove_dir_all(&root);
     match (result, cleanup) {
         (Err(err), _) => Err(err),
@@ -93,7 +93,7 @@ fn run_in(
     root: &Path,
     case: &str,
     profile: &str,
-    sample: &str,
+    sample: &[u8],
     edit: Option<(i32, i32, &str)>,
 ) -> Result<String, String> {
     let input = root.join("input.at");

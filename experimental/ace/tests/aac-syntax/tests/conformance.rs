@@ -215,17 +215,26 @@ fn normalize_fields(canon: &str) -> String {
     out
 }
 
+struct OracleTokenText<'a>(&'a [u8]);
+
+impl ace_syntax_runtime::parse::CtxTokenText for OracleTokenText<'_> {
+    fn token_equals(&self, start: u64, end: u64, want: &str) -> bool {
+        self.0.get(start as usize..end as usize) == Some(want.as_bytes())
+    }
+}
+
 fn rust_oracle(profile: &str, sample: &str) -> String {
     let src = include_str!("../../../grammars/auto-source.at");
     let p = ace_syntax_grammar::compile_profile(src, profile).unwrap();
     let cs = ace_syntax_runtime::lexer::CompiledScanner::compile(&p).unwrap();
     let pages = std::rc::Rc::new(ace_syntax_runtime::snapshot::PageStore::new());
     let snap = ace_syntax_runtime::snapshot::Snapshot::from_text(&pages, sample);
-    let out = ace_syntax_runtime::parse::parse_snapshot(
+    let out = ace_syntax_runtime::parse::parse_snapshot_with_ctx(
         &p,
         &cs,
         &snap,
         &ace_syntax_runtime::program::Budget::default(),
+        Some(&OracleTokenText(sample.as_bytes())),
     )
     .unwrap();
     let mut expect = String::from("CANON\n");
@@ -418,6 +427,61 @@ fn aac1046_midexpr_eof() {
     assert_eq!(out, expect);
 }
 
+#[test]
+fn aac1046_typed_and_age_profile_parity() {
+    let cases = [
+        ("auto", "fn adapt(a ?int, b ~Iter<int>) !?int { return a }"),
+        (
+            "age-package",
+            "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n",
+        ),
+    ];
+    for (profile, source) in cases {
+        let expected = rust_oracle(profile, source);
+        assert!(expected.ends_with("DIAGS\n"), "fixture must parse: {expected}");
+        assert_eq!(obs("parse", profile, source), expected, "{profile}");
+    }
+}
 
+#[test]
+fn aac1046_source_bytes_and_lossless_reconstruction() {
+    let source = "// α 😀\r\nfn main() int { return 1 }\r\n";
+    let actual = obs("parse-source", "scalar", source);
+    assert_eq!(actual, rust_oracle("scalar", source));
+    let invalid = b"// \xf0\x9f\x98\nfn main() int { return 1 }";
+    let actual = run_native_case("parse-source", "scalar", invalid, None).unwrap();
+    assert_eq!(actual, "SOURCE_ERR UTF8");
+}
 
+#[test]
+fn aac1046_depth_and_work_budget_admission() {
+    let shallow = "fn main() int { return 1 }";
+    let deep = format!("fn main() int {{ return {}1{} }}", "(".repeat(24), ")".repeat(24));
+    assert_eq!(
+        obs("parse-source-depth", "scalar", shallow),
+        rust_oracle("scalar", shallow)
+    );
+    assert_eq!(
+        obs("parse-source-depth", "scalar", &deep),
+        "PARSE_ERR 2"
+    );
+    assert_eq!(obs("parse-source-work", "scalar", shallow), "PARSE_ERR 3");
+}
 
+#[test]
+fn aac1046_edit_unicode_span_and_undo() {
+    let source = "// α note\r\nfn a(x int) int { return x }\r\nfn b(y int) int { return y }\r\n";
+    let at = source.find('α').unwrap();
+    let mut edited = source.to_owned();
+    edited.insert(at, ' ');
+    for (input, result, end, insert) in [
+        (source, edited.as_str(), at, " "),
+        (edited.as_str(), source, at + 1, ""),
+    ] {
+        let out = run_native_case(
+            "edit", "scalar", input, Some((at as i32, end as i32, insert)),
+        ).unwrap();
+        let (tree, _) = out.split_once("SPLICE").unwrap_or_else(|| panic!("{out}"));
+        assert_eq!(tree.strip_prefix("INCR|").unwrap(), rust_oracle("scalar", result));
+    }
+}

@@ -9,10 +9,12 @@ use app.syntax_smoke.hex_roundtrip_case
 use app.syntax_smoke.identity_case
 use app.syntax_smoke.lex_case
 use app.syntax_smoke.parse_case
+use app.syntax_smoke.parse_byte_case
 use app.syntax_smoke.raw_case
 use app.syntax_smoke.scan_case
 use std.conv.to_int
 use std.env.get
+use std.file.read_bytes
 use std.file.read_text
 use std.file.write_text
 
@@ -68,10 +70,32 @@ fn observe(case_name Str, profile Str, sample Str) Str {
     return "UNKNOWN_CASE"
 }
 
+fn observe_byte_source(case_name Str, profile Str, path Str) Str {
+    let bytes = read_bytes(path)
+    is bytes {
+        Some(src) -> {
+            if (case_name == "parse-source-depth") {
+                return parse_byte_case(profile, src, 12, 67108864)
+            }
+            if (case_name == "parse-source-work") {
+                return parse_byte_case(profile, src, 1048576, 128)
+            }
+            return parse_byte_case(profile, src, 1048576, 67108864)
+        }
+        None -> {}
+    }
+    return "SOURCE_ERR READ"
+}
+
 fn main() int {
     let case_name = get("AAC1046_CASE")
     let profile = get("AAC1046_PROFILE")
-    let sample = read_text(get("AAC1046_INPUT"))
+    let input = get("AAC1046_INPUT")
+    if (case_name == "parse-source" || case_name == "parse-source-depth" || case_name == "parse-source-work") {
+        let report = observe_byte_source(case_name, profile, input)
+        return write_text(get("AAC1046_OUTPUT"), report)
+    }
+    let sample = read_text(input)
     let report = observe(case_name, profile, sample)
     return write_text(get("AAC1046_OUTPUT"), report)
 }

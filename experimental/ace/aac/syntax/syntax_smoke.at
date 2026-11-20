@@ -3,6 +3,7 @@
 // observation is byte-exact.
 //
 use app.syntax_program.decode_program_parts
+use std.bytes.decode_utf8
 use app.syntax_snapshot.apply_edit
 use app.syntax_snapshot.snapshot_id
 use app.syntax_incremental.incremental_lex
@@ -11,6 +12,8 @@ use app.syntax_parse.first_sets_into
 use app.syntax_lexer.compile_scanner
 use app.syntax_lexer.lex_all
 use app.syntax_cst.canonical
+use app.syntax_cst.assert_lossless
+use app.syntax_cst.reconstruct
 use app.syntax_lexer.tok_start
 use app.syntax_lexer.tok_end
 use app.syntax_cst.flag_error
@@ -353,12 +356,27 @@ pub fn dump_case(profile Str, sample Str) Str {
 /// Lex + parse `sample` under `profile`; return "CANON\n<canonical>\nDIAGS\n<diags>"
 /// or a controlled refusal code.
 pub fn parse_case(profile Str, sample Str) Str {
-    var pg = decode_program_parts(fetch_parts(profile))
+    return parse_source(profile, str_to_bytes(sample), 1048576, 67108864)
+}
+
+pub fn parse_byte_case(profile Str, srcb List<int>, depth int, work int) Str {
+    if (srcb.len() > work) {
+        return "PARSE_ERR 3"
+    }
+    let valid = decode_utf8(srcb)
+    is valid {
+        Some(_) -> { return parse_source(profile, srcb, depth, work) }
+        None -> {}
+    }
+    return "SOURCE_ERR UTF8"
+}
+
+fn parse_source(profile Str, srcb List<int>, depth int, work int) Str {
+    let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
         return "DECODE_ERR " + itoa(pg_err(pg))
     }
     let cs = compile_scanner(pg)
-    let srcb = str_to_bytes(sample)
     var toks = List<int>.new()
     var lexd = List<int>.new()
     lex_all(pg, cs, srcb, -1, toks, lexd)
@@ -379,11 +397,33 @@ pub fn parse_case(profile Str, sample Str) Str {
     var gshift = List<int>.new()
     var ginfo = List<int>.new()
     ginfo.push(0)
-    let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, 1048576, 67108864)
+    let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, ot, oef, odecls, gcand, gshift, ginfo, depth, work)
     if (root < 0) {
         return "PARSE_ERR " + itoa(-root)
     }
+    if (!reconstructs_input(t, ef, decls, root, srcb, srcb.len())) {
+        return "LOSSLESS_ERR"
+    }
     return "CANON\n" + canonical(t, ef, decls, root) + "DIAGS\n" + render_diag(pg, dmsg)
+}
+
+fn reconstructs_input(t List<int>, ef List<int>, decls List<int>, root int, src List<int>, size int) bool {
+    if (assert_lossless(t, ef, decls, root, size) != 0) {
+        return false
+    }
+    var reconstructed = List<int>.new()
+    reconstruct(t, ef, decls, root, src, reconstructed)
+    if (reconstructed.len() != size) {
+        return false
+    }
+    var i = 0
+    for (i < size) {
+        if (reconstructed.get(i) != src.get(i)) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
 }
 
 // ---------------------------------------------------------------------------
@@ -527,6 +567,9 @@ pub fn edit_case(profile Str, sample Str, start int, end int, insert Str) Str {
     let root = parse_tokens_n(pg, cs, firsts, nullable, toks, snap, nodes, edges, decls, diags, old_nodes, old_edges, old_decls, candidates, shifts, graft, 1048576, 67108864, toks.len() / 5)
     if (root < 0) {
         return "INCR_ERR " + itoa(-root) + " " + render_diag(pg, diags)
+    }
+    if (!reconstructs_input(nodes, edges, decls, root, snap, new_len)) {
+        return "LOSSLESS_ERR"
     }
     return "INCR|CANON\n" + canonical(nodes, edges, decls, root) + "DIAGS\n" + render_diag(pg, diags) + "SPLICE ok=" + itoa(splice.get(0)) + " fb=" + itoa(splice.get(1)) + " rescan=" + itoa(splice.get(2)) + " grafted=" + itoa(graft.get(4))
 }
