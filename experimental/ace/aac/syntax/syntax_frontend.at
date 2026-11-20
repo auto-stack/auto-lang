@@ -112,13 +112,18 @@ fn parse_input(pg List<int>, srcb List<int>, t List<int>, ef List<int>, decls Li
     var cold = List<int>.new()
     cold.push(0)
     let root = parse_tokens(pg, cs, firsts, nullable, toks, srcb, t, ef, decls, dmsg, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), cold, depth, work)
-    if (mapped && root >= 0 && dmsg.len() > 0 && has_open_brace(toks, srcb)) {
+    if (mapped && root >= 0) { add_format_eof(toks, srcb, srcb.len(), dmsg) }
+    return root
+}
+
+pub fn add_format_eof(toks List<int>, srcb List<int>, length int, dmsg List<int>) int {
+    if (dmsg.len() > 0 && has_open_brace(toks, srcb)) {
         dmsg.push(diag_format_eof())
-        dmsg.push(srcb.len())
-        dmsg.push(srcb.len())
+        dmsg.push(length)
+        dmsg.push(length)
         dmsg.push(0)
     }
-    return root
+    return 0
 }
 
 fn has_open_brace(toks List<int>, srcb List<int>) bool {

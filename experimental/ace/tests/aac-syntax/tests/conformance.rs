@@ -808,6 +808,78 @@ fn aac1046_format_delimiters_report_original_bytes() {
 }
 
 #[test]
+fn aac1046_format_modes_keep_only_authored_interpolations() {
+    use ace_core::source::{parse_program_with, SourceProfile};
+
+    let source = r#"fn main() int {
+ let name = 3
+ // f"comment"
+ let plain = "f\"ordinary"
+ let explicit = __fstr("literal")
+ let s = f"$name ${1 + 2} \$ {name}"
+ let empty = f""
+ return 1
+}"#;
+    for (slug, profile, expected_refs) in [("auto", SourceProfile::Auto, 1), ("scheduler", SourceProfile::Scheduler, 2)] {
+        parse_program_with(source, profile).unwrap_or_else(|diag| panic!("{slug}: {diag:?}"));
+        let out = run_native_projection(slug, source, (17, 0), None).unwrap();
+        assert!(out.ends_with("DIAGS\n"), "{out}");
+        let raw_name_references = source.match_indices("name").skip(1).take(2).map(|(start, _)| {
+            format!(" ident {start}..{} 17 0 0", start + 4)
+        });
+        assert_eq!(raw_name_references.filter(|span| out.contains(span)).count(), expected_refs);
+        assert_eq!(out.lines().filter(|line| line.ends_with(" 17 0 8")).count(), 2);
+        let explicit = source.find("__fstr").unwrap();
+        assert!(out.contains(&format!(" ident {explicit}..{} 17 0 0", explicit + 6)));
+    }
+    let scalar = "fn main() int { return f\"${1}\" }";
+    assert!(parse_program_with(scalar, SourceProfile::Scalar).is_err());
+    let actual = obs("parse", "scalar", scalar);
+    assert!(actual.starts_with("CANON\n") && !actual.ends_with("DIAGS\n"), "{actual}");
+}
+
+#[test]
+fn aac1046_format_edits_match_cold_with_reuse() {
+    let source = concat!(
+        "fn a() int {\r\n // 😀\r\n let word = f\"é${1 + 2}\"\r\n return 1\r\n}\r\n",
+        "fn b(x int) int { return x }\r\n",
+        "fn c(y int) int { return y + 3 }\r\n",
+        "fn d(z int) int { return z }\r\n",
+    );
+    let expr = source.find("1 + 2").unwrap();
+    let prefix = source.find('😀').unwrap();
+    let mut edited = source.to_owned();
+    edited.replace_range(expr..expr + 5, "20 + 22");
+    for (input, at, end, insert) in [
+        (source, expr, expr + 5, "20 + 22"),
+        (&edited, expr, expr + 7, "1 + 2"),
+        (source, prefix, prefix, " "),
+    ] {
+        let mut expected = input.to_owned();
+        expected.replace_range(at..end, insert);
+        let cold = obs("parse", "auto", &expected);
+        let hot = run_native_case("edit", "auto", input, Some((at as i32, end as i32, insert))).unwrap();
+        let (tree, facts) = hot.split_once("SPLICE ").unwrap_or_else(|| panic!("{hot}"));
+        assert_eq!(tree.strip_prefix("INCR|"), Some(cold.as_str()));
+        assert!(facts.starts_with("ok=1 fb=0 "), "{facts}");
+        let grafted = facts.split_once("grafted=").unwrap().1.split_whitespace().next().unwrap().parse::<usize>().unwrap();
+        assert!(grafted > 0, "{facts}");
+        let start = input[..at].rfind('\n').map_or(0, |index| index + 1);
+        let expected_scan = expected[start..].find('\n').unwrap() + 1;
+        assert!(expected_scan < expected.len());
+        assert!(facts.ends_with(&format!(" normalized={expected_scan}")), "{facts}");
+    }
+
+    let quote = source.find("}\"").unwrap() + 1;
+    let mut broken = source.to_owned();
+    broken.remove(quote);
+    let hot = run_native_case("edit", "auto", source, Some((quote as i32, quote as i32 + 1, ""))).unwrap();
+    let (tree, facts) = hot.split_once("SPLICE ").unwrap_or_else(|| panic!("{hot}"));
+    assert_eq!(tree.strip_prefix("INCR|"), Some(obs("parse", "auto", &broken).as_str()));
+    assert!(facts.starts_with("ok=0 fb=1 ") && facts.ends_with("grafted=0"), "{facts}");
+}
+
+#[test]
 fn aac1046_rejected_edit_retains_snapshot_bytes() {
     let sample = "// α 😀\nfn main() int { return 1 }";
     let scalar = sample.find('α').unwrap() as i32;

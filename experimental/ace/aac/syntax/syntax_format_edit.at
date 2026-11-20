@@ -1,0 +1,177 @@
+use app.syntax_fstr.normalize_format_window
+use app.syntax_fstr.format_resource
+use app.syntax_fstr.raw_offset
+use app.syntax_incremental.fb_complex_edits
+use app.syntax_incremental.fb_unterminated
+use app.syntax_incremental.rescan_window
+use app.syntax_lexer.tok_count
+use app.syntax_lexer.tok_start
+use app.syntax_lexer.tok_end
+use app.syntax_lexer.tok_error
+use app.syntax_lexer.tok_trivia
+
+fn copy_bytes(src List<int>, lo int, hi int, out List<int>) int {
+    var at = lo
+    for (at < hi) {
+        out.push(src.get(at))
+        at = at + 1
+    }
+    return 0
+}
+
+fn append_span(out List<int>, vlo int, vhi int, rlo int, rhi int) int {
+    out.push(vlo)
+    out.push(vhi)
+    out.push(rlo)
+    out.push(rhi)
+    return 0
+}
+
+fn raw_position(mapping List<int>, offset int) int {
+    if (mapping.len() == 0) { return offset }
+    return raw_offset(mapping, offset)
+}
+
+fn virtual_boundary(mapping List<int>, offset int) int {
+    if (mapping.len() == 0) { return offset }
+    var at = 0
+    for (at < mapping.len()) {
+        let raw_start = mapping.get(at + 2)
+        let raw_end = mapping.get(at + 3)
+        if (offset == raw_start) { return mapping.get(at) }
+        if (offset > raw_start && offset < raw_end) {
+            let start = mapping.get(at)
+            if (raw_end - raw_start == mapping.get(at + 1) - start) {
+                return start + offset - raw_start
+            }
+            return -1
+        }
+        if (offset == raw_end) { return mapping.get(at + 1) }
+        at = at + 4
+    }
+    return -1
+}
+
+fn outside_formats(marks List<int>, offset int) bool {
+    var at = 0
+    for (at < marks.len()) {
+        if (marks.get(at + 2) < offset && offset < marks.get(at + 3)) { return false }
+        at = at + 4
+    }
+    return true
+}
+
+// A newline boundary inside an ordinary string or block comment cannot
+// seed the format scanner. Whitespace token grouping may cross this point.
+fn neutral_boundary(raw List<int>, toks List<int>, map List<int>, marks List<int>, offset int) bool {
+    if (offset == 0 || offset == raw.len()) { return true }
+    if (!outside_formats(marks, offset)) { return false }
+    var lo = 0
+    var hi = tok_count(toks)
+    for (lo < hi) {
+        let mid = lo + (hi - lo) / 2
+        if (raw_position(map, tok_end(toks, mid)) <= offset) { lo = mid + 1 } else { hi = mid }
+    }
+    if (lo == tok_count(toks)) { return true }
+    let start = raw_position(map, tok_start(toks, lo))
+    if (start >= offset) { return true }
+    if (!tok_trivia(toks, lo) || tok_error(toks, lo)) { return false }
+    let c = raw.get(start)
+    return c == 32 || c == 9 || c == 13 || c == 10
+}
+
+fn append_mapping(out List<int>, map List<int>, lower int, upper int, virtual_shift int, raw_shift int) int {
+    if (lower >= upper) { return 0 }
+    if (map.len() == 0) {
+        return append_span(out, lower + virtual_shift, upper + virtual_shift, lower + raw_shift, upper + raw_shift)
+    }
+    var at = 0
+    for (at < map.len()) {
+        var start = map.get(at)
+        var end = map.get(at + 1)
+        if (start < lower) { start = lower }
+        if (end > upper) { end = upper }
+        if (start < end) {
+            append_span(out, start + virtual_shift, end + virtual_shift, raw_offset(map, start) + raw_shift, raw_offset(map, end) + raw_shift)
+        }
+        at = at + 4
+    }
+    return 0
+}
+
+fn append_formats(out List<int>, marks List<int>, lower int, upper int, virtual_shift int, raw_shift int) int {
+    var at = 0
+    for (at < marks.len()) {
+        let lo = marks.get(at)
+        let hi = marks.get(at + 1)
+        if (lo >= lower && hi <= upper) {
+            append_span(out, lo + virtual_shift, hi + virtual_shift, marks.get(at + 2) + raw_shift, marks.get(at + 3) + raw_shift)
+        }
+        at = at + 4
+    }
+    return 0
+}
+
+// Normalize only the changed lines, then assemble a new virtual stream
+// and its sparse maps. The caller still checks actual token convergence
+// before it may graft any old syntax. Edit is [raw_start, raw_end, new_len].
+// On success info is [old_virtual_start, old_virtual_end, new_len, raw_scanned].
+pub fn prepare_format_edit(old_raw List<int>, new_raw List<int>, edit List<int>, mode int, work int, old_virtual List<int>, old_toks List<int>, old_map List<int>, old_marks List<int>, out List<int>, map List<int>, marks List<int>, info List<int>) int {
+    var lo = edit.get(0)
+    var hi = edit.get(1)
+    let raw_delta = edit.get(2) - old_raw.len()
+    for (lo > 0 && old_raw.get(lo - 1) != 10 && hi - lo < rescan_window()) { lo = lo - 1 }
+    var end_of_line = false
+    for (!end_of_line && hi < old_raw.len() && hi - lo < rescan_window()) {
+        hi = hi + 1
+        end_of_line = old_raw.get(hi - 1) == 10
+    }
+    let new_end = hi + raw_delta
+    if (hi - lo >= rescan_window() || new_end - lo > rescan_window()) { return fb_complex_edits() }
+    if (!neutral_boundary(old_raw, old_toks, old_map, old_marks, lo) || !neutral_boundary(old_raw, old_toks, old_map, old_marks, hi)) {
+        return fb_complex_edits()
+    }
+    let start = virtual_boundary(old_map, lo)
+    let end = virtual_boundary(old_map, hi)
+    if (start < 0 || end < start) { return fb_complex_edits() }
+
+    var window = List<int>.new()
+    var rewritten = List<int>.new()
+    var window_map = List<int>.new()
+    var window_marks = List<int>.new()
+    let window_size = new_end - lo
+    if (window_size > work / 4) { return -3 }
+    copy_bytes(new_raw, lo, new_end, window)
+    let status = normalize_format_window(window, window_size, mode, work - window_size * 4, true, rewritten, window_map, window_marks)
+    if (status == format_resource()) { return -3 }
+    if (status < 0) { return fb_unterminated() }
+    var size = rewritten.len()
+    if (status == 0) { size = window.len() }
+    let delta = size - (end - start)
+    let output_size = old_virtual.len() + delta
+    // The identity stream may create a row for each retained side, and a
+    // clipped row can occur on both sides of the edit window.
+    let map_bound = old_map.len() + window_map.len() + 12
+    let marks_bound = old_marks.len() + window_marks.len()
+    let slots = window_size + rewritten.len() + window_map.len() + window_marks.len() + output_size + map_bound + marks_bound
+    if (output_size > 65536 || map_bound > 65536 || marks_bound > 65536 || slots > work / 4) { return -3 }
+    copy_bytes(old_virtual, 0, start, out)
+    if (status == 0) {
+        copy_bytes(window, 0, size, out)
+    } else {
+        copy_bytes(rewritten, 0, size, out)
+    }
+    copy_bytes(old_virtual, end, old_virtual.len(), out)
+
+    append_mapping(map, old_map, 0, start, 0, 0)
+    append_mapping(map, window_map, 0, size, start, lo)
+    append_mapping(map, old_map, end, old_virtual.len(), delta, raw_delta)
+    append_formats(marks, old_marks, 0, start, 0, 0)
+    append_formats(marks, window_marks, 0, size, start, lo)
+    append_formats(marks, old_marks, end, old_virtual.len(), delta, raw_delta)
+    info.push(start)
+    info.push(end)
+    info.push(output_size)
+    info.push(window_size)
+    return 0
+}

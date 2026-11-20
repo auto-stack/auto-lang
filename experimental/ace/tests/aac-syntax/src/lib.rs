@@ -61,6 +61,7 @@ pub const INCREMENTAL_SOURCE: &str = include_str!("../../../aac/syntax/syntax_in
 pub const GRAMMAR_DATA_SOURCE: &str = include_str!("../../../aac/syntax/syntax_grammar_data.at");
 pub const SYNTAX_FRONTEND: &str = include_str!("../../../aac/syntax/syntax_frontend.at");
 const SYNTAX_FSTR: &str = include_str!("../../../aac/syntax/syntax_fstr.at");
+const SYNTAX_FORMAT_EDIT: &str = include_str!("../../../aac/syntax/syntax_format_edit.at");
 pub const SOURCE_CATALOG: &str = include_str!("../../../aac/source/source_catalog.at");
 pub const SOURCE_POSITION: &str = include_str!("../../../aac/source/source_position.at");
 pub const SOURCE_AST: &str = include_str!("../../../aac/source/source_ast.at");
@@ -82,6 +83,7 @@ pub fn syntax_av_modules() -> Vec<(String, String)> {
         ),
         ("syntax_frontend.at".to_string(), SYNTAX_FRONTEND.to_string()),
         ("syntax_fstr.at".to_string(), SYNTAX_FSTR.to_string()),
+        ("syntax_format_edit.at".to_string(), SYNTAX_FORMAT_EDIT.to_string()),
         ("source_ast.at".to_string(), SOURCE_AST.to_string()),
         ("source_position.at".to_string(), SOURCE_POSITION.to_string()),
         ("source_catalog.at".to_string(), SOURCE_CATALOG.to_string()),

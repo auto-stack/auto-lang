@@ -8,6 +8,12 @@ use app.syntax_frontend.parse_cst
 use app.syntax_frontend.format_mode
 use app.syntax_frontend.diag_format_syntax
 use app.syntax_frontend.diag_format_eof
+use app.syntax_frontend.add_format_eof
+use app.syntax_fstr.format_resource
+use app.syntax_fstr.normalize_formats
+use app.syntax_fstr.remap_format_tree
+use app.syntax_format_edit.prepare_format_edit
+use app.syntax_incremental.fb_unterminated
 use app.source_ast.project_ast
 use app.source_ast.ast_canonical
 use app.syntax_program.decode_program_parts
@@ -495,6 +501,7 @@ pub fn edit_project_case(profile Str, sample Str, start int, end int, insert Str
 }
 
 fn edit_observation(profile Str, sample Str, start int, end int, insert Str, origin List<int>) Str {
+    let mode = format_mode(profile.clone())
     let pg = decode_program_parts(fetch_parts(profile))
     if (!pg_ok(pg)) {
         return "DECODE_ERR"
@@ -508,18 +515,88 @@ fn edit_observation(profile Str, sample Str, start int, end int, insert Str, ori
         return "EDIT_REFUSED " + itoa(rc)
     }
     let new_len = length.get(0)
-    let delta = new_len - srcb.len()
-
+    var edit = List<int>.new()
+    edit.push(start)
+    edit.push(end)
+    edit.push(new_len)
+    if (mode != 0) {
+        return edit_with_formats(pg, mode, srcb, snap, edit, origin)
+    }
     let cs = compile_scanner(pg)
+    var old_toks = List<int>.new()
+    lex_all(pg, cs, srcb, -1, old_toks, List<int>.new())
+    var nodes = List<int>.new()
+    var edges = List<int>.new()
+    var decls = List<int>.new()
+    var diags = List<int>.new()
+    var facts = List<int>.new()
+    let root = reparse_edit(pg, cs, old_toks, srcb, snap, edit, nodes, edges, decls, diags, facts, 67108864, false)
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, new_len, origin, facts)
+}
+
+fn edit_with_formats(pg List<int>, mode int, raw List<int>, snap List<int>, edit List<int>, origin List<int>) Str {
+    let work = 67108864
+    var old_input = List<int>.new()
+    var old_map = List<int>.new()
+    var old_marks = List<int>.new()
+    let old_status = normalize_formats(raw, raw.len(), mode, work, old_input, old_map, old_marks)
+    if (old_status == format_resource()) { return "COLD_ERR 3" }
+    if (old_status < 0) {
+        return cold_format_edit(pg, mode, snap, edit.get(2), origin, fb_unterminated())
+    }
+    if (old_status == 0) { old_input = copy_ints(raw) }
+    let old_scratch = (old_input.len() + old_map.len() + old_marks.len()) * 4
+    let cs = compile_scanner(pg)
+    var old_toks = List<int>.new()
+    lex_all(pg, cs, old_input, -1, old_toks, List<int>.new())
+    var input = List<int>.new()
+    var new_map = List<int>.new()
+    var new_marks = List<int>.new()
+    var virtual_edit = List<int>.new()
+    let reason = prepare_format_edit(raw, snap, edit, mode, work - old_scratch, old_input, old_toks, old_map, old_marks, input, new_map, new_marks, virtual_edit)
+    if (reason < 0) { return "INCR_ERR " + itoa(-reason) }
+    if (reason > 0) { return cold_format_edit(pg, mode, snap, edit.get(2), origin, reason) }
+    let normalized = virtual_edit.get(3)
+    let scratch = old_scratch + (input.len() + new_map.len() + new_marks.len()) * 4
+    if (scratch > work) { return "INCR_ERR 3" }
+
+    var nodes = List<int>.new()
+    var edges = List<int>.new()
+    var decls = List<int>.new()
+    var diags = List<int>.new()
+    var facts = List<int>.new()
+    let root = reparse_edit(pg, cs, old_toks, old_input, input, virtual_edit, nodes, edges, decls, diags, facts, work - scratch, new_marks.len() > 0)
+    if (root >= 0 && new_map.len() > 0) { remap_format_tree(new_map, new_marks, nodes, decls, diags) }
+    if (root >= 0) { facts.push(normalized) }
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, edit.get(2), origin, facts)
+}
+
+fn cold_format_edit(pg List<int>, mode int, snap List<int>, length int, origin List<int>, reason int) Str {
+    for (snap.len() > length) { snap.remove(snap.len() - 1) }
+    var nodes = List<int>.new()
+    var edges = List<int>.new()
+    var decls = List<int>.new()
+    var diags = List<int>.new()
+    var facts = List<int>.new()
+    facts.push(0)
+    facts.push(reason)
+    facts.push(0)
+    facts.push(0)
+    let root = parse_cst(pg, mode, snap, nodes, edges, decls, diags, 1048576, 67108864)
+    return edit_report(pg, nodes, edges, decls, diags, root, snap, length, origin, facts)
+}
+
+fn reparse_edit(pg List<int>, cs List<int>, old_toks List<int>, old_input List<int>, input List<int>, edit List<int>, nodes List<int>, edges List<int>, decls List<int>, diags List<int>, facts List<int>, work int, mapped bool) int {
+    let start = edit.get(0)
+    let end = edit.get(1)
+    let new_len = edit.get(2)
+    let delta = new_len - old_input.len()
     var firsts = List<int>.new()
     var nullable = List<int>.new()
     first_sets_into(pg, firsts, nullable)
-    var old_toks = List<int>.new()
-    var lex_diags = List<int>.new()
-    lex_all(pg, cs, srcb, -1, old_toks, lex_diags)
     var toks = List<int>.new()
     var splice = List<int>.new()
-    incremental_lex(pg, cs, old_toks, snap, new_len, start, end, delta, toks, splice)
+    incremental_lex(pg, cs, old_toks, input, new_len, start, end, delta, toks, splice)
 
     var old_nodes = List<int>.new()
     var old_edges = List<int>.new()
@@ -531,11 +608,11 @@ fn edit_observation(profile Str, sample Str, start int, end int, insert Str, ori
         var cold_diags = List<int>.new()
         var disabled = List<int>.new()
         disabled.push(0)
-        let cold_root = parse_tokens_n(pg, cs, firsts, nullable, old_toks, srcb, old_nodes, old_edges, old_decls, cold_diags, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), disabled, 1048576, 67108864, old_toks.len() / 5)
+        let cold_root = parse_tokens_n(pg, cs, firsts, nullable, old_toks, old_input, old_nodes, old_edges, old_decls, cold_diags, List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), List<int>.new(), disabled, 1048576, work, old_toks.len() / 5)
         if (cold_root < 0) {
-            return "COLD_ERR " + itoa(-cold_root)
+            return cold_root
         }
-        candidates = edit_graft_candidates(old_decls, old_nodes, old_edges, old_toks, splice, srcb.len(), start, end)
+        candidates = edit_graft_candidates(old_decls, old_nodes, old_edges, old_toks, splice, old_input.len(), start, end)
         graft.push(1)
         graft.push(splice.get(3))
         graft.push(splice.get(4))
@@ -550,21 +627,27 @@ fn edit_observation(profile Str, sample Str, start int, end int, insert Str, ori
         graft.push(0)
         graft.push(0)
         var fresh_diags = List<int>.new()
-        lex_all(pg, cs, snap, new_len, toks, fresh_diags)
+        lex_all(pg, cs, input, new_len, toks, fresh_diags)
     }
 
-    var nodes = List<int>.new()
-    var edges = List<int>.new()
-    var decls = List<int>.new()
-    var diags = List<int>.new()
-    let root = parse_tokens_n(pg, cs, firsts, nullable, toks, snap, nodes, edges, decls, diags, old_nodes, old_edges, old_decls, candidates, shifts, graft, 1048576, 67108864, toks.len() / 5)
+    let root = parse_tokens_n(pg, cs, firsts, nullable, toks, input, nodes, edges, decls, diags, old_nodes, old_edges, old_decls, candidates, shifts, graft, 1048576, work, toks.len() / 5)
+    if (root >= 0 && mapped) { add_format_eof(toks, input, new_len, diags) }
+    facts.push(splice.get(0))
+    facts.push(splice.get(1))
+    facts.push(splice.get(2))
+    facts.push(graft.get(4))
+    return root
+}
+
+fn edit_report(pg List<int>, nodes List<int>, edges List<int>, decls List<int>, diags List<int>, root int, snap List<int>, new_len int, origin List<int>, info List<int>) Str {
     if (root < 0) {
         return "INCR_ERR " + itoa(-root) + " " + render_diag(pg, diags)
     }
     if (!reconstructs_input(nodes, edges, decls, root, snap, new_len)) {
         return "LOSSLESS_ERR"
     }
-    let facts = "SPLICE ok=" + itoa(splice.get(0)) + " fb=" + itoa(splice.get(1)) + " rescan=" + itoa(splice.get(2)) + " grafted=" + itoa(graft.get(4))
+    var facts = "SPLICE ok=" + itoa(info.get(0)) + " fb=" + itoa(info.get(1)) + " rescan=" + itoa(info.get(2)) + " grafted=" + itoa(info.get(3))
+    if (info.len() > 4) { facts = facts + " normalized=" + itoa(info.get(4)) }
     if (origin.len() == 2) {
         return "INCR|" + project_report(pg, nodes, edges, decls, diags, root, new_len, origin.get(0), origin.get(1)) + facts
     }
