@@ -732,17 +732,22 @@ pub fn compile_age_package_with_scenario(
         let blanked = blank_use_lines(&unit.source);
         if let Ok(stores) = crate::source::age_component::project_component_stores(&blanked) {
             if let Some(store) = stores.first() {
-                return Err(vec![crate::atom_text::Diagnostic::new(
-                    crate::atom_text::Stage::Text,
-                    "source.age.component-unsupported",
-                    format!(
-                        "store `{}` is parsed with {} field(s) but package-level store \
-                         semantics are not wired yet (S1)",
-                        store.name.name,
-                        store.fields.len()
-                    ),
-                    store.span,
-                )]);
+                // PLAN-105 T-02（S1 首片）：**同源** store 已接线（组件内联，见
+                // `cst::frontdoor` 的 AGE 包前门）——单元自己引用 `.store.` 即放行；
+                // 真正的**跨单元** store 装载仍未接线，保持具名拒绝。
+                let in_source = blanked.contains(".store.");
+                if !in_source {
+                    return Err(vec![crate::atom_text::Diagnostic::new(
+                        crate::atom_text::Stage::Text,
+                        "source.age.component-unsupported",
+                        format!(
+                            "store `{}` is declared but cross-unit store loading is not \
+                             wired yet (S1); inline the store into its consumer unit",
+                            store.name.name
+                        ),
+                        store.span,
+                    )]);
+                }
             }
         }
     }

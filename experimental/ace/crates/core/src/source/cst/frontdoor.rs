@@ -987,13 +987,34 @@ pub(crate) fn project_packages_front(
                     }
                 }
             }
-            let nodes = project::project_component_nodes(
+            let mut nodes = project::project_component_nodes(
                 &cached.program,
                 &cached.kinds,
                 tree,
                 &snap,
                 SourceProfile::AgePackage,
             )?;
+            // PLAN-105 T-02（U03 真语料 013/015，S1）：**同源 store 声明 → 组件内联**
+            // ——字段加前缀、`.store.<f>` 改写为前缀字段、`store.<Msg>()` → 前缀消息
+            // 函数（与组件面 `compile_age_component` 同一条变换）。
+            match project::project_component_stores(
+                &cached.program,
+                &cached.kinds,
+                tree,
+                &snap,
+                SourceProfile::AgePackage,
+            ) {
+                Ok(stores) if !stores.is_empty() => {
+                    if let Some(first) = nodes.first_mut() {
+                        first.stores = stores;
+                        if let Err(ds) = crate::source::age_component::inline_store_decl(first) {
+                            return Err(ds);
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(ds) => return Err(ds),
+            }
             // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景的
             // `Send`/`SendArgs` **声明级**核对（arity/载荷域）移到包级一次核
             // ——`ForNode{node}` 的下标是**包级组件声明序**，在逐模块循环里用
@@ -1026,6 +1047,12 @@ pub(crate) fn project_packages_front(
                 };
                 for inst in 0..state_instances {
                     for f in &node.fields {
+                        // PLAN-105 T-02（S1 首片）：状态函数只承载标量/文本字段
+                        // （`int/i32/bool/str/Str/f32`）；列表字段没有标量状态函数，
+                        // 直接跳过（`instance_stmts` 仍按 `field_ann` 校验其初值）。
+                        let Some(state_word) = crate::source::age_component::field_type(f) else {
+                            continue;
+                        };
                         let mut stmts = match crate::source::age_component::instance_stmts(
                             inst,
                             node_index,
@@ -1064,11 +1091,7 @@ pub(crate) fn project_packages_front(
                                 // 原先硬编码 i32，于是 `flag bool = true` 被共享
                                 // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
                                 // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
-                                kind: crate::source::ast::TypeRef::Builtin(
-                                    crate::source::age_component::field_type(f).expect(
-                                        "instance_stmts rejected unsupported model field types",
-                                    ),
-                                ),
+                                kind: crate::source::ast::TypeRef::Builtin(state_word),
                                 span: f.ty_span,
                             },
                             body: crate::source::ast::Block {
