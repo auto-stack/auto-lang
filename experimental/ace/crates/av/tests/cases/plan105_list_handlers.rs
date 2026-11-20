@@ -68,3 +68,11 @@ fn p105_record_list_push_and_project_field() {
     println!("[proj] n={n}");
     assert!(n.contains('1'), "projected field text len: {n}");
 }
+#[test]
+#[test]
+fn p105_list_set_element_replaces_value() {
+    let src = "type Todo {\n    id int\n    text Str\n}\nwidget App {\n    msg { M }\n    model { var n int = 0\n var todos []Todo = [] }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            var t Todo = Todo { id: 1, text: \"a\" }\n            .todos.push(t)\n            .todos.set(0, Todo { id: 2, text: \"b\" })\n            .n = .todos.len()\n        }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    println!("[set] n={n}");
+}
