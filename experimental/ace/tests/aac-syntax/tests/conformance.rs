@@ -722,15 +722,19 @@ fn aac1046_aac_combined_modules_preserve_source_owners() {
     let views = "node Hello { view { text \"Hello\" {} } }\npub fn render() int { return 1 }";
     let inventory = ["entry.at", "views.at"];
     let files = [(inventory[0], entry), (inventory[1], views)];
+    let expected = files
+        .iter()
+        .enumerate()
+        .map(|(id, (_, source))| rust_ast_report("aac", source, id as i32, 0))
+        .collect::<Vec<_>>();
     let catalog = run_native_catalog("aac", "app", &files, &inventory).unwrap();
     assert!(catalog.starts_with("CATALOG\n"), "{catalog}");
     let mut modules = catalog.split("MODULE ").skip(1);
-    for (id, (name, source)) in files.iter().enumerate() {
+    for (id, (name, _)) in files.iter().enumerate() {
         let module = modules.next().expect("catalog includes both sources");
         assert!(module.lines().next().unwrap().ends_with(name));
         let (_, ast) = module.split_once("AST\n").unwrap();
-        let oracle = rust_ast_report("aac", source, id as i32, 0);
-        assert_eq!(format!("AST\n{ast}DIAGS\n"), oracle);
+        assert_eq!(format!("AST\n{ast}DIAGS\n"), expected[id]);
     }
     assert!(modules.next().is_none());
     assert_eq!(
@@ -769,10 +773,18 @@ fn aac1046_aac_combined_modules_preserve_source_owners() {
         attribute.split_whitespace().next(),
         owner.split_whitespace().next()
     );
-    row("generic", "generic-ty", "Option<T>");
+    let option = row("generic", "generic-ty", "Option<T>");
     row("generic", "generic-ty", "Result<T,int>");
     row("generic", "generic-ty", "Future<T>");
     row("optional", "optional-ty", "?T");
+
+    for erased in [option, attribute] {
+        let changed = ast.replacen(&format!("{erased}\n"), "", 1);
+        assert_ne!(format!("AST\n{changed}DIAGS\n"), expected[0]);
+    }
+    let foreign_owner = format!("{} 1 0 0", owner.strip_suffix(" 0 0 0").unwrap());
+    let relocated = ast.replacen(owner, &foreign_owner, 1);
+    assert_ne!(format!("AST\n{relocated}DIAGS\n"), expected[0]);
 
     for broken in [
         entry.replace(")]", ")"),
