@@ -1206,6 +1206,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         age-view-element(profiles: [age-component, age-package], expect: "a component element `<tag> [label] { … }`") {
+            alt { age-route-link-block() {} }
             alt { age-element-labeled-block() {} }
             alt { age-element-block() {} }
             alt { age-element-labeled() {} }
@@ -1214,6 +1215,27 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 体块（`spacer`/`divider` 等自闭合组件）。闭集 keyword token，不参与
             // contextual name 槽位，故不引入 label 跨行吞并/诊断噪声。
             alt { age-element-bare() {} }
+        }
+        // Route links retain the reserved `link` and `to` spellings in both AGE profiles.
+        age-route-link-block(profiles: [age-component, age-package]) {
+            age-route-link-tag(field: "tag") {}
+            lparen(same-line: true) {}
+            r-to(field: "to-key") {}
+            colon() {}
+            pratt(of: "wide-ops", field: "to")
+            opt { age-route-link-extra() {} }
+            rparen() {}
+            lbrace(same-line: true) {}
+            many { age-view-item() {} }
+            rbrace() {}
+        }
+        age-route-link-tag(profiles: [age-component, age-package]) {
+            alt { r-link() {} }
+            alt { ident() }
+        }
+        age-route-link-extra(profiles: [age-component, age-package]) {
+            comma() {}
+            list-nl { age-view-entry() {} }
         }
         // 裸标签（闭集）：`spacer` / `divider` / `sep` / `outlet`。
         age-element-bare(profiles: [age-component, age-package], expect: "a bare element tag (`spacer`/`divider`/`sep`/`outlet`)") {

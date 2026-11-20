@@ -5706,8 +5706,37 @@ impl<'a> Engine<'a> {
             .unwrap_or(node)
     }
 
-    /// view 树成员（age-view-item 包装的 text/entry/element）→ 结构树；文本叶
-    /// 同时平铺进 `texts`（场景驱动消费）。
+    fn project_route_link(
+        &mut self,
+        node: u32,
+        texts: &mut Vec<crate::source::age_h0::AgeTextLeaf>,
+        text_role: &str,
+    ) -> ComponentViewElement {
+        let tag = self.cx.field_child(node, "tag").expect("route link tag");
+        let destination = self.cx.field_child(node, "to").expect("route link destination");
+        let span = self.cx.span_of(destination);
+        let mut items = vec![ComponentViewItem::Entry(ComponentViewEntry {
+            key: "to".into(),
+            is_event: false,
+            value: ComponentEntryValue::Expr(self.project_expr_sync(destination)),
+            span,
+        })];
+        let extra_kind = self.rule_kind_of("age-route-link-extra");
+        for child in self.cx.children(node) {
+            if Some(self.cx.tree.kind(child)) == extra_kind {
+                items.extend(self.collect_view_items(child, texts, text_role));
+            }
+        }
+        items.extend(self.collect_view_items(node, texts, text_role));
+        ComponentViewElement {
+            tag: self.cx.spelling(tag),
+            label: None,
+            items,
+            span: self.cx.span_of(node),
+        }
+    }
+
+    /// Project the component view tree and collect its text leaves in tree order.
     fn collect_view_items(
         &mut self,
         list_node: u32,
@@ -5900,6 +5929,11 @@ impl<'a> Engine<'a> {
             } else if Some(kind) == element_kind {
                 // 元素具体形（labeled-block/block/labeled）在子节点上——解包后取字段。
                 let variant = self.unwrap_child(item);
+                if Some(self.cx.tree.kind(variant)) == self.rule_kind_of("age-route-link-block") {
+                    let link = self.project_route_link(variant, texts, text_role);
+                    out.push(ComponentViewItem::Element(link));
+                    continue;
+                }
                 let tag = self
                     .cx
                     .field_child(variant, "tag")
