@@ -90,6 +90,7 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
         | hir::ExprKind::TextSlice { .. }
         | hir::ExprKind::TextConcat { .. }
         | hir::ExprKind::TextClone { .. }
+        | hir::ExprKind::OwnedClone { .. }
         | hir::ExprKind::ClosureClone { .. }
         | hir::ExprKind::TextToOwned { .. }
         | hir::ExprKind::CharToCodepoint { .. }
@@ -453,6 +454,7 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 stack.push((*lhs, mode));
             }
             hir::ExprKind::TextClone { operand }
+            | hir::ExprKind::OwnedClone { operand }
             | hir::ExprKind::ClosureClone { operand }
             | hir::ExprKind::TextToOwned { operand }
             | hir::ExprKind::TextFromChar { operand } => {

@@ -3820,6 +3820,7 @@ enum Frame {
     LambdaBlockBody {
         move_capture: bool,
         params: Vec<Param>,
+        result: Option<TypeAnn>,
         start: Span,
     },
     LambdaExprBody {
@@ -10099,6 +10100,7 @@ impl<'a> Engine<'a> {
                 .map(|l| self.cx.span_of(l))
                 .unwrap_or_else(|| self.cx.span_of(node)),
         };
+        let typed_block = self.cx.field_child(node, "typed-body");
         let mut params = Vec::new();
         if let Some(pn) = self.cx.field_child(node, "params") {
             let plist: Vec<u32> = collect_seq(
@@ -10113,7 +10115,7 @@ impl<'a> Engine<'a> {
                 let ty = self
                     .cx
                     .field_child(p, "ty")
-                    .map(|t| self.classify_word(t, false, false))
+                    .map(|t| self.classify_word(t, false, typed_block.is_some()))
                     .unwrap_or(TypeAnn {
                         kind: TypeRef::Builtin(TypeWord::Int),
                         span: name.span,
@@ -10128,11 +10130,20 @@ impl<'a> Engine<'a> {
                 });
             }
         }
+        if let Some(block) = typed_block {
+            let result = self.cx.field_child(node, "ret")
+                .map(|ret| self.classify_word(ret, true, false));
+            let start = self.cx.field_child(node, "fn").map_or(start, |kw| self.cx.span_of(kw));
+            self.stack.push(Frame::LambdaBlockBody { move_capture, params, result, start });
+            self.enter_block(block);
+            return;
+        }
         if let Some(body_n) = self.cx.field_child(node, "body") {
             if let Some(bb) = self.cx.field_child(body_n, "block-body") {
                 self.stack.push(Frame::LambdaBlockBody {
                     move_capture,
                     params,
+                    result: None,
                     start,
                 });
                 self.enter_block(bb);
@@ -11730,6 +11741,7 @@ impl<'a> Engine<'a> {
             Frame::LambdaBlockBody {
                 move_capture,
                 params,
+                result,
                 start,
             } => {
                 let body = self.pop_b();
@@ -11739,6 +11751,7 @@ impl<'a> Engine<'a> {
                     kind: ExprKind::Closure {
                         move_capture,
                         params,
+                        result,
                         body: Box::new(ClosureBody::Block(body)),
                     },
                 }));
@@ -11755,6 +11768,7 @@ impl<'a> Engine<'a> {
                     kind: ExprKind::Closure {
                         move_capture,
                         params,
+                        result: None,
                         body: Box::new(ClosureBody::Expr(value)),
                     },
                 }));

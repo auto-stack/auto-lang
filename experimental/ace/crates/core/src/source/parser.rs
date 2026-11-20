@@ -3228,6 +3228,7 @@ impl<'s> Parser<'s> {
             kind: ExprKind::Closure {
                 move_capture,
                 params,
+                result: None,
                 body: Box::new(body),
             },
         })

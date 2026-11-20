@@ -3073,9 +3073,14 @@ fn collections_type_idx_of(
                 hir::TypeKind::Closure(sig) => {
                     let mut params = Vec::with_capacity(sig.params.len());
                     for param in &sig.params {
-                        params.push(collections_type_idx_of(
-                            param, m, out, memo, visiting,
-                        )?);
+                        let ty = collections_type_idx_of(param, m, out, memo, visiting)?;
+                        // A function value has the same readonly record
+                        // parameters as the definition it points at.
+                        let ty = match out.types.get(ty as usize).cloned() {
+                            Some(MirType::Record(record)) => out.intern_type(MirType::RecordView(record)),
+                            _ => ty,
+                        };
+                        params.push(ty);
                     }
                     let result = collections_type_idx_of(
                         &sig.result,
@@ -6202,6 +6207,12 @@ k 0
                 self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp)?;
                 Ok(dst)
             }
+            hir::ExprKind::OwnedClone { operand } if self.collections() => {
+                let src = self.eval_expr(*operand, depth + 1)?;
+                let dst = self.temp_ty(ty)?;
+                self.emit(MirInstr::Clone { dst, src }, sp)?;
+                Ok(dst)
+            }
             hir::ExprKind::RecordClone { base, .. } if self.owned || self.collections() => {
                 let v = self.eval_expr(*base, depth + 1)?;
                 let src_ty = self.slot_ty_all(v);
@@ -7232,6 +7243,7 @@ fn expr_kind_name(k: &hir::ExprKind) -> &'static str {
         TextSlice { .. } => "text-slice",
         TextConcat { .. } => "text-concat",
         TextClone { .. } => "text-clone",
+        OwnedClone { .. } => "owned-clone",
         ClosureClone { .. } => "closure-clone",
         TextToOwned { .. } => "text-to-owned",
         TextFromChar { .. } => "text-from-char",

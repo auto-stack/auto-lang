@@ -203,7 +203,10 @@ fn shift_expr(e: &mut Expr, delta: i64) {
                 shift_type_ann(a, delta);
             }
         }
-        ExprKind::Closure { params, body, .. } => {
+        ExprKind::Closure { params, result, body, .. } => {
+            if let Some(result) = result {
+                shift_type_ann(result, delta);
+            }
             for p in params.iter_mut() {
                 shift_param(p, delta);
             }

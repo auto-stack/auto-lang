@@ -2079,6 +2079,9 @@ enum EKind {
         rec: usize,
         base: usize,
     },
+    OwnedClone {
+        operand: usize,
+    },
     // -- PLAN-864 collections surface --
     ListNew {
         list: usize,
@@ -3674,6 +3677,15 @@ impl PlanCtx<'_> {
                         base: base_slot,
                         path: segs,
                     },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::OwnedClone { operand } => {
+                let operand = self.plan_expr(plan, f, operand);
+                plan.exprs.push(ENode {
+                    kind: EKind::OwnedClone { operand },
                     vt: e.vt,
                     span: e.span,
                 });
@@ -5771,6 +5783,9 @@ impl<'p> Emitter<'p> {
                                 "expr e{} borrow_mut {{ type: {}; local: l{} }}",
                                 ei, ty, local
                             )
+                        }
+                        EKind::OwnedClone { operand } => {
+                            format!("expr e{} owned_clone {{ type: {}; operand: e{} }}", ei, ty, operand)
                         }
                         EKind::RecordClone { rec, base } => {
                             // type ids are nominal (`t_rec_<name>`), not the

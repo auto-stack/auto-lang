@@ -5606,17 +5606,17 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     let mut moved_params: Vec<usize> = Vec::new();
                     {
-                        let callee_sig_ty = v.mir_type_of(cref.func, callee_fn.sig);
+                        let closure_type = v.mir_type_of(func_idx, func.slots[*closure as usize].ty);
                         for (ai, a) in args.iter().enumerate() {
                             let ty = func.slots[*a as usize].ty;
-                            let param_borrows = callee_sig_ty
+                            let param_borrows = closure_type
                                 .and_then(|t| match t {
                                     crate::mir::MirType::Closure(sig) => {
                                         sig.params.get(ai).copied()
                                     }
                                     _ => None,
                                 })
-                                .map(|pt| !v.type_is_owned(cref.func, pt))
+                                .map(|pt| !v.type_is_owned(func_idx, pt))
                                 .unwrap_or(false);
                             if v.type_is_owned(func_idx, ty) && !param_borrows {
                                 let zero = v.zero_of(func_idx, ty);

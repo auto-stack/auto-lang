@@ -98,12 +98,12 @@ pub struct CollectionsPlan {
 }
 
 /// Per-type owned-resource classification of a module type table.
-struct TypeClassifier {
+pub(crate) struct TypeClassifier {
     kind: BTreeMap<u32, Option<OwnedKind>>,
 }
 
 impl TypeClassifier {
-    fn build(module: &hir::Module) -> Self {
+    pub(crate) fn build(module: &hir::Module) -> Self {
         let mut kind: BTreeMap<u32, Option<OwnedKind>> = BTreeMap::new();
         // fixpoint: record/variant payloads may reference later table
         // entries (types are acyclic, so this converges)
@@ -166,7 +166,7 @@ impl TypeClassifier {
         TypeClassifier { kind }
     }
 
-    fn owned_of(&self, u: &TypeUse) -> Option<OwnedKind> {
+    pub(crate) fn owned_of(&self, u: &TypeUse) -> Option<OwnedKind> {
         owned_of_use(&self.kind, u)
     }
 }
@@ -304,6 +304,7 @@ impl<'a> Walker<'a> {
             E::TextLen { operand }
             | E::TextLenBytes { operand }
             | E::TextClone { operand }
+            | E::OwnedClone { operand }
             | E::ClosureClone { operand }
             | E::TextToOwned { operand }
             | E::TextToBorrowed { operand }
@@ -647,7 +648,7 @@ impl<'a> Walker<'a> {
                 self.expr(lhs);
                 self.expr(rhs);
             }
-            E::TextClone { operand } | E::ClosureClone { operand } => self.expr(operand),
+            E::TextClone { operand } | E::ClosureClone { operand } | E::OwnedClone { operand } => self.expr(operand),
             E::TextToOwned { operand } | E::TextToBorrowed { operand } => self.expr(operand),
             E::CharToCodepoint { operand } | E::CharFromCodepoint { operand } => self.expr(operand),
             E::TextFromChar { operand } => self.expr(operand),
@@ -754,6 +755,7 @@ impl<'a> Walker<'a> {
             hir::ExprKind::ListNew { .. } => Some(OwnedKind::List),
             hir::ExprKind::RecordCtor { .. }
             | hir::ExprKind::RecordClone { .. }
+            | hir::ExprKind::OwnedClone { .. }
             | hir::ExprKind::VariantCtor { .. }
             | hir::ExprKind::ListRemove { .. }
             | hir::ExprKind::VariantProject { .. }
@@ -1025,6 +1027,10 @@ fn digest_expr_kind(h: &mut Fnv64, k: &hir::ExprKind) {
         }
         E::TextClone { operand } => {
             h.str("tcl");
+            h.u32(operand.0);
+        }
+        E::OwnedClone { operand } => {
+            h.str("owned_clone");
             h.u32(operand.0);
         }
         E::ClosureClone { operand } => {

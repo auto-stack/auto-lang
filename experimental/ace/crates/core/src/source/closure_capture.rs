@@ -549,6 +549,7 @@ pub(crate) fn scan_shared_capture_cells(
                 move_capture,
                 params,
                 body,
+                ..
             } => {
                 // A move closure's writes are PRIVATE (snapshot semantics),
                 // never shared-cell facts (§5.1 mixed-row).

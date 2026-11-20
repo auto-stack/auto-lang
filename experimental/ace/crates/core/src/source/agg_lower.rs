@@ -781,6 +781,7 @@ fn rewrite_expr_reads_to_st(
         RExprKind::Unary { operand, .. }
         | RExprKind::Move { inner: operand }
         | RExprKind::RecordClone { base: operand }
+        | RExprKind::OwnedClone { operand }
         | RExprKind::ListLen { list: operand }
         | RExprKind::ListClear { list: operand }
         | RExprKind::TextDisplay { operand }
@@ -1156,6 +1157,7 @@ fn collect_guard_locals_expr(e: &ResolvedExpr, exclude: &mut BTreeSet<usize>) {
             RExprKind::Unary { operand, .. }
             | RExprKind::Move { inner: operand }
             | RExprKind::RecordClone { base: operand }
+            | RExprKind::OwnedClone { operand }
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
@@ -1266,6 +1268,7 @@ fn visit_local_refs_expr(e: &mut ResolvedExpr, visit: &mut impl FnMut(&mut Local
             | RExprKind::Move { inner: operand }
             | RExprKind::HashExpr { inner: operand, .. }
             | RExprKind::RecordClone { base: operand }
+            | RExprKind::OwnedClone { operand }
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
@@ -1462,6 +1465,7 @@ fn offset_step_locals_expr(e: &mut ResolvedExpr, offset: usize) {
             RExprKind::Unary { operand, .. }
             | RExprKind::Move { inner: operand }
             | RExprKind::RecordClone { base: operand }
+            | RExprKind::OwnedClone { operand }
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }

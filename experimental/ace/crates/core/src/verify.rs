@@ -3135,6 +3135,7 @@ impl Verifier {
         selected: Option<BodyId>,
         ordinary_auto: bool,
     ) {
+        let clone_types = std::cell::OnceCell::new();
         for (index, body) in m.bodies.iter().enumerate() {
             if selected.is_some_and(|id| id.0 as usize != index) {
                 continue;
@@ -3159,6 +3160,32 @@ impl Verifier {
                     }
                     hir::ExprKind::RecordClone { base, .. } if ordinary_auto => {
                         projected.insert(base.0);
+                    }
+                    hir::ExprKind::OwnedClone { operand } => {
+                        let Some(source) = body.exprs.get(operand.0 as usize) else {
+                            // Expression graph verification diagnoses invalid operands.
+                            continue;
+                        };
+                        if !ordinary_auto {
+                            self.error(
+                                "verify.profile-op",
+                                "owned clone requires the ordinary Auto profile",
+                                e.span,
+                            );
+                        } else if source.ty != e.ty
+                            || clone_types
+                                .get_or_init(|| crate::collections_facts::TypeClassifier::build(m))
+                                .owned_of(&source.ty)
+                                .is_none()
+                        {
+                            self.error(
+                                "verify.type-mismatch",
+                                "owned clone requires the same owned source and result type",
+                                e.span,
+                            );
+                        } else {
+                            projected.insert(operand.0);
+                        }
                     }
                     _ => {}
                 }
@@ -3295,6 +3322,7 @@ impl Verifier {
             | E::TextLen { operand }
             | E::TextLenBytes { operand }
             | E::TextClone { operand }
+            | E::OwnedClone { operand }
             | E::ClosureClone { operand }
             | E::TextToOwned { operand }
             | E::TextToBorrowed { operand }
@@ -4796,6 +4824,7 @@ impl Verifier {
                 | hir::ExprKind::TextSlice { .. }
                 | hir::ExprKind::TextConcat { .. }
                 | hir::ExprKind::TextClone { .. }
+                | hir::ExprKind::OwnedClone { .. }
                 | hir::ExprKind::ClosureClone { .. }
                 | hir::ExprKind::TextToOwned { .. }
                 | hir::ExprKind::TextToBorrowed { .. }
@@ -5189,6 +5218,7 @@ impl Verifier {
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::OwnedClone { operand }
                 | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
@@ -5957,6 +5987,7 @@ impl Verifier {
                         hir::ExprKind::TextLen { operand }
                         | hir::ExprKind::TextLenBytes { operand }
                         | hir::ExprKind::TextClone { operand }
+                        | hir::ExprKind::OwnedClone { operand }
                         | hir::ExprKind::ClosureClone { operand }
                         | hir::ExprKind::TextToOwned { operand }
                         | hir::ExprKind::TextToBorrowed { operand }
@@ -6930,6 +6961,7 @@ impl Verifier {
                             }
                             ValueType::StrOwned
                         }
+                        hir::ExprKind::OwnedClone { .. } => declared,
                         hir::ExprKind::TextClone { operand }
                         | hir::ExprKind::TextToOwned { operand } => {
                             let ot = operand_type(
@@ -7519,6 +7551,7 @@ impl Verifier {
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::OwnedClone { operand }
                 | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }
@@ -8334,6 +8367,7 @@ impl Verifier {
                 hir::ExprKind::TextLen { operand }
                 | hir::ExprKind::TextLenBytes { operand }
                 | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::OwnedClone { operand }
                 | hir::ExprKind::ClosureClone { operand }
                 | hir::ExprKind::TextToOwned { operand }
                 | hir::ExprKind::TextToBorrowed { operand }

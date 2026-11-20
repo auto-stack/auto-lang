@@ -466,6 +466,9 @@ pub enum RExprKind {
     RecordClone {
         base: Box<ResolvedExpr>,
     },
+    OwnedClone {
+        operand: Box<ResolvedExpr>,
+    },
     // -- PLAN-864 collections surface ------------------------------------
     /// `List<T>.new()` — an empty list of the interned list type.
     /// PLAN-962 (L-15): a tuple literal (positional elements; the
@@ -679,7 +682,9 @@ impl Drop for ResolvedExpr {
             // method/call args). Every boxed or Vec-held child must be
             // detached here or that level falls back to recursive drop
             // glue and a rejected malformed partial overflows the stack.
-            RExprKind::FieldGet { base, .. } | RExprKind::RecordClone { base } => {
+            RExprKind::FieldGet { base, .. }
+            | RExprKind::RecordClone { base }
+            | RExprKind::OwnedClone { operand: base } => {
                 let b = std::mem::replace(base.as_mut(), dummy());
                 stack.push(b);
             }
@@ -3535,6 +3540,7 @@ fn patch_foreign_sentinels(fns: &mut [ResolvedFn], sigs: &mut BTreeMap<String, F
             RExprKind::Unary { operand, .. }
             | RExprKind::Move { inner: operand }
             | RExprKind::RecordClone { base: operand }
+            | RExprKind::OwnedClone { operand }
             | RExprKind::ListLen { list: operand }
             | RExprKind::ListClear { list: operand }
             | RExprKind::TextDisplay { operand }
@@ -4652,6 +4658,7 @@ pub(crate) fn resolve_lambda_in_context(
     let ast::ExprKind::Closure {
         move_capture,
         params,
+        result,
         body,
     } = &expr.kind
     else {
@@ -4761,7 +4768,7 @@ pub(crate) fn resolve_lambda_in_context(
             expr_diverged: false,
             gen_try_finals: Vec::new(),
         };
-        r.lambda_body(params, body, &site.capture_decls, expr.span)
+        r.lambda_body(params, result.as_ref(), body, &site.capture_decls, expr.span)
     };
     if !nested_defs.is_empty() {
         return Err(LambdaReResolve::NonFast(LambdaNonFast::NestedLambdas));
@@ -7524,6 +7531,7 @@ F:{d}
         &mut self,
         move_capture: bool,
         params_ast: &[ast::Param],
+        result_ast: Option<&ast::TypeAnn>,
         body_ast: &ast::ClosureBody,
         span: Span,
     ) -> ResolvedExpr {
@@ -7622,7 +7630,7 @@ F:{d}
         // keeps that order byte-for-byte and only records the site facts
         // alongside.
         let count_before = self.closure_count;
-        let lb = self.lambda_body(params_ast, body_ast, &capture_decls, span);
+        let lb = self.lambda_body(params_ast, result_ast, body_ast, &capture_decls, span);
         let nested = self.closure_count - count_before;
         let type_index = self.coll.intern_function(ClosureFnType {
             params: lb.param_types.clone(),
@@ -7692,6 +7700,7 @@ F:{d}
     fn lambda_body(
         &mut self,
         params_ast: &[ast::Param],
+        result_ast: Option<&ast::TypeAnn>,
         body_ast: &ast::ClosureBody,
         capture_decls: &[(String, VT, crate::hir::CaptureMode, bool, bool)],
         span: Span,
@@ -7781,9 +7790,13 @@ F:{d}
             self.declared_names.insert(name.clone());
             visible.insert(name.clone(), *vt);
         }
-        let inferred_result = match body_ast {
-            ast::ClosureBody::Expr(expr) => self.infer_closure_expr(expr, &visible),
-            ast::ClosureBody::Block(block) => self.infer_closure_block_result(block, &visible),
+        let inferred_result = if let Some(result) = result_ast {
+            vt_of_ann_coll(result, self.rec_index, self.coll, self.diags, TypePos::Result)
+        } else {
+            match body_ast {
+                ast::ClosureBody::Expr(expr) => self.infer_closure_expr(expr, &visible),
+                ast::ClosureBody::Block(block) => self.infer_closure_block_result(block, &visible),
+            }
         };
         self.fn_result = inferred_result;
         let (resolved_body, result) = match body_ast {
@@ -12409,6 +12422,12 @@ F:{d}
             // stdlib family is int-instantiated. `pop` rides the same seam
             // for the legacy push/pop obligation rows (the frozen stdlib
             // pop keeps the None-not-trap empty contract).
+            "to_array" if self.profile.is_auto_language() && rargs.is_empty() => {
+                self.clone_collection_value(*list)
+            }
+            "filter" if self.profile.is_auto_language() && elem != VT::I32 && rargs.len() == 1 => {
+                self.filter_typed_list(li, *list, rargs.remove(0), span)
+            }
             "map" | "filter" | "find" | "any" | "all" if rargs.len() == 1 => {
                 return self.std_list_hof(name, *list, rargs, span);
             }
@@ -12468,6 +12487,188 @@ F:{d}
                 mk(VT::I32, RExprKind::IntLit(0))
             }
         }
+    }
+
+    fn clone_collection_value(&self, value: ResolvedExpr) -> ResolvedExpr {
+        ResolvedExpr {
+            span: value.span,
+            vt: value.vt,
+            kind: RExprKind::OwnedClone {
+                operand: Box::new(value),
+            },
+        }
+    }
+
+    fn filter_typed_list(
+        &mut self,
+        list_type: usize,
+        source: ResolvedExpr,
+        predicate: ResolvedArg,
+        span: Span,
+    ) -> ResolvedExpr {
+        let elem = self.coll.lists[list_type];
+        if predicate.name.is_some() || predicate.moved {
+            self.bind_err(
+                "source.argument",
+                "filter takes one positional predicate",
+                predicate.span,
+            );
+            return instances::pending_expression(span);
+        }
+        let signature = match predicate.value.vt {
+            VT::Function(index) => self.coll.function_types.get(index).filter(|signature| {
+                signature.result == VT::Bool
+                    && (signature.params == [elem]
+                        || (elem == VT::StrOwned && signature.params == [VT::Str]))
+            }),
+            _ => None,
+        };
+        let Some(signature) = signature else {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`filter` expects a predicate taking one {} element and returning bool",
+                    elem.as_str()
+                ),
+                predicate.span,
+            );
+            return instances::pending_expression(span);
+        };
+        let borrowed_element =
+            matches!(elem, VT::Rec(_)) || (elem == VT::StrOwned && signature.params == [VT::Str]);
+
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let source = self.eval_once(source);
+        let predicate = self.eval_once(predicate.value);
+        // The predicate visits the input as it stood at call time. Copies
+        // of owned candidates can escape in the output without borrowing
+        // the source list, and each rejected candidate dies in its iteration.
+        let snapshot = self.eval_once(self.clone_collection_value(source));
+        let result = self.eval_once(expr(
+            VT::List(list_type),
+            RExprKind::ListNew { list: list_type },
+        ));
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(snapshot.clone()),
+            },
+        ));
+        let index = self.agg_temp("filter_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let value = if owned {
+            self.clone_collection_value(expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            ))
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let item = self.agg_temp("filter_item", elem, false, span);
+        let read_item = || expr(elem, RExprKind::ReadLocal(item));
+        let argument = if owned && !borrowed_element {
+            self.clone_collection_value(read_item())
+        } else {
+            read_item()
+        };
+        let selected = self.resolve_closure_call(
+            predicate,
+            vec![ResolvedArg {
+                value: argument,
+                name: None,
+                moved: false,
+                span,
+            }],
+            span,
+        );
+        let retained = if owned {
+            expr(
+                elem,
+                RExprKind::Move {
+                    inner: Box::new(read_item()),
+                },
+            )
+        } else {
+            read_item()
+        };
+        let push = RStmt::ExprStmt {
+            value: expr(
+                VT::Unit,
+                RExprKind::ListPush {
+                    list: Box::new(result.clone()),
+                    value: Box::new(retained),
+                },
+            ),
+            span,
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::Let {
+                        local: item,
+                        value,
+                        span,
+                    },
+                    RStmt::If {
+                        cond: selected,
+                        then: RBlock {
+                            stmts: vec![push],
+                            span,
+                        },
+                        els: None,
+                        span,
+                    },
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(
+            result.vt,
+            RExprKind::Move {
+                inner: Box::new(result),
+            },
+        )
     }
 
     /// PLAN-1082 (T-03): build the CallFn for a stdlib HOF method — the
@@ -15520,8 +15721,9 @@ F:{d}
             ExprKind::Closure {
                 move_capture,
                 params,
+                result,
                 body,
-            } => self.resolve_closure(*move_capture, params, body, e.span),
+            } => self.resolve_closure(*move_capture, params, result.as_ref(), body, e.span),
             ExprKind::CallValue { .. } => {
                 self.bind_err(
                     "source.unsupported",
@@ -16743,10 +16945,12 @@ F:{d}
                     if let ExprKind::Closure {
                         move_capture,
                         params,
+                        result,
                         body,
                     } = &node.kind
                     {
-                        out[slot] = self.resolve_closure(*move_capture, params, body, node.span);
+                        out[slot] =
+                            self.resolve_closure(*move_capture, params, result.as_ref(), body, node.span);
                         continue;
                     }
                     if let ExprKind::CallValue { callee, args } = &node.kind {

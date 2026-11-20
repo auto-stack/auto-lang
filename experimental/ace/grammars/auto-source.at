@@ -3224,12 +3224,22 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `move? ( 参数? ) => 块 | 表达式`。块体复用语句纪律（list-nl）；
         // 参数无 mode 词（旧 closure_expr 合同：ident + 类型）。
         lambda-expr(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) {
-            opt { r-move(field: "mode") }
-            lparen() {}
-            lambda-params(repeat: "opt", field: "params")
-            rparen() {}
-            fat-arrow() {}
-            lambda-body(field: "body")
+            alt {
+                opt { r-move(field: "mode") }
+                lparen() {}
+                lambda-params(repeat: "opt", field: "params")
+                rparen() {}
+                fat-arrow() {}
+                lambda-body(field: "body")
+            }
+            alt(profiles: [auto, auto-packages]) {
+                fn(field: "fn")
+                lparen() {}
+                lambda-params(repeat: "opt", field: "params")
+                rparen() {}
+                ret-ty(field: "ret")
+                block(field: "typed-body")
+            }
         }
         lambda-body(profiles: [closures, numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) {
             alt { block(field: "block-body") }

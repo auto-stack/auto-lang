@@ -1,0 +1,351 @@
+# Ordinary AV generic list methods
+
+## Case: legacy-24-generics-002-to-array
+id: "legacy.24_generics.002_to_array"
+entry-mode: "program"
+
+### Auto
+path: "to_array.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+    ])
+    let arr = notes.to_array()
+    print("ok")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+ok
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+ok
+```
+
+## Case: legacy-24-generics-003-filter
+id: "legacy.24_generics.003_filter"
+entry-mode: "program"
+
+### Auto
+path: "filter.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = List<Note>.new([
+        Note { id: 0, title: "a" },
+        Note { id: 1, title: "b" },
+        Note { id: 2, title: "c" },
+    ])
+    let filtered = notes.filter(fn(n Note) bool {
+        return n.id > 0
+    })
+    print("ok")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+ok
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+ok
+```
+
+## Case: array-copy-independence
+id: "av.parity.1088.array-copy-independence"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Note { id int; title str }
+fn main() int {
+    var original = List<Note>.new([Note { id: 1, title: "alpha" }, Note { id: 2, title: "beta" }])
+    var copied = original.to_array()
+    copied.set(0, Note { id: 42, title: "changed" })
+    original.set(1, Note { id: 3, title: "other" })
+    if !(original[0].id == 1) { return 0 }
+    let original_first = original[0]
+    if !(original_first.title == "alpha") { return 0 }
+    if !(copied[1].id == 2) { return 0 }
+    let copy_second = copied[1]
+    if !(copy_second.title == "beta") { return 0 }
+    return copied[0].id
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: array-copy-nested
+id: "av.parity.1088.array-copy-nested"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = List<List<int>>.new(); let source = List<int>.new([42]); xs.push(source.move); var ys = xs.to_array(); var item = ys.remove(0); item.set(0, 0); return xs[0][0] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-order-calls
+id: "av.parity.1088.filter-order-calls"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Note { id int; title str }
+fn main() int {
+    let xs = List<Note>.new([Note { id: 3, title: "c" }, Note { id: 1, title: "a" }, Note { id: 0, title: "z" }, Note { id: 2, title: "b" }])
+    var calls = 0
+    var order = 0
+    var filtered = xs.filter(fn(n Note) bool {
+        calls = calls + 1
+        order = order * 10 + n.id
+        return n.id > 0
+    })
+    if !(filtered.len() == 3) { return 0 }
+    if !(filtered[0].id == 3 && filtered[1].id == 1 && filtered[2].id == 2) { return 0 }
+    let f0 = filtered[0]
+    let f1 = filtered[1]
+    let f2 = filtered[2]
+    if !(f0.title == "c" && f1.title == "a" && f2.title == "b") { return 0 }
+    if !(calls == 4 && order == 3102) { return 0 }
+    filtered.set(0, Note { id: 42, title: "changed" })
+    let input_first = xs[0]
+    if !(input_first.title == "c" && input_first.id == 3) { return 0 }
+    return filtered[0].id
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-bool
+id: "av.parity.1088.filter-bool"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let xs = List<bool>.new([true, false, true])
+    let ys = xs.filter(fn(x bool) bool { return x })
+    if !(xs.len() == 3 && ys.len() == 2) { return 0 }
+    if !(ys[0] && ys[1]) { return 0 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-text
+id: "av.parity.1088.filter-text"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let xs = List<Str>.new(["long".clone(), "s".clone(), "end".clone()])
+    let ys = xs.filter(fn(s str) bool { return s.len() > 1 })
+    if !(ys.len() == 2 && xs.len() == 3) { return 0 }
+    if !(ys.get(0).len() == 4 && ys.get(1).len() == 3) { return 0 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-text-owned
+id: "av.parity.1088.filter-text-owned"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let xs = List<Str>.new(["long".clone(), "s".clone(), "end".clone()])
+    let ys = xs.filter(fn(s Str) bool { return s.len() > 1 })
+    if !(ys.len() == 2 && xs.len() == 3) { return 0 }
+    if !(ys.get(0).len() == 4 && ys.get(1).len() == 3) { return 0 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-int-declared
+id: "av.parity.1088.filter-int-declared"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let xs = List<int>.new([1, 20, 22])
+    let ys = xs.filter(fn(x int) bool { return x > 1 })
+    return ys[0] + ys[1]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-no-match
+id: "av.parity.1088.filter-no-match"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = List<bool>.new([true, false]); let ys = xs.filter(fn(x bool) bool { return false }); if ys.len() == 0 && xs.len() == 2 { return 42 }; return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-nested
+id: "av.parity.1088.filter-nested"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Note { id int; title str }
+fn main() int {
+    let notes = List<Note>.new([Note { id: 0, title: "x" }, Note { id: 42, title: "y" }])
+    let ys = notes.filter(fn(n Note) bool { return n.title.len() == 1 })
+    return ys[1].id
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: filter-wrong-predicate
+id: "av.parity.1088.filter-wrong-predicate"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let xs = List<bool>.new([true, false])
+    let ys = xs.filter(fn(x bool) int { return 42 })
+    return ys.len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.type-mismatch"
+
+## Case: wrong-closure-declaration
+id: "av.parity.1088.wrong-closure-declaration"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let f = fn() bool { return 42 }
+    if f() { return 1 }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"

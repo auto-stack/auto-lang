@@ -101,6 +101,7 @@ fn closures_parses_move_expression_and_zero_arg_block_lambdas() {
         move_capture,
         params,
         body,
+        result: None,
     } = &value.kind
     else {
         panic!("expected move closure");
@@ -116,6 +117,7 @@ fn closures_parses_move_expression_and_zero_arg_block_lambdas() {
         move_capture,
         params,
         body,
+        result: None,
     } = &value.kind
     else {
         panic!("expected block closure");

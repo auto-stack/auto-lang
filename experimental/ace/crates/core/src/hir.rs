@@ -821,6 +821,10 @@ pub enum ExprKind {
     TextClone {
         operand: ExprId,
     },
+    /// Independent copy of an owned collection value on the ordinary source surface.
+    OwnedClone {
+        operand: ExprId,
+    },
     /// `f.clone()` — deep clone of an owned closure value and its
     /// environment (PLAN-865); borrow-bound closures cannot be cloned.
     ClosureClone {

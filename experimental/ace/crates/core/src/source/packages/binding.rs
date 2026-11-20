@@ -2193,7 +2193,10 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             }
         }
         ExprKind::HashExpr { expr } => shift_expr(expr, offset),
-        ExprKind::Closure { params, body, .. } => {
+        ExprKind::Closure { params, result, body, .. } => {
+            if let Some(result) = result {
+                shift_ann(result, offset);
+            }
             for p in params {
                 sh(&mut p.name.span, offset);
                 shift_ann(&mut p.ty, offset);
@@ -3169,7 +3172,10 @@ impl<'a> Walker<'a> {
             // PLAN-972（T-02）：装配 aggregates 面放行闭包字面量（参数注解 +
             // 体按同一走读纪律；捕获分析归 resolve，与单模块闭包面同一后端）；
             // 其余面保持 PLAN-964 的具名拒绝。
-            ExprKind::Closure { params, body, .. } if self.asm_lane => {
+            ExprKind::Closure { params, result, body, .. } if self.asm_lane => {
+                if let Some(result) = result {
+                    self.walk_ann(result)?;
+                }
                 let mut closure_locals = locals.clone();
                 for p in params.iter_mut() {
                     self.walk_ann(&mut p.ty)?;

@@ -2668,6 +2668,7 @@ impl<'d> Binder<'d> {
             "text_len"
             | "text_len_bytes"
             | "text_clone"
+            | "owned_clone"
             | "closure_clone"
             | "text_to_owned"
             | "text_to_borrowed"
@@ -2685,6 +2686,7 @@ impl<'d> Binder<'d> {
                     "text_len" => hir::ExprKind::TextLen { operand },
                     "text_len_bytes" => hir::ExprKind::TextLenBytes { operand },
                     "text_clone" => hir::ExprKind::TextClone { operand },
+                    "owned_clone" => hir::ExprKind::OwnedClone { operand },
                     "closure_clone" => hir::ExprKind::ClosureClone { operand },
                     "text_to_owned" => hir::ExprKind::TextToOwned { operand },
                     "text_to_borrowed" => hir::ExprKind::TextToBorrowed { operand },
@@ -4166,6 +4168,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::TextSlice { .. } => "text_slice",
         hir::ExprKind::TextConcat { .. } => "text_concat",
         hir::ExprKind::TextClone { .. } => "text_clone",
+        hir::ExprKind::OwnedClone { .. } => "owned_clone",
         hir::ExprKind::TextToOwned { .. } => "text_to_owned",
         hir::ExprKind::TextToBorrowed { .. } => "text_to_borrowed",
         hir::ExprKind::CharToCodepoint { .. } => "char_to_codepoint",
@@ -4251,6 +4254,7 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::TextLen { operand }
         | hir::ExprKind::TextLenBytes { operand }
         | hir::ExprKind::TextClone { operand }
+        | hir::ExprKind::OwnedClone { operand }
         | hir::ExprKind::ClosureClone { operand }
         | hir::ExprKind::TextToOwned { operand }
         | hir::ExprKind::TextToBorrowed { operand }

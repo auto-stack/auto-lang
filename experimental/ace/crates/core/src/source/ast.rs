@@ -699,6 +699,7 @@ pub enum ExprKind {
     Closure {
         move_capture: bool,
         params: Vec<Param>,
+        result: Option<TypeAnn>,
         body: Box<ClosureBody>,
     },
     /// PLAN-965 (M2-A): `expr.?` propagation postfix step.

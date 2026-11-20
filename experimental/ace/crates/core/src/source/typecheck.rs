@@ -619,6 +619,7 @@ fn check_expr(
             // PLAN-782: `r.clone()` carries the receiver's record type;
             // nominal equality was already established at dispatch.
             RExprKind::RecordClone { .. } => {}
+            RExprKind::OwnedClone { operand } => stack.push(operand),
             RExprKind::MethodCall {
                 fn_index,
                 recv,

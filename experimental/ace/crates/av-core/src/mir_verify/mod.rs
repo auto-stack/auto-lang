@@ -1385,6 +1385,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
         Ok(())
     }
 
+    fn call_parameter_accepts(&self, arg: TypeIdx, param: TypeIdx) -> bool {
+        self.ty_equiv(arg, param)
+            || matches!(
+                (self.module.types.get(arg as usize), self.module.types.get(param as usize)),
+                (Some(MirType::Record(actual)), Some(MirType::RecordView(want))) if actual == want
+            )
+    }
+
     /// FROZEN type-equivalence rule (contract-decision §2 / V-11): structural
     /// `MirType` equality — records compare nominally (owner + name + full
     /// field list), so equal-width different-owner records never match, while
@@ -2724,21 +2732,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
                 for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate() {
                     let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
-                    // R1-F08 borrowing coercion: an owned record arg
-                    // satisfies a RecordView (borrowed) param — one
-                    // way only (a view never satisfies an owned
-                    // param; .move semantics stay explicit).
-                    let borrow_ok = matches!(
-                        (
-                            self.module.types.get(at as usize),
-                            self.module.types.get(*want as usize),
-                        ),
-                        (
-                            Some(MirType::Record(ra)),
-                            Some(MirType::RecordView(rw)),
-                        ) if ra == rw
-                    );
-                    if !self.ty_equiv(at, *want) && !borrow_ok {
+                    if !self.call_parameter_accepts(at, *want) {
                         return Err(err(
                             "mir.call-arg-type",
                             format!("call arg #{} has type {}, signature wants {}", ai, at, want),
@@ -3972,7 +3966,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
                 for (ai, (a, want)) in args.iter().zip(sig.params.iter()).enumerate() {
                     let at = slot_ty_of(f, *a, sp, &format!("closure arg #{}", ai))?;
-                    if !self.ty_equiv(at, *want) {
+                    if !self.call_parameter_accepts(at, *want) {
                         return Err(err(
                             "mir.closure.arg-type",
                             format!(

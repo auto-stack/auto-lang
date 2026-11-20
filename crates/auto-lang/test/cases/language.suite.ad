@@ -18,5 +18,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/errors/catch-finally.case.ad",
   "language/generators/yield-close.case.ad",
   "language/generics/spec-methods.case.ad",
+  "language/generics/list-methods.case.ad",
 ] }
 ```
