@@ -212,10 +212,26 @@ pub fn compile_language_source(
                 d.span.end += src.len();
                 vec![d]
             })?;
+        let text_optimized = helpers.items.iter().any(
+            |item| matches!(item, super::ast::Item::Fn(f) if f.name.name == "__av_text_find_at"),
+        );
         for mut item in helpers.items {
             let super::ast::Item::Fn(helper) = &mut item else {
                 unreachable!("ordinary standard library graft contains only functions");
             };
+            if text_optimized {
+                // Select the AV assembly implementations of these helpers.
+                // Other text helpers and their public call sites stay shared.
+                match helper.name.name.as_str() {
+                    "__std_text_find_at" | "__std_text_find" | "__std_text_trim"
+                    | "__std_text_split" => continue,
+                    "__av_text_find_at" => helper.name.name = "__std_text_find_at".into(),
+                    "__av_text_find" => helper.name.name = "__std_text_find".into(),
+                    "__av_text_trim" => helper.name.name = "__std_text_trim".into(),
+                    "__av_text_split" => helper.name.name = "__std_text_split".into(),
+                    _ => {}
+                }
+            }
             super::cst::shift_fn_item(helper, src.len());
             program.items.push(item);
         }
@@ -332,6 +348,55 @@ const STDLIB_ASM_TEXT_AT: &str = include_str!("../../../../../../stdlib/ace/asm/
 pub(super) const STDLIB_TEXT_MANGLE: &str = "__std_text_";
 pub(super) const STDLIB_TEXT_FIND: &str = "__std_text_find";
 
+// The assembly helpers use exact checked intrinsic signatures. Portable
+// stdlib consumers still compile the shared source implementations.
+const AV_TEXT_HELPERS: &str = r#"
+fn __av_text_find_option(at int) ?int {
+    if at < 0 { return None }
+    return Some(at)
+}
+
+fn __av_text_find_at(s Str, sub Str, start int) ?int {
+    return __av_text_find_option(__ace_text_find(s.to(str), sub.to(str), start))
+}
+
+fn __av_text_find(s str, sub str) ?int {
+    return __av_text_find_option(__ace_text_find(s, sub, 0))
+}
+
+fn __av_text_trim(s str) Str {
+    return __ace_text_trim(s)
+}
+
+fn __av_text_split(s str, sep str) List<Str> {
+    var out = List<Str>.new()
+    let width = sep.len()
+    if width == 0 {
+        out.push(s.clone())
+        return out
+    }
+    let end = s.len()
+    var start = 0
+    var at = __ace_text_find(s, sep, start)
+    for at >= 0 {
+        out.push(s.slice(start, at).clone())
+        start = at + width
+        at = __ace_text_find(s, sep, start)
+    }
+    out.push(s.slice(start, end).clone())
+    return out
+}
+"#;
+
+pub fn text_scan_signature(symbol: &str) -> Option<(&'static [VT], VT)> {
+    match symbol {
+        "__ace_text_find" => Some((&[VT::Str, VT::Str, VT::I32], VT::I32)),
+        "__ace_text_trim" => Some((&[VT::Str], VT::StrOwned)),
+        "__ace_text_trim_len" => Some((&[VT::Str], VT::I32)),
+        _ => None,
+    }
+}
+
 fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
     if [".find(", ".trim(", ".split(", ".substr("]
         .iter()
@@ -352,6 +417,7 @@ fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
             &functions,
             STDLIB_TEXT_MANGLE,
         ));
+        src.push_str(AV_TEXT_HELPERS);
     }
     src
 }
@@ -4790,6 +4856,9 @@ impl<'p> Emitter<'p> {
                     super::age_resources::AgeGfxResult::Scalar(vt) => self.ty_use_ref(vt),
                 };
                 (ps.join(", "), rs)
+            } else if let Some((params, res)) = text_scan_signature(sym) {
+                let params: Vec<_> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (params.join(", "), self.ty_use_ref(res))
             } else if *sym == "__py_f64_bits" {
                 // PLAN-1026: (int, int) -> double reconstruction.
                 (
@@ -4979,10 +5048,15 @@ impl<'p> Emitter<'p> {
             let span = self.intrinsic_first_use[*sym];
             frag!(
                 &format!(
-                    "intrinsic {} {} {{ symbol: \"{}\"; effect: observable }}",
+                    "intrinsic {} {} {{ symbol: \"{}\"; effect: {} }}",
                     intrinsic_def_id(sym),
                     intrinsic_type_id(sym),
-                    sym
+                    sym,
+                    if text_scan_signature(sym).is_some() {
+                        "pure"
+                    } else {
+                        "observable"
+                    }
                 ),
                 span
             );

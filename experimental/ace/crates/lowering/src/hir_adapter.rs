@@ -651,6 +651,14 @@ fn lower_checked_collection_family(
                 // keeps the historical rejection.
                 // PLAN-1026: the two py reconstruction intrinsics — the
                 // call sites emit their MIR directly; no CalleeRef.
+                if auto_language && ace_core::source::adapter::text_scan_signature(symbol).is_some()
+                {
+                    let cap = ace_av_core::contract::TEXT_SCAN_CAPABILITY;
+                    if !out.capabilities.iter().any(|value| value == cap) {
+                        out.capabilities.push(cap.into());
+                    }
+                    continue;
+                }
                 if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
                     continue;
                 }
@@ -3638,6 +3646,33 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         )
     }
 
+    fn read_list_place(
+        &mut self,
+        list: hir::ExprId,
+        index: hir::ExprId,
+        depth: u32,
+        sp: Option<SpanInfo>,
+    ) -> Result<SlotId, AdapterError> {
+        let base = self.eval_expr(list, depth + 1)?;
+        let index = self.eval_expr(index, depth + 1)?;
+        let elem = self.elem_vt_of(list)?;
+        let place_ty = self
+            .out
+            .intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
+        let place = self.temp_ty(place_ty)?;
+        self.emit(
+            MirInstr::ListPlace {
+                dst: place,
+                base,
+                index,
+            },
+            sp,
+        )?;
+        let dst = self.temp_ty(elem)?;
+        self.emit(MirInstr::PlaceGet { dst, src: place }, sp)?;
+        Ok(dst)
+    }
+
     /// PLAN-864: the (list, index, path) of a TextLen operand that is an
     /// owned-element view shape — a bare `xs.get(i)` (whole Str element,
     /// empty path) or `xs.get(i).f[.g]` (FieldGet rooted at a ListGet).
@@ -4752,6 +4787,68 @@ k 0
                 eval_args,
                 bindings,
             } => {
+                if self.collections() {
+                    if let hir::DefKind::Intrinsic { symbol, .. } =
+                        &self.hir_module.defs[callee.0 as usize].kind
+                    {
+                        if let Some((params, _)) =
+                            ace_core::source::adapter::text_scan_signature(symbol)
+                        {
+                            if eval_args.len() != params.len() || bindings.len() != params.len() {
+                                return Err(AdapterError::inv(
+                                    "text.scan-signature",
+                                    "text scan arity mismatch".into(),
+                                ));
+                            }
+                            let first_view = self.pending_temp_views.len();
+                            let mut evaluated = Vec::with_capacity(eval_args.len());
+                            for arg in eval_args {
+                                evaluated.push(self.eval_expr(*arg, depth + 1)?);
+                            }
+                            let mut ordered = vec![None; params.len()];
+                            for binding in bindings {
+                                let slot = evaluated.get(binding.arg as usize).copied();
+                                let Some(dest) = ordered.get_mut(binding.param as usize) else {
+                                    return Err(AdapterError::inv(
+                                        "text.scan-signature",
+                                        "text scan binding mismatch".into(),
+                                    ));
+                                };
+                                *dest = slot;
+                            }
+                            let dst = self.temp_ty(ty)?;
+                            let instr = match ordered.as_slice() {
+                                [Some(text), Some(pattern), Some(start)]
+                                    if symbol == "__ace_text_find" =>
+                                {
+                                    MirInstr::StrFind {
+                                        dst,
+                                        text: *text,
+                                        pattern: *pattern,
+                                        start: *start,
+                                    }
+                                }
+                                [Some(view)]
+                                    if matches!(
+                                        symbol.as_str(),
+                                        "__ace_text_trim" | "__ace_text_trim_len"
+                                    ) =>
+                                {
+                                    MirInstr::StrTrim { dst, view: *view }
+                                }
+                                _ => {
+                                    return Err(AdapterError::inv(
+                                        "text.scan-signature",
+                                        "text scan binding mismatch".into(),
+                                    ))
+                                }
+                            };
+                            self.emit(instr, sp)?;
+                            self.end_temp_views_since(first_view)?;
+                            return Ok(dst);
+                        }
+                    }
+                }
                 // Source-order evaluation, then binding-map reorder. S06: a
                 // CallbackRef argument has NO runtime value — its slot entry
                 // stays the 0 placeholder (aligned with eval_args; the
@@ -6020,7 +6117,7 @@ k 0
                 self.emit(MirInstr::CharFromCodepoint { dst, code: v }, sp)?;
                 Ok(dst)
             }
-            hir::ExprKind::RecordClone { base, .. } if self.owned => {
+            hir::ExprKind::RecordClone { base, .. } if self.owned || self.collections() => {
                 let v = self.eval_expr(*base, depth + 1)?;
                 let src_ty = self.slot_ty_all(v);
                 let dst = self.temp_ty(ty)?;
@@ -6368,24 +6465,7 @@ k 0
                             "list_get over an owned-element list has no value lowering".to_string(),
                         ));
                     }
-                    let l = self.eval_expr(*list, depth + 1)?;
-                    let i = self.eval_expr(*index, depth + 1)?;
-                    let elem = self.elem_vt_of(*list)?;
-                    let place_ty = self
-                        .out
-                        .intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
-                    let place = self.temp_ty(place_ty)?;
-                    self.emit(
-                        MirInstr::ListPlace {
-                            dst: place,
-                            base: l,
-                            index: i,
-                        },
-                        sp,
-                    )?;
-                    let dst = self.temp_ty(ty)?;
-                    self.emit(MirInstr::PlaceGet { dst, src: place }, sp)?;
-                    return Ok(dst);
+                    return self.read_list_place(*list, *index, depth, sp);
                 }
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
@@ -6563,6 +6643,24 @@ k 0
             hir::ExprKind::TextClone { operand } if self.collections() => {
                 // clone of a view = the owned copy of its range; clone of an
                 // owned Str re-buffers (770 AP-2 over both receivers).
+                if let Some((list, index, path)) = self.list_projection_root(*operand)? {
+                    if !path.is_empty() && self.hir_elem_owned(list)? {
+                        let base = self.read_list_place(list, index, depth, sp)?;
+                        let str_ty = self.out.intern_type(MirType::Str);
+                        let field = self.temp_ty(str_ty)?;
+                        self.emit(
+                            MirInstr::FieldGet {
+                                dst: field,
+                                base,
+                                path: path.iter().map(|f| f.0 as u16).collect(),
+                            },
+                            sp,
+                        )?;
+                        let dst = self.temp_ty(ty)?;
+                        self.emit(MirInstr::Clone { dst, src: field }, sp)?;
+                        return Ok(dst);
+                    }
+                }
                 let src_ty = self.expr_ty(*operand)?;
                 let v = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;

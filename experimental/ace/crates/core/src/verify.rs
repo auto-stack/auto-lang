@@ -3155,14 +3155,10 @@ impl Verifier {
                         len_consumed.insert(operand.0);
                     }
                     hir::ExprKind::TextClone { operand } if ordinary_auto => {
-                        // Lowering can copy a whole text element directly from
-                        // its checked list place into an independent owner.
-                        if matches!(
-                            body.exprs[operand.0 as usize].kind,
-                            hir::ExprKind::ListGet { .. }
-                        ) {
-                            len_consumed.insert(operand.0);
-                        }
+                        len_consumed.insert(operand.0);
+                    }
+                    hir::ExprKind::RecordClone { base, .. } if ordinary_auto => {
+                        projected.insert(base.0);
                     }
                     _ => {}
                 }

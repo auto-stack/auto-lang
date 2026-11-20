@@ -2504,7 +2504,17 @@ fn dyn_exec_work(
     cancel: &CancelFlag,
     started: Instant,
 ) -> Result<(), ExecOutcome> {
-    st.steps = st.steps.saturating_add(1);
+    charge_exec_work(st, 1, limits, cancel, started)
+}
+
+fn charge_exec_work(
+    st: &mut LoopState,
+    units: u64,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+) -> Result<(), ExecOutcome> {
+    st.steps = st.steps.saturating_add(units);
     if st.steps > limits.max_steps {
         return Err(ExecOutcome::Resource {
             kind: ResourceKind::InstrSteps,
@@ -3222,6 +3232,81 @@ fn project_bytes<'a>(bytes: &'a [u8], view: &crate::contract::StrView) -> &'a [u
         // Verified programs never carry an out-of-domain stored range; the
         // empty projection keeps this total for defense in depth.
         Err(_) => &[],
+    }
+}
+
+/// The scan instructions borrow the existing buffer throughout the
+/// operation. Their source values keep the buffer alive across charging.
+fn borrowed_text_source(value: &Value) -> Result<(&[u8], &crate::contract::StrView), ExecOutcome> {
+    let view = value.as_strview().ok_or_else(|| {
+        ExecOutcome::Infra("text scan operand is not a view (admission violation)".into())
+    })?;
+    let bytes = match &view.src {
+        crate::contract::StrViewSrc::Static { buf } => buf,
+        crate::contract::StrViewSrc::Share(handle) => handle.bytes(),
+    };
+    Ok((bytes, view))
+}
+
+// A verified view's end can equal the buffer byte length only when
+// every scalar is ASCII and the view reaches the end of that buffer.
+fn ascii_scan_range<'a>(bytes: &'a [u8], view: &crate::contract::StrView) -> Option<&'a [u8]> {
+    (view.end as usize == bytes.len())
+        .then(|| bytes.get(view.start as usize..))
+        .flatten()
+}
+
+/// Bill only the bytes visited by an early-exit ASCII search. A chunk
+/// never passes the remaining fuel, and the normal cancellation/wall
+/// poll runs between chunks.
+fn scan_ascii(
+    mut bytes: impl ExactSizeIterator<Item = u8>,
+    mut hit: impl FnMut(u8) -> bool,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+) -> Result<Option<usize>, ExecOutcome> {
+    let mut scanned = 0;
+    while bytes.len() != 0 {
+        let budget = limits.max_steps.saturating_sub(st.steps);
+        let count = bytes.len().min(budget.min(CANCEL_CHECK_INTERVAL) as usize);
+        if count == 0 {
+            charge_exec_work(st, 1, limits, cancel, started)?;
+            unreachable!("one unit beyond the limit must stop");
+        }
+        if let Some(index) = bytes.by_ref().take(count).position(&mut hit) {
+            charge_exec_work(st, (index + 1) as u64, limits, cancel, started)?;
+            return Ok(Some(scanned + index));
+        }
+        charge_exec_work(st, count as u64, limits, cancel, started)?;
+        scanned += count;
+    }
+    Ok(None)
+}
+
+fn scalar_boundary(text: &str, index: u32) -> Option<usize> {
+    let index = usize::try_from(index).ok()?;
+    if text.is_ascii() {
+        return (index <= text.len()).then_some(index);
+    }
+    text.char_indices()
+        .map(|(offset, _)| offset)
+        .chain(std::iter::once(text.len()))
+        .nth(index)
+}
+
+fn text_scan_range<'a>(
+    bytes: &'a [u8],
+    view: &crate::contract::StrView,
+) -> Result<&'a str, ExecOutcome> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| ExecOutcome::Infra("invalid UTF-8 in text scan".into()))?;
+    let start = scalar_boundary(text, view.start);
+    let end = scalar_boundary(text, view.end);
+    match (start, end) {
+        (Some(start), Some(end)) if start <= end => Ok(&text[start..end]),
+        _ => Err(ExecOutcome::Infra("invalid view range in text scan".into())),
     }
 }
 
@@ -5810,6 +5895,170 @@ fn dispatch_with_host<V: ModuleView>(
                     let res = Value::I32(res);
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
                         return Some(out);
+                    }
+                }
+                MirInstr::StrFind {
+                    dst,
+                    text,
+                    pattern,
+                    start,
+                } => {
+                    let (text, pattern, start) = {
+                        let fr = st.frames.last().expect("frame present");
+                        (
+                            fr.slots[*text as usize].clone(),
+                            fr.slots[*pattern as usize].clone(),
+                            fr.slots[*start as usize].as_i32(),
+                        )
+                    };
+                    let (text, text_view) = match borrowed_text_source(&text) {
+                        Ok(source) => source,
+                        Err(out) => return Some(out),
+                    };
+                    let (pattern, pattern_view) = match borrowed_text_source(&pattern) {
+                        Ok(source) => source,
+                        Err(out) => return Some(out),
+                    };
+                    let Some(start) = start else {
+                        return Some(ExecOutcome::Infra("STR_FIND start is not I32".into()));
+                    };
+                    let found = if let (Some(text), Some([needle])) = (
+                        ascii_scan_range(text, text_view),
+                        ascii_scan_range(pattern, pattern_view),
+                    ) {
+                        if let Err(out) = charge_exec_work(st, 1, limits, cancel, started) {
+                            return Some(out);
+                        }
+                        match usize::try_from(start)
+                            .ok()
+                            .and_then(|start| text.get(start..))
+                        {
+                            Some(tail) => match scan_ascii(
+                                tail.iter().copied(),
+                                |byte| byte == *needle,
+                                st,
+                                limits,
+                                cancel,
+                                started,
+                            ) {
+                                Ok(Some(index)) => start + index as i32,
+                                Ok(None) => -1,
+                                Err(out) => return Some(out),
+                            },
+                            None => -1,
+                        }
+                    } else {
+                        let units = (text.len() as u64).saturating_add(pattern.len() as u64);
+                        if let Err(out) = charge_exec_work(st, units, limits, cancel, started) {
+                            return Some(out);
+                        }
+                        let text = match text_scan_range(text, text_view) {
+                            Ok(text) => text,
+                            Err(out) => return Some(out),
+                        };
+                        let pattern = match text_scan_range(pattern, pattern_view) {
+                            Ok(pattern) => pattern,
+                            Err(out) => return Some(out),
+                        };
+                        u32::try_from(start)
+                            .ok()
+                            .and_then(|index| scalar_boundary(text, index))
+                            .and_then(|offset| {
+                                let tail = &text[offset..];
+                                tail.find(pattern)
+                                    .map(|byte| start + tail[..byte].chars().count() as i32)
+                            })
+                            .unwrap_or(-1)
+                    };
+                    if let Err(out) =
+                        commit_slot_write(st, *dst as usize, Value::I32(found), limits)
+                    {
+                        return Some(out);
+                    }
+                }
+                MirInstr::StrTrim { dst, view } => {
+                    let value =
+                        st.frames.last().expect("frame present").slots[*view as usize].clone();
+                    let (bytes, view) = match borrowed_text_source(&value) {
+                        Ok(source) => source,
+                        Err(out) => return Some(out),
+                    };
+                    let trimmed = if let Some(text) = ascii_scan_range(bytes, view) {
+                        let non_space = |byte| !matches!(byte, b' ' | b'\t' | b'\n' | b'\r');
+                        let first = match scan_ascii(
+                            text.iter().copied(),
+                            non_space,
+                            st,
+                            limits,
+                            cancel,
+                            started,
+                        ) {
+                            Ok(found) => found,
+                            Err(out) => return Some(out),
+                        };
+                        if let Some(first) = first {
+                            let last = match scan_ascii(
+                                text[first..].iter().rev().copied(),
+                                non_space,
+                                st,
+                                limits,
+                                cancel,
+                                started,
+                            ) {
+                                Ok(Some(end)) => text.len() - end,
+                                Ok(None) => unreachable!("first non-space is in reverse scan"),
+                                Err(out) => return Some(out),
+                            };
+                            &text[first..last]
+                        } else {
+                            &text[..0]
+                        }
+                    } else {
+                        if let Err(out) =
+                            charge_exec_work(st, bytes.len() as u64, limits, cancel, started)
+                        {
+                            return Some(out);
+                        }
+                        let text = match text_scan_range(bytes, view) {
+                            Ok(text) => text,
+                            Err(out) => return Some(out),
+                        };
+                        text.trim_matches([' ', '\t', '\n', '\r']).as_bytes()
+                    };
+                    if matches!(
+                        v.mir_type_of(func_idx, func.slots[*dst as usize].ty),
+                        Some(MirType::I32)
+                    ) {
+                        let length = std::str::from_utf8(trimmed)
+                            .expect("trim preserves verified UTF-8")
+                            .chars()
+                            .count() as i32;
+                        if let Err(out) =
+                            commit_slot_write(st, *dst as usize, Value::I32(length), limits)
+                        {
+                            return Some(out);
+                        }
+                    } else {
+                        let deep = std::mem::size_of::<Value>() + trimmed.len();
+                        if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
+                            return Some(out);
+                        }
+                        if let Err(out) =
+                            charge_exec_work(st, trimmed.len() as u64, limits, cancel, started)
+                        {
+                            return Some(out);
+                        }
+                        let owned = match st.arena.try_alloc(trimmed) {
+                            Ok(handle) => Value::Str(handle),
+                            Err(attempt) => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "fault-injected at owned allocation attempt #{attempt}"
+                                )))
+                            }
+                        };
+                        if let Err(out) = commit_slot_write(st, *dst as usize, owned, limits) {
+                            return Some(out);
+                        }
                     }
                 }
                 MirInstr::StrCharAt { dst, view, index } => {

@@ -230,6 +230,7 @@ pub const AV_DATA_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 /// Capability that admits the closed test-only trace intrinsic set
 /// (same string as the HIR front door, `hir.test.trace.v1`).
 pub const TRACE_CAPABILITY: &str = "hir.test.trace.v1";
+pub const TEXT_SCAN_CAPABILITY: &str = "av.text.scan/1";
 pub const GLOBAL_TAKE_CAPABILITY: &str = "av.globals.take/1";
 
 /// PLAN-821: the text runtime capability the text-record source domain

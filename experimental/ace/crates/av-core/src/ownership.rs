@@ -1010,6 +1010,8 @@ fn verify_owned_function_impl(
                                     | MirInstr::MutRef { dst, .. }
                                     | MirInstr::StrLen { dst, .. }
                                     | MirInstr::StrLenBytes { dst, .. }
+                                    | MirInstr::StrFind { dst, .. }
+                                    | MirInstr::StrTrim { dst, .. }
                                     | MirInstr::StrCharAt { dst, .. }
                                     | MirInstr::StrSlice { dst, .. }
                                     | MirInstr::StrConcat { dst, .. }
@@ -1394,6 +1396,24 @@ fn verify_owned_function_impl(
                     // OWNED result is a def of its destination.
                     if is_rootable[*dst as usize] {
                         check_def_conflict!(dst, "from-char destination");
+                    }
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::StrFind {
+                    dst,
+                    text,
+                    pattern,
+                    start,
+                } => {
+                    check_read!(text, "str-find text");
+                    check_read!(pattern, "str-find pattern");
+                    check_read!(start, "str-find start");
+                    st.define_slot(*dst as usize);
+                }
+                MirInstr::StrTrim { dst, view } => {
+                    check_read!(view, "str-trim view");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "str-trim destination");
                     }
                     st.define_slot(*dst as usize);
                 }

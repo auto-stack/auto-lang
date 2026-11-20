@@ -614,6 +614,18 @@ pub enum MirInstr {
     },
     /// `s.char_at(i)` — scalar-indexed access (result char); out of range
     /// traps `av.trap.str-index` at runtime.
+    /// Find a substring starting at a scalar index, returning -1 on miss.
+    StrFind {
+        dst: SlotId,
+        text: SlotId,
+        pattern: SlotId,
+        start: SlotId,
+    },
+    /// Copy the text after trimming space, tab, LF and CR at its ends.
+    StrTrim {
+        dst: SlotId,
+        view: SlotId,
+    },
     StrCharAt {
         dst: SlotId,
         view: SlotId,

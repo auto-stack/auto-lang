@@ -864,6 +864,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 || c == "av.aggregates/1"
                 || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
                 || (self.is_closures && c == crate::contract::GLOBAL_TAKE_CAPABILITY)
+                || (self.is_closures && c == crate::contract::TEXT_SCAN_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -4214,6 +4215,65 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 let vt = slot_ty_of(f, *view, sp, "str-op view")?;
                 self.want_strview_i32(vt, dt, &err, sp)?;
             }
+            MirInstr::StrFind {
+                dst,
+                text,
+                pattern,
+                start,
+            } => {
+                if !self.is_closures
+                    || !self
+                        .module
+                        .capabilities
+                        .iter()
+                        .any(|c| c == crate::contract::TEXT_SCAN_CAPABILITY)
+                {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "STR_FIND requires av.text.scan/1".into(),
+                    ));
+                }
+                for (slot, expect) in [
+                    (*dst, MirType::I32),
+                    (*text, MirType::StrView),
+                    (*pattern, MirType::StrView),
+                    (*start, MirType::I32),
+                ] {
+                    let ty = slot_ty_of(f, slot, sp, "STR_FIND operand")?;
+                    if self.module.types.get(ty as usize) != Some(&expect) {
+                        return Err(err(
+                            "mir.operand-type",
+                            "STR_FIND slot type mismatch".into(),
+                        ));
+                    }
+                }
+            }
+            MirInstr::StrTrim { dst, view } => {
+                if !self.is_closures
+                    || !self
+                        .module
+                        .capabilities
+                        .iter()
+                        .any(|c| c == crate::contract::TEXT_SCAN_CAPABILITY)
+                {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "STR_TRIM requires av.text.scan/1".into(),
+                    ));
+                }
+                let dst_ty = slot_ty_of(f, *dst, sp, "STR_TRIM destination")?;
+                let src_ty = slot_ty_of(f, *view, sp, "STR_TRIM view")?;
+                if !matches!(
+                    self.module.types.get(dst_ty as usize),
+                    Some(MirType::Str | MirType::I32)
+                ) || self.module.types.get(src_ty as usize) != Some(&MirType::StrView)
+                {
+                    return Err(err(
+                        "mir.operand-type",
+                        "STR_TRIM slot type mismatch".into(),
+                    ));
+                }
+            }
             MirInstr::StrCharAt { dst, view, index } => {
                 if !self.is_owned && !self.collections_surface() {
                     return Err(err(
@@ -4697,6 +4757,8 @@ impl MirInstr {
             | MirInstr::MutRef { dst, .. }
             | MirInstr::StrLen { dst, .. }
             | MirInstr::StrLenBytes { dst, .. }
+            | MirInstr::StrFind { dst, .. }
+            | MirInstr::StrTrim { dst, .. }
             | MirInstr::StrCharAt { dst, .. }
             | MirInstr::StrSlice { dst, .. }
             | MirInstr::StrConcat { dst, .. }
@@ -4839,6 +4901,13 @@ impl MirInstr {
             | MirInstr::StrToOwned { view, .. }
             | MirInstr::CharToCodepoint { ch: view, .. } => vec![*view],
             MirInstr::StrFromChar { ch, .. } => vec![*ch],
+            MirInstr::StrFind {
+                text,
+                pattern,
+                start,
+                ..
+            } => vec![*text, *pattern, *start],
+            MirInstr::StrTrim { view, .. } => vec![*view],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
             MirInstr::StrSlice {
                 view, start, end, ..

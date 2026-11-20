@@ -1849,3 +1849,354 @@ channel: "unit"
 
 ```text
 ```
+
+## Case: legacy-29-list-shims-002-struct-list
+id: "legacy.29_list_shims.002_struct_list"
+entry-mode: "program"
+
+### Auto
+path: "struct_list.at"
+```auto
+// Plan 335: 结构体 List 端到端（push/get/字段访问/pop）。
+// Auto 用 `type` 声明结构体（struct 不是 Auto 关键字）。
+// 依赖 List shim 双查（ListData<Value>）+ type 声明的 .new() 构造。
+type Item { name str }
+fn main() {
+    var items List<Item> = List<Item>.new([])
+    items.push(Item.new("alpha"))
+    items.push(Item.new("beta"))
+    print(items.len())
+    print(items.get(0).name)
+    print(items.get(1).name)
+    let popped = items.pop()
+    print(popped.name)
+    print(items.len())
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+2
+alpha
+beta
+beta
+1
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+2
+alpha
+beta
+beta
+1
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-10-types-036-struct-in-array
+id: "legacy.10_types.036_struct_in_array"
+entry-mode: "program"
+
+### Auto
+path: "struct_in_array.at"
+```auto
+type Note { id int; title str }
+
+fn main() {
+    let notes = [
+        Note { id: 0, title: "Welcome" },
+        Note { id: 1, title: "Shopping" },
+    ]
+    let n = notes[0]
+    if n.title == "Welcome" {
+        print("array field ok")
+    }
+    let second = notes[1]
+    if second.id == 1 {
+        print("second id ok")
+    }
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+array field ok
+second id ok
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+array field ok
+second id ok
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-08-strings-016-heaprc-string-pool
+id: "legacy.08_strings.016_heaprc_string_pool"
+entry-mode: "program"
+
+### Auto
+path: "heaprc_string_pool.at"
+```auto
+var total = 0
+for i in 0..2000 {
+    let lines = "alpha: one two|beta: three four|gamma: five six".split("|")
+    for line in lines {
+        let t = line.trim()
+        let ci = t.find(":")
+        if ci > 0 {
+            total = total + t.sub(ci + 1, t.len()).trim().len()
+        }
+    }
+}
+total
+```
+
+### VM result
+#ignore
+check-id: "vm-result"
+final-newline: false
+
+```text
+50000
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 50000
+
+#### stderr
+
+```text
+```
+
+## Case: empty-record-pop
+id: "av.parity.1086.empty-record-pop"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Item { name str }
+fn main() {
+    var xs = List<Item>.new([])
+    let value = xs.pop()
+    print(value.name)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.list-index"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: copy-independent
+id: "av.parity.1086.copy-independent"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Item { name str }
+fn main() {
+    var xs = [Item("before")]
+    let value = xs[0]
+    xs.set(0, Item("after"))
+    print(value.name)
+    print(xs.get(0).name)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+before
+after
+```
+
+#### stderr
+
+```text
+```
+
+## Case: explicit-owned-record
+id: "av.parity.1086.explicit-owned-record"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Item { name Str }
+fn main() {
+    let xs = [Item("hello")]
+    let view0 = xs[0]
+    print(view0.name)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.view-escape"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: mutable-legacy-record
+id: "av.parity.1086.mutable-legacy-record"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Item { name str }
+fn main() {
+    var xs = [Item("hello")]
+    var view0 = xs[0]
+    print(view0.name)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.view-escape"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: unicode-find-slice
+id: "av.parity.1086.unicode-find-slice"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let text = "x河道😀z".slice(1, 5)
+    return __ace_text_find(text, "😀", 1)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 2
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: trim-and-empty-split
+id: "av.parity.1086.trim-and-empty-split"
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+    let text = " \t河道😀\r\n ".trim()
+    print(text)
+    let xs = "a|||b|".split("|")
+    print(xs.len())
+    print(xs.get(4).len())
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+河道😀
+5
+0
+```
+
+#### stderr
+
+```text
+```

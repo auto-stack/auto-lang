@@ -7324,10 +7324,9 @@ impl<'a> Engine<'a> {
                 }
                 "str" if param_pos && self.cx.profile.is_aggregates() => return int(TypeWord::Str),
                 // The ordinary face accepts the legacy spelling at owned
-                // storage positions. Plain parameter/result str still borrows.
-                "str" if stored && self.cx.profile.is_auto_language() => {
-                    return int(TypeWord::StrOwned)
-                }
+                // storage positions. Binding retains the spelling to identify
+                // legacy record layouts before normalizing the field type.
+                "str" if stored && self.cx.profile.is_auto_language() => return int(TypeWord::Str),
                 "Str" => return int(TypeWord::StrOwned),
                 "char" if self.cx.profile.is_closures() => return int(TypeWord::Char),
                 "str" | "char" => {

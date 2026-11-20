@@ -344,6 +344,15 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         MirInstr::StrToOwned { dst, view } => format!("toowned {dst} {view}"),
         MirInstr::StrFromChar { dst, ch } => format!("fromchar {dst} {ch}"),
         MirInstr::StrCmp { eq, dst, lhs, rhs } => format!("strcmp {eq} {dst} {lhs} {rhs}"),
+        MirInstr::StrFind {
+            dst,
+            text,
+            pattern,
+            start,
+        } => {
+            format!("strfind {dst} {text} {pattern} {start}")
+        }
+        MirInstr::StrTrim { dst, view } => format!("strtrim {dst} {view}"),
         MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
         MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),
         // PLAN-821 R2-F08' widening: the write-back extraction renders;

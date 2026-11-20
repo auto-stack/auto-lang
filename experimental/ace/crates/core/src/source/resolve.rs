@@ -1082,6 +1082,7 @@ pub struct SchedTaskType {
 #[derive(Default)]
 pub struct CollTables {
     ordinary_auto: bool,
+    legacy_text_records: BTreeSet<usize>,
     script_errors: bool,
     /// PLAN-968: the scheduler task type table (scheduler face only).
     pub sched_tasks: Vec<SchedTaskType>,
@@ -2218,6 +2219,13 @@ fn resolve_detailed_in_mode(
                     t.name.span,
                 ));
                 continue;
+            }
+            if coll.ordinary_auto
+                && t.fields
+                    .iter()
+                    .any(|field| matches!(field.ty.kind, ast::TypeRef::Builtin(TypeWord::Str)))
+            {
+                coll.legacy_text_records.insert(records.len());
             }
             rec_index.insert(t.name.name.clone(), records.len());
             records.push(ResolvedRecord {
@@ -4650,7 +4658,7 @@ pub(crate) fn resolve_lambda_in_context(
             fn_result: site.result,
             legacy_text_result: false,
             legacy_text_lists: BTreeSet::new(),
-            legacy_text_find_results: BTreeSet::new(),
+            legacy_text_find_results: BTreeMap::new(),
             loop_stack: Vec::new(),
             loop_count: 0,
             used_intrinsics: BTreeSet::new(),
@@ -5622,6 +5630,11 @@ fn vt_of_ann_coll(
             "tuple types are part of the aggregates source profile".to_string(),
             ann.span,
         ),
+        ast::TypeRef::Builtin(TypeWord::Str)
+            if coll.ordinary_auto && matches!(pos, TypePos::Field | TypePos::ContainerPayload) =>
+        {
+            VT::StrOwned
+        }
         ast::TypeRef::Builtin(w) => vt_of_word(*w),
         // PLAN-935：同 vt_of_ann——类型变量到达 bind = 未实例化模板的防御拒。
         ast::TypeRef::TyVar(id) => {
@@ -6074,7 +6087,7 @@ struct FnResolver<'a, 's> {
     fn_result: VT,
     legacy_text_result: bool,
     legacy_text_lists: BTreeSet<LocalRef>,
-    legacy_text_find_results: BTreeSet<LocalRef>,
+    legacy_text_find_results: BTreeMap<LocalRef, LocalRef>,
     /// PLAN-968: the scheduler surface side-table (scheduler face only).
     sched: Option<&'a super::sched_desugar::SchedSurface>,
     loop_stack: Vec<LoopRef>,
@@ -6335,7 +6348,7 @@ fn resolve_fn_reuse<'a, 's>(
         fn_result,
         legacy_text_result: surface.is_auto_language() && is_legacy_text_list(&f.ret),
         legacy_text_lists: BTreeSet::new(),
-        legacy_text_find_results: BTreeSet::new(),
+        legacy_text_find_results: BTreeMap::new(),
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
@@ -12006,8 +12019,11 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
-        // structural modification of an iterated list is a compile reject
-        if matches!(name.name.as_str(), "push" | "insert" | "remove" | "clear") {
+        let elem = self.coll.lists[li];
+        let record_pop =
+            self.profile.is_auto_language() && name.name == "pop" && matches!(elem, VT::Rec(_));
+        // Structural modification of an iterated list is a compile reject.
+        if record_pop || matches!(name.name.as_str(), "push" | "insert" | "remove" | "clear") {
             if let RExprKind::ReadLocal(l) = recv.kind {
                 let hit: Option<Span> = self
                     .iterate_targets
@@ -12027,7 +12043,6 @@ F:{d}
             }
         }
         let list = Box::new(recv);
-        let elem = self.coll.lists[li];
         let mk = |vt: VT, kind: RExprKind| ResolvedExpr { span, vt, kind };
         match name.name.as_str() {
             "push" if rargs.len() == 1 => {
@@ -12132,6 +12147,32 @@ F:{d}
             }
             "reduce" if rargs.len() == 2 => {
                 return self.std_list_hof(name, *list, rargs, span);
+            }
+            "pop" if record_pop && rargs.is_empty() => {
+                // LIST_REMOVE verifies the index and moves the sole owner
+                // out of the list. Empty is the ordinary -1 bounds error.
+                let list = self.eval_once(*list);
+                let length = mk(
+                    VT::I32,
+                    RExprKind::ListLen {
+                        list: Box::new(list.clone()),
+                    },
+                );
+                let last = mk(
+                    VT::I32,
+                    RExprKind::Binary {
+                        op: BinOp::Sub,
+                        lhs: Box::new(length),
+                        rhs: Box::new(mk(VT::I32, RExprKind::IntLit(1))),
+                    },
+                );
+                mk(
+                    elem,
+                    RExprKind::ListRemove {
+                        list: Box::new(list),
+                        index: Box::new(last),
+                    },
+                )
             }
             "pop" if rargs.is_empty() => {
                 return self.std_list_hof(name, *list, rargs, span);
@@ -13458,6 +13499,19 @@ F:{d}
                         frame.idx = frame.src.stmts.len();
                         continue;
                     }
+                    if !*mutable
+                        && ann.is_none()
+                        && Self::is_whole_elem_view(&value)
+                        && matches!(value.vt, VT::Rec(ri) if self.coll.legacy_text_records.contains(&ri))
+                    {
+                        value = ResolvedExpr {
+                            span: value.span,
+                            vt: value.vt,
+                            kind: RExprKind::RecordClone {
+                                base: Box::new(value),
+                            },
+                        };
+                    }
                     self.reject_elem_view_use(&value, "the bound value");
                     let mut rule = match ann_vt {
                         Some(v) => v,
@@ -13504,9 +13558,12 @@ F:{d}
                             name.span.join(value.span),
                         );
                     }
+                    let cached_find = (ann.is_none() && !*mutable)
+                        .then(|| self.cache_text_find_index(&mut value))
+                        .flatten();
                     let lref = LocalRef(self.locals.len());
-                    if ann.is_none() && !*mutable && self.is_text_find_call(&value) {
-                        self.legacy_text_find_results.insert(lref);
+                    if let Some(index) = cached_find {
+                        self.legacy_text_find_results.insert(lref, index);
                     }
                     // PLAN-1026: a binding whose initializer is a Python
                     // OBJECT (hoisted member import or an object-returning
@@ -17897,78 +17954,79 @@ F:{d}
     /// conversion, and the bare `.move` wrapper. User names never shadow
     /// the builtin table and the builtins never hijack user functions
     /// (distinct namespaces).
-    fn is_text_find_call(&self, value: &ResolvedExpr) -> bool {
-        match value.kind {
-            RExprKind::CallFn { fn_index, .. } => self
-                .sigs
-                .get(super::adapter::STDLIB_TEXT_FIND)
-                .is_some_and(|sig| sig.index == fn_index),
-            _ => false,
+    /// Preserve the integer returned by a text search before its Option
+    /// is constructed. Both uses observe the one checked search.
+    fn cache_text_find_index(&mut self, value: &mut ResolvedExpr) -> Option<LocalRef> {
+        let RExprKind::CallFn { fn_index, args } = &value.kind else {
+            return None;
+        };
+        let find = self.sigs.get(super::adapter::STDLIB_TEXT_FIND)?;
+        if find.index != *fn_index {
+            return None;
         }
-    }
-
-    /// Old text find returns -1 in integer expressions. The same result
-    /// remains an Option for explicit pattern matching or typed storage.
-    fn legacy_text_find_index(&mut self, value: ResolvedExpr) -> ResolvedExpr {
-        let ResolvedExpr {
+        let wrap = self.sigs.get("__av_text_find_option")?.index;
+        let span = value.span;
+        let mut scan_args: Vec<_> = args.iter().map(|arg| arg.value.clone()).collect();
+        scan_args.push(ResolvedExpr {
             span,
-            vt: VT::Variant(variant),
-            ..
-        } = value
-        else {
-            return value;
-        };
-        let RExprKind::ReadLocal(source) = value.kind else {
-            return value;
-        };
-        if !self.legacy_text_find_results.contains(&source) {
-            return value;
-        }
-        let result = self.agg_temp("find_index", VT::I32, true, span);
+            vt: VT::I32,
+            kind: RExprKind::IntLit(0),
+        });
+        let index = self.agg_temp("find_index", VT::I32, false, span);
+        self.used_intrinsics.insert("__ace_text_find");
         self.emit_stmt(RStmt::Let {
-            local: result,
+            local: index,
             value: ResolvedExpr {
                 span,
                 vt: VT::I32,
-                kind: RExprKind::IntLit(-1),
+                kind: RExprKind::CallIntrinsic {
+                    symbol: "__ace_text_find",
+                    args: scan_args,
+                },
             },
             span,
         });
-        let project = ResolvedExpr {
+        value.kind = RExprKind::CallFn {
+            fn_index: wrap,
+            args: vec![ResolvedArg {
+                span,
+                name: None,
+                moved: false,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(index),
+                },
+            }],
+        };
+        Some(index)
+    }
+
+    /// Legacy text find returns -1 in integer expressions. Pattern
+    /// matching and explicit typed storage continue to use the Option.
+    fn legacy_text_find_index(&mut self, value: ResolvedExpr) -> ResolvedExpr {
+        let (VT::Variant(variant), RExprKind::ReadLocal(source)) = (value.vt, &value.kind) else {
+            return value;
+        };
+        let Some(&index) = self.legacy_text_find_results.get(source) else {
+            return value;
+        };
+        let span = value.span;
+        // The numeric read still checks liveness of its option binding,
+        // so a prior move cannot be hidden by the cached scalar.
+        self.eval_for_effect(ResolvedExpr {
             span,
-            vt: VT::I32,
-            kind: RExprKind::VariantProject {
-                local: source,
+            vt: VT::Bool,
+            kind: RExprKind::VariantGuardTest {
+                local: *source,
                 variant,
                 disc: 0,
             },
-        };
-        self.emit_stmt(RStmt::If {
-            cond: ResolvedExpr {
-                span,
-                vt: VT::Bool,
-                kind: RExprKind::VariantGuardTest {
-                    local: source,
-                    variant,
-                    disc: 0,
-                },
-            },
-            then: RBlock {
-                stmts: vec![RStmt::Assign {
-                    local: result,
-                    path: Vec::new(),
-                    value: project,
-                    span,
-                }],
-                span,
-            },
-            els: None,
-            span,
         });
         ResolvedExpr {
             span,
             vt: VT::I32,
-            kind: RExprKind::ReadLocal(result),
+            kind: RExprKind::ReadLocal(index),
         }
     }
 
@@ -17979,6 +18037,43 @@ F:{d}
         args: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
+        if name.name == "split" {
+            if let (
+                RExprKind::StrLit(text),
+                [ResolvedArg {
+                    name: None,
+                    moved: false,
+                    value:
+                        ResolvedExpr {
+                            kind: RExprKind::StrLit(separator),
+                            ..
+                        },
+                    ..
+                }],
+            ) = (&recv.kind, args.as_slice())
+            {
+                // Freeze only the literal split boundaries. The list and
+                // every owned string still allocate at the original site.
+                const MAX_FOLDED_SPLIT_PARTS: usize = 32;
+                let parts: Vec<_> = if separator.is_empty() {
+                    vec![text.as_str()]
+                } else {
+                    text.split(separator.as_str())
+                        .take(MAX_FOLDED_SPLIT_PARTS + 1)
+                        .collect()
+                };
+                if parts.len() <= MAX_FOLDED_SPLIT_PARTS {
+                    let elements: Vec<_> = parts
+                        .into_iter()
+                        .map(|part| Expr {
+                            span,
+                            kind: ExprKind::StrLit(part.into()),
+                        })
+                        .collect();
+                    return self.resolve_array_literal(&elements, span, false);
+                }
+            }
+        }
         let mangled = format!("{}{}", super::adapter::STDLIB_TEXT_MANGLE, name.name);
         let Some(sig) = self.sigs.get(&mangled) else {
             self.bind_err(
@@ -18021,29 +18116,81 @@ F:{d}
             name: None,
             moved: false,
         };
-        let args = std::iter::once(recv)
+        let args: Vec<ResolvedArg> = std::iter::once(recv)
             .chain(args)
-            .map(|mut arg| {
+            .enumerate()
+            .map(|(index, mut arg)| {
                 // These methods read their inputs. The assembled helpers take
                 // ownership, so local owners and element views supply copies.
                 let value = arg.value;
-                arg.value = match value.vt {
-                    VT::Str => Self::own_dynamic_text(value),
-                    VT::StrOwned
-                        if matches!(
-                            value.kind,
-                            RExprKind::ReadLocal(_)
-                                | RExprKind::FieldGet { .. }
-                                | RExprKind::ElemView { .. }
-                        ) =>
-                    {
-                        Self::clone_owned_text(value)
+                arg.value = if sig.params.get(index) == Some(&VT::Str) {
+                    if value.vt == VT::StrOwned {
+                        // A slice materialized only to feed a read-only
+                        // operation can be passed straight through as a view.
+                        if let RExprKind::Method {
+                            method: BuiltinMethod::To,
+                            to: Some(VT::StrOwned),
+                            recv,
+                            args,
+                        } = &value.kind
+                        {
+                            if args.is_empty()
+                                && matches!(
+                                    recv.kind,
+                                    RExprKind::Method {
+                                        method: BuiltinMethod::Slice,
+                                        ..
+                                    }
+                                )
+                            {
+                                arg.value = (**recv).clone();
+                                return arg;
+                            }
+                        }
+                        let value = Self::clone_text_element(value);
+                        ResolvedExpr {
+                            span: value.span,
+                            vt: VT::Str,
+                            kind: RExprKind::Method {
+                                recv: Box::new(value),
+                                method: BuiltinMethod::To,
+                                to: Some(VT::Str),
+                                args: Vec::new(),
+                            },
+                        }
+                    } else {
+                        value
                     }
-                    _ => value,
+                } else {
+                    match value.vt {
+                        VT::Str => Self::own_dynamic_text(value),
+                        VT::StrOwned
+                            if matches!(
+                                value.kind,
+                                RExprKind::ReadLocal(_)
+                                    | RExprKind::FieldGet { .. }
+                                    | RExprKind::ElemView { .. }
+                            ) =>
+                        {
+                            Self::clone_owned_text(value)
+                        }
+                        _ => value,
+                    }
                 };
                 arg
             })
             .collect();
+        if name.name == "trim" {
+            self.used_intrinsics.insert("__ace_text_trim");
+            return ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::CallIntrinsic {
+                    symbol: "__ace_text_trim",
+                    args: args.into_iter().map(|arg: ResolvedArg| arg.value).collect(),
+                },
+            };
+        }
         ResolvedExpr {
             span,
             vt: result,
@@ -18060,6 +18207,23 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         if self.profile.is_auto_language() {
+            if name.name == "len" && to_word.is_none() && args.is_empty() {
+                if let RExprKind::CallIntrinsic {
+                    symbol: "__ace_text_trim",
+                    args,
+                } = &recv.kind
+                {
+                    self.used_intrinsics.insert("__ace_text_trim_len");
+                    return ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::CallIntrinsic {
+                            symbol: "__ace_text_trim_len",
+                            args: args.clone(),
+                        },
+                    };
+                }
+            }
             if recv.vt.is_text() && to_word.is_none() {
                 if matches!(name.name.as_str(), "find" | "trim" | "split" | "substr") {
                     return self.resolve_std_text_method(name, recv, args, span);
@@ -18706,6 +18870,40 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
+        if self.profile.is_auto_language()
+            && self.lookup(&callee.name).is_none()
+            && !self.sigs.contains_key(&callee.name)
+        {
+            let symbol = match callee.name.as_str() {
+                "__ace_text_find" => Some("__ace_text_find"),
+                "__ace_text_trim" => Some("__ace_text_trim"),
+                _ => None,
+            };
+            if let Some(symbol) = symbol {
+                let (params, vt) = super::adapter::text_scan_signature(symbol).expect("known scan");
+                if rargs.len() != params.len()
+                    || rargs
+                        .iter()
+                        .zip(params)
+                        .any(|(arg, ty)| arg.name.is_some() || arg.moved || arg.value.vt != *ty)
+                {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        "invalid text scan operands",
+                        call_span,
+                    );
+                }
+                self.used_intrinsics.insert(symbol);
+                return ResolvedExpr {
+                    span: call_span,
+                    vt,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol,
+                        args: rargs.into_iter().map(|arg| arg.value).collect(),
+                    },
+                };
+            }
+        }
         // PLAN-1026: a DIRECT Python call — the callee resolves to a
         // hoisted use.py member local (or any marked py local): the
         // receiver IS the callable object (no member label).
@@ -19076,6 +19274,12 @@ F:{d}
                 };
             }
             let mut arg = rargs.remove(0).value;
+            if self.profile.is_auto_language()
+                && arg.vt == VT::StrOwned
+                && matches!(arg.kind, RExprKind::ElemView { .. })
+            {
+                arg = Self::clone_owned_text(arg);
+            }
             if self.profile.is_auto_language() && arg.vt == VT::Nil {
                 let span = arg.span;
                 self.eval_for_effect(arg);

@@ -978,8 +978,11 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     // unambiguous) = 57.
     // PLAN-975 B1: + STR_FROM_CHAR (0x4C, char -> owned Str) = 58.
     // PLAN-1085: + GLOBAL_TAKE, gated by av.globals.take/1.
-    assert_eq!(all_mnemonics.len(), 59);
+    // PLAN-1086: two typed text scan operations gated by av.text.scan/1.
+    assert_eq!(all_mnemonics.len(), 61);
     assert!(all_mnemonics.contains(&"GLOBAL_TAKE"));
+    assert!(all_mnemonics.contains(&"STR_FIND"));
+    assert!(all_mnemonics.contains(&"STR_TRIM"));
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));

@@ -102,6 +102,49 @@ fn main() int {
 }
 
 #[test]
+fn av_text_scan_admission_and_byte_fuel() {
+    use ace_av_core::{contract::TEXT_SCAN_CAPABILITY, mir::MirInstr};
+
+    // Static input exercises scan work without charging for an unrelated
+    // owned literal allocation first.
+    let source = format!(
+        "fn main() int {{ return __ace_text_find(\"{}\", \"z\", 0) }}",
+        "a".repeat(4_096)
+    );
+    let compiled = compile_language_source(&source, "scan.at", &[]).expect("compile text scan");
+    let mut mir = lower_checked_auto_language(&compiled.checked, "d_main", 0).expect("lower scan");
+    assert!(mir
+        .funcs
+        .iter()
+        .flat_map(|f| &f.blocks)
+        .flat_map(|b| &b.instrs)
+        .any(|instr| matches!(instr, MirInstr::StrFind { .. })));
+    mir.capabilities.retain(|cap| cap != TEXT_SCAN_CAPABILITY);
+    let result = ace_av_core::verify_mir(&mir);
+    assert!(matches!(result, Err(error) if error.code() == "mir.profile-instr"));
+    mir.capabilities.push(TEXT_SCAN_CAPABILITY.into());
+    let abc = encode_abc(&mir).expect("encode checked scan");
+    let module = verify_abc_bytes(&abc.to_flat(), &mir.owner).expect("admit broadcast capability");
+    let cancel = CancelFlag::new(false);
+    let limited = ExecLimits {
+        max_steps: 128,
+        ..Default::default()
+    };
+    let (outcome, _) = execute_observed(&module, &limited, &cancel);
+    assert!(matches!(
+        outcome,
+        ExecOutcome::Resource {
+            kind: ResourceKind::InstrSteps,
+            ..
+        }
+    ));
+    let (outcome, _) = execute_observed(&module, &ExecLimits::default(), &cancel);
+    assert!(
+        matches!(outcome, ExecOutcome::Success { value: Value::I32(-1), steps } if steps > 4_096)
+    );
+}
+
+#[test]
 fn caught_failure_releases_owned_locals_and_continues() {
     let module = load(
         r#"
