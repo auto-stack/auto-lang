@@ -632,6 +632,50 @@ fn rejects_an_unreachable_terminating_block() {
 }
 
 #[test]
+fn verifies_local_reads_and_writes_in_statement_order() {
+    let source = b"fn step(a int) int { var count = a\n count = count + 2\n let snapshot = count\n return snapshot }";
+    let document = run_core_hir_case(source, "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &document)
+        .unwrap_or_else(|error| panic!("{error:?}\n{document}"));
+    ace_core::verify::verify(bound)
+        .expect("reference verifies local initialization and assignment");
+    let admit =
+        |text: &str| run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto HIR admission");
+    assert_eq!(admit(&document), "ADMITTED core-i32-draft\n");
+    let immutable = document.replacen(
+        "role: binding; mutable: true",
+        "role: binding; mutable: false",
+        1,
+    );
+    assert_ne!(immutable, document);
+    assert_eq!(admit(&immutable), "ERROR hir.mutability\n");
+    let init = document.find("let(local:").unwrap();
+    let assign = document.find("assign(place:").unwrap();
+    let end = assign + document[assign..].find(") {}").unwrap() + 4;
+    let reordered = format!(
+        "{}{} {}{}",
+        &document[..init],
+        &document[assign..end],
+        &document[init..assign],
+        &document[end..]
+    );
+    assert_eq!(admit(&reordered), "ERROR hir.initialization\n");
+}
+
+#[test]
+fn verifies_an_ancestor_binding_in_both_terminating_branches() {
+    let source = b"fn both(flag bool) int { let base_value = 1\n if flag { let inside = base_value + 2\n return inside } else { return base_value } }";
+    let document = run_core_hir_case(source, "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::descriptor(), &document)
+        .unwrap_or_else(|error| panic!("{error:?}\n{document}"));
+    ace_core::verify::verify(bound).expect("reference verifies both branches");
+    assert_eq!(
+        run_core_hir_case(document.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ADMITTED core-i32-draft\n"
+    );
+}
+
+#[test]
 fn preserves_checked_artifact_on_source_resource_and_replace_failures() {
     let original =
         run_core_hir_case(b"fn compute() int { return 3 }", "verify").expect("Auto HIR baseline");

@@ -12,6 +12,8 @@ use app.binding.decl_category
 use app.binding.decl_name
 use app.core_hir.checked_core_atom
 use app.core_hir.hir_owner_error
+use app.core_hir.hir_initialization_error
+use app.core_hir.hir_mutability_error
 use app.core_hir.hir_reference_error
 use app.core_hir.hir_shape_error
 use app.core_hir.hir_type_error
@@ -110,6 +112,8 @@ fn diagnostic_name(code int) Str {
     if (code == hir_reference_error()) { return "hir.reference" }
     if (code == hir_type_error()) { return "hir.type" }
     if (code == hir_shape_error()) { return "hir.shape" }
+    if (code == hir_initialization_error()) { return "hir.initialization" }
+    if (code == hir_mutability_error()) { return "hir.mutability" }
     if (code == annotation_owner_error()) { return "type.annotation-owner" }
     return "internal.semantic"
 }
