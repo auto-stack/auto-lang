@@ -421,6 +421,74 @@ fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, fuel List<in
     return 0
 }
 
+fn claim_node(table List<int>, stride int, claimed List<int>, node int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, table.len() / stride)) { return bind_budget() }
+    let slot = find_row(table, stride, node, 0)
+    if (slot < 0 || claimed.get(slot / stride) != 0) { return hir_reference_error() }
+    claimed.set(slot / stride, 1)
+    return 0
+}
+
+fn unclaimed_node(table List<int>, stride int, claimed List<int>) int {
+    var index = 0
+    for (index < claimed.len()) {
+        if (claimed.get(index) == 0) { return table.get(index * stride) }
+        index = index + 1
+    }
+    return -1
+}
+
+// Each expression owns an evaluation, and each block belongs to one
+// structured control-flow position. A terminating graph alone would also
+// admit unreachable code and allow an effectful expression to be shared.
+fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    if (!has_budget(fuel, deadline, exprs.len() / 5 + blocks.len() / 6)) { return failed(errors, 0, bind_budget()) }
+    var expressions = List<int>.new()
+    var block_claims = List<int>.new()
+    var at = 0
+    for (at < exprs.len()) {
+        expressions.push(0)
+        at = at + 5
+    }
+    at = 0
+    for (at < blocks.len()) {
+        block_claims.push(0)
+        at = at + 6
+    }
+    at = 0
+    for (at < args.len()) {
+        let code = claim_node(exprs, 5, expressions, args.get(at + 1), fuel, deadline)
+        if (code != 0) { return failed(errors, args.get(at), code) }
+        at = at + 3
+    }
+    at = 0
+    for (at < defs.len()) {
+        let code = claim_node(blocks, 6, block_claims, defs.get(at + 3), fuel, deadline)
+        if (code != 0) { return failed(errors, defs.get(at), code) }
+        at = at + 4
+    }
+    at = 0
+    for (at < blocks.len()) {
+        let condition = blocks.get(at + 2)
+        var evaluated = blocks.get(at + 5)
+        if (condition >= 0) {
+            let yes = claim_node(blocks, 6, block_claims, blocks.get(at + 3), fuel, deadline)
+            if (yes != 0) { return failed(errors, blocks.get(at), yes) }
+            let no = claim_node(blocks, 6, block_claims, blocks.get(at + 4), fuel, deadline)
+            if (no != 0) { return failed(errors, blocks.get(at), no) }
+            evaluated = condition
+        }
+        let code = claim_node(exprs, 5, expressions, evaluated, fuel, deadline)
+        if (code != 0) { return failed(errors, blocks.get(at), code) }
+        at = at + 6
+    }
+    let unused = unclaimed_node(exprs, 5, expressions)
+    if (unused >= 0) { return failed(errors, unused, hir_reference_error()) }
+    let unreachable = unclaimed_node(blocks, 6, block_claims)
+    if (unreachable >= 0) { return failed(errors, unreachable, hir_reference_error()) }
+    return 0
+}
+
 fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
     var position = 0
     for (position < defs.len()) {
@@ -478,6 +546,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         position = position + 5
     }
     if (verify_blocks(defs, exprs, blocks, fuel, deadline, errors) != 0) { return None }
+    if (verify_usage(defs, exprs, args, blocks, fuel, deadline, errors) != 0) { return None }
     return Some(VerifiedCore { definitions: defs.len() / 4 })
 }
 

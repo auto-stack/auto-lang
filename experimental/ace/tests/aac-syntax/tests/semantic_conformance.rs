@@ -575,6 +575,62 @@ fn verifies_terminating_branches_and_rejects_a_back_edge() {
 }
 
 #[test]
+fn rejects_unused_and_shared_evaluations_in_descriptor_input() {
+    let source = b"fn compute() int { return 2 + 3 }";
+    let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
+    let admit = |document: &str| {
+        run_core_hir_case(document.as_bytes(), "descriptor").expect("Auto HIR admission")
+    };
+    assert_eq!(admit(&atom), "ADMITTED core-i32-draft\n");
+    let extra = atom.replacen(
+        " expressions {\n",
+        " expressions {\n expr unused constant {type: \"t1\"; value: 4i32}\n",
+        1,
+    );
+    assert_ne!(extra, atom);
+    assert_eq!(admit(&extra), "ERROR hir.reference\n");
+    let left = atom
+        .split_once("lhs: \"")
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap();
+    let right = atom
+        .split_once("rhs: \"")
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap();
+    assert_ne!(left, right);
+    let shared = atom.replacen(&format!("rhs: \"{right}\""), &format!("rhs: \"{left}\""), 1);
+    assert_eq!(admit(&shared), "ERROR hir.reference\n");
+}
+
+#[test]
+fn rejects_an_unreachable_terminating_block() {
+    let source = b"fn compute() int { return 2 }";
+    let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
+    let extra = atom
+        .replacen(
+            " expressions {\n",
+            " expressions {\n expr orphan constant {type: \"t1\"; value: 4i32}\n",
+            1,
+        )
+        .replacen(
+            " blocks {\n",
+            " blocks {\n block unused {return(value: \"orphan\") {}}\n",
+            1,
+        );
+    assert_ne!(extra, atom);
+    assert_eq!(
+        run_core_hir_case(extra.as_bytes(), "descriptor").expect("Auto HIR admission"),
+        "ERROR hir.reference\n"
+    );
+}
+
+#[test]
 fn preserves_tuple_order_and_checks_indirect_signature() {
     let source = concat!(
         "fn invoke(f fn(int) -> bool) bool { return f(7) }\n",
