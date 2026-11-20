@@ -60,12 +60,7 @@ pub fn compile_package_product_auto(
     let profile = SourceProfile::Auto;
     ace_core::source::adapter::complete_auto_signatures(&mut bound.program)
         .map_err(|ds| locate_all(&bound, ds))?;
-    if bound
-        .program
-        .items
-        .iter()
-        .any(|item| matches!(item, ace_core::source::ast::Item::Fn(f) if !f.type_params.is_empty()))
-    {
+    if bound.program.has_function_templates() {
         let origins = &bound.origins;
         let version_by_module: std::collections::BTreeMap<_, _> = inputs
             .iter()

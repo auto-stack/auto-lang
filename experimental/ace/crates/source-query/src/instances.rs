@@ -380,10 +380,16 @@ fn materialize_instance(
 ) -> FnItem {
     let mut body = subst_block_anns(&template.body, subst_ann);
     for_each_block_mut(&mut body, &mut |expr| {
-        if let ExprKind::ConstCall { types, .. } = &mut expr.kind {
-            for ty in types {
-                *ty = subst_ann(ty);
-            }
+        let types = match &mut expr.kind {
+            ExprKind::ConstCall { types, .. } => types,
+            ExprKind::MethodCall {
+                instance: Some(args),
+                ..
+            } => &mut args.types,
+            _ => return,
+        };
+        for ty in types {
+            *ty = subst_ann(ty);
         }
     });
     subst_block_consts(&mut body, consts);
@@ -844,6 +850,14 @@ pub fn instantiate_auto_program(
     .map(|_| ())
 }
 
+fn method_members(item: &mut Item) -> Option<(&str, &mut Vec<FnItem>)> {
+    match item {
+        Item::Type(t) => Some((&t.name.name, &mut t.methods)),
+        Item::Enum(e) => Some((&e.name.name, &mut e.methods)),
+        _ => None,
+    }
+}
+
 /// Return the origin of each concrete symbol so a package can retain source
 /// associations after templates are removed from the executable AST.
 pub(crate) fn instantiate_auto_program_scoped(
@@ -856,22 +870,30 @@ pub(crate) fn instantiate_auto_program_scoped(
 
     let mut templates = BTreeMap::new();
     let mut names = BTreeSet::new();
-    for item in &program.items {
-        if let Item::Fn(f) = item {
-            if !names.insert(f.name.name.clone()) {
-                // Non-template duplicate declarations still go through normal binding.
-                if !f.type_params.is_empty() || templates.contains_key(&f.name.name) {
-                    return Err(vec![Diagnostic::new(
-                        Stage::Bind,
-                        "source.duplicate",
-                        format!("duplicate function `{}`", f.name.name),
-                        f.name.span,
-                    )]);
-                }
+    for item in &mut program.items {
+        let mut register = |key: String, f: &FnItem| {
+            if !names.insert(key.clone())
+                && (!f.type_params.is_empty() || templates.contains_key(&key))
+            {
+                return Err(vec![Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate",
+                    format!("duplicate function `{key}`"),
+                    f.name.span,
+                )]);
             }
             if !f.type_params.is_empty() {
-                templates.insert(f.name.name.clone(), f.clone());
+                templates.insert(key, f.clone());
             }
+            Ok(())
+        };
+        if let Item::Fn(f) = item {
+            register(f.name.name.clone(), f)?;
+        } else if let Some((owner, methods)) = method_members(item) {
+            for method in methods.iter() {
+                register(format!("{owner}.{}", method.name.name), method)?;
+            }
+            methods.retain(|m| m.type_params.is_empty());
         }
     }
     program
@@ -933,13 +955,21 @@ pub(crate) fn instantiate_auto_program_scoped(
             let template_key = template_identity(&demand.callee);
             let identity = sq_hash("ac1088/auto-instance/v1", &[template_key.as_bytes(), &key]);
             let name = expanded.entry(identity.clone()).or_insert_with(|| {
-                let base = format!("{}_{}", demand.callee, &identity[..16]);
+                let base = format!("{}_{}", template.name.name, &identity[..16]);
+                let owner = demand.callee.rsplit_once('.').map(|(owner, _)| owner);
                 let mut name = base.clone();
                 let mut suffix = 1;
-                while !names.insert(name.clone()) {
+                let concrete_key = loop {
+                    let key = match owner {
+                        Some(owner) => format!("{owner}.{name}"),
+                        None => name.clone(),
+                    };
+                    if names.insert(key.clone()) {
+                        break key;
+                    }
                     suffix += 1;
                     name = format!("{base}__{suffix}");
-                }
+                };
                 let concrete = materialize_instance(
                     template,
                     &|ann| {
@@ -950,8 +980,20 @@ pub(crate) fn instantiate_auto_program_scoped(
                     &consts,
                     &name,
                 );
-                program.items.push(Item::Fn(concrete));
-                origins.insert(name.clone(), demand.callee.clone());
+                if let Some(owner) = owner {
+                    let members = program
+                        .items
+                        .iter_mut()
+                        .find_map(|item| {
+                            let (symbol, members) = method_members(item)?;
+                            (symbol == owner).then_some(members)
+                        })
+                        .expect("template owner is retained in the concrete AST");
+                    members.push(concrete);
+                } else {
+                    program.items.push(Item::Fn(concrete));
+                }
+                origins.insert(concrete_key, demand.callee.clone());
                 name
             });
             rewrites.insert(
@@ -965,23 +1007,13 @@ pub(crate) fn instantiate_auto_program_scoped(
         }
         let mut rewritten = 0;
         for item in &mut program.items {
-            match item {
-                Item::Fn(f) => {
-                    rewritten += rebind_callsites_owned(&mut f.body, &f.name.name, &rewrites)
+            if let Item::Fn(f) = item {
+                rewritten += rebind_callsites_owned(&mut f.body, &f.name.name, &rewrites);
+            } else if let Some((owner, methods)) = method_members(item) {
+                for method in methods {
+                    let key = format!("{owner}.{}", method.name.name);
+                    rewritten += rebind_callsites_owned(&mut method.body, &key, &rewrites);
                 }
-                Item::Type(t) => {
-                    for method in &mut t.methods {
-                        rewritten +=
-                            rebind_callsites_owned(&mut method.body, &method.name.name, &rewrites);
-                    }
-                }
-                Item::Enum(e) => {
-                    for method in &mut e.methods {
-                        rewritten +=
-                            rebind_callsites_owned(&mut method.body, &method.name.name, &rewrites);
-                    }
-                }
-                _ => {}
             }
         }
         if rewritten != rewrites.len() {
@@ -1453,6 +1485,18 @@ fn rebind_callsites_owned(
                             callee,
                             args: std::mem::take(args),
                         };
+                        n += 1;
+                    }
+                }
+            }
+            ExprKind::MethodCall { name, instance, .. } => {
+                if let Some((template, concrete)) = span_to_name.get(&key) {
+                    if template
+                        .rsplit_once('.')
+                        .is_some_and(|(_, method)| name.name == method)
+                    {
+                        name.name.clone_from(concrete);
+                        *instance = None;
                         n += 1;
                     }
                 }

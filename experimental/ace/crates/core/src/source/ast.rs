@@ -219,6 +219,13 @@ pub enum TypeParamKind {
     Const,
 }
 
+/// Explicit method instance arguments in source order within each kind.
+#[derive(Clone, Debug)]
+pub struct InstanceArguments {
+    pub types: Vec<TypeAnn>,
+    pub consts: Vec<ConstArgUse>,
+}
+
 /// PLAN-963 (T-04): one explicit value argument at a call site
 /// (`rep<2>(21)` — the `2`). The value domain is the declared type of the
 /// parameter (`u32`, so `0..=4294967295`); projection already rejected
@@ -412,6 +419,20 @@ pub struct EnumArm {
 #[derive(Clone, Debug)]
 pub struct Program {
     pub items: Vec<Item>,
+}
+
+impl Program {
+    pub fn has_function_templates(&self) -> bool {
+        fn generic(f: &FnItem) -> bool {
+            !f.type_params.is_empty()
+        }
+        self.items.iter().any(|item| match item {
+            Item::Fn(f) => generic(f),
+            Item::Type(t) => t.methods.iter().any(generic),
+            Item::Enum(e) => e.methods.iter().any(generic),
+            _ => false,
+        })
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -636,6 +657,7 @@ pub enum ExprKind {
         recv: Box<Expr>,
         name: Ident,
         args: Vec<Arg>,
+        instance: Option<Box<InstanceArguments>>,
     },
     /// `p.mut` — the explicit mut-borrow argument form (record profile).
     /// PLAN-962 (T-08, L-06): `x.view` — immutable borrow argument

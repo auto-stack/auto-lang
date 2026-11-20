@@ -3570,6 +3570,7 @@ impl<'s> Parser<'s> {
                                 vals.push(Expr {
                                     span: span.join(close.span),
                                     kind: ExprKind::MethodCall {
+                                        instance: None,
                                         recv: Box::new(recv),
                                         name: callee,
                                         args: Vec::new(),
@@ -3858,6 +3859,7 @@ impl<'s> Parser<'s> {
                                     vals.push(Expr {
                                         span: recv.span.join(close.span),
                                         kind: ExprKind::MethodCall {
+                                            instance: None,
                                             recv: Box::new(recv),
                                             name: callee,
                                             args: Vec::new(),
@@ -4270,6 +4272,7 @@ impl<'s> Parser<'s> {
                                             vals.push(Expr {
                                                 span: recv.span.join(span),
                                                 kind: ExprKind::MethodCall {
+                                                    instance: None,
                                                     recv,
                                                     name: cf.callee,
                                                     args: cf.args,

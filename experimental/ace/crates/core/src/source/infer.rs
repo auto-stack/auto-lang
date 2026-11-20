@@ -665,7 +665,9 @@ fn estimate(
             }
             Ty::Unknown
         }
-        ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::MethodCall {
+            recv, name, args, ..
+        } => {
             let rt = estimate(recv, env, ctx, sites);
             for a in args {
                 estimate_arg(a, env, ctx, sites);

@@ -902,7 +902,10 @@ pub(crate) fn collect_expr_names(e: &Expr) -> Vec<String> {
                     }
                 }
             }
-            ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
+            ExprKind::Method { recv, name, args }
+            | ExprKind::MethodCall {
+                recv, name, args, ..
+            } => {
                 walk(recv, out);
                 if !out.contains(&name.name) {
                     out.push(name.name.clone());
@@ -2747,9 +2750,15 @@ pub(crate) fn rename_expr_with_params(
         // 投影为 MethodCall）：接收者/实参按同一通道重命名，调用形状原样
         // 交共享 resolver 定型（gfx 服务表 AgeGfx 车道）。此前落 `_` 分支被
         // "未接线表达式形"拒，hook-local 一次求值的自然写法进不来。
-        ExprKind::MethodCall { recv, name, args } => Expr {
+        ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance,
+        } => Expr {
             span: expr.span,
             kind: ExprKind::MethodCall {
+                instance: instance.clone(),
                 recv: Box::new(rename_expr_with_params(
                     recv,
                     binding,

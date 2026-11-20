@@ -127,7 +127,22 @@ fn shift_expr(e: &mut Expr, delta: i64) {
         // PLAN-961: a typed literal is a leaf.
         | ExprKind::TypedLit { .. } => {}
         ExprKind::Var(id) => shift_ident(id, delta),
-        ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::Method { recv, name, args } => {
+            shift_expr(recv, delta);
+            shift_ident(name, delta);
+            for a in args.iter_mut() {
+                shift_arg(a, delta);
+            }
+        }
+        ExprKind::MethodCall { recv, name, args, instance } => {
+            if let Some(instance) = instance {
+                for ty in &mut instance.types {
+                    shift_type_ann(ty, delta);
+                }
+                for c in &mut instance.consts {
+                    shift_span(&mut c.span, delta);
+                }
+            }
             shift_expr(recv, delta);
             shift_ident(name, delta);
             for a in args.iter_mut() {

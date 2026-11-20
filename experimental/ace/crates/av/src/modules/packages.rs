@@ -518,6 +518,68 @@ pub fn nineteen() int { return identity(19) }",
     }
 
     #[test]
+    fn ordinary_method_calls_share_one_owner_bound_instance() {
+        use ace_av_core::contract::Value;
+        use ace_core::source::ast::Item;
+        use ace_source_query::modules::packages::compile_package_product_auto;
+
+        let inputs = [
+            input(
+                "app",
+                "main",
+                "use support.math.Counter
+use support.math.initial
+fn main() int { return (Counter { base: initial() }).add<int>(23) }",
+            ),
+            input(
+                "support",
+                "math",
+                "pub type Counter { base int; fn add<T>(x T) int { return .base + x } }
+pub fn initial() int { return (Counter { base: 16 }).add(3) }",
+            ),
+        ];
+        let caps = [ace_core::source::AUTO_SOURCE_ADMISSION_CAP.into()];
+        let product = compile_package_product_auto(
+            &inputs,
+            "app::main",
+            &caps,
+            FrontBudget::WORK_OWNED_64MIB,
+        )
+        .unwrap();
+        let origins: Vec<_> = product
+            .bound
+            .origins
+            .iter()
+            .filter(|(_, origin)| origin.2 == "Counter.add")
+            .collect();
+        // The package retains the source declaration and publishes one concrete
+        // member of the same owner for both the explicit and inferred calls.
+        let record = product
+            .bound
+            .program
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Type(t) if t.name.name.ends_with("_Counter") => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(record.methods.len(), 1);
+        assert!(record.methods[0].type_params.is_empty());
+        let concrete = format!("{}.{}", record.name.name, record.methods[0].name.name);
+        assert_eq!(origins.len(), 2);
+        assert!(origins
+            .iter()
+            .any(|(key, origin)| **key == concrete && origin.0 == "support" && origin.1 == "math"));
+        let dir = tmp("ordinary-method-owner");
+        assert_eq!(
+            PackageAvTarget::cold(&dir, &product).unwrap().run_value(),
+            Ok(Value::I32(42))
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn ordinary_packages_keep_owned_globals_per_generation() {
         use ace_av_core::contract::{ExecOutcome, Value};
         use ace_source_query::modules::{packages::compile_package_product_auto, PackageStore};

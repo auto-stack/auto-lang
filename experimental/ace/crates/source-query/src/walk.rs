@@ -632,28 +632,7 @@ fn walk_expr<'a>(
             canon.push(0);
             canon.extend_from_slice(callee.name.as_bytes());
             canon.push(0);
-            if types.is_empty() {
-                canon.extend_from_slice(&(consts.len() as u32).to_le_bytes());
-                for c in consts {
-                    canon.extend_from_slice(&c.value.to_le_bytes());
-                }
-            } else {
-                canon.extend_from_slice(b"explicit-types\0");
-                canon.extend_from_slice(&((types.len() + consts.len()) as u32).to_le_bytes());
-                let mut values = consts.iter().peekable();
-                for ty in types {
-                    while values.peek().is_some_and(|c| c.span.start < ty.span.start) {
-                        canon.push(b'v');
-                        canon.extend_from_slice(&values.next().unwrap().value.to_le_bytes());
-                    }
-                    canon.push(b't');
-                    crate::ident::type_canonical(ty, canon);
-                }
-                for c in values {
-                    canon.push(b'v');
-                    canon.extend_from_slice(&c.value.to_le_bytes());
-                }
-            }
+            canonical_instance_arguments(types, consts, canon);
             canon.extend_from_slice(&(args.len() as u32).to_le_bytes());
             for a in args.iter().rev() {
                 stack.push(Task::Arg(a));
@@ -719,12 +698,21 @@ fn walk_expr<'a>(
             canon.push(0);
             stack.push(Task::Expr(base));
         }
-        ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance,
+        } => {
             push_node(nodes, canon, "expr.method-call", e.span);
             canon.extend_from_slice(b"method:");
             canon.push(0);
             canon.extend_from_slice(name.name.as_bytes());
             canon.push(0);
+            if let Some(explicit) = instance {
+                canon.extend_from_slice(b"method-instance\0");
+                canonical_instance_arguments(&explicit.types, &explicit.consts, canon);
+            }
             canon.extend_from_slice(&(args.len() as u32).to_le_bytes());
             for a in args.iter().rev() {
                 let value = match a {
@@ -807,5 +795,34 @@ fn unary_tag(op: UnaryOp) -> &'static str {
     match op {
         UnaryOp::Neg => "-",
         UnaryOp::Not => "!",
+    }
+}
+
+fn canonical_instance_arguments(
+    types: &[ace_core::source::ast::TypeAnn],
+    consts: &[ace_core::source::ast::ConstArgUse],
+    canon: &mut Vec<u8>,
+) {
+    if types.is_empty() {
+        canon.extend_from_slice(&(consts.len() as u32).to_le_bytes());
+        for c in consts {
+            canon.extend_from_slice(&c.value.to_le_bytes());
+        }
+    } else {
+        canon.extend_from_slice(b"explicit-types\0");
+        canon.extend_from_slice(&((types.len() + consts.len()) as u32).to_le_bytes());
+        let mut values = consts.iter().peekable();
+        for ty in types {
+            while values.peek().is_some_and(|c| c.span.start < ty.span.start) {
+                canon.push(b'v');
+                canon.extend_from_slice(&values.next().unwrap().value.to_le_bytes());
+            }
+            canon.push(b't');
+            crate::ident::type_canonical(ty, canon);
+        }
+        for c in values {
+            canon.push(b'v');
+            canon.extend_from_slice(&c.value.to_le_bytes());
+        }
     }
 }

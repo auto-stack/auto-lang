@@ -10,7 +10,8 @@ use super::{
 };
 use crate::atom_text::{Diagnostic, Span};
 use crate::source::ast::{
-    ConstArgUse, FnItem, Ident, Program, TypeAnn, TypeParamKind, TypeRef, TypeWord,
+    ConstArgUse, FnItem, Ident, InstanceArguments, Program, Receiver, TypeAnn, TypeParamKind,
+    TypeRef, TypeWord,
 };
 use crate::source::SourceProfile;
 use std::cell::{Cell, RefCell};
@@ -28,11 +29,16 @@ pub(super) struct InstanceProbe<'a> {
     templates: &'a BTreeMap<String, FnItem>,
     demands: RefCell<Vec<AutoInstanceDemand>>,
     body_diagnostics: Cell<usize>,
+    owner: RefCell<String>,
 }
 
 impl InstanceProbe<'_> {
-    pub(super) fn begin_body(&self, diagnostics: usize) {
+    pub(super) fn begin_body(&self, name: &str, owner: Option<&str>, diagnostics: usize) {
         self.body_diagnostics.set(diagnostics);
+        *self.owner.borrow_mut() = match owner {
+            Some(owner) => format!("{owner}.{name}"),
+            None => name.to_owned(),
+        };
     }
 }
 
@@ -48,6 +54,7 @@ pub fn discover_auto_instance_calls(
         templates,
         demands: RefCell::new(Vec::new()),
         body_diagnostics: Cell::new(0),
+        owner: RefCell::new(String::new()),
     };
     let diagnostics = resolve_detailed_in_mode(
         program,
@@ -81,37 +88,86 @@ impl FnResolver<'_, '_> {
     pub(super) fn probe_template_call(
         &mut self,
         callee: &Ident,
-        mut args: Vec<ResolvedArg>,
+        args: Vec<ResolvedArg>,
         explicit: Option<(&[TypeAnn], &[ConstArgUse])>,
         call: Span,
     ) -> Option<ResolvedExpr> {
         let probe = self.instance_probe?;
-        let unresolved = ResolvedExpr {
-            span: call,
-            vt: VT::I32,
-            kind: RExprKind::IntLit(0),
-        };
-        if self.diags.len() != probe.body_diagnostics.get() {
-            // A preceding error, including an unfinished call, can poison
-            // a later binding in this scope. Revisit the body after replay.
-            return Some(unresolved);
-        }
         let Some(template) = probe
             .templates
             .get(&callee.name)
             .filter(|_| self.is_template_call(callee))
         else {
-            self.bind_err(
-                "source.instances-unsupported",
-                format!("`{}` is not a visible function template", callee.name),
-                call,
-            );
-            return Some(unresolved);
+            if self.diags.len() == probe.body_diagnostics.get() {
+                self.bind_err(
+                    "source.instances-unsupported",
+                    format!("`{}` is not a visible function template", callee.name),
+                    call,
+                );
+            }
+            return Some(pending_expression(call));
         };
+        Some(self.probe_known_template(probe, &callee.name, template, args, explicit, call))
+    }
+
+    pub(super) fn probe_template_method(
+        &mut self,
+        static_rec: Option<usize>,
+        receiver: Option<VT>,
+        method: &Ident,
+        args: &mut Vec<ResolvedArg>,
+        explicit: Option<&InstanceArguments>,
+        call: Span,
+    ) -> Option<ResolvedExpr> {
+        let probe = self.instance_probe?;
+        let (owner, is_static) = match (static_rec, receiver) {
+            (Some(record), None) => (&self.records[record].name, true),
+            (None, Some(VT::Rec(record))) => (&self.records[record].name, false),
+            (None, Some(VT::Variant(variant))) => (&self.coll.variants[variant].name, false),
+            _ => return None,
+        };
+        let key = format!("{owner}.{}", method.name);
+        let template = probe.templates.get(&key)?;
+        if (template.receiver == Receiver::Static) != is_static {
+            self.bind_err(
+                "source.not-callable",
+                format!(
+                    "`{key}` requires {} receiver",
+                    if is_static { "a value" } else { "a type" }
+                ),
+                method.span,
+            );
+            return Some(pending_expression(call));
+        }
+        Some(self.probe_known_template(
+            probe,
+            &key,
+            template,
+            std::mem::take(args),
+            explicit.map(|a| (a.types.as_slice(), a.consts.as_slice())),
+            call,
+        ))
+    }
+
+    fn probe_known_template(
+        &mut self,
+        probe: &InstanceProbe<'_>,
+        key: &str,
+        template: &FnItem,
+        mut args: Vec<ResolvedArg>,
+        explicit: Option<(&[TypeAnn], &[ConstArgUse])>,
+        call: Span,
+    ) -> ResolvedExpr {
+        let unresolved = pending_expression(call);
+        if self.diags.len() != probe.body_diagnostics.get() {
+            // A preceding error, including an unfinished call, can poison
+            // a later binding in this scope. Revisit the body after replay.
+            return unresolved;
+        }
         let (explicit_types, consts) = explicit.unwrap_or_default();
         let Some(mut types) = self.explicit_instance_types(template, explicit_types, consts, call)
         else {
-            return Some(unresolved);
+            return unresolved;
         };
         let names: Vec<_> = template
             .params
@@ -120,9 +176,9 @@ impl FnResolver<'_, '_> {
             .collect();
         let defaults: Vec<_> = template.params.iter().map(|p| p.default.clone()).collect();
         self.fill_default_args(&names, &[], &defaults, &mut args, call);
-        self.check_argument_shape(&callee.name, &names, names.len(), &args, call);
+        self.check_argument_shape(key, &names, names.len(), &args, call);
         if self.diags.len() != probe.body_diagnostics.get() {
-            return Some(unresolved);
+            return unresolved;
         }
         if explicit_types.is_empty() {
             for (index, arg) in args.iter().enumerate() {
@@ -138,11 +194,11 @@ impl FnResolver<'_, '_> {
                             "type-mismatch",
                             format!(
                                 "conflicting types for `{}` at template `{}`",
-                                names[slot], callee.name
+                                names[slot], key
                             ),
                             arg.span,
                         );
-                        return Some(unresolved);
+                        return unresolved;
                     }
                 }
             }
@@ -156,11 +212,11 @@ impl FnResolver<'_, '_> {
                 "unsolved-variable",
                 format!(
                     "cannot determine type argument `{}` of `{}`",
-                    param.name.name, callee.name
+                    param.name.name, key
                 ),
                 call,
             );
-            return Some(unresolved);
+            return unresolved;
         }
         let consts = consts
             .iter()
@@ -168,12 +224,12 @@ impl FnResolver<'_, '_> {
             .collect::<Result<Vec<_>, _>>();
         let Ok(consts) = consts else {
             self.bind_err("source.literal-range", "value argument outside u32", call);
-            return Some(unresolved);
+            return unresolved;
         };
         probe.demands.borrow_mut().push(AutoInstanceDemand {
-            owner: self.owner_name.clone(),
+            owner: probe.owner.borrow().clone(),
             call,
-            callee: callee.name.clone(),
+            callee: key.to_owned(),
             types,
             consts,
         });
@@ -182,7 +238,7 @@ impl FnResolver<'_, '_> {
             "waiting for a concrete template instance",
             call,
         );
-        Some(unresolved)
+        unresolved
     }
 
     fn explicit_instance_types(
@@ -271,6 +327,14 @@ impl FnResolver<'_, '_> {
             }
         }
         Some(types)
+    }
+}
+
+pub(super) fn pending_expression(span: Span) -> ResolvedExpr {
+    ResolvedExpr {
+        span,
+        vt: VT::I32,
+        kind: RExprKind::IntLit(0),
     }
 }
 

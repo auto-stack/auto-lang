@@ -2583,7 +2583,10 @@ fn collect_age_resources(bound: &super::packages::BoundPackages) -> Vec<AgeResou
     let mut out = Vec::new();
     for decl in bound.globals.values() {
         let Some(init) = &decl.init else { continue };
-        let super::ast::ExprKind::MethodCall { recv, name, args } = &init.kind else {
+        let super::ast::ExprKind::MethodCall {
+            recv, name, args, ..
+        } = &init.kind
+        else {
             continue;
         };
         let super::ast::ExprKind::Var(ns) = &recv.kind else {

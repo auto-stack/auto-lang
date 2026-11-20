@@ -744,7 +744,17 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             base: Box::new(project_expr(base)),
             name: name.name.clone(),
         },
-        core_ast::ExprKind::MethodCall { recv, name, args } => InputExprKind::MethodCall {
+        core_ast::ExprKind::MethodCall {
+            instance: Some(_), ..
+        } => InputExprKind::Unsupported {
+            what: "explicit-method-instance",
+        },
+        core_ast::ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance: None,
+        } => InputExprKind::MethodCall {
             recv: Box::new(project_expr(recv)),
             name: name.name.clone(),
             args: args.iter().filter_map(project_arg).collect(),

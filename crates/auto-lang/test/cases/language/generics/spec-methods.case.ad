@@ -718,3 +718,264 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+## Case: template-method-mutates
+id: "av.parity.1088.template-method-mutates"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; mut fn add<T>(x T) int { .base = .base + x; return .base } }
+fn main() int { var m = Math(20); m.add(22); return m.base }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-recurses
+id: "av.parity.1088.template-method-recurses"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; fn add<T>(x T) int { if x == 0 { return .base }; return self.add(x-1)+1 } }
+fn main() int { return Math(20).add(22) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-owners
+id: "av.parity.1088.template-method-owners"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type A { base int; fn adapt<T>(x T) int { return .base + x } }
+type B { base int; fn adapt<T>(x T) int { if x { return .base }; return 0 } }
+fn main() int { return A(20).adapt(2) + B(20).adapt(true) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-on-enum
+id: "av.parity.1088.template-method-on-enum"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+enum Data { Val(int); Empty; fn pick<T>(x T) T { return x } }
+fn main() int { let d = Data.Val(5); return d.pick(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-on-generic-record
+id: "av.parity.1088.template-method-on-generic-record"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Box<T> { v T; fn add<U>(x U) int { return .v + x } }
+fn main() int { return Box<int> { v: 20 }.add(22) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-const-and-type
+id: "av.parity.1088.template-method-const-and-type"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; static fn scale<T,const N u32>(x T) T { return x * N } }
+fn main() int { return Math.scale<int,2>(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-extension-forwards
+id: "av.parity.1088.template-method-extension-forwards"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; fn inner<T>(x T) int { return .base + x } }
+ext Math { fn add<U>(x U) int { return self.inner<U>(x) } }
+fn main() int { return Math(20).add(22) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-unused
+id: "av.parity.1088.template-method-unused"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; fn unused<T>(x T) int { return unknown(x) } }
+fn main() int { return Math(42).base }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: template-method-receiver-place
+id: "av.parity.1088.template-method-receiver-place"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; mut fn add<T>(x T) int { .base = .base + x; return .base } }
+fn main() int { return Math(20).add(22) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.mut-receiver-place"
+
+## Case: template-method-wrong-receiver-kind
+id: "av.parity.1088.template-method-wrong-receiver-kind"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; static fn twice<T>(x T) T { return x * 2 } }
+fn main() int { return Math(0).twice(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.not-callable"
+
+## Case: template-method-explicit-non-template
+id: "av.parity.1088.template-method-explicit-non-template"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; fn add(x int) int { return .base + x } }
+fn main() int { return Math(20).add<int>(22) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-unsupported"
+
+## Case: template-method-explicit-argument-kind
+id: "av.parity.1088.template-method-explicit-argument-kind"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Math { base int; static fn scale<T,const N u32>(x T) T { return x * N } }
+fn main() int { return Math.scale<2,int>(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-argument-kind"
+
+## Case: template-method-module
+id: "av.parity.1088.template-method-module"
+tags: ["av-language-parity", "plan-1088"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.Counter
+use lib.initial
+fn main() int { let n = initial(); return (Counter { base: n }).add<int>(23) }
+```
+
+#### lib.at
+
+```auto
+pub type Counter { base int; fn add<T>(x T) int { return .base + x } }
+pub fn initial() int { return (Counter { base: 16 }).add(3) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

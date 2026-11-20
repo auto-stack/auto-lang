@@ -6909,7 +6909,9 @@ impl<'a> Engine<'a> {
         let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
         if !type_params.is_empty() {
             let tp_span = type_params[0].name.span;
-            if receiver != Receiver::Free || owner.is_some() {
+            if !self.cx.profile.is_auto_language()
+                && (receiver != Receiver::Free || owner.is_some())
+            {
                 self.cx.reject(tp_span, || {
                     Diagnostic::new(
                         Stage::Text,
@@ -6918,7 +6920,7 @@ impl<'a> Engine<'a> {
                         tp_span,
                     )
                 });
-            } else if name.name == "main" {
+            } else if receiver == Receiver::Free && name.name == "main" {
                 self.cx.reject(tp_span, || {
                     Diagnostic::new(
                         Stage::Text,
@@ -7694,6 +7696,45 @@ impl<'a> Engine<'a> {
             disc,
             span,
         }
+    }
+
+    fn project_instance_arguments(&mut self, group: u32) -> InstanceArguments {
+        let mut types = Vec::new();
+        let mut consts = Vec::new();
+        let kind = self
+            .rule_kind_of("instance-arg")
+            .expect("instance argument kind");
+        for item in collect_seq(&self.cx, group, kind, "instance-arg-tail") {
+            if let Some(leaf) = self.cx.field_child(item, "lit") {
+                consts.push(self.project_const_argument(leaf));
+            } else if let Some(ty) = self.cx.field_child(item, "ty") {
+                types.push(self.classify_word(ty, false, false));
+            }
+        }
+        InstanceArguments { types, consts }
+    }
+
+    fn project_call_arguments(&mut self, c: u32) -> Vec<Arg> {
+        let mut args: Vec<Arg> = Vec::new();
+        if let Some(an) = self.cx.field_child(c, "args") {
+            for a in collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail") {
+                if let Some(named) = self.cx.child_of_kind(a, self.cx.k.named_arg) {
+                    let label_leaf = self.cx.field_child(named, "label").expect("arg label");
+                    let label = ident_of(&mut self.cx, label_leaf);
+                    let value_n = self.cx.field_child(named, "value").expect("arg value");
+                    let vspan = self.cx.span_of(value_n);
+                    let value = self.project_expr_sync(value_n);
+                    args.push(Arg::Named {
+                        name: label,
+                        value,
+                        span: vspan,
+                    });
+                } else if let Some(value_n) = self.cx.child_of_kind(a, self.cx.k.expr) {
+                    args.push(Arg::Pos(self.project_expr_sync(value_n)));
+                }
+            }
+        }
+        args
     }
 
     // Value arguments have u32 identity but materialize into an i32 body.
@@ -9656,35 +9697,11 @@ impl<'a> Engine<'a> {
                     }
                 }
                 if let Some(group) = self.cx.field_child(c, "iargs") {
-                    let kind = self.rule_kind_of("instance-arg").expect("instance argument kind");
-                    for item in collect_seq(&self.cx, group, kind, "instance-arg-tail") {
-                        if let Some(leaf) = self.cx.field_child(item, "lit") {
-                            consts.push(self.project_const_argument(leaf));
-                        } else if let Some(ty) = self.cx.field_child(item, "ty") {
-                            types.push(self.classify_word(ty, false, false));
-                        }
-                    }
+                    let explicit = self.project_instance_arguments(group);
+                    types = explicit.types;
+                    consts = explicit.consts;
                 }
-                let mut args: Vec<Arg> = Vec::new();
-                if let Some(an) = self.cx.field_child(c, "args") {
-                    for a in collect_seq(&self.cx, an, self.cx.k.arg, "arg-tail") {
-                        if let Some(named) = self.cx.child_of_kind(a, self.cx.k.named_arg) {
-                            let label_leaf =
-                                self.cx.field_child(named, "label").expect("arg label");
-                            let label = ident_of(&mut self.cx, label_leaf);
-                            let value_n = self.cx.field_child(named, "value").expect("arg value");
-                            let vspan = self.cx.span_of(value_n);
-                            let value = self.project_expr_sync(value_n);
-                            args.push(Arg::Named {
-                                name: label,
-                                value,
-                                span: vspan,
-                            });
-                        } else if let Some(value_n) = self.cx.child_of_kind(a, self.cx.k.expr) {
-                            args.push(Arg::Pos(self.project_expr_sync(value_n)));
-                        }
-                    }
-                }
+                let args = self.project_call_arguments(c);
                 let span = self.cx.span_of(c);
                 self.vals.push(Val::E(Expr {
                     span,
@@ -10307,6 +10324,7 @@ impl<'a> Engine<'a> {
             return Expr {
                 span: recv.span.join(self.cx.span_of(step)),
                 kind: ExprKind::MethodCall {
+                    instance: None,
                     recv: Box::new(recv),
                     name: Ident {
                         name: "slice".into(),
@@ -10482,6 +10500,20 @@ impl<'a> Engine<'a> {
         let Some(member) = member else {
             return recv;
         };
+        if let Some(group) = self.cx.field_child(step, "iargs") {
+            let name = ident_of(&mut self.cx, member);
+            let instance = Box::new(self.project_instance_arguments(group));
+            let args = self.project_call_arguments(step);
+            return Expr {
+                span: recv.span.join(self.cx.span_of(step)),
+                kind: ExprKind::MethodCall {
+                    recv: Box::new(recv),
+                    name,
+                    args,
+                    instance: Some(instance),
+                },
+            };
+        }
         let mk = self.cx.tree.kind(member);
         // PLAN-962 (T-08, L-06): `.view` — readonly borrow argument.
         if mk == self.cx.k.tok_r_view {
@@ -12358,6 +12390,7 @@ impl<'a> Engine<'a> {
                     Expr {
                         span: full,
                         kind: ExprKind::MethodCall {
+                            instance: None,
                             recv: Box::new(recv),
                             name: Ident {
                                 name: mname,
@@ -13434,6 +13467,20 @@ impl GenericExpand {
             ExprKind::Range { start, end, .. } => {
                 self.resolve_typed_ctors_in_expr(start);
                 self.resolve_typed_ctors_in_expr(end);
+            }
+            ExprKind::MethodCall {
+                recv,
+                args,
+                instance: Some(instance),
+                ..
+            } => {
+                for ty in &mut instance.types {
+                    *ty = self.ann(ty);
+                }
+                self.resolve_typed_ctors_in_expr(recv);
+                for a in args.iter_mut() {
+                    self.resolve_typed_ctors_in_arg(a);
+                }
             }
             ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
                 self.resolve_typed_ctors_in_expr(recv);

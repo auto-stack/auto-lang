@@ -1310,13 +1310,15 @@ fn bind_package_syntax_inner(
                         walker.walk_ann(&mut fd.ty)?;
                     }
                     for m in &mut t.methods {
-                        if let Some(tp) = m.type_params.first() {
-                            return Err(fail(
-                                key,
-                                "source.module-templates",
-                                "template methods in package modules close in PLAN-963",
-                                tp.name.span,
-                            ));
+                        if !walker.auto_language {
+                            if let Some(tp) = m.type_params.first() {
+                                return Err(fail(
+                                    key,
+                                    "source.module-templates",
+                                    "template methods in package modules close in PLAN-963",
+                                    tp.name.span,
+                                ));
+                            }
                         }
                         let m_owner = format!("{owner}.{}", m.name.name);
                         walker.current_owner = m_owner.clone();
@@ -2150,7 +2152,22 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             shift_expr(rhs, offset);
         }
         ExprKind::Unary { operand, .. } => shift_expr(operand, offset),
-        ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::Method { recv, name, args } => {
+            shift_expr(recv, offset);
+            sh(&mut name.span, offset);
+            for a in args {
+                shift_arg(a, offset);
+            }
+        }
+        ExprKind::MethodCall { recv, name, args, instance } => {
+            if let Some(instance) = instance {
+                for ty in &mut instance.types {
+                    shift_ann(ty, offset);
+                }
+                for c in &mut instance.consts {
+                    sh(&mut c.span, offset);
+                }
+            }
             shift_expr(recv, offset);
             sh(&mut name.span, offset);
             for a in args {
@@ -3049,7 +3066,12 @@ impl<'a> Walker<'a> {
                 self.walk_expr(recv, locals)?;
                 self.walk_args(args, locals)
             }
-            ExprKind::MethodCall { recv, name, args } => {
+            ExprKind::MethodCall { recv, name, args, instance } => {
+                if let Some(explicit) = instance.as_mut() {
+                    for ty in &mut explicit.types {
+                        self.walk_ann(ty)?;
+                    }
+                }
                 // `mod.item(..)` / `pkg.mod.item(..)` -> 裸调用；类型静态调用 mangle；
                 // 其余为实例方法。
                 if let Some((target_key, head_span)) = self.module_prefix(recv, locals) {
@@ -3057,12 +3079,18 @@ impl<'a> Walker<'a> {
                     self.record_call(&sym);
                     let mut taken = std::mem::take(args);
                     self.walk_args(&mut taken, locals)?;
-                    e.kind = ExprKind::Call {
-                        callee: Ident {
-                            name: sym,
-                            span: head_span.join(name.span),
+                    let callee = Ident {
+                        name: sym,
+                        span: head_span.join(name.span),
+                    };
+                    e.kind = match instance.take() {
+                        Some(explicit) => ExprKind::ConstCall {
+                            callee,
+                            types: explicit.types,
+                            consts: explicit.consts,
+                            args: taken,
                         },
-                        args: taken,
+                        None => ExprKind::Call { callee, args: taken },
                     };
                     return Ok(());
                 }

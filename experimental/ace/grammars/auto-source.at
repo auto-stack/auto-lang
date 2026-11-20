@@ -2875,6 +2875,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 由 pratt call 后缀在成员后衔接（`x |> .m(args)`）。投影层脱糖
             // 为与点后缀/调用相同的成员原子（AST/HIR 零新节点）。auto 外
             // 整臂裁剪，冻结面逐字节不变。
+            alt(profiles: [auto, auto-packages]) {
+                dot(same-line: true)
+                ident(field: "member")
+                lt(adjacent: true) {}
+                instance-args(field: "iargs")
+                gt() {}
+                lparen() {}
+                args(field: "args")
+                rparen() {}
+            }
             alt(profiles: [auto, auto-packages]) { pipegt() dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { dot(same-line: true) ident(field: "member") }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) double-kw(field: "member", same-line: true) }

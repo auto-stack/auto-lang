@@ -3000,7 +3000,10 @@ fn resolve_detailed_in_mode(
         }
         crate::body_work::record_resolve(&f.name.name);
         if let Some(probe) = instance_probe {
-            probe.begin_body(diags.len());
+            let owner = fn_owner[i]
+                .map(|record| records[record].name.as_str())
+                .or_else(|| fn_vowner[i].map(|variant| coll.variants[variant].name.as_str()));
+            probe.begin_body(&f.name.name, owner, diags.len());
         }
         let lambdas_before = closure_fns.len();
         let mut sites = Vec::new();
@@ -8974,7 +8977,13 @@ F:{d}
         if !self.profile.is_auto_language() {
             return None;
         }
-        let ExprKind::MethodCall { recv, name, args } = &e.kind else {
+        let ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance: None,
+        } = &e.kind
+        else {
             return None;
         };
         if name.name != "new" {
@@ -9191,7 +9200,12 @@ F:{d}
             {
                 Some(self.resolve_bare_ctor("None", None, expect, e.span))
             }
-            ExprKind::MethodCall { recv, name, args } if matches!(&recv.kind, ExprKind::Var(id) if id.name == "May") => {
+            ExprKind::MethodCall {
+                recv,
+                name,
+                args,
+                instance: None,
+            } if matches!(&recv.kind, ExprKind::Var(id) if id.name == "May") => {
                 match (name.name.as_str(), args.len()) {
                     ("nil", 0) => Some(self.resolve_bare_ctor("None", None, expect, e.span)),
                     ("val", 1) => {
@@ -16033,7 +16047,29 @@ F:{d}
         name: &ast::Ident,
         mut rargs: Vec<ResolvedArg>,
         span: Span,
+        explicit: Option<&ast::InstanceArguments>,
     ) -> ResolvedExpr {
+        if let Some(pending) = self.probe_template_method(
+            static_rec,
+            recv.as_ref().map(|value| value.vt),
+            name,
+            &mut rargs,
+            explicit,
+            span,
+        ) {
+            return pending;
+        }
+        if explicit.is_some() {
+            self.bind_err(
+                "source.instances-unsupported",
+                format!(
+                    "`{}` is not a visible method template on this receiver",
+                    name.name
+                ),
+                span,
+            );
+            return instances::pending_expression(span);
+        }
         if let Some(rrecv) = recv {
             // PLAN-782: on the combination surface the record dot postfix
             // claims method chains first, so a TEXT receiver's builtin
@@ -16569,6 +16605,7 @@ F:{d}
             /// into `dest` (PLAN-771).
             RecordMethodOut {
                 name: ast::Ident,
+                explicit: Option<&'a ast::InstanceArguments>,
                 dest: usize,
                 recv_slot: Option<usize>,
                 recv_kind: RecvClass,
@@ -16892,6 +16929,7 @@ F:{d}
                                     recv: r,
                                     name: mn,
                                     args: ma,
+                                    instance: None,
                                 } = &cur.kind
                                 {
                                     if mn.name == "get" && ma.len() == 1 {
@@ -16971,7 +17009,13 @@ F:{d}
                             node: base,
                             slot: bslot,
                         });
-                    } else if let ExprKind::MethodCall { recv, name, args } = &node.kind {
+                    } else if let ExprKind::MethodCall {
+                        recv,
+                        name,
+                        args,
+                        instance,
+                    } = &node.kind
+                    {
                         let text_alias = match &recv.kind {
                             ExprKind::Var(alias) => self.lookup_text_mut_alias(&alias.name),
                             _ => None,
@@ -16988,7 +17032,7 @@ F:{d}
                             }
                             continue;
                         }
-                        if self.profile.is_aggregates() {
+                        if instance.is_none() && self.profile.is_aggregates() {
                             if let Some(se) = self.try_resolve_scalar_enum(node, None) {
                                 out[slot] = se;
                                 continue;
@@ -17003,9 +17047,11 @@ F:{d}
                         // PLAN-1082 (T-03): the List.new sugar intercepts
                         // in the iterative walker too (every expression
                         // position funnels through here).
-                        if let Some(list) = self.try_resolve_legacy_list_new(node, None) {
-                            out[slot] = list;
-                            continue;
+                        if instance.is_none() {
+                            if let Some(list) = self.try_resolve_legacy_list_new(node, None) {
+                                out[slot] = list;
+                                continue;
+                            }
                         }
                         // static pre-classification: bare record type name
                         // receiver resolves to no local — the receiver
@@ -17014,7 +17060,16 @@ F:{d}
                         // generic type ctors (`List<T>.new()`) and qualified
                         // variant ctors (`E.A(e)`) carry a TYPE, not a value;
                         // their receiver slot stays empty.
-                        let recv_class = if let ExprKind::GenericType { name, args } = &recv.kind {
+                        let recv_class = if instance.is_some() {
+                            match &recv.kind {
+                                ExprKind::Var(id) if self.lookup(&id.name).is_none() => self
+                                    .rec_index
+                                    .get(&id.name)
+                                    .copied()
+                                    .map_or(RecvClass::Value, RecvClass::Static),
+                                _ => RecvClass::Value,
+                            }
+                        } else if let ExprKind::GenericType { name, args } = &recv.kind {
                             self.classify_generic_recv(name, args)
                         } else if let ExprKind::Var(id) = &recv.kind {
                             // PLAN-981：AGE 资源服务（`material2d.color`）——接收者
@@ -17080,6 +17135,7 @@ F:{d}
                                 recv: gr,
                                 name: gn,
                                 args: ga,
+                                instance: None,
                             } = &recv.kind
                             {
                                 if gn.name == "get"
@@ -17202,6 +17258,7 @@ F:{d}
                         }
                         subtasks.push(Task::RecordMethodOut {
                             name: name.clone(),
+                            explicit: instance.as_deref(),
                             dest: slot,
                             recv_slot,
                             recv_kind: recv_class,
@@ -17466,6 +17523,7 @@ F:{d}
                 }
                 Task::RecordMethodOut {
                     name,
+                    explicit,
                     dest,
                     recv_slot,
                     recv_kind,
@@ -17638,11 +17696,18 @@ F:{d}
                             };
                         }
                         RecvClass::Value => {
-                            out[dest] = self.method_call_out(rrecv, None, &name, rargs, node_span);
+                            out[dest] = self
+                                .method_call_out(rrecv, None, &name, rargs, node_span, explicit);
                         }
                         RecvClass::Static(ri) => {
-                            out[dest] =
-                                self.method_call_out(rrecv, Some(ri), &name, rargs, node_span);
+                            out[dest] = self.method_call_out(
+                                rrecv,
+                                Some(ri),
+                                &name,
+                                rargs,
+                                node_span,
+                                explicit,
+                            );
                         }
                         RecvClass::ListCtor(li) => {
                             // PLAN-864: `List<T>.new()` — no receiver value;

@@ -735,7 +735,9 @@ fn rewrite_expr(e: &mut Expr, diags: &mut Vec<Diagnostic>) {
                 }
             }
         }
-        ExprKind::MethodCall { recv, name, args } => {
+        ExprKind::MethodCall {
+            recv, name, args, ..
+        } => {
             rewrite_expr(recv, diags);
             for a in args.iter_mut() {
                 if let Arg::Pos(v) = a {
