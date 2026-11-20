@@ -12421,7 +12421,8 @@ F:{d}
         let mk = |vt: VT, kind: RExprKind| ResolvedExpr { span, vt, kind };
         match name.name.as_str() {
             "push" if rargs.len() == 1 => {
-                let mut value = rargs.remove(0).value;
+                let arg = rargs.remove(0);
+                let mut value = self.move_marked_value(arg);
                 // A legacy text storage list copies the source string at
                 // this store. The explicit List<Str> path retains its move rule.
                 if elem == VT::StrOwned
@@ -12446,7 +12447,8 @@ F:{d}
             }
             "insert" if rargs.len() == 2 => {
                 let index = rargs.remove(0).value;
-                let mut value = rargs.remove(0).value;
+                let arg = rargs.remove(0);
+                let mut value = self.move_marked_value(arg);
                 self.check_push_value(&elem, &mut value, name.span);
                 mk(
                     VT::Unit,
@@ -12490,7 +12492,8 @@ F:{d}
             }
             "set" if rargs.len() == 2 => {
                 let index = rargs.remove(0).value;
-                let mut value = rargs.remove(0).value;
+                let arg = rargs.remove(0);
+                let mut value = self.move_marked_value(arg);
                 self.check_push_value(&elem, &mut value, name.span);
                 mk(
                     VT::Unit,
@@ -16925,6 +16928,23 @@ F:{d}
         out
     }
 
+    /// PLAN-105 T-02（U03 真语料 013）：调用实参的 `.move` 标记 → 值上的
+    /// `RExprKind::Move`（整局部所有权转移的 sanctioned 形态）。
+    fn move_marked_value(&self, arg: ResolvedArg) -> ResolvedExpr {
+        let span = arg.value.span;
+        let vt = arg.value.vt;
+        if arg.moved {
+            ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::Move {
+                    inner: Box::new(arg.value),
+                },
+            }
+        } else {
+            arg.value
+        }
+    }
     fn method_sig_params(&self, fn_index: usize, from: usize) -> Vec<VT> {
         // fn sigs live behind key names; params are recoverable from the
         // sig table only by key — the FnResolver carries sigs; for methods

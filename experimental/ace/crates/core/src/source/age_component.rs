@@ -3682,6 +3682,10 @@ fn hook_stmts_lower(
                                             let_values.iter().find(|(n, _)| *n == v.name)
                                         {
                                             *a = crate::source::ast::Arg::Pos(init.clone());
+                                        } else {
+                                            // 未记录构造值：按 `.move` 形态（局部
+                                            // 所有权转移）交给 resolver。
+                                            *a = crate::source::ast::Arg::MovePos(e.clone());
                                         }
                                     }
                                 }
