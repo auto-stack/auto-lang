@@ -36,7 +36,7 @@ pub use native::{
     native_fingerprint, run_native_case, run_native_catalog, run_native_projection, DRIVER_EXE, DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE,
 };
 
-pub const SYNTAX_PROFILES: [&str; 7] = [
+pub const SYNTAX_PROFILES: [&str; 8] = [
     "auto",
     "age-package",
     "packages-ct",
@@ -44,6 +44,7 @@ pub const SYNTAX_PROFILES: [&str; 7] = [
     "text-record-instances",
     "scalar",
     "scheduler",
+    "aac",
 ];
 
 pub const BUDGET: FrontBudget = FrontBudget::WORK_OWNED_64MIB;

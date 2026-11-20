@@ -1912,6 +1912,8 @@ impl Lower<'_, '_> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WrapperKnobs {
     pub observe: bool,
+    /// Disable per-operation text tracing for bounded native runs.
+    pub quiet_text: bool,
     pub budget_bytes: Option<u64>,
     pub cancel_after_work: Option<u64>,
     pub fail_nth: Option<u64>,
@@ -2023,6 +2025,19 @@ fn emit_wrapper(
                     .map_err(backend)?;
                 let r = om.declare_func_in_func(f, fb.func);
                 fb.ins().call(r, &[]);
+            }
+            if knobs.quiet_text {
+                let sig = Signature {
+                    call_conv: CallConv::WindowsFastcall,
+                    params: vec![AbiParam::new(types::I32)],
+                    returns: vec![],
+                };
+                let f = om
+                    .declare_function("ac_rt_trace_switch", Linkage::Import, &sig)
+                    .map_err(backend)?;
+                let r = om.declare_func_in_func(f, fb.func);
+                let off = fb.ins().iconst(types::I32, 0);
+                fb.ins().call(r, &[off]);
             }
             if let Some(b) = knobs.budget_bytes {
                 knob_u64(&mut om, &mut fb, "mn_coll_set_budget", b)?;

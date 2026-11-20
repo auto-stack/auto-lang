@@ -9,6 +9,8 @@ use app.source_ast.ast_start
 use app.source_ast.ast_stride
 use app.source_ast.project_ast
 use app.syntax_cst.flag_generated
+use app.syntax_cst.assert_lossless
+use app.syntax_cst.has_error_nodes
 use app.syntax_frontend.fetch_parts
 use app.syntax_frontend.format_mode
 use app.syntax_frontend.parse_cst
@@ -230,7 +232,8 @@ fn catalog_file(pg List<int>, mode int, src List<int>, name Str, source_id int, 
     let root = parse_cst(pg, mode, src, t, edges, decls, diags, 1048576, 67108864)
     if (root == -2 || root == -3) { return "MODULE_ERR RESOURCE " + name }
     if (root < 0) { return "MODULE_ERR PARSER " + name }
-    if (diags.len() > 0) { return "MODULE_ERR SYNTAX " + name }
+    if (diags.len() > 0 || has_error_nodes(t, edges, root)) { return "MODULE_ERR SYNTAX " + name }
+    if (assert_lossless(t, edges, decls, root, src.len()) != 0) { return "MODULE_ERR LOSSLESS " + name }
     var ast = List<int>.new()
     if (project_ast(t, edges, decls, root, src.len(), source_id, 0, ast) < 0) {
         return "MODULE_ERR PROJECTION " + name

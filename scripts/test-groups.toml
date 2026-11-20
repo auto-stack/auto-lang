@@ -1762,6 +1762,17 @@ domain = "ace"
 all = true
 
 [[group]]
+name = "ace-aac-syntax"
+title = "PLAN-1046 AAC源码前端（Windows，须先运行 prepare-native 并设置 AAC1046_NATIVE_DIR）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-syntax-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"

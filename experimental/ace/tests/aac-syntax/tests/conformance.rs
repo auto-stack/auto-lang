@@ -709,6 +709,168 @@ fn aac1046_catalog_distinguishes_body_and_initializer_edges() {
     ]);
 }
 
+#[test]
+fn aac1046_aac_combined_modules_preserve_source_owners() {
+    use ace_aac_syntax_conformance::run_native_catalog;
+
+    let entry = concat!(
+        "#[api(method = \"GET\", path = \"/api/notes\")]\n",
+        "pub fn list_notes() int { return 1 }\n",
+        "fn lift<T>(a Option<T>, b Result<T,int>, c Future<T>) ?T { return a }\n",
+        "#in sys is current {\n Windows -> use views.render\n Linux -> use views.render\n}\n",
+    );
+    let views = "node Hello { view { text \"Hello\" {} } }\npub fn render() int { return 1 }";
+    let inventory = ["entry.at", "views.at"];
+    let files = [(inventory[0], entry), (inventory[1], views)];
+    let catalog = run_native_catalog("aac", "app", &files, &inventory).unwrap();
+    assert!(catalog.starts_with("CATALOG\n"), "{catalog}");
+    let mut modules = catalog.split("MODULE ").skip(1);
+    for (id, (name, source)) in files.iter().enumerate() {
+        let module = modules.next().expect("catalog includes both sources");
+        assert!(module.lines().next().unwrap().ends_with(name));
+        let (_, ast) = module.split_once("AST\n").unwrap();
+        let oracle = rust_ast_report("aac", source, id as i32, 0);
+        assert_eq!(format!("AST\n{ast}DIAGS\n"), oracle);
+    }
+    assert!(modules.next().is_none());
+    assert_eq!(
+        catalog
+            .lines()
+            .filter(|line| line.starts_with("USE 0 ") && line.ends_with(" views.render"))
+            .count(),
+        2
+    );
+
+    let ast = catalog
+        .split_once("AST\n")
+        .unwrap()
+        .1
+        .split_once("MODULE ")
+        .unwrap()
+        .0;
+    let row = |role: &str, kind: &str, spelling: &str| {
+        let start = entry.find(spelling).unwrap();
+        let expected = format!(" {role} {kind} {start}..{} 0 0 0", start + spelling.len());
+        ast.lines()
+            .find(|line| line.ends_with(&expected))
+            .unwrap_or_else(|| panic!("missing {expected}"))
+    };
+    let attribute = row(
+        "attribute",
+        "declaration-attribute",
+        "#[api(method = \"GET\", path = \"/api/notes\")]",
+    );
+    let owner = row(
+        "owner",
+        "attribute-owner",
+        "pub fn list_notes() int { return 1 }",
+    );
+    assert_eq!(
+        attribute.split_whitespace().next(),
+        owner.split_whitespace().next()
+    );
+    row("generic", "generic-ty", "Option<T>");
+    row("generic", "generic-ty", "Result<T,int>");
+    row("generic", "generic-ty", "Future<T>");
+    row("optional", "optional-ty", "?T");
+
+    for broken in [
+        entry.replace(")]", ")"),
+        entry.replace("?T", "?"),
+        entry.replace("a Option<T>", "#[test] a Option<T>"),
+    ] {
+        let bad = run_native_catalog(
+            "aac",
+            "app",
+            &[(inventory[0], &broken), files[1]],
+            &inventory,
+        )
+        .unwrap();
+        assert_eq!(bad, "MODULE_ERR SYNTAX entry.at");
+    }
+}
+
+#[test]
+fn aac1046_aac_attributes_keep_shapes_and_field_targets() {
+    let source = concat!(
+        "#[test]\nfn exercises_unit() int { return 0 }\n",
+        "#[c,vm,rs]\nfn native_num(x int) int;\n",
+        "#[export(system)]\n#[test]\nfn exported() int { return 0 }\n",
+        "type Record {\n #[serde(default, skip_serializing_if = \"absent\")] enabled bool\n}\n",
+    );
+    let out = run_native_projection("aac", source, (13, 6), None).unwrap();
+    assert_eq!(out, rust_ast_report("aac", source, 13, 6));
+    assert!(out.starts_with("AST\n") && out.ends_with("DIAGS\n"));
+    let rows: Vec<_> = out
+        .lines()
+        .skip(1)
+        .take_while(|row| *row != "DIAGS")
+        .collect();
+    let parent_for = |role: &str, kind: &str, needle: &str| {
+        let start = source.find(needle).unwrap();
+        let coordinate = format!(" {role} {kind} {start}..{} 13 6 0", start + needle.len());
+        rows.iter()
+            .find_map(|row| row.strip_suffix(&coordinate))
+            .unwrap_or_else(|| panic!("missing {coordinate}"))
+            .parse::<usize>()
+            .unwrap()
+    };
+    let field_owner = parent_for(
+        "attribute",
+        "declaration-attribute",
+        "#[serde(default, skip_serializing_if = \"absent\")]",
+    );
+    assert_eq!(
+        rows[field_owner].split_whitespace().nth(2),
+        Some("field-member")
+    );
+    let c_owner = parent_for("attribute", "declaration-attribute", "#[c,vm,rs]");
+    assert_eq!(
+        rows[c_owner].split_whitespace().nth(2),
+        Some("attributed-item")
+    );
+    parent_for("head", "ident", "export");
+    parent_for("value", "expr", "system");
+}
+
+#[test]
+fn aac1046_aac_preserves_const_arguments_constraints_and_ct_expressions() {
+    let source = concat!(
+        "spec Comparable { fn rank() int }\n",
+        "fn sort<T has Comparable>(a T) T { return a }\n",
+        "fn log2<const N>(n int) int { return n }\n",
+        "fn main() int { let v = #{ log2<2>(21) }\n return v }\n",
+    );
+    let actual = run_native_projection("aac", source, (19, 0), None).unwrap();
+    assert_eq!(actual, rust_ast_report("aac", source, 19, 0));
+    assert!(
+        actual.starts_with("AST\n") && actual.ends_with("DIAGS\n"),
+        "{actual}"
+    );
+    for (kind, spelling) in [
+        ("spec-item", "spec Comparable { fn rank() int }"),
+        ("type-param-constraint", "has Comparable"),
+        ("type-param", "const N"),
+        ("generic-call", "log2<2>(21)"),
+        ("hash-expr", "#{ log2<2>(21) }"),
+    ] {
+        let start = source.find(spelling).unwrap();
+        assert!(
+            actual.contains(&format!(
+                " {kind} {start}..{} 19 0 0",
+                start + spelling.len()
+            )),
+            "missing authored {kind}"
+        );
+    }
+    let bad = source.replace("#{ log2<2>(21) }", "#{ log2<2>(21)");
+    let recovered = obs("parse", "aac", &bad);
+    assert!(
+        recovered.starts_with("CANON\n") && !recovered.ends_with("DIAGS\n"),
+        "{recovered}"
+    );
+}
+
 
 fn corpus_source<'a>(document: &'a str, case: &str) -> &'a str {
     let heading = format!("## Case: {case}\n");

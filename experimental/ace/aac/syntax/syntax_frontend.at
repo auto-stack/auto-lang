@@ -1,4 +1,5 @@
 use app.syntax_grammar_data.auto_parts
+use app.syntax_grammar_data.aac_parts
 use app.syntax_grammar_data.age_package_parts
 use app.syntax_grammar_data.packages_ct_parts
 use app.syntax_grammar_data.packages_modules_parts
@@ -24,6 +25,9 @@ use std.bytes.byte_of
 use std.text.equal
 
 pub fn fetch_parts(name Str) List<Str> {
+    if (equal(name.clone(), "aac")) {
+        return aac_parts()
+    }
     if (equal(name.clone(), "auto")) {
         return auto_parts()
     }
@@ -65,7 +69,7 @@ pub fn str_to_bytes(s Str) List<int> {
 }
 
 pub fn format_mode(profile Str) int {
-    if (equal(profile.clone(), "auto")) { return fstr_default() }
+    if (equal(profile.clone(), "auto") || equal(profile.clone(), "aac")) { return fstr_default() }
     if (equal(profile, "scheduler")) { return fstr_scheduler() }
     return 0
 }

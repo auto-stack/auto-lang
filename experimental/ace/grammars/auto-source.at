@@ -123,6 +123,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // （FRONT_CAPS_VERSION ac-source-front/3）；无能力仍走 plain 裁剪 →
         // `#` 非词法面 → 原语法拒绝面不变。
         profile(name: "scalar-ct") { }
+        // PLAN-1046: AAC source packages use one executable grammar for
+        // ordinary code, compile-time items and AGE declarations.
+        profile(name: "aac", includes: [auto, age-package, packages-ct, packages-aggregates-ct, scheduler]) { }
     }
     tokens {
         ws(trivia: true) { charset: " \t\r\n" }
@@ -327,6 +330,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 块内语句序列才用 list-nl 的换行/`;` 分隔纪律。
         program { list { item() {} } }
         item {
+            alt(profiles: [aac]) { attributed-item() {} }
             // PLAN-979（T-H0-I）：AGE 领域节点声明（领域包显式启用时才存在）。
             alt(profiles: [age-h0]) { age-node-item() {} }
             // PLAN-981（IF-981-REF）：`pub node` 形状先于裸 node 备选（首 token
@@ -386,6 +390,54 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-982（B-CONFIG-I）：配置文档面以**一个**顺序入口承载顶层文档行序列。
             alt(profiles: [config-document]) { cfg-document-item() {} }
             alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler, auto-packages]) { script-item() {} }
+        }
+        // Each attribute stays under its actual declaration or field. Keep
+        // target selection and argument interpretation for the consumer.
+        attributed-item(profiles: [aac]) {
+            declaration-attribute(field: "attribute") {}
+            many { declaration-attribute(field: "attribute") {} }
+            attribute-owner(field: "owner")
+        }
+        attribute-owner(profiles: [aac]) {
+            alt { public-item() {} }
+            alt { fn-item() {} }
+            alt { type-item() {} }
+            alt { enum-item() {} }
+            alt { const-item() {} }
+            alt { var-item() {} }
+        }
+        declaration-attribute(profiles: [aac]) {
+            hash() {}
+            lbracket() {}
+            attribute-entry(field: "entry")
+            many { attribute-entry-tail() {} }
+            opt { comma() {} }
+            rbracket() {}
+        }
+        attribute-entry-tail(profiles: [aac]) { comma() {} attribute-entry(field: "entry") }
+        attribute-entry(profiles: [aac]) {
+            attribute-name(field: "name")
+            opt { attribute-arguments(field: "args") }
+        }
+        attribute-name(profiles: [aac]) {
+            alt { ident(field: "head") many { attribute-name-tail() {} } }
+            alt { r-with(field: "head") }
+        }
+        attribute-name-tail(profiles: [aac]) { dot() {} ident(field: "segment") }
+        attribute-arguments(profiles: [aac]) {
+            lparen() {}
+            opt { attribute-values() {} }
+            rparen() {}
+        }
+        attribute-values(profiles: [aac]) {
+            attribute-value(field: "argument")
+            many { attribute-value-tail() {} }
+            opt { comma() {} }
+        }
+        attribute-value-tail(profiles: [aac]) { comma() {} attribute-value(field: "argument") }
+        attribute-value(profiles: [aac]) {
+            alt { ident(field: "key") assign() {} expr(field: "value") }
+            alt { expr(field: "value") }
         }
         // ---- AGE 领域节点（PLAN-979 T-H0-I）----
         // H0 冻结输入：`node <Name> { view { text <text-expr> {} } }`。节点名是
@@ -1635,6 +1687,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { in-if(field: "if") }
             alt { in-for(field: "for") }
             alt { in-use(field: "use") }
+            alt(profiles: [aac]) { attributed-item(field: "declaration") }
             alt { fn-item(field: "function") }
             alt { type-item(field: "type") }
             alt { const-item(field: "const") }
@@ -1976,6 +2029,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         type-item(recover: true, profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) {
             type-kw(field: "kw")
+            many(profiles: [aac]) { declaration-attribute(field: "attribute") {} }
             ident(field: "name")
             // PLAN-963（T-02）：用户泛型记录 `type Point<T> { x T; y T }`
             // （仅 record/aggregates, auto 面；投影按声明序投影参数表，随后语法期
@@ -2141,17 +2195,28 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         member {
             alt { field-member() {} }
+            alt(profiles: [aac]) { attributed-method() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { static-method() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { view-method() {} }
         }
         // 字段：`name` `:`? 类型（旧 parser 的可选冒号）
         field-member {
+            many(profiles: [aac]) { declaration-attribute(field: "attribute") {} }
             ident(field: "name")
             opt { colon() {} }
             ann-ty(field: "ty")
             // PLAN-1083（auto 面）：字段后逗号吸收（命名载荷 `Rect { w int, h int }`
             // 的同行拼写；冻结面行为不变）。
             opt(profiles: [auto, auto-packages]) { comma() {} }
+        }
+        attributed-method(profiles: [aac]) {
+            declaration-attribute(field: "attribute") {}
+            many { declaration-attribute(field: "attribute") {} }
+            attribute-method-owner(field: "owner")
+        }
+        attribute-method-owner(profiles: [aac]) {
+            alt { static-method() {} }
+            alt { view-method() {} }
         }
         static-method {
             static(field: "lead")
@@ -2844,7 +2909,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
         // 原子（引入符与花括号须与表达式同行开始；体为恰一表达式）。
-        hash-expr(profiles: [scalar-ct]) {
+        hash-expr(profiles: [scalar-ct, aac]) {
             hash(same-line: true)
             lbrace(same-line: true)
             expr(field: "expr")
@@ -2874,7 +2939,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         condition-atom(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, auto, scheduler, age-package, packages-modules, config-document, auto-packages]) {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
-            alt(profiles: [scalar-ct]) { hash-expr() {} }
+            alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
@@ -2890,7 +2955,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, aggregates, auto, scheduler, auto-packages]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -2912,7 +2977,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         atom-expr {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
-            alt(profiles: [scalar-ct]) { hash-expr() {} }
+            alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
@@ -2934,7 +2999,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -2957,7 +3022,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
         // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
         // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
-        generic-call(profiles: [scalar-instances, record-instances, text-record-instances]) {
+        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, aac]) {
             ident(field: "name")
             lt() {}
             const-args(field: "cargs")
@@ -2966,9 +3031,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             args(field: "args")
             rparen() {}
         }
-        const-args(profiles: [scalar-instances, record-instances, text-record-instances]) { const-arg() {} many { const-arg-tail() {} } }
-        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances]) { comma() {} const-arg() {} }
-        const-arg(profiles: [scalar-instances, record-instances, text-record-instances]) { int-lit(field: "lit") }
+        const-args(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { const-arg() {} many { const-arg-tail() {} } }
+        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { comma() {} const-arg() {} }
+        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
         generic-atom(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) {
             ident(field: "name")

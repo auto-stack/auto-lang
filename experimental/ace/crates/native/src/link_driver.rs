@@ -10,7 +10,7 @@
 //!
 //! - every failure exit (link error, deadline, publish IO failure) reclaims
 //!   EXACTLY the staged files this call created (staged objects, tmp exe,
-//!   tmp receipt, backup) and reports blocked reclaims — never swallows
+//!   tmp receipt, backup, and response file) and reports blocked reclaims — never swallows
 //!   them;
 //! - with an existing output present, a failed publish RESTORES the old
 //!   exe byte-identically (backup → place → rollback on any failure);
@@ -421,6 +421,80 @@ pub struct PeLink {
     pub receipt_path: PathBuf,
 }
 
+#[cfg(windows)]
+fn windows_link_needs_response(command: &Command) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+
+    // Quoting can at most double the UTF-16 length of each argument.
+    // Keep space for the executable and terminating NUL in CreateProcessW.
+    let quote_bound = |arg: &std::ffi::OsStr| arg.encode_wide().count().saturating_mul(2) + 3;
+    let bound = command
+        .get_args()
+        .map(quote_bound)
+        .fold(quote_bound(command.get_program()), usize::saturating_add);
+    bound >= 32_767
+}
+
+#[cfg(windows)]
+fn quote_coff_response_arg(argument: &str, out: &mut String) {
+    out.push('"');
+    let mut slashes = 0;
+    for ch in argument.chars() {
+        if ch == '\\' {
+            slashes += 1;
+            continue;
+        }
+        let escaped = if ch == '"' { slashes * 2 + 1 } else { slashes };
+        out.extend(std::iter::repeat_n('\\', escaped));
+        out.push(ch);
+        slashes = 0;
+    }
+    out.extend(std::iter::repeat_n('\\', slashes * 2));
+    out.push_str("\"\n");
+}
+
+#[cfg(windows)]
+fn coff_response_arguments(command: &Command) -> std::io::Result<String> {
+    let mut body = String::new();
+    // Keep the dispatcher arguments (`-flavor link`) on the command line.
+    for arg in command.get_args().skip(2) {
+        let arg = arg.to_str().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "link argument is not Unicode",
+            )
+        })?;
+        quote_coff_response_arg(arg, &mut body);
+    }
+    Ok(body)
+}
+
+#[cfg(all(test, windows))]
+mod coff_response_tests {
+    use super::*;
+
+    #[test]
+    fn encodes_windows_arguments_for_an_overlong_coff_link() {
+        let mut command = Command::new("rust-lld");
+        command.args(["-flavor", "link", r"/out:D:\组合 产物\test.exe"]);
+        assert!(!windows_link_needs_response(&command));
+        assert_eq!(
+            coff_response_arguments(&command).unwrap(),
+            "\"/out:D:\\组合 产物\\test.exe\"\n",
+        );
+        command.arg("embedded\"quote").arg("ends in\\");
+        command.args(std::iter::repeat_n(r"D:\组合 产物\object.o", 2_000));
+        assert!(windows_link_needs_response(&command));
+        let response = coff_response_arguments(&command).unwrap();
+        let mut lines = response.lines();
+        assert_eq!(lines.next(), Some(r#""/out:D:\组合 产物\test.exe""#));
+        assert_eq!(lines.next(), Some(r#""embedded\"quote""#));
+        assert_eq!(lines.next(), Some(r#""ends in\\""#));
+        assert!(lines.all(|line| line == r#""D:\组合 产物\object.o""#));
+        assert_eq!(response.lines().count(), 2_003);
+    }
+}
+
 /// Link WITHOUT running (PLAN-871 T-04): the same stage/commit/rollback
 /// discipline as [`link_and_run`], stopping after the receipt is published.
 /// Consumers that must stay in charge of execution (the ac-case worker's
@@ -560,6 +634,47 @@ pub fn link_only(
     for lib in support_libs {
         cmd.arg(lib.display().to_string());
     }
+    #[cfg(windows)]
+    if windows_link_needs_response(&cmd) {
+        use std::io::Write;
+
+        let body = match coff_response_arguments(&cmd) {
+            Ok(body) => body,
+            Err(e) => {
+                return Err(fail(
+                    MnError::Infra(format!("encode COFF response: {e}")),
+                    owned,
+                ))
+            }
+        };
+        let response = workdir.join(format!(".tmp-mn8-args-{tag}.rsp"));
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&response)
+        {
+            Ok(file) => file,
+            Err(e) => {
+                return Err(fail(
+                    MnError::Infra(format!("stage COFF response: {e}")),
+                    owned,
+                ))
+            }
+        };
+        owned.push(response.clone());
+        let written = file.write_all(body.as_bytes());
+        drop(file);
+        if let Err(e) = written {
+            return Err(fail(
+                MnError::Infra(format!("write COFF response: {e}")),
+                owned,
+            ));
+        }
+        let mut indirect = std::ffi::OsString::from("@");
+        indirect.push(response);
+        cmd = Command::new(&lld);
+        cmd.args(["-flavor", "link"]).arg(indirect);
+    }
     let linked = match run_deadlined_captured(
         &mut cmd,
         link_wall(),
@@ -658,8 +773,10 @@ pub fn link_only(
         owned.retain(|p| p != &backup);
     }
     // Success: staged objects were inputs, not products — reclaim them.
-    for p in &stage {
-        let _ = reclaim(p);
+    for p in &owned {
+        if let Some(blocked) = reclaim(p) {
+            eprintln!("mn8 link: staged input not reclaimed after commit: {blocked}");
+        }
     }
     owned.clear();
 

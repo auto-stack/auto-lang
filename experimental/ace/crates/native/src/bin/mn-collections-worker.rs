@@ -354,6 +354,7 @@ fn serve() -> Result<(), String> {
             };
             let knobs = ace_native::collections_lower::WrapperKnobs {
                 observe: true,
+                quiet_text: false,
                 budget_bytes: knob("budget_bytes")?,
                 cancel_after_work: knob("cancel_after_work")?,
                 fail_nth: knob("fail_nth")?,

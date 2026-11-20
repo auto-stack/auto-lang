@@ -81,6 +81,7 @@ pub fn declared_profiles(source: &str) -> Result<Vec<String>, Vec<CompileDiag>> 
         diags: Vec::new(),
         profile: None,
         profile_names: Vec::new(),
+        included_profiles: Vec::new(),
     };
     c.collect_profiles(&root);
     if !c.diags.is_empty() {
@@ -100,6 +101,7 @@ fn compile_inner(source: &str, profile: Option<&str>) -> Result<GrammarProgram, 
         diags: Vec::new(),
         profile: None,
         profile_names: Vec::new(),
+        included_profiles: Vec::new(),
     };
     let program = c.build(atom, profile)?;
     if !c.diags.is_empty() {
@@ -112,6 +114,7 @@ struct Ctx {
     diags: Vec<CompileDiag>,
     profile: Option<String>,
     profile_names: Vec<String>,
+    included_profiles: Vec<String>,
 }
 
 impl Ctx {
@@ -149,6 +152,7 @@ impl Ctx {
                 format!("unsupported profiles version {version}"),
             );
         }
+        let mut compositions = Vec::new();
         for (_k, kid) in sec.kids_iter() {
             let auto_val::Kid::Node(p) = kid else {
                 continue;
@@ -168,14 +172,50 @@ impl Ctx {
                     format!("duplicate profile `{name}`"),
                 );
             }
+            if p.props_iter().any(|(key, _)| matches!(key, auto_val::ValueKey::Str(name) if name.as_str() == "includes")) {
+                let value = p.get_prop_of("includes");
+                let members: Option<Vec<String>> = match &value {
+                    auto_val::Value::Array(items) => items.values.iter().map(as_str).collect(),
+                    _ => None,
+                };
+                match members {
+                    Some(members) if !members.is_empty() => {
+                        compositions.push((name.clone(), members));
+                    }
+                    _ => self.err(
+                        &format!("profiles.profile.{name}"),
+                        "`includes` must be a nonempty list of profile names".into(),
+                    ),
+                }
+            }
             self.profile_names.push(name);
         }
-        if let Some(active) = &self.profile {
-            if !self.profile_names.iter().any(|n| n == active) {
+        for (name, members) in &compositions {
+            let path = format!("profiles.profile.{name}");
+            for (index, member) in members.iter().enumerate() {
+                if member == name {
+                    self.err(&path, "a profile cannot include itself".into());
+                } else if !self.profile_names.contains(member) {
+                    self.err(&path, format!("unknown included profile `{member}`"));
+                } else if compositions.iter().any(|(other, _)| other == member) {
+                    self.err(
+                        &path,
+                        format!("included profile `{member}` must be a base profile"),
+                    );
+                } else if members[..index].contains(member) {
+                    self.err(&path, format!("duplicate included profile `{member}`"));
+                }
+            }
+        }
+        if let Some(active) = self.profile.clone() {
+            if !self.profile_names.contains(&active) {
                 self.err(
                     "profiles",
                     format!("profile `{active}` is not declared in the `profiles` section"),
                 );
+            }
+            if let Some((_, members)) = compositions.into_iter().find(|(name, _)| name == &active) {
+                self.included_profiles = members;
             }
         }
     }
@@ -192,7 +232,7 @@ impl Ctx {
             );
             return true;
         }
-        let Some(active) = self.profile.clone() else {
+        let Some(active) = &self.profile else {
             // plain `compile`（无 profile 模式）：声明了 profiles 段的共享源
             // 必须显式经 compile_profile——静默裁剪会产出一个形状错误的
             // "半语法"，这是编译错误，不是隐式降级。
@@ -202,7 +242,8 @@ impl Ctx {
             );
             return false;
         };
-        list.iter().any(|p| p == &active)
+        list.iter()
+            .any(|p| p == active || self.included_profiles.contains(p))
     }
 
     fn build(

@@ -80,6 +80,7 @@ const DECLARED: &[&str] = &[
     // PLAN-936（T-04）：有限 CT 表达式面（scalar-instances 全表面 +
     // #{ expr } 原子；仅 CT 能力前门使用；声明序在模板面之后）。
     "scalar-ct",
+    "aac",
 ];
 
 #[test]
@@ -102,6 +103,55 @@ fn profiles_compile_all_and_ids_isolate() {
     sorted.sort();
     sorted.dedup();
     assert_eq!(sorted.len(), DECLARED.len(), "grammar ids must be distinct");
+}
+
+#[test]
+fn profiles_aac_combines_rules_in_source_order() {
+    let aac = compile_profile(SOURCE, "aac").unwrap();
+    let names: Vec<_> = aac.rules.iter().map(|rule| rule.name.as_str()).collect();
+    for (name, profile) in [
+        ("ct-item", "packages-ct"),
+        ("age-node-c-item", "age-package"),
+        ("task-item", "scheduler"),
+        ("fn-tail", "auto"),
+    ] {
+        assert!(names.contains(&name), "missing {name}");
+        let base = compile_profile(SOURCE, profile).unwrap();
+        assert!(!base
+            .rules
+            .iter()
+            .any(|rule| rule.name == "declaration-attribute"));
+        let mut allowed = names.iter().copied();
+        for name in base.rules.iter().map(|rule| rule.name.as_str()) {
+            assert!(
+                allowed.any(|candidate| name == candidate),
+                "rule order for {profile}: {name}"
+            );
+        }
+    }
+    assert!(names.contains(&"declaration-attribute"));
+}
+
+#[test]
+fn profiles_reject_incorrect_composition() {
+    let valid = "[auto, age-package, packages-ct, packages-aggregates-ct, scheduler]";
+    for (members, message) in [
+        ("[]", "nonempty list"),
+        ("[auto, 7]", "nonempty list"),
+        ("[unknown]", "unknown included profile"),
+        ("[auto, auto]", "duplicate included profile"),
+        ("[aac]", "cannot include itself"),
+    ] {
+        let input = SOURCE.replace(valid, members);
+        assert_ne!(input, SOURCE);
+        let diagnostics = compile_profile(&input, "aac").unwrap_err();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.message.contains(message)),
+            "{diagnostics:?}"
+        );
+    }
 }
 
 #[test]
