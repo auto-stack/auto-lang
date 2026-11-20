@@ -1,0 +1,140 @@
+use app.binding.bind_budget
+use app.binding.decl_category
+use app.binding.record_fields
+use app.binding.take_step
+use app.binding.type_decl
+use app.semantic_tree.row_count
+use app.types.boolean_type
+use app.types.integer_type
+use app.types.nominal_kind
+use app.types.text_view_type
+use app.types.type_first
+use app.types.type_kind
+
+// One row consists of type, field count, nominal declaration identity, then
+// pairs of field identity and field type in declaration order.
+pub fn record_next(records List<int>, position int) int {
+    return position + 3 + records.get(position + 1) * 2
+}
+
+pub fn record_at(records List<int>, type_id int) int {
+    var at = 0
+    for (at < records.len()) {
+        if (records.get(at) == type_id) { return at }
+        at = record_next(records, at)
+    }
+    return -1
+}
+
+pub fn record_slot(records List<int>, record int, slot int) int {
+    if (record < 0 || slot < 0 || slot >= records.get(record + 1)) { return -1 }
+    return record + 3 + slot * 2
+}
+
+pub fn record_field_number(records List<int>, type_id int, identity int) int {
+    let origin = record_at(records, type_id)
+    if (origin < 0) { return -1 }
+    var index = 0
+    for (index < records.get(origin + 1)) {
+        if (records.get(origin + 3 + index * 2) == identity) { return index }
+        index = index + 1
+    }
+    return -1
+}
+
+pub fn core_value_type(records List<int>, type_id int) bool {
+    return type_id == integer_type() || type_id == boolean_type() || type_id == text_view_type() || record_at(records, type_id) >= 0
+}
+
+pub fn source_record_shapes(ast List<int>, declarations List<int>, facts List<int>, types List<int>, records List<int>, fuel List<int>, deadline i64) int {
+    var definition = 0
+    for (definition < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let lane = facts.get(definition)
+        if (decl_category(declarations, definition) == type_decl() && lane > 0 && type_kind(types, lane) == nominal_kind() && type_first(types, lane) == definition) {
+            var fields = List<int>.new()
+            let indexed = record_fields(ast, declarations, definition, fields, fuel, deadline)
+            if (indexed != 0) { return indexed }
+            records.push(lane)
+            records.push(fields.len())
+            records.push(definition)
+            var slot = 0
+            for (slot < fields.len()) {
+                if (!take_step(fuel, deadline)) { return bind_budget() }
+                let identity = fields.get(slot)
+                records.push(identity)
+                records.push(facts.get(identity))
+                slot = slot + 1
+            }
+        }
+        definition = definition + 1
+    }
+    return 0
+}
+
+pub fn verify_record_shapes(records List<int>, fuel List<int>, deadline i64, error_row List<int>) int {
+    var ready = List<int>.new()
+    var position = 0
+    var count = 0
+    for (position < records.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let limit = record_next(records, position)
+        var field = position + 3
+        for (field < limit) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            let ty = records.get(field + 1)
+            if (ty == text_view_type() || !core_value_type(records, ty)) {
+                error_row.set(0, records.get(field))
+                return -33
+            }
+            field = field + 2
+        }
+        ready.push(0)
+        count = count + 1
+        position = limit
+    }
+    var complete = 0
+    for (complete < count) {
+        let before = complete
+        var unresolved = 0
+        var index = 0
+        position = 0
+        for (position < records.len()) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            let limit = record_next(records, position)
+            if (ready.get(index) == 0) {
+                unresolved = records.get(position + 2)
+                var open = false
+                var field = position + 3
+                for (field < limit) {
+                    let ty = records.get(field + 1)
+                    if (ty != integer_type() && ty != boolean_type()) {
+                        var lookup = 0
+                        var check = 0
+                        for (lookup < records.len()) {
+                            if (!take_step(fuel, deadline)) { return bind_budget() }
+                            if (records.get(lookup) == ty) {
+                                if (ready.get(check) == 0) { open = true }
+                                break
+                            }
+                            check = check + 1
+                            lookup = record_next(records, lookup)
+                        }
+                    }
+                    field = field + 2
+                }
+                if (!open) {
+                    ready.set(index, 1)
+                    complete = complete + 1
+                }
+            }
+            index = index + 1
+            position = limit
+        }
+        if (before == complete) {
+            error_row.set(0, unresolved)
+            return -33
+        }
+    }
+    return 0
+}

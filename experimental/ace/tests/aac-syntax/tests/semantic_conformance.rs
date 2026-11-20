@@ -141,6 +141,56 @@ fn rejects_a_detached_expression_cycle() {
 }
 
 #[test]
+fn verifies_nominal_record_construction_and_nested_field_reads() {
+    let source = concat!(
+        "type Pair { number int; enabled bool }\n",
+        "type Container { inner Pair }\n",
+        "fn fetch(boxed Container) int { return boxed.inner.number }\n",
+        "fn main() int { return fetch(Container(Pair(enabled: true, number: 42))) }\n",
+    );
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR");
+    let bound = ace_core::descriptor::bind(ace_core::text_record_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_text_record(bound).expect("reference verifies nominal record HIR");
+    assert!(
+        atom.contains("ctor_bindings: [{ field: 1u32, arg: 0u32 }, { field: 0u32, arg: 1u32 }]")
+    );
+    assert_eq!(atom.matches(" field_get ").count(), 2);
+
+    let admit = |candidate: &str| {
+        run_core_hir_case(candidate.as_bytes(), "descriptor").expect("Auto HIR admission")
+    };
+    assert_eq!(admit(&atom), "ADMITTED text-record-i32-draft\n");
+    let invalid_field = atom.replacen("path: [0u32]", "path: [7u32]", 1);
+    assert_ne!(invalid_field, atom);
+    assert_eq!(admit(&invalid_field), "ERROR hir.reference\n");
+    let wrong_mapping = atom.replacen(
+        "{ field: 1u32, arg: 0u32 }, { field: 0u32, arg: 1u32 }",
+        "{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }",
+        1,
+    );
+    assert_eq!(admit(&wrong_mapping), "ERROR hir.type\n");
+    let view = atom
+        .lines()
+        .find(|line| line.contains(" borrow_view "))
+        .expect("record argument is borrowed");
+    let borrowed = view.split_whitespace().nth(1).unwrap();
+    let base = view
+        .split_once("base: ")
+        .unwrap()
+        .1
+        .split_whitespace()
+        .next()
+        .unwrap();
+    let missing_view = atom.replacen(&format!("{view}\n"), "", 1).replacen(
+        &format!("eval_args: [\"{borrowed}\"]"),
+        &format!("eval_args: [{base}]"),
+        1,
+    );
+    assert_eq!(admit(&missing_view), "ERROR hir.borrow\n");
+}
+
+#[test]
 fn block_shadowing_initializer_sees_previous_scope() {
     let source = concat!(
         "fn f(x int) int {\n",

@@ -69,6 +69,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/hir/core_globals.at").into(),
         ),
         (
+            "core_records.at".into(),
+            include_str!("../../../aac/hir/core_records.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),

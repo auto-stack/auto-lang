@@ -6,6 +6,7 @@ use app.binding.call_parameter_slots
 use app.binding.constant_decl
 use app.binding.decl_category
 use app.binding.decl_name
+use app.binding.field_decl
 use app.binding.function_decl
 use app.binding.global_var_decl
 use app.binding.local_let_decl
@@ -13,6 +14,7 @@ use app.binding.local_var_decl
 use app.binding.parameter_decl
 use app.binding.resolved_function
 use app.binding.take_step
+use app.binding.type_decl
 use app.core_atom_bound.bind_core_atom
 use app.core_atom_bound.text_record_transport
 use app.core_globals.add_global_intrinsics
@@ -25,6 +27,13 @@ use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.layout_offset
 use app.core_globals.setter_mode
+use app.core_records.core_value_type
+use app.core_records.record_at
+use app.core_records.record_field_number
+use app.core_records.record_next
+use app.core_records.record_slot
+use app.core_records.source_record_shapes
+use app.core_records.verify_record_shapes
 use app.hir_schema_data.core_schema
 use app.hir_schema_data.global_schema
 use app.initializers.global_layout_stride
@@ -46,6 +55,7 @@ use app.semantic_tree.spelling
 use app.semantic_tree.start_of
 use app.syntax_cst.join_rows
 use app.syntax_frontend.str_to_bytes
+use app.typecheck.record_constructor
 use app.typecheck.text_length_receiver
 use app.types.boolean_type
 use app.types.integer_type
@@ -61,6 +71,7 @@ pub fn hir_shape_error() int { return -34 }
 pub fn hir_initialization_error() int { return -40 }
 pub fn hir_mutability_error() int { return -41 }
 pub fn hir_global_authority_error() int { return -43 }
+pub fn hir_borrow_error() int { return -47 }
 
 fn constant_op() int { return 1 }
 fn read_op() int { return 2 }
@@ -70,11 +81,13 @@ fn add_op() int { return 5 }
 fn multiply_op() int { return 6 }
 fn text_literal_op() int { return 7 }
 fn text_length_op() int { return 8 }
+fn record_constructor_op() int { return 9 }
+fn record_field_op() int { return 10 }
+fn record_view_op() int { return 11 }
 fn initialize_op() int { return 1 }
 fn assign_op() int { return 2 }
 fn immutable_slot() int { return -1 }
 fn mutable_slot() int { return -2 }
-fn supported_type(t int) bool { return t == integer_type() || t == boolean_type() || t == text_view_type() }
 
 // Atom and Auto share these four escapes. Preserve exact UTF-8 source bytes
 // for this subset, and reject other spellings before issuing verified HIR.
@@ -170,7 +183,34 @@ fn global_category(category int) bool {
     return category == constant_decl() || category == global_var_decl()
 }
 
-fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_field_chain(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, records List<int>, expressions List<int>, exprs List<int>, args List<int>, row int, owner int, fuel List<int>, deadline i64, errors List<int>) int {
+    let receiver = first_child(links, row)
+    if (receiver < 0 || expressions.get(receiver) < 0) { return 0 }
+    var shape = facts.get(receiver)
+    if (record_at(records, shape) < 0) { return 0 }
+    var step = next_sibling(links, receiver)
+    var value = expressions.get(receiver)
+    for (step >= 0) {
+        if (!take_step(fuel, deadline)) { return failed(errors, step, bind_budget()) }
+        let member = child_with_role(pg, ast, links, step, "member")
+        if (member < 0) { return failed(errors, step, hir_unsupported()) }
+        let field = uses.get(member)
+        if (field < 0 || decl_category(declarations, field) != field_decl()) { return failed(errors, step, hir_unsupported()) }
+        let slot = record_field_number(records, shape, field)
+        if (slot < 0) { return failed(errors, step, hir_reference_error()) }
+        shape = facts.get(field)
+        append_expression(exprs, step, owner, record_field_op(), shape, slot)
+        args.push(step)
+        args.push(value)
+        args.push(0)
+        value = step
+        step = next_sibling(links, step)
+    }
+    expressions.set(row, value)
+    return 0
+}
+
+fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var owners = List<int>.new()
     var scalar = List<int>.new()
     scalar.push(0)
@@ -194,7 +234,7 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
         if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
         let owner = owners.get(row)
         let t = facts.get(row)
-        if (owner >= 0 && supported_type(t)) {
+        if (owner >= 0 && core_value_type(records, t)) {
             let node_kind = kind(pg, ast, row)
             let binary = source_binary(node_kind.clone())
             if (binary != 0 && first_child(links, row) >= 0) {
@@ -257,24 +297,43 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                     row = row - 1
                     continue
                 }
-                let target = resolved_function(pg, ast, links, declarations, uses, row)
+                var target = resolved_function(pg, ast, links, declarations, uses, row)
+                var operation = call_op()
+                if (record_constructor(pg, ast, links, declarations, uses, facts, types, row) >= 0) {
+                    target = t
+                    operation = record_constructor_op()
+                }
                 if (target < 0) { return failed(errors, row, hir_unsupported()) }
-                add_expression(exprs, expressions, row, owner, call_op(), t, target)
                 var pos = 0
                 for (pos < mappings.len()) {
                     if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
                     if (mappings.get(pos) == row) {
-                        let evaluation = expressions.get(mappings.get(pos + 1))
+                        let source_arg = mappings.get(pos + 1)
+                        var evaluation = expressions.get(source_arg)
                         if (evaluation < 0) { return failed(errors, row, hir_unsupported()) }
+                        let lane = facts.get(source_arg)
+                        if (operation == call_op() && record_at(records, lane) >= 0) {
+                            let borrowed = count * 7 + source_arg
+                            append_expression(exprs, borrowed, owner, record_view_op(), lane, evaluation)
+                            args.push(borrowed)
+                            args.push(evaluation)
+                            args.push(0)
+                            evaluation = borrowed
+                        }
                         args.push(row)
                         args.push(evaluation)
                         args.push(mappings.get(pos + 2))
                     }
                     pos = pos + call_mapping_stride()
                 }
+                add_expression(exprs, expressions, row, owner, operation, t, target)
             }
             let expr_wrapper = node_kind == "expr" || node_kind == "unary-expr" || node_kind == "atom-expr" || node_kind == "postfix-expr"
             let cond_wrapper = node_kind == "if-cond" || node_kind == "condition-expr" || node_kind == "condition-unary" || node_kind == "condition-postfix" || node_kind == "condition-atom"
+            if (node_kind == "postfix-expr" || node_kind == "condition-postfix") {
+                let status = lower_field_chain(pg, ast, links, declarations, uses, facts, records, expressions, exprs, args, row, owner, fuel, deadline, errors)
+                if (status != 0) { return status }
+            }
             if (expr_wrapper || cond_wrapper) {
                 let child = first_child(links, row)
                 if (child >= 0 && next_sibling(links, child) < 0) {
@@ -392,7 +451,8 @@ fn lower_global_initializers(count int, layouts List<int>, expression_ids List<i
         let source = layouts.get(at)
         if (!take_step(fuel, deadline)) { return failed(errors, source, bind_budget()) }
         let value = expression_ids.get(layouts.get(at + 3))
-        if (!supported_type(layouts.get(at + 1)) || value < 0) { return failed(errors, source, hir_unsupported()) }
+        let lane = layouts.get(at + 1)
+        if ((lane != integer_type() && lane != boolean_type()) || value < 0) { return failed(errors, source, hir_unsupported()) }
         let owner = global_definition(count, source, initializer_mode())
         let evaluated = append_global_write(count, source, source, owner, value, exprs, args)
         defs.push(owner)
@@ -410,9 +470,9 @@ fn lower_global_initializers(count int, layouts List<int>, expression_ids List<i
     return 0
 }
 
-fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var expressions = List<int>.new()
-    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, exprs, args, expressions, fuel, deadline, errors)
+    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, types, records, exprs, args, expressions, fuel, deadline, errors)
     if (lowered != 0) { return lowered }
     var row = 0
     for (row < row_count(ast)) {
@@ -420,7 +480,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
         let category = decl_category(declarations, row)
         if (category == function_decl()) {
             let body = child_with_role(pg, ast, links, row, "body")
-            if (body < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
+            if (body < 0 || !core_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
             let infer_return = child_with_role(pg, ast, links, row, "ty") < 0
             let result = lower_blocks(pg, ast, links, declarations, uses, expressions, body, row, infer_return, locals, exprs, args, blocks, statements, fuel, deadline, errors)
             if (result != 0) { return result }
@@ -433,7 +493,8 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
             for (slot < params.len()) {
                 let param = params.get(slot)
                 let ty = facts.get(param)
-                if (!supported_type(ty)) { return failed(errors, param, hir_unsupported()) }
+                if (!core_value_type(records, ty)) { return failed(errors, param, hir_unsupported()) }
+                if (child_with_role(pg, ast, links, param, "mode") >= 0) { return failed(errors, param, hir_unsupported()) }
                 locals.push(row)
                 locals.push(param)
                 locals.push(ty)
@@ -447,7 +508,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
                     if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
                     owner = parent(ast, owner)
                 }
-                if (owner < 0 || !supported_type(facts.get(row))) { return failed(errors, row, hir_unsupported()) }
+                if (owner < 0 || !core_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
                 var slot = immutable_slot()
                 if (category == local_var_decl()) { slot = mutable_slot() }
                 locals.push(owner)
@@ -455,7 +516,8 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
                 locals.push(facts.get(row))
                 locals.push(slot)
             } else {
-                if (category != 0 && category != parameter_decl() && !global_category(category)) { return failed(errors, row, hir_unsupported()) }
+                let type_member = category == type_decl() || category == field_decl()
+                if (category != 0 && category != parameter_decl() && !type_member && !global_category(category)) { return failed(errors, row, hir_unsupported()) }
             }
         }
         row = row + 1
@@ -487,7 +549,7 @@ fn param_count(parameters List<int>, owner int) int {
     return count
 }
 
-fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, layouts List<int>, rows int, fuel List<int>, deadline i64) int {
+fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, position int, records List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64) int {
     let target_id = exprs.get(position + 4)
     if (global_mode(rows, target_id) == initializer_mode()) { return hir_reference_error() }
     let definition = find_row(defs, 4, target_id, 0)
@@ -524,6 +586,8 @@ fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<
             if (param < 0 || arg < 0 || arg >= position) { return hir_reference_error() }
             if (exprs.get(arg + 1) != owner) { return hir_owner_error() }
             if (parameters.get(param + 2) != exprs.get(arg + 3)) { return hir_type_error() }
+            let lane = exprs.get(arg + 3)
+            if (record_at(records, lane) >= 0 && exprs.get(arg + 2) != record_view_op()) { return hir_borrow_error() }
             slots.set(slot, 1)
             found = found + 1
         }
@@ -614,6 +678,19 @@ fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, fuel List<in
     return 0
 }
 
+fn unary_operand(args List<int>, expression int) int {
+    var operand = -1
+    var at = 0
+    for (at < args.len()) {
+        if (args.get(at) == expression) {
+            if (operand >= 0 || args.get(at + 2) != 0) { return -1 }
+            operand = args.get(at + 1)
+        }
+        at = at + 3
+    }
+    return operand
+}
+
 fn verify_text_length(exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
     if (!has_budget(fuel, deadline, exprs.len() / 5 + args.len() / 3)) { return bind_budget() }
     let id = exprs.get(position)
@@ -621,16 +698,76 @@ fn verify_text_length(exprs List<int>, args List<int>, position int, fuel List<i
     let input = find_row(exprs, 5, operand, 0)
     if (input < 0 || input == position || exprs.get(input + 1) != exprs.get(position + 1)) { return hir_reference_error() }
     if (exprs.get(input + 3) != text_view_type() || exprs.get(position + 3) != integer_type()) { return hir_type_error() }
-    var matched = false
+    if (unary_operand(args, id) != operand) { return hir_reference_error() }
+    return 0
+}
+
+fn verify_record_field(records List<int>, exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, records.len() + exprs.len() / 5 + args.len() / 3)) { return bind_budget() }
+    let id = exprs.get(position)
+    let base = find_row(exprs, 5, unary_operand(args, id), 0)
+    if (base < 0 || base == position || exprs.get(base + 1) != exprs.get(position + 1)) { return hir_reference_error() }
+    let origin = record_at(records, exprs.get(base + 3))
+    if (origin < 0) { return hir_type_error() }
+    let field = record_slot(records, origin, exprs.get(position + 4))
+    if (field < 0) { return hir_reference_error() }
+    if (records.get(field + 1) != exprs.get(position + 3)) { return hir_type_error() }
+    return 0
+}
+
+fn verify_record_view(records List<int>, exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, records.len() + exprs.len() / 5 + args.len() / 3)) { return bind_budget() }
+    let id = exprs.get(position)
+    let base_id = unary_operand(args, id)
+    let base = find_row(exprs, 5, base_id, 0)
+    if (base < 0 || base == position || base_id != exprs.get(position + 4) || exprs.get(base + 1) != exprs.get(position + 1)) { return hir_reference_error() }
+    let lane = exprs.get(position + 3)
+    if (record_at(records, lane) < 0 || exprs.get(base + 3) != lane) { return hir_type_error() }
     var at = 0
     for (at < args.len()) {
-        if (args.get(at) == id) {
-            if (matched || args.get(at + 1) != operand || args.get(at + 2) != 0) { return hir_reference_error() }
-            matched = true
+        if (args.get(at + 1) == id) {
+            if (!has_budget(fuel, deadline, exprs.len() / 5)) { return bind_budget() }
+            let parent = find_row(exprs, 5, args.get(at), 0)
+            if (parent >= 0 && exprs.get(parent + 2) == call_op()) { return 0 }
+            return hir_borrow_error()
         }
         at = at + 3
     }
-    if (!matched) { return hir_reference_error() }
+    return hir_borrow_error()
+}
+
+fn verify_record_constructor(records List<int>, exprs List<int>, args List<int>, position int, fuel List<int>, deadline i64) int {
+    if (!has_budget(fuel, deadline, records.len() + args.len() / 3)) { return bind_budget() }
+    let shape = exprs.get(position + 4)
+    let origin = record_at(records, shape)
+    if (origin < 0 || shape != exprs.get(position + 3)) { return hir_type_error() }
+    let fields = records.get(origin + 1)
+    var mapped = List<int>.new()
+    var slot = 0
+    for (slot < fields) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        mapped.push(0)
+        slot = slot + 1
+    }
+    let id = exprs.get(position)
+    let owner = exprs.get(position + 1)
+    var count = 0
+    var at = 0
+    for (at < args.len()) {
+        if (args.get(at) == id) {
+            slot = args.get(at + 2)
+            let field = record_slot(records, origin, slot)
+            if (field < 0 || mapped.get(slot) != 0) { return hir_reference_error() }
+            if (!has_budget(fuel, deadline, exprs.len() / 5)) { return bind_budget() }
+            let value = find_row(exprs, 5, args.get(at + 1), 0)
+            if (value < 0 || value == position || exprs.get(value + 1) != owner) { return hir_reference_error() }
+            if (exprs.get(value + 3) != records.get(field + 1)) { return hir_type_error() }
+            mapped.set(slot, 1)
+            count = count + 1
+        }
+        at = at + 3
+    }
+    if (count != fields) { return hir_reference_error() }
     return 0
 }
 
@@ -873,7 +1010,14 @@ fn verify_initializer_chain(defs List<int>, parameters List<int>, exprs List<int
     return 0
 }
 
-fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+    var record_error = List<int>.new()
+    record_error.push(0)
+    let shape_status = verify_record_shapes(records, fuel, deadline, record_error)
+    if (shape_status != 0) {
+        failed(errors, record_error.get(0), shape_status)
+        return None
+    }
     var position = 0
     for (position < defs.len()) {
         let id = defs.get(position)
@@ -918,7 +1062,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         let data = exprs.get(position + 4)
         var status = hir_reference_error()
         if (op == constant_op() || op == read_op() || op == call_op()) { status = 0 }
-        if (!supported_type(type_id)) { status = hir_type_error() }
+        if (!core_value_type(records, type_id)) { status = hir_type_error() }
         if (op == read_op()) {
             let param = find_row(parameters, 4, data, 1)
             if (param < 0 || parameters.get(param) != owner) {
@@ -933,7 +1077,10 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             if (type_id == text_view_type() && data >= 0) { status = 0 }
         }
         if (op == text_length_op()) { status = verify_text_length(exprs, args, position, fuel, deadline) }
-        if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, layouts, rows, fuel, deadline) }
+        if (op == record_constructor_op()) { status = verify_record_constructor(records, exprs, args, position, fuel, deadline) }
+        if (op == record_field_op()) { status = verify_record_field(records, exprs, args, position, fuel, deadline) }
+        if (op == record_view_op()) { status = verify_record_view(records, exprs, args, position, fuel, deadline) }
+        if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, records, layouts, rows, fuel, deadline) }
         if (op == less_than_op() || op == add_op() || op == multiply_op()) {
             status = verify_binary(exprs, args, position, op, fuel, deadline)
         }
@@ -965,7 +1112,7 @@ fn has_text(defs List<int>, parameters List<int>, exprs List<int>) bool {
     return find_row(exprs, 5, text_view_type(), 3) >= 0
 }
 
-fn write_call(args List<int>, call int, target int) Str {
+fn write_mapped_arguments(args List<int>, call int, evaluation_field Str, binding_field Str, formal_field Str) Str {
     var evaluation = ""
     var bindings = ""
     var at = 0
@@ -977,12 +1124,36 @@ fn write_call(args List<int>, call int, target int) Str {
                 bindings = bindings + ", "
             }
             evaluation = evaluation + ref_text("e", args.get(at + 1))
-            bindings = bindings + "{ param: " + from_int(args.get(at + 2)) + "u32, arg: " + from_int(index) + "u32 }"
+            bindings = bindings + "{ " + formal_field + ": " + from_int(args.get(at + 2)) + "u32, arg: " + from_int(index) + "u32 }"
             index = index + 1
         }
         at = at + 3
     }
-    return "callee: " + ref_text("d", target) + "; eval_args: [" + evaluation + "]; bindings: [" + bindings + "]"
+    return evaluation_field + ": [" + evaluation + "]; " + binding_field + ": [" + bindings + "]"
+}
+
+fn write_call(args List<int>, call int, target int) Str {
+    return "callee: " + ref_text("d", target) + "; " + write_mapped_arguments(args, call, "eval_args", "bindings", "param")
+}
+
+fn write_record_types(records List<int>, ast List<int>, src List<int>, declarations List<int>) Str {
+    var output = List<Str>.new()
+    var at = 0
+    for (at < records.len()) {
+        let limit = record_next(records, at)
+        var fields = ""
+        var field = at + 3
+        for (field < limit) {
+            if (field > at + 3) { fields = fields + ", " }
+            let name = spelling(src, ast, decl_name(declarations, records.get(field)))
+            fields = fields + "{ name: \"" + name + "\", type: " + type_id_text(records.get(field + 1), true) + " }"
+            field = field + 2
+        }
+        let line = " type " + id("t", records.get(at)) + " record { fields: [" + fields + "] }\n"
+        output.push(line.move)
+        at = limit
+    }
+    return join_rows(output, output.len())
 }
 
 fn write_binary(args List<int>, expression int, op int) Str {
@@ -1067,12 +1238,12 @@ fn render_definition(def int, ast List<int>, src List<int>, declarations List<in
     return " function " + key + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
 }
 
-fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
     var output = List<Str>.new()
     var schema = "auto.hir.core.draft"
     var profile = "core-i32-draft"
     let text_domain = has_text(defs, parameters, exprs)
-    if (has_globals || text_domain) {
+    if (has_globals || text_domain || records.len() > 0) {
         schema = "auto.hir.text-record.draft"
         profile = "text-record-i32-draft"
     }
@@ -1080,6 +1251,10 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     if (text_domain) { capabilities = " requires: [\"ac.runtime.text.v1\"]\n" }
     let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
     output.push(opening.move)
+    if (records.len() > 0) {
+        let record_declarations = write_record_types(records, ast, src, declarations)
+        output.push(record_declarations.move)
+    }
     var def_at = 0
     for (def_at < checked.definitions * 4) {
         let def = defs.get(def_at)
@@ -1125,7 +1300,7 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 if (slot == mutable_slot()) { entries = "binding; mutable: true" }
                 if (slot >= 0) { entries = "param; index: " + from_int(slot) + "u32" }
                 let lane = parameters.get(param_at + 2)
-                if (slot >= 0 && lane == text_view_type()) { entries = entries + "; mode: view" }
+                if (slot >= 0 && (lane == text_view_type() || record_at(records, lane) >= 0)) { entries = entries + "; mode: view" }
                 let line = " local " + id("l", param) + " " + type_id_text(lane, false) + " { name: \"" + name + "\"; role: " + entries + " }\n"
                 output.push(line.move)
             }
@@ -1163,6 +1338,18 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 if (op == text_length_op()) {
                     form = "text_len"
                     fields = "operand: " + ref_text("e", data)
+                }
+                if (op == record_constructor_op()) {
+                    form = "record_ctor"
+                    fields = "record: " + type_id_text(data, true) + "; " + write_mapped_arguments(args, expr, "field_args", "ctor_bindings", "field")
+                }
+                if (op == record_field_op()) {
+                    form = "field_get"
+                    fields = "base: " + ref_text("e", unary_operand(args, expr)) + "; path: [" + from_int(data) + "u32]"
+                }
+                if (op == record_view_op()) {
+                    form = "borrow_view"
+                    fields = "base: " + ref_text("e", data)
                 }
                 let line = " expr " + id("e", expr) + " " + form + " { type: " + t + "; " + fields + " }\n"
                 output.push(line.move)
@@ -1206,7 +1393,7 @@ fn supported_source_item(pg List<int>, ast List<int>, links List<int>, declarati
         let actual = first_child(links, body)
         if (actual < 0) { return false }
         let form = kind(pg, ast, actual)
-        return form == "fn-item" || form == "use-tail-p" || global_category(decl_category(declarations, actual))
+        return form == "fn-item" || form == "use-tail-p" || form == "type-item" || global_category(decl_category(declarations, actual))
     }
     if (node_kind == "script-item") {
         var statement = first_child(links, item)
@@ -1221,10 +1408,11 @@ fn supported_source_item(pg List<int>, ast List<int>, links List<int>, declarati
         }
         return globals > 0
     }
-    return node_kind == "fn-item" || node_kind == "use-item-p"
+    return node_kind == "fn-item" || node_kind == "type-item" || node_kind == "use-item-p"
 }
 
 fn source_origin(rows int, row int) int {
+    if (row >= rows * 7 && row < rows * 8) { return row - rows * 7 }
     if (row >= rows * 6 && row < rows * 7) { return row - rows * 6 }
     if (global_mode(rows, row) != 0) { return global_source(rows, row) }
     if (row >= rows && row < rows * 3) { return (row - rows) / 2 }
@@ -1232,7 +1420,7 @@ fn source_origin(rows int, row int) int {
     return 0
 }
 
-pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
+pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
     var module_id = 0
     for (module_id < roots.len()) {
         var member = first_child(links, roots.get(module_id))
@@ -1256,7 +1444,13 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var args = List<int>.new()
     var blocks = List<int>.new()
     var statements = List<int>.new()
-    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, layouts, defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
+    var records = List<int>.new()
+    let shaped = source_record_shapes(ast, declarations, facts, types, records, fuel, deadline)
+    if (shaped != 0) {
+        failed(errors, 0, shaped)
+        return ""
+    }
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
     if (status != 0) { return "" }
     if (control == 1) { defs.set(2, row_count(ast)) }
     if (control == 2) {
@@ -1270,9 +1464,9 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
         }
     }
     if (control == 3 && layouts.len() >= global_layout_stride()) { layouts.set(2, 0) }
-    let verified = verify(defs, parameters, exprs, args, blocks, statements, layouts, row_count(ast), fuel, deadline, errors)
+    let verified = verify(defs, parameters, exprs, args, blocks, statements, records, layouts, row_count(ast), fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, ast, src, declarations, modules, layouts.len() > 0) }
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, ast, src, declarations, modules, layouts.len() > 0) }
         None -> { errors.set(0, source_origin(row_count(ast), errors.get(0))) }
     }
     return ""
@@ -1304,7 +1498,8 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     var arguments = List<int>.new()
     var blocks = List<int>.new()
     var statements = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, names, module_path, definitions, parameters, expressions, arguments, blocks, statements)
+    var records = List<int>.new()
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status == hir_global_authority_error()) { return status }
     var schema = core_schema()
@@ -1314,7 +1509,7 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     if (!shaped) { return hir_shape_error() }
     if (status != 0) { return status }
     var errors = List<int>.new()
-    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, layouts, rows, fuel, deadline, errors)
+    let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, records, layouts, rows, fuel, deadline, errors)
     is verified {
         Some(_) -> {
             if (text_record) { return 1 }
