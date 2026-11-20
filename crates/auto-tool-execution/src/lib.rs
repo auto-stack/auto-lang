@@ -1634,6 +1634,34 @@ pub fn run_bounded(
     spec: &ExecutionSpec,
     policy: &BoundedPolicy,
 ) -> Result<BoundedResult, BoundedError> {
+    run_bounded_inner(spec, policy, None)
+}
+
+/// Run the same contained exchange with caller-owned cancellation. Successful
+/// cancellation discards captured data and reports a reaped process tree.
+pub fn run_bounded_cancellable(
+    spec: &ExecutionSpec,
+    policy: &BoundedPolicy,
+    cancel: &AtomicBool,
+) -> Result<BoundedResult, BoundedError> {
+    run_bounded_inner(spec, policy, Some(cancel))
+}
+
+fn cancelled_result(elapsed: Duration, cleanup_elapsed: Duration) -> BoundedResult {
+    BoundedResult {
+        kind: ExitKind::Cancelled,
+        stdout: None,
+        stderr: None,
+        elapsed,
+        cleanup_elapsed: Some(cleanup_elapsed),
+    }
+}
+
+fn run_bounded_inner(
+    spec: &ExecutionSpec,
+    policy: &BoundedPolicy,
+    cancel: Option<&AtomicBool>,
+) -> Result<BoundedResult, BoundedError> {
     if policy.exec_deadline.is_zero() || policy.cleanup_deadline.is_zero() {
         return Err(bounded_infra(ExecutionError::InvalidSpec(
             "bounded policy deadlines must be nonzero".into(),
@@ -1641,6 +1669,10 @@ pub fn run_bounded(
     }
     validate(spec).map_err(bounded_infra)?;
     let start = Instant::now();
+    let cancelled = || cancel.is_some_and(|flag| flag.load(Ordering::Acquire));
+    if cancelled() {
+        return Ok(cancelled_result(start.elapsed(), Duration::ZERO));
+    }
     let exec_at = start + policy.exec_deadline;
     let mut proc = spawn(spec).map_err(bounded_infra)?;
 
@@ -1701,6 +1733,25 @@ pub fn run_bounded(
     let mut timed_out = false;
     let mut cap_hit: Option<(&'static str, usize, usize)> = None;
     let status = loop {
+        if cancelled() {
+            let cleanup = bounded_cleanup(
+                &mut proc,
+                &mut stdout_w,
+                &mut stderr_w,
+                &mut writer_w,
+                policy.cleanup_deadline,
+            );
+            if !cleanup.completed {
+                return Err(BoundedError::Infra {
+                    source: ExecutionError::Io {
+                        stage: "cancel owned exchange",
+                        source: io::Error::other("cancellation left unconfirmed resources"),
+                    },
+                    cleanup: Some(cleanup),
+                });
+            }
+            return Ok(cancelled_result(start.elapsed(), cleanup.elapsed));
+        }
         let remaining = exec_at.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             timed_out = true;
@@ -1929,6 +1980,9 @@ pub fn run_bounded(
         });
     }
 
+    if cancelled() {
+        return Ok(cancelled_result(start.elapsed(), Duration::ZERO));
+    }
     Ok(BoundedResult {
         kind: ExitKind::from_status(&status),
         stdout: stdout.flatten(),

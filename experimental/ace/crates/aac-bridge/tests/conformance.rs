@@ -221,3 +221,31 @@ fn ct_rejects_target_and_host_capability_changes() {
         started.elapsed()
     );
 }
+
+#[test]
+fn ct_cancellation_has_its_own_terminal_class_and_next_request_runs() {
+    let started = Instant::now();
+    let client = client();
+    let mir = fixture(false);
+    let request = request(Mode::CompileTime, &mir, 30);
+    let abc = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    let cancel = std::sync::atomic::AtomicBool::new(true);
+    let error = client.run_cancellable(&request, &abc, &cancel).unwrap_err();
+    assert_eq!(error.kind, ace_aac_bridge::FailureKind::Cancelled);
+    assert_eq!(error.code, "bridge.cancelled");
+
+    let mut next = request;
+    next.id = [31; 16];
+    let (outcome, _) = execute(&client, &next, &mir);
+    assert!(matches!(
+        outcome,
+        Outcome::Value {
+            value: Value::I32(7),
+            ..
+        }
+    ));
+    eprintln!(
+        "ct_cancellation_has_its_own_terminal_class_and_next_request_runs {:?}",
+        started.elapsed()
+    );
+}

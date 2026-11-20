@@ -1,10 +1,12 @@
 use crate::protocol::{read_frame, write_frame, Frame, REQUEST_MAGIC, RESPONSE_MAGIC};
 use crate::{Failure, Outcome, Request, Response, REQUEST_CAP, RESPONSE_CAP};
 use auto_tool_execution::{
-    run_bounded, BoundedError, BoundedPolicy, ExecutionSpec, ExitKind, StdioPolicy, TreeScope,
+    run_bounded, run_bounded_cancellable, BoundedError, BoundedPolicy, ExecutionSpec, ExitKind,
+    StdioPolicy, TreeScope,
 };
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 const STDERR_CAP: usize = 64 * 1024;
@@ -60,10 +62,28 @@ impl Client {
     }
 
     pub fn run(&self, request: &Request, abc: &[u8]) -> Result<(Response, Vec<u8>), Failure> {
-        let mut encoded = Vec::new();
+        self.run_inner(request, abc, None)
+    }
+
+    pub fn run_cancellable(
+        &self,
+        request: &Request,
+        abc: &[u8],
+        cancel: &AtomicBool,
+    ) -> Result<(Response, Vec<u8>), Failure> {
+        self.run_inner(request, abc, Some(cancel))
+    }
+
+    fn run_inner(
+        &self,
+        request: &Request,
+        abc: &[u8],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<(Response, Vec<u8>), Failure> {
         let started = Instant::now();
+        let mut encoded = Vec::new();
         let hash = write_frame(&mut encoded, REQUEST_MAGIC, REQUEST_CAP, request, abc)?;
-        self.run_encoded(request, encoded, hash, started)
+        self.run_encoded(request, encoded, hash, started, cancel)
     }
 
     /// File transport into the same contained worker exchange. The caller
@@ -101,7 +121,7 @@ impl Client {
         }
         let Frame { metadata, hash, .. } =
             read_frame::<Request>(encoded.as_slice(), REQUEST_MAGIC, REQUEST_CAP)?;
-        let (response, payload) = self.run_encoded(&metadata, encoded, hash, started)?;
+        let (response, payload) = self.run_encoded(&metadata, encoded, hash, started, None)?;
         let parent = target.parent().ok_or_else(|| {
             Failure::admission("bridge.stage", "response path has no parent directory")
         })?;
@@ -126,6 +146,7 @@ impl Client {
         encoded: Vec<u8>,
         hash: [u8; 32],
         started: Instant,
+        cancel: Option<&AtomicBool>,
     ) -> Result<(Response, Vec<u8>), Failure> {
         let max = request.mode.budget().min(Duration::from_millis(u64::from(
             request.options.remaining_ms,
@@ -142,16 +163,24 @@ impl Client {
         spec.stdin = StdioPolicy::Piped;
         spec.stdin_data = Some(encoded);
         spec.tree_scope = TreeScope::ProcessTree;
-        let response = run_bounded(
-            &spec,
-            &BoundedPolicy {
-                exec_deadline: remaining,
-                cleanup_deadline: CLEANUP_BUDGET,
-                stdout_cap: Some(RESPONSE_CAP),
-                stderr_cap: Some(STDERR_CAP),
-            },
-        )
+        let policy = BoundedPolicy {
+            exec_deadline: remaining,
+            cleanup_deadline: CLEANUP_BUDGET,
+            stdout_cap: Some(RESPONSE_CAP),
+            stderr_cap: Some(STDERR_CAP),
+        };
+        let response = match cancel {
+            Some(cancel) => run_bounded_cancellable(&spec, &policy, cancel),
+            None => run_bounded(&spec, &policy),
+        }
         .map_err(transport_failure)?;
+        if response.kind == ExitKind::Cancelled {
+            return Err(Failure::new(
+                crate::FailureKind::Cancelled,
+                "bridge.cancelled",
+                "owned bridge request was cancelled and reaped",
+            ));
+        }
         if response.kind != ExitKind::Success {
             return Err(Failure::tool(
                 "bridge.worker-exit",

@@ -979,7 +979,51 @@ fn output_adapter_retains_original_unix_signal_status() {
 // 小 cap/短 deadline 仅测试配置；生产默认（70s/3s/4MiB/1MiB）由
 // A2X 父 adapter 侧持有（auto-lang-core a2x_exchange）。每例自带计时。
 
-use auto_tool_execution::{run_bounded, BoundedError, BoundedPolicy};
+use auto_tool_execution::{run_bounded, run_bounded_cancellable, BoundedError, BoundedPolicy};
+
+/// Cancel only after the real grandchild has emitted a heartbeat. The
+/// bounded exchange must terminate and reap its tree and discard output.
+#[test]
+fn aac_cancel_bounded_exchange_stops_owned_descendant() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let started = Instant::now();
+    let stage = TempDir::new("p1051-bounded-cancel");
+    let heartbeat = stage.path().join("heartbeat");
+    let mut spec = with_args(
+        bounded_child("grandchild"),
+        "30",
+        Some(&heartbeat.to_string_lossy()),
+    );
+    spec.tree_scope = TreeScope::ProcessTree;
+    let cancel = AtomicBool::new(false);
+    let policy = small_policy(5_000, 1_000, Some(1 << 16), Some(1 << 16));
+    let result = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            wait_first_tick(&heartbeat, Duration::from_secs(3));
+            cancel.store(true, Ordering::Release);
+        });
+        run_bounded_cancellable(&spec, &policy, &cancel).expect("clean cancellation")
+    });
+    assert_eq!(result.kind, ExitKind::Cancelled);
+    assert!(result.stdout.is_none() && result.stderr.is_none());
+    assert!(result
+        .cleanup_elapsed
+        .is_some_and(|elapsed| elapsed <= policy.cleanup_deadline));
+    let before = last_tick_millis(&heartbeat).expect("descendant ran");
+    std::thread::sleep(Duration::from_millis(250));
+    assert_eq!(last_tick_millis(&heartbeat), Some(before));
+    let next = with_args(bounded_child("exit"), "7", None);
+    assert_eq!(
+        run_bounded(&next, &policy).unwrap().kind,
+        ExitKind::Failure(7)
+    );
+    drop(stage);
+    eprintln!(
+        "aac_cancel_bounded_exchange_stops_owned_descendant {:?}",
+        started.elapsed()
+    );
+}
 
 fn bounded_child(mode: &str) -> ExecutionSpec {
     child_spec(mode)
