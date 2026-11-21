@@ -102,3 +102,9 @@ A 片（本文件）已验收；B 片（985 承接）未开工——不得据本
 
 `docs/plans/archive/966-ace-m2-metaprogramming.md`（归档）；`docs/specs/ace-migration/m2-denominator.md` L-32..L-36；
 `docs/specs/auto-lang/comptime/design/hash-syntax.md`。
+
+## 普通 AV 接面（PLAN-1091）
+
+普通 Auto 前门复用本版装配选择，涵盖单文件的声明和语句，以及包闭包里的受检导入。AV worker 以本地 AV 目标作为显式装配输入。包绑定也接受调用方给的 `PackageAssemblyContext`，目标选择读取 `sys.current`，编译宿主事实由 `sys.host` 单独提供。两项事实参与包输入身份。原 `packages-ct` 和其他窄面沿用原多后端合同。
+
+普通 AV 的 `#{expr}` 在装配和实例化后由 source-cte 服务，再交共享类型验证。前门要求 `ac.source.cte.scalar/v1`，元数据仍受原授权控制。冻结的 AV 表面值使用 `int/i32` 与 `bool`。本地 AV 把四个日志宏投影为受检的控制台操作，其他 `#name(args)` 走普通函数绑定。装配有选择跨度，CT 失败带 demand 源跨度。具体行为和验收范围见 [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md)。

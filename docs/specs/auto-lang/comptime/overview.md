@@ -72,3 +72,11 @@
 - `docs/plans/archive/095-compile-time-execution-engine.md`、`docs/plans/archive/137-comptime-examples.md`
 - `test/comptime/`（示例语料）
 - 代码核对：`crates/auto-lang/src/comptime/`、`ast/comptime.rs`、`error.rs`、`lib.rs`、`trans/`、`vm/codegen.rs`
+
+## 普通 AV 的编译期执行（PLAN-1091）
+
+本节适用于普通 AV 源码入口 `ac-av/language-source-run-v1`。装配先处理项位和语句位选择，源查询绑定包闭包并产生具体实例。source-cte 执行 `#{expr}` 的受检调用闭包，经 MIR/ABC 验证和 AV 执行得到冻结标量，再用原位常量替换需求。受检运行代码中已无需求调用。只读包常量可在 CT 内求值，无权读取或修改运行时的可变存储。
+
+`int/i32` 和 `bool` 可回灌。文本或组合字面量作为冻结结果会返回 `cte.type/value-domain`。CT 继承单根时限、AV 帧/资源预算和取消分类，外部作用不获运行授权。错误定位为需求的原源码跨度。管理存储用源码/闭包身份、目标事实、cap/provider 和 AV 版本区分执行页。按原输入重开可读取已验证的成功页，失败需求不能覆盖该页。
+
+实现、复现和原 AutoVM CTEE 的适用范围见 [PLAN-1091](../../../plans/archive/1091-av-parity-comptime-and-macros.md)。

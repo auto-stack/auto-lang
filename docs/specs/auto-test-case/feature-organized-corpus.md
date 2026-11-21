@@ -108,3 +108,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 泛型、spec 分派与方法决议的活跃作者是 `language/generics/` 下的 `spec-methods.case.ad`、`list-methods.case.ad`、`spec-dispatch.case.ad` 和 `record-templates.case.ad`。主承接七份旧 VM 文档，附加承接泛型枚举 28.005，共八条路径依原 Case/check ID 映射至 canonical 作者。m08/m09 使用 ownership 家族既有条目。
 
 同一 Auto 源下按阶段选择真实 AV 检查，原 VM oracle 随 `#ignore` 检查保留。旧路径由 `CanonicalVmCases` 通过迁移数据解析到 canonical 作者。可执行控制验证源码身份漂移、AV oracle 错误、重复活跃 Case、无有效 AV 检查及未选目标的工具隔离。实际结果及输入身份见 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。
+
+## PLAN-1091 增量（comptime 家族）
+
+编译期装配、真实标量执行和宏的唯一公共作者文件为 [evaluation-macros.case.ad](../../../crates/auto-lang/test/cases/language/comptime/evaluation-macros.case.ad)，由 `language.suite.ad` 引用。21 个普通 AV 检查分别固定值、精确双流或具名错误。验证用真实 CT 调用次数和运行期调用次数区分编译期回灌与运行期计算。选择负控覆盖错 AV 预期、零条有效 AV 和重复 ID。非 AV 检查在对应视图按阶段报告 SKIP 或 NOT_RUN。
+
+本包主承接旧 VM 文档为零。`legacy-map.tsv` 记录旧示例、编译器内部断言与 cookbook foreign-provider 文档的独立角色和原预期来源，这些记录不作为 AV 运行结果。源码身份和父侧检查结果见 [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md)。

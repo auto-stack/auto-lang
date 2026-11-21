@@ -320,3 +320,11 @@ after`（d01 静默失效债闭） | PASS |
 `List<T>.to_array()` 复制元素和资源；`filter` 按调用时的元素顺序调用谓词，结果独立拥有保留元素。普通块闭包可声明返回类型。旧 spec 工具用例所需的字符串操作走受检 AV，Unicode 大写转换通过 `av.text.case/1` 准入，并计入执行燃料和槽预算。字节码标记为 `STR_UPPER = 0x53`。
 
 公共输入、检查和原始输出见 [泛型作者目录](../../../crates/auto-lang/test/cases/language/generics) 与 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。旧泛型枚举 28.005 的 VM 检查保留数字显示；普通 AV 按 PLAN-474 的文本显示判断 `true` 和 `false`。PLAN-1092 持有 `#[with]` 源码拼写并复用本接口的约束见证。
+
+## PLAN-1091 增量（AVP-13，编译期执行与宏）
+
+普通 `ac-av/language-source-run-v1` 在单文件与包入口复用 Auto CST、绑定和受检 HIR。装配先按目标事实选择 `#in/#if/#for/#is`，再服务选中程序中的 `#{expr}`。编译期调用经 source-cte、MIR/ABC 验证和真实 AV，结果结构替换回原位置。主要值域为 `int/i32` 和 `bool`，含具体泛型实例、跨模块调用和只读包常量。可变运行时状态、外部作用与非标量冻结值有具名拒绝。
+
+普通宏调用按函数绑定并丢弃返回值。`#debug/#info/#warn` 经普通控制台写 stdout，`#error` 写 stderr，各带级别前缀和原换行语义。未知名称在绑定期拒绝。装配选择、普通 CT 与运行期日志可出现在同一工程，适用同一套源码跨度和诊断。
+
+`IF-AV-PARITY-CT` 绑定 Auto 源、AV `av.closures/1`、worker `avworker/1`、MIR lowering 7、目标/cap/provider 与实际检查结果。Windows AV 结果、精确诊断、覆盖边界与旧义务映射见 [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md) 及其 [canonical 语料](../../../crates/auto-lang/test/cases/language/comptime/evaluation-macros.case.ad)。
