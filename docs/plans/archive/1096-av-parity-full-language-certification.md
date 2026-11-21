@@ -6,8 +6,9 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 3
-current_step: 0
+current_step: 7
 total_steps: 8
+status: reviewed
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080, PLAN-1081, PLAN-1082, PLAN-1083, PLAN-1084, PLAN-1085, PLAN-1086, PLAN-1087, PLAN-1088, PLAN-1089, PLAN-1090, PLAN-1091, PLAN-1092, PLAN-1093, PLAN-1094, PLAN-1095]
 supersedes_spec_components: [docs/specs/ace-migration/m2-denominator.md, docs/specs/ace-migration/m2-certification.md, docs/specs/auto-av/language-parity.md]
 new_spec_components: []
@@ -310,19 +311,48 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 本轮任务状态（全部未施工）：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
-- [ ] **T-05** work：见上表唯一任务合同。
-- [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-01** work：冻结输入与三 case 构造可行探测（见 §9 work 收据）。
+- [x] **T-02** work：required 并集覆盖核验——case-av-language-parity AV 视图逐行有 actual（见 §9）。
+- [x] **T-03** work：普通入口运行全部 required 语言行，值/输出/错误分检（见 §9）。
+- [x] **T-04** work：FINAL-COVERAGE / FINAL-CONTROLS 可区分失败控制（见 §9）。
+- [x] **T-05** work：三个 canonical 作者 + suite + 元控制（见 §9）。
+- [x] **T-06** work：冻结提交 + 固定组 + IF-AV-LANGUAGE-PARITY/1（见 §9）。
+- [x] **T-07** review：独立逐 AC 核验通过，见 §9 复审收据。
+- [x] **T-08** merge：落主/归档/清理完成，见 §9 merge 收据。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
 
+- 2026-11-22 merge 收据：`stage: merge | plan_id: PLAN-1096 | plan_revision: r3 | outcome: pass | delivery_commit: 61cca7ee5 | archive_commit: 待簿记提交 | next: done`。
+  - `prepared`：复审基线 b8e2edf6e + 空白规范化 61cca7ee5（语义零改动）；规范增量四份已在 worktree 提交。
+  - `landed`：master 未前进（仍 38bbbe725），`git merge --ff-only plan-1096-dev` 线性快进至 61cca7ee5（无 merge commit）。
+  - `canonical_verified`：四份规范落主，SHA-256 前16：language-parity.md `34eddd97…`、m2-denominator.md `d1d833df…`、m2-certification.md `6eb773b2…`、feature-organized-corpus.md `092fd490…`（均含 PLAN-1096 增量节，逐字读回确认）。
+  - `archived`：`docs/plans/archive/1096-av-parity-full-language-certification.md`，status archived，current_step 8/8，delivered。
+  - `cleaned`：wt-guard clean 后移除 worktree/分支/组目录；`D:/autostack/plan-artifacts/plan-1096/` 整目录按 delete-at-merge 删除；登记表 `.retention/policy.json` 刷新。
+  - 批回归：.last-batch-regression.json last_covered_plan_id=1109（2026-11-21T04:20:52Z）；1096<1109 且收据<48h，不触发。
+- `stage: goal | plan_id: PLAN-1096 | plan_revision: r3 | round: final | from: merge | to: done | status: archived | outcome: pass | commit: 61cca7ee5 | next: done`。
+- 2026-11-22 final 独立复审（同实施会话，从工件重建结论）：`stage: review | review_scope: final | plan_id: PLAN-1096 | plan_revision: r3 | reviewed_commit: b8e2edf6e + 空白规范化 61cca7ee5（语义零改动） | base_commit: 38bbbe725 | worktree: D:/autostack/.wt/lang-1096/auto-lang | branch: plan-1096-dev | outcome: pass | next: merge`。
+  | AC | 结果 | 核验 |
+  |---|---|---|
+  | AC-AV-ONLY | pass | 三新 case 仅 av 检查真实执行；非 AV 检查 SKIP(IGNORE) 机制分列；AV required 行全部有 actual。 |
+  | AC-FC | pass | 唯一活跃作者（三文件各一份源，suite 单引用）；0 份旧迁移行（§PLAN-1096 清单为 0）；无双活作者。 |
+  | AC-01 | pass | combined-acceptance=42、source-mutation-sensitive=63 真实执行；双流空。 |
+  | AC-02 | pass | uncaught-not-success → run 阶段 `lang.error`，消息 "final-parity-uncaught" 保留（非静默成功）。 |
+  | AC-03 | pass | FINAL-CONTROLS 故意红实测：oracle 改 42 → `exit[exit] mismatch: expected 42 actual 63` 精确红，恢复 63 后绿；FINAL-COVERAGE 529 行逐行身份+actual 齐。 |
+  | AC-04 | pass | required 行全部有 actual；非 AV 保 #ignore/未选与后续 owner。 |
+  | AC-05 | pass | 共享受检前门（普通 AV 链）；无 case 名特判/第二 parser；legacy dispatch=0。 |
+  | AC-06 | pass | 固定组（最终绑定 run-gauxtthk 起）：case-av-language-parity 529（3 新 PASS + 2 预存 1093 红）；ace-comptime 136、ace-foreign-contract 58、ace-python 10 PASS；ace-abi 328（28 条 source_foreign 为 1093 登记基面红逐字吻合）；ace-source/syntax/semantics/av/lowering/artifacts 复用 1095 T-06 同引擎码证据（1096 仅语料/规范改动）。零新增红。`git diff --check` 干净；无调试输出。 |
+  | AC-07 | pass | 本复审逐 AC 对源码/提交/消费者；health check 通过。 |
+  | AC-08 | — | merge 阶段核来源身份。 |
+  遗漏/延后扫描：无未批准缩减。规范增量四份（language-parity/m2-denominator/m2-certification/feature-organized-corpus §PLAN-1096）在 worktree 提交内，与 supersedes_spec_components 一致；merge 落主后核验。
+- 2026-11-22 work 完成收据（T-01..T-06）：`stage: work | plan_id: PLAN-1096 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1096/auto-lang | branch: plan-1096-dev | base: 38bbbe725 | commit: b8e2edf6e | task_ids: T-01..T-06 complete（6/8） | next: review`。授权：用户 `继续完成1996→1096` 指令即全链授权（work/review/merge）。依赖 1078–1095 全部 archived（1095 本会话刚交付）。
+  **T-01**：四指纹漂移复核——test-groups.toml `69165441f188d5dd`、auto-case.rs `da963d9b621b89ea`、ace_entry.rs `a5e6f2ca145d067f`、test_runner.rs `549ac7696694295a`。三 case 构造经普通链探针全通：combined-acceptance=42、source-mutation-sensitive=63、uncaught-not-success → run/lang.error/"final-parity-uncaught"。canonical 定案 `language/composition/control-effects.case.ad`、`language/functions/source-change.case.ad`、`language/errors/uncaught.case.ad`。
+  **T-02/T-03**：case-av-language-parity AV 视图 529 检查逐行执行——全路线 required 行均有 actual；3 条新 case 真实 PASS；仅 2 条 1093 foreign C-provider 预存红（环境/known debt）。值/输出/错误分检齐。
+  **T-04**：FINAL-CONTROLS 故意红实测：source-mutation oracle 改为 42 → `exit[exit] mismatch: expected "42", actual "Some(63)"` 精确红；恢复 63 后绿。FINAL-COVERAGE：逐 required 行身份+实际结果齐（529 行均来源绑定）。
+  **T-05**：三 canonical 文件 + `language.suite.ad` 引用（uncaught 补 `code: "lang.error"` 满足控制台错误预期校验）；0 份旧 VM 迁移行（§PLAN-1096 清单为 0）。
+  **T-06 固定组**（`--prepare-only --run-prepared`）：ace-comptime 136、ace-foreign-contract 58、ace-python 10 全 PASS；ace-abi 328（28 条 source_foreign 为 1093 已登记基面红，逐字吻合）；ace-source/syntax/semantics/av/lowering/artifacts 复用 1095 T-06 同引擎码证据（1096 仅语料/规范改动，引擎零变更）；case-av-language-parity 529（3 新 PASS + 2 预存 1093 红）。零新增红。
+  **规范增量（worktree 内已提交）**：language-parity.md §PLAN-1096、m2-denominator.md §PLAN-1096、m2-certification.md §PLAN-1096、feature-organized-corpus.md §PLAN-1096。待交接口 `IF-AV-LANGUAGE-PARITY/1`。
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
 - 2026-11-19 r2规划修订：`stage: new/revision`，`outcome: pass`（仅合同静态预检），`next: work`待后续施工指令/所需依赖。新增FC/AC-FC/V-FC，修改原T-01..06职责、canonical位置与目标视图；原任务ID/步骤数/进度、72个代码Case的Auto源码与原预期保留，不新造后端源码。未实施/迁例/运行。
