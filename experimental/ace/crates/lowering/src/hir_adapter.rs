@@ -6528,25 +6528,35 @@ k 0
                 // PLAN-105 W105：AGE 文本字面量实参是 StrView 值；owned-Str
                 // 字段位在此收敛为 owned（StrToOwned）——borrowed 视图永不进
                 // 记录字段（`mir.field-borrow` 的镜像约束）。
+                // PLAN-105 W106：owned-Str **位置实参**是拷贝语义（语言无隐式
+                // move，`.move` 显式形走 Move 臂产出新临时）——循环体内的 ctor
+                // 重复读（013 ToggleTodo 的 current_text）不能消耗局部，否则
+                // 回边重读触发 `mir.use-after-move`。
                 if let Some(MirType::Record(rec)) = self.out.types.get(rec_ty as usize).cloned() {
                     for (fi, f) in rec.fields.iter().enumerate() {
                         if !matches!(self.out.types.get(f.ty as usize), Some(MirType::Str)) {
                             continue;
                         }
                         if let Some(&op) = operands.get(fi) {
-                            if matches!(
-                                self.out.types.get(self.slot_ty_all(op) as usize),
-                                Some(MirType::StrView)
-                            ) {
-                                let owned = self.temp_ty(f.ty)?;
-                                self.emit(
-                                    MirInstr::StrToOwned {
-                                        dst: owned,
-                                        view: op,
-                                    },
-                                    sp,
-                                )?;
-                                operands[fi] = owned;
+                            let slot_ty = self.slot_ty_all(op);
+                            match self.out.types.get(slot_ty as usize) {
+                                Some(MirType::StrView) => {
+                                    let owned = self.temp_ty(f.ty)?;
+                                    self.emit(
+                                        MirInstr::StrToOwned {
+                                            dst: owned,
+                                            view: op,
+                                        },
+                                        sp,
+                                    )?;
+                                    operands[fi] = owned;
+                                }
+                                Some(MirType::Str) => {
+                                    let copy = self.temp_ty(f.ty)?;
+                                    self.emit(MirInstr::Clone { dst: copy, src: op }, sp)?;
+                                    operands[fi] = copy;
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -7008,12 +7018,15 @@ k 0
                         return Ok(dst);
                     }
                     // PLAN-105 W105：owned 元素的**文本字段值读**（表达式位
-                    // plain str → StrView）走非破坏视图 LIST_FIELD_VIEW——
+                    // plain str → StrView，或 owned Str——w106 实证：向 owned
+                    // Str 字段赋值的读被推断为 owned 位）走非破坏视图
+                    // LIST_FIELD_VIEW（owned 位再 StrToOwned 拷贝）——
                     // place 不读 owned 元素（mir.list-type），LIST_REMOVE 会
                     // 改列表。终字段必须是 owned Str；列表不动、视图共享缓冲。
                     {
                         let view_ty = self.out.intern_type(MirType::StrView);
-                        if ty == view_ty {
+                        let str_ty = self.out.intern_type(MirType::Str);
+                        if ty == view_ty || ty == str_ty {
                             let elem = self.elem_vt_of(list)?;
                             let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
                             let mut cur = elem;
@@ -7037,10 +7050,10 @@ k 0
                             {
                                 let l = self.eval_expr(list, depth + 1)?;
                                 let i = self.eval_expr(index, depth + 1)?;
-                                let dst = self.temp_ty(view_ty)?;
+                                let view = self.temp_ty(view_ty)?;
                                 self.emit(
                                     MirInstr::ListFieldView {
-                                        dst,
+                                        dst: view,
                                         base: l,
                                         index: i,
                                         path: segs,
@@ -7048,6 +7061,11 @@ k 0
                                     sp,
                                 )?;
                                 let _ = root;
+                                if ty == view_ty {
+                                    return Ok(view);
+                                }
+                                let dst = self.temp_ty(str_ty)?;
+                                self.emit(MirInstr::StrToOwned { dst, view }, sp)?;
                                 return Ok(dst);
                             }
                         }

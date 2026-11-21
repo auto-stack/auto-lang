@@ -120,3 +120,25 @@ fn p105_elem_field_text_view_bracket_read() {
     let out = fields.iter().find(|(k, _)| k == "out").map(|(_, v)| v.clone()).unwrap_or_default();
     assert!(out.contains("\"a\"") || out.contains("a"), "bracket index field view read: {out}");
 }
+
+/// W106：owned 位文本字段读（表达式推断为 owned Str——向 owned 字段赋值形，
+/// 013 Recompute `.preview1 = .todos[i].text`）走 LIST_FIELD_VIEW + StrToOwned，
+/// 不再 place-get 整元素（`mir.list-type`）。
+#[test]
+fn p105_elem_field_text_owned_position_read() {
+    let src = "type Todo {\n    id: int\n    text: str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var out str = \"\" }\n    view { text .out {} }\n    on {\n        .M -> {\n            .todos.push(Todo { id: 1, text: \"abc\", done: false })\n            .out = .todos[0].text\n        }\n    }\n}\n";
+    let fields = run(src);
+    let out = fields.iter().find(|(k, _)| k == "out").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(out.contains("abc"), "owned-position field read: {out}");
+}
+
+/// W106：循环体内 ctor 反复消费 owned-Str 局部（013 ToggleTodo
+/// `Todo { text: current_text }`）——ctor 字段位是拷贝语义，局部不被消耗
+///（回边重读不再触发 `mir.use-after-move`）。
+#[test]
+fn p105_ctor_consumes_str_local_in_loop() {
+    let src = "type Todo {\n    id: int\n    text Str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var n int = 0 }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            .todos.push(Todo { id: 9, text: \"seed\", done: false })\n            var cur str = \"\"\n            cur = .todos[0].text\n            var idx int = 0\n            for idx < 3 {\n                .todos.push(Todo { id: idx, text: cur, done: false })\n                idx = idx + 1\n            }\n            .n = .todos.len()\n        }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(n.contains('4'), "ctor loop rebind of owned str local: {n}");
+}
