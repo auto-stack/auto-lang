@@ -5,7 +5,7 @@ feature_name: "ACE AV/RS 普通工程与 Rust FFI"
 author: [Codex]
 created_at: 2026-11-20
 updated_at: 2026-11-21
-plan_revision: 1
+plan_revision: 2
 current_step: 3
 total_steps: 7
 depends_on: [PLAN-967, PLAN-978, PLAN-1043, PLAN-1078, PLAN-1093]
@@ -21,9 +21,11 @@ affects: [auto-av, auto-abi, ace-m2-build]
 
 Rust 路线第一批。交 `IF-ACE-AV-RS-PROJECT/1`，供 1114 用同一个普通工程入口装配标准库。保留 967、1043 与 1093 已验切片的真实范围与身份。 各批依赖和交接见 [Design 60](../design/60-ace-rust-route.md)。
 
+2026-11-21 r2：用户选择“授权在 1113 补齐”。T-03 接管普通 AV 为 V-02 缺少的公共 Rust owned 资源、回调和完成端口接口。V-01–03 与 AC-01–05 的原验收、仓集合、已完成任务和历史证据保留。
+
 ## 1. 目标
 
-普通 Auto 工程通过受检 `use.rs`/`dep` 调用真实 Rust 库，并能从预编译工件运行。覆盖已在 967、1093 承诺的 Rust 类型、资源、回调和完成端口。实验首例可复用有限来源，正式交付逐项消费 1093 所需的正式语言切片。公共 FFI 语法与资格核验归 1093，本包负责 Rust 工程、分发和生产入口的接线。
+普通 Auto 工程通过受检 `use.rs`/`dep` 调用真实 Rust 库，并能从预编译工件运行。覆盖已在 967、1093 承诺的 Rust 类型、资源、回调和完成端口。1093 已交的公共接面为本包输入，V-02 所需的 Rust 公共接面缺口由 1113 补齐。本包负责 Rust 工程、分发和生产入口的接线。
 
 ## 2. 架构方案
 
@@ -58,6 +60,16 @@ Rust 路线第一批。交 `IF-ACE-AV-RS-PROJECT/1`，供 1114 用同一个普�
 复用 978 身份轴，将编译工具身份、运行兼容和授权分开。改 Auto body 保命中不变的 provider；改实际依赖内容重新产出并显式选入；重新打开 SDK 在任何 dispatch 前核工件与声明。允许已有批准的显式加载形式，正式分发验证所支持形式各自的真实闭包。最小试点沿 1078/967/978 正式基础先做，依赖语言宽面的工作按 1093 的所需切片接续。
 
 T-02 由现有 `use.rs` + `f0_text` 先验证普通项目入口。T-04 用既有 `ac-build build --project <dir> --target av --root <dir>`、`ac-build sdk`、`ac-build run --sdk <dir> --target av` 入口复验分层边界。闭包里的工件和授权由实际工程声明供给，使用现有参数与准入机制承载。
+
+### T-03 r2 公共生命周期接口
+
+| V-02 义务 | 生产与执行接面 | 关闭条件 |
+|---|---|---|
+| Owned | Rust 注解和真实类型 → 967 importer/shim → 939 受检资源声明 → 当前 `ForeignSession` 的 provider/代次/析构与 DLL 寿命。使用既有资源形状，运行期资源不进入 ABC 或 SDK。 | 普通项目的真实 Rust provider 记录显式关闭及会话错误/关闭触发的最后一次析构；双关闭、撤权、跨会话和旧代零派发。 |
+| 回调 | 939 的受检回调签名和 noescape 规则 → shared lowering → ABC → AV 调用借用的回调目标，保留普通 Auto 函数值和闭包的约束。 | 独立核 Auto 回调、Rust 调用顺序及返回值；错误签名/授权或超期不可进入 provider，受控 trap/panic 后会话可用。 |
+| 完成端口 | 967 `CompletionPorts` 与 `ForeignSession` 同代；close/rebind/cancel 与提交串行判定。Rust 线程/回调持有的可调用地址和数据保持到生产方停用，之后才能释放 DLL 和回调状态。 | 同一个注册表观察真实同步/异步路径、合法结果唯一提交，以及取消/关闭后的迟到丢弃与一次 release；从工程和仓外 SDK 运行 V-02。 |
+
+实施输入为 `plan-1113-dev@9a4a43f6e`。先修完成端口状态和会话所有权，再增加受检 Rust 形状与 AV 执行。当前 `cancel` 重入会重复发布 Released、旧代端口留在注册表且 close 时无释放事件，新增状态反例以原 967 的完成规则验证。生命周期依赖已交 C ABI/资源/端口合同；工程的公开形状、期望和独立 trace 随实际实现逐项冻结。
 
 ### 规范增量
 
@@ -122,6 +134,18 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
 
 发现/清理未单独计时，CLI 时间含各命令的实际处理，固定组并集未运行。Linux/WSL 按裁定排除。本轮无入库新增测试。最终 CLI 与诊断日志位于 `D:/autostack/plan-artifacts/plan-1113/`。SHA-256 分别为 `v01-frozen.log`=`21974dd94b3c25ad32caf3ea20a8e6078bed8bbbb60cc70541394eb1dbb0eb39`，`v03-frozen.log`=`2164d959749b58f5ea4f77af9c31e9cc704906a764132b1f2415f39d4c547081`，`v02-partial.log`=`653b97ac0aafedae81f06651d52e262998962ff7c1dad889536bc33f27b6f276`。恢复验证前后原 recipe SHA-256 一致（`5485de6f5a1d9723637092b8a87335f6b0d62e5725a8c5bff2547704385b0b52`）。V-02 完整资源与回调链待 §10 裁定。
 
+### r2 定向验证记录（Windows/MSVC）
+
+| 范围 | 实际结果 | 准备 / 执行 |
+|---|---|---|
+| `ace-av-core` 定向两项 completion ports 测试，`557324321` | 2/2，通过。重复 cancel、close 后旧代端口的迟到丢弃与 release 恰一次；其余 70 个唯一用例未选。新增 `closing_foreign_session_releases_port_once_and_rejects_late_completion` 0.012 s。 | dev/test 准备 11.987 s，两条 exact 命令 0.071 / 0.012 s。 |
+| `ace-abi` conformance 的 `f0_t13::t13_future_ports_bind_the_session_generation`、`f0_async::` | 1/1 + 2/2，通过。前者改用实际 `ForeignSession` 所持注册表，后两项仍从真实 Rust 线程进宿主回调。 | dev/test 准备 22.992 s，命令 0.137 / 0.443 s。 |
+| `ac-build` owned resource 项目与仓外 SDK，`626d6201b` | 6/6，通过。真实 Rust `Box<Resource>` 生成 C shim，显式关闭、会话退出和 panic 各触发一次原方析构，双关闭具名拒绝；搬移 SDK、项目及构建根不可见后真实运行得 9，析构一次。 | 第一构建准备 24.561 s。合用 Rust 绑定器初次编译错用旧变量名（4.454 s，exit 101），修正后 `cargo build --locked -j 2 -p ace-m2-build --bin ac-build --bin av-worker -p ace-av` exit 0、13.397 s。六条 CLI 命令共 1.127 s，各 0.027–0.583 s。 |
+| `av-worker case-serve` 使用预构建 owned provider | 1/1，通过。共享普通 Auto 入口载入 prepared descriptor、真实 DLL；得 9，原方析构一次。 | 复用前述准备，执行 0.145 s。 |
+| V-01 旧 F0 回放，`626d6201b` | 8/8，通过，保留 9、空串、变体、锁及缓存结果。 | 复用前述准备，8 条命令共 2.373 s。 |
+
+范围内 0 忽略。发现及清理未独立计时。日志在计划唯一暂存区，SHA-256：`r2-owned-shared.log` `0b38f6cff0247f4939b851968175575744b54ebbc6f1c78e64aad4336943fc69`；`r2-owned-worker.log` `6d7731025d0ce3db067633cbdf982713d7064a0989460f702f302e762db99592`；`r2-f0-replay.log` `26d872cf4389bb541ed4f91e0a66c2ca2170bd416f1573706f5eb52f678d3ab6`；`r2-ports-abi-result.log` `a07231ae021ef4793881f915fc5b83e4aae95850fc91a3fab0aa15be122be79`。V-02 仍需从项目跑 Auto 回调、Rust 同步/异步完成端口，端口宿主回归只证明宿主层行为。
+
 ## 8. 执行步骤
 
 实施入口为 `D:/autostack/.wt/lang-1113/auto-lang`、分支 `plan-1113-dev`，基于实施时主检出的正式输入。按需在当前工具中登记 T 项再开工；首任务 T-01 的输入和待决项见 §4、§5、§10。材料统一放 `D:/autostack/plan-artifacts/plan-1113/` 并登记。
@@ -133,8 +157,8 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
   - owner_stage=`work`。在 AV runner 与 978 复用 importer/binder/shim；V-01 走真实 `use.rs` 工程、记录验前与验后 dispatch（AC-01）。
   - 提交 `e516cf379`。复用 1093 受检编译、ABC 准入与 967 会话/生成 shim。实际项目以 `project.json` 的 `rust_provider.source` 相对路径、显式 foreign caps 和可选 `rust_provider.cargo_lock` 装配。Cargo 依赖按既有 provider 注解消费，带依赖的冷构建以 `--offline --locked` 执行。
 - [ ] T-03 接入资源与回调生命周期
-  - owner_stage=`work`。消费 1093 正式资源/回调切片，绑定 V-02 到受检普通工程，区分哪些老窄面可复用以及必须新增的组合（AC-02）。
-  - `9a4a43f6e` 实作可重用的执行前授权检查，已用真实工程工件验证同会话 panic 恢复和零派发负控。完整 V-02 仍待 B-1113-02。
+  - owner_stage=`work`。消费 967/939/1093 的正式资源、回调和端口切片，在本计划补齐 §5 r2 的公开 Rust 声明、shim 和 AV 执行，将 V-02 绑定受检普通工程与 SDK（AC-02）。
+  - `9a4a43f6e` 实作可重用的执行前授权检查，已用真实工程工件验证同会话 panic 恢复和零派发负控。完整 V-02 仍待 T-03 实跑。
 - [x] T-04 交付仓外 SDK
   - owner_stage=`work`。接 978 SDK、授权、缓存/恢复；V-03 验工具缺席和错工件反例（AC-03）。
   - `9a4a43f6e` 随 SDK 打包受检 ABC、provider 绑定描述及真实 DLL。V-03 实际结果见 §7。总接口身份与 AC-03 随 T-05 冻结。
@@ -160,8 +184,12 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。恢复后首轮核到新阻塞 B-1113-02。前一阻塞的普通 Rust 入口切片已被消费。
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。B-1113-02 连续第 2 轮。主检出 `b73e4f0c8` 无公共 Rust ABI 或普通 AV 回调补齐提交，§10 无范围裁定。前轮的 T-02/T-04 已验证提交保留，T-03 仍未齐，本轮未启动构建或测试。
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 6 | from: work | to: work | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。B-1113-02 在恢复后的第 3 轮复现。主检出 `5c195e72e` 的 Rust importer、普通 AV 回调和端口接面无新交付，§10 无范围裁定。保留干净专属树与 3/7 进度，完整 V-02、冻结、复审及归档待 §10 解锁。本轮未启动构建或测试。
+- 2026-11-21，`stage: new | plan_id: PLAN-1113 | plan_revision: r2 | outcome: pass | next: work T-03`。用户授权本计划补齐 V-02 所需的公共 Rust 资源、回调及完成端口，按 §5 r2 与 967/939/1093 既有契约实施。T-03 生产范围扩为本仓公共接面，AC-01–05 保留，历史 r1 签名按输入变化补足验证。专属树 `plan-1113-dev@9a4a43f6e`；同组依赖 `auto-down@72b097006f34db3a871449f10e213820d51abef6`。
+- 2026-11-21 r2 实施检查点。 `557324321` 将端口代次与 session 绑定、cancel/close 释放改为幂等；`626d6201b` 增 `owned_open`/`owned_borrow`/`owned_close` 与 `owned=Type`，复用 939 的 Handle 声明和受检整数句柄。AV 以当前 provider、资源种类与代次验证 token，关闭调用原方，代码租约与表同寿命；`ac-build` 与普通 prepared worker 共用 Rust 导出绑定器。§7 记录实际工程和 SDK 验证。T-03 与 AC-02 保持待完成，next=work（普通 AV 回调及生产端口接线、V-02 全链）。宿主目标仍是前轮的 blocked 状态，只有客户端可重新激活自动轮次。
 
 ## 10. 待澄清事项
+
+- **B-1113-02 的范围裁定已关闭。** 用户授权由 PLAN-1113 补齐 V-02 所需的公共接面。下列历史缺口作为 T-03 的实施输入，验收仍须从真实工程及仓外 SDK 闭合。
 
 - **B-1113-01，1093 已交付可供 T-02 消费的切片。** r3 已归档，评审交付提交为 `300d8e585`。恢复时先将同一专属树快进到含该提交的主检出，复用 1093 的普通 AV 前门与预构建 provider 准入，接通实际工程声明和 978 的构建/分发。V-02 仍按原合同关闭。若 landed API 无法表达必要的资源或回调组合，按缺口确认生产者与授权。
 
@@ -188,4 +216,4 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
 
 每次交接记录落主 revision、源码与产物/ABI/授权身份及实际 Case。1113 可按所需切片逐步恢复，T-04 的 SDK 验收仍以实际工程产物闭包和 V-03 为准，T-05 在 AC-01–03 具备实际结果后冻结接口。
 
-- **B-1113-02，公共 Rust ABI 与普通 AV callback 缺口。** 已实现的工程持续使用 967 importer、会话与 1093 普通前门。当前 [Rust importer 的形状](../../crates/auto-bindgen/src/rust_import.rs) 仍只接入 ViewUtf8、OutBytes、I32、Bool 与 FrameCall 等已定义形状，owned provider 资源柄及回调/异步签名无法生成受检 Rust 声明与 shim。[AV ForeignCall 路径](../../experimental/ace/crates/av-core/src/av.rs) 对非空 callback lanes 明确拒绝 `foreign.callback-unsupported`。[967 完成端口对照](../../experimental/ace/crates/abi/tests/cases/f0_async.rs) 的两例借真实 DLL 与宿主 trampoline 运行，§7 已重放，通过的端口证据适用于宿主层。1093 [复审收据](archive/1093-av-parity-foreign-language-surface.md) 也把 owned/callback/outbytes 资源链归回 967 原边界。解锁需生产出普通 Rust 工程可表达的受检 owned 资源/析构、闭包回调和同步/异步端口 ABI 及 AV 执行接缝，由上游后续计划交付，或经用户明确授权将公共接口补齐移入 1113。然后在项目/SDK 的真实 provider 上验证析构恰一次、回调轨迹及迟到完成不重复提交；V-02 保持原验收。
+- **B-1113-02 的 r1 观察与 r2 后续。** 原 1093 [复审收据](archive/1093-av-parity-foreign-language-surface.md) 将 owned/callback/outbytes 资源链归回 967 原边界。r2 已接 owned 真实工程和 SDK，余下从 Rust 注解引入回调与端口声明，接通 [共享调用 lowering](../../experimental/ace/crates/lowering/src/hir_adapter.rs) 和 [AV ForeignCall](../../experimental/ace/crates/av-core/src/av.rs)。普通 Auto 的函数值使用闭包；旧 939 路径的 CallbackRef 是 named target。执行接线须延续既有 noescape 约束并允许受检 Auto 回调返回，外部 provider 的重入入口保持原拒绝。967 的 [宿主端口对照](../../experimental/ace/crates/abi/tests/cases/f0_async.rs) 复用同一规则表，正式 V-02 还须从真实工程和 SDK 发起同步/异步完成、取消并观察真实迟到提交。
