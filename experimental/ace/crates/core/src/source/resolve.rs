@@ -18550,14 +18550,12 @@ F:{d}
                     let mut rargs = Vec::with_capacity(arg_slots.len());
                     for (i, s) in arg_slots.iter().enumerate() {
                         let mut value = std::mem::replace(&mut out[*s], dummy_resolved());
-                        // PLAN-782: in the combination profile the
-                        // first-class move wrapper IS the argument value
-                        // (CallBinding.moved stays text-profile only).
-                        // PLAN-105 T-02（U03 真语料 013）：collections 域也要保留
-                        // `.move` 实参标记——列表 `push(<整局部>)` 的所有权转移靠它
-                        // （此前只有文本域保留，collections 被归一成 moved=false）。
-                                                let moved = matches!(value.kind, RExprKind::Move { .. })
-                            && (self.profile.is_text() || self.profile.is_collections()); let value = if moved {
+                        // Record constructors and calls consume the explicit
+                        // move expression. The text-only call schema carries
+                        // the same transfer in its argument binding instead.
+                        let moved = matches!(value.kind, RExprKind::Move { .. })
+                            && !self.profile.is_record();
+                        let value = if moved {
                             match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
                                 RExprKind::Move { inner } => *inner,
                                 _ => unreachable!("checked above"),
