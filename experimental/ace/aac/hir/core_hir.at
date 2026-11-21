@@ -47,7 +47,7 @@ use app.core_ops.return_exit
 use app.core_ops.source_binary
 use app.core_ops.statement_stride
 use app.core_ops.typed_binary_word
-use app.core_ops.wide_constant_op
+use app.core_ops.exact_constant_op
 use app.core_records.core_value_type
 use app.core_records.record_at
 use app.core_records.record_field_number
@@ -55,17 +55,19 @@ use app.core_records.record_next
 use app.core_records.record_slot
 use app.core_records.source_record_shapes
 use app.core_records.verify_record_shapes
+use app.float_literal.float_payload
 use app.hir_schema_data.core_schema
 use app.hir_schema_data.global_schema
 use app.hir_schema_data.scalar_schema
 use app.initializers.global_layout_stride
 use app.initializers.global_symbol
+use app.numeric_literal.append_float_bits
 use app.numeric_literal.decode_i32_literal
-use app.numeric_literal.decode_wide_integer
-use app.numeric_literal.format_wide_integer
+use app.numeric_literal.decode_exact_literal
+use app.numeric_literal.format_exact_literal
 use app.numeric_literal.negative_source_literal
-use app.numeric_literal.wide_integer_word
-use app.numeric_literal.wide_literal_stride
+use app.numeric_literal.exact_scalar_word
+use app.numeric_literal.exact_literal_stride
 use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
@@ -84,10 +86,11 @@ use app.syntax_frontend.str_to_bytes
 use app.typecheck.record_constructor
 use app.typecheck.text_length_receiver
 use app.types.boolean_type
+use app.types.f32_type
+use app.types.f64_type
 use app.types.integer_type
 use app.types.i8_type
 use app.types.text_view_type
-use app.types.u64_type
 use std.bytes.decode_utf8
 use std.conv.from_int
 
@@ -204,7 +207,19 @@ fn global_category(category int) bool {
 }
 
 fn hir_value_type(records List<int>, lane int) bool {
-    return core_value_type(records, lane) || wide_integer_word(lane).len() > 0
+    return core_value_type(records, lane) || exact_scalar_word(lane).len() > 0
+}
+
+fn lower_exact_literal(src List<int>, start int, end int, negative bool, lane int, exact List<int>, fuel List<int>, deadline i64) int {
+    if (lane == f32_type() || lane == f64_type()) {
+        var bits = List<Str>.new()
+        let rounded = float_payload(src, start, end, negative, lane, bits, fuel, deadline)
+        if (rounded != 0) { return rounded }
+        let packed = append_float_bits(exact, lane, bits.remove(0))
+        if (packed != 0) { return packed }
+        return lane
+    }
+    return decode_exact_literal(src, start, end, negative, false, exact, fuel, deadline)
 }
 
 fn lower_field_chain(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, records List<int>, expressions List<int>, exprs List<int>, args List<int>, row int, owner int, fuel List<int>, deadline i64, errors List<int>) int {
@@ -291,10 +306,10 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                     add_expression(exprs, expressions, row, owner, constant_op(), t, scalar.get(0))
                 } else {
                     let offset = exact.len()
-                    let decoded = decode_wide_integer(src, start_of(ast, row), end_of(ast, row), negative, exact, fuel, deadline)
+                    let decoded = lower_exact_literal(src, start_of(ast, row), end_of(ast, row), negative, t, exact, fuel, deadline)
                     if (decoded == bind_budget()) { return failed(errors, row, decoded) }
-                    if (decoded != t || exact.len() != offset + wide_literal_stride()) { return failed(errors, row, hir_type_error()) }
-                    add_expression(exprs, expressions, row, owner, wide_constant_op(), t, offset)
+                    if (decoded != t || exact.len() != offset + exact_literal_stride()) { return failed(errors, row, hir_type_error()) }
+                    add_expression(exprs, expressions, row, owner, exact_constant_op(), t, offset)
                 }
             }
             if (node_kind == "int-literal") {
@@ -701,7 +716,7 @@ fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel Lis
         if (operands != boolean_type()) { return hir_type_error() }
     } else {
         let standard = operands == integer_type() || (equality_op(op) && operands == boolean_type())
-        if (!standard && (declared == 0 || wide_integer_word(operands).len() == 0)) { return hir_type_error() }
+        if (!standard && (declared == 0 || exact_scalar_word(operands).len() == 0)) { return hir_type_error() }
     }
     var result = operands
     if (comparison_op(op) || logical_op(op)) { result = boolean_type() }
@@ -1236,9 +1251,9 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             }
         }
         if (op == constant_op() && type_id != integer_type()) { status = hir_type_error() }
-        if (op == wide_constant_op()) {
+        if (op == exact_constant_op()) {
             status = hir_type_error()
-            if (data >= 0 && data % wide_literal_stride() == 0 && data <= exact.len() - wide_literal_stride() && exact.get(data) == type_id) { status = 0 }
+            if (data >= 0 && data % exact_literal_stride() == 0 && data <= exact.len() - exact_literal_stride() && exact.get(data) == type_id) { status = 0 }
         }
         if (op == text_literal_op()) {
             status = hir_type_error()
@@ -1284,11 +1299,11 @@ fn uses_lane(defs List<int>, parameters List<int>, exprs List<int>, lane int) bo
     return find_row(defs, 4, lane, 1) >= 0 || find_row(parameters, 4, lane, 2) >= 0 || find_row(exprs, 5, lane, 3) >= 0
 }
 
-fn integer_types(defs List<int>, parameters List<int>, exprs List<int>) Str {
+fn exact_scalar_types(defs List<int>, parameters List<int>, exprs List<int>) Str {
     var types = ""
     var lane = i8_type()
-    for (lane <= u64_type()) {
-        let word = wide_integer_word(lane)
+    for (lane <= f64_type()) {
+        let word = exact_scalar_word(lane)
         if (word.len() > 0 && uses_lane(defs, parameters, exprs, lane)) {
             types = types + " type " + id("t", lane) + " " + word + " {}\n"
         }
@@ -1427,7 +1442,7 @@ fn render_definition(def int, ast List<int>, src List<int>, declarations List<in
     return " function " + key + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
 }
 
-fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, exact List<int>, integer_decls Str, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, exact List<int>, exact_type_decls Str, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
     var output = List<Str>.new()
     var schema = "auto.hir.core.draft"
     var profile = "core-i32-draft"
@@ -1447,12 +1462,12 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
         }
     }
     var capabilities = ""
-    if (integer_decls.len() > 0) {
+    if (exact_type_decls.len() > 0) {
         schema = "auto.hir.numeric.draft"
         profile = "source-numeric-draft"
     }
     if (text_domain) { capabilities = " requires: [\"ac.runtime.text.v1\"]\n" }
-    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n" + integer_decls
+    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n" + exact_type_decls
     output.push(opening.move)
     if (records.len() > 0) {
         let record_declarations = write_record_types(records, ast, src, declarations)
@@ -1522,8 +1537,8 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 let data = exprs.get(expr_at + 4)
                 var form = "constant"
                 var fields = "value: " + from_int(data) + "i32"
-                if (op == wide_constant_op()) {
-                    fields = "value: " + format_wide_integer(exact, data)
+                if (op == exact_constant_op()) {
+                    fields = "value: " + format_exact_literal(exact, data)
                 }
                 if (op == read_op()) {
                     form = "read_local"
@@ -1661,8 +1676,8 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     }
     let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, errors)
     if (status != 0) { return "" }
-    let integer_decls = integer_types(defs, parameters, exprs)
-    if (integer_decls.len() > 0 && (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs))) {
+    let exact_type_decls = exact_scalar_types(defs, parameters, exprs)
+    if (exact_type_decls.len() > 0 && (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs))) {
         failed(errors, 0, hir_unsupported())
         return ""
     }
@@ -1680,7 +1695,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     if (control == 3 && layouts.len() >= global_layout_stride()) { layouts.set(2, 0) }
     let verified = verify(defs, parameters, exprs, args, blocks, statements, records, layouts, exact, row_count(ast), fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, exact, integer_decls.move, ast, src, declarations, modules, layouts.len() > 0) }
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, exact, exact_type_decls.move, ast, src, declarations, modules, layouts.len() > 0) }
         None -> { errors.set(0, source_origin(row_count(ast), errors.get(0))) }
     }
     return ""

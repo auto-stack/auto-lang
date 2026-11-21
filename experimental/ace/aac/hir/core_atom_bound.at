@@ -17,10 +17,10 @@ use app.core_ops.typed_binary_code
 use app.core_ops.extended_binary
 use app.core_ops.logical_op
 use app.core_ops.overflow_op
-use app.core_ops.wide_constant_op
-use app.numeric_literal.decode_wide_integer
-use app.numeric_literal.wide_integer_type
-use app.numeric_literal.wide_integer_word
+use app.core_ops.exact_constant_op
+use app.numeric_literal.decode_exact_literal
+use app.numeric_literal.exact_scalar_type
+use app.numeric_literal.exact_scalar_word
 use app.semantic_tree.span_text
 use app.types.boolean_type
 use app.types.integer_type
@@ -171,14 +171,14 @@ fn named_type(bytes List<int>, tokens List<int>, values List<int>, nodes List<in
     if (type_name == "str") { return text_view_type() }
     if (type_name == "i32") { return 1 }
     if (type_name == "bool") { return 2 }
-    let builtin = wide_integer_type(type_name.clone())
+    let builtin = exact_scalar_type(type_name.clone())
     if (builtin != 0) { return builtin }
     let type_node = by_id(bytes, tokens, values, nodes, sequence, items, types, type_name)
     let shape = value_text(bytes, tokens, values, slot(nodes, sequence, type_node, 1), 0)
     if (shape == "i32") { return 1 }
     if (shape == "bool") { return 2 }
     if (shape == "record") { return 100000 + type_node }
-    return wide_integer_type(shape.move)
+    return exact_scalar_type(shape.move)
 }
 
 fn primitive(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, types int, value int) int {
@@ -548,17 +548,17 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
                     operation = 1
                     payload = parsed.get(0)
                 } else {
-                    if (!numeric || wide_integer_word(ty).len() == 0 || value < 0 || values.get(value * 4) != 2) { return -33 }
+                    if (!numeric || exact_scalar_word(ty).len() == 0 || value < 0 || values.get(value * 4) != 2) { return -33 }
                     let token = values.get(value * 4 + 1)
                     var start = tokens.get(token * 3 + 1)
                     let end = tokens.get(token * 3 + 2)
                     let negative = bytes.get(start) == 45
                     if (negative) { start = start + 1 }
                     payload = exact.len()
-                    let lane = decode_wide_integer(bytes, start, end, negative, exact, fuel, deadline)
+                    let lane = decode_exact_literal(bytes, start, end, negative, true, exact, fuel, deadline)
                     if (lane == bind_budget()) { return lane }
                     if (lane != ty) { return -33 }
-                    operation = wide_constant_op()
+                    operation = exact_constant_op()
                 }
             }
             if (form == "read_local") {
@@ -798,17 +798,17 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
     if (!numeric) {
         var i = 0
         for (i < defs.len()) {
-            if (wide_integer_word(defs.get(i + 1)).len() > 0) { return -30 }
+            if (exact_scalar_word(defs.get(i + 1)).len() > 0) { return -30 }
             i = i + 4
         }
         i = 0
         for (i < params.len()) {
-            if (wide_integer_word(params.get(i + 2)).len() > 0) { return -30 }
+            if (exact_scalar_word(params.get(i + 2)).len() > 0) { return -30 }
             i = i + 4
         }
         i = 0
         for (i < expressions.len()) {
-            if (wide_integer_word(expressions.get(i + 3)).len() > 0) { return -30 }
+            if (exact_scalar_word(expressions.get(i + 3)).len() > 0) { return -30 }
             i = i + 5
         }
     }

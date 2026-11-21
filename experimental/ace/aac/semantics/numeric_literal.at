@@ -87,7 +87,7 @@ fn float_range(src List<int>, start int, end int, significant int, lanes int, fu
 
 // Recognize the numeric body before interpreting the suffix. In hexadecimal,
 // letters a..f belong to the magnitude, including trailing "f32"/"f64".
-fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List<int>, fuel List<int>, deadline i64) int {
+fn inspect_literal(src List<int>, start int, end int, negative bool, payload bool, scalar List<int>, fuel List<int>, deadline i64) int {
     var radix = 10
     var digits_start = start
     if (end - start >= 2 && src.get(start) == 48) {
@@ -123,6 +123,7 @@ fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List
     if (digits == 0 || dots > 1 || (dots > 0 && radix != 10)) { return literal_syntax() }
     let suffix = span_text(src, offset, end)
     if (dots == 1) {
+        if (payload) { return literal_syntax() }
         if (suffix == "" || suffix == "f" || suffix == "f32") {
             return float_range(src, first_significant, decimal_point, significant, f32_type(), fuel, deadline)
         }
@@ -131,9 +132,14 @@ fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List
         }
         return literal_syntax()
     }
-    let type_id = integer_suffix(suffix)
+    var type_id = integer_suffix(suffix.clone())
+    if (payload && radix == 10) {
+        if (suffix == "f32") { type_id = f32_type() }
+        if (suffix == "f64") { type_id = f64_type() }
+    }
     if (type_id < 0) { return type_id }
-    let limit = magnitude_limit(type_id, negative)
+    var limit = magnitude_limit(type_id, negative)
+    if (type_id == f32_type() && !negative) { limit = 4294967295u64 }
     if (limit == 0u64) { return literal_range() }
     let base = radix.to(u64)
     var magnitude = 0u64
@@ -150,14 +156,7 @@ fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List
         node = node + 1
     }
     if (scalar.len() > 0) {
-        var word = magnitude
-        var slot = 0
-        for (slot < 4) {
-            let limb = (word % 65536u64).to(u32)
-            scalar.push(limb.to(int))
-            word = word / 65536u64
-            slot = slot + 1
-        }
+        append_magnitude(scalar, magnitude)
     }
     return type_id
 }
@@ -171,13 +170,13 @@ pub fn negative_source_literal(src List<int>, ast List<int>, token int) bool {
 
 pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fuel List<int>, deadline i64) int {
     var scalar = List<int>.new()
-    return inspect_literal(src, start, end, negative, scalar, fuel, deadline)
+    return inspect_literal(src, start, end, negative, false, scalar, fuel, deadline)
 }
 
 pub fn decode_i32_literal(src List<int>, start int, end int, negative bool, out List<int>, fuel List<int>, deadline i64) int {
     var magnitude = List<int>.new()
     magnitude.push(0)
-    let lane = inspect_literal(src, start, end, negative, magnitude, fuel, deadline)
+    let lane = inspect_literal(src, start, end, negative, false, magnitude, fuel, deadline)
     if (lane == integer_type()) {
         var exact = magnitude_at(magnitude, 1).to(i64)
         if (negative) { exact = 0i64 - exact }
@@ -186,25 +185,41 @@ pub fn decode_i32_literal(src List<int>, start int, end int, negative bool, out 
     return lane
 }
 
-pub fn wide_integer_word(lane int) Str {
+pub fn exact_scalar_word(lane int) Str {
     if (lane == i8_type()) { return "i8" }
     if (lane == u8_type()) { return "u8" }
     if (lane == u32_type()) { return "u32" }
     if (lane == i64_type()) { return "i64" }
     if (lane == u64_type()) { return "u64" }
+    if (lane == f32_type()) { return "f32" }
+    if (lane == f64_type()) { return "f64" }
     return ""
 }
 
-pub fn wide_integer_type(word Str) int {
+pub fn exact_scalar_type(word Str) int {
     if (word == "i8") { return i8_type() }
     if (word == "u8") { return u8_type() }
     if (word == "u32") { return u32_type() }
     if (word == "i64") { return i64_type() }
     if (word == "u64") { return u64_type() }
+    if (word == "f32") { return f32_type() }
+    if (word == "f64") { return f64_type() }
     return 0
 }
 
-pub fn wide_literal_stride() int { return 6 }
+pub fn exact_literal_stride() int { return 6 }
+
+fn append_magnitude(words List<int>, magnitude u64) int {
+    var word = magnitude
+    var slot = 0
+    for (slot < 4) {
+        let limb = (word % 65536u64).to(u32)
+        words.push(limb.to(int))
+        word = word / 65536u64
+        slot = slot + 1
+    }
+    return 0
+}
 
 fn magnitude_at(words List<int>, offset int) u64 {
     var value = 0u64
@@ -218,11 +233,12 @@ fn magnitude_at(words List<int>, offset int) u64 {
 
 // Four 16-bit limbs carry the full unsigned magnitude on Gen0's List<int>
 // lane. The signed minimum never passes through an i64 conversion.
-pub fn decode_wide_integer(src List<int>, start int, end int, negative bool, out List<int>, fuel List<int>, deadline i64) int {
+pub fn decode_exact_literal(src List<int>, start int, end int, negative bool, payload bool, out List<int>, fuel List<int>, deadline i64) int {
     var magnitude = List<int>.new()
     magnitude.push(0)
-    let lane = inspect_literal(src, start, end, negative, magnitude, fuel, deadline)
-    if (wide_integer_word(lane).len() > 0) {
+    let lane = inspect_literal(src, start, end, negative, payload, magnitude, fuel, deadline)
+    let float_value = lane == f32_type() || lane == f64_type()
+    if (exact_scalar_word(lane).len() > 0 && (payload || !float_value)) {
         out.push(lane)
         var sign = 0
         if (negative) { sign = 1 }
@@ -236,7 +252,25 @@ pub fn decode_wide_integer(src List<int>, start int, end int, negative bool, out
     return lane
 }
 
-pub fn format_wide_integer(exact List<int>, offset int) Str {
+pub fn append_float_bits(exact List<int>, type_id int, hex Str) int {
+    var width = 16
+    if (type_id == f32_type()) { width = 8 }
+    if (hex.len() != width) { return literal_syntax() }
+    var value = 0u64
+    var index = 0
+    for (index < width) {
+        let digit = radix_digit(hex.char_at(index).to_codepoint(), 16)
+        if (digit < 0) { return literal_syntax() }
+        value = value * 16u64 + digit.to(u64)
+        index = index + 1
+    }
+    exact.push(type_id)
+    exact.push(0)
+    append_magnitude(exact, value)
+    return 0
+}
+
+pub fn format_exact_literal(exact List<int>, offset int) Str {
     let magnitude = magnitude_at(exact, offset + 2)
     var digits = ""
     var remaining = magnitude
@@ -247,5 +281,5 @@ pub fn format_wide_integer(exact List<int>, offset int) Str {
         if (remaining == 0u64) { break }
     }
     if (exact.get(offset + 1) != 0 && magnitude != 0u64) { digits = "-" + digits }
-    return digits + wide_integer_word(exact.get(offset))
+    return digits + exact_scalar_word(exact.get(offset))
 }

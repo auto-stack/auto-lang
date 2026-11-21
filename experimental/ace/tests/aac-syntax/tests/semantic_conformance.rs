@@ -1134,6 +1134,31 @@ fn aac1055_wide_integer_hir_preserves_width_and_extrema() {
 }
 
 #[test]
+fn aac1055_float_hir_preserves_rounded_bits_and_signed_zero() {
+    let source = concat!(
+        "fn zero() f64 { return -0.0f64 }\n",
+        "fn bump(x f32) f32 { return x + 1.000000059604644775390625f32 }\n",
+    );
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto float HIR");
+    for expression in [
+        "value: 9223372036854775808f64",
+        "value: 1065353216f32",
+        "op: add_f32",
+    ] {
+        assert!(atom.contains(expression), "missing {expression}: {atom}");
+    }
+    let bound = ace_core::descriptor::bind(ace_core::numeric_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_closures(bound).expect("independent typed HIR verification");
+    let admit = |text: &str| {
+        run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto float Atom readback")
+    };
+    assert_eq!(admit(&atom), "ADMITTED source-numeric-draft\n");
+    let oversized = atom.replacen("1065353216f32", "4294967296f32", 1);
+    assert_eq!(admit(&oversized), "ERROR hir.type\n");
+}
+
+#[test]
 fn aac1055_conditional_loop_preserves_scopes_and_continuations() {
     let source = include_bytes!(
         "../../../../../crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/sc-for-loops.at"
