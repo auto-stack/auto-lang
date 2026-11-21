@@ -159,6 +159,7 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
 - 2026-11-21，`stage: work | plan_id: PLAN-1113 | plan_revision: r1 | outcome: blocked | worktree_path: D:/autostack/.wt/lang-1113/auto-lang | branch: plan-1113-dev | base_commit: dd5f3eff5 | code_commit: 9a4a43f6e | dependency_revisions: auto-down@72b097006f34db3a871449f10e213820d51abef6; 1093@300d8e585 | task_ids: T-02/T-04 complete; T-03 partial | evidence: §7 | blockers: B-1113-02 | next_responsible_role: 1113 work after producer/scope decision`。Spec 拟增量放实施树，最终接口待 T-05。工作树干净，未合入。
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 4 | from: work | to: work | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。恢复后首轮核到新阻塞 B-1113-02。前一阻塞的普通 Rust 入口切片已被消费。
 - `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 5 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。B-1113-02 连续第 2 轮。主检出 `b73e4f0c8` 无公共 Rust ABI 或普通 AV 回调补齐提交，§10 无范围裁定。前轮的 T-02/T-04 已验证提交保留，T-03 仍未齐，本轮未启动构建或测试。
+- `stage: goal | plan_id: PLAN-1113 | plan_revision: r1 | round: 6 | from: work | to: work | status: executing | outcome: blocked | worktree: D:/autostack/.wt/lang-1113/auto-lang | commit: 9a4a43f6e | next: user`。B-1113-02 在恢复后的第 3 轮复现。主检出 `5c195e72e` 的 Rust importer、普通 AV 回调和端口接面无新交付，§10 无范围裁定。保留干净专属树与 3/7 进度，完整 V-02、冻结、复审及归档待 §10 解锁。本轮未启动构建或测试。
 
 ## 10. 待澄清事项
 
