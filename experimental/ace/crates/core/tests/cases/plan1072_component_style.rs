@@ -75,6 +75,14 @@ fn p107_chart_package_import_binds_a_lowercase_widget_alias() {
     assert_eq!(reference.span.slice(source), r#"line-chart (fields: ["desktop", "mobile"]) {}"#);
     let missing = compile(&[root.clone()]).err().expect("the declared package is required");
     assert_eq!(missing[0].code, "source.age.component-package-unresolved");
+    let manifest = PackageModuleInput::component_manifest("official".into(), "1.0.0".into());
+    let lowercase = compile(&[root.clone(), manifest.clone()])
+        .expect("a loaded package with no required modules can use a host tag");
+    assert!(lowercase.first_widget_ref().is_none());
+    let named_widget = unit("app", "main", &source.replace("line-chart", "LineChart"));
+    let unresolved = compile(&[named_widget, manifest]).err()
+        .expect("the manifest supplies package identity but no widget declarations");
+    assert_eq!(unresolved[0].code, "source.age.widget-unresolved");
     let ambiguous = compile(&[root, chart, unit("official", "second_chart", implementation)])
         .err().expect("alias collisions are rejected");
     assert_eq!(ambiguous[0].code, "source.age.widget-ambiguous");

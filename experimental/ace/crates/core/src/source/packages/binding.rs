@@ -22,6 +22,18 @@ pub struct PackageModuleInput {
     pub provider: Option<PackageImplLayer>,
 }
 
+impl PackageModuleInput {
+    /// An AGE component package whose manifest was resolved and whose active
+    /// view sites did not select any of its source modules.
+    pub fn component_manifest(package: String, version: String) -> Self {
+        Self { package, version, id: "package".into(), source: String::new(), provider: None }
+    }
+
+    fn is_component_manifest(&self) -> bool {
+        self.id == "package" && self.source.is_empty()
+    }
+}
+
 /// PLAN-1043（T-02）：所选 provider 实现层（kind + 独立源文本）。
 #[derive(Clone, Debug)]
 pub struct PackageImplLayer {
@@ -473,6 +485,7 @@ fn bind_packages_face_with(
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
+    let mut component_manifests = BTreeSet::new();
     let mut total = 0usize;
     for input in inputs {
         // PLAN-1043：provider 层只走装配入口（显式上下文/选择/身份）。
@@ -500,6 +513,7 @@ fn bind_packages_face_with(
             || !valid_version(&input.version)
             || !valid_module_id(&input.id, face)
             || units.contains_key(&key)
+            || component_manifests.contains(&key)
         {
             return Err(fail(
                 &key,
@@ -520,6 +534,10 @@ fn bind_packages_face_with(
                 "package name `std` is reserved for the frozen ACE stdlib slice (PLAN-945)",
                 zero,
             ));
+        }
+        if face == Faces::Age && input.is_component_manifest() {
+            component_manifests.insert(key);
+            continue;
         }
         // PLAN-981（W1 跨模块实例身份）：本模块在**包级组件声明序**里的起始
         // 下标 = 之前模块已收的候选数（多模块 node 序号不撞号）。
@@ -624,6 +642,13 @@ fn bind_packages_face_with(
             )?;
         }
     }
+    let source_inputs;
+    let inputs = if component_manifests.is_empty() {
+        inputs
+    } else {
+        source_inputs = inputs.iter().filter(|input| !input.is_component_manifest()).cloned().collect::<Vec<_>>();
+        &source_inputs
+    };
     if matches!(face, Faces::Aggregates) {
         bind_package_syntax_aggregates(inputs, entry, caps, budget, units)
     } else if matches!(face, Faces::Age | Faces::Auto) {
