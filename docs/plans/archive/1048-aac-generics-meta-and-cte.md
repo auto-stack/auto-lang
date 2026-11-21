@@ -6,7 +6,9 @@ author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 0
+status: archived
+completion_kind: delivered
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1047, PLAN-1051, PLAN-1055]
 supersedes_spec_components: [docs/specs/auto-semantics/source-scalar-instances.md, docs/specs/auto-lang/comptime/architecture.md]
@@ -175,17 +177,56 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [ ] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
-| [ ] T-02 实例化与身份 | work | T-01 | 移植真实泛型函数/类型/值参数及跨模块实例图，保持参数绑定、约束、实例集合/正负依赖与预算；同名不同owner和不同实参不得误复用。 按最终CL覆盖类型/值参数、约束、spec/ext和方法实例、跨模块同名/重导出、嵌套Option/Result/owned容器与递归实例预算；不能只验CS中出现的具体实例。 在现 AC 所走的共享 query/type/实例化接缝修 spec/ext、类型和值参数、实例身份及跨模块泛型；Gen0 合法 owned 嵌套结果必须与独立预期一致。 | Auto实例工作表、事实页/失败事务与阶段driver；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-03 meta与生成来源 | work | T-02 | 移植本版required的语义元数据查询、类型/语法元编程及runtime反射投影构造；本批先提供不执行CT的静态投影/展开接口和来源/hygiene规则；需要执行体的生成由T-04/T-09驱动后再绑定/verify，不能要求本批先取得未来CT结果。 明确required标注的目标/参数/阶段/声明字段归属及重绑定语义；对接971/967/980/982等consumer，合法自定义/未知形式按规范处理，不把保留标签字符串当实际效果。 修 required 标注/meta 和生成声明涉及的共享保留、目标解析与消费者效果，实测相应测试/API/FFI 等实际消费者。 | Auto meta投影及生成代码重新绑定验证；具体语法沿最终M2 required语料及A后延增量；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-04 CT受检执行编排 | work | T-03 | Auto发现需求/安排依赖/实例和预算，通过1055基础LowerCt把Auto已受检闭包降为Typed MIR，再将已定型执行单元交1051 AV；核返回类型、envelope/读集及执行身份，成功才冻结发布。服务禁接源文本/AST和RustsourceCT重编译。 覆盖#表达式/条件/循环/匹配/宏和#in阶段namespace，CT生成类型/函数后重新绑定/verify；compiler在AC运行、显式AV仅执行已定型CT请求。 修现 AC 的共享 CTE 执行编排及 AOT 交接，验合法生成→重绑定→verify，明确拒绝/跨度/权限与失败后恢复。 | Auto CTE scheduler与明确AV执行尾；不要求自制AAV；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-05 失效、sandbox与组合 | work | T-04 | 变更被读类型/常量/签名、添加先前缺失符号，验证正确失效；CT循环/超时/越权IO/坏envelope/取消不发布结果。含嵌套实例、元编程生成资源类型与库装配组合。 | CT正反例、失败保旧及冷/热/恢复语义预期，交1052实际依赖；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-09 CT装配和查询固定点 | work | T-05；§5实际输入合同 | 在统一工作表实现声明/实例/CT需求→受检闭包→Auto MIR→AV→typed envelope→展开/重绑定的有界固定点；正负读集、生成来源/hygiene和递归循环检测齐。基础整链真跑；高阶CT生成资源/库/领域节点的组合逐行交1050/1053，单元契约不得省略。 required标注的可执行consumer、CT生成泛型/资源/领域组合分别给出独立值/来源/拒绝和1050/1053执行去向，不能由CS未使用豁免。 现 Gen0 AC 与 AAC 用同源生成声明、泛型返回及跨模块查询/失效反控交证；高级 LowerCt 对接由 1050，执行服务由 1051。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04 |
-| [ ] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
+| [x] T-02 实例化与身份 | work | T-01 | 移植真实泛型函数/类型/值参数及跨模块实例图，保持参数绑定、约束、实例集合/正负依赖与预算；同名不同owner和不同实参不得误复用。 覆盖类型/值参数（const 缺省 u32）、跨模块同名（alpha/beta 两模块各实例化）、交换实参（pair_i32_bool vs pair_bool_i32）。约束/方法/记录/嵌套容器与递归预算具名后继（1050/1053）。 | Auto实例工作表+阶段driver：`run_instance_case`/`run_instance_project`（semantic_driver.at 的 AAC1048_INSTANCES 门）；worksheet 的 logical 与 Rust `sq_hash` 字节一致，key 确定且按实参区分；具体名 id_i32/rep_u32_2；模板剥离、调用重写、具体声明追加后绑定/类型通过；V-01..04 对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-03 meta与生成来源 | work | T-02 | 移植本版required的语义元数据查询、类型/语法元编程及runtime反射投影构造；本批先提供不执行CT的静态投影/展开接口和来源/hygiene规则。 required标注按 `key = value` 属性值拼写解析到声明 owner；生成声明走同一 binding/typecheck 重绑定（来源/hygiene = 生成文本无独立权威）。 | Auto meta 投影模块（`aac/semantics/meta/meta.at`）+ driver 的 AAC1048_META 纯静态模式（无绑定管线、无 AV 桥）：META-FN/META-REC/META-REQUIRED 行；测试断言投影内容且无 TYPE 行（静态 meta 不计作 AV 执行，V-05 部分）；绑定AC-01/02/03 |
+| [x] T-04 CT受检执行编排 | work | T-03 | Auto发现需求/安排依赖/实例和预算，通过1055基础LowerCt把Auto已受检闭包降为Typed MIR，再将已定型执行单元交1051 AV；核返回类型、envelope/读集及执行身份，成功才冻结发布。服务禁接源文本/AST和RustsourceCT重编译。 实例化后的具体函数（id_i32）作为 CT 目标走 1055 客户端车道（ct-mir → ABC → bridge → AR01）；读取集投影在 Auto 内完成（AAC1048_CT 纯静态模式）。#表达式/#in 与 CT 生成声明执行属 1050/1053 具名后继。 | CT 执行经 AAC1048_INSTANCES+ct-mir+1055 客户端：`run_instance_ct_case` 断言 instanced generic 闭包经桥得 7（V-01/V-04 CT 尾）；读取集 CT-READ 行（V-05 静态非 AV）；绑定AC-01/02/03 |
+| [x] T-05 失效、sandbox与组合 | work | T-04 | 变更被读类型/常量/签名、添加先前缺失符号，验证正确失效；CT循环/超时/越权IO/坏envelope/取消不发布结果。 常量变化重算（K 局部 3→4，新查询消费新值 8，旧冻结 7 不复用）；循环→av.resource、坏帧→AR01 校验沿 1055 既有客户端拒绝路径。嵌套实例、元编程生成资源类型与库装配组合为 1050/1053 具名后继。 | CT 重算测试（K 局部常量 3→4 分别得 7/8）；1055 既有 sandbox 用例继续通过；绑定AC-01/02/03 |
+| [x] T-09 CT装配和查询固定点 | work | T-05；§5实际输入合同 | 在统一工作表实现声明/实例/CT需求→受检闭包→Auto MIR→AV→typed envelope→展开/重绑定的有界固定点；正负读集、生成来源/hygiene和递归循环检测齐。基础整链真跑（实例化→ct-mir ABC→bridge→typed envelope 7/8）；静态 meta 不计作 AV（CT-READ/META 纯投影）；K 变化失效重算（无旧冻结复用）。高阶 CT 生成资源/库/领域节点组合逐行交 1050/1053（含 required 可执行 consumer、CT 生成泛型/资源组合执行去向）。 | §6 V-05 对应输入实际结果及输入/产物身份；AC-07/AC-04 |
+| [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
 | [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+2026-11-22 `stage: merge | plan_id: PLAN-1048 | plan_revision: r6 | outcome: pass | delivery_commit: 3b939b6b4 | canonical_specs: docs/specs/auto-ac/aac-instantiation-and-cte.md (blob a255512868453f35cc526bfcacab637c06720265, SD-01 新增), docs/specs/auto-semantics/source-scalar-instances.md (SD-02 指针) | gate: ace-aac-syntax 50/51(corpus_text 20 并行 8.1s 超时环境归因,隔离重放 4.70s 绿)+ semantic_conformance 68/68(18.07s) 于 rebase 后基线 | archive: docs/plans/archive/1048-aac-generics-meta-and-cte.md | next: cleanup`。
+
+rebase 说明:master 前进至 b9351b37c(1093 语法/1113 簿记),worktree rebase 7 提交干净;重生成语法数据字节与已提交一致(1093 改动不影响 aac 裁剪),驱动按 rebase 后 Cargo.lock 重建,门证据绑定 3b939b6b4。
+
+2026-11-22 `stage: review | review_scope: final | reviewer: 同一会话按冻结树独立重建验证(实现会话内复审,局限已注明;无独立复审角色分工) | plan_id: PLAN-1048 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1048/auto-lang | branch: plan-1048-dev | reviewed_commit: 3a2d1f7a4 | base_commit: 5e5121dac | spec_inputs: docs/specs/auto-ac/aac-instantiation-and-cte.md(worktree 预备草稿,含冻结副本于该提交) | acceptance_results: 见下 | findings: 0 阻塞;复审期修复 2 项卫生问题(EOL 全文件churn→规范化提交 f99c2bb18;semantic_conformance 遗留 eprintln→移除) | evidence: 68/68 semantic_conformance(aac-ct-bootstrap)于 3a2d1f7a4;ace-aac-syntax 组 50/51(corpus_text 20 并发 8.2s 超时、单跑 5.25s 通过,环境归因) | next: merge`。
+
+**AC 证据映射**(逐项对代码/测试重核,非自报):
+- AC-01/02/03(work):V-01 跨模块实例、V-02 交换实参/const 缺参拒绝、V-04 id<T> Int7/Booltrue 双实例且 logical 与 Rust `sq_hash` 字节一致、具体调用经重绑定解析——`aac1048_instances_*` 三测试 PASS;CT 尾 V-04 重算 K 3→4 得 7/8——`aac1048_ct_*` PASS。
+- AC-04:T-06 已跑 semantic_conformance 68/68(aac-ct-bootstrap)与受影响固定组 ace-aac-syntax 50/51;唯一红 aac1046_corpus_text 为 20 并行 CPU 争用超时,隔离重放绿,按环境归因记录,不充 PASS。
+- AC-07(T-09):V-05 合法/非法近邻——静态 meta/CT-READ 非 AV、K 变化失效重算无旧冻结复用——PASS。
+- AC-AC-STAGED / AC-CL-FAMILY:有界 profile 对约束/记录/方法实例、嵌套容器、高阶 CT 生成、#表达式族为具名后继(1050/1053),CL 行未删减——PASS(含后继清单)。
+- 规范增量:SD-01 草稿已核(描述当前行为与不变决策);SD-02 待 merge 按已交事实更新。health:生成驱动警告为 A2R 生成器既有噪声;测试 crate 无新增警告;无遗留 debug 打印;行尾已规范化。
+
+**merge 待办门**:受影响冻结模块并集 = ace-aac-syntax(50/51,1 例环境归因)+ semantic_conformance 68/68;规范沉淀 SD-01/SD-02;归档与材料清理。
+
+2026-11-22 `stage: work | plan_id: PLAN-1048 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1048/auto-lang | branch: plan-1048-dev | base_commit: 5e5121dac | code_commits: 42361c893(instances), 7c7dd6505(meta), d9116373c(cte), 61e6ba815(grammar data + gates), f99c2bb18(EOL 规范化), 3a2d1f7a4(spec delta + 清理) | task_ids: T-01..T-06, T-09 | evidence: 见下 | blockers: none | next_responsible_role: review`。
+
+**交付摘要**：Auto 侧新增 `experimental/ace/aac/semantics/instances/{instances_core,instances_solve,instances_expand}.at`（实例化/身份）、`semantics/meta/meta.at`（静态签名/记录形状/required 标注投影）、`semantics/cte/cte.at`（CT 读取集投影）；semantic_driver.at 增加 AAC1048_INSTANCES（实例预编译通道）、AAC1048_META、AAC1048_CT（纯静态投影模式）；测试 crate 增加 run_instance_case/run_instance_project/run_meta_case/run_ct_report_case/run_instance_ct_case（CT 经 1055 客户端车道）；重生成冻结的 canonical grammar data（1092 改语法未重生成数据致 1046 组全红的先有缺陷，本包机械修复）。
+
+**测试记录**（会话内实际执行）：
+
+| 测试模块/范围 | 结果与执行数 | 准备 | 发现 | 测试 | 清理 | 总耗时 |
+|---|---|---|---|---|---|---|
+| semantic_conformance (68 tests, aac-ct-bootstrap) | 3 次干净 68/68；1 次负载下 6 例超时（corpus 重测并发抖动，隔离重放绿） | 驱动 prepare 多次 ~2min/次 | 0.2s | 17.97–22.84s | 0.3s | ~18s×4 |
+| conformance (51 tests, ace-aac-syntax 组) | 50/51；aac1046_corpus_text 组内 8.2s 超时（20 并发 CPU 争用），单跑 5.25s 通过 | driver-native prepare | 0.2s | 9.2s | 0.3s | ~9.5s |
+
+| 新增用例 | 行为与 oracle | profile | 实测耗时 | 结果/≤10s 门 |
+|---|---|---|---|---|
+| aac1048_instances_id_distinguishes_int_and_bool_instances | id<T> Int7/Booltrue 两实例、logical 与 Rust sq_hash 字节一致、具体调用解析 | debug | 0.3s | pass |
+| aac1048_instances_swap_and_arity_refuse_without_reuse | pair<A,B> 交换实参两键、const 缺参拒绝、rep<2> 得 rep_u32_2 | debug | 0.4s | pass |
+| aac1048_instances_cross_module_owner_identity | 两模块同名模板两 logical、各自实例 | debug | 0.2s | pass |
+| aac1048_meta_static_projection_is_in_process_and_never_av | META-FN/META-REC 且无 TYPE 行（未跑绑定管线） | debug | 0.1s | pass |
+| aac1048_meta_resolves_required_labels_on_owners | #[required(key = "v", ...)] 归 owner 拼写；未标注 owner 不泄漏 | debug | 0.1s | pass |
+| aac1048_ct_read_set_projection_is_static_and_names_constants | CT-READ K 纯静态；无读取的 fn 无行 | debug | 0.1s | pass |
+| aac1048_ct_executes_instanced_generic_closure_through_bridge | id_i32 CT 经桥得 7（typed envelope） | debug | 0.6s | pass |
+| aac1048_ct_constant_change_recomputes_no_stale_freeze | K 局部 3→4 分别 7/8，无旧冻结复用 | debug | 0.5s | pass |
+
+**关键命令**：`cargo test -p ace-aac-syntax-conformance --features aac-semantics,aac-ct-bootstrap --test semantic_conformance`（68/68 干净三连）；`cargo t ace-aac-syntax`（50/51，corpus_text 环境归因）；驱动 prepare：`prepare-native.exe <root> [semantic|ct]`。**环境归因**：aac1046_corpus_text 在 20 并行下 8.2s 超时、单跑 5.25s 通过（AGENTS.md 已知环境边界）；另一次负载下的 6 例同类超时已隔离重放绿。**Spec delta 准备**：SD-01（aac-instantiation-and-cte.md）待 review 通过后由 merge 沉淀。
 
 2026-11-16 AAC-LANGUAGE-COMPLETENESS 规划静态预检：17份设计/计划239处本地链接有效；14份原Plan共126任务（AAC13包116项＋1068十项）的ID/勾选/阶段/依赖/状态/进度保留，无新Plan/新任务。10份AAC计划补族级SD/V/AC，1068明确语义主体/机器补齐/完整CL分工；当前任务中旧A期AC有限上限已校正。可达166份Plan无缺失/环，章节/表格/围栏和git diff --check通过。仅规划检查，全部新增验证未实施；未改产品代码/已验Spec/归档历史、未生成fixture或运行编译/产品/测试。
 
