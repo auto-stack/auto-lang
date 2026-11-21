@@ -3,7 +3,6 @@ use app.binding.decl_category
 use app.binding.record_fields
 use app.binding.take_step
 use app.binding.type_decl
-use app.numeric_literal.wide_integer_word
 use app.semantic_tree.kind
 use app.semantic_tree.row_count
 use app.types.boolean_type
@@ -45,7 +44,7 @@ pub fn record_field_number(records List<int>, type_id int, identity int) int {
 }
 
 pub fn core_value_type(records List<int>, type_id int) bool {
-    return type_id == integer_type() || type_id == boolean_type() || wide_integer_word(type_id).len() > 0 || type_id == text_view_type() || record_at(records, type_id) >= 0
+    return type_id == integer_type() || type_id == boolean_type() || type_id == text_view_type() || record_at(records, type_id) >= 0
 }
 
 pub fn source_record_shapes(pg List<int>, ast List<int>, declarations List<int>, facts List<int>, types List<int>, records List<int>, fuel List<int>, deadline i64) int {

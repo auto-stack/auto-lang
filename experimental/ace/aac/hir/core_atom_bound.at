@@ -5,6 +5,13 @@ use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.setter_mode
 use app.binding.bind_budget
+use app.core_ops.append_statement
+use app.core_ops.break_exit
+use app.core_ops.continue_exit
+use app.core_ops.fallthrough_exit
+use app.core_ops.if_statement
+use app.core_ops.loop_statement
+use app.core_ops.return_exit
 use app.core_ops.operator_lane
 use app.core_ops.typed_binary_code
 use app.core_ops.extended_binary
@@ -267,7 +274,36 @@ fn bind_arguments(bytes List<int>, tokens List<int>, values List<int>, nodes Lis
     return true
 }
 
-fn bind_prefix(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, block int, expr_group int, local_group int, place_group int, statements List<int>) int {
+fn named_loop(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, fields List<int>, items List<int>, group int, name Str) int {
+    if (name.len() == 0) { return -1 }
+    var found = -1
+    var at = nodes.get(group * 8 + 5)
+    let end = at + nodes.get(group * 8 + 6)
+    for (at < end) {
+        if (items.get(at * 2) == 1) {
+            let block = items.get(at * 2 + 1)
+            var stmt = nodes.get(block * 8 + 5)
+            let limit = stmt + nodes.get(block * 8 + 6)
+            for (stmt < limit) {
+                if (items.get(stmt * 2) == 1) {
+                    let part = items.get(stmt * 2 + 1)
+                    if (atom_tag(bytes, tokens, nodes, part) == "loop") {
+                        let id = field(bytes, tokens, nodes, fields, part, "id")
+                        if (reference_name(bytes, tokens, values, id) == name) {
+                            if (found != -1) { return -1 }
+                            found = part
+                        }
+                    }
+                }
+                stmt = stmt + 1
+            }
+        }
+        at = at + 1
+    }
+    return found
+}
+
+fn bind_prefix(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, block int, block_group int, expr_group int, local_group int, place_group int, statements List<int>) int {
     var at = nodes.get(block * 8 + 5)
     let limit = at + nodes.get(block * 8 + 6)
     var terminal = -1
@@ -278,33 +314,56 @@ fn bind_prefix(bytes List<int>, tokens List<int>, values List<int>, nodes List<i
             let form = atom_tag(bytes, tokens, nodes, part)
             if (form == "let" || form == "assign") {
                 if (nodes.get(part * 8 + 4) != 2 || count_children(nodes, items, part) != 0) { return -30 }
-                let value = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "value"), 1)
+                let value = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "value"))
                 let result = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, value)
                 if (result < 0) { return -32 }
                 var local_name = ""
                 var op = 1
                 if (form == "assign") {
-                    let name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "place"), 1)
+                    let name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "place"))
                     let place = by_id(bytes, tokens, values, nodes, sequence, items, place_group, name)
                     if (place < 0) { return -32 }
-                    local_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, place, "local"), 1)
+                    local_name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, place, "local"))
                     op = 2
                 } else {
-                    local_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "local"), 1)
+                    local_name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "local"))
                 }
                 let local = by_id(bytes, tokens, values, nodes, sequence, items, local_group, local_name)
                 if (local < 0) { return -32 }
-                statements.push(block)
-                statements.push(op)
-                statements.push(local)
-                statements.push(result)
+                append_statement(statements, block, op, local, result, -1)
             } else {
-                terminal = part
+                if (form == "if" || form == "loop") {
+                    let count = nodes.get(part * 8 + 4)
+                    if (count < 2 || count > 3 || count_children(nodes, items, part) != 0) { return -30 }
+                    if (form == "loop") {
+                        if (count != 2) { return -30 }
+                        let body_name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "body"))
+                        let target = by_id(bytes, tokens, values, nodes, sequence, items, block_group, body_name)
+                        let id = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "id"))
+                        if (target < 0 || named_loop(bytes, tokens, values, nodes, fields, items, block_group, id) != part) { return -32 }
+                        append_statement(statements, block, loop_statement(), part, target, -1)
+                    } else {
+                        let cond_name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "cond"))
+                        let then_name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, part, "then"))
+                        let cond = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, cond_name)
+                        let yes = by_id(bytes, tokens, values, nodes, sequence, items, block_group, then_name)
+                        if (cond < 0 || yes < 0) { return -32 }
+                        let else_value = field(bytes, tokens, nodes, fields, part, "else")
+                        var no = -1
+                        if (else_value >= 0) {
+                            let name = reference_name(bytes, tokens, values, else_value)
+                            no = by_id(bytes, tokens, values, nodes, sequence, items, block_group, name)
+                            if (no < 0) { return -32 }
+                        }
+                        append_statement(statements, block, if_statement(), yes, cond, no)
+                    }
+                } else {
+                    terminal = part
+                }
             }
         }
         at = at + 1
     }
-    if (terminal < 0) { return -30 }
     return terminal
 }
 
@@ -317,36 +376,34 @@ fn bind_blocks(bytes List<int>, tokens List<int>, values List<int>, nodes List<i
             if (atom_tag(bytes, tokens, nodes, block) != "block") { return -30 }
             let name = value_text(bytes, tokens, values, slot(nodes, sequence, block, 0), 0)
             if (by_id(bytes, tokens, values, nodes, sequence, items, block_group, name) != block) { return -32 }
-            let terminal = bind_prefix(bytes, tokens, values, nodes, sequence, fields, items, block, expr_group, local_group, place_group, statements)
-            if (terminal < 0) { return terminal }
-            var value = -1
-            var cond = -1
-            var yes = -1
-            var no = -1
-            var returning = -1
-            if (atom_tag(bytes, tokens, nodes, terminal) == "return") { returning = terminal }
-            if (returning >= 0) {
-                if (nodes.get(returning * 8 + 4) != 1 || count_children(nodes, items, returning) != 0) { return -30 }
-                let return_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, returning, "value"), 1)
-                value = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, return_name)
-                if (value < 0) { return -32 }
-            } else {
-                let branching = terminal
-                if (atom_tag(bytes, tokens, nodes, branching) != "if" || nodes.get(branching * 8 + 4) != 3 || count_children(nodes, items, branching) != 0) { return -30 }
-                let condition_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "cond"), 1)
-                let then_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "then"), 1)
-                let else_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, branching, "else"), 1)
-                cond = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, condition_name)
-                yes = by_id(bytes, tokens, values, nodes, sequence, items, block_group, then_name)
-                no = by_id(bytes, tokens, values, nodes, sequence, items, block_group, else_name)
-                if (cond < 0 || yes < 0 || no < 0) { return -32 }
+            let terminal = bind_prefix(bytes, tokens, values, nodes, sequence, fields, items, block, block_group, expr_group, local_group, place_group, statements)
+            if (terminal < -1) { return terminal }
+            var result = -1
+            var target = -1
+            var exit = fallthrough_exit()
+            if (terminal >= 0) {
+                if (nodes.get(terminal * 8 + 4) != 1 || count_children(nodes, items, terminal) != 0) { return -30 }
+                let form = atom_tag(bytes, tokens, nodes, terminal)
+                if (form == "return") {
+                    let name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, terminal, "value"))
+                    result = by_id(bytes, tokens, values, nodes, sequence, items, expr_group, name)
+                    if (result < 0) { return -32 }
+                    exit = return_exit()
+                } else {
+                    if (form != "break" && form != "continue") { return -30 }
+                    let name = reference_name(bytes, tokens, values, field(bytes, tokens, nodes, fields, terminal, "target"))
+                    target = named_loop(bytes, tokens, values, nodes, fields, items, block_group, name)
+                    if (target < 0) { return -32 }
+                    exit = break_exit()
+                    if (form == "continue") { exit = continue_exit() }
+                }
             }
             blocks.push(block)
             blocks.push(owner)
-            blocks.push(cond)
-            blocks.push(yes)
-            blocks.push(no)
-            blocks.push(value)
+            blocks.push(exit)
+            blocks.push(target)
+            blocks.push(-1)
+            blocks.push(result)
         }
         at = at + 1
     }

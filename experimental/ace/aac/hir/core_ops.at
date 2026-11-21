@@ -67,6 +67,24 @@ pub fn overflow_op(op int) bool { return op == 5 || op == 6 || op == 12 }
 
 pub fn wide_constant_op() int { return 22 }
 
+// Block exits and sequential HIR statements use separate tables.
+pub fn return_exit() int { return -1 }
+pub fn break_exit() int { return -2 }
+pub fn continue_exit() int { return -3 }
+pub fn fallthrough_exit() int { return -4 }
+pub fn loop_statement() int { return 3 }
+pub fn if_statement() int { return 4 }
+pub fn statement_stride() int { return 5 }
+
+pub fn append_statement(statements List<int>, block int, kind int, first int, second int, alternative int) int {
+    statements.push(block)
+    statements.push(kind)
+    statements.push(first)
+    statements.push(second)
+    statements.push(alternative)
+    return 0
+}
+
 // An encoded operator states its operand lane independently of its result.
 // The legacy unsuffixed equality accepts either i32 or Bool.
 pub fn operator_lane(word Str) int {

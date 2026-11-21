@@ -30,14 +30,22 @@ use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.layout_offset
 use app.core_globals.setter_mode
+use app.core_ops.append_statement
 use app.core_ops.binary_op
+use app.core_ops.break_exit
 use app.core_ops.comparison_op
+use app.core_ops.continue_exit
 use app.core_ops.equality_op
 use app.core_ops.extended_binary
+use app.core_ops.fallthrough_exit
+use app.core_ops.if_statement
 use app.core_ops.less_than_op
 use app.core_ops.logical_op
+use app.core_ops.loop_statement
 use app.core_ops.overflow_op
+use app.core_ops.return_exit
 use app.core_ops.source_binary
+use app.core_ops.statement_stride
 use app.core_ops.typed_binary_word
 use app.core_ops.wide_constant_op
 use app.core_records.core_value_type
@@ -133,8 +141,10 @@ fn transport_text(src List<int>, start int, limit int, deadline i64, fuel List<i
 // Locals:      (owner, id, type, formal position or negative binding role)
 // Expressions: (id, owner, op, result type, value/ref)
 // Args:        (call expr, evaluation expr, formal position)
-// Blocks:      (id, owner, condition, then block, else block, return expr)
-// Statements:  (block, initialize/assign, local, evaluation expr)
+// Blocks:      (id, owner, exit, loop target, reserved, return expression)
+// Statements:  (block, initialize/assign, local, value, -1)
+//              (block, if, then, condition, optional else)
+//              (block, loop, loop ID, body, -1)
 type VerifiedCore {
     definitions int
 }
@@ -193,6 +203,10 @@ fn global_category(category int) bool {
     return category == constant_decl() || category == global_var_decl()
 }
 
+fn hir_value_type(records List<int>, lane int) bool {
+    return core_value_type(records, lane) || wide_integer_word(lane).len() > 0
+}
+
 fn lower_field_chain(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, facts List<int>, records List<int>, expressions List<int>, exprs List<int>, args List<int>, row int, owner int, fuel List<int>, deadline i64, errors List<int>) int {
     let receiver = first_child(links, row)
     if (receiver < 0 || expressions.get(receiver) < 0) { return 0 }
@@ -244,7 +258,7 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
         if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
         let owner = owners.get(row)
         let t = facts.get(row)
-        if (owner >= 0 && core_value_type(records, t)) {
+        if (owner >= 0 && hir_value_type(records, t)) {
             let node_kind = kind(pg, ast, row)
             let binary = source_binary(node_kind.clone())
             if (binary != 0 && first_child(links, row) >= 0) {
@@ -408,73 +422,99 @@ fn lower_block_prefix(pg List<int>, ast List<int>, links List<int>, declarations
                 locals.push(integer_type())
                 locals.push(immutable_slot())
             }
-            statements.push(body)
-            statements.push(op)
-            statements.push(local)
-            statements.push(evaluated)
+            append_statement(statements, body, op, local, evaluated, -1)
         }
         child = next_sibling(links, child)
     }
-    return failed(errors, body, hir_unsupported())
+    return -1
+}
+
+fn append_block(blocks List<int>, id int, owner int, exit int, target int, value int) int {
+    blocks.push(id)
+    blocks.push(owner)
+    blocks.push(exit)
+    blocks.push(target)
+    blocks.push(-1)
+    blocks.push(value)
+    return 0
+}
+
+fn queue_block(pending List<int>, block int, first int, loop_id int) int {
+    pending.push(block)
+    pending.push(first)
+    pending.push(loop_id)
+    return 0
 }
 
 fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<int>, uses List<int>, expression_ids List<int>, body int, owner int, infer_return bool, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var pending = List<int>.new()
-    pending.push(body)
-    pending.push(first_child(links, body))
+    queue_block(pending, body, first_child(links, body), -1)
     for (pending.len() > 0) {
-        let cursor = pending.remove(pending.len() - 1)
+        let loop_id = pending.remove(pending.len() - 1)
+        var cursor = pending.remove(pending.len() - 1)
         let block = pending.remove(pending.len() - 1)
-        if (!take_step(fuel, deadline)) { return failed(errors, block, bind_budget()) }
-        let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, cursor, owner, locals, exprs, args, statements, fuel, deadline, errors)
-        if (statement < 0) { return statement }
-        let lexical_list = parent(ast, statement)
-        var rest = next_sibling(links, lexical_list)
-        for (rest >= 0 && kind(pg, ast, rest) != "stmt") {
-            if (!take_step(fuel, deadline)) { return failed(errors, rest, bind_budget()) }
-            rest = next_sibling(links, rest)
-        }
-        let form = kind(pg, ast, statement)
-        var condition = -1
-        var yes = -1
-        var no = -1
-        var value = -1
-        if (form == "return-stmt" || (form == "expr-stmt" && infer_return && parent(ast, lexical_list) == body)) {
-            if (rest >= 0) { return failed(errors, rest, hir_unsupported()) }
-            let result = child_with_role(pg, ast, links, statement, "value")
-            if (result < 0 || expression_ids.get(result) < 0) { return failed(errors, statement, hir_unsupported()) }
-            value = expression_ids.get(result)
-        } else {
+        for (true) {
+            if (!take_step(fuel, deadline)) { return failed(errors, block, bind_budget()) }
+            let statement = lower_block_prefix(pg, ast, links, declarations, uses, expression_ids, block, cursor, owner, locals, exprs, args, statements, fuel, deadline, errors)
+            if (statement < -1) { return statement }
+            if (statement == -1) {
+                append_block(blocks, block, owner, fallthrough_exit(), -1, -1)
+                break
+            }
+            let lexical_list = parent(ast, statement)
+            cursor = next_sibling(links, lexical_list)
+            for (cursor >= 0 && kind(pg, ast, cursor) != "stmt") {
+                if (!take_step(fuel, deadline)) { return failed(errors, cursor, bind_budget()) }
+                cursor = next_sibling(links, cursor)
+            }
+            let form = kind(pg, ast, statement)
+            if (form == "return-stmt" || (form == "expr-stmt" && infer_return && parent(ast, lexical_list) == body)) {
+                if (cursor >= 0) { return failed(errors, cursor, hir_unsupported()) }
+                let result = child_with_role(pg, ast, links, statement, "value")
+                if (result < 0 || expression_ids.get(result) < 0) { return failed(errors, statement, hir_unsupported()) }
+                append_block(blocks, block, owner, return_exit(), -1, expression_ids.get(result))
+                break
+            }
+            if (form == "for-cond-stmt") {
+                let condition = child_with_role(pg, ast, links, statement, "cond")
+                let step = child_with_role(pg, ast, links, statement, "body")
+                if (condition < 0 || step < 0 || expression_ids.get(condition) < 0) { return failed(errors, statement, hir_unsupported()) }
+                let stop = row_count(ast) * 8 + statement
+                append_statement(statements, block, loop_statement(), statement, statement, -1)
+                append_statement(statements, statement, if_statement(), step, expression_ids.get(condition), stop)
+                append_block(blocks, statement, owner, fallthrough_exit(), -1, -1)
+                append_block(blocks, stop, owner, break_exit(), statement, -1)
+                queue_block(pending, step, first_child(links, step), statement)
+                continue
+            }
+            if (form == "loop-stmt") {
+                let step = child_with_role(pg, ast, links, statement, "body")
+                if (step < 0) { return failed(errors, statement, hir_unsupported()) }
+                append_statement(statements, block, loop_statement(), statement, step, -1)
+                queue_block(pending, step, first_child(links, step), statement)
+                continue
+            }
+            if (form == "break" || form == "continue") {
+                if (loop_id < 0 || cursor >= 0) { return failed(errors, statement, hir_unsupported()) }
+                var exit = break_exit()
+                if (form == "continue") { exit = continue_exit() }
+                append_block(blocks, block, owner, exit, loop_id, -1)
+                break
+            }
             if (form != "if-stmt") { return failed(errors, statement, hir_unsupported()) }
-            let test = child_with_role(pg, ast, links, statement, "cond")
-            yes = child_with_role(pg, ast, links, statement, "then")
+            let condition = child_with_role(pg, ast, links, statement, "cond")
+            let yes = child_with_role(pg, ast, links, statement, "then")
             let alternative = child_with_kind(pg, ast, links, statement, "else-block")
-            if (test < 0 || yes < 0 || expression_ids.get(test) < 0) { return failed(errors, statement, hir_unsupported()) }
-            var no_cursor = -1
+            if (condition < 0 || yes < 0 || expression_ids.get(condition) < 0) { return failed(errors, statement, hir_unsupported()) }
+            var no = -1
             if (alternative >= 0) {
-                if (rest >= 0) { return failed(errors, rest, hir_unsupported()) }
                 no = child_with_kind(pg, ast, links, alternative, "block")
                 if (no < 0) { return failed(errors, statement, hir_unsupported()) }
-                no_cursor = first_child(links, no)
-            } else {
-                if (rest < 0) { return failed(errors, statement, hir_unsupported()) }
-                // The first remaining statement owns the synthetic suffix
-                // block. The suffix is visited only on the false branch.
-                no = rest
-                no_cursor = rest
+                queue_block(pending, no, first_child(links, no), loop_id)
             }
-            condition = expression_ids.get(test)
-            pending.push(no)
-            pending.push(no_cursor)
-            pending.push(yes)
-            pending.push(first_child(links, yes))
+            queue_block(pending, yes, first_child(links, yes), loop_id)
+            append_statement(statements, block, if_statement(), yes, expression_ids.get(condition), no)
         }
-        blocks.push(block)
-        blocks.push(owner)
-        blocks.push(condition)
-        blocks.push(yes)
-        blocks.push(no)
-        blocks.push(value)
     }
     return 0
 }
@@ -514,7 +554,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
         let category = decl_category(declarations, row)
         if (category == function_decl()) {
             let body = child_with_role(pg, ast, links, row, "body")
-            if (body < 0 || !core_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
+            if (body < 0 || !hir_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
             let infer_return = child_with_role(pg, ast, links, row, "ty") < 0
             let result = lower_blocks(pg, ast, links, declarations, uses, expressions, body, row, infer_return, locals, exprs, args, blocks, statements, fuel, deadline, errors)
             if (result != 0) { return result }
@@ -527,7 +567,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
             for (slot < params.len()) {
                 let param = params.get(slot)
                 let ty = facts.get(param)
-                if (!core_value_type(records, ty)) { return failed(errors, param, hir_unsupported()) }
+                if (!hir_value_type(records, ty)) { return failed(errors, param, hir_unsupported()) }
                 if (child_with_role(pg, ast, links, param, "mode") >= 0) { return failed(errors, param, hir_unsupported()) }
                 locals.push(row)
                 locals.push(param)
@@ -542,7 +582,7 @@ fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, decla
                     if (!take_step(fuel, deadline)) { return failed(errors, row, bind_budget()) }
                     owner = parent(ast, owner)
                 }
-                if (owner < 0 || !core_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
+                if (owner < 0 || !hir_value_type(records, facts.get(row))) { return failed(errors, row, hir_unsupported()) }
                 var slot = immutable_slot()
                 if (category == local_var_decl()) { slot = mutable_slot() }
                 locals.push(owner)
@@ -669,56 +709,144 @@ fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel Lis
     return 0
 }
 
-fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn queue_child(blocks List<int>, owner int, child int, loop_id int, pending List<int>) int {
+    let position = find_row(blocks, 6, child, 0)
+    if (position < 0) { return hir_reference_error() }
+    if (blocks.get(position + 1) != owner) { return hir_owner_error() }
+    pending.push(position)
+    pending.push(loop_id)
+    return 0
+}
+
+// A structured HIR body is a tree. The only back edges are the resolved
+// loop transfers; explicit block references cannot introduce a cycle.
+fn verify_blocks(defs List<int>, exprs List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    var pending = List<int>.new()
+    var order = List<int>.new()
+    var seen = List<int>.new()
     var outcomes = List<int>.new()
-    var position = 0
-    for (position < blocks.len()) {
-        let row = blocks.get(position)
-        let owner = blocks.get(position + 1)
-        let condition = blocks.get(position + 2)
-        if (!has_budget(fuel, deadline, defs.len() / 4 + exprs.len() / 5)) { return failed(errors, row, bind_budget()) }
-        let def = find_row(defs, 4, owner, 0)
-        if (def < 0) { return failed(errors, row, hir_owner_error()) }
-        var use_expr = condition
-        var expected = boolean_type()
-        var exits = 0
-        if (condition < 0) {
-            use_expr = blocks.get(position + 5)
-            expected = defs.get(def + 1)
-            exits = 1
-        }
-        let expression = find_row(exprs, 5, use_expr, 0)
-        if (expression < 0) { return failed(errors, row, hir_reference_error()) }
-        if (exprs.get(expression + 1) != owner) { return failed(errors, row, hir_owner_error()) }
-        if (exprs.get(expression + 3) != expected) { return failed(errors, row, hir_type_error()) }
-        outcomes.push(exits)
-        position = position + 6
+    var at = 0
+    for (at < blocks.len()) {
+        seen.push(0)
+        outcomes.push(0)
+        at = at + 6
     }
-    var changed = true
-    for (changed) {
-        changed = false
-        position = 0
-        for (position < blocks.len()) {
-            if (outcomes.get(position / 6) == 0) {
-                let row = blocks.get(position)
-                let owner = blocks.get(position + 1)
-                if (!has_budget(fuel, deadline, blocks.len() / 3)) { return failed(errors, row, bind_budget()) }
-                let yes = find_row(blocks, 6, blocks.get(position + 3), 0)
-                let no = find_row(blocks, 6, blocks.get(position + 4), 0)
-                if (yes < 0 || no < 0) { return failed(errors, row, hir_reference_error()) }
-                if (blocks.get(yes + 1) != owner || blocks.get(no + 1) != owner) { return failed(errors, row, hir_owner_error()) }
-                if (outcomes.get(yes / 6) != 0 && outcomes.get(no / 6) != 0) {
-                    outcomes.set(position / 6, 1)
-                    changed = true
+    at = 0
+    for (at < defs.len()) {
+        if (defs.get(at + 2) >= 0) {
+            let issue = queue_child(blocks, defs.get(at), defs.get(at + 3), -1, pending)
+            if (issue != 0) { return failed(errors, defs.get(at), issue) }
+        }
+        at = at + 4
+    }
+    for (pending.len() > 0) {
+        let active_loop = pending.remove(pending.len() - 1)
+        let block = pending.remove(pending.len() - 1)
+        let row = blocks.get(block)
+        let owner = blocks.get(block + 1)
+        let exit = blocks.get(block + 2)
+        let index = block / 6
+        if (seen.get(index) != 0) { return failed(errors, row, hir_reference_error()) }
+        seen.set(index, 1)
+        order.push(block)
+        if (!has_budget(fuel, deadline, defs.len() / 4 + exprs.len() / 5 + statements.len() / statement_stride())) {
+            return failed(errors, row, bind_budget())
+        }
+        if (exit == return_exit()) {
+            let def = find_row(defs, 4, owner, 0)
+            let result = find_row(exprs, 5, blocks.get(block + 5), 0)
+            if (def < 0 || result < 0) { return failed(errors, row, hir_reference_error()) }
+            if (exprs.get(result + 1) != owner) { return failed(errors, row, hir_owner_error()) }
+            if (defs.get(def + 1) != exprs.get(result + 3)) { return failed(errors, row, hir_type_error()) }
+        } else {
+            if (exit != fallthrough_exit() && (active_loop < 0 || blocks.get(block + 3) != active_loop)) {
+                return failed(errors, row, hir_reference_error())
+            }
+        }
+        at = 0
+        for (at < statements.len()) {
+            if (statements.get(at) == row) {
+                let op = statements.get(at + 1)
+                if (op == loop_statement() || op == if_statement()) {
+                    if (!has_budget(fuel, deadline, blocks.len() / 3 + exprs.len() / 5)) {
+                        return failed(errors, row, bind_budget())
+                    }
+                    if (op == loop_statement()) {
+                        let issue = queue_child(blocks, owner, statements.get(at + 3), statements.get(at + 2), pending)
+                        if (issue != 0) { return failed(errors, row, issue) }
+                    } else {
+                        let condition = find_row(exprs, 5, statements.get(at + 3), 0)
+                        if (condition < 0) { return failed(errors, row, hir_reference_error()) }
+                        if (exprs.get(condition + 1) != owner) { return failed(errors, row, hir_owner_error()) }
+                        if (exprs.get(condition + 3) != boolean_type()) { return failed(errors, row, hir_type_error()) }
+                        let yes = queue_child(blocks, owner, statements.get(at + 2), active_loop, pending)
+                        if (yes != 0) { return failed(errors, row, yes) }
+                        let alternative = statements.get(at + 4)
+                        if (alternative >= 0) {
+                            let no = queue_child(blocks, owner, alternative, active_loop, pending)
+                            if (no != 0) { return failed(errors, row, no) }
+                        }
+                    }
                 }
             }
-            position = position + 6
+            at = at + statement_stride()
         }
     }
-    position = 0
-    for (position < outcomes.len()) {
-        if (outcomes.get(position) == 0) { return failed(errors, blocks.get(position * 6), hir_reference_error()) }
-        position = position + 1
+    if (order.len() != blocks.len() / 6) { return failed(errors, 0, hir_reference_error()) }
+
+    // Compute possible exits bottom-up: fallthrough=1, return=2, break=4,
+    // continue=8. A loop consumes its own break and continue; break allows
+    // its enclosing block to proceed. Fallthrough in a loop body repeats.
+    for (order.len() > 0) {
+        let block = order.remove(order.len() - 1)
+        let row = blocks.get(block)
+        if (!has_budget(fuel, deadline, statements.len() / statement_stride())) {
+            return failed(errors, row, bind_budget())
+        }
+        var flow = 1
+        at = 0
+        for (at < statements.len()) {
+            if (statements.get(at) == row) {
+                if ((flow & 1) == 0) { return failed(errors, row, hir_unsupported()) }
+                let kind = statements.get(at + 1)
+                if (kind == loop_statement() || kind == if_statement()) {
+                    if (!has_budget(fuel, deadline, blocks.len() / 3)) { return failed(errors, row, bind_budget()) }
+                    if (kind == loop_statement()) {
+                        let loop_body = find_row(blocks, 6, statements.get(at + 3), 0)
+                        let nested = outcomes.get(loop_body / 6)
+                        flow = (flow & 14) | (nested & 2)
+                        if ((nested & 4) != 0) { flow = flow | 1 }
+                    } else {
+                        let then_block = find_row(blocks, 6, statements.get(at + 2), 0)
+                        var alternate = 1
+                        if (statements.get(at + 4) >= 0) {
+                            let else_block = find_row(blocks, 6, statements.get(at + 4), 0)
+                            alternate = outcomes.get(else_block / 6)
+                        }
+                        flow = (flow & 14) | outcomes.get(then_block / 6) | alternate
+                    }
+                }
+            }
+            at = at + statement_stride()
+        }
+        let exit = blocks.get(block + 2)
+        if (exit != fallthrough_exit()) {
+            if ((flow & 1) == 0) { return failed(errors, row, hir_unsupported()) }
+            var terminator = 2
+            if (exit == break_exit()) { terminator = 4 }
+            if (exit == continue_exit()) { terminator = 8 }
+            flow = (flow & 14) | terminator
+        }
+        outcomes.set(block / 6, flow)
+    }
+    at = 0
+    for (at < defs.len()) {
+        if (defs.get(at + 2) >= 0) {
+            if (!has_budget(fuel, deadline, blocks.len() / 6)) { return failed(errors, defs.get(at), bind_budget()) }
+            let root = find_row(blocks, 6, defs.get(at + 3), 0)
+            if (outcomes.get(root / 6) != 2) { return failed(errors, defs.get(at), hir_unsupported()) }
+        }
+        at = at + 4
     }
     return 0
 }
@@ -836,51 +964,30 @@ fn unclaimed_node(table List<int>, stride int, claimed List<int>) int {
 // Each expression owns an evaluation, and each block belongs to one
 // structured control-flow position. A terminating graph alone would also
 // admit unreachable code and allow an effectful expression to be shared.
-fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
-    if (!has_budget(fuel, deadline, exprs.len() / 5 + blocks.len() / 6)) { return failed(errors, 0, bind_budget()) }
-    var expressions = List<int>.new()
-    var block_claims = List<int>.new()
+fn verify_usage(exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+    if (!has_budget(fuel, deadline, exprs.len() / 5 + blocks.len() / 6 + statements.len() / statement_stride())) {
+        return failed(errors, 0, bind_budget())
+    }
+    var claims = List<int>.new()
     var pending = List<int>.new()
     var at = 0
     for (at < exprs.len()) {
-        expressions.push(0)
+        claims.push(0)
         at = at + 5
     }
     at = 0
-    for (at < blocks.len()) {
-        block_claims.push(0)
-        at = at + 6
-    }
-    at = 0
     for (at < statements.len()) {
-        pending.push(statements.get(at + 3))
-        at = at + 4
-    }
-    at = 0
-    for (at < defs.len()) {
-        if (defs.get(at + 2) >= 0) {
-            let code = claim_node(blocks, 6, block_claims, defs.get(at + 3), fuel, deadline)
-            if (code != 0) { return failed(errors, defs.get(at), code) }
-        }
-        at = at + 4
+        if (statements.get(at + 1) != loop_statement()) { pending.push(statements.get(at + 3)) }
+        at = at + statement_stride()
     }
     at = 0
     for (at < blocks.len()) {
-        let condition = blocks.get(at + 2)
-        var evaluated = blocks.get(at + 5)
-        if (condition >= 0) {
-            let yes = claim_node(blocks, 6, block_claims, blocks.get(at + 3), fuel, deadline)
-            if (yes != 0) { return failed(errors, blocks.get(at), yes) }
-            let no = claim_node(blocks, 6, block_claims, blocks.get(at + 4), fuel, deadline)
-            if (no != 0) { return failed(errors, blocks.get(at), no) }
-            evaluated = condition
-        }
-        pending.push(evaluated)
+        if (blocks.get(at + 2) == return_exit()) { pending.push(blocks.get(at + 5)) }
         at = at + 6
     }
     for (pending.len() > 0) {
         let id = pending.remove(pending.len() - 1)
-        let code = claim_node(exprs, 5, expressions, id, fuel, deadline)
+        let code = claim_node(exprs, 5, claims, id, fuel, deadline)
         if (code != 0) { return failed(errors, id, code) }
         if (!has_budget(fuel, deadline, args.len() / 3)) { return failed(errors, id, bind_budget()) }
         at = 0
@@ -889,37 +996,41 @@ fn verify_usage(defs List<int>, exprs List<int>, args List<int>, blocks List<int
             at = at + 3
         }
     }
-    let unused = unclaimed_node(exprs, 5, expressions)
+    let unused = unclaimed_node(exprs, 5, claims)
     if (unused >= 0) { return failed(errors, unused, hir_reference_error()) }
-    let unreachable = unclaimed_node(blocks, 6, block_claims)
-    if (unreachable >= 0) { return failed(errors, unreachable, hir_reference_error()) }
     return 0
 }
 
-fn incoming_block(blocks List<int>, needle int) int {
+fn incoming_statement(statements List<int>, child int) int {
     var at = 0
-    for (at < blocks.len()) {
-        if (blocks.get(at + 3) == needle || blocks.get(at + 4) == needle) { return blocks.get(at) }
-        at = at + 6
+    for (at < statements.len()) {
+        let op = statements.get(at + 1)
+        if (op == loop_statement() && statements.get(at + 3) == child) { return at }
+        if (op == if_statement() && (statements.get(at + 2) == child || statements.get(at + 4) == child)) { return at }
+        at = at + statement_stride()
     }
     return -1
 }
 
-fn initialized_before(init int, statements List<int>, blocks List<int>, block int, before int, fuel List<int>, deadline i64) int {
+fn initialized_before(init int, statements List<int>, block int, before int, fuel List<int>, deadline i64) int {
     if (init < 0) { return hir_initialization_error() }
     let origin = statements.get(init)
-    if (origin == block && init < before) { return 0 }
-    if (origin == block) { return hir_initialization_error() }
-    var ancestor = block
-    for (ancestor >= 0) {
-        if (!has_budget(fuel, deadline, blocks.len() / 6)) { return bind_budget() }
-        ancestor = incoming_block(blocks, ancestor)
-        if (ancestor == origin) { return 0 }
+    var current = block
+    var limit = before
+    for (current >= 0) {
+        if (current == origin) {
+            if (init < limit) { return 0 }
+            return hir_initialization_error()
+        }
+        if (!has_budget(fuel, deadline, statements.len() / statement_stride())) { return bind_budget() }
+        limit = incoming_statement(statements, current)
+        if (limit < 0) { break }
+        current = statements.get(limit)
     }
     return hir_initialization_error()
 }
 
-fn verify_local_reads(locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, initialized List<int>, root int, block int, before int, fuel List<int>, deadline i64, errors List<int>) int {
+fn verify_local_reads(locals List<int>, exprs List<int>, args List<int>, statements List<int>, initialized List<int>, root int, block int, before int, fuel List<int>, deadline i64, errors List<int>) int {
     var pending = List<int>.new()
     pending.push(root)
     for (pending.len() > 0) {
@@ -932,7 +1043,7 @@ fn verify_local_reads(locals List<int>, exprs List<int>, args List<int>, blocks 
             let local = find_row(locals, 4, exprs.get(expression + 4), 1)
             if (local < 0) { return failed(errors, id, hir_reference_error()) }
             if (locals.get(local + 3) < 0) {
-                let result = initialized_before(initialized.get(local / 4), statements, blocks, block, before, fuel, deadline)
+                let result = initialized_before(initialized.get(local / 4), statements, block, before, fuel, deadline)
                 if (result != 0) { return failed(errors, id, result) }
             }
         }
@@ -958,6 +1069,11 @@ fn verify_statements(locals List<int>, exprs List<int>, args List<int>, blocks L
     at = 0
     for (at < statements.len()) {
         let block = statements.get(at)
+        let op = statements.get(at + 1)
+        if (op == if_statement() || op == loop_statement()) {
+            at = at + statement_stride()
+            continue
+        }
         if (!has_budget(fuel, deadline, locals.len() / 4 + exprs.len() / 5 + blocks.len() / 6)) {
             return failed(errors, block, bind_budget())
         }
@@ -970,7 +1086,6 @@ fn verify_statements(locals List<int>, exprs List<int>, args List<int>, blocks L
             return failed(errors, block, hir_owner_error())
         }
         if (locals.get(local + 2) != exprs.get(expression + 3)) { return failed(errors, root, hir_type_error()) }
-        let op = statements.get(at + 1)
         let role = locals.get(local + 3)
         if (op == initialize_op()) {
             if (role >= 0 || initialized.get(local / 4) != -1) { return failed(errors, block, hir_initialization_error()) }
@@ -978,28 +1093,32 @@ fn verify_statements(locals List<int>, exprs List<int>, args List<int>, blocks L
         } else {
             if (op != assign_op() || role != mutable_slot()) { return failed(errors, block, hir_mutability_error()) }
         }
-        at = at + 4
+        at = at + statement_stride()
     }
     at = 0
     for (at < statements.len()) {
         let block = statements.get(at)
         let root = statements.get(at + 3)
+        if (statements.get(at + 1) == loop_statement()) {
+            at = at + statement_stride()
+            continue
+        }
         if (statements.get(at + 1) == assign_op()) {
             if (!has_budget(fuel, deadline, locals.len() / 4)) { return failed(errors, block, bind_budget()) }
             let local = find_row(locals, 4, statements.get(at + 2), 1)
-            let result = initialized_before(initialized.get(local / 4), statements, blocks, block, at, fuel, deadline)
+            let result = initialized_before(initialized.get(local / 4), statements, block, at, fuel, deadline)
             if (result != 0) { return failed(errors, block, result) }
         }
-        let verified = verify_local_reads(locals, exprs, args, blocks, statements, initialized, root, block, at, fuel, deadline, errors)
+        let verified = verify_local_reads(locals, exprs, args, statements, initialized, root, block, at, fuel, deadline, errors)
         if (verified != 0) { return verified }
-        at = at + 4
+        at = at + statement_stride()
     }
     at = 0
     for (at < blocks.len()) {
-        var root = blocks.get(at + 2)
-        if (root < 0) { root = blocks.get(at + 5) }
-        let verified = verify_local_reads(locals, exprs, args, blocks, statements, initialized, root, blocks.get(at), statements.len(), fuel, deadline, errors)
-        if (verified != 0) { return verified }
+        if (blocks.get(at + 2) == return_exit()) {
+            let verified = verify_local_reads(locals, exprs, args, statements, initialized, blocks.get(at + 5), blocks.get(at), statements.len(), fuel, deadline, errors)
+            if (verified != 0) { return verified }
+        }
         at = at + 6
     }
     return 0
@@ -1045,7 +1164,7 @@ fn verify_initializer_chain(defs List<int>, parameters List<int>, exprs List<int
             return failed(errors, source, hir_type_error())
         }
         let entry = find_row(blocks, 6, defs.get(init_def + 3), 0)
-        if (entry < 0 || blocks.get(entry + 2) >= 0) { return failed(errors, source, hir_initialization_error()) }
+        if (entry < 0 || blocks.get(entry + 2) != return_exit()) { return failed(errors, source, hir_initialization_error()) }
         let result = find_row(exprs, 5, blocks.get(entry + 5), 0)
         if (result < 0 || exprs.get(result + 2) != call_op() || exprs.get(result + 4) != setter) {
             return failed(errors, source, hir_initialization_error())
@@ -1107,7 +1226,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         let data = exprs.get(position + 4)
         var status = hir_reference_error()
         if (op == constant_op() || op == read_op() || op == call_op()) { status = 0 }
-        if (!core_value_type(records, type_id)) { status = hir_type_error() }
+        if (!hir_value_type(records, type_id)) { status = hir_type_error() }
         if (op == read_op()) {
             let param = find_row(parameters, 4, data, 1)
             if (param < 0 || parameters.get(param) != owner) {
@@ -1139,9 +1258,9 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         }
         position = position + 5
     }
-    if (verify_blocks(defs, exprs, blocks, fuel, deadline, errors) != 0) { return None }
+    if (verify_blocks(defs, exprs, blocks, statements, fuel, deadline, errors) != 0) { return None }
     if (verify_initializer_chain(defs, parameters, exprs, blocks, layouts, rows, fuel, deadline, errors) != 0) { return None }
-    if (verify_usage(defs, exprs, args, blocks, statements, fuel, deadline, errors) != 0) { return None }
+    if (verify_usage(exprs, args, blocks, statements, fuel, deadline, errors) != 0) { return None }
     if (verify_statements(parameters, exprs, args, blocks, statements, fuel, deadline, errors) != 0) { return None }
     return Some(VerifiedCore { definitions: defs.len() / 4 })
 }
@@ -1241,7 +1360,7 @@ fn assigned(statements List<int>, local int) bool {
     var at = 0
     for (at < statements.len()) {
         if (statements.get(at + 1) == assign_op() && statements.get(at + 2) == local) { return true }
-        at = at + 4
+        at = at + statement_stride()
     }
     return false
 }
@@ -1268,17 +1387,22 @@ fn block_statements(statements List<int>, block int) Str {
     var at = 0
     for (at < statements.len()) {
         if (statements.get(at) == block) {
-            let local = statements.get(at + 2)
-            let value = ref_text("e", statements.get(at + 3))
-            if (statements.get(at + 1) == initialize_op()) {
-                let line = "let(local: " + ref_text("l", local) + ", value: " + value + ") {} "
-                output.push(line.move)
-            } else {
-                let line = "assign(place: " + ref_text("p", local) + ", value: " + value + ") {} "
-                output.push(line.move)
+            let op = statements.get(at + 1)
+            let first = statements.get(at + 2)
+            let second = statements.get(at + 3)
+            var call = ""
+            if (op == initialize_op()) { call = "let(local: " + ref_text("l", first) + ", value: " + ref_text("e", second) }
+            if (op == assign_op()) { call = "assign(place: " + ref_text("p", first) + ", value: " + ref_text("e", second) }
+            if (op == loop_statement()) { call = "loop(id: " + ref_text("q", first) + ", body: " + ref_text("k", second) }
+            if (op == if_statement()) {
+                call = "if(cond: " + ref_text("e", second) + ", then: " + ref_text("k", first)
+                let other = statements.get(at + 4)
+                if (other >= 0) { call = call + ", else: " + ref_text("k", other) }
             }
+            let emitted = call + ") {} "
+            output.push(emitted.move)
         }
-        at = at + 4
+        at = at + statement_stride()
     }
     return join_rows(output, output.len())
 }
@@ -1445,13 +1569,13 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
             if (blocks.get(block_at + 1) == def) {
                 let block_id = blocks.get(block_at)
                 let block = id("k", block_id)
-                let condition = blocks.get(block_at + 2)
+                let exit = blocks.get(block_at + 2)
                 var statement = ""
-                if (condition < 0) {
+                if (exit == return_exit()) {
                     statement = "return(value: " + ref_text("e", blocks.get(block_at + 5)) + ") {}"
-                } else {
-                    statement = "if(cond: " + ref_text("e", condition) + ", then: " + ref_text("k", blocks.get(block_at + 3)) + ", else: " + ref_text("k", blocks.get(block_at + 4)) + ") {}"
                 }
+                if (exit == break_exit()) { statement = "break(target: " + ref_text("q", blocks.get(block_at + 3)) + ") {}" }
+                if (exit == continue_exit()) { statement = "continue(target: " + ref_text("q", blocks.get(block_at + 3)) + ") {}" }
                 let line = " block " + block + " { " + block_statements(statements, block_id) + statement + " }\n"
                 output.push(line.move)
             }
@@ -1495,6 +1619,7 @@ fn supported_source_item(pg List<int>, ast List<int>, links List<int>, declarati
 }
 
 fn source_origin(rows int, row int) int {
+    if (row >= rows * 8 && row < rows * 9) { return row - rows * 8 }
     if (row >= rows * 7 && row < rows * 8) { return row - rows * 7 }
     if (row >= rows * 6 && row < rows * 7) { return row - rows * 6 }
     if (global_mode(rows, row) != 0) { return global_source(rows, row) }

@@ -1134,6 +1134,37 @@ fn aac1055_wide_integer_hir_preserves_width_and_extrema() {
 }
 
 #[test]
+fn aac1055_conditional_loop_preserves_scopes_and_continuations() {
+    let source = include_bytes!(
+        "../../../../../crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/sc-for-loops.at"
+    );
+    let atom = run_core_hir_case(source, "verify").expect("Auto loop HIR production");
+    assert_eq!(atom.matches("loop(id:").count(), 3, "{atom}");
+    assert_eq!(atom.matches("break(target:").count(), 4, "{atom}");
+    assert_eq!(atom.matches("continue(target:").count(), 1, "{atom}");
+    let bound = ace_core::descriptor::bind(ace_core::scalar_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_scalar(bound).expect("independent structured control verification");
+    let admit = |text: &str| {
+        run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto loop HIR readback")
+    };
+    assert_eq!(admit(&atom), "ADMITTED scalar-i32-draft\n");
+    let target = atom.split_once("continue(target: \"").unwrap().1.split('"').next().unwrap();
+    let outer = atom
+        .split("loop(id: \"")
+        .skip(1)
+        .map(|tail| tail.split('"').next().unwrap())
+        .find(|id| *id != target)
+        .unwrap();
+    let wrong_owner = atom.replacen(
+        &format!("continue(target: \"{target}\""),
+        &format!("continue(target: \"{outer}\""),
+        1,
+    );
+    assert_eq!(admit(&wrong_owner), "ERROR hir.reference\n");
+}
+
+#[test]
 fn verifies_terminating_branches_and_rejects_a_back_edge() {
     let source = b"fn choose(flag bool) int { if flag { return 13 } else { return 7 } }";
     let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");
