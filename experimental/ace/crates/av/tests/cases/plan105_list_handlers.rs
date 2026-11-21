@@ -110,3 +110,13 @@ fn p105_record_ctor_str_literal_lands_owned() {
     let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
     assert!(n.contains('5'), "ctor literal -> owned field -> len 5: {n}");
 }
+
+/// bracket 索引形的字段值读（`.todos[i].text`，013 Recompute 真形）——与
+/// `.get(i)` 同走 LIST_FIELD_VIEW 非破坏视图。
+#[test]
+fn p105_elem_field_text_view_bracket_read() {
+    let src = "type Todo {\n    id: int\n    text: str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var out str = \"\" }\n    view { text .out {} }\n    on {\n        .M -> {\n            .todos.push(Todo { id: 1, text: \"a\", done: false })\n            var i int = 0\n            .out = .todos[i].text\n        }\n    }\n}\n";
+    let fields = run(src);
+    let out = fields.iter().find(|(k, _)| k == "out").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(out.contains("\"a\"") || out.contains("a"), "bracket index field view read: {out}");
+}
