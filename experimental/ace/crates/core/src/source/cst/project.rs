@@ -31,6 +31,93 @@ const I32_MAX: u128 = 2147483647;
 /// 投影工作预算（访问帧数；超出 = 资源态受控拒绝）。
 const PROJECTION_NODE_BUDGET: usize = 1 << 22;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SourcePragmas {
+    pub script: Option<Span>,
+    pub rust: Option<Span>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceMode {
+    Normal,
+    Script,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SourceMetadata {
+    pub pragmas: SourcePragmas,
+    pub annotations: Vec<SourceAnnotation>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SourceAnnotation {
+    pub declaration: String,
+    pub owner_span: Span,
+    pub span: Span,
+    pub av_visible: bool,
+    pub kind: SourceAnnotationKind,
+}
+
+#[derive(Clone, Debug)]
+pub enum SourceAnnotationKind {
+    Api {
+        method: String,
+        path: String,
+    },
+    Export {
+        abi: String,
+    },
+    Rust {
+        name: String,
+        arguments: Option<Span>,
+    },
+}
+
+impl SourcePragmas {
+    pub fn mode(self, path: &str) -> SourceMode {
+        if self.rust.is_some() {
+            SourceMode::Normal
+        } else if self.script.is_some()
+            || std::path::Path::new(path)
+                .extension()
+                .and_then(std::ffi::OsStr::to_str)
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("as"))
+        {
+            SourceMode::Script
+        } else {
+            SourceMode::Normal
+        }
+    }
+
+    fn insert(&mut self, name: &str, span: Span) -> Result<(), Diagnostic> {
+        let slot = match name {
+            "script" => &mut self.script,
+            "rust" => &mut self.rust,
+            _ => unreachable!("source mode is a schema contextual name"),
+        };
+        if slot.is_some() {
+            return Err(Diagnostic::new(
+                Stage::Bind,
+                "source.attribute-duplicate",
+                format!("duplicate file pragma `{name}`"),
+                span,
+            ));
+        }
+        *slot = Some(span);
+        Ok(())
+    }
+
+    pub(super) fn merge(&mut self, next: Self) -> Result<(), Diagnostic> {
+        if let Some(span) = next.script {
+            self.insert("script", span)?;
+        }
+        if let Some(span) = next.rust {
+            self.insert("rust", span)?;
+        }
+        Ok(())
+    }
+}
+
 pub(crate) fn project_program(
     p: &GrammarProgram,
     k: &SourceKinds,
@@ -38,6 +125,16 @@ pub(crate) fn project_program(
     snap: &Snapshot,
     profile: SourceProfile,
 ) -> Result<Program, Vec<Diagnostic>> {
+    project_program_with_pragmas(p, k, tree, snap, profile).map(|(program, _)| program)
+}
+
+pub(crate) fn project_program_with_pragmas(
+    p: &GrammarProgram,
+    k: &SourceKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    profile: SourceProfile,
+) -> Result<(Program, SourceMetadata), Vec<Diagnostic>> {
     project_program_with_caps(
         p,
         k,
@@ -62,7 +159,7 @@ pub(crate) fn project_program_deferring_templates(
     snap: &Snapshot,
     profile: SourceProfile,
     age_face: bool,
-) -> Result<Program, Vec<Diagnostic>> {
+) -> Result<(Program, SourceMetadata), Vec<Diagnostic>> {
     project_program_with_caps(
         p, k, tree, snap, profile, false, profile.is_auto_language(), true, age_face,
     )
@@ -97,7 +194,7 @@ pub(crate) fn project_program_with_caps(
     instances_face: bool,
     defer_templates: bool,
     age_face: bool,
-) -> Result<Program, Vec<Diagnostic>> {
+) -> Result<(Program, SourceMetadata), Vec<Diagnostic>> {
     // 词法层先行（旧 tokenize 全文件先行的首事实序）。
     // PLAN-936（T-04）：ct 面上字符串 token 仅作为 meta 字段选择子进入词法事实（值位置由
     // resolve 拒绝）。
@@ -168,6 +265,8 @@ pub(crate) fn project_program_with_caps(
     // methods，先于 `as Spec` 遵从检查）。
     let mut exts: Vec<ExtDecl> = Vec::new();
     let mut saw_script = false;
+    let mut pragmas = SourcePragmas::default();
+    let file_mode_kind = eng.rule_kind_of("file-mode-item");
     // F-941-12（r9）：前一个非产物顶层 item 是否含错误子树（恢复产物 script
     // 区判定用）。
     let mut last_item_errored = false;
@@ -184,6 +283,19 @@ pub(crate) fn project_program_with_caps(
                 dn
             }
         };
+        if Some(tree.kind(node)) == file_mode_kind {
+            if !tree_has_errors || !subtree_has_errors(tree, node) {
+                let mode = eng.cx.field_child(node, "mode").expect("file mode");
+                let name = eng.cx.spelling(mode);
+                let span = eng.cx.span_of(mode);
+                if let Err(diagnostic) = pragmas.insert(&name, span) {
+                    eng.cx.reject(span, || diagnostic);
+                }
+            }
+            continue;
+        }
+        let attributed = attributed_owner(p, tree, node).map(|owner| (node, owner));
+        let node = attributed.map_or(node, |(_, owner)| owner);
         // PLAN-950: public visibility is retained in ModuleSyntax, while
         // the existing function projector consumes the nested fn item.
         // PLAN-960（T-02）：public-type/public-const 前缀同样在分派前剥壳。
@@ -251,7 +363,8 @@ pub(crate) fn project_program_with_caps(
                 });
             }
         }
-        let node_errored = tree_has_errors && subtree_has_errors(tree, node);
+        let node_errored =
+            tree_has_errors && subtree_has_errors(tree, attributed.map_or(node, |(wrapper, _)| wrapper));
         // F-941-12（PLAN-941 r9）：恢复产物 script 区——错误树中紧跟含错误
         // item 的顶层 script 是引擎在最后一个完整块 `}` 处提前闭合外层 body、
         // 把尾部语句重释为顶层的产物（旧 parser 线性解析不产生该区域）；其
@@ -267,6 +380,15 @@ pub(crate) fn project_program_with_caps(
             continue;
         }
         last_item_errored = false;
+        let av_visible =
+            attributed.is_none_or(|(wrapper, _)| attribute_targets_av(p, tree, snap, wrapper));
+        let (attribute_params, test, single) = attributed
+            .map_or_else(Default::default, |(wrapper, _)| {
+                eng.project_decl_attributes(wrapper, node, av_visible)
+            });
+        if !av_visible {
+            continue;
+        }
         if kind == k.fn_item
             || kind == k.type_item.unwrap_or(u32::MAX)
             || kind == k.enum_item.unwrap_or(u32::MAX)
@@ -302,7 +424,36 @@ pub(crate) fn project_program_with_caps(
                 continue;
             }
             if kind == k.fn_item {
-                items.push(Item::Fn(eng.run_fn_item(node, None, Receiver::Free)));
+                let mut function = eng.run_fn_item_with_params(
+                    node,
+                    None,
+                    Receiver::Free,
+                    attribute_params,
+                );
+                function.test_attribute = test;
+                if let Some(span) = test {
+                    if matches!(function.ret.kind, TypeRef::Inferred) {
+                        function.ret.kind = TypeRef::Builtin(TypeWord::Void);
+                    }
+                    if function.name.name == "main"
+                        || !function.params.is_empty()
+                        || !function.type_params.is_empty()
+                        || !matches!(
+                            function.ret.kind,
+                            TypeRef::Builtin(TypeWord::Void | TypeWord::Int | TypeWord::I32)
+                        )
+                    {
+                        eng.cx.reject(span, || {
+                            Diagnostic::new(
+                                Stage::Bind,
+                                "source.attribute-test-signature",
+                                "`test` requires a zero-parameter non-generic function other than main returning unit or int",
+                                span,
+                            )
+                        });
+                    }
+                }
+                items.push(Item::Fn(function));
             } else if kind == k.enum_item.unwrap_or(u32::MAX)
                 || kind == k.tag_item.unwrap_or(u32::MAX)
                 || kind == k.union_item.unwrap_or(u32::MAX)
@@ -463,7 +614,9 @@ pub(crate) fn project_program_with_caps(
                 aliases.push(eng.run_type_alias_item(node));
             } else if Some(kind) == k.task_item {
                 // PLAN-968: task actor declaration.
-                items.push(Item::Task(eng.run_task_item(node)));
+                let mut task = eng.run_task_item(node);
+                task.single = single;
+                items.push(Item::Task(task));
             } else if p
                 .rules
                 .iter()
@@ -504,7 +657,7 @@ pub(crate) fn project_program_with_caps(
                 // 兜底会把一个 node 静默变成同名记录类型（本批实测过的静默丢弃）。
                 continue;
             } else {
-                items.push(Item::Type(eng.run_type_item(node)));
+                items.push(Item::Type(eng.run_type_item_with_params(node, attribute_params)));
             }
         } else if kind == k.script_item.unwrap_or(u32::MAX) {
             saw_script = true;
@@ -586,9 +739,85 @@ pub(crate) fn project_program_with_caps(
                 Span { start: end, end },
             )]);
         }
-        return Ok(Program { items });
     }
-    Ok(Program { items })
+    Ok((
+        Program { items },
+        SourceMetadata {
+            pragmas,
+            annotations: eng.cx.annotations,
+        },
+    ))
+}
+
+pub(crate) fn attributed_owner(p: &GrammarProgram, tree: &CstTree, node: u32) -> Option<u32> {
+    let rule = tree
+        .kind(node)
+        .checked_sub(ace_syntax_runtime::program::RULE_KIND_BASE)?;
+    if !matches!(
+        p.rules.get(rule as usize)?.name.as_str(),
+        "attributed-item" | "attributed-method"
+    ) {
+        return None;
+    }
+    let owner = tree.field_child(node, p.field_id("owner")?)?;
+    tree.children(owner)
+        .into_iter()
+        .find(|&child| tree.node(child).flags & FLAG_TRIVIA == 0)
+}
+
+fn attribute_entries(
+    program: &GrammarProgram,
+    tree: &CstTree,
+    wrapper: u32,
+) -> Vec<u32> {
+    let kind = |name: &str| {
+        program
+            .rules
+            .iter()
+            .position(|rule| rule.name == name)
+            .map(|index| ace_syntax_runtime::program::RULE_KIND_BASE + index as u32)
+    };
+    let attribute_kind = kind("declaration-attribute");
+    let tail_kind = kind("attribute-entry-tail");
+    let entry_kind = kind("attribute-entry");
+    let mut entries = Vec::new();
+    for attribute in tree.children(wrapper) {
+        if Some(tree.kind(attribute)) != attribute_kind {
+            continue;
+        }
+        for child in tree.children(attribute) {
+            if Some(tree.kind(child)) == entry_kind {
+                entries.push(child);
+            } else if Some(tree.kind(child)) == tail_kind {
+                entries.extend(
+                    tree.children(child)
+                        .into_iter()
+                        .filter(|&entry| Some(tree.kind(entry)) == entry_kind),
+                );
+            }
+        }
+    }
+    entries
+}
+
+pub(crate) fn attribute_targets_av(
+    p: &GrammarProgram,
+    tree: &CstTree,
+    snap: &Snapshot,
+    wrapper: u32,
+) -> bool {
+    let Some(name_field) = p.field_id("name") else { return true };
+    let mut native_only = false;
+    for entry in attribute_entries(p, tree, wrapper) {
+        let Some(name) = tree.field_child(entry, name_field) else { continue };
+        let (start, end) = tree.abs_range(name);
+        match snap.read_str(start, end).as_deref() {
+            Ok("vm") => return true,
+            Ok("c" | "rs") => native_only = true,
+            _ => {}
+        }
+    }
+    !native_only
 }
 
 /// 子树是否含 error/missing 节点（迭代下降）。
@@ -3981,6 +4210,7 @@ pub(crate) struct Cx<'a> {
     ty_params: Vec<String>,
     visited: usize,
     diags: Vec<(u64, Diagnostic)>,
+    annotations: Vec<SourceAnnotation>,
     over_budget: bool,
 }
 
@@ -5007,6 +5237,7 @@ impl<'a> Engine<'a> {
                 ty_params: Vec::new(),
                 visited: 0,
                 diags: Vec::new(),
+                annotations: Vec::new(),
                 over_budget: false,
             },
             stack: Vec::new(),
@@ -6999,6 +7230,7 @@ impl<'a> Engine<'a> {
         let span = self.cx.span_of(node);
         TaskItem {
             name,
+            single: false,
             fields,
             start,
             stop,
@@ -7178,15 +7410,38 @@ impl<'a> Engine<'a> {
             owner,
             script: false,
             proto: true,
+            test_attribute: None,
         }
     }
 
     fn run_fn_item(&mut self, node: u32, owner: Option<Ident>, receiver: Receiver) -> FnItem {
+        self.run_fn_item_with_params(node, owner, receiver, Vec::new())
+    }
+
+    fn run_fn_item_with_params(
+        &mut self,
+        node: u32,
+        owner: Option<Ident>,
+        receiver: Receiver,
+        attribute_params: Vec<TypeParamDecl>,
+    ) -> FnItem {
         // PLAN-1080（D-05）：签名先行原型臂（`fn test() int;`——auto 面文法
         // 专属，无 fn-tail 包装）。投影为 proto=true 的空体 FnItem，补全遍
         // 与同签名实体合一；无实体 = 具名 bind 错。
         if self.cx.field_child(node, "proto").is_some() {
-            return self.run_fn_proto(node, owner, receiver);
+            let proto = self.run_fn_proto(node, owner, receiver);
+            if let Some(param) = attribute_params.first() {
+                let span = param.name.span;
+                self.cx.reject(span, || {
+                    Diagnostic::new(
+                        Stage::Bind,
+                        "source.attribute-position",
+                        "`with` requires a function body",
+                        span,
+                    )
+                });
+            }
+            return proto;
         }
         let tail = self
             .cx
@@ -7204,7 +7459,8 @@ impl<'a> Engine<'a> {
         // 该字段；plain 面无此步 = 无字段）。PLAN-963：多类型参数
         // `<T, U>` 为通用实例面的一部分（声明序保住）；约束/const 形状仍
         // 具名拒（T-01 冻结的独立切片），模板方法与模板入口仍拒。
-        let type_params = self.project_type_params(self.cx.field_child(tail, "type_params"));
+        let declared = self.project_type_params(self.cx.field_child(tail, "type_params"));
+        let type_params = self.merge_attribute_params(declared, attribute_params);
         if !type_params.is_empty() {
             let tp_span = type_params[0].name.span;
             if !self.cx.profile.is_auto_language()
@@ -7321,6 +7577,7 @@ impl<'a> Engine<'a> {
                 owner: owner.clone(),
                 script: false,
                 proto: false,
+                test_attribute: None,
             },
         }
     }
@@ -7331,6 +7588,328 @@ impl<'a> Engine<'a> {
     /// `<T has S>`（约束随声明携带）。`const N` 值参数仍具名拒（独立切片）。
     fn project_type_params(&mut self, node: Option<u32>) -> Vec<TypeParamDecl> {
         self.project_type_param_decls(node)
+    }
+
+    fn project_decl_attributes(
+        &mut self,
+        wrapper: u32,
+        owner: u32,
+        av_visible: bool,
+    ) -> (Vec<TypeParamDecl>, Option<Span>, bool) {
+        let kind = self.cx.tree.kind(owner);
+        let function = kind == self.cx.k.fn_item;
+        let method = kind == self.cx.k.static_method || kind == self.cx.k.view_method;
+        let record = Some(kind) == self.cx.k.type_item;
+        let body = function && self.cx.field_child(owner, "proto").is_none();
+        let mut params = Vec::new();
+        let mut test = None;
+        let mut single = false;
+        let mut seen = BTreeSet::new();
+        for entry in attribute_entries(self.cx.p, self.cx.tree, wrapper) {
+            let name_node = self.cx.field_child(entry, "name").expect("attribute name");
+            let name = self.cx.spelling(name_node);
+            let span = self.cx.span_of(name_node);
+            let args = self.cx.field_child(entry, "args");
+            let error = if !seen.insert(name.clone()) {
+                Some((
+                    "source.attribute-duplicate",
+                    format!("duplicate attribute `{name}`"),
+                ))
+            } else if name == "test" {
+                if !body || args.is_some() {
+                    Some((
+                        "source.attribute-position",
+                        "`test` marks a function body and takes no arguments".into(),
+                    ))
+                } else {
+                    test = Some(span);
+                    continue;
+                }
+            } else if matches!(name.as_str(), "c" | "vm" | "rs") {
+                if (function || method || record) && args.is_none() {
+                    continue;
+                }
+                Some((
+                    "source.attribute-position",
+                    format!("`{name}` selects a function or type target and takes no arguments"),
+                ))
+            } else if name == "single" {
+                if Some(kind) == self.cx.k.task_item && args.is_none() {
+                    single = true;
+                    continue;
+                }
+                Some((
+                    "source.attribute-position",
+                    "`single` marks a task and takes no arguments".into(),
+                ))
+            } else if name == "async" {
+                if (body || method) && args.is_none() {
+                    // The function's existing ~T/effect surface owns execution.
+                    continue;
+                }
+                Some((
+                    "source.attribute-position",
+                    "`async` marks a function and takes no arguments".into(),
+                ))
+            } else if matches!(
+                name.as_str(),
+                "api" | "export" | "derive" | "serde" | "tokio" | "allow" | "cfg"
+            ) {
+                if let Err(diagnostic) =
+                    self.project_host_attribute(owner, &name, span, args, av_visible)
+                {
+                    self.cx.reject(diagnostic.span, || diagnostic);
+                }
+                continue;
+            } else if matches!(name.as_str(), "script" | "rust") {
+                Some((
+                    "source.attribute-position",
+                    "file mode pragmas apply to the source file".into(),
+                ))
+            } else if name != "with" {
+                Some((
+                    "source.attribute-unknown",
+                    format!("unknown attribute `{name}`"),
+                ))
+            } else if !function && !method && !(record && !self.is_type_alias(owner)) {
+                Some((
+                    "source.attribute-position",
+                    "`with` requires a function or record declaration".into(),
+                ))
+            } else {
+                None
+            };
+            if let Some((code, message)) = error {
+                self.cx.reject(span, || Diagnostic::new(Stage::Bind, code, message, span));
+                continue;
+            }
+            let args = args.expect("with arguments");
+            let parameter_kind = self
+                .rule_kind_of("with-attribute-parameter")
+                .expect("with attribute parameter");
+            let mut names = BTreeSet::new();
+            for parameter in collect_seq(&self.cx, args, parameter_kind, "with-attribute-tail") {
+                let leaf = self.cx.field_child(parameter, "name").expect("type parameter name");
+                let name = ident_of(&mut self.cx, leaf);
+                if !names.insert(name.name.clone()) {
+                    self.cx.reject(name.span, || {
+                        Diagnostic::new(
+                            Stage::Bind,
+                            "source.attribute-duplicate",
+                            format!("duplicate type parameter `{}`", name.name),
+                            name.span,
+                        )
+                    });
+                    continue;
+                }
+                let bound = self
+                    .cx
+                    .field_child(parameter, "constraint")
+                    .and_then(|constraint| self.cx.field_child(constraint, "bound"))
+                    .map(|bound| ident_of(&mut self.cx, bound));
+                params.push(TypeParamDecl {
+                    name,
+                    bound,
+                    kind: TypeParamKind::Type,
+                });
+            }
+        }
+        (params, test, single)
+    }
+
+    fn merge_attribute_params(
+        &mut self,
+        mut declared: Vec<TypeParamDecl>,
+        attribute_params: Vec<TypeParamDecl>,
+    ) -> Vec<TypeParamDecl> {
+        for param in attribute_params {
+            let existing = declared.iter_mut().find(|ty| ty.name.name == param.name.name);
+            match existing {
+                None => declared.push(param),
+                Some(existing) if existing.kind == TypeParamKind::Type && existing.bound.is_none() => {
+                    existing.bound = param.bound;
+                }
+                Some(_) => {
+                    let span = param.name.span;
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Bind,
+                            "source.attribute-duplicate",
+                            format!(
+                                "duplicate constraint or conflicting declaration for `{}`",
+                                param.name.name
+                            ),
+                            span,
+                        )
+                    });
+                }
+            }
+        }
+        declared
+    }
+
+    fn project_host_attribute(
+        &mut self,
+        owner: u32,
+        name: &str,
+        span: Span,
+        args: Option<u32>,
+        av_visible: bool,
+    ) -> Result<(), Diagnostic> {
+        let owner_kind = self.cx.tree.kind(owner);
+        let function = owner_kind == self.cx.k.fn_item;
+        let method = owner_kind == self.cx.k.static_method || owner_kind == self.cx.k.view_method;
+        let error = |code, message: &str| Diagnostic::new(Stage::Bind, code, message, span);
+        if matches!(name, "api" | "export") && !function {
+            return Err(error(
+                "source.attribute-position",
+                "this attribute requires a function",
+            ));
+        }
+        let declaration = if function || method {
+            let node = self
+                .cx
+                .child_of_kind(owner, self.cx.k.fn_tail)
+                .or_else(|| self.cx.field_child(owner, "proto"))
+                .expect("function declaration header");
+            self.cx.field_child(node, "name")
+        } else {
+            self.cx.field_child(owner, "name")
+        };
+        let Some(declaration) = declaration else {
+            return Err(error(
+                "source.attribute-position",
+                "this attribute requires a named declaration",
+            ));
+        };
+        let kind = match name {
+            "api" => {
+                let mut method = "GET".to_string();
+                let mut path = "/".to_string();
+                let mut keys = BTreeSet::new();
+                for arg in self.annotation_values(args) {
+                    let key = self
+                        .cx
+                        .field_child(arg, "key")
+                        .map(|key| self.cx.spelling(key));
+                    let Some(key) = key else {
+                        return Err(error(
+                            "source.attribute-argument",
+                            "`api` expects named arguments",
+                        ));
+                    };
+                    if !keys.insert(key.clone()) {
+                        return Err(error(
+                            "source.attribute-duplicate",
+                            "duplicate `api` argument",
+                        ));
+                    }
+                    let node = self.cx.field_child(arg, "value").expect("attribute value");
+                    let value = self.project_expr_sync(node);
+                    let ExprKind::StrLit(value) = &value.kind else {
+                        return Err(error(
+                            "source.attribute-argument",
+                            "`api` expects string literals",
+                        ));
+                    };
+                    match key.as_str() {
+                        "method" => method.clone_from(value),
+                        "path" => path.clone_from(value),
+                        _ => {
+                            return Err(error(
+                                "source.attribute-argument",
+                                "unknown `api` argument",
+                            ))
+                        }
+                    }
+                }
+                SourceAnnotationKind::Api { method, path }
+            }
+            "export" => {
+                let values = self.annotation_values(args);
+                let abi = match values.as_slice() {
+                    [] => String::new(),
+                    [arg] if self.cx.field_child(*arg, "key").is_none() => {
+                        let node = self.cx.field_child(*arg, "value").expect("attribute value");
+                        match &self.project_expr_sync(node).kind {
+                            ExprKind::StrLit(abi) => abi.clone(),
+                            ExprKind::Var(abi) => abi.name.clone(),
+                            _ => {
+                                return Err(error(
+                                    "source.attribute-argument",
+                                    "`export` expects one ABI name",
+                                ))
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(error(
+                            "source.attribute-argument",
+                            "`export` expects one ABI name",
+                        ))
+                    }
+                };
+                let abi = match abi.as_str() {
+                    "" | "c" | "C" => "C".into(),
+                    "stdcall" => "system".into(),
+                    _ => abi,
+                };
+                SourceAnnotationKind::Export { abi }
+            }
+            _ => SourceAnnotationKind::Rust {
+                name: name.into(),
+                arguments: args.map(|node| self.cx.span_of(node)),
+            },
+        };
+        self.cx.annotations.push(SourceAnnotation {
+            declaration: self.cx.spelling(declaration),
+            owner_span: self.cx.span_of(owner),
+            span,
+            av_visible,
+            kind,
+        });
+        Ok(())
+    }
+
+    fn annotation_values(&self, args: Option<u32>) -> Vec<u32> {
+        let Some(args) = args else { return Vec::new() };
+        let values_kind = self
+            .rule_kind_of("attribute-values")
+            .expect("attribute values");
+        let arg_kind = self
+            .rule_kind_of("attribute-value")
+            .expect("attribute value");
+        self.cx
+            .child_of_kind(args, values_kind)
+            .map_or_else(Vec::new, |values| {
+                collect_seq(&self.cx, values, arg_kind, "attribute-value-tail")
+            })
+    }
+
+    fn project_record_method(&mut self, wrapper: u32, owner: &Ident) -> Option<FnItem> {
+        let attributed = attributed_owner(self.cx.p, self.cx.tree, wrapper);
+        let node = attributed.unwrap_or(wrapper);
+        let kind = self.cx.tree.kind(node);
+        let receiver = if kind == self.cx.k.static_method {
+            Receiver::Static
+        } else if kind == self.cx.k.view_method {
+            if self.cx.field_child(node, "mut_receiver").is_some() {
+                Receiver::Mut
+            } else {
+                Receiver::View
+            }
+        } else {
+            return None;
+        };
+        let mut params = Vec::new();
+        if attributed.is_some() {
+            let visible = attribute_targets_av(self.cx.p, self.cx.tree, self.cx.snap, wrapper);
+            (params, _, _) = self.project_decl_attributes(wrapper, node, visible);
+            if !visible {
+                return None;
+            }
+        }
+        Some(self.run_fn_item_with_params(node, Some(owner.clone()), receiver, params))
     }
 
     /// PLAN-1043（T-02）：`pub spec fn name(params) Ret`（fn-require-p 节点，
@@ -8383,6 +8962,14 @@ impl<'a> Engine<'a> {
     }
 
     fn run_type_item(&mut self, node: u32) -> TypeItem {
+        self.run_type_item_with_params(node, Vec::new())
+    }
+
+    fn run_type_item_with_params(
+        &mut self,
+        node: u32,
+        attribute_params: Vec<TypeParamDecl>,
+    ) -> TypeItem {
         let name_leaf = self.cx.field_child(node, "name").expect("type name");
         let name = ident_of(&mut self.cx, name_leaf);
         // PLAN-963（T-02）：声明序类型参数；成员注解投影期间这些名字按类型
@@ -8393,7 +8980,8 @@ impl<'a> Engine<'a> {
         // `type-tail` 子规则承载（与 `fn-item`+`fn-tail` 同形，别名形是其
         // 另一 alt）；投影统一从 tail 节点读。
         let tail = self.cx.field_child(node, "tail").unwrap_or(node);
-        let type_params = self.project_type_param_decls(self.cx.field_child(node, "type_params"));
+        let declared = self.project_type_param_decls(self.cx.field_child(node, "type_params"));
+        let type_params = self.merge_attribute_params(declared, attribute_params);
         // PLAN-963（T-03）：`as Spec` 遵从列表（投影期消化；记录本身保持普通
         // TypeItem，下游只见方法）。
         let conforms = self.project_specs(self.cx.field_child(tail, "specs"));
@@ -8412,6 +9000,9 @@ impl<'a> Engine<'a> {
                 .unwrap_or(c_raw);
             let kind = self.cx.tree.kind(c);
             if kind == self.cx.k.field_member {
+                if self.cx.field_child(c, "attribute").is_some() {
+                    self.project_decl_attributes(c, c, true);
+                }
                 let fname_leaf = self.cx.field_child(c, "name").expect("field name");
                 let fname = ident_of(&mut self.cx, fname_leaf);
                 if fname.name == "self" {
@@ -8446,15 +9037,8 @@ impl<'a> Engine<'a> {
                     name: fname,
                     ty,
                 });
-            } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
-                let receiver = if kind == self.cx.k.static_method {
-                    Receiver::Static
-                } else if self.cx.field_child(c, "mut_receiver").is_some() {
-                    Receiver::Mut
-                } else {
-                    Receiver::View
-                };
-                methods.push(self.run_fn_item(c, Some(name.clone()), receiver));
+            } else if let Some(method) = self.project_record_method(c, &name) {
+                methods.push(method);
             }
         }
         if fields.is_empty() && !self.cx.profile.is_auto_language() {
@@ -8526,15 +9110,8 @@ impl<'a> Engine<'a> {
                         span,
                     )
                 });
-            } else if kind == self.cx.k.static_method || kind == self.cx.k.view_method {
-                let receiver = if kind == self.cx.k.static_method {
-                    Receiver::Static
-                } else if self.cx.field_child(c, "mut_receiver").is_some() {
-                    Receiver::Mut
-                } else {
-                    Receiver::View
-                };
-                methods.push(self.run_fn_item(c, Some(ty.clone()), receiver));
+            } else if let Some(method) = self.project_record_method(c, &ty) {
+                methods.push(method);
             }
         }
         ExtDecl { ty, methods }
@@ -8767,6 +9344,7 @@ impl<'a> Engine<'a> {
                 owner: None,
                 script: true,
                 proto: false,
+                test_attribute: None,
             },
         }
     }
@@ -12667,6 +13245,7 @@ impl<'a> Engine<'a> {
                     owner,
                     script: false,
                     proto: false,
+                    test_attribute: None,
                 }));
             }
             Frame::NestedFnFinish { saved_ty_params } => {
@@ -12693,6 +13272,7 @@ impl<'a> Engine<'a> {
                         owner: None,
                         script: false,
                         proto: false,
+                        test_attribute: None,
                     },
                 };
                 self.cx.ty_params = saved_ty_params;
@@ -12719,6 +13299,7 @@ impl<'a> Engine<'a> {
                     owner: None,
                     script: true,
                     proto: false,
+                    test_attribute: None,
                 }));
             }
             Frame::ExprEnter(n) => self.enter_expr(n),
@@ -13470,6 +14051,7 @@ fn apply_spec_conformance(
                             }),
                             script: false,
                             proto: false,
+                            test_attribute: None,
                         }),
                         None => {
                             let sp = m.name.span;
@@ -13641,6 +14223,7 @@ fn spec_dispatch_method(spec: &SpecDecl, method: &SpecMethodDecl, records: &[Ide
         owner: Some(spec.name.clone()),
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 

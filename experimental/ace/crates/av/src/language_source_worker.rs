@@ -10,7 +10,7 @@ use ace_av_core::mir_verify::MirVerifyError;
 use ace_av_core::verify_mir;
 use ace_core::atom_text::Diagnostic;
 use ace_core::runtime_contract::sha256_hex;
-use ace_core::source::cst::FrontBudget;
+use ace_core::source::cst::{FrontBudget, SourceMode};
 use ace_core::source::packages::{unit_key, PackageModuleInput};
 use base64::Engine;
 use serde::Deserialize;
@@ -91,6 +91,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut store_writes = Some(0);
     let mut handled_errors = 0;
     let mut runtime_calls = 0;
+    let mut script_sources = 0;
     let mut ct_counters = ace_source_cte::CtCounters::default();
     let store_path = request["store_root"].as_str().map(Path::new);
     let (result, capture) = if let Some(project) = object.get("project") {
@@ -127,6 +128,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
                 step["trace"] = json!(observation.trace);
                 handled_errors = observation.handled_errors;
                 runtime_calls = observation.runtime_calls;
+                script_sources = observation.script_sources;
                 if let Some(error) = observation.language_error {
                     step["language_error"] = error;
                 }
@@ -147,9 +149,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             &mut capture,
             &mut ct_counters,
         )
-        .map(|(outcome, trace)| {
+        .map(|(outcome, trace, mode)| {
             handled_errors = trace.handled_language_errors;
             runtime_calls = trace.call_frame_commits;
+            script_sources = u64::from(mode == SourceMode::Script);
             let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
             if let Some(error) = observed_language_error(&trace, locate) {
                 step["language_error"] = error;
@@ -250,6 +253,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     step["counters"]["ct_execute"] = json!(ct_counters.ct_execute);
     step["counters"]["ct_hits"] = json!(ct_counters.ct_hits);
     step["counters"]["runtime_calls"] = json!(runtime_calls);
+    step["counters"]["script_sources"] = json!(script_sources);
     if let Some(writes) = store_writes {
         step["counters"]["store_writes"] = json!(writes);
     }
@@ -374,7 +378,7 @@ fn diagnostic(diag: &Diagnostic, path: &str) -> Json {
 /// A single directory component in a project path names a dependency package.
 fn project_module(path: &str, source: String) -> Option<PackageModuleInput> {
     let (package, file) = path.split_once('/').unwrap_or(("auto", path));
-    let id = file.strip_suffix(".at")?;
+    let id = file.strip_suffix(".at").or_else(|| file.strip_suffix(".as"))?;
     let valid_segment = |part: &str| {
         part.bytes()
             .next()
@@ -412,6 +416,7 @@ struct ProjectObservation {
     store_writes: u64,
     handled_errors: u64,
     runtime_calls: u64,
+    script_sources: u64,
     language_error: Option<Json>,
 }
 
@@ -555,6 +560,16 @@ fn run_project(
         store_writes: target.lowered,
         handled_errors: trace.handled_language_errors,
         runtime_calls: trace.call_frame_commits,
+        script_sources: compiled
+            .bound
+            .units
+            .iter()
+            .filter(|(key, unit)| {
+                paths.get(*key).is_some_and(|path| {
+                    unit.source_metadata.pragmas.mode(path) == SourceMode::Script
+                })
+            })
+            .count() as u64,
         language_error: observed_language_error(&trace, locate),
     })
 }
@@ -589,7 +604,7 @@ fn prepare_ct(
     axes.push(context.identity());
     axes.push(format!("{:?}", context.sys_facts()));
     axes.push(ace_lowering::AUTO_LANGUAGE_MIR_LOWERING_VERSION.into());
-    axes.push(package_identity.map_or_else(|| sha256_hex(source.as_bytes()), str::to_owned));
+    let identity = package_identity.map_or_else(|| sha256_hex(source.as_bytes()), str::to_owned);
     if let Some(store) = store {
         let sink = ace_source_cte::store::ManagedEnvelopeSink::open(store, None).map_err(|e| {
             vec![Diagnostic::new(
@@ -600,10 +615,12 @@ fn prepare_ct(
             )]
         })?;
         let mut service = ace_source_cte::CtService::for_auto(sink, axes);
+        service.bind_source_closure(identity);
         prepare_ct_with_service(&mut service, program, source, path, caps, counters)
     } else {
         let mut service =
             ace_source_cte::CtService::for_auto(ace_source_cte::MemoryEnvelopeSink::new(), axes);
+        service.bind_source_closure(identity);
         prepare_ct_with_service(&mut service, program, source, path, caps, counters)
     }
 }
@@ -632,8 +649,8 @@ fn run_chain(
     store: Option<&Path>,
     capture: &mut ConsoleCapture,
     ct_counters: &mut ace_source_cte::CtCounters,
-) -> Result<(ExecOutcome, ExecTrace), Json> {
-    let compiled = ace_core::source::adapter::compile_language_source_prepared(
+) -> Result<(ExecOutcome, ExecTrace, SourceMode), Json> {
+    let (compiled, metadata) = ace_core::source::adapter::compile_language_source_with_metadata(
         source,
         path,
         caps,
@@ -684,12 +701,13 @@ fn run_chain(
         let flat = abc.to_flat();
         let loaded = ace_av_core::abc_verify::verify_abc_bytes(&flat, &mir.owner)
             .map_err(|e| json!({"stage":"admit","code":"abc","message":e.to_string()}))?;
-    Ok(execute_sched(
+    let (outcome, trace) = execute_sched(
         &loaded,
         &ExecLimits::default(),
         &CancelFlag::new(false),
         capture,
-    ))
+    );
+    Ok((outcome, trace, metadata.pragmas.mode(path)))
 }
 
 #[cfg(test)]
@@ -698,13 +716,39 @@ mod compile_time_tests {
     use ace_core::source::{cst::CT_CAPABILITY, AUTO_SOURCE_ADMISSION_CAP};
     use std::sync::atomic::Ordering;
 
+    struct Scratch(std::path::PathBuf);
+
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT_DIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let root = std::env::var_os("AUTO_LANG_TEST_SCRATCH")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir);
+            Self(root.join(format!(
+                "ace-language-ct-cache-{}-{}",
+                std::process::id(),
+                NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+            )))
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn request(source: &str, caps: &[&str], store: Option<&Path>) -> Json {
+        request_with_path(source, "main.at", caps, store)
+    }
+
+    fn request_with_path(source: &str, path: &str, caps: &[&str], store: Option<&Path>) -> Json {
         let mut request = json!({
             "recipe": RECIPE,
             "nonce": "0".repeat(64),
             "source_b64": base64::engine::general_purpose::STANDARD.encode(source),
             "steps": [{"op": "run"}],
-            "source_path": "main.at",
+            "source_path": path,
             "entry": "d_main",
             "caps": caps,
         });
@@ -712,6 +756,136 @@ mod compile_time_tests {
             request["store_root"] = json!(store);
         }
         serve(&request).expect("ordinary worker response")["steps"][0].clone()
+    }
+
+    #[test]
+    fn ordinary_file_pragmas_use_the_original_path_and_rust_precedence() {
+        let caps = &[AUTO_SOURCE_ADMISSION_CAP];
+        for (path, markers, expected) in [
+            ("main.at", "", 0),
+            ("main.as", "", 1),
+            ("main.at", "#[script]\n", 1),
+            ("main.as", "#[rust]\n", 0),
+            ("main.at", "#[script]\n#[rust]\n", 0),
+            ("main.as", "#[rust]\n#[script]\n", 0),
+        ] {
+            let source = format!("{markers}fn main() int {{ return 42 }}");
+            let step = request_with_path(&source, path, caps, None);
+            assert_eq!(step["value"], 42, "{step}");
+            assert_eq!(step["counters"]["script_sources"], expected, "{step}");
+        }
+        let duplicate = request(
+            "#[script]\n#[script]\nfn main() int { return 42 }",
+            caps,
+            None,
+        );
+        assert_eq!(duplicate["diag"]["code"], "source.attribute-duplicate");
+        assert_eq!(duplicate["source_span"]["start"], 12);
+        assert_eq!(duplicate["source_span"]["end"], 18);
+    }
+
+    #[test]
+    fn ordinary_annotations_keep_route_abi_and_rust_field_arguments() {
+        use ace_core::source::cst::SourceAnnotationKind;
+
+        let source = concat!(
+            "fn label(n int) Str { return f\"the number $n\" }\n",
+            "#[derive(Debug, Clone)]\n",
+            "type Input { #[serde(rename = \"payload\")] value int }\n",
+            "#[api(path = \"/item/:id\", method = \"POST\")]\n",
+            "#[export(stdcall)]\n",
+            "pub fn answer() int { return Input(42).value }\n",
+            "fn main() int { return answer() }\n",
+        );
+        let caps = [AUTO_SOURCE_ADMISSION_CAP.to_string()];
+        let (_, meta) = ace_core::source::adapter::compile_language_source_with_metadata(
+            source,
+            "main.at",
+            &caps,
+            |_, _, _| Ok(()),
+        )
+        .expect("ordinary checked source and annotation facts");
+        let find = |decl, name| {
+            meta.annotations
+                .iter()
+                .find(|fact| {
+                    fact.declaration == decl && &source[fact.span.start..fact.span.end] == name
+                })
+                .expect("annotated source declaration")
+        };
+        let derive = find("Input", "derive");
+        assert!(
+            matches!(derive.kind, SourceAnnotationKind::Rust { ref name, .. } if name == "derive")
+        );
+        let serde = find("value", "serde");
+        let SourceAnnotationKind::Rust {
+            arguments: Some(span),
+            ..
+        } = serde.kind
+        else {
+            panic!("missing original Rust field arguments");
+        };
+        assert_eq!(&source[span.start..span.end], "(rename = \"payload\")");
+        let api = find("answer", "api");
+        assert!(matches!(
+            api.kind,
+            SourceAnnotationKind::Api { ref method, ref path }
+                if method == "POST" && path == "/item/:id"
+        ));
+        assert!(source[api.owner_span.start..api.owner_span.end].starts_with("fn answer"));
+        assert!(matches!(
+            find("answer", "export").kind,
+            SourceAnnotationKind::Export { ref abi } if abi == "system"
+        ));
+        let step = request(source, &[AUTO_SOURCE_ADMISSION_CAP], None);
+        assert_eq!(step["value"], 42, "{step}");
+        assert_eq!(step["counters"]["host_dispatches"], 0, "{step}");
+    }
+
+    #[test]
+    fn package_field_edits_invalidate_metadata_and_reuse_an_unrelated_ct_value() {
+        let store = Scratch::new();
+        let source = concat!(
+            "use lib.Record as Local\n",
+            "fn unchanged(n int) int { return n + 39 }\n",
+            "fn main() int { let base = #{ unchanged(1) }; ",
+            "if #{ ct_has_field(Local, \"flag\") } { return base + #{ ct_field_count(Local) } }; ",
+            "return 1 }",
+        );
+        let run = |library: &str| {
+            let b64 = |text: &str| base64::engine::general_purpose::STANDARD.encode(text);
+            let request = json!({
+                "recipe": RECIPE,
+                "nonce": "0".repeat(64),
+                "source_b64": b64(source),
+                "steps": [{"op": "run"}],
+                "source_path": "main.at",
+                "entry": "d_main",
+                "caps": [AUTO_SOURCE_ADMISSION_CAP, CT_CAPABILITY, ace_core::source::META_CAPABILITY],
+                "project": {
+                    "entry_path": "main.at",
+                    "files": [{"path": "lib.at", "source_b64": b64(library)}],
+                },
+                "store_root": &store.0,
+            });
+            serve(&request).expect("ordinary package AV response")["steps"][0].clone()
+        };
+        let initial = "pub type Record { flag bool; value int }";
+        let cold = run(initial);
+        assert_eq!(cold["value"], 42, "{cold}");
+        assert_eq!(cold["counters"]["ct_execute"], 1, "{cold}");
+        let extra = run("pub type Record { flag bool; value int; extra int }");
+        let renamed = run("pub type Record { renamed bool; value int; extra int }");
+        let restored = run(initial);
+        for (after, value) in [(&extra, 43), (&renamed, 1), (&restored, 42)] {
+            assert_eq!(after["value"], value, "{after}");
+            assert_eq!(after["counters"]["ct_execute"], 0, "{after}");
+            assert_eq!(after["counters"]["ct_hits"], 1, "{after}");
+            assert_eq!(after["counters"]["runtime_calls"], 0, "{after}");
+        }
+        assert_ne!(extra["source_hash"], cold["source_hash"]);
+        assert_ne!(extra["source_hash"], renamed["source_hash"]);
+        assert_eq!(restored["source_hash"], cold["source_hash"]);
     }
 
     #[test]
@@ -819,18 +993,7 @@ fn main() int { return #{ twice(21) } }";
 
     #[test]
     fn ct_cache_reopens_after_failed_edit_and_uses_current_source_and_grants() {
-        static NEXT_DIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        struct Scratch(std::path::PathBuf);
-        impl Drop for Scratch {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
-        let store = Scratch(std::env::temp_dir().join(format!(
-            "ace-language-ct-cache-{}-{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        )));
+        let store = Scratch::new();
         let caps = [AUTO_SOURCE_ADMISSION_CAP, CT_CAPABILITY];
         let source = "fn f(n int) int { return n + 2 }
 fn main() int { return #{ f(40) } }";

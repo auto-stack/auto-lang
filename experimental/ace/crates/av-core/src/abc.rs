@@ -107,7 +107,10 @@ pub const OP_LIST_REMOVE: u8 = 0x24;
 pub const OP_LIST_FIELD_GET: u8 = 0x25;
 pub const OP_LIST_FIELD_SET: u8 = 0x26;
 /// PLAN-105 W105: non-destructive owned-Str element field view.
-pub const OP_LIST_FIELD_VIEW: u8 = 0x37;
+pub const OP_LIST_FIELD_VIEW: u8 = 0x57;
+// The original collections-only encoding can still be read. Mixed families
+// have always reserved this byte for OBJECT_SET.
+const OP_LIST_FIELD_VIEW_COLLECTIONS_V3: u8 = 0x37;
 pub const OP_VARIANT_PACK: u8 = 0x27;
 pub const OP_VARIANT_DISC: u8 = 0x28;
 pub const OP_VARIANT_GUARD: u8 = 0x29;
@@ -258,6 +261,7 @@ pub const OP_SCHED_PORT: u8 = 0x4A;
 pub const OP_SCHED_STOPPING: u8 = 0x4B;
 pub const OP_SCHED_FUTURE: u8 = 0x54;
 pub const OP_SCHED_DETACH: u8 = 0x55;
+pub const OP_SCHED_SINGLETON: u8 = 0x56;
 
 // sub-ops
 pub const BIN_ADD: u8 = 1;
@@ -1635,6 +1639,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         capacity,
                         args,
                         dst,
+                        singleton,
                     } => {
                         if args.len() > u8::MAX as usize {
                             return Err(AbcDecodeError::fmt_err(
@@ -1642,7 +1647,14 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                                 format!("sched spawn with {} args exceeds wire width", args.len()),
                             ));
                         }
-                        put_u8(&mut w, OP_SCHED_SPAWN);
+                        put_u8(
+                            &mut w,
+                            if *singleton {
+                                OP_SCHED_SINGLETON
+                            } else {
+                                OP_SCHED_SPAWN
+                            },
+                        );
                         put_u32(&mut w, *callee);
                         put_u32(&mut w, *capacity);
                         put_u8(&mut w, args.len() as u8);
@@ -3519,7 +3531,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let src = c.u32()?;
                         MirInstr::Conv { dst, src }
                     }
-                    OP_SCHED_SPAWN if family == WireFamily::Closures => {
+                    OP_SCHED_SPAWN | OP_SCHED_SINGLETON if family == WireFamily::Closures => {
                         let callee = c.u32()?;
                         let capacity = c.u32()?;
                         let nargs = c.u8()? as usize;
@@ -3534,6 +3546,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             capacity,
                             args,
                             dst,
+                            singleton: op == OP_SCHED_SINGLETON,
                         }
                     }
                     OP_SCHED_SEND if family == WireFamily::Closures => {
@@ -4030,7 +4043,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             path,
                         }
                     }
-                    OP_LIST_FIELD_VIEW if family.allows_collections_tags() => {
+                    op if (op == OP_LIST_FIELD_VIEW && family.allows_collections_tags())
+                        || (op == OP_LIST_FIELD_VIEW_COLLECTIONS_V3
+                            && family == WireFamily::Collections) =>
+                    {
                         let dst = c.u32()?;
                         let base = c.u32()?;
                         let index = c.u32()?;

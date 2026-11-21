@@ -34,6 +34,7 @@ use crate::atom_text::{Diagnostic, Span, Stage};
 /// this face).
 pub const SCHED_INTRINSICS: &[&str] = &[
     "__sched_spawn",
+    "__sched_singleton",
     "__sched_send",
     "__sched_ask",
     "__sched_stop",
@@ -51,6 +52,7 @@ pub const SCHED_INTRINSICS: &[&str] = &[
 pub struct SchedTaskInfo {
     /// User-facing task name (`task Echo` → "Echo").
     pub name: String,
+    pub single: bool,
     /// The synthesized driver function's name (`__task_Echo`).
     pub driver_fn: String,
     /// State fields in declaration order: (name, value type word).
@@ -548,6 +550,7 @@ fn build_task(
 
     surface.tasks.push(SchedTaskInfo {
         name: t.name.name.clone(),
+        single: t.single,
         driver_fn: driver_name.clone(),
         fields,
         msg,
@@ -566,6 +569,7 @@ fn build_task(
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     })
 }
 

@@ -1863,6 +1863,7 @@ fn unbound_leaf_var(e: &Expr, fields: &[ComponentField]) -> Option<String> {
 fn empty_text_fn(name: &str, span: Span) -> FnItem {
     FnItem {
         proto: false,
+        test_attribute: None,
         name: Ident {
             name: name.to_string(),
             span,
@@ -1894,6 +1895,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool, owned_text: boo
         if let ExprKind::StrLit(_) = expr.kind {
             return FnItem {
                 proto: false,
+                test_attribute: None,
                 name: Ident { name: name.to_string(), span },
                 type_params: Vec::new(),
                 params: Vec::new(),
@@ -1951,6 +1953,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool, owned_text: boo
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 
@@ -2553,6 +2556,7 @@ fn compile_component_scenario_full(
                 owner: None,
                 script: false,
                 proto: false,
+                test_attribute: None,
             }));
         }
     } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
@@ -2646,6 +2650,7 @@ fn compile_component_scenario_full(
             owner: None,
             script: false,
             proto: false,
+            test_attribute: None,
         }));
     }
     let desugared = Program { items };
@@ -3344,6 +3349,7 @@ pub(crate) fn handler_check_fn(
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     })))
 }
 
@@ -3587,6 +3593,7 @@ pub(crate) fn lambda_value_fn(
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     })))
 }
 
@@ -5192,6 +5199,7 @@ pub fn compile_component_event_program(
             owner: None,
             script: false,
             proto: false,
+            test_attribute: None,
         }));
     }
     // (3) `__age_ev_seed(<字段形参…>)`：全量覆盖（形参=字段声明序；owned str
@@ -5276,6 +5284,7 @@ pub fn compile_component_event_program(
             owner: None,
             script: false,
             proto: false,
+            test_attribute: None,
         }));
     }
     // (4) 每 handler 一个单事件入口：载入 cell → hook_stmts_lower（同一脱糖）
@@ -5426,6 +5435,7 @@ pub fn compile_component_event_program(
             owner: None,
             script: false,
             proto: false,
+            test_attribute: None,
         }));
         let def_id = super::adapter::free_fn_def_id(&fn_name);
         handlers_out.push(ComponentEventHandlerOut {

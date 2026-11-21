@@ -621,6 +621,7 @@ fn wrapper_item_from_expr(entry: &str, expr: &Expr, expr_is_bool: bool) -> FnIte
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 
@@ -695,6 +696,7 @@ fn wrapper_item(entry: &str, callee: &str, args: &[CtValue], callee_bool: bool) 
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 

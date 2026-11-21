@@ -66,3 +66,4 @@ pub(crate) use frontdoor::{
 };
 
 pub(crate) use shift::{shift_fn_item, shift_fn_item_signed};
+pub use project::{SourceAnnotation, SourceAnnotationKind, SourceMetadata, SourceMode, SourcePragmas};

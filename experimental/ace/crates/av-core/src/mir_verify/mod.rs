@@ -1172,7 +1172,17 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                 self.module.types.get(entry_sig.result as usize),
                                 Some(MirType::Unit)
                             )));
-                if !scalar_ok {
+                let checked_text_entry = self.module.is_closures_profile()
+                    && self.module.has_text_entry_capability()
+                    && !entry_sig.params.is_empty()
+                    && entry_sig.params.iter().all(|param| {
+                        matches!(
+                            self.module.types.get(*param as usize),
+                            Some(MirType::StrView)
+                        )
+                    })
+                    && self.module.type_shape(entry_sig.result).is_some();
+                if !scalar_ok && !checked_text_entry {
                     return Err(MirVerifyError::inv(
                         "mir.entry-sig",
                         "collections/closures-family module entry params/result must be scalar"

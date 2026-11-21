@@ -184,6 +184,8 @@ pub struct FnItem {
     /// inference pre-pass unifies it with the real body item before
     /// resolve; a proto without a matching body is a named bind error.
     pub proto: bool,
+    /// Original name span of an explicit test declaration attribute.
+    pub test_attribute: Option<Span>,
 }
 
 /// One record field, in declaration order (= layout order, 774 D-05).
@@ -328,6 +330,7 @@ impl Item {
 #[derive(Clone, Debug)]
 pub struct TaskItem {
     pub name: Ident,
+    pub single: bool,
     pub fields: Vec<TaskFieldDecl>,
     pub start: Option<FnItem>,
     pub stop: Option<FnItem>,

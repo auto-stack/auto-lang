@@ -3750,14 +3750,11 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
 
     fn read_list_place(
         &mut self,
-        list: hir::ExprId,
-        index: hir::ExprId,
-        depth: u32,
+        base: SlotId,
+        index: SlotId,
+        elem: TypeIdx,
         sp: Option<SpanInfo>,
     ) -> Result<SlotId, AdapterError> {
-        let base = self.eval_expr(list, depth + 1)?;
-        let index = self.eval_expr(index, depth + 1)?;
-        let elem = self.elem_vt_of(list)?;
         let place_ty = self
             .out
             .intern_type(MirType::Place(ace_av_core::mir::ListTypeRef { elem }));
@@ -6736,23 +6733,27 @@ k 0
                 //（W108 的元素位映射落 owned Str），不用 elem_vt_of（表达式位
                 // 映射 plain str → StrView，会错过本臂）。012 的视图循环变量
                 // 读（`for r in .w_rows`）由此入域。
+                let l = self.eval_expr(*list, depth + 1)?;
+                let i = self.eval_expr(*index, depth + 1)?;
+                let age_elem_view = self
+                    .out
+                    .capabilities
+                    .iter()
+                    .any(|cap| cap == AGE_ELEM_VIEW_CAPABILITY);
+                let list_ty = self.slot_ty_all(l);
+                if let Some(MirType::List(ListTypeRef { elem })) =
+                    self.out.types.get(list_ty as usize)
                 {
-                    let l_probe = self.eval_expr(*list, depth + 1)?;
-                    let elem = match self.out.types.get(self.slot_ty_all(l_probe) as usize).cloned()
+                    let elem = *elem;
+                    if age_elem_view
+                        && matches!(self.out.types.get(elem as usize), Some(MirType::Str))
                     {
-                        Some(MirType::List(ListTypeRef { elem })) => Some(elem),
-                        _ => None,
-                    };
-                    if matches!(elem, Some(e) if matches!(self.out.types.get(e as usize), Some(MirType::Str)))
-                    {
-                        let elem = elem.unwrap();
                         let view_ty = self.out.intern_type(MirType::StrView);
-                        let i = self.eval_expr(*index, depth + 1)?;
                         let view = self.temp_ty(view_ty)?;
                         self.emit(
                             MirInstr::ListFieldView {
                                 dst: view,
-                                base: l_probe,
+                                base: l,
                                 index: i,
                                 path: Vec::new(),
                             },
@@ -6794,10 +6795,9 @@ k 0
                             "list_get over an owned-element list has no value lowering".to_string(),
                         ));
                     }
-                    return self.read_list_place(*list, *index, depth, sp);
+                    let elem = self.elem_vt_of(*list)?;
+                    return self.read_list_place(l, i, elem, sp);
                 }
-                let l = self.eval_expr(*list, depth + 1)?;
-                let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
                 self.emit(
                     MirInstr::ListGet {
@@ -6974,7 +6974,10 @@ k 0
                 // owned Str re-buffers (770 AP-2 over both receivers).
                 if let Some((list, index, path)) = self.list_projection_root(*operand)? {
                     if !path.is_empty() && self.hir_elem_owned(list)? {
-                        let base = self.read_list_place(list, index, depth, sp)?;
+                        let base = self.eval_expr(list, depth + 1)?;
+                        let index = self.eval_expr(index, depth + 1)?;
+                        let elem = self.elem_vt_of(list)?;
+                        let base = self.read_list_place(base, index, elem, sp)?;
                         let str_ty = self.out.intern_type(MirType::Str);
                         let field = self.temp_ty(str_ty)?;
                         self.emit(
@@ -8525,7 +8528,10 @@ fn sched_instr_of(
             )),
         }
     };
-    if let Some(t) = rest.strip_prefix("spawn_") {
+    if let Some(t) = rest
+        .strip_prefix("spawn_")
+        .or_else(|| rest.strip_prefix("singleton_"))
+    {
         // actuals: [name-str, capacity, inits...] — the name string is a
         // compile-time identity; the driver fn is the callee.
         if actuals.len() < 2 {
@@ -8540,6 +8546,7 @@ fn sched_instr_of(
             capacity: actuals[1],
             args: actuals[2..].to_vec(),
             dst,
+            singleton: rest.starts_with("singleton_"),
         });
     }
     if let Some(rest2) = rest.strip_prefix("go_") {

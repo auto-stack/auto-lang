@@ -17271,7 +17271,6 @@ F:{d}
                         let mut arg_slots = Vec::with_capacity(args.len());
                         let mut names = Vec::with_capacity(args.len());
                         let mut spans = Vec::with_capacity(args.len());
-                        let mut moved_flags: Vec<bool> = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 2);
                         subtasks.push(Task::Visit {
                             node: callee,
@@ -17636,6 +17635,46 @@ F:{d}
                             );
                             continue;
                         }
+                        if self.profile.is_auto_language() && instance.is_none() {
+                            if let ExprKind::Var(id) = &recv.kind {
+                                if self.lookup(&id.name).is_none()
+                                    && self.sched.and_then(|s| s.by_name(&id.name)).is_some()
+                                    && matches!(name.name.as_str(), "send" | "ask" | "stop")
+                                {
+                                    let handle = Expr {
+                                        span: id.span,
+                                        kind: ExprKind::Call {
+                                            callee: ast::Ident {
+                                                name: "__sched_singleton".into(),
+                                                span: id.span,
+                                            },
+                                            args: vec![
+                                                Arg::Pos(Expr {
+                                                    kind: ExprKind::StrLit(id.name.clone()),
+                                                    span: id.span,
+                                                }),
+                                                Arg::Pos(Expr {
+                                                    kind: ExprKind::IntLit(64),
+                                                    span: id.span,
+                                                }),
+                                            ],
+                                        },
+                                    };
+                                    let mut arguments = Vec::with_capacity(args.len() + 1);
+                                    arguments.push(Arg::Pos(handle));
+                                    arguments.extend(args.iter().cloned());
+                                    out[slot] = self.call(
+                                        &ast::Ident {
+                                            name: format!("__sched_{}", name.name),
+                                            span: name.span,
+                                        },
+                                        &arguments,
+                                        node.span,
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
                         let text_alias = match &recv.kind {
                             ExprKind::Var(alias) => self.lookup_text_mut_alias(&alias.name),
                             _ => None,
@@ -17858,15 +17897,9 @@ F:{d}
                             out.push(dummy_resolved());
                             arg_slots.push(sp);
                             match a {
-                                Arg::Pos(e) => {
+                                Arg::Pos(e) | Arg::MovePos(e) => {
                                     names.push(None);
-                                    moved_flags.push(false);
-                                    spans.push(e.span);
-                                    subtasks.push(Task::Visit { node: e, slot: sp });
-                                }
-                                Arg::MovePos(e) => {
-                                    names.push(None);
-                                    moved_flags.push(true);
+                                    moved_flags.push(matches!(a, Arg::MovePos(_)));
                                     spans.push(e.span);
                                     subtasks.push(match mailbox {
                                         Some(receiver) => Task::MailboxArg {
@@ -21009,7 +21042,7 @@ F:{d}
                     },
                 }
             }
-            "__sched_spawn" => {
+            "__sched_spawn" | "__sched_singleton" => {
                 // PLAN-1067 review R-1067-11: spawning a task from inside a
                 // task driver leaves the scheduler surface (the driver's own
                 // callee table is fixed when the program is desugared, so such
@@ -21071,6 +21104,14 @@ F:{d}
                     }
                 };
                 let info = &surface.tasks[task_idx];
+                if name == "__sched_singleton" && !info.single {
+                    self.bind_err(
+                        "source.sched-singleton",
+                        format!("task `{}` needs `#[single]` for static access", info.name),
+                        call_span,
+                    );
+                    return named_i32(call_span);
+                }
                 if args[1].vt != VT::I32 {
                     self.bind_err(
                         "source.sched-argument",
@@ -21121,7 +21162,7 @@ F:{d}
                         return named_i32(call_span);
                     }
                 }
-                let sym = Self::sched_sym("__sched_spawn", &info.name);
+                let sym = Self::sched_sym(name, &info.name);
                 let ty = if self.profile.is_auto_language() {
                     let message = self.coll.sched_tasks[task_idx].msg;
                     VT::TaskRef(self.coll.intern_task_message(message))

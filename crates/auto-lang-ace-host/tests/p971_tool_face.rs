@@ -47,6 +47,38 @@ fn spec<'a>(package: &'a str, id: &'a str, source: &'a str) -> AceModuleSpec<'a>
 }
 
 #[test]
+fn ordinary_av_discovers_and_runs_only_explicit_tests() {
+    let started = std::time::Instant::now();
+    install().expect("install the reference ACE host");
+    let mut caps = packages_capabilities();
+    caps.push("ac.source.language.av/v1".into());
+    let source = "fn main() int { return 42 }\nfn helper() int { return 99 }\n\
+                  #[test]\nfn answer_test() { assert(40 + 2 == 42) }";
+    let modules = [spec("app", "main", source)];
+    let req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+    let report = run_ace_project_tests(AceEngineChoice::AceAV, &req);
+    assert_eq!(report.outcome, AceTestRunOutcome::Passed, "{report:?}");
+    assert_eq!(report.exit_code, 0);
+    assert_eq!(report.discovered.len(), 1);
+    assert_eq!(report.discovered[0].name, "answer_test");
+    assert_eq!(report.discovered[0].module, "app::main");
+    assert_eq!(report.tests.len(), 1);
+    assert_eq!(report.tests[0].name, "answer_test");
+    assert!(report.tests[0].passed);
+
+    let changed = source.replace("== 42", "== 41");
+    let modules = [spec("app", "main", &changed)];
+    let req = AceTestRunRequest::simple(&modules, "app::main", &caps);
+    let report = run_ace_project_tests(AceEngineChoice::AceAV, &req);
+    assert!(matches!(report.outcome, AceTestRunOutcome::Failed { .. }), "{report:?}");
+    assert_eq!(report.exit_code, 1);
+    assert_eq!(report.tests.len(), 1);
+    assert_eq!(report.tests[0].name, "answer_test");
+    assert!(!report.tests[0].passed);
+    assert!(started.elapsed().as_secs_f64() <= 10.0);
+}
+
+#[test]
 fn p971_check_face_reports_producer_declarations_and_diagnostics() {
     install().expect("install the reference ACE host");
     let caps = packages_capabilities();

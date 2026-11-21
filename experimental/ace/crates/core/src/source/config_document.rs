@@ -456,6 +456,7 @@ pub fn compile_config_document_with_injection(
         owner: None,
         script: true,
         proto: false,
+        test_attribute: None,
     };
     let program = Program {
         items: vec![Item::Fn(entry)],

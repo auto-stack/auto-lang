@@ -908,6 +908,7 @@ fn owned_scheduler_fixture(mismatch: bool) -> ace_av_core::mir::MirModule {
                     capacity: 0,
                     args: vec![],
                     dst: 1,
+                    singleton: false,
                 },
                 MirInstr::Const { dst: 2, value: 2 },
                 MirInstr::SchedSend {

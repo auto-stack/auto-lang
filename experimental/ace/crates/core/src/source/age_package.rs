@@ -1369,6 +1369,7 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
@@ -1418,6 +1419,7 @@ pub(crate) fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool) -> F
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 
@@ -2223,6 +2225,7 @@ fn hidden_fn_scene_value(
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     })
 }
 

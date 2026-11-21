@@ -1759,7 +1759,12 @@ fn main() int {
         );
         assert_eq!(p.served.values.len(), 1, "one served site");
         assert_eq!(p.served.values.values().next(), Some(&CtValue::I32(3)));
-        let mut served_spans = p.served.values.keys().copied().collect::<Vec<_>>();
+        let mut served_spans = p
+            .served
+            .values
+            .keys()
+            .map(|(_, start, end)| (*start, *end))
+            .collect::<Vec<_>>();
         served_spans.sort_unstable();
         let mut expected = program_hash_spans(&parse_ct(src, false));
         expected.sort_unstable();

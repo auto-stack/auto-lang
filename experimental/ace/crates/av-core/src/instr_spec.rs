@@ -500,8 +500,8 @@ pub const SPECS: &[InstructionSpec] = &[
     },
     InstructionSpec {
         // PLAN-105 W105: non-destructive owned-Str field view (element text
-        // read without LIST_REMOVE). First free opcode after the 0x20 block.
-        opcode: 0x37,
+        // read without LIST_REMOVE).
+        opcode: crate::abc::OP_LIST_FIELD_VIEW,
         name: "LIST_FIELD_VIEW",
         family: "instr",
         operands: &[("dst", "W"), ("base", "R"), ("index", "R"), ("path", "R")],

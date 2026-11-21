@@ -8109,12 +8109,32 @@ fn dispatch_with_host<V: ModuleView>(
                     capacity,
                     args,
                     dst,
+                    singleton,
                 } => {
                     let Some(tables_arc) = st.sched.clone() else {
                         return Some(ExecOutcome::Infra(
                             "sched.spawn outside the scheduler execution lane".into(),
                         ));
                     };
+                    if *singleton {
+                        let existing = tables_arc
+                            .lock()
+                            .expect("sched tables")
+                            .singletons
+                            .get(callee)
+                            .copied();
+                        if let Some(task_idx) = existing {
+                            if let Err(out) = commit_slot_write(
+                                st,
+                                *dst as usize,
+                                Value::I32(task_idx as i32 + 1),
+                                limits,
+                            ) {
+                                return Some(out);
+                            }
+                            continue;
+                        }
+                    }
                     let caller = st.frames.last().expect("frame present");
                     // PLAN-1067 review R-1067-3: one slot is the minimum a
                     // bounded mailbox can offer — capacity 0 used to park every
@@ -8151,6 +8171,9 @@ fn dispatch_with_host<V: ModuleView>(
                             closed: false,
                             recv_real: false,
                         });
+                        if *singleton {
+                            t.singletons.insert(*callee, task_idx);
+                        }
                     }
                     st.sched_spawned.push(SchedSpawnReq {
                         fn_idx: *callee,
@@ -9618,6 +9641,7 @@ struct SchedTables {
     /// immediately and chains run to completion.
     draining: bool,
     tasks: Vec<SchedTaskSlot>,
+    singletons: std::collections::BTreeMap<u32, usize>,
     ports: Vec<SchedPortState>,
     facts: SchedulerFacts,
     text_arenas: Vec<crate::owned_text::StrArena>,

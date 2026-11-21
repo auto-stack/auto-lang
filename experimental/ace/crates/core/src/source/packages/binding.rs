@@ -1219,6 +1219,10 @@ fn bind_package_syntax_inner(
     let mut offset = 0usize;
     let mut identity = format!("{PACKAGES_BINDING_VERSION}:{}:{entry}\n", entry.len());
     let mut result_grammar_id = String::new();
+    let admit_meta = face == Faces::Auto
+        && caps
+            .iter()
+            .any(|cap| cap == crate::source::META_CAPABILITY);
     for (key, unit) in &units {
         let (pkg, module) = split_key(key);
         result_grammar_id = unit.grammar_id.clone();
@@ -1312,6 +1316,19 @@ fn bind_package_syntax_inner(
                     ))
                 }
                 Item::Fn(original) => {
+                    if admit_meta
+                        && crate::source::meta_intrinsic(&original.name.name).is_some()
+                    {
+                        return Err(fail(
+                            key,
+                            "source.cte.meta-name-conflict",
+                            format!(
+                                "`{}` is a protected compile-time metadata query",
+                                original.name.name
+                            ),
+                            original.name.span,
+                        ));
+                    }
                     if !walker.auto_language {
                         if let Some(tp) = original.type_params.first() {
                             return Err(fail(
@@ -1752,6 +1769,7 @@ fn bind_package_syntax_inner(
             owner: None,
             script: false,
             proto: false,
+            test_attribute: None,
         }));
         module_init_fns.insert(key.clone(), owner);
     }
@@ -1821,6 +1839,9 @@ fn shift_ann(ann: &mut TypeAnn, offset: usize) {
 pub(crate) fn shift_fn(f: &mut FnItem, offset: usize) {
     sh(&mut f.name.span, offset);
     sh(&mut f.span, offset);
+    if let Some(span) = &mut f.test_attribute {
+        sh(span, offset);
+    }
     for tp in &mut f.type_params {
         sh(&mut tp.name.span, offset);
         if let Some(b) = &mut tp.bound {
@@ -3015,6 +3036,17 @@ impl<'a> Walker<'a> {
                         // 纪律）。
                     } else if self.auto_language && matches!(callee.name.as_str(), "mark_a" | "mark_b" | "take" | "__fstr") {
                         // Capability admission remains the shared resolver's job.
+                    } else if self.auto_language && matches!(callee.name.as_str(), "assert" | "assert_eq") {
+                        // The ordinary resolver binds assertion operands and effects.
+                    } else if self.auto_language && crate::source::meta_intrinsic(&callee.name).is_some() {
+                        // A metadata selector is a scoped type name; the shared
+                        // resolver owns arity, argument kinds and CT admission.
+                        if let Some(Arg::Pos(Expr { kind: ExprKind::Var(name), .. })) = args.first_mut() {
+                            if !self.tyvars.contains(&name.name) && self.is_type_name(&name.name) {
+                                name.name = self.type_name(name)?;
+                            }
+                        }
+                        return Ok(());
                     } else if self.auto_language && matches!(callee.name.as_str(), "fail" | "rethrow") {
                         // The shared resolver owns language-error binding and
                         // checks that rethrow is inside a catch body.
@@ -4486,6 +4518,7 @@ fn assemble_unit(
     expand_ct_statements(key, &mut program, &facts)?;
     Ok(PackageSyntax {
         program,
+        source_metadata: public.source_metadata.clone(),
         exports,
         type_exports,
         const_exports,

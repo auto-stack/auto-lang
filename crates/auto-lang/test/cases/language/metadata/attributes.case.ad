@@ -1,0 +1,423 @@
+# Declaration attributes
+
+## Case: with-constraint-spelling
+id: "av.parity.1092.with-constraint-spelling"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn value() int }
+type N as S { n int; fn value() int { return .n } }
+#[with(T as S)]
+fn get(x T) int { return x.value() }
+fn main() int { return get(N(42)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: test-attribute-source
+id: "av.parity.1092.test-attribute-source"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[test]
+fn answer_test() { let n = 40 + 2; assert(n == 42) }
+fn main() int { answer_test(); return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: unknown-attribute
+id: "av.parity.1092.unknown-attribute"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[parity_unknown_attribute]
+fn main() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.attribute-unknown"
+
+## Case: duplicate-test-attribute
+id: "av.parity.1092.duplicate-test-attribute"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[test]
+#[test]
+fn check_answer() { assert(40 + 2 == 42) }
+fn main() int { return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.attribute-duplicate"
+
+## Case: test-attribute-on-record
+id: "av.parity.1092.test-attribute-on-record"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[test]
+type Sample { value int }
+fn main() int { return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.attribute-position"
+
+## Case: compile-time-field-metadata
+id: "av.parity.1092.compile-time-field-metadata"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Pair { x int; y int }
+fn main() int {
+    if #{ ct_has_field(Pair, "x") } && !#{ ct_has_field(Pair, "z") } {
+        return 40 + #{ ct_field_count(Pair) }
+    }
+    return 1
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 42
+
+## Case: imported-record-metadata
+id: "av.parity.1092.imported-record-metadata"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.Record as Local
+fn main() int {
+    if #{ ct_has_field(Local, "flag") } { return 40 + #{ ct_field_count(Local) } }
+    return 1
+}
+```
+
+#### lib.at
+
+```auto
+pub type Record { flag bool; value int }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 42
+
+## Case: metadata-without-capability
+id: "av.parity.1092.metadata-without-capability"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Pair { x int; y int }
+fn main() int { return #{ ct_field_count(Pair) } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "source.cte.meta-capability"
+
+## Case: target-selected-implementation
+id: "av.parity.1092.target-selected-implementation"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[c]
+fn answer() int { return 99 }
+#[rs]
+fn answer() int { return 98 }
+#[c, vm, rs]
+fn answer() int { return 42 }
+fn main() int { return answer() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: target-excluded-public-function
+id: "av.parity.1092.target-excluded-public-function"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.answer
+fn main() int { return answer() }
+```
+
+#### lib.at
+
+```auto
+#[rs]
+pub fn answer() int { return 99 }
+#[vm]
+pub fn answer() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: singleton-task-reuses-mailbox
+id: "av.parity.1092.singleton-task-reuses-mailbox"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[single]
+task Counter {
+    count = 0
+    on { n int -> { count = count + n; reply(count) } }
+}
+fn add_first() int { return await Counter.ask(19) }
+fn main() int {
+    let first = add_first()
+    let second = await Counter.ask(23)
+    Counter.stop()
+    if first == 19 { return second }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: ordinary-task-rejects-static-access
+id: "av.parity.1092.ordinary-task-rejects-static-access"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Ordinary { on { n int -> { reply(n) } } }
+fn main() int { return await Ordinary.ask(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.sched-singleton"
+
+## Case: async-attribute-keeps-future-effect
+id: "av.parity.1092.async-attribute-keeps-future-effect"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[async]
+fn increment(n int) ~int { return n + 1 }
+fn main() int { return await increment(41) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: field-query-uses-generic-instance
+id: "av.parity.1092.field-query-uses-generic-instance"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Pair { x int; y int }
+type One { x int }
+#[with(T)]
+fn count_fields(value T) int { return #{ ct_field_count(T) } }
+fn main() int { return 39 + count_fields(Pair(1, 2)) + count_fields(One(3)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 42
+
+## Case: with-requires-a-nominal-witness
+id: "av.parity.1092.with-requires-a-nominal-witness"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+spec S { fn value() int }
+type Unclaimed { n int; fn value() int { return .n } }
+#[with(T as S)]
+fn get(x T) int { return x.value() }
+fn main() int { return get(Unclaimed(42)) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.instances-bound"
+
+## Case: target-selection-on-method
+id: "av.parity.1092.target-selection-on-method"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Counter {
+    n int
+    #[rs]
+    fn value() int { return 99 }
+    #[vm]
+    fn value() int { return .n }
+}
+fn main() int { let item = Counter(42); return item.value() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: with-unconstrained-type-parameter
+id: "av.parity.1092.with-unconstrained-type-parameter"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[with(T)]
+fn identity(x T) T { return x }
+fn main() int { return identity(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+### Probe ac-native
+#ignore
+recipe: "ac/mir-native-scalar-v1"
+entry: "d_main"
+exit: 42
+
+### Notes
+
+The ordinary AV check exercises the legacy spelling through real generic
+instantiation. The AC-native check preserves the same source and its
+independent result contract for the AC owner after the AV phase.
+
+## Case: with-rejects-a-duplicate-parameter
+id: "av.parity.1092.with-rejects-a-duplicate-parameter"
+tags: ["av-language-parity", "plan-1092"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#[with(T, T)]
+fn identity(x T) T { return x }
+fn main() int { return identity(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.attribute-duplicate"

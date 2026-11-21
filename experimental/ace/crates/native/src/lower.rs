@@ -4103,7 +4103,13 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
                 capacity,
                 args,
                 dst,
+                singleton,
             } => {
+                if *singleton {
+                    return Err(
+                        "lower.sched-singleton: singleton actors require the AV scheduler".into(),
+                    );
+                }
                 let info = self.sched_callee(*callee)?;
                 let thunk_ref = self.sched_thunk(*callee, &info)?;
                 let thunk = self.fb.ins().func_addr(types::I64, thunk_ref);

@@ -427,6 +427,7 @@ fn materialize_instance(
         owner: template.owner.clone(),
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 
@@ -1297,7 +1298,7 @@ pub(crate) fn instantiate_auto_program_scoped(
                     suffix += 1;
                     name = format!("{base}__{suffix}");
                 };
-                let concrete = materialize_instance(
+                let mut concrete = materialize_instance(
                     template,
                     &|ann| {
                         substitute_annotation(ann, &|id| {
@@ -1307,6 +1308,33 @@ pub(crate) fn instantiate_auto_program_scoped(
                     &consts,
                     &name,
                 );
+                if capabilities
+                    .iter()
+                    .any(|cap| cap == ace_core::source::META_CAPABILITY)
+                {
+                    for_each_block_mut(&mut concrete.body, &mut |expr| {
+                        let ExprKind::Call { callee, args } = &mut expr.kind else {
+                            return;
+                        };
+                        if ace_core::source::meta_intrinsic(&callee.name).is_none() {
+                            return;
+                        }
+                        let Some(Arg::Pos(Expr {
+                            kind: ExprKind::Var(selector),
+                            ..
+                        })) = args.first_mut()
+                        else {
+                            return;
+                        };
+                        if let Some(record) = demand
+                            .types
+                            .get(&selector.name)
+                            .and_then(|ty| find_bound_record(&program.items, ty))
+                        {
+                            selector.name.clone_from(&record.name.name);
+                        }
+                    });
+                }
                 if let Some(owner) = owner {
                     let members = program
                         .items

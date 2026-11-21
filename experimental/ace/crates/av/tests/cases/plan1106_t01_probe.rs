@@ -106,6 +106,7 @@ fn fn_item(name: &str, params: Vec<Param>, body: Vec<Stmt>) -> Item {
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     })
 }
 

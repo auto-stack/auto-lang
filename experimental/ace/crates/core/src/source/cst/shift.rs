@@ -509,6 +509,9 @@ pub(crate) fn shift_fn_item(f: &mut FnItem, off: usize) {
 /// PLAN-929（T-05）：带符号 FnItem 平移（同一 visitor 覆盖面）。
 pub(crate) fn shift_fn_item_signed(f: &mut FnItem, delta: i64) {
     shift_ident(&mut f.name, delta);
+    if let Some(span) = &mut f.test_attribute {
+        shift_span(span, delta);
+    }
     // PLAN-935：类型参数声明 ident 同面平移（PLAN-963：含 `<T has S>` 约束位）。
     for tp in f.type_params.iter_mut() {
         shift_ident(&mut tp.name, delta);

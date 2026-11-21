@@ -113,10 +113,12 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 /// accepts the new operators, unary ops and the conditional `for` loop;
 /// the core surface keeps its historical accept/reject sets.
 pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
-    parse_program_with_mode(src, profile, false).map(|(program, _)| program)
+    parse_program_with_mode(src, profile, false).map(|(program, _, _)| program)
 }
 
-pub(crate) fn parse_auto_program_for_instances(src: &str) -> Result<(Program, bool), Diagnostic> {
+pub(crate) fn parse_auto_program_for_instances(
+    src: &str,
+) -> Result<(Program, bool, super::cst::SourceMetadata), Diagnostic> {
     parse_program_with_mode(src, SourceProfile::Auto, true)
 }
 
@@ -124,7 +126,7 @@ fn parse_program_with_mode(
     src: &str,
     profile: SourceProfile,
     inspect_instances: bool,
-) -> Result<(Program, bool), Diagnostic> {
+) -> Result<(Program, bool, super::cst::SourceMetadata), Diagnostic> {
     note_tokenize(Span {
         start: 0,
         end: src.len(),
@@ -157,15 +159,15 @@ fn parse_program_with_mode(
         | SourceProfile::Auto => {
             // PLAN-964 (L-22/FStr)：先于语法解析的 f-string 文本变换——
             // 仅 text 族/集合/聚合/闭包面启用；其余 profile 保持原文本。
-            let parsed_src = if super::fstr::profile_admits_fstr(profile) {
+            let (parsed_src, rewrites) = if super::fstr::profile_admits_fstr(profile) {
                 // PLAN-968: the scheduler face desugars with the legacy
                 // bare-brace `{ident}` dialect of the task sources.
                 let desugared = if profile.is_scheduler() {
-                    super::fstr::desugar_fstrings_sched(src)
+                    super::fstr::desugar_fstrings_sched(src).map(|text| (text, Vec::new()))
                 } else if profile.is_auto_language() {
                     super::fstr::desugar_fstrings_auto(src)
                 } else {
-                    super::fstr::desugar_fstrings(src)
+                    super::fstr::desugar_fstrings(src).map(|text| (text, Vec::new()))
                 };
                 match desugared {
                     Ok(s) => s,
@@ -183,13 +185,31 @@ fn parse_program_with_mode(
                     }
                 }
             } else {
-                src.to_string()
+                (src.to_string(), Vec::new())
             };
-            let (program, has_instances) = if inspect_instances {
-                super::cst::parse_auto_program_for_instances(&parsed_src)?
+            let projected = if inspect_instances {
+                super::cst::parse_auto_program_for_instances(&parsed_src)
             } else {
-                (super::cst::parse_program_via_cst(&parsed_src, profile)?, false)
+                super::cst::parse_program_via_cst(&parsed_src, profile)
+                    .map(|program| (program, false, super::cst::SourceMetadata::default()))
             };
+            let restore = |span| super::fstr::restore_span(&rewrites, span);
+            let (program, has_instances, mut metadata) = projected.map_err(|mut diagnostic| {
+                if diagnostic.code.starts_with("source.attribute-") {
+                    diagnostic.span = restore(diagnostic.span);
+                }
+                diagnostic
+            })?;
+            for span in [&mut metadata.pragmas.script, &mut metadata.pragmas.rust] {
+                *span = span.map(restore);
+            }
+            for annotation in &mut metadata.annotations {
+                annotation.span = restore(annotation.span);
+                annotation.owner_span = restore(annotation.owner_span);
+                if let super::cst::SourceAnnotationKind::Rust { arguments, .. } = &mut annotation.kind {
+                    *arguments = arguments.map(restore);
+                }
+            }
             // 计量保真：旧 parser 在每个 fn 体开parse时 note_parse——冷整源
             // 换链后按投影结果补记（不旁路 SyntaxWork 观察面）。
             for item in &program.items {
@@ -197,7 +217,7 @@ fn parse_program_with_mode(
                     note_parse(&f.name.name);
                 }
             }
-            Ok((program, has_instances))
+            Ok((program, has_instances, metadata))
         }
         // PLAN-979：AGE 领域声明只经领域前门（`source::age_h0`）消费——通用
         // 解析入口在此显式拒绝，绝不返回一个把领域声明静默丢掉的 Program。
@@ -890,6 +910,7 @@ impl<'s> Parser<'s> {
                         owner: None,
                         script: true,
                         proto: false,
+                        test_attribute: None,
                     });
                 }
                 Some(Token {
@@ -1330,6 +1351,7 @@ impl<'s> Parser<'s> {
         );
         Ok(TaskItem {
             name,
+            single: false,
             fields,
             start,
             stop,
@@ -1906,6 +1928,7 @@ impl<'s> Parser<'s> {
                     owner: None,
                     script: false,
                     proto: false,
+                    test_attribute: None,
                 }))
             }
             BlockCont::IfThen { kw, cond } => {

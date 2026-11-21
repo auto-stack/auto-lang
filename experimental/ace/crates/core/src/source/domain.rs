@@ -497,6 +497,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         owner: None,
         script: false,
         proto: false,
+        test_attribute: None,
     }
 }
 

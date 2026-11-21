@@ -106,6 +106,7 @@ impl std::fmt::Debug for FrontOutcome {
 
 pub struct FrontOk {
     pub program: Program,
+    pub source_metadata: super::SourceMetadata,
     pub grammar_id: String,
     pub caps_version: &'static str,
     pub snapshot_len: usize,
@@ -560,7 +561,7 @@ fn parse_packages_with(
     // 解析必须拿到**真实快照字节**才能识别限定拼写；其它包面无该表，走原
     // 无上下文入口（字节与诊断面不变）。
     let ctx_text = SnapshotTokenText { snap: &snap };
-    let parsed = if matches!(face, PackagesFace::Age) {
+    let parsed = if matches!(face, PackagesFace::Age | PackagesFace::Auto) {
         parse_snapshot_with_ctx(
             &cached.program,
             &cached.scanner,
@@ -899,6 +900,7 @@ pub(crate) fn project_packages_front(
     let mut age_components = Vec::new();
     let mut saw_decl = false;
     let mut items = Vec::new();
+    let mut source_metadata = super::SourceMetadata::default();
     let node_span = |tree: &CstTree, n| {
         let (start, end) = tree.abs_range(n);
         crate::atom_text::Span {
@@ -920,7 +922,7 @@ pub(crate) fn project_packages_front(
         } else {
             SourceProfile::TextRecord
         };
-        let program = project::project_program_deferring_templates(
+        let (program, metadata) = project::project_program_deferring_templates(
             &cached.program,
             &cached.kinds,
             tree,
@@ -929,6 +931,11 @@ pub(crate) fn project_packages_front(
             // PLAN-981：AGE 作者面（age-package 裁剪）——浮点字面量等合法。
             matches!(face, PackagesFace::Age),
         )?;
+        source_metadata
+            .pragmas
+            .merge(metadata.pragmas)
+            .map_err(|diagnostic| vec![diagnostic])?;
+        source_metadata.annotations.extend(metadata.annotations);
         items.extend(program.items);
         // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
         // 与普通包项并排记录（结构名按 Schema 的 role 归属，不按拼写猜）。
@@ -1103,6 +1110,7 @@ pub(crate) fn project_packages_front(
                             owner: None,
                             script: false,
                             proto: false,
+                            test_attribute: None,
                         }));
                     }
                 }
@@ -1645,6 +1653,11 @@ pub(crate) fn project_packages_front(
             } else {
                 d.node
             };
+            let node = match project::attributed_owner(&cached.program, tree, node) {
+                Some(owner) if project::attribute_targets_av(&cached.program, tree, &snap, node) => owner,
+                Some(_) => continue,
+                None => node,
+            };
             let kind = tree.kind(node);
             // PLAN-980 P3（981 回签 (a)(c)(d)）：`style` 声明 = str const/fn 糖。
             // 裸 `style-item` 与其 `pub` 包装都归这里；默认值/插值/跨名引用具名拒。
@@ -1810,6 +1823,7 @@ pub(crate) fn project_packages_front(
                         owner: None,
                         script: false,
                         proto: false,
+                        test_attribute: None,
                     }));
                 }
                 declarations.insert(name.clone(), item_span);
@@ -2199,6 +2213,7 @@ pub(crate) fn project_packages_front(
     // `op.node_scope()` 过滤），故这里不再需要局部预检。
     Ok(PackageSyntax {
         program: crate::source::ast::Program { items },
+        source_metadata,
         exports,
         type_exports,
         const_exports,
@@ -3054,8 +3069,9 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
         // PLAN-981：整模块入口不属于 AGE 作者面。
         false,
     ) {
-        Ok(program) => FrontOutcome::Ok(FrontOk {
+        Ok((program, source_metadata)) => FrontOutcome::Ok(FrontOk {
             program,
+            source_metadata,
             grammar_id: format!("{}", cached.program.identity.grammar_id.0),
             caps_version: FRONT_CAPS_VERSION,
             snapshot_len: src.len(),
@@ -3468,9 +3484,9 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         }
         Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
     };
-    let mut program =
-        match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
-            Ok(program) => program,
+    let (mut program, source_metadata) =
+        match project::project_program_with_pragmas(&cached.program, &cached.kinds, &tree, &snap, profile) {
+            Ok(projected) => projected,
             Err(diags) => {
                 // PLAN-979：槽位/结构拒绝是比"首个 token 期望"更精确的结构
                 // 事实（例如 `node` 已消费、`view` 槽位遇到 `panel`）——领域
@@ -3623,6 +3639,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
     }
     FrontOutcome::Ok(FrontOk {
         program,
+        source_metadata,
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
         caps_version: FRONT_CAPS_VERSION,
         snapshot_len: src.len(),
@@ -3641,17 +3658,24 @@ pub fn parse_program_via_cst(src: &str, profile: SourceProfile) -> Result<Progra
 
 /// Find instance syntax in the admitted CST without traversing or cloning
 /// the AST of an ordinary program with no templates.
-pub(crate) fn parse_auto_program_for_instances(src: &str) -> Result<(Program, bool), Diagnostic> {
+pub(crate) fn parse_auto_program_for_instances(
+    src: &str,
+) -> Result<(Program, bool, super::SourceMetadata), Diagnostic> {
     let profile = SourceProfile::Auto;
     let ok = parse_whole_front_ok(src, profile)?;
     let template = ok.program.has_instance_templates();
-    let explicit_call = !template && src.contains('<') && profile_grammar(profile)
-        .ok()
-        .and_then(|cached| cached.kinds.generic_call)
-        .is_some_and(|kind| {
-            ok.cst.blocks.iter().any(|block| block.nodes.iter().any(|node| node.kind == kind))
-        });
-    Ok((ok.program, template || explicit_call))
+    let explicit_call = !template
+        && src.contains('<')
+        && profile_grammar(profile)
+            .ok()
+            .and_then(|cached| cached.kinds.generic_call)
+            .is_some_and(|kind| {
+                ok.cst
+                    .blocks
+                    .iter()
+                    .any(|block| block.nodes.iter().any(|node| node.kind == kind))
+            });
+    Ok((ok.program, template || explicit_call, ok.source_metadata))
 }
 
 fn parse_whole_front_ok(src: &str, profile: SourceProfile) -> Result<FrontOk, Diagnostic> {
@@ -3800,6 +3824,7 @@ pub fn parse_fragment_front(
         program: Program {
             items: vec![crate::source::ast::Item::Fn(function)],
         },
+        source_metadata: super::SourceMetadata::default(),
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
         caps_version: FRONT_CAPS_VERSION,
         snapshot_len: src.len(),

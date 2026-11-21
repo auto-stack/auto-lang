@@ -305,6 +305,7 @@ fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {
         script: false,
         // PLAN-1080：严格投影面无原型臂。
         proto: false,
+        test_attribute: None,
     })
 }
 

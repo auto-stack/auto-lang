@@ -287,7 +287,7 @@ pub const EXPECTED_AV_CORE_VERSION: &str = "av.core-i32/1";
 /// every av recipe family lowers HIR→MIR through the shared crate; a
 /// lowering contract bump without a mirror update fails the identity axis.
 pub const EXPECTED_MIR_LOWERING_VERSION: &str = "5";
-const EXPECTED_AUTO_LANGUAGE_MIR_LOWERING_VERSION: &str = "8";
+const EXPECTED_AUTO_LANGUAGE_MIR_LOWERING_VERSION: &str = "9";
 
 fn expected_mir_lowering_version(family: RecipeFamily) -> &'static str {
     if family == RecipeFamily::LanguageSource {

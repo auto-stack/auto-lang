@@ -26,7 +26,7 @@ use crate::identity::{exec_key_of, UseBinding};
 use crate::identity::{CtValue, ExpectTy};
 use crate::store::CtEnvelopeSink;
 use ace_av_core::CancelFlag;
-use ace_core::source::ast::Program;
+use ace_core::source::ast::{ExprKind, Item, ParamMode, Program, Stmt, TypeRef, TypeWord};
 
 /// One REAL execution-boundary fact (§5.8.2: the execute hook correlates
 /// every attempt — success AND failure — with its request/ExecKey; the
@@ -69,6 +69,51 @@ pub struct CtRequest {
     pub binding: UseBinding,
 }
 
+/// A fully typed scalar return over literals and parameters has no lookups
+/// outside its own signature and body. Keep the complete source closure in
+/// cache admission for calls that can consult declarations, including
+/// metadata, constructors, globals and transitive callees.
+fn is_closed_scalar_call(program: &Program, callee: &str) -> bool {
+    let Some(function) = program.items.iter().find_map(|item| match item {
+        Item::Fn(function) if function.name.name == callee => Some(function),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let scalar = |ty: &TypeRef| {
+        matches!(
+            ty,
+            TypeRef::Builtin(TypeWord::Int | TypeWord::I32 | TypeWord::Bool)
+        )
+    };
+    if !scalar(&function.ret.kind)
+        || !function.type_params.is_empty()
+        || function.params.iter().any(|param| {
+            !scalar(&param.ty.kind) || param.default.is_some() || param.mode != ParamMode::Default
+        })
+    {
+        return false;
+    }
+    let [Stmt::Return { value, .. }] = function.body.stmts.as_slice() else {
+        return false;
+    };
+    let mut expressions = vec![value];
+    while let Some(expr) = expressions.pop() {
+        match &expr.kind {
+            ExprKind::IntLit(_) | ExprKind::BoolLit(_) => {}
+            ExprKind::Var(name)
+                if function
+                    .params
+                    .iter()
+                    .any(|param| param.name.name == name.name) => {}
+            ExprKind::Binary { lhs, rhs, .. } => expressions.extend([lhs.as_ref(), rhs.as_ref()]),
+            ExprKind::Unary { operand, .. } => expressions.push(operand),
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// The answer to one CT demand.
 #[derive(Clone, Debug)]
 pub struct CtAnswer {
@@ -92,6 +137,7 @@ pub struct CtService<S: CtEnvelopeSink> {
     wall_budget: std::time::Duration,
     profile: ace_core::source::SourceProfile,
     execution_axes: Vec<String>,
+    source_closure_identity: Option<String>,
     /// The real execute-boundary log (correlated to ExecKeys).
     exec_log: Vec<ExecLogEntry>,
 }
@@ -106,6 +152,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
             wall_budget: crate::MAX_CALL_WALL,
             profile: ace_core::source::SourceProfile::Scalar,
             execution_axes: vec![crate::CT_PROFILE.to_string()],
+            source_closure_identity: None,
             exec_log: Vec::new(),
         }
     }
@@ -118,6 +165,22 @@ impl<S: CtEnvelopeSink> CtService<S> {
         service.profile = ace_core::source::SourceProfile::Auto;
         service.execution_axes = execution_axes;
         service
+    }
+
+    pub fn bind_source_closure(&mut self, identity: String) {
+        self.source_closure_identity = Some(identity);
+    }
+
+    fn source_axes(&self, closed_scalar_call: bool) -> Vec<String> {
+        let mut axes = self.execution_axes.clone();
+        if let Some(identity) = &self.source_closure_identity {
+            if closed_scalar_call {
+                axes.push("ordinary-ct/closed-scalar-call/1".into());
+            } else {
+                axes.push(identity.clone());
+            }
+        }
+        axes
     }
 
     pub(crate) fn is_auto(&self) -> bool {
@@ -168,6 +231,8 @@ impl<S: CtEnvelopeSink> CtService<S> {
         module_path: &str,
         req: &CtRequest,
     ) -> Result<CtAnswer, CtExecError> {
+        let closed_scalar =
+            self.source_closure_identity.is_some() && is_closed_scalar_call(program, &req.callee);
         let mut key = exec_key_of(
             program,
             &req.binding.package,
@@ -175,7 +240,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
             &req.callee,
             &req.args,
             req.expect,
-            &self.execution_axes,
+            &self.source_axes(closed_scalar),
         )
         .map_err(|m| {
             self.counters.ct_rejections += 1;
@@ -343,7 +408,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
             &binding.module,
             expr,
             expect,
-            &self.execution_axes,
+            &self.source_axes(false),
         )
         .map_err(|m| {
             self.counters.ct_rejections += 1;

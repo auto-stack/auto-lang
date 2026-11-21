@@ -225,6 +225,18 @@ pub fn compile_language_source_prepared(
     capabilities: &[String],
     prepare: impl FnOnce(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_language_source_with_metadata(src, module_path, capabilities, prepare)
+        .map(|(compiled, _)| compiled)
+}
+
+/// Return checked ordinary Auto source and the metadata read by the same
+/// CST projection. Metadata coordinates are relative to the source unit.
+pub fn compile_language_source_with_metadata(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    prepare: impl FnOnce(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+) -> Result<(CompiledSource, super::cst::SourceMetadata), Vec<Diagnostic>> {
     // PLAN-1082 (T-03): graft the frozen 972 assembled stdlib list module
     // (name-mangled) onto the single-module ordinary face when the source
     // references the legacy `List.new(` constructor or a HOF method — the
@@ -233,7 +245,7 @@ pub fn compile_language_source_prepared(
     // hit the source compiles byte-identically (zero graft, zero drift).
     let grafted = graft_stdlib_integer_parse(src, graft_stdlib_text(src, graft_stdlib_list(src)));
     let profile = SourceProfile::Auto;
-    let (mut program, has_instances) =
+    let (mut program, has_instances, metadata) =
         super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
     if grafted.len() != src.len() {
         // A script consumes its top-level statement tail. Project the
@@ -272,12 +284,13 @@ pub fn compile_language_source_prepared(
     prepare(&mut program, &grafted, has_instances)?;
     let parts = compile_program_parts(&program, &grafted, module_path, capabilities, profile)?;
     let checked = crate::verify::verify_auto_language(parts.bundle)?;
-    Ok(CompiledSource {
+    let compiled = CompiledSource {
         profile: super::AUTO_SOURCE_PROFILE,
         input_hash: parts.input_hash,
         atom_text: parts.atom_text,
         checked,
-    })
+    };
+    Ok((compiled, metadata))
 }
 
 /// The frozen 972 assembled stdlib list module — identity is the repo file
@@ -6315,7 +6328,10 @@ pub(crate) fn sched_intrinsic_signature(
             Some(program.function_types.get(index)?.result),
         ));
     }
-    if let Some(t) = rest.strip_prefix("spawn_") {
+    if let Some(t) = rest
+        .strip_prefix("spawn_")
+        .or_else(|| rest.strip_prefix("singleton_"))
+    {
         let t = tasks.iter().find(|x| x.name == t)?;
         let mut params = vec![VT::Str, VT::I32];
         // Text fields initialize from str literals (the borrowed view

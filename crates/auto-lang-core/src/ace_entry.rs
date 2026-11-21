@@ -1047,7 +1047,7 @@ pub fn run_ace_project_tests(
             engine,
             outcome: AceTestRunOutcome::NoTestsDiscovered {
                 message: "the producer discovered zero test candidates in the project \
-                          (frozen test contract: a zero-parameter `int` declaration, entry `main` excluded)"
+                          (entry `main` excluded)"
                     .to_string(),
             },
             discovered,

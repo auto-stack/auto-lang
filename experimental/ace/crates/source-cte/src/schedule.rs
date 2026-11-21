@@ -112,12 +112,12 @@ impl std::fmt::Display for PlanError {
     }
 }
 
-/// The served root: every hash site with its frozen value, keyed by span
+/// The served root: every hash site with its frozen value, keyed by owner and span
 /// (the structural backfill input of T-06/T-07 — substitute before
 /// resolve, never text).
 #[derive(Clone, Debug, Default)]
 pub struct ServedRoot {
-    pub values: BTreeMap<(u64, u64), CtValue>,
+    pub values: BTreeMap<(String, u64, u64), CtValue>,
     /// Measured meta queries (never AV executions).
     pub meta_queries: u64,
     /// The meta selector axes this root read (record + field-set canon).
@@ -128,11 +128,18 @@ pub struct ServedRoot {
 }
 
 impl ServedRoot {
-    /// The frozen value of one hash site (by span).
-    pub fn value_at(&self, span: Span) -> Option<CtValue> {
+    /// Generic instances share source coordinates, so the owner participates.
+    pub fn value_at(&self, owner: &str, span: Span) -> Option<CtValue> {
         self.values
-            .get(&(span.start as u64, span.end as u64))
+            .get(&(owner.to_owned(), span.start as u64, span.end as u64))
             .copied()
+    }
+
+    fn insert(&mut self, owner: &str, span: Span, value: CtValue) {
+        self.values.insert(
+            (owner.to_owned(), span.start as u64, span.end as u64),
+            value,
+        );
     }
 }
 
@@ -155,10 +162,7 @@ pub fn serve_program<S: CtEnvelopeSink>(
     let mut stack: Vec<(String, (u64, u64))> = Vec::new();
     let sites = all_hash_sites(program);
     for (owner, span) in sites {
-        if out
-            .values
-            .contains_key(&(span.start as u64, span.end as u64))
-        {
+        if out.value_at(&owner, span).is_some() {
             continue; // already served as a nested/closure demand
         }
         serve_site(
@@ -266,10 +270,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     // 1) Nested hashes FIRST (they are demands of this demand): serve and
     //    record their values for substitution.
     for (nested_owner, nested_span) in hashes_in_expr(inner, owner) {
-        if !out
-            .values
-            .contains_key(&(nested_span.start as u64, nested_span.end as u64))
-        {
+        if out.value_at(&nested_owner, nested_span).is_none() {
             serve_site(
                 svc,
                 program,
@@ -296,10 +297,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     };
     for callee in &keep {
         for (closure_owner, closure_span) in hashes_in_body_of(program, callee) {
-            if !out
-                .values
-                .contains_key(&(closure_span.start as u64, closure_span.end as u64))
-            {
+            if out.value_at(&closure_owner, closure_span).is_none() {
                 serve_site(
                     svc,
                     program,
@@ -361,7 +359,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     }
     // 4) Substitute (nested hash values + meta values -> literals) and
     //    serve through the store-keyed service (single-flight by key).
-    let mut substituted = substitute(inner, out, &meta_vals);
+    let mut substituted = substitute(inner, owner, out, &meta_vals);
     out.meta_axes.append(&mut meta_axes);
     // The demand's compile program: CLOSURE-FILTERED (the owner, its
     // transitive callee closure and the type declarations — §5.3 "callee/
@@ -388,7 +386,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
             .cloned()
             .collect(),
     };
-    substitute_program_in_place(&mut site_program, out, Some((span, &substituted)));
+    substitute_program_in_place(&mut site_program, out, Some((owner, span, &substituted)));
     if svc.is_auto() {
         prepare_readonly_globals(&mut site_program, &mut substituted).map_err(|err| {
             PlanError::Demand {
@@ -401,7 +399,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     // A substituted LITERAL (pure-literal or meta-only demand) IS the
     // value — plan-level, never an AV execution (§5.2 literal+Meta 解析).
     if let Some(v) = lit_value(&substituted) {
-        out.values.insert((span.start as u64, span.end as u64), v);
+        out.insert(owner, span, v);
         return Ok(());
     }
     if svc.is_auto()
@@ -473,8 +471,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
             err: e,
         })?
     };
-    out.values
-        .insert((span.start as u64, span.end as u64), ans.value);
+    out.insert(owner, span, ans.value);
     Ok(())
 }
 
@@ -645,6 +642,7 @@ fn prepare_readonly_globals(program: &mut Program, inner: &mut Expr) -> Result<(
                 owner: None,
                 script: false,
                 proto: false,
+                test_attribute: None,
             });
         }
     }
@@ -729,13 +727,18 @@ fn record_of<'a>(program: &'a Program, name: &str) -> Option<&'a ace_core::sourc
 
 /// Substitute nested-hash values and meta values with literals (pure AST
 /// substitution — no text is formatted or re-parsed, §2).
-fn substitute(e: &Expr, hash_vals: &ServedRoot, meta_vals: &BTreeMap<(u64, u64), CtValue>) -> Expr {
+fn substitute(
+    e: &Expr,
+    owner: &str,
+    hash_vals: &ServedRoot,
+    meta_vals: &BTreeMap<(u64, u64), CtValue>,
+) -> Expr {
     let mut value = e.clone();
     write::visit(write::Node::Value(&mut value), |expr| {
         let key = (expr.span.start as u64, expr.span.end as u64);
         let frozen = meta_vals.get(&key).copied().or_else(|| {
             if matches!(expr.kind, ExprKind::HashExpr { .. }) {
-                hash_vals.value_at(expr.span)
+                hash_vals.value_at(owner, expr.span)
             } else {
                 None
             }
@@ -754,18 +757,18 @@ fn substitute(e: &Expr, hash_vals: &ServedRoot, meta_vals: &BTreeMap<(u64, u64),
 pub(crate) fn substitute_program_in_place(
     program: &mut Program,
     served: &ServedRoot,
-    executing: Option<(Span, &Expr)>,
+    executing: Option<(&str, Span, &Expr)>,
 ) {
-    write::program_roots(program, |_, root| {
+    write::program_roots(program, |owner, root| {
         write::visit(root, |expr| {
             if matches!(expr.kind, ExprKind::HashExpr { .. }) {
-                if let Some((span, replacement)) = executing {
-                    if expr.span == span {
+                if let Some((active_owner, span, replacement)) = executing {
+                    if owner == active_owner && expr.span == span {
                         *expr = replacement.clone();
                         return false;
                     }
                 }
-                if let Some(value) = served.value_at(expr.span) {
+                if let Some(value) = served.value_at(owner, expr.span) {
                     expr.kind = lit_of(value);
                     return false;
                 }

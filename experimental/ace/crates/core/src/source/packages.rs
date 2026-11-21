@@ -176,6 +176,7 @@ pub struct PackageRequire {
 #[derive(Clone, Debug)]
 pub struct PackageSyntax {
     pub program: Program,
+    pub source_metadata: super::cst::SourceMetadata,
     /// 公共面：pub fn / pub type / pub const 名 + 重导出别名。
     pub exports: BTreeSet<String>,
     /// pub type 名（exports 的子集，用于类型可见性裁定）。

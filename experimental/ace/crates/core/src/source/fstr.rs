@@ -205,15 +205,49 @@ fn split_quoted_dialect(
 /// PLAN-968: the scheduler face's f-string desugar (adds the legacy
 /// bare-brace `{ident}` interpolation of the task sources).
 pub fn desugar_fstrings_sched(src: &str) -> Result<String, String> {
-    desugar_fstrings_dialect(src, true, false)
+    desugar_fstrings_dialect(src, true, false, None)
 }
 
 pub fn desugar_fstrings(src: &str) -> Result<String, String> {
-    desugar_fstrings_dialect(src, false, false)
+    desugar_fstrings_dialect(src, false, false, None)
 }
 
-pub(super) fn desugar_fstrings_auto(src: &str) -> Result<String, String> {
-    desugar_fstrings_dialect(src, false, true)
+pub(super) struct SourceRewrite {
+    original: std::ops::Range<usize>,
+    projected: std::ops::Range<usize>,
+}
+
+pub(super) fn restore_span(
+    edits: &[SourceRewrite],
+    span: crate::atom_text::Span,
+) -> crate::atom_text::Span {
+    let position = |offset: usize, end: bool| {
+        let count = edits.partition_point(|edit| edit.projected.start <= offset);
+        let Some(edit) = count.checked_sub(1).map(|index| &edits[index]) else {
+            return offset;
+        };
+        if offset == edit.projected.start {
+            edit.original.start
+        } else if offset < edit.projected.end {
+            if end {
+                edit.original.end
+            } else {
+                edit.original.start
+            }
+        } else {
+            edit.original.end + offset - edit.projected.end
+        }
+    };
+    crate::atom_text::Span {
+        start: position(span.start, false),
+        end: position(span.end, true),
+    }
+}
+
+pub(super) fn desugar_fstrings_auto(src: &str) -> Result<(String, Vec<SourceRewrite>), String> {
+    let mut edits = Vec::new();
+    let output = desugar_fstrings_dialect(src, false, true, Some(&mut edits))?;
+    Ok((output, edits))
 }
 
 fn quoted_end(src: &str, start: usize, quote: u8) -> Option<usize> {
@@ -341,6 +375,7 @@ fn desugar_fstrings_dialect(
     src: &str,
     bare_braces: bool,
     quoted_interpolations: bool,
+    mut edits: Option<&mut Vec<SourceRewrite>>,
 ) -> Result<String, String> {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
@@ -385,10 +420,12 @@ fn desugar_fstrings_dialect(
         // f-string start: `f"` with a non-ident char before the `f`
         if c == b'f' && bytes.get(i + 1) == Some(&b'"') && (i == 0 || !is_ident_char(bytes[i - 1]))
         {
-            let (parts, len) = match split_fstring_dialect(src, i, bare_braces, quoted_interpolations) {
-                Ok(x) => x,
-                Err(e) => return Err(e),
-            };
+            let (parts, len) =
+                match split_fstring_dialect(src, i, bare_braces, quoted_interpolations) {
+                    Ok(x) => x,
+                    Err(e) => return Err(e),
+                };
+            let projected_start = out.len();
             out.push_str("__fstr(");
             let mut first = true;
             for p in parts {
@@ -411,6 +448,12 @@ fn desugar_fstrings_dialect(
                 out.push_str("\"\"");
             }
             out.push(')');
+            if let Some(edits) = edits.as_deref_mut() {
+                edits.push(SourceRewrite {
+                    original: i..i + len,
+                    projected: projected_start..out.len(),
+                });
+            }
             i += len;
             continue;
         }

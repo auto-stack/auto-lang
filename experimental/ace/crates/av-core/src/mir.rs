@@ -417,6 +417,7 @@ pub enum MirInstr {
         capacity: u32,
         args: Vec<u32>,
         dst: u32,
+        singleton: bool,
     },
     /// Deliver one message to a task mailbox (parks the sender on a full
     /// mailbox — bounded backpressure).

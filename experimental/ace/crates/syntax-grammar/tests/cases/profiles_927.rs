@@ -117,10 +117,10 @@ fn profiles_aac_combines_rules_in_source_order() {
     ] {
         assert!(names.contains(&name), "missing {name}");
         let base = compile_profile(SOURCE, profile).unwrap();
-        assert!(!base
-            .rules
-            .iter()
-            .any(|rule| rule.name == "declaration-attribute"));
+        assert_eq!(
+            base.rules.iter().any(|rule| rule.name == "declaration-attribute"),
+            profile == "auto"
+        );
         let mut allowed = names.iter().copied();
         for name in base.rules.iter().map(|rule| rule.name.as_str()) {
             assert!(

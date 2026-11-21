@@ -13,6 +13,7 @@
 //! ends (stop → reclaim). No editor or playground migration rides here
 //! (T-03/T-08); there is no path into the legacy AutoVM.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -24,7 +25,9 @@ use ace_av_core::contract::{ExecOutcome, Value};
 use ace_core::source::ast::{Item, TypeRef, TypeWord};
 use ace_core::source::cst::FrontBudget;
 use ace_core::source::packages::{unit_key, PackageDiagnostic, PackageModuleInput};
-use ace_source_query::modules::packages::{compile_package_product, PackageProduct};
+use ace_source_query::modules::packages::{
+    compile_package_product, compile_package_product_auto, PackageProduct,
+};
 
 use auto_lang_core::{
     AceCheckOutcome, AceCheckReport, AceCheckRequest, AceDeclaration, AceDiagnostic, AceModuleSpec,
@@ -88,15 +91,10 @@ fn check_project(request: &AceCheckRequest<'_>) -> AceCheckReport {
         };
     }
     let inputs: Vec<PackageModuleInput> = request.modules.iter().map(package_input).collect();
-    match compile_package_product(
-        &inputs,
-        request.entry_module,
-        request.capabilities,
-        FrontBudget::WORK_OWNED_64MIB,
-    ) {
+    match compile_project(&inputs, request.entry_module, request.capabilities) {
         Ok(product) => {
             let declarations = declarations(&product);
-            let tests = discover_tests(&declarations);
+            let tests = discover_tests(&product, &declarations);
             AceCheckReport {
                 engine: crate::ENGINE_ID,
                 outcome: AceCheckOutcome::Clean,
@@ -175,16 +173,47 @@ fn declarations(product: &PackageProduct) -> Vec<AceDeclaration> {
     out
 }
 
-/// Discovered test candidates under the frozen ACE test contract: a
-/// zero-parameter declaration whose declared result is `int`, excluding the
-/// conventional project entry (`main`). The ACE grammar carries no
-/// `#[test]` attribute (the legacy attribute is not part of the source
-/// surface), so discovery is the producer's declaration facts filtered by
-/// the SAME contract the test lane executes — never a name-list guess.
-fn discover_tests(declarations: &[AceDeclaration]) -> Vec<AceDeclaration> {
+fn compile_project(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    capabilities: &[String],
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    let compile = if capabilities
+        .iter()
+        .any(|cap| cap == ace_core::source::AUTO_SOURCE_ADMISSION_CAP)
+    {
+        compile_package_product_auto
+    } else {
+        compile_package_product
+    };
+    compile(inputs, entry, capabilities, FrontBudget::WORK_OWNED_64MIB)
+}
+
+/// The ordinary source face discovers the producer's explicit test symbols.
+/// The frozen 960 package face keeps its signature-based selection.
+fn explicit_tests(product: &PackageProduct) -> Option<BTreeSet<&str>> {
+    (product.compiled.profile == ace_core::source::AUTO_SOURCE_PROFILE).then(|| {
+        product
+            .bound
+            .program
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Fn(f) if f.test_attribute.is_some() => Some(f.name.name.as_str()),
+                _ => None,
+            })
+            .collect()
+    })
+}
+
+fn discover_tests(product: &PackageProduct, declarations: &[AceDeclaration]) -> Vec<AceDeclaration> {
+    let explicit = explicit_tests(product);
     declarations
         .iter()
-        .filter(|d| d.params == 0 && d.ret == "int" && d.name != "main")
+        .filter(|d| match &explicit {
+            Some(tests) => tests.contains(d.symbol.as_str()),
+            None => d.params == 0 && d.ret == "int" && d.name != "main",
+        })
         .cloned()
         .collect()
 }
@@ -262,12 +291,7 @@ fn execute_project(request: &AceProjectRequest<'_>) -> AceProjectReport {
     }
 
     let inputs: Vec<PackageModuleInput> = request.modules.iter().map(package_input).collect();
-    let product = match compile_package_product(
-        &inputs,
-        request.entry_module,
-        request.capabilities,
-        FrontBudget::WORK_OWNED_64MIB,
-    ) {
+    let product = match compile_project(&inputs, request.entry_module, request.capabilities) {
         Ok(product) => product,
         Err(diags) => {
             let count = diags.len();
@@ -280,6 +304,7 @@ fn execute_project(request: &AceProjectRequest<'_>) -> AceProjectReport {
     // generation ends (Drop), so a stopped/cancelled request leaves no
     // residue behind.
     let mut tests = Vec::with_capacity(request.tests.len());
+    let explicit = explicit_tests(&product);
     for name in request.tests {
         if cancelled() {
             return finish(AceProjectOutcome::Cancelled, tests, 0);
@@ -294,7 +319,13 @@ fn execute_project(request: &AceProjectRequest<'_>) -> AceProjectReport {
                 0,
             );
         }
-        tests.push(run_one_test(&product, name, deadline, request.cancel));
+        tests.push(run_one_test(
+            &product,
+            explicit.as_ref(),
+            name,
+            deadline,
+            request.cancel,
+        ));
     }
 
     // Entry leg.
@@ -348,12 +379,12 @@ fn package_diagnostic_outcome(diags: &[PackageDiagnostic]) -> AceProjectOutcome 
 }
 
 /// Execute one requested test: resolve the bare name against the bound
-/// declaration origins, run it as its own generation, and judge it by
-/// the frozen test contract (`fn <name>() int` — passed iff the run
-/// completes and returns 0). The generation inherits the REQUEST's
+/// declaration origins and run it as its own generation. The ordinary
+/// face also admits unit-returning tests. The generation inherits the REQUEST's
 /// remaining wall budget and cancel flag (F-971-R-01).
 fn run_one_test(
     product: &PackageProduct,
+    explicit: Option<&BTreeSet<&str>>,
     name: &str,
     deadline: Instant,
     cancel: Option<&AtomicBool>,
@@ -362,7 +393,9 @@ fn run_one_test(
         .bound
         .origins
         .iter()
-        .filter(|(_, (_, _, original))| original.as_str() == name);
+        .filter(|(symbol, (_, _, original))| {
+            original.as_str() == name && explicit.is_none_or(|tests| tests.contains(symbol.as_str()))
+        });
     let Some((symbol, (pkg, module, _))) = matches.next() else {
         return AceTestOutcome {
             name: name.to_string(),
@@ -398,15 +431,20 @@ fn run_one_test(
         Err(e) => return failed(format!("test link failed: {e}")),
     };
     match execute_generation(&target, deadline, cancel) {
-        ExecOutcome::Success {
-            value: Value::I32(0),
-            ..
-        } => AceTestOutcome {
-            name: name.to_string(),
-            module,
-            passed: true,
-            message: String::new(),
-        },
+        ExecOutcome::Success { value, .. }
+            if matches!(value, Value::I32(0))
+                || (explicit.is_some() && matches!(value, Value::Unit)) =>
+        {
+            AceTestOutcome {
+                name: name.to_string(),
+                module,
+                passed: true,
+                message: String::new(),
+            }
+        }
+        ExecOutcome::Success { value, .. } if explicit.is_some() => {
+            failed(format!("test returned {value:?}; expected unit or int 0"))
+        }
         ExecOutcome::Success { value, .. } => failed(format!(
             "test returned {value:?}; the frozen test contract is `fn {name}() int` returning 0"
         )),
