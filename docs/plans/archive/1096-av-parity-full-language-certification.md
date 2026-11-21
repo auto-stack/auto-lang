@@ -1,14 +1,13 @@
 ---
 plan_id: PLAN-1096
-status: drafting
 feature_name: AV与AutoVM语言齐平完整验收
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-19
+updated_at: 2026-11-22
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
-status: reviewed
+status: archived
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080, PLAN-1081, PLAN-1082, PLAN-1083, PLAN-1084, PLAN-1085, PLAN-1086, PLAN-1087, PLAN-1088, PLAN-1089, PLAN-1090, PLAN-1091, PLAN-1092, PLAN-1093, PLAN-1094, PLAN-1095]
 supersedes_spec_components: [docs/specs/ace-migration/m2-denominator.md, docs/specs/ace-migration/m2-certification.md, docs/specs/auto-av/language-parity.md]
 new_spec_components: []
