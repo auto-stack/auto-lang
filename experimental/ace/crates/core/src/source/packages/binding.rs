@@ -608,14 +608,15 @@ fn bind_packages_face_with(
     // 序）。逐模块做会误拒跨模块定向（UI058 T-05 实测：两模块各一个 node 时
     // `ForNode{1}` 报 "package declares 1 component(s)"）。
     if let Some(out) = age_out.as_mut() {
+        let available_packages = inputs.iter().map(|unit| unit.package.as_str()).collect();
         let sites = crate::source::age_package::widget_lists::bind(
-            out.components, &mut units, entry, scenario,
+            out.components, &mut units, entry, scenario, &available_packages,
         )?;
         if let Some(d) = check_scenario_dispatch_declarations(out.components, scenario) {
             return Err(d);
         }
         *out.widget_refs = crate::source::age_package::bind_widget_packages(
-            out.components, &mut units, entry, scenario, &sites,
+            out.components, &mut units, entry, scenario, &sites, &available_packages,
         )?;
         if let Some(runtime) = out.runtime_components.as_mut() {
             **runtime = crate::source::age_package::add_widget_runtime_state(

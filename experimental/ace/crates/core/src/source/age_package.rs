@@ -2417,12 +2417,13 @@ pub(crate) fn bind_widget_packages(
     entry: &str,
     scenario: &super::age_component::ComponentScenario,
     sites: &WidgetSiteTargets,
+    available_packages: &std::collections::BTreeSet<&str>,
 ) -> Result<AgeWidgetRefs, super::packages::PackageDiagnostic> {
     use std::collections::{BTreeMap, BTreeSet};
 
     let mut resolved: AgeWidgetRefs = BTreeMap::new();
     let mut signatures = BTreeSet::new();
-    walk_widget_sites(components, scenario.instances.max(1), sites, |site, target| {
+    walk_widget_sites(components, available_packages, scenario.instances.max(1), sites, |site, target| {
         let properties = site.bind(target, units, &mut signatures)?;
         let events = site.bind_events(target)?;
         resolved.entry((site.component.module.clone(), site.component.node.name.name.clone()))
@@ -2461,6 +2462,7 @@ pub(crate) type WidgetSiteTargets = std::collections::BTreeMap<(String, usize), 
 
 fn walk_widget_sites(
     components: &[PackagedAgeComponent],
+    available_packages: &std::collections::BTreeSet<&str>,
     instances: usize,
     sites: &WidgetSiteTargets,
     mut visit: impl FnMut(WidgetArgumentSite<'_>, &PackagedAgeComponent)
@@ -2542,12 +2544,8 @@ fn walk_widget_sites(
                         )
                     });
                     let Some(target) = matching.next() else {
-                        if !named {
-                            work.extend(children.map(|item| (item, loops.clone())));
-                            continue;
-                        }
                         if let Some(import) = node.package_imports.iter().find(|import| {
-                            !supplied.contains_key(import.package.name.as_str())
+                            !available_packages.contains(import.package.name.as_str())
                         }) {
                             return Err(failure(text_diag(
                                 "source.age.component-package-unresolved",
@@ -2557,6 +2555,10 @@ fn walk_widget_sites(
                                 ),
                                 import.span,
                             )));
+                        }
+                        if !named {
+                            work.extend(children.map(|item| (item, loops.clone())));
+                            continue;
                         }
                         return Err(failure(text_diag(
                             "source.age.widget-unresolved",

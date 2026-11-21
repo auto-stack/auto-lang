@@ -150,6 +150,7 @@ pub(crate) fn bind(
     units: &mut BTreeMap<String, PackageSyntax>,
     entry: &str,
     scenario: &ComponentScenario,
+    available_packages: &BTreeSet<&str>,
 ) -> Result<WidgetSiteTargets, PackageDiagnostic> {
     let mut sites = WidgetSiteTargets::new();
     if !components
@@ -161,7 +162,7 @@ pub(crate) fn bind(
     let (entry_package, _) = entry.split_once("::").expect("bound entry module");
 
     let mut projections = BTreeMap::<String, WidgetListProjection>::new();
-    walk_widget_sites(components, scenario.instances.max(1), &sites, |site, target| {
+    walk_widget_sites(components, available_packages, scenario.instances.max(1), &sites, |site, target| {
         for param in target.node.params.iter().filter(|param| needs_type(param)) {
             if let Some(field) = supplied_model_field(&site, &param.name) {
                 if let Some(data) = site
@@ -192,7 +193,7 @@ pub(crate) fn bind(
         )?;
     }
     let mut variants = BTreeMap::<String, Vec<Option<ListSite>>>::new();
-    walk_widget_sites(components, scenario.instances.max(1), &sites, |site, target| {
+    walk_widget_sites(components, available_packages, scenario.instances.max(1), &sites, |site, target| {
         if target.module == entry || units[&target.module].age_components.len() != 1
             || !target.node.params.iter().any(needs_type)
         {
@@ -218,7 +219,7 @@ pub(crate) fn bind(
     let mut inferred = BTreeMap::<WidgetParamKey, (String, TypeAnn, Span)>::new();
     let mut callers = BTreeMap::<WidgetParamKey, BTreeSet<String>>::new();
     let mut selectors = BTreeMap::<WidgetParamKey, Option<SelectorInput>>::new();
-    walk_widget_sites(components, scenario.instances.max(1), &sites, |site, target| {
+    walk_widget_sites(components, available_packages, scenario.instances.max(1), &sites, |site, target| {
         if variants.contains_key(&target.module) {
             return Ok(());
         }

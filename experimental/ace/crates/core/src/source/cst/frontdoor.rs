@@ -1104,23 +1104,29 @@ pub(crate) fn project_packages_front_with_widget_lists(
                 }
                 items.extend(node.inferred_records.iter().cloned().map(crate::source::ast::Item::Type));
                 for param in &node.params {
-                    use crate::source::ast::ExprKind;
+                    use crate::source::ast::{ExprKind, TypeRef, TypeWord};
 
                     let Some(default) = &param.default else {
                         continue;
                     };
                     let supported = node.legacy_widget
-                        && (param.collection_type.as_ref().is_some_and(|ann| {
-                            matches!(&ann.kind, crate::source::ast::TypeRef::Generic { name, .. } if name.name == "List")
-                                && matches!(default.kind, ExprKind::ArrayLit(_))
-                        }) || match param.ty.as_str() {
-                            "List" => matches!(&default.kind, ExprKind::ArrayLit(items)
-                                if items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))),
+                        && match param.ty.as_str() {
+                            "List" => match &default.kind {
+                                ExprKind::ArrayLit(items) => {
+                                    let text_elements = param.collection_type.as_ref().is_none_or(|ann| {
+                                        matches!(&ann.kind, TypeRef::Generic { args, .. }
+                                            if matches!(args.as_slice(), [element]
+                                                if matches!(element.kind, TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned))))
+                                    });
+                                    !text_elements || items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))
+                                }
+                                _ => false,
+                            },
                             "str" | "Str" => matches!(default.kind, ExprKind::StrLit(_)),
                             "bool" => matches!(default.kind, ExprKind::BoolLit(_)),
                             "int" | "i32" => matches!(default.kind, ExprKind::IntLit(_)),
                             _ => false,
-                        });
+                        };
                     if !supported {
                         return Err(err(
                             "source.age.widget-param-default",
