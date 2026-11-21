@@ -1,17 +1,49 @@
 {
-  "last_covered_plan_id": 1098,
-  "timestamp": "2026-11-20T00:00:00Z",
-  "covered_commit": "949fdc5e1 (HEAD at run start; run dir target/test-groups/run-753_hof3; cargo t all single instance on main, no competing cargo/nextest at start)",
+  "last_covered_plan_id": 1109,
+  "timestamp": "2026-11-21T02:40:25Z",
+  "covered_commit": "b99fc0ff340126aa1cb27625b6b4bd78dad49d82",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
+  "counts": {
+    "PASS": 30,
+    "FAIL": 5,
+    "NOT_APPLICABLE": 2,
+    "executed_atomic_items": 1313
+  },
+  "preparation": {
+    "command": "cargo t ace-aac-bridge --prepare-only",
+    "exit": 0,
+    "wall_seconds": 34.035,
+    "resource_wait_seconds": 0.405
+  },
+  "execution": {
+    "exit": 1,
+    "wall_seconds": 569.502,
+    "driver_wall_seconds": 570.832,
+    "output_admission_debug_build_seconds": 25.647,
+    "output_admission": "accepted"
+  },
+  "report": {
+    "path": "target/test-groups/run-tiha5g61/results.json",
+    "sha256": "fc8318b1dc3250c1a87b337e497454a321152f08c08e982dd3995524fd722a6a",
+    "source_state": "fdbd44fe381271b61096775d1bb821d68ee8030ebed23c553608a8f506618c5e"
+  },
+  "batch_diagnostics": {
+    "path": "C:/Users/zhaop/AppData/Local/Temp/fixed-admission-yt5la6of",
+    "files": 5,
+    "bytes": 57224,
+    "cleanup": "Deletion command rejected by tool approval policy"
+  },
   "new_reds": [
-    "prepare-archive: aavm/auto-lang/auto-lang-core/auto-playground 'selected Cargo target discovery/build failed' — .config/nextest-full.toml overrides at index 14 (package(ace-aac-support-conformance), PLAN-1056) AND index 15 (package(ace-aac-host-conformance), PLAN-1045) match no package in those groups' prepared archive graphs; deterministic. Attribution: same family as prior receipt's DEBT-1098-BATCH-PREPARE (prepare handshake x per-package overrides); the index-15 instance is PLAN-1045's addition — fix-forward stays with the 1098 governance line (override scoping), not a language-code regression.",
-    "infra-meter: test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path, actual prepared path. Attribution: PLAN-1098 (unchanged from prior receipt).",
-    "infra-fixed: test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED, hit 'execution lease held by live pid 87552' (gate test isolation vs concurrent slot lease). Attribution: PLAN-1098 gate-test isolation (unchanged from prior receipt)."
+    "infra-fixed::test_all_is_explicit_language_only — PLAN-1051 commit a2849cf3d6 sets ace-aac-bridge all=true, which contradicts the language-only selection assertion. The bridge's eight tests passed. D-1051-BATCH-SELECTION is routed to PLAN-1108 with the PLAN-1051 owner."
   ],
-  "known_reds_seen": [],
+  "known_reds_seen": [
+    "aavm, auto-lang, auto-lang-core — Cargo target discovery rejected unmatched package overrides at indices 14 and 15 in .config/nextest-full.toml. These groups did not execute. DEBT-1098-BATCH-PREPARE / PLAN-1108.",
+    "infra-meter::test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path and receives the prepared path. PLAN-1108.",
+    "infra-fixed::test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED and receives the live parent execution lease error. PLAN-1108."
+  ],
   "verdict": "new-reds-attributed",
-  "notes": "Due trigger: PLAN-1045 (%5=0) archived after prior receipt. This batch's 36 selected groups are the root-workspace domain (auto-*/infra/controls); the experimental/ace domain groups (ace-source/ace-av/ace-aac/ace-aac-host etc.) were not in this selection — same `all=false` scoping as the ace-aac/1056 precedent, and PLAN-1045's affected ace groups carry their own merge-gate receipts (ace-aac-host PASS on delivery tree cc8053e32, run-_y6jh8df; ace-aac/ace-source/ace-native PASS at 44a8cdb56-era, reuse-justified in PLAN-1045 §9; ace-av 2 host_console pre-existing reds attributed to the console front-door owner). 28 PASS, 2 NOT_APPLICABLE (a2r-actor-tests/auto-vm, same conditional shape), 6 FAIL (three infra/governance families above — zero language-code regressions). wall 179s."
+  "notes": "Triggered by newly archived PLAN-1090 (%5) after the previous receipt. Started on the main checkout with no competing build or test processes. All 37 configured invocations returned a terminal group outcome. auto-playground recovered (16 PASS). a2r-actor-tests and auto-vm were NOT_APPLICABLE. UI/Man remain in their owner lanes and were not executed in this run. Linux/WSL execution follows the dedicated Linux environment rule. The report's selected_groups summary reflects the prepared ACE subset. The invocations/results arrays carry the actual 37-group execution scope."
 }

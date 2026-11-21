@@ -443,6 +443,12 @@ stage: review | review_scope: final | reviewer: Codex 同会话、独立证据�
 
 stage: merge | plan_id: PLAN-1090 | plan_revision: r3 | outcome: pass | reviewed_commit: eb6c9a528d393059acff54784edaa850d8fe6900 | delivery_commit: c4ecdf12abb7be08d78ae51160a872ccf17dc91c | archive_commit: 6030a26de5f441e49ffe7f296ad3ae141362f1fd | completion_kind: delivered | cleanup: removed | next: batch due check
 
+### 合入后周期回归
+
+按 1090 的整五触发，从主检出 `b99fc0ff340126aa1cb27625b6b4bd78dad49d82` 单实例执行。ACE bridge 显式准备 34.035s，整批 569.502s、退出 1。37 组中 30 PASS、5 FAIL、2 NOT_APPLICABLE。三组根工作区发现失败和两项治理单测为旧失败，新增选择断言归 PLAN-1051 配置与 PLAN-1108 治理。bridge 自身 8/8，auto-playground 16/16。批量驱动在系统临时目录生成了独立输出准入诊断，删除该目录的命令被工具策略拒绝，实留路径见收据。 [批量收据](../.last-batch-regression.json) · [D-1051-BATCH-SELECTION](../KNOWN-DEBT-AND-RISKS.md)
+
+stage: goal | plan_id: PLAN-1090 | plan_revision: r3 | from: merge and due batch | to: done | status: archived | outcome: pass | delivery_commit: c4ecdf12abb7be08d78ae51160a872ccf17dc91c | next: done
+
 ## 10. 待澄清事项
 
 不需再次确认已经授权的规划范围。已定语言规范/数值宽度/安全边界沿原来源；T-01对真实旧用例与Spec冲突做具名裁定或有界机制探测，属于本包必要工作。涉及改变已批准公共语义、资源承诺或验收阈值时提交具体差异再决定；不得以“未定”无限延期本包required行。默认支持同一合法源或已批准、可审计的兼容规范化，不承诺复制旧bug或尚无语言构造。

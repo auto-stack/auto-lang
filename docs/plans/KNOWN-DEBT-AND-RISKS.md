@@ -22,6 +22,10 @@ PLAN-1046 r8 最终复审在真实 A2R `catalog_directory` 确认两种 AGE 符�
 - 父提交 `384609645cfc092da66e7d005ee1b052e0a547f2` 与 PLAN-1084 候选在 `ace-core::conformance scalar_source::deep_not_chain_reaches_checked_bundle` 的原 20,000 层样本均报 `0xc00000fd`。候选的前门观察在 parse 完成前中止。跑法与收据见 [PLAN-1084](archive/1084-av-parity-dynamic-objects-and-null.md)。
 - Owner 为 ACE 共享 CST/标量前门。关闭要求默认 Windows 测试栈通过同一合法深链，并保留原畸形输入和浅层控制。当前归继承红。
 
+## D-1051-BATCH-SELECTION — AAC bridge 与全量组选择断言不一致（OPEN，2026-11-21）
+
+PLAN-1051 的 `a2849cf3d6` 为 `ace-aac-bridge` 设置 `all = true`。在主检出 `b99fc0ff3`，`cargo t all --select-only` 选择该 ACE 组，`infra-fixed::test_all_is_explicit_language_only` 仍断言此入口选择根语言组。真实 batch 中 bridge 自身 8/8 通过，固定组选择断言失败。归 PLAN-1108 测试治理与 PLAN-1051 owner 对齐 `all` 的文档、选择和断言。关闭时复跑选择控制与主检出批量入口，保留 bridge 自身职责组。 [PLAN-1051](archive/1051-aac-native-backend-and-cte-bridges.md) · [批量收据](.last-batch-regression.json)
+
 ## DEBT-1098-BATCH-PREPARE — 批量全量门准备路径三处 infra 红（OPEN，2026-11-19）
 
 - **owner/后继**：PLAN-1098 测试治理线（prepare/run 握手与构件 pin）fix-forward 任务；由 PLAN-1080 合入触发的到期批量回归首次在 1098 新握手下运行时发现（receipt run-amzo64ib）。
