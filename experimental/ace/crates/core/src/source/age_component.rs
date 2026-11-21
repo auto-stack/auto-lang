@@ -2329,7 +2329,7 @@ fn compile_component_scenario_full(
 ) -> Result<ComponentCompilation, Vec<Diagnostic>> {
     // PLAN-980：同 compile_age_component——入口统一 desugar，下游 span 一致。
     let src = &desugar_widget_src(src)?;
-    let mut candidates = project_component_candidates(src)?;
+    let candidates = project_component_candidates(src)?;
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
             return Err(vec![text_diag(
@@ -2754,11 +2754,6 @@ fn compile_component_scenario_full(
     let checked = match if hir_profile == SourceProfile::Collections { crate::verify::verify_collection_family_age_elem_view(parts.bundle, crate::hir::HirDomain::Collections) } else { crate::verify::verify_text_record_age(parts.bundle) } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
-    };
-    let hir_profile = if candidates.iter().any(needs_collections_face) {
-        SourceProfile::Collections
-    } else {
-        SourceProfile::TextRecord
     };
     let mut instance_texts: Vec<Vec<ComponentText>> = vec![Vec::new(); scenario.instances];
     for (fn_name, inst, ti) in &leaves {
@@ -3603,7 +3598,6 @@ pub(crate) fn lambda_value_fn(
                     });
                 }
                 ComponentStmt::Let { .. } | ComponentStmt::AssignLocal { .. }
-                | ComponentStmt::For { .. } | ComponentStmt::While { .. }
                 | ComponentStmt::Effect { .. } | ComponentStmt::Send { .. } => return None,
             }
         }
@@ -4447,89 +4441,6 @@ pub(crate) fn rename_expr_with_params(
         // PLAN-105 T-02：泛型类型接收位（`List<int>.new()` 的 `List<int>`）——
         // 类型不是值，原样透传（类型实参由共享 resolver 校验）。
         ExprKind::GenericType { .. } => expr.clone(),
-        // PLAN-105 T-02（U03 真语料 013）：记录构造 `Todo { id: 1, … }` ——
-        // 字段值递归重命名（类型名/字段名原样）。
-        ExprKind::CtorNamed { ty, args, fields: ctor_fields } => Expr {
-            span: expr.span,
-            kind: ExprKind::CtorNamed {
-                ty: ty.clone(),
-                args: args.clone(),
-                fields: ctor_fields
-                    .iter()
-                    .map(|f| {
-                        Ok(crate::source::ast::NamedCtorField {
-                            name: f.name.clone(),
-                            value: rename_expr_with_params(&f.value, binding, fields, param_locals)?,
-                            span: f.span,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
-            },
-        },
-        // PLAN-105 T-02（U03 真语料 013）：记录构造/自由调用 `Todo { … }` →
-        // `Call { callee, args }`：实参递归重命名（callee 是类型名/函数名，原样）。
-        ExprKind::Call { callee, args } => Expr {
-            span: expr.span,
-            kind: ExprKind::Call {
-                callee: callee.clone(),
-                args: args
-                    .iter()
-                    .map(|a| match a {
-                        crate::source::ast::Arg::Pos(x) => Ok(crate::source::ast::Arg::Pos(
-                            rename_expr_with_params(x, binding, fields, param_locals)?,
-                        )),
-                        crate::source::ast::Arg::MovePos(x) => Ok(crate::source::ast::Arg::MovePos(
-                            rename_expr_with_params(x, binding, fields, param_locals)?,
-                        )),
-                        crate::source::ast::Arg::Named { name, value, span } => {
-                            Ok(crate::source::ast::Arg::Named {
-                                name: name.clone(),
-                                value: rename_expr_with_params(value, binding, fields, param_locals)?,
-                                span: *span,
-                            })
-                        }
-                    })
-                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
-            },
-        },
-        // PLAN-105 T-02（U03 真语料 013/015）：下标 `base[index]`（`.todos[idx]`
-        // / `.grid[i].field` 链）——基与下标都递归重命名，读语义交共享 resolver。
-        ExprKind::Index { base, index } => Expr {
-            span: expr.span,
-            kind: ExprKind::Index {
-                base: Box::new(rename_expr_with_params(base, binding, fields, param_locals)?),
-                index: Box::new(rename_expr_with_params(index, binding, fields, param_locals)?),
-            },
-        },
-        // PLAN-105 T-02（U03 真语料 013）：记录/对象字面量 `Todo { id: 1, … }`
-        // ——字段值递归重命名（键原样）。
-        ExprKind::ObjectLit { fields: ofields } => Expr {
-            span: expr.span,
-            kind: ExprKind::ObjectLit {
-                fields: ofields
-                    .iter()
-                    .map(|f| {
-                        Ok(crate::source::ast::ObjectField {
-                            key: f.key.clone(),
-                            value: rename_expr_with_params(&f.value, binding, fields, param_locals)?,
-                            span: f.span,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
-            },
-        },
-        // PLAN-105 T-02（U03 真语料 012/016）：数组/List 字面量——元素递归
-        // 重命名后原样交给共享 resolver（语句位 `let/var` 初值的 List 脱糖）。
-        ExprKind::ArrayLit(elems) => Expr {
-            span: expr.span,
-            kind: ExprKind::ArrayLit(
-                elems
-                    .iter()
-                    .map(|e| rename_expr_with_params(e, binding, fields, param_locals))
-                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
-            ),
-        },
-
         _ => {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
