@@ -881,6 +881,10 @@ fn run_in(
 
     let mut cmd = Command::new(exe);
     cmd.current_dir(root)
+        // The 1046 lane's runtime work budget follows the current grammar:
+        // the frozen 2^24 default no longer covers the text-corpus parse
+        // after the grammar grew (Plan 1094). Raised per driver run.
+        .env("A2X_RT_BUDGET", "33554432")
         .env("AAC1046_CASE", case)
         .env("AAC1046_PROFILE", profile)
         .env("AAC1046_INPUT", &input)
