@@ -97,6 +97,9 @@ pub struct SourceKinds {
     /// OR any keyword (`int`/`float`/`bool` as callable names for the py
     /// lane; only the auto face admits it).
     pub name_word: Option<u32>,
+    /// PLAN-1094: the `num-ty-word` rule — the numeric type words usable as
+    /// name atoms on the auto face (the py builtin callables).
+    pub num_ty_word: Option<u32>,
     pub leading_dot: Option<u32>,
     pub ctor_expr: Option<u32>,
     /// PLAN-963（T-02）：显式类型实参构造 `Point<int> { .. }`（record 族
@@ -502,6 +505,7 @@ impl SourceKinds {
             postfix_step: rk_opt(p, "postfix-step"),
             atom_expr: rk("atom-expr"),
             name_word: rk_opt(p, "py-member-name"),
+            num_ty_word: rk_opt(p, "num-ty-word"),
             leading_dot: rk_opt(p, "leading-dot"),
             ctor_expr: rk_opt(p, "ctor-expr"),
             typed_ctor_expr: rk_opt(p, "typed-ctor-expr"),

@@ -11911,17 +11911,20 @@ impl<'a> Engine<'a> {
                 return;
             }
             // PLAN-1094: a keyword-spelled name atom (`int(...)` etc. on the
-            // ordinary face) — the py-member-name rule node carries the
-            // token leaf under `name`; spelling is used (no name check).
+            // ordinary face) — the num-ty-word rule node carries the token
+            // leaf under `word` (py-member-name's `name` is kept for the
+            // use.py member list); spelling is used (no name check).
             if self
                 .cx
                 .k
                 .name_word
                 .is_some_and(|kind| kind == ck)
+                || self.cx.k.num_ty_word.is_some_and(|kind| kind == ck)
             {
                 let leaf = self
                     .cx
                     .field_child(c, "name")
+                    .or_else(|| self.cx.field_child(c, "word"))
                     .expect("name-word leaf");
                 let span = self.cx.span_of(leaf);
                 let name = self.cx.spelling(leaf);

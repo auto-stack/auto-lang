@@ -1,0 +1,434 @@
+# PLAN-1094 — the ordinary AV script mode + Python object protocol lane
+
+Ordinary Auto `use.py` sources through the shared AV language entry with the
+prepared py-bridge provider (real CPython). Every `av` check is a required run
+check on the ordinary chain; the legacy 99_py_dispatch / 99_script_err
+documents map to these canonical cases (migration rows in
+`language/migration/legacy-map.tsv`).
+
+## Case: nested-python-call
+id: "av.parity.1094.nested-python-call"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int, str
+fn main() int { return int(str(42)).to(int) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Nested Python calls (`str` inside `int`), the keyword-spelled member imports
+(`int`/`str` are Auto reserved words and cross as Python names), and the
+`.to(int)` extraction — all through real CPython.
+
+## Case: python-error-catch
+id: "av.parity.1094.python-error-catch"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int
+fn main() int {
+ try { return int("abc").to(int) } catch e { return 42 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+A Python `ValueError` (class 5) unwinds as a catchable language error; the
+handler runs once and returns 42. The classification `python.5` and the
+original `int("abc")` position are the parent-side oracles.
+
+## Case: python-error-uncaught
+id: "av.parity.1094.python-error-uncaught"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int
+fn main() int {
+ return int("abc").to(int)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+stage: "run"
+code: "lang.error"
+message-contains: "PyException ValueError"
+error-kind: "python.5"
+error-span: "45..55"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The uncaught Python exception is a LANGUAGE-ERROR terminal state (not a
+silent foreign-status trap): `lang.error` at the run stage, the
+`PyException ValueError: …` message, classification `python.5`, and the
+original half-open span `[45,55)` of `int("abc")` on line 3.
+
+## Case: context-manager-close
+id: "av.parity.1094.context-manager-close"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py io: StringIO
+use.py contextlib: closing
+fn main() int {
+ let buf = StringIO()
+ try { with closing(buf) as r { r.write("ok"); fail("stop") } } catch e { }
+ if buf.closed.to(bool) { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+`with closing(buf) as r` enters real CPython context managers; the body
+raises a language error (`fail`), `__exit__` runs EXACTLY ONCE and closes
+`buf` (the `buf.closed` truthiness is the parent-side close oracle), and the
+error propagates to the outer catch (`closing` does not suppress).
+
+## Case: python-unicode
+id: "av.parity.1094.python-unicode"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: str
+fn main() int {
+ let p = str("中文\0尾")
+ if p.to(str) == "中文\0尾" { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Unicode + embedded NUL round-trip through the codepoint-wise staged text
+lane (`\u{0}` is the canonical escape spelling; the `\0` form decodes to the
+same NUL).
+
+## Case: py-dispatch-dual-len
+id: "av.parity.1094.py-dispatch-dual-len"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py numpy: arange
+fn main() int {
+ var t = arange(6)
+ print(t.len())
+ var s = "abc"
+ print(s.len())
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+6
+3
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Legacy 99_py_dispatch/01_dual_len: `.len()` on a Python object is the
+`__len__` protocol (the numpy array's first axis, 6); a native Auto `str`
+keeps its scalar count (3). Requires the numpy interpreter module.
+
+## Case: native-len-unchanged
+id: "av.parity.1094.native-len-unchanged"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ var s = "abcdef"
+ if s.len() != 6 { return 0 }
+ var xs = [1, 2, 3, 4]
+ if xs.len() != 4 { return 0 }
+ var t = "x" + s
+ if t.len() != 7 { return 0 }
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Legacy 99_py_dispatch/02_auto_str_unchanged: pure Auto values (str / List)
+keep their native `.len()` semantics — no py dispatch, no adapter load.
+
+## Case: error-message-oracle
+id: "av.parity.1094.error-message-oracle"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int
+fn main() int {
+ try { var x = int("abc"); print("no-error") } catch e { print("caught: " + e.to(str)) }
+ print("end")
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+caught: PyException ValueError: invalid literal for int() with base 10: 'abc'
+end
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Legacy 99_script_err/02_catch_value: the caught error's string conversion
+renders `PyException ValueError: invalid literal for int() with base 10:
+'abc'` — the frozen legacy message oracle.
+
+## Case: with-error-message
+id: "av.parity.1094.with-error-message"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py io: StringIO
+use.py contextlib: closing
+use.py builtins: int
+fn main() int {
+ let buf = StringIO()
+ try {
+  with closing(buf) as r {
+   r.write("ok")
+   var boom = int("xyz")
+  }
+ } catch e { print("caught: " + e.to(str)) }
+ print("end")
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+caught: PyException ValueError: invalid literal for int() with base 10: 'xyz'
+end
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Legacy 99_script_err/04_with_as_propagate: a Python error raised INSIDE a
+`with` body runs `__exit__` exactly once and propagates to the outer catch —
+the with exit obligations hold for error exits.
+
+## Case: py-object-not-callable
+id: "av.parity.1094.py-object-not-callable"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int
+fn main() int {
+ var a = int(42)
+ try { var b = a(1) } catch e { print("caught: " + e.to(str)) }
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+caught: PyException TypeError: 'int' object is not callable
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Legacy 99_script_err/05_obj_call_auto_catch: a REAL Python `TypeError`
+(class 3) is catchable. The legacy's conservative obj_call FALSE POSITIVE on
+Auto values (`.upper()` mis-routed) is NOT replicated — a native `str`'s
+methods route natively (the plan's named decision, "旧 obj_call Auto 分支假
+阳性等 bug 不机械复制").

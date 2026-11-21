@@ -3594,10 +3594,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { true-kw(field: "kw") }
             alt { false-kw(field: "kw") }
             alt { ident() {} }
-            // PLAN-1094: a keyword-spelled name atom (the py lane's
-            // `int(...)` / `float(...)` calls; the resolver routes them to
-            // the hoisted member imports — undefined elsewhere).
-            alt(profiles: [auto, auto-packages]) { py-member-name() {} }
+            // PLAN-1094: a keyword-spelled NAME atom — ONLY the numeric
+            // type words (`int`/`float`/`bool`/`i32`/… as the py lane's
+            // builtin callables). Statement keywords (return/break/if/…)
+            // must NOT become name atoms — that would shadow the statement
+            // grammar's disambiguation (e.g. an arm body `return 1`).
+            alt(profiles: [auto, auto-packages]) { num-ty-word() {} }
             alt { lparen() {} expr() {} rparen() {} }
         }
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像

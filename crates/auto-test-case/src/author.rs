@@ -2202,6 +2202,9 @@ fn decode_h3_section(
             "history", "turnaround",
             // PLAN-1093: the prepared foreign provider binding.
             "foreign",
+            // PLAN-1094: the language-error classification + original-span
+            // oracles for the py error lanes.
+            "error-kind", "error-span",
         ],
         t if t.starts_with("AC ") => &[
             "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
