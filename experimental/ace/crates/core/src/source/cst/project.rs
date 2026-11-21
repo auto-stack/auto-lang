@@ -6451,14 +6451,24 @@ impl<'a> Engine<'a> {
     /// carry sparse text fields when the remaining record shape is known.
     fn project_iterated_record_list(&mut self, initial: u32, sparse_text: bool) -> Option<(Expr, Vec<FieldDecl>, bool)> {
         let entry_kind = self.rule_kind_of("age-view-data-entry")?;
+        let inline_kind = self.rule_kind_of("age-view-data-lit-inline")?;
+        let tail_kind = self.rule_kind_of("age-view-data-inline-tail")?;
         let record_kind = self.rule_kind_of("age-view-data-record")?;
         let field_kind = self.rule_kind_of("age-view-data-field")?;
+        let list = self.unwrap_child(initial);
+        let mut entries = Vec::new();
+        if self.cx.tree.kind(list) == inline_kind {
+            entries.extend(self.cx.field_child(list, "first"));
+            entries.extend(self.cx.children(list).into_iter()
+                .filter(|&node| self.cx.tree.kind(node) == tail_kind)
+                .filter_map(|tail| self.cx.field_child(tail, "item")));
+        } else {
+            entries.extend(self.cx.children(list).into_iter()
+                .filter(|&node| self.cx.tree.kind(node) == entry_kind));
+        }
         let mut schema = BTreeMap::<String, FieldDecl>::new();
         let mut items = Vec::new();
-        for entry in self.cx.children(initial) {
-            if self.cx.tree.kind(entry) != entry_kind {
-                continue;
-            }
+        for entry in entries {
             let row = self.unwrap_child(entry);
             if self.cx.tree.kind(row) != record_kind {
                 return None;
@@ -9145,13 +9155,20 @@ impl<'a> Engine<'a> {
                         };
                     }
                 }
-                Some(ComponentStmt::Assign(ComponentAssign {
-                    field: field_name,
-                    // `age-on-assign` 是裸名形（无 `.`）——局部遮蔽候选。
-                    bare: true,
-                    rhs,
-                    span,
-                }))
+                if self.cx.profile == SourceProfile::AgePackage {
+                    Some(ComponentStmt::AssignLocal {
+                        name: Ident { name: field_name, span: self.cx.span_of(field_leaf) },
+                        value: rhs,
+                        span,
+                    })
+                } else {
+                    Some(ComponentStmt::Assign(ComponentAssign {
+                        field: field_name,
+                        bare: true,
+                        rhs,
+                        span,
+                    }))
+                }
             }
             "age-on-let" | "age-on-var" => {
                 let (let_node, mutable) = if self.rule_name_of(inner) == "age-on-var" {

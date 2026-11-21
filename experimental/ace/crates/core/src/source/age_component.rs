@@ -3255,7 +3255,8 @@ pub(crate) fn handler_check_fn(
     if h.body_foreign {
         return None;
     }
-    let first_field = node.fields.first()?;
+    let first_field = node.fields.iter()
+        .find(|field| package_lists || field_type(field).is_some())?;
     let variant = node.messages.iter().find(|v| v.name == h.msg);
     let payload = variant.map(|v| v.payload.as_slice()).unwrap_or(&[]);
     // 形参类型必须可承载；不可承载的载荷车道由派发守卫具名拒，这里不造假类型。
@@ -3304,7 +3305,7 @@ pub(crate) fn handler_check_fn(
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ty.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
-                if name.name == "List" && !args.is_empty() =>
+                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
             {
                 list_new_from_array(init, &args[0])
             }
@@ -3353,7 +3354,7 @@ pub(crate) fn handler_check_fn(
     // PLAN-105 T-02（U03 真语料 012）：被**再赋值**的 hook 局部量需要可变绑定
     // （共享 verify 的 `verify.immutable-write` 拒绝 `let` 再赋值）——语句面
     // 铸完后按赋值目标名把对应 `let` 翻成 `var`。
-    {
+    if !package_lists {
         let mut targets = Vec::new();
         collect_assign_target_names(&stmts, &mut targets);
         mark_lets_mutable(&mut stmts, &targets);
@@ -3480,7 +3481,7 @@ pub(crate) fn lambda_value_fn(
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ann.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
-                if name.name == "List" && !args.is_empty() =>
+                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
             {
                 list_new_from_array(init, &args[0])
             }
@@ -3937,6 +3938,17 @@ fn hook_stmts_lower(
                 // elements through the checked list operations before the
                 // new local can consume or mutate them.
                 let bound = snapshot_legacy_list_input(node, &bound, &local, out).unwrap_or(bound);
+                let bound = match ann.as_ref().map(|ann| &ann.kind) {
+                    Some(TypeRef::Generic { name, args })
+                        if matches!(binding, FieldBinding::Local(_))
+                            && name.name == "List"
+                            && args.len() == 1
+                            && !matches!(args[0].kind, TypeRef::Builtin(TypeWord::Str)) =>
+                    {
+                        list_new_from_array(bound, &args[0])
+                    }
+                    _ => bound,
+                };
                 if matches!(ann.as_ref().map(|a| &a.kind), Some(TypeRef::Builtin(TypeWord::StrOwned | TypeWord::Str))) {
                     text_locals.insert(local.clone());
                 }
@@ -4639,7 +4651,7 @@ pub(crate) fn instance_stmts(
         let mut pushes: Vec<Expr> = Vec::new();
         let init = match (&ty.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(elems))
-                if name.name == "List" && !args.is_empty() =>
+                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
             {
                 if elems.is_empty() {
                     list_new_from_array(init, &args[0])
@@ -4819,7 +4831,7 @@ pub(crate) fn instance_stmts(
     }
     // 场景重放同样需要把**再有赋值**的 hook 局部翻成可变（与检查函数同律：
     // 共享 verify 的 `verify.immutable-write` 拒绝 `let` 再赋值）。
-    {
+    if !package_lists {
         let mut targets = Vec::new();
         collect_assign_target_names(&stmts, &mut targets);
         mark_lets_mutable(&mut stmts, &targets);

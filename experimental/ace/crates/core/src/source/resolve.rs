@@ -12098,6 +12098,7 @@ F:{d}
             self.diags,
             TypePos::Local,
         );
+        let elem = if self.coll.ordinary_auto && elem == VT::Str { VT::StrOwned } else { elem };
         match elem {
             // PLAN-962: the aggregates admission widens the receiver
             // element domain too (nested List constructors are legal).
@@ -12111,6 +12112,11 @@ F:{d}
                     args[0].span,
                 );
                 RecvClass::Value
+            }
+            VT::Char | VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64
+                if self.coll.aggregates_admission =>
+            {
+                RecvClass::ListCtor(self.coll.intern_list(elem))
             }
             VT::I32 | VT::Bool | VT::StrOwned | VT::Rec(_) | VT::Variant(_) => {
                 RecvClass::ListCtor(self.coll.intern_list(elem))
