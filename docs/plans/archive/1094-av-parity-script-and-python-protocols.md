@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1094
-status: executing
+status: archived
 feature_name: AV脚本模式与Python对象协议兼容补齐
 author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-21
 plan_revision: 5
-current_step: 6
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1084, PLAN-1087, PLAN-1092, PLAN-1093]
 supersedes_spec_components: [docs/specs/auto-av/python-interop.md, docs/specs/auto-lang/vm/design/null-family.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -482,6 +482,28 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
 下一执行入口：核主检出、本包 r5 和依赖正式来源，创建唯一专属树后从 T-01 开始。依赖缺失先做可独立推进的输入审计。新发现的高风险未定语义先有界探测并作决定，超本包目标时显式修订或拆 Plan，保留全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-21 **merge 收据（T-08）**：
+  `stage: merge | plan_id: PLAN-1094 | plan_revision: r5 | outcome: pass
+  | delivery_commit: ce8ba4fbc | archive_commit: 待本簿记提交
+  | worktree: D:/autostack/.wt/lang-1094/auto-lang | branch: plan-1094-dev（已并入，将删除）
+  | next: done`。
+
+  | Checkpoint | 证据 |
+  |---|---|
+  | prepared | reviewed baseline c8ec8e3bc（T-07 复审后 master 顶）＋canonical Spec 增量（SD-01..03、SD-FC，worktree 提交 12a3154a9）＋delivery commit ce8ba4fbc；T-06 门禁复用（自 run-_ixne_gm 后仅 docs 变动，tested 代码不变，按技能不变输入复用规则）。 |
+  | landed | master tip = ce8ba4fbc（`git merge --ff-only plan-1094-dev`，无 merge commit）；11 个提交链 c921199f08..ce8ba4fbc 全部落位；rebase 重放安全证明：master 侧新增 PLAN-1048 系列后 rebase，逐提交 +/- 行内容等价（仅 hunk 行号漂移），44878805f→6b222d3e2 等 patch body 逐字节相等。 |
+  | canonical_verified | master 上 `docs/specs/auto-av/language-parity.md`（§PLAN-1094 增量 379 行起）、`python-interop.md`（§PLAN-1094 追加）、`null-family.md`（§普通 AV 脚本/Python）、`feature-organized-corpus.md`（§PLAN-1094 script/Python 家族）四份增量落位；canonical case `language/script/python-context.case.ad` 与 suite 单引用均在 master。 |
+  | archived | 本文件 git mv 至 `docs/plans/archive/1094-av-parity-script-and-python-protocols.md`，frontmatter `status: archived`、`current_step: 8`；簿记随本 commit 落 master（untracked docs/ = 未归档，已避免）。 |
+  | cleaned | guard clean 后移除 worktree/分支/组目录；plan-artifacts/plan-1094 折证据后整目录删除；registry 刷新（见 §9 末尾）。 |
+
+  **Merge 后门禁**：delivery commit ce8ba4fbc 与 T-06 冻结基线（44878805f＋b3e64105c）
+  的 tested 代码逐字节一致（spec 提交只动 docs），case-av-language-parity 522/522、
+  ace-syntax 159、ace-python 10、ace-lowering 9 证据有效；剩余红（ace-source×5、
+  ace-av×13、ace-abi×28）为 1092/1093 继承红清单预存基面红（D-1055/D-1088、
+  1093 收据同清单），非本包引入。
+  批回归到期检查：`docs/plans/.last-batch-regression.json` 于归档后按 PLAN-898
+  规程评估（1094 %5=4 非到期；移交 regress 技能按需）。
 
 - 2026-11-21 **final 独立复审（T-07）**：
   `stage: review | review_scope: final | plan_id: PLAN-1094 | plan_revision: r5
