@@ -4,9 +4,9 @@ status: executing
 feature_name: AV脚本模式与Python对象协议兼容补齐
 author: [Codex]
 created_at: 2026-11-19
-updated_at: 2026-11-20
+updated_at: 2026-11-21
 plan_revision: 5
-current_step: 1
+current_step: 6
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1084, PLAN-1087, PLAN-1092, PLAN-1093]
 supersedes_spec_components: [docs/specs/auto-av/python-interop.md, docs/specs/auto-lang/vm/design/null-family.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -446,17 +446,108 @@ cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python
   Rust 内联角色枚举、四份规范基线差异——全部见 §4 T-01 冻结记录。
   探测原始件：`D:/autostack/plan-artifacts/plan-1094/probes/`（probe-results.txt `8a39c905f8ee7df2`）。
   AC-04/AC-05/AC-FC 的 T-01 份额就绪；AC 的最终判定仍待 T-02..06 实施后真实运行。
-- [ ] **T-02** work：见上表唯一任务合同。阻塞：硬依赖 1084（动态值）/1093 未交付（均 drafting 0/N）。
-- [ ] **T-03** work：见上表唯一任务合同。阻塞：硬依赖 1087（错误/展开）、1092（#[with] 语句面）未交付。
-- [ ] **T-04** work：见上表唯一任务合同。阻塞：随 T-02/T-03 前置（1084/1087/1092/1093）。
-- [ ] **T-05** work：见上表唯一任务合同。
-- [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
+- [x] **T-02** work：已完成（2026-11-21）。普通 AV py lane 实施——
+  `use.py` 前门普通面接入（多成员按源序形）、动态参数/属性/索引/调用、
+  py 对象 `.len()`→`__len__` 协议分派（纯 Auto str/List 原生语义不变）、
+  Unicode/NUL 文本通道（UTF-32-LE codepoint-wise 升级）。FC：canonical
+  `language/script/python-context.case.ad` 唯一作者建立、legacy-map.tsv 添 7 行
+  （owner=PLAN-1094，原 ID/check/oracle/SHA16 守恒）。证据见 §9 T-06 收据与 §4 修订。
+- [x] **T-03** work：已完成（2026-11-21）。`with expr as name { }` 语句面
+  （grammar `with-stmt`/`with-resource`/`with-tail`＋CST＋resolve＋lowering＋AV runtime：
+  进入/退出、`__exit__`/close 恰一次、return/break/continue/普通异常传播、嵌套、
+  enter 失败不调 `__exit__`）；Python 异常→可捕获语言错误（`python.{class}` 分类、
+  `PyException {msg}` 渲染、原 span），host 撤权/resource/cancel 分类不变。FC/AV-ONLY 份额完成。
+- [x] **T-04** work：已完成（2026-11-21）。消费 1026 真实 py-bridge provider（AV 侧
+  foreign 闭包，非 abi lane；无 use.py 不加载 CPython，纯 Auto 源零 py 依赖）；
+  缺解释器 NOT_RUN 而非 PASS；WITH-EXITS（break/嵌套/异常/enter 失败关闭计数）、
+  SCRIPT-MODE（.as/auto-script 与 pragma 优先级）、PY-ERROR-OBS（error-kind/
+  error-span 结构化断言）oracle 落地。
+- [x] **T-05** work：已完成（2026-11-21）。§6 AutoDown 草案落实为唯一活跃文档作者源
+  `crates/auto-lang/test/cases/language/script/python-context.case.ad`（11 Case：§6 五个
+  ＋未捕获对照＋旧 7 例迁移＋WITH-EXITS break/嵌套），`language.suite.ad` 追加引用；
+  旧 99_py_dispatch×2 / 99_script_err×5 按 FC 迁移表映射（原义务/预期/ID 守恒），
+  无后端源码副本；正/负/故意红元控制逐一运行（AV 视图 522 例 0 FAIL）。
+- [x] **T-06** work：已完成（2026-11-21）。冻结候选提交后执行 §6 固定组：
+  `cargo t case-av-language-parity ace-source ace-syntax ace-av ace-abi ace-python`
+  ——case-av-language-parity 522/522 PASS（12 条 `av.parity.1094.*` 全部绿，0.86–1.06s/条）、
+  ace-syntax 159 PASS、ace-python 10 PASS（p1026 py-bridge 断言随 UTF-32-LE 通道升级同步后绿）。
+  剩余红全部命中 1092/1093 继承红清单（预存基面红）：ace-source text_record_source×5
+  （D-1055/D-1088）、ace-av×13、ace-abi source_foreign×28（1093 收据主检出基面实测同红）。
+  本包引入回归 3 处已修复提交 44878805f（p981 Aggregates 重冻结＋py_bridge_1026 两断言同步）。
+  IF-AV-PARITY-SCRIPT 接口与可复现摘要见 §5 修订。AC-01..06/AC-FC/AC-AV-ONLY 待 T-07 核。
+- [x] **T-07** review：已完成（2026-11-21）。独立上下文逐 AC 核验源码→消费者→实际 oracle，
+  详见 §9 final 复审。通过（status → reviewed）。
 - [ ] **T-08** merge：见上表唯一任务合同。
 
 下一执行入口：核主检出、本包 r5 和依赖正式来源，创建唯一专属树后从 T-01 开始。依赖缺失先做可独立推进的输入审计。新发现的高风险未定语义先有界探测并作决定，超本包目标时显式修订或拆 Plan，保留全部旧义务。
 
 ## 9. 复审记录
+
+- 2026-11-21 **final 独立复审（T-07）**：
+  `stage: review | review_scope: final | plan_id: PLAN-1094 | plan_revision: r5
+  | reviewed_commit: b3e64105c（分支顶；44878805f 修复＋b3e64105c 换行） | base: master b9351b37c
+  | worktree: D:/autostack/.wt/lang-1094/auto-lang | branch: plan-1094-dev | outcome: pass | next: merge`。
+
+  | AC | 结果 | 核验 |
+  |---|---|---|
+  | AC-AV-ONLY | pass | 公共 suite 522 例只选 av 检查（case-av-language-parity 全 PASS）；非 AV 检查（ac-native/legacy-reference）经 `#ignore` 或未选呈 SKIP，不 prepare、不 dispatch、不计 PASS、不阻 AV；本包对非 AV 零准备/零结果依赖。 |
+  | AC-FC | pass | 唯一活跃作者 `language/script/python-context.case.ad`（12 Case ID 全唯一，suite 单引用）；legacy-map 7 行 12 列格式全对、owner=PLAN-1094、status=mapped、原 ID/check/oracle/SHA16 守恒（与路线图 §PLAN-1094 清单逐一相符）；旧 7 文档保具名冻结历史；V-FC 元控制：错 oracle 必红、零选中必红的既有机制沿用（T-05 验证）。 |
+  | AC-01 | pass | 12 条 canonical case 普通 AV 真实执行全 PASS（0.86–1.06s/条）：nested-python-call 42、python-error-catch 42（handled_language_errors=1 证明 handler 恰一次）、context-manager-close 42（buf.closed）、python-unicode 42（中文+NUL 往返）、py-dispatch-dual-len（stdout 6\n3）、native-len-unchanged 42（纯 Auto .len 原生）、error-message-oracle（PyException ValueError 原文）、with-error-message、py-object-not-callable（TypeError 可捕获）、with-break-exits-once 42、with-nested-exits 42；双流按 oracle 精确断言。 |
+  | AC-02 | pass | python-error-uncaught 为运行终态语言错误：diag run/lang.error、`python.5` 分类、`error-span "45..55"` 与源字节位置实测一致（[45,55)，第 3 行）；parent 侧 ac_av.rs:2659-2680 对 error-kind/error-span 做精确匹配判断；NOT_RUN：`py-unavailable` 标记＋缺 descriptor → Status::NotRun（"never PASS"），ac_av.rs:2027-2047。 |
+  | AC-03 | pass | WITH-EXITS：with-break-exits-once（break 内 `__exit__` 恰一次，buf.closed=42 出口）、with-nested-exits（LIFO 双关闭）、with-error-message（异常传播仍退出）、probe `plan1094_py_with_enter_failure_no_exit`（enter 失败不调 `__exit__`）；PY-ERROR-OBS：两条 §6 错误用例作正控，父侧断言对 `python.5`/span 敏感（错类别/偏移 span 必 FAIL——ac_av.rs 判断逻辑直接读 oracle）；SCRIPT-MODE：.as/auto-script 模式、#[script]/#[rust] 优先级、无 use.py 纯 Auto 零 py 加载（native-len-unchanged 无 foreign 闭包）。 |
+  | AC-04 | pass | 7 行 L 行映射（99_py_dispatch×2、99_script_err×5）唯一 owner=PLAN-1094、原 SHA16 六位全对、status=mapped；AV required 行均有 actual（PASS）；非 AV 保持 #ignore/未选与后续 owner（不丢义务、不阻出口）。 |
+  | AC-05 | pass | 走共享 `compile_language_source_with_foreign`（front_door 注入 helper/hoisted 成员 import）→ verify_foreign_closures → ABC → `execute_console_foreign`；`with` 走 resolve_with_stmt 全链（manager 单求值、`__enter__` 绑定、保护体 loop、`__exit__` 恰一次含控制流保存/恢复、truthy 抑制）；无 case 名特判（grep 无命中）、无第二 parser、无临时 registry；`.len()` py 对象经 py_ops 事实层分派，纯 Auto 值原生不变。 |
+  | AC-06 | pass | 冻结提交后固定组：case-av-language-parity 522 PASS、ace-syntax 159 PASS、ace-python 10 PASS、ace-lowering 9 PASS；剩余红（ace-source×5 text_record_source、ace-av×13、ace-abi×28 source_foreign）与 1092 收据继承红清单（D-1055/D-1088）及 1093 收据"主检出基面实测同红"逐字一致，预存基面红非本包引入；本包 3 处回归修复（44878805f）＋legacy-map 换行修正（b3e64105c）后 `--check` 干净；worker/av-core/foreign_source 零 println（仅 prepare-av-providers bin 的过程日志）；无新增未处理警告。 |
+  | AC-07 | pass | 本复审独立逐 AC 追源码→消费者→oracle（上表证据均为本次核验所得，非复述自检）；遗漏/延后/workaround 扫描：无未批准缩减；具名说明两项卫生注记（见下）。 |
+  | AC-08 | merge | 未执行（T-08）。 |
+
+  卫生注记（具名，非债务）：① `.c-build-parity1093_c/parity1093_c.obj`（696B）为 1093 C provider canonize 镜像中的真实编译产物，随 23a95edd3 入库（<5MB 钩子不触发、gitignore 无 `*.obj`）——保留为 canonize 完整性，不另开清理任务；② toolchains.json 整文件重排（新增 av-providers 工具，其余语义等价已程序核验）。规范增量（SD-01..03/SD-FC）按 §5 约定在 merge（T-08）时沉淀，本次 review 未提前写入 specs。
+
+- 2026-11-21 **T-02..T-06 work 完成收据**（goal「完成计划1094」恢复后实施，计划 r5）：
+  `stage: work | plan_id: PLAN-1094 | plan_revision: r5 | outcome: pass（T-02..T-06
+  完成；T-07 review 待核） | worktree: D:/autostack/.wt/lang-1094/auto-lang
+  | branch: plan-1094-dev | base: a2249c685（fast-forward 后 merge master 52ffc3c23）
+  | code_commits: c5d9f3527（py lane）→ d964d07be（with 语句）→ d27684d69（py probe
+  串行锁）→ a57f06c18（`.len()`→`__len__`、error-kind/error-span oracle、NOT_RUN）
+  → fd557273c（canonical 语料＋legacy-map 7 行）→ 2a25936a3（WITH-EXITS break/嵌套）
+  → 23a95edd3（av-providers dir_env 修复＋parity1093_c canonize）→ ee7b2a0d2（trim
+  debug probe）→ 44878805f（p981 Aggregates 重冻结＋py_bridge_1026 断言同步）
+  | task_ids: T-02..T-06 | evidence: §4 T-01 冻结记录＋§8 任务状态＋本节 T-06 门禁
+  | next: review`。
+  实施要点：普通 AV py lane 走 1093 prepared-provider foreign 闭包（kind rust/provider py，
+  非 abi lane，无 use.py 不加载 CPython）；with 语句面全链（grammar→CST→resolve→lowering→
+  AV runtime）；py 文本通道升级为 UTF-32-LE codepoint-wise（§6 python-unicode 需要 Unicode/
+  NUL 往返，1026 冻结测试 word oracle 同步更新——与 1093 重冻结 p981 grammar id 同属
+  "通道/语法扩后同步冻结契约测试"惯例，非改语义收据）。FC：唯一活跃作者
+  `language/script/python-context.case.ad`（11 Case），legacy-map.tsv 7 行 owner=PLAN-1094，
+  原 SHA16/ID/check/oracle 守恒；旧 7 文档保具名冻结历史。
+  **T-06 门禁**（`--prepare-only`＋`cargo t`，prepared source_state
+  `13573e1c39a173014c74b78867c67b18cfd8a0598bb1d67442b8275bcc1d0e42`，结果
+  `target/test-groups/run-_ixne_gm`，wall 213.7s）：
+  - case-av-language-parity：**522/522 PASS**（12 条 `av.parity.1094.*` 全绿：
+    nested-python-call 42、python-error-catch 42（handled_language_errors=1）、
+    python-error-uncaught（diag run/lang.error、python.5、span 45..55）、
+    context-manager-close 42、python-unicode 42、py-dispatch-dual-len（6/3 双流）、
+    native-len-unchanged 42、error-message-oracle（PyException ValueError 原文）、
+    with-error-message、py-object-not-callable（TypeError 可捕获）、with-break-exits-once 42、
+    with-nested-exits 42；0.86–1.06s/条；av-worker sha256
+    `49e6d0c55aa7a16f6b…34557ab`、avworker/1.0、av.closures/1、mir-lowering 9）。
+  - ace-syntax 159 PASS；ace-python 10 PASS（p1026 py-bridge math/torch 断言已同步新通道）。
+  - 剩余红全部预存基面红（1092/1093 收据同清单）：ace-source text_record_source×5
+    （1092 §9 清单 452-456 行，D-1055/D-1088）、ace-av×13（1092 清单 458-470 行）、
+    ace-abi source_foreign×28（1093 收据"主检出基面实测同红"）——非本包引入，保留原
+    owner 与失败计数，不阻 AV 出口。
+  - 本包引入回归修复：p981 Aggregates 面重冻结（前 ea0f50bc…→96383c1a…，13 邻居
+    逐字节不变）、py_bridge_1026 两条 word oracle 更新为 UTF-32-LE codepoint 语义——
+    提交 44878805f，单测与全组复验绿。
+  - 健康：无新增未处理警告（ace-core 3 条 dead_code 为既有）；无调试输出（trim 完成）；
+    工作树 clean @ 44878805f。
+  - 待交接口 `IF-AV-PARITY-SCRIPT`：普通源 auto-script/.as＋py-bridge provider 闭包
+    （kind rust/provider py）→ 同一普通 AV 链（`ac-av/language-source-run-v1`，
+    avworker/1.0，av.closures/1，mir-lowering 9）→ 真实值/双流/`language_error`
+    （`python.{class}`、`PyException {msg}`）/`source_span`。绑定：12 条 canonical
+    case（ID 族 `av.parity.1094.*`）＋legacy-map 7 行（owner=PLAN-1094）＋工具/AV-worker
+    身份（见上）＋真实逐 case 结果。1110 按该来源接 A2PY（§5 交接表）。
 
 - 2026-11-20 goal round 50（**用户裁定①，goal 暂停收尾**）：`stage: goal | plan_id: PLAN-1094
   | plan_revision: r5 | round: 50 | from: user | to: paused | status: executing | outcome: waiting
