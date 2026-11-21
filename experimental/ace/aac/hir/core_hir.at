@@ -501,7 +501,7 @@ fn lower_blocks(pg List<int>, ast List<int>, links List<int>, declarations List<
                 append_block(blocks, block, owner, return_exit(), -1, expression_ids.get(result))
                 break
             }
-            if (form == "for-cond-stmt") {
+            if (form == "aac-for-cond-stmt") {
                 let condition = child_with_role(pg, ast, links, statement, "cond")
                 let step = child_with_role(pg, ast, links, statement, "body")
                 if (condition < 0 || step < 0 || expression_ids.get(condition) < 0) { return failed(errors, statement, hir_unsupported()) }

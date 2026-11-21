@@ -833,7 +833,7 @@ fn validate(pg List<int>, ast List<int>, links List<int>, src List<int>, declara
             }
             if (actual != expected) { return failure(errors, value, code) }
         }
-        if (node_kind == "if-stmt" || node_kind == "for-cond-stmt") {
+        if (node_kind == "if-stmt" || node_kind == "aac-for-cond-stmt") {
             let condition = child_with_role(pg, ast, links, row, "cond")
             if (condition >= 0 && facts.get(condition) != boolean_type()) { return failure(errors, condition, type_condition()) }
         }
