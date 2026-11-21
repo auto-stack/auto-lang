@@ -126,3 +126,14 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 标注与字段元数据的唯一公共作者为 [attributes.case.ad](../../../crates/auto-lang/test/cases/language/metadata/attributes.case.ad)，由 `language.suite.ad` 引用。18 条普通 AV 检查独立判定值、双流和具名错误。其中一个共享 Case 持有依阶段忽略的 AC 检查。父端反控覆盖选错预期、零有效 AV、重复 Case 和源身份失效。
 
 本包主承接旧 VM 文档为零。迁移表保 963/971/555/936/967、旧 Task shim 及独立的 A2R/A2C 目标预期。原消费端及判决见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。
+
+## PLAN-1093 增量（FFI 家族）
+
+受检外来 provider 语言接面的唯一公共作者为
+[imports-callbacks.case.ad](../../../crates/auto-lang/test/cases/language/ffi/imports-callbacks.case.ad)，
+由 `language.suite.ad` 引用。5 条普通 AV 检查真实运行：Rust `f0_text`（9/0 与 panic
+边界）、C `parity1093_c`（真实 `<string.h>` strlen=5）、缺 cap 与 provider 不匹配的
+具名拒绝。case 携带声明性 `foreign` 绑定，父端经 `REGISTERED_FOREIGN_PROVIDERS`
+核验并在 `ACE_AV_PROVIDER_ROOT` 缺省时具名失败（不静默 SKIP）。本包主承接 70 份旧
+VM FFI 文档：迁移表逐行保留原身份与 owner，AV 阶段 `#ignore`。父端反控覆盖选错
+oracle（必红）、缺 provider 闭包（必失败）与源身份失效。

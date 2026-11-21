@@ -40,6 +40,8 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "steps",
         "caps",
         "store_root",
+        // PLAN-1093: an optional prepared foreign provider binding.
+        "foreign",
         // The shared request builder reserves these for the resource recipe.
         "limits",
         "cancel_after_ms",
@@ -139,6 +141,40 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             }
             Err(diag) => (Err(diag), capture),
         }
+    } else if let Some(foreign_value) = object.get("foreign") {
+        // PLAN-1093: a prepared foreign provider rides the request; the
+        // chain compiles through the shared admitted-foreign front door
+        // and executes with per-run stub admission.
+        let foreign: crate::foreign_source::ForeignSpec = serde_json::from_value(
+            foreign_value.clone(),
+        )
+        .map_err(|e| format!("invalid foreign binding: {e}"))?;
+        let root = Path::new(&foreign.artifact_root);
+        if !root.is_dir() {
+            return Err(format!(
+                "prepared provider root missing: {}",
+                root.display()
+            ));
+        }
+        let mut capture = ConsoleCapture::default();
+        let result = crate::foreign_source::run_foreign_chain(
+            &source,
+            path,
+            &caps,
+            &foreign,
+            &mut capture,
+        )
+        .map(|(outcome, trace)| {
+            handled_errors = trace.handled_language_errors;
+            runtime_calls = trace.call_frame_commits;
+            script_sources = 0;
+            let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
+            if let Some(error) = observed_language_error(&trace, locate) {
+                step["language_error"] = error;
+            }
+            outcome
+        });
+        (result, capture)
     } else {
         let mut capture = ConsoleCapture::default();
         let result = run_chain(
@@ -759,6 +795,30 @@ mod compile_time_tests {
     }
 
     #[test]
+    fn plan1093_c_header_spelling_parses() {
+        // PLAN-1093: `use.c <string.h>` — the C header import spelling
+        // projects the header name; the ident form stays unchanged.
+        use ace_core::source::{parse_program_with, SourceProfile, ast::Item};
+        for src in ["use.c <x>\nfn main() int { return 1 }", "use.c <string.h>\nfn main() int { return 1 }", "use.c parity1093_c\nfn main() int { return 1 }"] {
+            let program = parse_program_with(src, SourceProfile::Auto).expect("header spelling parses");
+            let uses: Vec<_> = program.items.iter().filter_map(|i| match i {
+                Item::UseRs(u) => Some(u),
+                _ => None,
+            }).collect();
+            assert_eq!(uses.len(), 1, "{src}");
+            let u = &uses[0];
+            if src.contains('<') {
+                // the header spelling projects the header name (no brackets).
+                assert!(
+                    !u.provider.name.contains('<') && !u.provider.name.contains('>'),
+                    "{src}: {u:?}"
+                );
+            } else {
+                assert_eq!(u.provider.name, "parity1093_c", "{src}");
+            }
+        }
+    }
+    #[test]
     fn ordinary_file_pragmas_use_the_original_path_and_rust_precedence() {
         let caps = &[AUTO_SOURCE_ADMISSION_CAP];
         for (path, markers, expected) in [
@@ -1042,7 +1102,7 @@ fn main() int { return #{ f(40) } }";
     }
 }
 
-fn authorize_console_calls(mir: &MirModule, grants: &[String], path: &str) -> Result<(), Json> {
+pub(crate) fn authorize_console_calls(mir: &MirModule, grants: &[String], path: &str) -> Result<(), Json> {
     for function in &mir.funcs {
         let instructions = function.blocks.iter().flat_map(|block| &block.instrs);
         for (index, instruction) in instructions.enumerate() {

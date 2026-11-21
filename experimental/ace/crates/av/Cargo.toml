@@ -18,7 +18,13 @@ test-toolchain = []
 # 赖 av/native——其 manifest 断言之）。
 ace-source-cte = { path = "../source-cte" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+# PLAN-1093: prepared foreign providers — pure manifest/shim derivation
+# (the provider cdylib is built in an explicit prepare lane and loaded
+# here; no compiler runs in the ordinary worker).
+auto-bindgen = { path = "../../../../crates/auto-bindgen" }
 ace-av-core = { path = "../av-core" }
+# PLAN-1093: the foreign manual manifest contract (prepared providers).
+ace-foreign-contract = { path = "../foreign-contract" }
 ace-lowering = { path = "../lowering" }
 ace-semantics-contract = { path = "../semantics-contract" }
 ace-core = { path = "../core" }
@@ -39,6 +45,8 @@ serde_json = "1"
 # windows-sys surface ac-artifact-probe's sysinfo uses).
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
+    # PLAN-1093: prepared foreign provider DLL loading (LoadLibraryW).
+    "Win32_System_LibraryLoader",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }

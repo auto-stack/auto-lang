@@ -2364,6 +2364,8 @@ fn decode_options(
                         "profile",
                         "invalidation",
                         "resource",
+                        // PLAN-1093: a prepared foreign provider binding.
+                        "foreign",
                     ],
                 )?;
                 let entry = req_str(&sf, "entry")?;
@@ -2546,6 +2548,49 @@ fn decode_options(
                         })
                     }
                 };
+                // PLAN-1093: the prepared foreign provider binding
+                // (`foreign: { kind: rust|c, provider: <id> }`). The case
+                // stays declarative; the worker resolves every artifact
+                // identity from the prepared closure.
+                let foreign = match sf.sub("foreign") {
+                    None => None,
+                    Some(fv) => {
+                        if recipe != "ac-av/language-source-run-v1" {
+                            return Err(err(
+                                &sf.path_of("foreign"),
+                                format!(
+                                    "av.foreign belongs to ac-av/language-source-run-v1, not {recipe:?}"
+                                ),
+                            ));
+                        }
+                        let fpath = sf.path_of("foreign");
+                        let fpairs = as_obj(fv, &fpath)?;
+                        let ff = Fields::new(&fpath, fpairs, &["kind", "provider"])?;
+                        let kind = req_str(&ff, "kind")?;
+                        if kind != "rust" && kind != "c" {
+                            return Err(err(
+                                &ff.path_of("kind"),
+                                format!("unknown foreign provider kind {kind:?} (rust | c)"),
+                            ));
+                        }
+                        let provider = req_str(&ff, "provider")?;
+                        if provider.is_empty()
+                            || provider.len() > 128
+                            || !provider
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+                        {
+                            return Err(err(
+                                &ff.path_of("provider"),
+                                "foreign provider id must be 1-128 chars of [A-Za-z0-9_.-]",
+                            ));
+                        }
+                        Some(ProbeAvForeignSpec {
+                            kind,
+                            provider,
+                        })
+                    }
+                };
                 Some(ProbeAvSpec {
                     entry,
                     caps,
@@ -2553,6 +2598,7 @@ fn decode_options(
                     profile,
                     invalidation,
                     resource,
+                    foreign,
                 })
             }
         };
@@ -3383,6 +3429,17 @@ pub struct ProbeAvSpec {
     pub invalidation: Option<ProbeAvInvalidationSpec>,
     /// PLAN-919: the lifecycle recipe's source profile and exit knobs.
     pub resource: Option<ProbeAvResourceSpec>,
+    /// PLAN-1093: a prepared foreign provider the language-source recipe
+    /// binds (`foreign: { kind, provider }`). Declarative only — every
+    /// artifact identity rides the prepared closure the worker loads.
+    pub foreign: Option<ProbeAvForeignSpec>,
+}
+
+/// PLAN-1093: the prepared foreign provider binding (kind + provider id).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeAvForeignSpec {
+    pub kind: String,
+    pub provider: String,
 }
 
 /// PLAN-919 ac-av/resource-events-v1 binding: the admitted production

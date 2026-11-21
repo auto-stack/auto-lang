@@ -53,7 +53,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
         // 其余 13 个 profile 逐字节未变（下表全部仍与冻结值相等）。
         (
             SourceProfile::TextRecord,
-            "fb3d3883b935eb4c59d29909126918ffca5692cd2b8a82fac3c4d19f40cc5dc7",
+            "7c6e25f20d51aee5e6d6b57d1044b72e403b234714d21b6a4a424e7099b6e444",
         ),
         (
             SourceProfile::EntryUnit,
@@ -93,7 +93,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             //     aggregates 面（py 通道的 ABI 对齐拼写）；
             //   - 所以只有 aggregates profile 的 grammar id 必须移动；其余
             //     邻居行的字节未变（本表逐行冻结，任何邻居漂移都会红）。
-            "f31c1e339d01ba723a985aa1a701a3b5599dc669cf4569dd00eddf97ded7a164",
+            "ea0f50bc87b0788bc7c16b8b35de6a85054b6e0c8fda3841ba6484b8dbb51a5f",
         ),
         (
             SourceProfile::Scheduler,
@@ -173,11 +173,11 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-105 W105：generic-atom（`List<T>.member` 原子）alt×2 + 规则
             // 三处 profile 回归 age-component（W38 首开、W85 重建丢失）——
             // 2dfb9edf…→ac48cc92…；13 邻居逐字节不变。
-            "ac48cc92afeec1bcf893ade984dd65ae8a69d58861bf6dd741bfa9b5dacc71f7",
+            "4327bdb16dfdbf252bb0f1f01a0f2aa1a6bb32d835ac11687bcc1094b69cc825",
         ),
         (
             SourceProfile::AgeH0,
-            "64915bd1fc2f103e5b9c888088f53ce564c59a20bf445b1ef55dedac780f11cd",
+            "70d732d69ac100a5bbd9cf3f7f7b71c95535e8e3d2abea7f87ffcf8dd1d8eb5a",
         ),
     ] {
         assert_eq!(

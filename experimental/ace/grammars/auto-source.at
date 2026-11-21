@@ -1567,7 +1567,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             r-use(field: "kw") {}
             dot(field: "dot") {}
             ident(field: "lang")
-            ident(field: "provider")
+            // PLAN-1093：`use.c <string.h>` 角括号头形态——C 导入的
+            // header 拼写；投影期按 provider 子树拼写合成 provider ident。
+            provider-choice(field: "provider")
+        }
+        provider-choice(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates, auto, auto-packages]) {
+            alt { ident(field: "name") }
+            alt { c-header-item(field: "header") }
+        }
+        c-header-item(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates, auto, auto-packages]) {
+            lt() {}
+            ident(field: "head")
+            many { c-header-tail() {} }
+            gt() {}
+        }
+        c-header-tail(profiles: [text-record, age-h0, age-component, age-package, config-document, aggregates, auto, auto-packages]) {
+            alt { dot() {} }
+            alt { slash() {} }
+            alt { ident {} }
         }
         // PLAN-1026：`use.py a.b: m1, m2` 项——点路径模块 + 冒号 + 成员清单
         //（many 尾规则各带一个分隔符 + 标识符；投影期合成 Item::UsePy）。

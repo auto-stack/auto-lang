@@ -63,3 +63,13 @@ C 头文件/manifest 生成器：为 Auto 的 C FFI 生成 C 头文件与绑定 
 | extractor | 内置 manifest 数据集（标准头 + windows.h console 子集） | active |
 | type_map | Auto ↔ C 类型映射（FnPtr 组合签名，String 返回） | active |
 | manifest | manifest/头文件输出模型（serde；FnPtr + abi） | active |
+
+## PLAN-1093 增量（普通 AV 消费端）
+
+`rust_import::import` 派生的 manifest 与 `c_import::to_manual_manifest` 产物现由普通
+AV worker 的预构建 provider 闭包消费：`ace-av` 的 `foreign_source` 模块纯派生
+manifest/shim、按 stamp+SHA 校验 prepared cdylib 并映射 967 冻结 callable。
+`use.c <string.h>` 头角括号拼写由共享 `auto-source.at`（`provider-choice` +
+`c-header-item` 规则）识别。provider 的物理签名（ViewText (data,len) 等）经
+resource sig 进入 AV stub 表；非冻结形状具名拒绝。manifest 不入内置字典，
+随 provider 闭包（`ACE_AV_PROVIDER_ROOT/<provider>.descriptor.json`）分发。

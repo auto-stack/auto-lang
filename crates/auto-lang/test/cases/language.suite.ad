@@ -24,5 +24,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/comptime/evaluation-macros.case.ad",
   "language/async/tasks-actors.case.ad",
   "language/metadata/attributes.case.ad",
+  "language/ffi/imports-callbacks.case.ad",
 ] }
 ```

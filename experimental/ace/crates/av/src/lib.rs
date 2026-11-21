@@ -37,6 +37,7 @@ pub mod driver;
 pub mod dynamic_fixture;
 pub mod dynamic_session;
 pub mod fn_hir_codec;
+pub mod foreign_source; // PLAN-1093: prepared foreign providers
 pub mod formal_828;
 pub mod formal_campaign;
 pub mod formal_worker;

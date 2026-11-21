@@ -14,13 +14,213 @@ fn main() -> Result<()> {
     let mut args = std::env::args_os().skip(1);
     let output = PathBuf::from(args.next().ok_or("expected scratch path")?);
     std::fs::create_dir_all(&output)?;
-    if let Some(profile) = args.next() {
-        if profile == "sqlite" {
+    let mut source_file: Option<PathBuf> = None;
+    let mut c_provider: Option<(PathBuf, String)> = None;
+    while let Some(arg) = args.next() {
+        let arg = arg.to_string_lossy().into_owned();
+        if arg == "--source-file" {
+            source_file = Some(PathBuf::from(
+                args.next().ok_or("--source-file needs a path")?,
+            ));
+        } else if arg == "--c-provider" {
+            let dir = PathBuf::from(args.next().ok_or("--c-provider needs a project dir")?);
+            let name = args
+                .next()
+                .ok_or("--c-provider needs a provider name")?
+                .to_string_lossy()
+                .into_owned();
+            c_provider = Some((dir, name));
+        } else if arg == "sqlite" {
             return prepare_sqlite(&output);
+        } else {
+            return Err(format!("unknown foreign fixture argument: {arg}").into());
         }
-        return Err("unknown foreign fixture profile".into());
+    }
+    if let Some(file) = source_file {
+        return prepare_f0_source(&output, &file);
+    }
+    if let Some((dir, name)) = c_provider {
+        return prepare_c_provider(&output, &dir, &name);
     }
     prepare_f0(&output)
+}
+
+/// Build a C provider project (annotated `<name>.h` + `<name>.c`) into
+/// the prepared layout the ordinary worker loads: the DLL copied as
+/// `<output>/<name>.dll` plus a serialized manual manifest and the
+/// header digest (provider identity). An optional `<name>_impl.c` unit
+/// (compiled with the FULL SDK include closure) links real CRT/library
+/// bodies beside the freestanding provider object — the explicit
+/// external-library pattern (real `<string.h>` etc.) without widening
+/// the frozen 967 provider compile.
+fn prepare_c_provider(output: &Path, project: &Path, name: &str) -> Result<()> {
+    let provider = ace_abi::rust_provider::open_c_provider(project, name)?;
+    let mut extra_units = Vec::new();
+    let mut extra_includes = Vec::new();
+    let impl_source = project.join(format!("{name}_impl.c"));
+    if impl_source.is_file() {
+        let obj = ace_abi::rust_provider::compile_c_unit(output, &impl_source)?;
+        extra_units.push(obj);
+        extra_includes.extend(ace_abi::rust_provider::sdk_include_dirs());
+    }
+    let dll = ace_abi::rust_provider::build_c_dll_with(&provider, output, &extra_units, &extra_includes)?;
+    let staged = output.join(format!("{name}.dll"));
+    std::fs::copy(&dll, &staged)?;
+    let authority = ace_abi::rust_provider::c_authority(&provider, 1);
+    let admitted = provider.manifest.clone().admit(&authority)?;
+    let manifest_bytes = serde_json::to_vec(&provider.manifest)?;
+    std::fs::write(output.join("manifest.json"), &manifest_bytes)?;
+    let manifest_text = String::from_utf8(manifest_bytes.clone())?;
+    let header_text = std::fs::read_to_string(project.join(format!("{name}.h")))?;
+    let unit_text = std::fs::read_to_string(project.join(format!("{name}.c")))?;
+    write_provider_descriptor(
+        output,
+        "c",
+        name,
+        &sha256_hex(&staged),
+        Some(&b64(&header_text)),
+        Some(&b64(&unit_text)),
+        Some(&b64(&manifest_text)),
+        None,
+        Some(&provider.provider_digest),
+        Some(&format!("{name}.dll")),
+    )?;
+    println!(
+        "C provider {name}: dll {} sha256={}",
+        staged.display(),
+        sha256_hex(&staged)
+    );
+    println!("C provider {name}: provider_digest={}", provider.provider_digest);
+    println!(
+        "C provider {name}: exports={:?}",
+        admitted
+            .source_declarations_ref()
+            .iter()
+            .map(|d| d.function.symbol.clone())
+            .collect::<Vec<_>>()
+    );
+    println!("manifest.json sha256={}", sha256_hex(&output.join("manifest.json")));
+    Ok(())
+}
+
+fn sha256_hex(path: &Path) -> String {
+    let bytes = std::fs::read(path).unwrap_or_default();
+    ace_core::runtime_contract::sha256_hex(&bytes)
+}
+
+/// The worker-side provider closure (schema-strict). `source` rides the
+/// closure so the daily run derives the manifest purely; `artifact_sha256`
+/// is the REAL SHA-256 of the built DLL the run binds.
+fn write_provider_descriptor(
+    output: &Path,
+    kind: &str,
+    provider: &str,
+    artifact_sha256: &str,
+    source_b64: Option<&str>,
+    unit_b64: Option<&str>,
+    manifest_b64: Option<&str>,
+    rustc_identity: Option<&str>,
+    provider_digest: Option<&str>,
+    dll: Option<&str>,
+) -> Result<()> {
+    let mut descriptor = serde_json::json!({
+        "schema": "plan1093.provider-descriptor/1",
+        "kind": kind,
+        "provider": provider,
+        "artifact_sha256": artifact_sha256,
+    });
+    for (key, value) in [
+        ("source_b64", source_b64),
+        ("unit_b64", unit_b64),
+        ("manifest_b64", manifest_b64),
+        ("rustc_identity", rustc_identity),
+        ("provider_digest", provider_digest),
+        ("dll", dll),
+    ] {
+        if let Some(value) = value {
+            descriptor[key] = serde_json::json!(value);
+        }
+    }
+    std::fs::write(output.join(format!("{provider}.descriptor.json")), serde_json::to_vec(&descriptor)?)?;
+    println!(
+        "{provider}.descriptor.json sha256={}",
+        sha256_hex(&output.join(format!("{provider}.descriptor.json")))
+    );
+    Ok(())
+}
+
+fn b64(text: &str) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(text.as_bytes())
+}
+
+fn rust_build_stamp(output: &Path) -> Result<(String, String)> {
+    // provider digest + shim digest + rustc identity (the worker's stamp axis).
+    let stamp = std::fs::read_to_string(output.join("out/f0-build-stamp.txt"))?;
+    let lines: Vec<&str> = stamp.lines().collect();
+    let provider_digest = lines
+        .first()
+        .copied()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let rustc_identity = lines
+        .get(2)
+        .copied()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    Ok((provider_digest, rustc_identity))
+}
+
+/// Build the F0 provider from a CALLER-provided annotated source (the
+/// identity/rebind leg — a provider body edit must change the value and
+/// the artifact identity together).
+fn prepare_f0_source(output: &Path, source_file: &Path) -> Result<()> {
+    let source = std::fs::read_to_string(source_file)?;
+    let build = ace_abi::rust_provider::build_source(output, &source)?;
+    let authority = ace_abi::rust_provider::f0_authority(&build, 1);
+    let admitted = build.manual.clone().admit(&authority)?;
+    let declaration = admitted
+        .source_declarations_ref()
+        .iter()
+        .find(|decl| decl.name == "text_byte_len")
+        .ok_or("F0 length export")?;
+    println!(
+        "F0 declaration effects={:?} symbol={}",
+        declaration.effects, declaration.function.symbol
+    );
+    let (_, rustc_identity) = rust_build_stamp(output)?;
+    write_provider_descriptor(
+        output,
+        "rust",
+        "f0_text",
+        &sha256_hex(&build.cdylib),
+        Some(&b64(&source)),
+        None,
+        None,
+        Some(&rustc_identity),
+        None,
+        None,
+    )?;
+    let lib_hash = blake3::hash(&std::fs::read(&build.cdylib)?);
+    let config = ForeignConfig {
+        library: build.cdylib.clone(),
+        library_hash: *lib_hash.as_bytes(),
+        contract_digest: authority.contract_digest,
+        provider_digest: authority.provider_digest,
+        exports: [declaration.function.symbol.clone()].into_iter().collect(),
+        manifest: build.manual,
+    };
+    let source = "use.rs f0_text\nfn main() int { return text_byte_len(\"A中😀\\0\") }";
+    write_fixture(
+        output,
+        "module",
+        source,
+        Mode::CompileTime,
+        &config,
+        admitted,
+    )
 }
 
 fn prepare_f0(output: &Path) -> Result<()> {
@@ -36,6 +236,20 @@ fn prepare_f0(output: &Path) -> Result<()> {
         "F0 declaration effects={:?} symbol={}",
         declaration.effects, declaration.function.symbol
     );
+    let (_, rustc_identity) = rust_build_stamp(output)?;
+    let frozen = ace_abi::rust_provider::f0_provider_source();
+    write_provider_descriptor(
+        output,
+        "rust",
+        "f0_text",
+        &sha256_hex(&build.cdylib),
+        Some(&b64(frozen)),
+        None,
+        None,
+        Some(&rustc_identity),
+        None,
+        None,
+    )?;
     let lib_hash = blake3::hash(&std::fs::read(&build.cdylib)?);
     let config = ForeignConfig {
         library: build.cdylib.clone(),

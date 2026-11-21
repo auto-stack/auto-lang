@@ -380,3 +380,14 @@ oracle 全数复现（006 `double`→`twice` 具名审计改名——保留词�
 检查（ac-native/legacy-reference）保持 `#ignore`/NOT_RUN 与后续 owner，
 不充 PASS。compound-ops 6 行 owner 修正为 statement-surface 批（1079 原标
 注 "PLAN-1080" 与本包 r3 合同不符——分母不减，closure 条件不变）。
+
+## PLAN-1093 分母记账（2026-11-21，受检 FFI 语言接面批）
+
+`legacy-map.tsv` 新增 70 行 mapped（17_cffi 3、18_ffi 54、19_rust_std 10、
+20_permission 2、20_rust_ffi 1），原 VM case/check/条件与文档 SHA16 逐行
+保留，canonical 身份自映射（VM-lane 义务，AV 阶段 `#ignore`）。普通 AV 的
+外来 provider 面由新 FFI 作者（`language/ffi/imports-callbacks.case.ad`，
+5 条 AV 检查：3 正例 + 2 具名拒绝）承接并真实运行；默认标准库未因本包引入
+libc 依赖（显式 `use.c` 是用户外库选择，测试走 SDK include 闭包预构建）。
+旧 FFI 义务族（json/path/env/process 等）保持原 VM 身份与后续 owner，不缩
+分母。已验证事实仅登记，冻结历史收据不改。

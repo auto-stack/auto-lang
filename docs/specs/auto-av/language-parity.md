@@ -346,3 +346,32 @@ Actor 支持 typed、变体、字符串、guard 和 else handler，以及状态�
 `#[single]` 任务在一次运行中按任务类型复用一个懒建的 64 槽邮箱。静态 ask/send/stop 进入现有 AV 调度器。`#[async]` 标记的实际效果由已有 `~T` 返回面确定。普通语言 worker 继续使用 `avworker/1`、`av.closures/1`，普通 MIR lowering 缓存身份为 9。
 
 `#[api]` 的 method/path 与目标可见性经共享 CST 交给 auto-web 的 AV 服务。服务按受检 HIR 区分借用 `str` 和文件通道，并在驻留 AV 程序上执行。接口 `IF-AV-PARITY-METADATA` 由 `compile_language_source_with_metadata` 提供受检模块及同一源单元的 `SourceMetadata`。CST 也提供 `#[export]` 的归一 ABI 名和 Rust 透传属性的原参数跨度。已有外库链接与授权归 967 和其后继，Rust 属性交对应发射器。AV 阶段验收以及唯一公共作者见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。
+
+## PLAN-1093 增量（AVP-15，受检 FFI 语言接面与回调）
+
+普通 `ac-av/language-source-run-v1` 现在可通过**预构建 provider 闭包**绑定真实外来
+provider：worker 请求携带声明性 `foreign: {kind, provider}`，从
+`ACE_AV_PROVIDER_ROOT/<provider>.descriptor.json` 读取冻结源、DLL SHA-256、rustc
+身份（Rust）或 manifest+header 摘要（C），纯派生物理签名后经
+`compile_language_source_with_foreign`、`verify_abc_foreign` 与带 stub 表的
+`execute_console_foreign` 真实派发。日测永不编译——providers 由显式 prepare lane
+构建一次（`prepare_foreign` 示例：`build_f0`/`build_source`/`open_c_provider`+`build_c_dll`）。
+
+- `use.rs <provider>`：Rust 注解源（`f0_text/1`）经 `auto_bindgen::rust_import` 派生
+  manifest/shim；prepared cdylib 加载后按 967 冻结 callable 形状映射。`text_byte_len`
+  按 **UTF-8 字节**计长（`"A中😀\0"`=9、空串=0），绝不按 C strlen 截断。
+- `use.c <provider>`：C 注解头（`parity1093_c`）经 967 C 管线派生 manifest；实现单元
+  可显式调用真实外库（`<string.h>` strlen，SDK include 闭包编译）。AV 侧传借用视图的
+  (data,len) 对，C 侧构造有界 C 字符串（CStr 桥）。
+- `use.c <header>`：C 头角括号拼写（`<string.h>`）已入共享 grammar（`provider-choice`
+  + `c-header-item` 规则）；投影为头名，仍须匹配已 admitted provider（否则
+  `source.use-rs.provider`）。
+- 授权：外来声明要求显式 `foreign.scalar` cap（缺失 → `source.foreign-capability`
+  bind 拒绝）；provider 身份由父侧 `REGISTERED_FOREIGN_PROVIDERS` 表核验。
+- panic 边界：provider panic 被 shim 就地捕获并置导出标志，AV 调度器转为具名
+  `host.infra`（`foreign.panic: … contained at the boundary`）——不跨 C ABI unwind。
+
+`IF-AV-PARITY-FOREIGN` 绑定普通 Auto 源、`avworker/1`、`av.closures/1`、MIR lowering 9、
+已注册 provider（f0_text/parity1093_c）与逐检查真实结果。canonical 语料与迁移行见
+[FFI 作者文件](../../../crates/auto-lang/test/cases/language/ffi/imports-callbacks.case.ad)、
+[PLAN-1093](../../plans/1093-av-parity-foreign-language-surface.md)。

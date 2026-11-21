@@ -23,7 +23,7 @@ use crate::contract::{
     BudgetSpec, CheckSpec, Compare, Completion, EntryMode, ExpectSpec, FileEntry, Options,
     PayloadSpec, ProbeAbiSpec, ProbeMnTypedSpec, ProbeStepExpect, SyntaxEdit, TypedExpect,
     ProbeAvInvalidationSpec, ProbeAvResourceSpec, ProbeMnDeclarationSpec, ProbeMnHistorySpec,
-    ProbeMnResourceSpec, ProbeMnTurnaroundSpec,
+    ProbeMnResourceSpec, ProbeMnTurnaroundSpec, ProbeAvForeignSpec,
     ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
     ResultExpect, SkipSpec, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
@@ -269,6 +269,8 @@ struct ProbeSection {
     /// CF-07 AV nested oracles (raw CVal kept; wired per family).
     invalidation: Option<CVal>,
     av_resource: Option<CVal>,
+    /// PLAN-1093: the prepared foreign provider binding (raw CVal kept).
+    foreign: Option<CVal>,
     /// CF-07 MN nested oracles.
     mn_resource: Option<CVal>,
     declaration: Option<CVal>,
@@ -1402,6 +1404,25 @@ fn decode_one_case(
                             }
                             Some(_) => return err(p.section_line, "av-resource 需要对象值"),
                         };
+                        let foreign = match &p.foreign {
+                            None => None,
+                            Some(CVal::Obj(pairs)) => {
+                                obj_keys_ok(pairs, &["kind", "provider"], "foreign", p.section_line)?;
+                                Some(ProbeAvForeignSpec {
+                                    kind: obj_str(pairs, "kind", p.section_line)?
+                                        .ok_or_else(|| AuthorError {
+                                            line: p.section_line,
+                                            message: "foreign 需要 kind".into(),
+                                        })?,
+                                    provider: obj_str(pairs, "provider", p.section_line)?
+                                        .ok_or_else(|| AuthorError {
+                                            line: p.section_line,
+                                            message: "foreign 需要 provider".into(),
+                                        })?,
+                                })
+                            }
+                            Some(_) => return err(p.section_line, "foreign 需要对象值"),
+                        };
                         options.probe_av = Some(ProbeAvSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
@@ -1409,6 +1430,7 @@ fn decode_one_case(
                             profile: p.profile.as_ref().map(|(v, _)| v.clone()),
                             invalidation,
                             resource: av_resource,
+                            foreign,
                         });
                     }
                     ProbeFamily::Mn => {
@@ -2154,6 +2176,8 @@ fn decode_h3_section(
             "typed-fixture", "typed-args", "typed",
             "invalidation", "av-resource", "mn-resource", "declaration",
             "history", "turnaround",
+            // PLAN-1093: the prepared foreign provider binding.
+            "foreign",
         ],
         t if t.starts_with("AC ") => &[
             "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
@@ -2659,6 +2683,7 @@ fn decode_h3_section(
             let mut invalidation = None;
             let mut av_resource = None;
             let mut mn_resource = None;
+            let mut foreign = None;
             let mut declaration = None;
             let mut history = None;
             let mut turnaround = None;
@@ -2697,6 +2722,7 @@ fn decode_h3_section(
                     "invalidation" => invalidation = Some(a.value.clone()),
                     "av-resource" => av_resource = Some(a.value.clone()),
                     "mn-resource" => mn_resource = Some(a.value.clone()),
+                    "foreign" => foreign = Some(a.value.clone()),
                     "declaration" => declaration = Some(a.value.clone()),
                     "history" => history = Some(a.value.clone()),
                     "turnaround" => turnaround = Some(a.value.clone()),
@@ -2755,6 +2781,7 @@ fn decode_h3_section(
                 invalidation,
                 av_resource,
                 mn_resource,
+                foreign,
                 declaration,
                 history,
                 turnaround,

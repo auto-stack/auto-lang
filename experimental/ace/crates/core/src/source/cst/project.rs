@@ -539,7 +539,24 @@ pub(crate) fn project_program_with_caps(
                     .field_child(node, "provider")
                     .expect("use.rs provider leaf");
                 let kw_span = eng.cx.span_of(kw_leaf);
-                let provider = ident_of(&mut eng.cx, provider_leaf);
+                // PLAN-1093: `use.c <string.h>` — the C header spelling
+                // projects the header name (ident spellings keep the
+                // normal name checks).
+                let provider = {
+                    let text = eng.cx.spelling(provider_leaf);
+                    if text.starts_with('<') {
+                        Ident {
+                            name: text
+                                .trim_start_matches('<')
+                                .trim_end_matches('>')
+                                .trim()
+                                .to_string(),
+                            span: eng.cx.span_of(provider_leaf),
+                        }
+                    } else {
+                        ident_of(&mut eng.cx, provider_leaf)
+                    }
+                };
                 let span = Span {
                     start: kw_span.start,
                     end: provider.span.end,

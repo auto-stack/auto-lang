@@ -1,0 +1,169 @@
+# PLAN-1093 — the prepared foreign language surface (use.rs / use.c) through the ordinary AV chain
+
+Provider sources are FROZEN: the Rust `f0_text/1` provider
+(`abi/rustside/f0_text.rs`) and the C provider `parity1093_c` (annotated
+header + unit; `parity1093_c_impl.c` binds the REAL `<string.h>` strlen
+with the full SDK include closure). The ordinary worker loads PREPARED
+provider closures only — no compiler runs in a daily case.
+
+## Case: rust-length-not-strlen
+id: "av.parity.1093.rust-length-not-strlen"
+tags: ["av-language-parity", "plan-1093"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use.rs f0_text
+fn main() int { return text_byte_len("A中😀\0") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "f0_text" }
+exit: 9
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The UTF-8 byte length is 9 — by BYTES, never C-strlen-truncated to the
+first NUL. Real Rust provider dispatch through the ordinary AV chain; the
+provider closure identity binds the frozen f0_text source.
+
+## Case: rust-empty-value
+id: "av.parity.1093.rust-empty-value"
+tags: ["av-language-parity", "plan-1093"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use.rs f0_text
+fn main() int { return text_byte_len("") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "f0_text" }
+exit: 0
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The empty view is length 0; the empty case and the non-empty NUL-bearing
+case are legal siblings on the same provider (neither is skipped green).
+
+## Case: explicit-c-library
+id: "av.parity.1093.explicit-c-library"
+tags: ["av-language-parity", "plan-1093"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use.c parity1093_c
+fn main() int { return c_strlen("hello") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "c", provider: "parity1093_c" }
+exit: 5
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Explicit C external library: the provider unit calls the REAL `<string.h>`
+strlen (SDK-closure compile); the AV side passes the borrowed view as the
+(data, len) pair and the C side builds the bounded C string (the CStr
+bridge). Not a default-stdlib path.
+
+## Case: rust-missing-capability
+id: "av.parity.1093.rust-missing-capability"
+tags: ["av-language-parity", "plan-1093"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use.rs f0_text
+fn main() int { return text_byte_len("hi") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "f0_text" }
+stage: "resolve"
+code: "source.foreign-capability"
+
+### Notes
+
+A foreign import without the explicit `foreign.scalar` capability is a
+named bind-stage rejection with the source span — the import cannot widen
+authority the case did not declare.
+
+## Case: c-header-spelling-rejected
+id: "av.parity.1093.c-header-spelling-rejected"
+tags: ["av-language-parity", "plan-1093"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use.c <string.h>
+fn main() int { return c_strlen("hello") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "c", provider: "parity1093_c" }
+stage: "resolve"
+code: "source.use-rs.provider"
+
+### Notes
+
+The `use.c <string.h>` header spelling parses (the C header import form),
+but the admitted provider is `parity1093_c` — the import cannot invent or
+widen a provider the host did not admit.

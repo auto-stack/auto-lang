@@ -984,21 +984,106 @@ impl<'s> Parser<'s> {
                 start.join(lang.span),
             ));
         }
-        let provider = self.expect_ident("use.rs provider name")?;
-        if provider.name.contains("::") || provider.name.chars().any(|c| c == ':') {
-            return Err(Diagnostic::new(
-                Stage::Text,
-                "source.use-rs.domain",
-                "the F0 import takes a single provider identifier, not a path",
-                provider.span,
-            ));
-        }
+        // PLAN-1093: `use.c <header>` accepts the C header spelling
+        // (`<string.h>` → provider id `string.h`, the c_import manifest
+        // provider identity); `use.rs` keeps the single-ident form.
+        let provider = if lang.name == "c"
+            && matches!(
+                self.peek(),
+                Some(Token {
+                    tok: Tok::Punct(P::Lt),
+                    ..
+                })
+            ) {
+            self.use_c_header_tail(start)?
+        } else {
+            let provider = self.expect_ident("use.rs provider name")?;
+            if provider.name.contains("::") || provider.name.chars().any(|c| c == ':') {
+                return Err(Diagnostic::new(
+                    Stage::Text,
+                    "source.use-rs.domain",
+                    "the F0 import takes a single provider identifier, not a path",
+                    provider.span,
+                ));
+            }
+            provider
+        };
         let span = start.join(provider.span);
         Ok(Item::UseRs(UseRsItem {
             lang: lang.name,
             provider,
             span,
         }))
+    }
+
+    /// `use.c <header>`: a bounded angle-bracket header path
+    /// (`<string.h>`, `<sys/stat.h>`) projected to the header name.
+    fn use_c_header_tail(&mut self, start: Span) -> Result<Ident, Diagnostic> {
+        let lt = self.expect_punct(P::Lt, "`<`")?;
+        let mut name = String::new();
+        let mut end = lt;
+        loop {
+            if name.len() > 256 {
+                return Err(Diagnostic::new(
+                    Stage::Text,
+                    "source.use-c.header",
+                    "the C header import name exceeds 256 bytes",
+                    start.join(end),
+                ));
+            }
+            match self.peek().cloned() {
+                Some(Token {
+                    tok: Tok::Punct(P::Gt),
+                    span,
+                    ..
+                }) => {
+                    self.pos += 1;
+                    end = span;
+                    break;
+                }
+                Some(Token {
+                    tok: Tok::Ident(part),
+                    span,
+                    line,
+                }) => {
+                    self.pos += 1;
+                    self.last_line = line;
+                    name.push_str(&part);
+                    end = span;
+                }
+                Some(Token {
+                    tok: Tok::Punct(P::Dot | P::Slash),
+                    span,
+                    ..
+                }) => {
+                    self.pos += 1;
+                    name.push(if matches!(self.toks[self.pos - 1].tok, Tok::Punct(P::Dot)) {
+                        '.'
+                    } else {
+                        '/'
+                    });
+                    end = span;
+                }
+                _ => {
+                    return Err(self.syntax(format!(
+                        "expected `>` to close the C header import, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+        }
+        if name.is_empty() {
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.use-c.header",
+                "the C header import name cannot be empty",
+                lt.join(end),
+            ));
+        }
+        Ok(Ident {
+            name,
+            span: lt.join(end),
+        })
     }
 
     /// PLAN-1026: the `use.py <module.path>: <member, ...>` tail (the

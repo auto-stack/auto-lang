@@ -1511,6 +1511,13 @@ const PLACE_SEQUENCES: &[(&str, &str, i32, i32)] = &[
     ("replace", "av.trap.stale-place", 99, 10),
 ];
 
+/// PLAN-1093: the PARENT's registered prepared foreign providers — a
+/// case may bind only these; any other provider id is a named block
+/// (the parent never invents provider authority).
+const REGISTERED_FOREIGN_PROVIDERS: &[(&str, &str)] =
+    &[("rust", "f0_text"), ("c", "parity1093_c")];
+
+
 /// PLAN-821 T-02: the PARENT's frozen av.owned-fixture/1 expectation
 /// table — an INDEPENDENT hand-audited copy of the frozen fixture truths
 /// (contract-decision §11): the canonical result face, the owned
@@ -2412,6 +2419,30 @@ fn run_check_with_transport(
         "store_root": store_root.display().to_string().replace('/', "\\"),
         "steps": steps_json,
     });
+    // PLAN-1093: a prepared foreign provider binds through the ordinary
+    // language-source worker. The parent admits only REGISTERED
+    // providers and forwards the prepared closure root from the harness
+    // env; missing preparation is a named failure, never a silent skip.
+    if let Some(foreign) = &av.foreign {
+        let root = std::env::var("ACE_AV_PROVIDER_ROOT").map_err(|_| {
+            "the case declares a foreign provider but ACE_AV_PROVIDER_ROOT is not set (run the provider prepare lane)"
+                .to_string()
+        })?;
+        if !REGISTERED_FOREIGN_PROVIDERS
+            .iter()
+            .any(|(kind, provider)| *kind == foreign.kind && *provider == foreign.provider)
+        {
+            return Err(format!(
+                "foreign provider `{} {}` is not registered (parent table)",
+                foreign.kind, foreign.provider
+            ));
+        }
+        request["foreign"] = serde_json::json!({
+            "kind": foreign.kind,
+            "provider": foreign.provider,
+            "artifact_root": root,
+        });
+    }
     if family == RecipeFamily::LanguageSource {
         request["source_path"] = serde_json::json!(&case.entry_path);
     }
