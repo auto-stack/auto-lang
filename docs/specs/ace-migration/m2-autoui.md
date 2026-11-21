@@ -689,3 +689,59 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
   1. **开关与路径边界**：仅在 `auto-ui-tools --features ace-vue` + `AUTO_UI_ACE_VUE=1` 下对 `app.at`（`vue.rs:4173, 7684`）与 `components/*.at`（`vue.rs:4495`）启用 ACE lane 替换；默认构建、`front_dir` 兄弟文件（`vue.rs:7398`）、`pages/`（`vue.rs:4350`）、`widgets/`（`vue.rs:7757`）与 `stores/` 仍走旧 `VueGenerator` / `ts_adapter::TypeScriptTrans`。
   2. **双轨拼接边界**：`generate_widget_with_lane`（`ace_vue_script.rs:796-884`）基于 `VueGenerator::new().generate_sfc(&widget)` 仅拼接替换受检 `on` / `__evt_*` 体；`computed`、`watch`、`setup`、`ext_imports`、`.Init`/`.Destroy` 与 `absent` 处理器仍由 `VueGenerator` 发射（如含 `setup`+`use{}` 的 `Widget B` 维持双轨 fail-closed，`absent=[".Bump"]`）。
   3. **夹具与联合门边界**：1072 产品验证以 Rust `gen_vue_project` / `incremental_compile_changed`、`@vue/compiler-sfc` + `esbuild` 与 Playwright Node `http`（`test_010_form.mjs` stub `@/components/ui/*`、`test_p1072_lifecycle_watch_expose.mjs` stub `BOOT_EXT_STUB`；`plan980_010_form_short.rs` 浏览器腿仍挂旧 `App.vue`，而 `p1072_010_product_browser_mount` 挂 lane `App.sfc` 测三字段 `v-model` + `Submit`）为边界；公开 CLI `auto gen` / `auto build` / `auto run` 派发与完整 `pnpm` / Vite 打包运行由 **PLAN-982** 联合门与后续 `V-TS-CONSUMER-UI` 收尾任务承接（均登账入 `KNOWN-DEBT-AND-RISKS.md`）。
+
+## 16. U03 本地应用语义批（PLAN-105，2026-11-21 已交付）
+
+> 来源：[PLAN-105](../../plans/archive/105-autoui-u03-local-interactive-apps-av-vue.md)
+> （T-07 终审 pass，冻结 auto-lang `8809bccc9`）。本节只写**已验行为与接口**。
+
+### 16.1 AGE 组件面 store 语义（S1）
+
+`store <Name> { model/msg/on/… }` 在组件投影出口内联为共享状态：字段→`st_<f>`/
+消息→`St_<m>` 前缀、`.store.<f>` 读改写为前缀字段、`store.<Msg>(args)` 展开为
+store handler 体（形参替换、深度上限、未知方法具名拒）。跨单元
+`use <unit>: <StoreType>` 由 auto-ui `ace_source_prep` 抽块内联（组件面可解析
+才前置，不可解析保持具名 `.store` 边界）。内存后端（`use back.api`）按
+`P105_MEM_BACKEND=1` 内联为 remove/insert shim；shim 实参里的
+`.todos[<idx>].field` 读**先于 remove 捕获**（改写为对已移除记录的读取——
+下标左移/末位越界的实证修复）。
+
+### 16.2 文本元素/字段的非破坏读（LIST_FIELD_VIEW）
+
+新指令 `LIST_FIELD_VIEW`（opcode `0x37`，`av.collections/1`）：owned-Str 元素
+字段（`path` 可空=元素本体）的**非破坏借读**（`StrViewSrc::Share`，列表不动、
+无 epoch bump；越界 trap `av.trap.list-index`）。verify 契约：dst 必须反引
+`StrView`、终字段必须 owned `Str`。配套语义：
+- record **字段位**与列表**元素位**的 plain `str` 映射落 **owned Str**（borrowed
+  视图不可作字段/元素——`mir.field-borrow`/`mir.type.list-elem`）；表达式位
+  str 的视图语义不变。
+- record ctor 的 StrView 文本实参经 `StrToOwned` 收敛；**循环体内 ctor 反复
+  消费 owned-Str 局部是拷贝语义**（语言无隐式 move），回边重读不触发
+  `mir.use-after-move`。
+- 文本 concat（`TextConcat`）操作数与 `xs.get(i)`/`xs[i]` 的整文本元素读走
+  LIST_FIELD_VIEW；owned 位再 `StrToOwned`。
+- Call 实参按被调签名位 Str/StrView 双向调和（`View`/`StrToOwned`）。
+- 能力位：AGE 组件面 `ac.age.elem-view.v1` 放行整元素视图；place 机制
+  （LIST_PLACE/PLACE_GET）继续承载非文本 owned 元素的视图读。
+
+### 16.3 验证预算按面分档
+
+`MAX_VERIFY_ANALYSIS_BYTES=16MB` 基线不变；携带 `ac.age.elem-view.v1` 的
+AGE 组件面走 `MAX_VERIFY_ANALYSIS_BYTES_AGE_COMPONENT=64MB` 档
+（`MirModule::verify_analysis_budget()`；ownership 与 env-alias 检查点接入）。
+背景：真实组件 handler（012 Tick 形）的 root 矩阵随视图/占位槽数二次增长。
+二次 blowup 门在两档均有效。
+
+### 16.4 文法面（AGE 组件/包）
+
+`generic-atom`（`List<T>.member` 原子）规则 + condition-atom/atom-expr 两处
+alt 的 age-component profile 在案（W85 手工重建时曾丢失，回归修复）；handler
+局部 `var` 拼写、连字符键/标签、单行逗号 entry 体、单变量 view-for 等在案
+（回归组：av `plan105_list_handlers` 13 例 / core `plan105_component_entries`
+26 例 / census 4/4，age-component 契约哈希 `ac48cc92…`）。
+
+### 16.5 消费证据锚（六 app，2026-11-21 终审口径）
+
+AV 桥六 app 装载+交互（012 ADnH×2 a_h 7→6→5、013 ToggleAll、016
+PrevMonth，frames≥1 errors=0）；浏览器腿五 app 门 failures=0（012/013/
+015/016/022）。逐例证据与复跑命令见归档 PLAN-105 收据（§9 W111/T-06）。
