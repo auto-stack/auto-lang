@@ -3210,6 +3210,11 @@ impl Verifier {
             // projection/consumption marks (expr indices)
             let mut projected: BTreeSet<u32> = BTreeSet::new();
             let mut len_consumed: BTreeSet<u32> = BTreeSet::new();
+            // PLAN-105 W108: text-concat operand marks — a whole owned TEXT
+            // element feeding `.. + ..` is a VIEW-SAFE read (StrConcat takes
+            // views by contract); the AGE component face admits it (the
+            // lowering serves it with LIST_FIELD_VIEW's empty path).
+            let mut text_concat_used: BTreeSet<u32> = BTreeSet::new();
             for e in &body.exprs {
                 match &e.kind {
                     hir::ExprKind::FieldGet { base, .. } => {
@@ -3220,6 +3225,10 @@ impl Verifier {
                     }
                     hir::ExprKind::TextClone { operand } if ordinary_auto => {
                         len_consumed.insert(operand.0);
+                    }
+                    hir::ExprKind::TextConcat { lhs, rhs } => {
+                        text_concat_used.insert(lhs.0);
+                        text_concat_used.insert(rhs.0);
                     }
                     hir::ExprKind::RecordClone { base, .. } if ordinary_auto => {
                         projected.insert(base.0);
@@ -3256,7 +3265,15 @@ impl Verifier {
             for (ei, e) in body.exprs.iter().enumerate() {
                 match &e.kind {
                     hir::ExprKind::ListGet { list, .. } => {
+                        // PLAN-105 W108: an owned TEXT element view feeding a
+                        // text concat is sanctioned on the AGE component face
+                        // (elem-view capability family, same gate as the
+                        // field-projection allowance below).
+                        let elem_text_concat_ok = self.elem_view_owned
+                            && text_concat_used.contains(&(ei as u32))
+                            && Self::list_elem_type_is_text(m, &body.exprs[list.0 as usize].ty, self);
                         if Self::list_elem_owned(m, &body.exprs[list.0 as usize].ty, self)
+                            && !elem_text_concat_ok
                             && !projected.contains(&(ei as u32))
                             && !len_consumed.contains(&(ei as u32))
                         {
@@ -3754,6 +3771,27 @@ impl Verifier {
                     Some(hir::TypeKind::Variant { .. })
                 ) || v.type_reaches_resource(m, *e)
             }
+        }
+    }
+
+    /// PLAN-105 W108: the list's element type is TEXT (owned `str` family) —
+    /// the carrier LIST_FIELD_VIEW serves with an empty path.
+    fn list_elem_type_is_text(m: &hir::Module, list_ty: &hir::TypeUse, _v: &Verifier) -> bool {
+        let hir::TypeUse::Ref(tid) = list_ty else {
+            return false;
+        };
+        let Some(hir::TypeKind::List { elem }) = m.types.get(tid.0 as usize).map(|t| &t.kind)
+        else {
+            return false;
+        };
+        match elem {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+            hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => true,
+            hir::TypeUse::Ref(e) => matches!(
+                m.types.get(e.0 as usize).map(|t| &t.kind),
+                Some(hir::TypeKind::Str) | Some(hir::TypeKind::StrOwned)
+            ),
+            _ => false,
         }
     }
 

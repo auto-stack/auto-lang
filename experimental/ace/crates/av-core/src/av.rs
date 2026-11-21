@@ -7084,6 +7084,9 @@ fn dispatch_with_host<V: ModuleView>(
                             Value::List(h) => {
                                 let buf = h.rc.borrow();
                                 match buf.elems.get(idx) {
+                                    // W108: empty path = the element itself
+                                    // (a whole owned TEXT element view).
+                                    Some(e) if path.is_empty() => Some(e.clone()),
                                     Some(e) => field_get_val(e, path),
                                     None => {
                                         drop(buf);

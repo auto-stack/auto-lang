@@ -3088,7 +3088,24 @@ fn collections_type_idx_of(
                     )
                 }
                 hir::TypeKind::List { elem } => {
+                    // PLAN-105 W108：列表**元素位**的 plain `str` 落 owned Str——
+                    // 列表是 owned 容器，借视图不可作元素（`mir.type.list-elem`
+                    // 具名拒）；表达式位 str 的视图语义不变。012 的
+                    // `var rows []str = []`（handler 局部列表）由此入域。
+                    let plain_str_elem = match elem {
+                        hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => true,
+                        hir::TypeUse::Ref(tid) => matches!(
+                            m.types.get(tid.0 as usize).map(|t| &t.kind),
+                            Some(hir::TypeKind::Str)
+                        ),
+                        _ => false,
+                    };
                     let e = collections_type_idx_of(elem, m, out, memo, visiting)?;
+                    let e = if plain_str_elem {
+                        out.intern_type(MirType::Str)
+                    } else {
+                        e
+                    };
                     Ok(out.intern_type(MirType::List(ListTypeRef { elem: e })))
                 }
                 hir::TypeKind::Variant { arms } => {
@@ -4454,6 +4471,37 @@ k 0
         operand: &hir::ExprId,
         depth: u32,
     ) -> Result<SlotId, AdapterError> {
+        // PLAN-105 W108：整 owned 文本元素作为文本操作数——LIST_FIELD_VIEW
+        // 空路径（元素本体的非破坏视图；verify 按文本 concat 用域放行）。
+        // 此前 eval 走 ListGet 位 → place-get owned 元素具名拒。
+        if let hir::ExprKind::ListGet { list, index } =
+            &self.body.exprs[operand.0 as usize].kind
+        {
+            let age_elem_view = self
+                .out
+                .capabilities
+                .iter()
+                .any(|c| c == ace_av_core::contract::AGE_ELEM_VIEW_CAPABILITY);
+            if age_elem_view && self.hir_elem_owned(*list)? {
+                let elem = self.elem_vt_of(*list)?;
+                if matches!(self.out.types.get(elem as usize), Some(MirType::Str)) {
+                    let l = self.eval_expr(*list, depth + 1)?;
+                    let i = self.eval_expr(*index, depth + 1)?;
+                    let view_ty = self.out.intern_type(MirType::StrView);
+                    let view = self.temp_ty(view_ty)?;
+                    self.emit(
+                        MirInstr::ListFieldView {
+                            dst: view,
+                            base: l,
+                            index: i,
+                            path: Vec::new(),
+                        },
+                        None,
+                    )?;
+                    return Ok(view);
+                }
+            }
+        }
         let v = self.eval_expr(*operand, depth)?;
         let src_ty = self.expr_ty(*operand)?;
         if matches!(self.out.types.get(src_ty as usize), Some(MirType::Str)) {
@@ -5657,6 +5705,15 @@ k 0
                         &mut self.emission_reserve,
                     )?;
                     actuals.resize(n_params, 0);
+                    // PLAN-105 W108：文本实参的视图/owned 收敛——被调签名参数
+                    // 位与实参槽在 Str/StrView 之间按位调和（concat 积/元素视图
+                    // 是 StrView，字段/元素读在 owned 位是 Str；文本是视图语义
+                    // 的值域，两端互转无观察差异）。
+                    let sig_params: Vec<TypeIdx> = self
+                        .out
+                        .sig_of(sig_idx)
+                        .map(|s| s.params.clone())
+                        .unwrap_or_default();
                     for b in bindings {
                         let pos = b.param as usize;
                         if pos >= n_params {
@@ -5665,7 +5722,28 @@ k 0
                                 format!("call binding param {} out of range", b.param),
                             ));
                         }
-                        actuals[pos] = arg_slots[b.arg as usize];
+                        let mut slot = arg_slots[b.arg as usize];
+                        if let Some(&pty) = sig_params.get(pos) {
+                            let slot_ty = self.slot_ty_all(slot);
+                            let wants_view =
+                                matches!(self.out.types.get(pty as usize), Some(MirType::StrView));
+                            let wants_owned =
+                                matches!(self.out.types.get(pty as usize), Some(MirType::Str));
+                            let has_view =
+                                matches!(self.out.types.get(slot_ty as usize), Some(MirType::StrView));
+                            let has_owned =
+                                matches!(self.out.types.get(slot_ty as usize), Some(MirType::Str));
+                            if wants_view && has_owned {
+                                let view = self.temp_ty(pty)?;
+                                self.emit(MirInstr::View { dst: view, src: slot }, sp)?;
+                                slot = view;
+                            } else if wants_owned && has_view {
+                                let owned = self.temp_ty(pty)?;
+                                self.emit(MirInstr::StrToOwned { dst: owned, view: slot }, sp)?;
+                                slot = owned;
+                            }
+                        }
+                        actuals[pos] = slot;
                     }
                     // R2-F08': does the callee carry mut record params? Its
                     // MIR sig result is then the t_MutRet wrapper.
@@ -6595,6 +6673,28 @@ k 0
             hir::ExprKind::ListPush { list, value } if self.collections() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
+                // PLAN-105 W108：文本 concat 的积是 StrView（表达式位视图语义）；
+                // owned-Str 元素位在此收敛为 owned（StrToOwned）——视图值不进
+                // 列表元素（`mir.list-type` 的 push 侧镜像）。
+                let l_ty = self.slot_ty_all(l);
+                let elem = match self.out.types.get(l_ty as usize).cloned() {
+                    Some(MirType::List(ListTypeRef { elem })) => Some(elem),
+                    _ => None,
+                };
+                let v = match elem {
+                    Some(e)
+                        if matches!(self.out.types.get(e as usize), Some(MirType::Str))
+                            && matches!(
+                                self.out.types.get(self.slot_ty_all(v) as usize),
+                                Some(MirType::StrView)
+                            ) =>
+                    {
+                        let owned = self.temp_ty(e)?;
+                        self.emit(MirInstr::StrToOwned { dst: owned, view: v }, sp)?;
+                        owned
+                    }
+                    _ => v,
+                };
                 self.emit(MirInstr::ListPush { root: l, value: v }, sp)?;
                 Ok(NO_SLOT)
             }
@@ -6631,6 +6731,41 @@ k 0
                 Ok(NO_SLOT)
             }
             hir::ExprKind::ListGet { list, index } if self.collections() => {
+                // PLAN-105 W108：**文本元素**的整元素读（视图位/owned 位）走
+                // LIST_FIELD_VIEW 空路径——元素类型取**列表的 MIR 实际元素**
+                //（W108 的元素位映射落 owned Str），不用 elem_vt_of（表达式位
+                // 映射 plain str → StrView，会错过本臂）。012 的视图循环变量
+                // 读（`for r in .w_rows`）由此入域。
+                {
+                    let l_probe = self.eval_expr(*list, depth + 1)?;
+                    let elem = match self.out.types.get(self.slot_ty_all(l_probe) as usize).cloned()
+                    {
+                        Some(MirType::List(ListTypeRef { elem })) => Some(elem),
+                        _ => None,
+                    };
+                    if matches!(elem, Some(e) if matches!(self.out.types.get(e as usize), Some(MirType::Str)))
+                    {
+                        let elem = elem.unwrap();
+                        let view_ty = self.out.intern_type(MirType::StrView);
+                        let i = self.eval_expr(*index, depth + 1)?;
+                        let view = self.temp_ty(view_ty)?;
+                        self.emit(
+                            MirInstr::ListFieldView {
+                                dst: view,
+                                base: l_probe,
+                                index: i,
+                                path: Vec::new(),
+                            },
+                            sp,
+                        )?;
+                        if ty == view_ty {
+                            return Ok(view);
+                        }
+                        let dst = self.temp_ty(elem)?;
+                        self.emit(MirInstr::StrToOwned { dst, view }, sp)?;
+                        return Ok(dst);
+                    }
+                }
                 if self.hir_elem_owned(*list)? {
                     // PLAN-962: on the aggregates surface a whole-element
                     // read is a VIEW read — the resolver only produces it
