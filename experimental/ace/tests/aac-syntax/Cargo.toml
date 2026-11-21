@@ -56,7 +56,3 @@ required-features = ["aac-semantics"]
 
 
 
-[[test]]
-name = "probe_run"
-path = "tests/probe_run.rs"
-required-features = ["aac-semantics"]
