@@ -1,0 +1,73 @@
+// AAC control module (PLAN-1049 T-02): static control-effect classification.
+// A short-circuit operator's RHS must never become an unconditional effect:
+// the audit names every lazy `&&`/`||` site and classifies its RHS for
+// trap-capable operators, so a later stage can assert the lowering kept the
+// effect lazy (the 1055 base MIR already executes lazy boolean control flow).
+//
+// Bounded profile: free function bodies with scalar boolean conditions.
+// Closures, dynamic dispatch, async/task effects and full resource crossing
+// are named successors (1050/1053).
+
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use std.conv.from_int
+
+pub fn control_unsupported() int { return -74 }
+
+fn is_trap_op(pg List<int>, ast List<int>, row int) bool {
+    let node_kind = kind(pg, ast, row)
+    if (node_kind == "slash" || node_kind == "percent") { return true }
+    if (node_kind == "call") { return true }
+    return false
+}
+
+// Does the subtree at `node` contain a trap-capable operator?
+fn rhs_has_trap(pg List<int>, ast List<int>, links List<int>, node int, fuel List<int>, deadline i64) int {
+    if (!take_step(fuel, deadline)) { return -1 }
+    if (is_trap_op(pg, ast, node)) { return 1 }
+    var child = first_child(links, node)
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        let found = rhs_has_trap(pg, ast, links, child, fuel, deadline)
+        if (found != 0) { return found }
+        child = next_sibling(links, child)
+    }
+    return 0
+}
+
+// One report line per lazy operator in the function body:
+// "CTL-LAZY <op> <span-start>..<span-end> RHS=<trap|pure>".
+pub fn lazy_report_line(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, fn_row int, fuel List<int>, deadline i64) Str {
+    let body_start = start_of(ast, fn_row)
+    let body_end = end_of(ast, fn_row)
+    var line = ""
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return "" }
+        let start = start_of(ast, row)
+        let node_kind = kind(pg, ast, row)
+        if (start >= body_start && start <= body_end && (node_kind == "andand" || node_kind == "oror")) {
+            let left = first_child(links, row)
+            if (left >= 0) {
+                let op = next_sibling(links, left)
+                let rhs = next_sibling(links, op)
+                if (rhs >= 0) {
+                    let trap = rhs_has_trap(pg, ast, links, rhs, fuel, deadline)
+                    if (trap < 0) { return "" }
+                    var cls = "pure"
+                    if (trap == 1) { cls = "trap" }
+                    line = line + "CTL-LAZY " + node_kind + " " + from_int(start) + ".." + from_int(end_of(ast, row)) + " RHS=" + cls + "\n"
+                }
+            }
+        }
+        row = row + 1
+    }
+    return line
+}

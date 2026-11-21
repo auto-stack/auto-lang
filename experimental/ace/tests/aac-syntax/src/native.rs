@@ -133,6 +133,14 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/cte/cte.at").into(),
         ),
         (
+            "control.at".into(),
+            include_str!("../../../aac/semantics/control/control.at").into(),
+        ),
+        (
+            "resources.at".into(),
+            include_str!("../../../aac/semantics/resources/resources.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),
@@ -704,6 +712,32 @@ pub fn run_ct_report_case(sample: &[u8], target: &str) -> Result<String, String>
         let mut cmd = semantic_command(exe, root, &input, &output, None, false, None);
         cmd.env("AAC1048_CT", "1").env("AAC1055_CT_TARGET", target);
         execute_report(cmd, &output, "ct-report")
+    })
+}
+
+/// PLAN-1049: static control-effect classification (lazy && / || sites).
+pub fn run_control_case(sample: &[u8]) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("control", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write control input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, false, None);
+        cmd.env("AAC1049_CONTROL", "1");
+        execute_report(cmd, &output, "control")
+    })
+}
+
+/// PLAN-1049: bounded use-after-move audit (rejection before the backend).
+pub fn run_resources_case(sample: &[u8]) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("resources", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write resources input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, true, None);
+        cmd.env("AAC1049_RESOURCES", "1");
+        execute_report(cmd, &output, "resources")
     })
 }
 

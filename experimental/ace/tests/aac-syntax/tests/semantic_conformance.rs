@@ -1914,3 +1914,52 @@ fn aac1048_ct_constant_change_recomputes_no_stale_freeze() {
     let (_, outcome4) = run_instance_ct_case(k4.as_bytes(), "f", "int", "4", false).expect("K=4");
     assert_eq!(outcome4.unwrap()["value"], json!({"i32": 8}));
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1049: control effects and bounded resource audit (V-01..V-05).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn aac1049_control_lazy_sites_classify_trap_rhs() {
+    use ace_aac_syntax_conformance::run_control_case;
+
+    // V-04 first pair: the lazy && / || RHS is classified, never an
+    // unconditional effect; the classification is pure and in-process.
+    let source = concat!(
+        "fn f(a bool, b int) bool { return false && 1 / 0 > 0 }\n",
+        "fn g(a bool) bool { return true || a }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let report = run_control_case(source.as_bytes()).expect("control classification");
+    assert!(report.starts_with("aac.control-report/1\n"), "{report}");
+    assert!(
+        report.contains("CTL-LAZY andand") && report.contains("RHS=trap"),
+        "lazy && with trap RHS: {report}"
+    );
+    assert!(report.contains("CTL-LAZY oror"), "lazy || site: {report}");
+}
+
+#[test]
+fn aac1049_resources_rejects_use_after_move_before_backend() {
+    use ace_aac_syntax_conformance::run_resources_case;
+
+    // V-02/V-04: reading a moved local is rejected with a named diagnostic;
+    // the legal neighbour (no read after the transfer) proceeds.
+    let moved = concat!(
+        "fn f() int { let s = 5\n let t = s.move\n return s }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let rejected = run_resources_case(moved.as_bytes()).expect("audit runs");
+    assert!(
+        rejected.starts_with("ERROR resource.use-after-move s "),
+        "named rejection expected: {rejected}"
+    );
+
+    let fine = concat!(
+        "fn f() int { let s = 5\n return s }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let accepted = run_resources_case(fine.as_bytes()).expect("audit passes");
+    assert!(accepted.starts_with("aac.type-report/1"), "{accepted}");
+    assert!(!accepted.contains("use-after-move"), "{accepted}");
+}

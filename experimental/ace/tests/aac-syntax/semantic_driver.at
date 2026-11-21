@@ -53,6 +53,8 @@ use app.meta.fn_signature_line
 use app.meta.record_shape_line
 use app.meta.required_line
 use app.cte.ct_read_tokens
+use app.control.lazy_report_line
+use app.resources.use_after_move
 use app.nominal_layout.type_recursive_layout_error
 use app.patterns.type_exhaustive_error
 use app.patterns.type_match_branch_error
@@ -622,6 +624,48 @@ fn project(steps int) Str {
             row3 = row3 + 1
         }
         return "ERROR ct.entry\n"
+    }
+    let control_on = get("AAC1049_CONTROL")
+    if (control_on == "1") {
+        var links4 = List<int>.new()
+        if (!build_child_index(ast, links4)) { return "ERROR resource.ast\n" }
+        var fuel4 = List<int>.new()
+        fuel4.push(steps)
+        let now4 = mono_ms()
+        if (now4 < 0i64) { return "ERROR os.clock\n" }
+        var ctl_report = "aac.control-report/1\n"
+        var row4 = 0
+        for (row4 < row_count(ast)) {
+            if (kind(pg, ast, row4) == "fn-item") {
+                let line = lazy_report_line(pg, ast, links4, src, names, row4, fuel4, now4 + 5000i64)
+                if (line.len() > 0) { ctl_report = ctl_report + line }
+            }
+            row4 = row4 + 1
+        }
+        return ctl_report
+    }
+    let resources_on = get("AAC1049_RESOURCES")
+    if (resources_on == "1") {
+        var links5 = List<int>.new()
+        if (!build_child_index(ast, links5)) { return "ERROR resource.ast\n" }
+        var fuel5 = List<int>.new()
+        fuel5.push(steps)
+        let now5 = mono_ms()
+        if (now5 < 0i64) { return "ERROR os.clock\n" }
+        var row5 = 0
+        for (row5 < row_count(ast)) {
+            if (kind(pg, ast, row5) == "fn-item") {
+                var findings = List<int>.new()
+                let status = use_after_move(pg, ast, links5, src, row5, findings, fuel5, now5 + 5000i64)
+                if (status != 0) { return "ERROR resource.semantic\n" }
+                if (findings.len() >= 6) {
+                    let name = span_text(src, findings.get(4), findings.get(4) + findings.get(5))
+                    return "ERROR resource.use-after-move " + name + " " + from_int(findings.get(2)) + ".." + from_int(findings.get(3)) + "\n"
+                }
+            }
+            row5 = row5 + 1
+        }
+        return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps, ct_deadline)
     }
     let instances_on = get("AAC1048_INSTANCES")
     if (instances_on.len() > 0 && roots.len() > 0) {

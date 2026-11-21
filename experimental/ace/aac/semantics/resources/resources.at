@@ -1,0 +1,112 @@
+// AAC resources module (PLAN-1049 T-04/T-05): bounded use-after-move audit
+// in Auto, running before binding so an owned transfer can be rejected with
+// a named diagnostic before any backend work. The audit walks the function
+// body's source text: a `.move` transfer of a local followed by a later bare
+// reference to the same local is a use-after-move.
+//
+// Bounded profile: free function bodies with text locals. Full borrow/move/
+// drop/alias facts, cross-branch merging, loop back-edges, callbacks and
+// futures are named successors (1050/1053).
+
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.semantic_tree.span_text
+use std.conv.from_int
+
+fn ident_start(src List<int>, at int) int {
+    var p = at - 1
+    for (p >= 0) {
+        let b = src.get(p)
+        let letter = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || b == 95
+        if (!letter) { return p + 1 }
+        p = p - 1
+    }
+    return 0
+}
+
+fn ident_end(src List<int>, at int) int {
+    var p = at
+    for (p < src.len()) {
+        let b = src.get(p)
+        let letter = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
+        if (!letter) { return p }
+        p = p + 1
+    }
+    return src.len()
+}
+
+fn same_ident(src List<int>, lo int, hi int, at int) bool {
+    let s = ident_start(src, at)
+    let e = ident_end(src, at)
+    if (e - s != hi - lo) { return false }
+    var i = 0
+    for (i < e - s) {
+        if (src.get(lo + i) != src.get(s + i)) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+// The audit over one function body. `out` receives flat entries
+// [move_stmt_start, move_stmt_end, use_start, use_end, name_start, name_len].
+pub fn use_after_move(pg List<int>, ast List<int>, links List<int>, src List<int>, fn_row int, out List<int>, fuel List<int>, deadline i64) int {
+    let body_start = start_of(ast, fn_row)
+    let body_end = end_of(ast, fn_row)
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        let start = start_of(ast, row)
+        if (start >= body_start && start <= body_end && kind(pg, ast, row) == "let-stmt") {
+            let stmt_start = start_of(ast, row)
+            let stmt_end = end_of(ast, row)
+            var at = stmt_start
+            var moved_start = -1
+            var moved_len = 0
+            for (at < stmt_end) {
+                if (!take_step(fuel, deadline)) { return -1 }
+                if (src.get(at) == 46 && at + 1 < stmt_end && src.get(at + 1) == 109) {
+                    let ident_at = ident_start(src, at)
+                    if (at - ident_at > 0) {
+                        moved_start = ident_at
+                        moved_len = at - ident_at
+                        break
+                    }
+                }
+                at = at + 1
+            }
+            if (moved_start >= 0) {
+                var pos = stmt_end + 1
+                for (pos < body_end) {
+                    if (!take_step(fuel, deadline)) { return -1 }
+                    let b = src.get(pos)
+                    let letter = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || b == 95
+                    if (letter) {
+                        let e = ident_end(src, pos)
+                        if (same_ident(src, moved_start, moved_start + moved_len, pos)) {
+                            let after = e
+                            if (after < body_end && src.get(after) != 46) {
+                                out.push(stmt_start)
+                                out.push(stmt_end)
+                                out.push(pos)
+                                out.push(e)
+                                out.push(moved_start)
+                                out.push(moved_len)
+                                return 0
+                            }
+                        }
+                        pos = e
+                    }
+                    pos = pos + 1
+                }
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
