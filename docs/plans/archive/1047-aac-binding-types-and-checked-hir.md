@@ -189,11 +189,13 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [x] T-09 声明和foreign语义接缝 | work | T-05；§5实际输入合同 | 补跨模块公开类型/常量/方法、别名/重导出、全局初始化和完整数值类型/字面量规则；现AC descriptor/HIR输入同样走Auto binder/verify；语言级规范化/常量处理或已有pass也在主体中，pass版本/来源/资源/effect保持不可推给机器后端，但不强加新优化器。foreign声明消费967规范化接口元数据，核参数/返回/所有权/回调签名与错误模型，生成事实留原owner，不重做Rust/C解析器。用统一接口把未决CT/实例/高级资源交其生产者。 声明标注元数据进入版本化事实并指向其实际语义consumer；泛型约束/CT生成声明与未决异步效果有明确1048/1049交接，不能静默删除。 修 required 标注/foreign 类型、调用签名与 ABI 验证接缝；同例覆盖当前 AC 与 AAC。 | §9 的 967 正反例和 68 定向阶段、声明、数值及同源执行收据。现 AC Unit 和窄整数机器差额交 1068/机器后端，证据保留。 |
 | [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | §9 105 项阶段门、修复控制及 39d092c36 最终固定三组。 |
 | [x] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | §9 r6 final pass 绑定 39d092c36 与 SD-01/02/03。 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 已合入、归档、移除专树与分支。唯一待项为已登记 scope 的删除与验收，执行器自动审批拦截。 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 已合入、归档、移除专树与分支；材料scope（456,317 文件 / 37,929,124,489 bytes）经用户指示在 Codex 外删除并核验消失，登记表刷新为 deleted-at-merge。9/9 完成。 |
 
 ## 9. 复审记录
 
 2026-11-21 `stage: merge`，`PLAN-1047:r6`，outcome `blocked`（只余清理）。归档提交 `b89da215de40d53c558359aa6c25467dc9d094f3` 已在 master。两个工作树均以最新 `wt-guard.ps1` clean 后移除，语言 9.124s，辅助 0.179s，删除分支 `plan-1047-dev` 并确认组目录消失。材料 scope 归属、绝对路径和 reparse-point 校验均已核实。对 `D:/autostack/plan-artifacts/plan-1047` 的合并清理命令及独立、单一字面路径 PowerShell 命令均在执行前被自动审批以 `blocked by policy` 拒绝递归删除。目录仍在，审计 37,929,124,489 bytes。登记表保有该条，状态 `archived-cleanup-blocked`，已写交付和归档提交及恢复条件。T-08 保待办，后续只清理该目录、验证实际删除、刷新登记与收尾记录。没有具名证据持有。普通变更未启动 release 或部署。
+
+2026-11-21 T-08 收尾：经用户指示由 ZCode 在 Codex 外执行删除。删前全目录重扫 reparse point clean（pwsh `Get-ChildItem -Recurse -Attributes ReparsePoint`），无 cargo/rustc 等相关运行进程；`rd /s /q` 仅指向唯一登记路径 `D:/autostack/plan-artifacts/plan-1047`，exit 0；`Test-Path` 复核目录消失，登记根 86 个兄弟 scope 不受影响。登记表 `D:/autostack/plan-artifacts/.retention/policy.json` 条目翻为 deleted-at-merge（移除 cleanup_blocker，cleanup_status=cleaned、remaining_bytes=0、pre_cleanup_files=456,317、closed=2026-11-21T08:38:46+08:00），last_refresh 同步刷新。登记审计值 37,929,124,489 bytes 回收。至此 T-01..09 全部完成（9/9），无遗留持有。
 
 归档提交 `b89da215de40d53c558359aa6c25467dc9d094f3`。清理前路径对账已核 `D:/autostack/.wt/lang-1047/auto-lang` 54,559 文件、18,528,758,337 bytes，组内只读 `auto-down` 1,318 文件、27,021,855 bytes；登记 `D:/autostack/plan-artifacts/plan-1047` 456,317 文件、37,929,124,489 bytes。三处 reparse-point 检查均 clean，未见相关运行进程。工作树内是常规 debug/runtime-dev Cargo 输出，其余 CDB、Rust、A2R、AV/AC 探针、外部提供方、固定组各轮收据及临时目录均在登记 scope。已把所需命令、身份、结果与异常边界折叠到本节。D-1047-AC-NARROW/UNIT 可从 canonical 考例重放，无唯一未保存件，未留材料持有。
 
