@@ -654,6 +654,7 @@ pub struct AgePackageCompilation {
 pub struct AgeWidgetRef {
     pub module: String,
     pub node: String,
+    pub authored_node: String,
     pub span: Span,
     /// Bindings in the child's declaration order, including authored defaults.
     pub properties: Vec<AgeWidgetProperty>,
@@ -2326,6 +2327,7 @@ pub(crate) fn bind_widget_packages(
             .or_default().push(AgeWidgetRef {
                 module: target.module.clone(),
                 node: target.node.name.name.clone(),
+                authored_node: target.node.authored_name.clone(),
                 span: site.element.span,
                 properties,
                 events,

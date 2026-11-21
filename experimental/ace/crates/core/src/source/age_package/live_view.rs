@@ -237,7 +237,7 @@ impl ViewBody<'_> {
                         self.items(&element.items, scope, stmts, element_tag, true)?;
                         continue;
                     }
-                    let tag = site.map_or(element.tag.as_str(), |site| site.node.as_str());
+                    let tag = site.map_or(element.tag.as_str(), |site| site.authored_node.as_str());
                     self.emit(
                         stmts,
                         "element",

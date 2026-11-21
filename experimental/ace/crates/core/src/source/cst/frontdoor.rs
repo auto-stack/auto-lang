@@ -1045,6 +1045,18 @@ pub(crate) fn project_packages_front_with_widget_lists(
             // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
             // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
             for node in nodes {
+                if !node.fields.iter().any(|field| field.name == "store") {
+                    if let Some(span) = node.handlers.iter().find_map(|handler| {
+                        crate::source::age_component::stmt_refs_store(&handler.stmts)
+                    }) {
+                        return Err(err(
+                            "source.age.component-unsupported",
+                            "model has no field `store`. Declare the store in the same package unit."
+                                .to_string(),
+                            span,
+                        ));
+                    }
+                }
                 items.extend(node.inferred_records.iter().cloned().map(crate::source::ast::Item::Type));
                 for param in &node.params {
                     use crate::source::ast::{ExprKind, TypeRef, TypeWord};

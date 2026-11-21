@@ -485,6 +485,8 @@ pub struct ComponentNode {
     /// PLAN-981（IF-981-ORIGINAL）：作者写的 typed 参数（`(x: float, tint: Material2D)`）。
     pub params: Vec<ComponentParam>,
     pub name: Ident,
+    /// The declaration's spelling before call-site specialization.
+    pub authored_name: String,
     pub fields: Vec<ComponentField>,
     pub handlers: Vec<ComponentHandler>,
     pub view: ComponentView,
@@ -1538,12 +1540,10 @@ pub fn project_component_candidates(src: &str) -> Result<Vec<ComponentNode>, Vec
 /// PLAN-105 T-02：表达式是否含 `.store.*` 引用链（组件面 S1 具名拒用）。
 fn expr_refs_store(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Field { base, name } => {
-            name.name == "store"
-                || matches!(&base.kind, ExprKind::Var(v) if v.name == "store")
-                || expr_refs_store(base)
-        }
-        ExprKind::Method { recv, .. } | ExprKind::MethodCall { recv, .. } => expr_refs_store(recv),
+        ExprKind::Field { base, .. } => is_store_base(e) || expr_refs_store(base),
+        ExprKind::Method { recv, .. } | ExprKind::MethodCall { recv, .. } => {
+            is_store_base(recv) || expr_refs_store(recv)
+        },
         ExprKind::TextDisplay(inner) => expr_refs_store(inner),
         ExprKind::Binary { lhs, rhs, .. } => expr_refs_store(lhs) || expr_refs_store(rhs),
         ExprKind::Call { args, .. } => args.iter().any(|a| match a {
@@ -1557,7 +1557,7 @@ fn expr_refs_store(e: &Expr) -> bool {
 }
 
 /// PLAN-105 T-02：语句面里是否有 `.store.*` 引用（返回首个 span）。
-fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
+pub(crate) fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
     for st in stmts {
         match st {
             ComponentStmt::Assign(a) => {

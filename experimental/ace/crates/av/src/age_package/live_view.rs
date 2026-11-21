@@ -257,7 +257,7 @@ impl Composition<'_> {
                 .get(owner)
                 .into_iter()
                 .flatten()
-                .find(|site| site.span.start == element.site && site.node == element.tag);
+                .find(|site| site.span.start == element.site && site.authored_node == element.tag);
             let Some(site) = site else {
                 self.expand(owner, &mut element.children)?;
                 continue;

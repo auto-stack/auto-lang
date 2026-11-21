@@ -19,7 +19,7 @@ use crate::source::ast::*;
 use crate::source::SourceProfile;
 // PLAN-980（B-DIALECT-I 完整批）：组件面 widget 成员槽位的结构类型。
 use crate::source::age_component::{
-    ComponentAssign, ComponentDesignEntry, ComponentEntryValue, ComponentField, ComponentHandler,
+    ComponentAssign, ComponentDesignEntry, ComponentEntryValue, ComponentField, ComponentHandler, ComponentStmt,
     ComponentClassPart, ComponentMemberRow, ComponentMsgVariant, ComponentViewElement, ComponentViewEntry,
     ComponentViewItem,
 };
@@ -5568,6 +5568,7 @@ impl<'a> Engine<'a> {
             .field_child(node, "name")
             .expect("component node name leaf");
         let mut name = ident_of(&mut self.cx, name_leaf);
+        let authored_name = name.name.clone();
         if let Some(specialized) = widget_lists.and_then(|projection| projection.specialized_name.as_ref()) {
             name.name.clone_from(specialized);
         }
@@ -6227,6 +6228,7 @@ impl<'a> Engine<'a> {
             package_imports,
             params,
             name,
+            authored_name,
             fields,
             handlers,
             view: ComponentView {
@@ -7499,7 +7501,7 @@ impl<'a> Engine<'a> {
                         let mut one = Vec::new();
                         self.collect_view_stmt(inner, &mut one);
                         if let Some(a) = one.pop() {
-                            stmts.push(crate::source::age_component::ComponentStmt::Assign(a));
+                            stmts.push(self.project_handler_assignment(a));
                         }
                     } else if let Some(call_node) = self.cx.field_child(inner, "call") {
                         match self.project_channel_call(call_node, channel_names) {
@@ -9078,6 +9080,18 @@ impl<'a> Engine<'a> {
         self.project_on_stmts(&body)
     }
 
+    fn project_handler_assignment(&self, assign: ComponentAssign) -> ComponentStmt {
+        if self.cx.profile == SourceProfile::AgePackage && assign.bare {
+            ComponentStmt::AssignLocal {
+                name: Ident { name: assign.field, span: assign.span },
+                value: assign.rhs,
+                span: assign.span,
+            }
+        } else {
+            ComponentStmt::Assign(assign)
+        }
+    }
+
     /// Project one inner handler statement. Widget host calls are collected
     /// separately by the caller.
     fn project_on_stmt_inner(
@@ -9091,7 +9105,7 @@ impl<'a> Engine<'a> {
             "age-view-assign-stmt" => {
                 let mut tmp = Vec::new();
                 self.collect_view_stmt(inner, &mut tmp);
-                tmp.pop().map(ComponentStmt::Assign)
+                tmp.pop().map(|assign| self.project_handler_assignment(assign))
             }
             // PLAN-105 T-02（U03 真语料 013）：C 风格条件循环 `for <cond> { … }`。
             "age-on-for-cond" => {
