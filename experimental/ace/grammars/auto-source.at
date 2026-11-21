@@ -3181,7 +3181,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
         // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
         // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
-        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) {
+        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) {
             ident(field: "name")
             lt() {}
             const-args(field: "cargs")
@@ -3190,9 +3190,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             args(field: "args")
             rparen() {}
         }
-        const-args(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) { const-arg() {} many { const-arg-tail() {} } }
-        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) { comma() {} const-arg() {} }
-        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) { int-lit(field: "lit") }
+        const-args(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { const-arg() {} many { const-arg-tail() {} } }
+        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { comma() {} const-arg() {} }
+        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
         // PLAN-105 W105：age-component 回归（W38 首开，W85 手工重建文法时丢失）——
         // 012/013 的 `List<T>.new()` 组件面 handler/初值形。
