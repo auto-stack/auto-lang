@@ -49,6 +49,9 @@ use app.instances_core.instance_recursive
 use app.instances_core.instance_unsupported
 use app.instances_expand.rewrite_range
 use app.instances_expand.run_instance_pass
+use app.meta.fn_signature_line
+use app.meta.record_shape_line
+use app.meta.required_line
 use app.nominal_layout.type_recursive_layout_error
 use app.patterns.type_exhaustive_error
 use app.patterns.type_match_branch_error
@@ -68,8 +71,10 @@ use app.semantic_tree.build_child_index
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
+use app.semantic_tree.first_child
 use app.semantic_tree.kind
 use app.semantic_tree.module_name_at
+use app.semantic_tree.next_sibling
 use app.semantic_tree.parse_semantic_source
 use app.semantic_tree.row_count
 use app.semantic_tree.source_id
@@ -553,6 +558,34 @@ fn project(steps int) Str {
             if (result.len() > 0) { return result }
             add_module_name(names, key)
         }
+    }
+    let meta_on = get("AAC1048_META")
+    if (meta_on == "1") {
+        var links2 = List<int>.new()
+        if (!build_child_index(ast, links2)) { return "ERROR resource.ast\n" }
+        var fuel2 = List<int>.new()
+        fuel2.push(steps)
+        let now2 = mono_ms()
+        if (now2 < 0i64) { return "ERROR os.clock\n" }
+        var meta_report = "aac.meta-report/1\n"
+        var row2 = 0
+        for (row2 < row_count(ast)) {
+            let node_kind = kind(pg, ast, row2)
+            if (node_kind == "fn-item") {
+                let line = fn_signature_line(pg, ast, links2, src, names, row2, fuel2, now2 + 5000i64)
+                if (line.len() > 0) { meta_report = meta_report + line + "\n" }
+            }
+            if (node_kind == "type-item") {
+                let line = record_shape_line(pg, ast, links2, src, names, row2, fuel2, now2 + 5000i64)
+                if (line.len() > 0) { meta_report = meta_report + line + "\n" }
+            }
+            if (node_kind == "attribute-entry") {
+                let line = required_line(pg, ast, links2, src, names, row2, fuel2, now2 + 5000i64)
+                if (line.len() > 0) { meta_report = meta_report + line + "\n" }
+            }
+            row2 = row2 + 1
+        }
+        return meta_report
     }
     let instances_on = get("AAC1048_INSTANCES")
     if (instances_on.len() > 0 && roots.len() > 0) {

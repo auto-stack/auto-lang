@@ -1819,3 +1819,38 @@ fn aac1048_instances_cross_module_owner_identity() {
     }
     assert_eq!(instances, 2, "each module's own call materializes its own instance: {sheet}");
 }
+
+#[test]
+fn aac1048_meta_static_projection_is_in_process_and_never_av() {
+    use ace_aac_syntax_conformance::run_meta_case;
+
+    // The meta projection is a pure static report: no binding pipeline runs
+    // (no TYPE/DECL lines) and no AV bridge is invoked (no CT outcome).
+    let source = concat!(
+        "fn id<T>(x T) T { return x }\n",
+        "fn pick(a int, b bool) int { return a }\n",
+        "type Point { x int\n y int }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let report = run_meta_case(source.as_bytes()).expect("static meta projection");
+    assert!(report.starts_with("aac.meta-report/1\n"), "{report}");
+    assert!(!report.contains("TYPE "), "meta must not run the type pipeline: {report}");
+    assert!(report.contains("META-FN app.main pick (a:int, b:bool) -> int"), "{report}");
+    assert!(report.contains("META-REC app.main Point { x:int, y:int }"), "{report}");
+}
+
+#[test]
+fn aac1048_meta_resolves_required_labels_on_owners() {
+    use ace_aac_syntax_conformance::run_meta_case;
+
+    // `#[required(...)]` annotations resolve to their declaration owner with
+    // the argument spellings; other labels are not reported.
+    let source = concat!(
+        "fn setup() int { return 1 }\n",
+        "fn main() int { return 7 }\n",
+        "#[required(host = \"x86_64\", mode = \"aac\")] fn prepare(x int) int { return x }\n",
+    );
+    let report = run_meta_case(source.as_bytes()).expect("required projection");
+    assert!(report.contains("META-REQUIRED prepare host = \"x86_64\", mode = \"aac\""), "{report}");
+    assert!(!report.contains("META-REQUIRED setup"), "unannotated owner leaked: {report}");
+}

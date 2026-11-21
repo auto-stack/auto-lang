@@ -43,7 +43,7 @@ pub use native::run_semantic_foreign_case;
 
 pub use native::{
     native_fingerprint, run_base_mir_case, run_base_mir_control, run_core_hir_case,
-    run_core_hir_project, run_instance_case, run_instance_project, run_native_case,
+    run_core_hir_project, run_instance_case, run_instance_project, run_meta_case, run_native_case,
     run_native_catalog, run_native_projection, run_semantic_case, run_semantic_project,
     run_type_case, run_type_project, semantic_fingerprint, semantic_modules, DRIVER_EXE,
     DRIVER_MANIFEST, NATIVE_DRIVER_SOURCE, SEMANTIC_DRIVER_EXE, SEMANTIC_DRIVER_SOURCE,

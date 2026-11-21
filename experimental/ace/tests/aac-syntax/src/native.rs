@@ -125,6 +125,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/instances/instances_expand.at").into(),
         ),
         (
+            "meta.at".into(),
+            include_str!("../../../aac/semantics/meta/meta.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),
@@ -670,6 +674,19 @@ pub fn run_instance_case(sample: &[u8]) -> Result<(String, String), String> {
 
 /// PLAN-1048: project-mode semantic run with the instance pre-pass enabled.
 /// The worksheet carries the cross-module instance identity table.
+/// PLAN-1048: pure static meta projection (no binding pipeline, no AV).
+pub fn run_meta_case(sample: &[u8]) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("meta", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write meta input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, false, None);
+        cmd.env("AAC1048_META", "1");
+        execute_report(cmd, &output, "meta")
+    })
+}
+
 pub fn run_instance_project(modules: &[(&str, &str)]) -> Result<(String, String), String> {
     let exe = prepared_semantic()?;
     with_fixture("instance-project", |root| {

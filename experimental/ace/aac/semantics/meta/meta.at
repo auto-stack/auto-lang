@@ -1,0 +1,237 @@
+// AAC meta module (PLAN-1048 T-03): static semantic metadata projection and
+// required-annotation resolution in Auto. This surface never executes on the
+// AV bridge — it is a pure in-process projection over the parsed AST, so
+// static meta can never be counted as compile-time execution (V-05).
+//
+// Bounded profile: free functions and record type items; required labels on
+// declarations are resolved to their owner and argument spellings. The
+// generated declarations produced by the CT stage (T-04/T-09) are rebound by
+// the ordinary binding/typecheck pipeline, which is the source/hygiene rule:
+// generated text carries no separate authority.
+
+use app.binding.take_step
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.semantic_tree.span_text
+
+pub fn meta_unsupported() int { return -74 }
+
+// The annotation word of one declaration attribute (`@required(...)` etc.).
+pub fn annotation_name(pg List<int>, ast List<int>, links List<int>, src List<int>, entry int) Str {
+    let name = child_with_role(pg, ast, links, entry, "name")
+    if (name < 0) { return "" }
+    return spelling(src, ast, name)
+}
+
+// Resolve the declaration row an attribute entry belongs to (the owner
+// search is the declarations module's, mirrored here for the meta report).
+fn attribute_owner(pg List<int>, ast List<int>, links List<int>, entry int) int {
+    var node = parent(ast, entry)
+    if (kind(pg, ast, node) == "attribute-entry-tail") { node = parent(ast, node) }
+    if (kind(pg, ast, node) != "declaration-attribute") { return -1 }
+    let wrapper = parent(ast, node)
+    let category = kind(pg, ast, wrapper)
+    if (category == "field-member" || category == "type-item") { return wrapper }
+    if (category != "attributed-item" && category != "attributed-method") { return -1 }
+    let declared = child_with_role(pg, ast, links, wrapper, "owner")
+    if (declared < 0) { return -1 }
+    let actual = first_child(links, declared)
+    if (actual < 0) { return -1 }
+    if (kind(pg, ast, actual) == "public-item") {
+        let body = child_with_role(pg, ast, links, actual, "body")
+        if (body < 0) { return -1 }
+        return first_child(links, body)
+    }
+    return actual
+}
+
+fn declaration_name(pg List<int>, ast List<int>, links List<int>, src List<int>, owner int) Str {
+    var name = child_with_role(pg, ast, links, owner, "name")
+    if (name < 0) {
+        let tail = child_with_kind(pg, ast, links, owner, "fn-tail")
+        if (tail >= 0) { name = child_with_role(pg, ast, links, tail, "name") }
+    }
+    if (name < 0) { return "" }
+    return spelling(src, ast, name)
+}
+
+// ---------------------------------------------------------------------------
+// Function signature projection (no binding, no execution).
+// ---------------------------------------------------------------------------
+
+fn param_spelling(pg List<int>, ast List<int>, links List<int>, src List<int>, param int, out List<Str>) int {
+    let name = child_with_role(pg, ast, links, param, "name")
+    let ann = child_with_role(pg, ast, links, param, "ty")
+    var text = ""
+    if (name >= 0) { text = spelling(src, ast, name) }
+    text = text + ":"
+    if (ann >= 0) {
+        let word = child_with_role(pg, ast, links, ann, "word")
+        if (word >= 0) {
+            text = text + spelling(src, ast, word)
+        } else {
+            text = text + spelling(src, ast, ann)
+        }
+    }
+    out.push(text.move)
+    return 0
+}
+
+// The structured signature line: "META-FN <module> <name> (<p:t,..>) -> <ret>".
+pub fn fn_signature_line(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, fn_row int, fuel List<int>, deadline i64) Str {
+    var sig = fn_row
+    let tail = child_with_kind(pg, ast, links, fn_row, "fn-tail")
+    if (tail >= 0) { sig = tail }
+    var name = child_with_role(pg, ast, links, sig, "name")
+    if (name < 0) { name = child_with_role(pg, ast, links, fn_row, "name") }
+    var line = "META-FN "
+    let module = module_name_of(modules, source_id(ast, fn_row))
+    line = line + module + " "
+    if (name < 0) { return "" }
+    line = line + spelling(src, ast, name) + " ("
+    let params = child_with_role(pg, ast, links, sig, "params")
+    var first = true
+    if (params >= 0) {
+        var child = first_child(links, params)
+        for (child >= 0) {
+            if (!take_step(fuel, deadline)) { return "" }
+            var param = child
+            if (kind(pg, ast, child) == "param-tail") {
+                param = child_with_kind(pg, ast, links, child, "param")
+            }
+            if (param >= 0 && kind(pg, ast, param) == "param") {
+                if (!first) { line = line + ", " }
+                first = false
+                var texts = List<Str>.new()
+                param_spelling(pg, ast, links, src, param, texts)
+                if (texts.len() > 0) { line = line + texts.remove(0) }
+            }
+            child = next_sibling(links, child)
+        }
+    }
+    line = line + ") -> "
+    var ret = child_with_role(pg, ast, links, sig, "ty")
+    if (ret < 0) { ret = child_with_role(pg, ast, links, fn_row, "ty") }
+    if (ret >= 0) {
+        let word = child_with_role(pg, ast, links, ret, "word")
+        if (word >= 0) {
+            line = line + spelling(src, ast, word)
+        } else {
+            line = line + spelling(src, ast, ret)
+        }
+    } else {
+        line = line + "void"
+    }
+    return line
+}
+
+fn module_name_of(modules List<int>, id int) Str {
+    var offset = 0
+    var current = 0
+    for (offset < modules.len()) {
+        let end = offset + 1 + modules.get(offset)
+        if (current == id) { return span_text(modules, offset + 1, end) }
+        offset = end
+        current = current + 1
+    }
+    return ""
+}
+
+// ---------------------------------------------------------------------------
+// Record shape projection.
+// ---------------------------------------------------------------------------
+
+pub fn record_shape_line(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, type_row int, fuel List<int>, deadline i64) Str {
+    var name = child_with_role(pg, ast, links, type_row, "name")
+    var line = "META-REC " + module_name_of(modules, source_id(ast, type_row)) + " "
+    if (name < 0) { return "" }
+    line = line + spelling(src, ast, name) + " { "
+    var body = child_with_role(pg, ast, links, type_row, "tail")
+    if (body < 0) { body = type_row }
+    var field = first_child(links, body)
+    var first = true
+    for (field >= 0) {
+        if (!take_step(fuel, deadline)) { return "" }
+        var member = field
+        let node_kind = kind(pg, ast, field)
+        if (node_kind == "record-members" || node_kind == "record-fields") {
+            member = first_child(links, field)
+        }
+        if (member >= 0 && kind(pg, ast, member) == "member") {
+            let inner = child_with_kind(pg, ast, links, member, "field-member")
+            if (inner >= 0) { member = inner }
+        }
+        if (member >= 0 && (kind(pg, ast, member) == "field-member" || kind(pg, ast, member) == "member")) {
+            let fname = child_with_role(pg, ast, links, member, "name")
+            let ann = child_with_role(pg, ast, links, member, "ty")
+            if (!first) { line = line + ", " }
+            first = false
+            if (fname >= 0) { line = line + spelling(src, ast, fname) }
+            line = line + ":"
+            if (ann >= 0) {
+                let word = child_with_role(pg, ast, links, ann, "word")
+                if (word >= 0) {
+                    line = line + spelling(src, ast, word)
+                } else {
+                    line = line + spelling(src, ast, ann)
+                }
+            }
+        }
+        field = next_sibling(links, field)
+    }
+    line = line + " }"
+    return line
+}
+
+// ---------------------------------------------------------------------------
+// Required labels.
+// ---------------------------------------------------------------------------
+
+// "META-REQUIRED <owner-name> <label> <args...>" for every attribute entry
+// named "required".
+pub fn required_line(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, entry int, fuel List<int>, deadline i64) Str {
+    let label = annotation_name(pg, ast, links, src, entry)
+    if (label != "required") { return "" }
+    let owner = attribute_owner(pg, ast, links, entry)
+    if (owner < 0) { return "" }
+    var line = "META-REQUIRED " + declaration_name(pg, ast, links, src, owner)
+    var args = child_with_role(pg, ast, links, entry, "args")
+    if (args >= 0) {
+        var child = first_child(links, args)
+        for (child >= 0) {
+            if (!take_step(fuel, deadline)) { return "" }
+            let node_kind = kind(pg, ast, child)
+            if (node_kind == "attribute-values") {
+                var sub = first_child(links, child)
+                for (sub >= 0) {
+                    if (!take_step(fuel, deadline)) { return "" }
+                    let sub_kind = kind(pg, ast, sub)
+                    if (sub_kind == "attribute-value") {
+                        line = line + " " + spelling(src, ast, sub)
+                    }
+                    if (sub_kind == "attribute-value-tail") {
+                        let inner = child_with_kind(pg, ast, links, sub, "attribute-value")
+                        if (inner >= 0) {
+                            line = line + ", " + spelling(src, ast, inner)
+                        }
+                    }
+                    sub = next_sibling(links, sub)
+                }
+            }
+            if (node_kind == "attribute-value") {
+                line = line + " " + spelling(src, ast, child)
+            }
+            child = next_sibling(links, child)
+        }
+    }
+    return line
+}
