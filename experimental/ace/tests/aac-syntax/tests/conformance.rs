@@ -259,6 +259,20 @@ fn aac1046_parse_parity_scalar() {
 }
 
 #[test]
+fn aac1055_conditional_for_consumes_one_condition() {
+    const SOURCE: &str = "fn main() int {\n    var n = 0\n    for n < 3 { n = n + 1 }\n    return n\n}";
+    for profile in ["aac", "scalar"] {
+        let expected = rust_oracle(profile, SOURCE);
+        assert!(expected.ends_with("DIAGS\n"), "{profile}: {expected}");
+        assert_eq!(obs("parse", profile, SOURCE), expected, "{profile}");
+    }
+    let malformed = "fn main() int { for { return 1 }\n return 0 }";
+    let expected = rust_oracle("aac", malformed);
+    assert!(!expected.ends_with("DIAGS\n"), "{expected}");
+    assert_eq!(obs("parse", "aac", malformed), expected);
+}
+
+#[test]
 fn aac1046_stage_probes() {
     let sample = "fn main() int { return 1 }";
     let lex = obs("lex", "scalar", sample);
