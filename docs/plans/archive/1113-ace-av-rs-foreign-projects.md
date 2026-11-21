@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-20
 updated_at: 2026-11-21
 plan_revision: 2
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: [PLAN-967, PLAN-978, PLAN-1043, PLAN-1078, PLAN-1093]
 supersedes_spec_components: [docs/specs/ace-migration/m2-host.md, docs/specs/ace-migration/m2-build.md]
@@ -97,7 +97,7 @@ T-02 由现有 `use.rs` + `f0_text` 先验证普通项目入口。T-04 用既有
 - [x] **AC-02** · owner_stage=`work`。适用 ABI/资源/回调行完成，V-02 的成功、拒绝、关闭与恢复有真实调用观测。
 - [x] **AC-03** · owner_stage=`work`。V-03 从仓外预编译 SDK 真跑并验证构建缓存与失败恢复；导出可检查的 AV/RS 接面。
 - [x] **AC-04** · owner_stage=`review`。逐项独立复验 AC-01–03、缺口归属及 Spec 增量，结论和证据绑定合同版本及提交。
-- [ ] **AC-05** · owner_stage=`merge`。冻结门通过后落主、沉淀已审规范与接口、归档及清理；核发布给实际消费者的来源身份。
+- [x] **AC-05** · owner_stage=`merge`。冻结门通过后落主、沉淀已审规范与接口、归档及清理；核发布给实际消费者的来源身份。
 
 ### 验证记录 · T-02 窄入口试点
 
@@ -186,10 +186,14 @@ Windows/MSVC，`rustc 1.98.0 (88d9e12ae)`，基面 `c6544ee5e`。在专属树 AC
   - 在 SD-01/SD-02 冻结入口与运行合同。固定组安排为 `auto-bindgen ace-source ace-semantics ace-lowering ace-av ace-abi ace-m2-build case-av-language-parity`，共享受检 MIR 另覆 `ace-native` 消费者。最终门归 T-07。
 - [x] T-06 独立复审
   - owner_stage=`review`。核 AC-01–04，回放关键正反例、实际入口和结果，记录遗漏、延期及替代实现，绑定 revision 和提交。
-- [ ] T-07 验证冻结交付与归档
+- [x] T-07 验证冻结交付与归档
   - owner_stage=`merge`。执行冻结受影响组，核 AC-05，落主并交接，折叠证据后按 guard 清理并完成路径对账。
 
 ## 9. 复审记录
+
+- `stage: merge | plan_id: PLAN-1113 | plan_revision: r2 | outcome: pass | delivery_commit: cf38bfcd7178e9f4bc4c66f02fe215aa06cf1c3b | archive_commit: 37cec7007 | completion_kind: delivered | cleanup: verified`。交付 `IF-ACE-AV-RS-PROJECT/1`，AC-01–05、T-01–07 全闭合。规范与仓外冒烟按下面的记录验证。
+- `PLAN-1113:r2 | cleaned | holds: none`。逐项对账了项目和 SDK 输出根、移位副本、冻结构建和执行日志、C provider 源副本、库和探针、临时目录及两棵 worktree 的 Cargo 输出。计划材料均在 `D:/autostack/plan-artifacts/plan-1113/` 或专属 worktree 内。专属 auto-lang 树（109803 个文件，31,464,730,423 字节）和只读依赖 auto-down 树（1294 个文件，26,841,766 字节）均 clean 且通过 PowerShell reparse 扫描，已移除。验证空组目录、`plan-1113-dev` 分支及两个 Git worktree 登记均已移除。证据折叠至本计划后，已删除登记过的完整材料目录（11050 个文件，1,917,445,228 字节），核路径已不存在，登记为合入清理完毕，无持有。清理分步执行，整体耗时未单独计时。
+- 周期批量回归读取 1109 的收据，关闭时 10.14 小时，无新增命中整五触发的计划，当前未到期。
 
 - `PLAN-1113:r2 | archived | completion_kind: delivered | archive: docs/plans/archive/1113-ace-av-rs-foreign-projects.md | cleanup: pending`。实际归档路径、T-01–07 唯一计数、19 条本地链接、1093 前置、落地主提交和两份规范均已核对。T-07 的工作树及证据清理由下一收尾检查完成。
 
