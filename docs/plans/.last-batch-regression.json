@@ -1,7 +1,7 @@
 {
   "last_covered_plan_id": 1109,
-  "timestamp": "2026-11-21T02:40:25Z",
-  "covered_commit": "b99fc0ff340126aa1cb27625b6b4bd78dad49d82",
+  "timestamp": "2026-11-21T04:20:52Z",
+  "covered_commit": "58dc6d8d2d2ed74c0825e02cb0785cb4dad1ec04",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
@@ -15,35 +15,40 @@
   "preparation": {
     "command": "cargo t ace-aac-bridge --prepare-only",
     "exit": 0,
-    "wall_seconds": 34.035,
-    "resource_wait_seconds": 0.405
+    "wall_seconds": 1.72,
+    "manifest_sha256": "3c99e2c7024e2d06f615467dbd6a197bbf92d11cf25e771a515e38043744e62c",
+    "rejected_debug_attempt": "exit 2 before any test execution; ordinary selection requires its ordinary prepared manifest"
   },
   "execution": {
     "exit": 1,
-    "wall_seconds": 569.502,
-    "driver_wall_seconds": 570.832,
-    "output_admission_debug_build_seconds": 25.647,
+    "wall_seconds": 255.423,
+    "driver_wall_seconds": 254.384,
+    "output_admission_debug_build_seconds": 2.388,
     "output_admission": "accepted"
   },
   "report": {
-    "path": "target/test-groups/run-tiha5g61/results.json",
-    "sha256": "fc8318b1dc3250c1a87b337e497454a321152f08c08e982dd3995524fd722a6a",
-    "source_state": "fdbd44fe381271b61096775d1bb821d68ee8030ebed23c553608a8f506618c5e"
+    "path": "target/test-groups/run-jn8f2cqw/results.json",
+    "sha256": "d1a7d31d4043ac0d8e934a3579669815afb0ad8f6d48cc59405759eca167dd06",
+    "source_state": "6b94d62a83d7c29a4e0a2f5088d6126b48af6073d4df72459d7ea0cdd40460ad",
+    "config_sha256": "69165441f188d5dde0a17a1291a0a5e2b0748f778104a7e2b027632a76611fbf"
   },
   "batch_diagnostics": {
-    "path": "C:/Users/zhaop/AppData/Local/Temp/fixed-admission-yt5la6of",
+    "path": "C:/Users/zhaop/AppData/Local/Temp/fixed-admission-as4dfnu0",
+    "state": "removed after output admission and clean wt-guard",
     "files": 5,
-    "bytes": 57224,
-    "cleanup": "Deletion command rejected by tool approval policy"
+    "bytes": 56819
   },
-  "new_reds": [
-    "infra-fixed::test_all_is_explicit_language_only — PLAN-1051 commit a2849cf3d6 sets ace-aac-bridge all=true, which contradicts the language-only selection assertion. The bridge's eight tests passed. D-1051-BATCH-SELECTION is routed to PLAN-1108 with the PLAN-1051 owner."
-  ],
+  "new_reds": [],
   "known_reds_seen": [
-    "aavm, auto-lang, auto-lang-core — Cargo target discovery rejected unmatched package overrides at indices 14 and 15 in .config/nextest-full.toml. These groups did not execute. DEBT-1098-BATCH-PREPARE / PLAN-1108.",
-    "infra-meter::test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — expects FIXTURE_WORKER release path and receives the prepared path. PLAN-1108.",
-    "infra-fixed::test_ordinary_ace_entry_requires_preparation_before_any_run — expects PREPARATION_REQUIRED and receives the live parent execution lease error. PLAN-1108."
+    "aavm, auto-lang, auto-lang-core — unmatched package overrides at indices 14 and 15 stopped discovery. No test bodies ran. PLAN-1108 / DEBT-1098-BATCH-PREPARE.",
+    "infra-meter::test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build — existing FIXTURE_WORKER path contract failure. PLAN-1108.",
+    "infra-fixed::test_all_is_explicit_language_only — ace-aac-bridge all=true contradicts the language-only assertion. D-1051-BATCH-SELECTION / PLAN-1108.",
+    "infra-fixed::test_ordinary_ace_entry_requires_preparation_before_any_run — expected PREPARATION_REQUIRED and received the parent execution lease error. PLAN-1108."
   ],
-  "verdict": "new-reds-attributed",
-  "notes": "Triggered by newly archived PLAN-1090 (%5) after the previous receipt. Started on the main checkout with no competing build or test processes. All 37 configured invocations returned a terminal group outcome. auto-playground recovered (16 PASS). a2r-actor-tests and auto-vm were NOT_APPLICABLE. UI/Man remain in their owner lanes and were not executed in this run. Linux/WSL execution follows the dedicated Linux environment rule. The report's selected_groups summary reflects the prepared ACE subset. The invocations/results arrays carry the actual 37-group execution scope."
+  "verdict": "known-reds-only",
+  "notes": [
+    "PLAN-1055 %5 trigger. The 37 group terminal outcomes and failing IDs match the prior batch.",
+    "ace-aac-bridge 8/8 and auto-playground 16/16. a2r-actor-tests and auto-vm kept original NOT_APPLICABLE conditions.",
+    "Windows lane. UI/Man owner legs remain independent. The three failed discovery groups remain explicitly unexecuted."
+  ]
 }

@@ -330,6 +330,10 @@ T-06 上一冻结候选（基面 `9ae4956fe`）已实际运行 `ace-syntax`、`a
 
 `stage: goal | plan_id: PLAN-1055 | plan_revision: r5 | round: 6 | from: merge | to: regress | status: archived | outcome: pass | worktree: removed | commit: 8483384ce | next: due batch`。1055 为上一实际覆盖提交 `b99fc0ff3` 后归档的五倍计划号，依整五规则到期；单实例在主检出等待其他重门结束。
 
+2026-11-21 `stage: regress | trigger: PLAN-1055 % 5 | covered_commit: 58dc6d8d2d2ed74c0825e02cb0785cb4dad1ec04 | outcome: known-reds-only`。主检出单实例 `cargo t ace-aac-bridge --prepare-only` exit 0，1.720s。早先 `--debug-tools` 产物被普通批量入口明确拒绝，exit 2、执行 0，随后用该入口配套的 manifest 成功启动。正式 `cargo t all` 一次有效执行，255.423s、exit 1，37 组终态 30 PASS、5 FAIL、2 条件不适用，1,313 个实际原子项，bridge 8/8，`auto-playground` 16/16。3 组 discovery 未运行（原 override 14/15），`infra-meter` 一项及 `infra-fixed` 两项与上一批精确一致，新增红 0。批量结果 SHA256 `D1A7D31D4043AC0D8E934A3579669815AFB0AD8F6D48CC59405759ECA167DD06`；批量实际生成的系统临时 output-admission 诊断含 5 文件、56,819 B，护栏验证后已移除。Windows 排除按原条件执行，UI/Man 各自 owner 腿独立，记录见 [批量收据](../.last-batch-regression.json)。
+
+`stage: goal | plan_id: PLAN-1055 | plan_revision: r5 | round: 7 | from: regress | to: done | status: archived | outcome: pass | worktree: removed | commit: 8483384ce | next: done`。本计划 AC-01..06、AC-AC-STAGED 通过，批量已有治理失败按 PLAN-1108 等原归属留账。
+
 ## 10. 待澄清事项
 
 2026-11-21 前端实施归属已由用户确认，见 §4。具体数据结构由 work 在冻结的语言、权限和预算合同内选择。
