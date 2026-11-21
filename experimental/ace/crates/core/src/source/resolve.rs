@@ -2937,7 +2937,9 @@ fn resolve_detailed_in_mode(
             )
         })
         .collect();
-    let has_synth_iters = !agg_iter_reg.by_elem.is_empty();
+    // Ordinary Auto can append synthesized async/closure bodies during binding.
+    // Keep foreign offsets provisional until those bodies have stable indices.
+    let patch_foreign = !agg_iter_reg.by_elem.is_empty() || surface.is_auto_language();
 
     // PLAN-909 §5.5 warm seeding: cached owners reference the module's
     // closure-signature table by INDEX; seeding the fresh table with the
@@ -3002,7 +3004,7 @@ fn resolve_detailed_in_mode(
                     params: sig.params,
                     defaults: vec![None; foreign_slots],
                     result: sig.result,
-                    index: if has_synth_iters {
+                    index: if patch_foreign {
                         agg_lower::FOREIGN_INDEX_SENTINEL + index
                     } else {
                         flat.len() + index
@@ -3244,7 +3246,7 @@ fn resolve_detailed_in_mode(
         agg_lower::build_all_generator_fns(&mut fns, &agg_iter_reg, &records, &mut coll);
     }
     fns.extend(closure_fns);
-    if has_synth_iters {
+    if patch_foreign && supply.and_then(|s| s.foreign()).is_some() {
         patch_foreign_sentinels(&mut fns, &mut sigs);
     }
     if let Some(w) = warm.as_mut() {
@@ -6814,10 +6816,9 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// The foreign declaration name a `CallFn` index addresses (None for
     /// source fns / out-of-range).
     fn py_foreign_name(&self, fn_index: usize) -> Option<&str> {
-        if fn_index < self.source_fn_count {
-            return None;
-        }
-        let i = fn_index - self.source_fn_count;
+        let i = fn_index
+            .checked_sub(agg_lower::FOREIGN_INDEX_SENTINEL)
+            .or_else(|| fn_index.checked_sub(self.source_fn_count))?;
         self.supply
             .and_then(|s| s.foreign())
             .and_then(|f| f.source_declarations_ref().get(i))
