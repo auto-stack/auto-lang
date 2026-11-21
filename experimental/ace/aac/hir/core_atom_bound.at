@@ -4,11 +4,19 @@ use app.core_globals.global_mode
 use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.setter_mode
-use app.core_ops.binary_code
+use app.binding.bind_budget
+use app.core_ops.operator_lane
+use app.core_ops.typed_binary_code
 use app.core_ops.extended_binary
 use app.core_ops.logical_op
 use app.core_ops.overflow_op
+use app.core_ops.wide_constant_op
+use app.numeric_literal.decode_wide_integer
+use app.numeric_literal.wide_integer_type
+use app.numeric_literal.wide_integer_word
 use app.semantic_tree.span_text
+use app.types.boolean_type
+use app.types.integer_type
 use app.types.text_view_type
 use std.conv.from_int
 use std.conv.to_int
@@ -156,12 +164,14 @@ fn named_type(bytes List<int>, tokens List<int>, values List<int>, nodes List<in
     if (type_name == "str") { return text_view_type() }
     if (type_name == "i32") { return 1 }
     if (type_name == "bool") { return 2 }
+    let builtin = wide_integer_type(type_name.clone())
+    if (builtin != 0) { return builtin }
     let type_node = by_id(bytes, tokens, values, nodes, sequence, items, types, type_name)
     let shape = value_text(bytes, tokens, values, slot(nodes, sequence, type_node, 1), 0)
     if (shape == "i32") { return 1 }
     if (shape == "bool") { return 2 }
     if (shape == "record") { return 100000 + type_node }
-    return 0
+    return wide_integer_type(shape.move)
 }
 
 fn primitive(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, items List<int>, types int, value int) int {
@@ -368,7 +378,7 @@ fn validate_places(bytes List<int>, tokens List<int>, values List<int>, nodes Li
     return 0
 }
 
-fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, rows int, extended bool, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
+fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, rows int, extended bool, numeric bool, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64) int {
     let local_group = child(bytes, tokens, nodes, items, body, "locals")
     let expr_group = child(bytes, tokens, nodes, items, body, "expressions")
     let block_group = child(bytes, tokens, nodes, items, body, "blocks")
@@ -475,10 +485,24 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
             let field_count = nodes.get(expression * 8 + 4)
             if (form == "constant") {
                 if (field_count != 2) { return -30 }
-                operation = 1
                 let value = field(bytes, tokens, nodes, fields, expression, "value")
-                if (!number(bytes, tokens, values, value, "i32", parsed)) { return -33 }
-                payload = parsed.get(0)
+                if (ty == integer_type()) {
+                    if (!number(bytes, tokens, values, value, "i32", parsed)) { return -33 }
+                    operation = 1
+                    payload = parsed.get(0)
+                } else {
+                    if (!numeric || wide_integer_word(ty).len() == 0 || value < 0 || values.get(value * 4) != 2) { return -33 }
+                    let token = values.get(value * 4 + 1)
+                    var start = tokens.get(token * 3 + 1)
+                    let end = tokens.get(token * 3 + 2)
+                    let negative = bytes.get(start) == 45
+                    if (negative) { start = start + 1 }
+                    payload = exact.len()
+                    let lane = decode_wide_integer(bytes, start, end, negative, exact, fuel, deadline)
+                    if (lane == bind_budget()) { return lane }
+                    if (lane != ty) { return -33 }
+                    operation = wide_constant_op()
+                }
             }
             if (form == "read_local") {
                 if (field_count != 2) { return -30 }
@@ -496,7 +520,10 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
             }
             if (form == "binary" || form == "logical") {
                 let op_field = field(bytes, tokens, nodes, fields, expression, "op")
-                operation = binary_code(value_text(bytes, tokens, values, op_field, 0))
+                let word = value_text(bytes, tokens, values, op_field, 0)
+                payload = operator_lane(word.clone())
+                if (!numeric && payload > boolean_type()) { return -30 }
+                operation = typed_binary_code(word.move, payload)
                 if (operation == 0 || logical_op(operation) != (form == "logical")) { return -30 }
                 if (!extended && extended_binary(operation)) { return -30 }
                 if (overflow_op(operation)) {
@@ -618,7 +645,12 @@ pub fn scalar_transport(bytes List<int>, tokens List<int>, values List<int>, nod
     return value_text(bytes, tokens, values, profile, 1) == "scalar-i32-draft"
 }
 
-pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, text_record bool, scalar bool, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>) int {
+pub fn numeric_transport(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, fields List<int>, root int) bool {
+    let profile = field(bytes, tokens, nodes, fields, root, "profile")
+    return value_text(bytes, tokens, values, profile, 1) == "source-numeric-draft"
+}
+
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, text_record bool, scalar bool, numeric bool, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, exact List<int>, fuel List<int>, deadline i64) int {
     let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
     let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
     let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
@@ -631,6 +663,10 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
     if (scalar) {
         expected_schema = "auto.hir.scalar.draft"
         expected_profile = "scalar-i32-draft"
+    }
+    if (numeric) {
+        expected_schema = "auto.hir.numeric.draft"
+        expected_profile = "source-numeric-draft"
     }
     if (schema != expected_schema || profile != expected_profile || revision != "1u32") { return -34 }
     let capabilities = field(bytes, tokens, nodes, fields, root, "requires")
@@ -696,12 +732,29 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
                 i = i + 1
             }
             claimed.push(body)
-            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, identity, signature, rows, text_record || scalar, defs, params, expressions, args, blocks, statements)
+            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, identity, signature, rows, text_record || scalar || numeric, numeric, defs, params, expressions, args, blocks, statements, exact, fuel, deadline)
             if (status != 0) { return status }
         }
         at = at + 1
     }
     if (claimed.len() != body_count) { return -31 }
+    if (!numeric) {
+        var i = 0
+        for (i < defs.len()) {
+            if (wide_integer_word(defs.get(i + 1)).len() > 0) { return -30 }
+            i = i + 4
+        }
+        i = 0
+        for (i < params.len()) {
+            if (wide_integer_word(params.get(i + 2)).len() > 0) { return -30 }
+            i = i + 4
+        }
+        i = 0
+        for (i < expressions.len()) {
+            if (wide_integer_word(expressions.get(i + 3)).len() > 0) { return -30 }
+            i = i + 5
+        }
+    }
     if (!text_runtime) {
         var i = 0
         for (i < defs.len()) {

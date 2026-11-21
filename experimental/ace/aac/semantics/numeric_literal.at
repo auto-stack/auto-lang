@@ -12,6 +12,7 @@ use app.types.integer_type
 use app.types.u8_type
 use app.types.u32_type
 use app.types.u64_type
+use std.conv.from_int
 
 pub fn literal_range() int { return -28 }
 pub fn literal_syntax() int { return -29 }
@@ -136,8 +137,6 @@ fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List
     if (limit == 0u64) { return literal_range() }
     let base = radix.to(u64)
     var magnitude = 0u64
-    var value = 0
-    let record_scalar = type_id == integer_type() && scalar.len() > 0
     var node = digits_start
     for (node < offset) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
@@ -147,16 +146,19 @@ fn inspect_literal(src List<int>, start int, end int, negative bool, scalar List
             let unsigned = digit.to(u64)
             if (magnitude > (limit - unsigned) / base) { return literal_range() }
             magnitude = magnitude * base + unsigned
-            // Accumulate a negative value directly so MIN never has to
-            // pass through the unrepresentable positive i32 magnitude.
-            if (record_scalar) {
-                value = value * radix
-                if (negative) { value = value - digit } else { value = value + digit }
-            }
         }
         node = node + 1
     }
-    if (record_scalar) { scalar.set(0, value) }
+    if (scalar.len() > 0) {
+        var word = magnitude
+        var slot = 0
+        for (slot < 4) {
+            let limb = (word % 65536u64).to(u32)
+            scalar.push(limb.to(int))
+            word = word / 65536u64
+            slot = slot + 1
+        }
+    }
     return type_id
 }
 
@@ -173,5 +175,77 @@ pub fn numeric_literal_type(src List<int>, start int, end int, negative bool, fu
 }
 
 pub fn decode_i32_literal(src List<int>, start int, end int, negative bool, out List<int>, fuel List<int>, deadline i64) int {
-    return inspect_literal(src, start, end, negative, out, fuel, deadline)
+    var magnitude = List<int>.new()
+    magnitude.push(0)
+    let lane = inspect_literal(src, start, end, negative, magnitude, fuel, deadline)
+    if (lane == integer_type()) {
+        var exact = magnitude_at(magnitude, 1).to(i64)
+        if (negative) { exact = 0i64 - exact }
+        out.set(0, exact.to(int))
+    }
+    return lane
+}
+
+pub fn wide_integer_word(lane int) Str {
+    if (lane == i8_type()) { return "i8" }
+    if (lane == u8_type()) { return "u8" }
+    if (lane == u32_type()) { return "u32" }
+    if (lane == i64_type()) { return "i64" }
+    if (lane == u64_type()) { return "u64" }
+    return ""
+}
+
+pub fn wide_integer_type(word Str) int {
+    if (word == "i8") { return i8_type() }
+    if (word == "u8") { return u8_type() }
+    if (word == "u32") { return u32_type() }
+    if (word == "i64") { return i64_type() }
+    if (word == "u64") { return u64_type() }
+    return 0
+}
+
+pub fn wide_literal_stride() int { return 6 }
+
+fn magnitude_at(words List<int>, offset int) u64 {
+    var value = 0u64
+    var at = offset + 3
+    for (at >= offset) {
+        value = value * 65536u64 + words.get(at).to(u64)
+        at = at - 1
+    }
+    return value
+}
+
+// Four 16-bit limbs carry the full unsigned magnitude on Gen0's List<int>
+// lane. The signed minimum never passes through an i64 conversion.
+pub fn decode_wide_integer(src List<int>, start int, end int, negative bool, out List<int>, fuel List<int>, deadline i64) int {
+    var magnitude = List<int>.new()
+    magnitude.push(0)
+    let lane = inspect_literal(src, start, end, negative, magnitude, fuel, deadline)
+    if (wide_integer_word(lane).len() > 0) {
+        out.push(lane)
+        var sign = 0
+        if (negative) { sign = 1 }
+        out.push(sign)
+        var at = 1
+        for (at <= 4) {
+            out.push(magnitude.get(at))
+            at = at + 1
+        }
+    }
+    return lane
+}
+
+pub fn format_wide_integer(exact List<int>, offset int) Str {
+    let magnitude = magnitude_at(exact, offset + 2)
+    var digits = ""
+    var remaining = magnitude
+    for (true) {
+        let digit = (remaining % 10u64).to(u32)
+        digits = from_int(digit.to(int)) + digits
+        remaining = remaining / 10u64
+        if (remaining == 0u64) { break }
+    }
+    if (exact.get(offset + 1) != 0 && magnitude != 0u64) { digits = "-" + digits }
+    return digits + wide_integer_word(exact.get(offset))
 }

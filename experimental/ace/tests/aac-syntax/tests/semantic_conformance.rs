@@ -1106,6 +1106,34 @@ fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
 }
 
 #[test]
+fn aac1055_wide_integer_hir_preserves_width_and_extrema() {
+    let source = concat!(
+        "fn min() i64 { return -9223372036854775808i64 }\n",
+        "fn max() u64 { return 18446744073709551615u64 }\n",
+        "fn plus(x i64) i64 { return x + 1i64 }\n",
+    );
+    let atom = run_core_hir_case(source.as_bytes(), "verify").expect("Auto HIR production");
+    for expected in [
+        "value: -9223372036854775808i64",
+        "value: 18446744073709551615u64",
+        "op: add_i64; overflow: trap",
+    ] {
+        assert!(atom.contains(expected), "missing {expected}: {atom}");
+    }
+    let bound = ace_core::descriptor::bind(ace_core::numeric_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_closures(bound).expect("independent typed HIR verification");
+    let admit = |text: &str| {
+        run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto numeric HIR readback")
+    };
+    assert_eq!(admit(&atom), "ADMITTED source-numeric-draft\n");
+    let exceeds_u64 = atom.replacen("18446744073709551615u64", "18446744073709551616u64", 1);
+    assert_eq!(admit(&exceeds_u64), "ERROR hir.type\n");
+    let wrong_lane = atom.replacen("op: add_i64;", "op: add_u64;", 1);
+    assert_eq!(admit(&wrong_lane), "ERROR hir.type\n");
+}
+
+#[test]
 fn verifies_terminating_branches_and_rejects_a_back_edge() {
     let source = b"fn choose(flag bool) int { if flag { return 13 } else { return 7 } }";
     let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");

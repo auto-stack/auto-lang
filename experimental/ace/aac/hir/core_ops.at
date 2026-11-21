@@ -1,3 +1,8 @@
+use app.numeric_literal.wide_integer_type
+use app.numeric_literal.wide_integer_word
+use app.types.boolean_type
+use app.types.integer_type
+
 // Operation identities shared by source HIR and the Atom binder. The
 // original core operations retain their identities.
 pub fn less_than_op() int { return 4 }
@@ -59,3 +64,40 @@ pub fn comparison_op(op int) bool { return op == less_than_op() || (op >= 15 && 
 pub fn equality_op(op int) bool { return op == 18 || op == 19 }
 pub fn logical_op(op int) bool { return op == 20 || op == 21 }
 pub fn overflow_op(op int) bool { return op == 5 || op == 6 || op == 12 }
+
+pub fn wide_constant_op() int { return 22 }
+
+// An encoded operator states its operand lane independently of its result.
+// The legacy unsuffixed equality accepts either i32 or Bool.
+pub fn operator_lane(word Str) int {
+    let code = binary_code(word.clone())
+    if (logical_op(code)) { return boolean_type() }
+    if (equality_op(code)) { return 0 }
+    if (code != 0) { return integer_type() }
+    var width = 3
+    for (width <= 4) {
+        let suffix = word.len() - width
+        if (suffix > 0 && word.char_at(suffix).to_codepoint() == 95) {
+            let lane = wide_integer_type(word.slice(suffix + 1, word.len()).clone())
+            if (lane != 0) { return lane }
+        }
+        width = width + 1
+    }
+    return -1
+}
+
+pub fn typed_binary_code(word Str, lane int) int {
+    if (lane < 0) { return 0 }
+    if (lane <= boolean_type()) { return binary_code(word) }
+    let stem = word.slice(0, word.len() - wide_integer_word(lane).len() - 1).clone()
+    if (stem == "eq" || stem == "ne") { return binary_code(stem.move) }
+    return binary_code(stem + "_i32")
+}
+
+pub fn typed_binary_word(op int, lane int) Str {
+    let word = binary_word(op)
+    let wide = wide_integer_word(lane)
+    if (wide.len() == 0) { return word.move }
+    if (equality_op(op)) { return word + "_" + wide }
+    return word.slice(0, word.len() - 4).clone() + "_" + wide
+}

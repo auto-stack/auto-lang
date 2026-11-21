@@ -17,6 +17,7 @@ use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
 use app.core_atom_bound.bind_core_atom
+use app.core_atom_bound.numeric_transport
 use app.core_atom_bound.scalar_transport
 use app.core_atom_bound.text_record_transport
 use app.core_globals.add_global_intrinsics
@@ -30,7 +31,6 @@ use app.core_globals.initializer_mode
 use app.core_globals.layout_offset
 use app.core_globals.setter_mode
 use app.core_ops.binary_op
-use app.core_ops.binary_word
 use app.core_ops.comparison_op
 use app.core_ops.equality_op
 use app.core_ops.extended_binary
@@ -38,6 +38,8 @@ use app.core_ops.less_than_op
 use app.core_ops.logical_op
 use app.core_ops.overflow_op
 use app.core_ops.source_binary
+use app.core_ops.typed_binary_word
+use app.core_ops.wide_constant_op
 use app.core_records.core_value_type
 use app.core_records.record_at
 use app.core_records.record_field_number
@@ -51,7 +53,11 @@ use app.hir_schema_data.scalar_schema
 use app.initializers.global_layout_stride
 use app.initializers.global_symbol
 use app.numeric_literal.decode_i32_literal
+use app.numeric_literal.decode_wide_integer
+use app.numeric_literal.format_wide_integer
 use app.numeric_literal.negative_source_literal
+use app.numeric_literal.wide_integer_word
+use app.numeric_literal.wide_literal_stride
 use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
@@ -71,7 +77,9 @@ use app.typecheck.record_constructor
 use app.typecheck.text_length_receiver
 use app.types.boolean_type
 use app.types.integer_type
+use app.types.i8_type
 use app.types.text_view_type
+use app.types.u64_type
 use std.bytes.decode_utf8
 use std.conv.from_int
 
@@ -212,7 +220,7 @@ fn lower_field_chain(pg List<int>, ast List<int>, links List<int>, declarations 
     return 0
 }
 
-fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, exprs List<int>, args List<int>, expressions List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, exprs List<int>, args List<int>, expressions List<int>, exact List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var owners = List<int>.new()
     var scalar = List<int>.new()
     scalar.push(0)
@@ -247,7 +255,7 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 if (right < 0 || expressions.get(left) < 0 || expressions.get(right) < 0) {
                     return failed(errors, row, hir_unsupported())
                 }
-                add_expression(exprs, expressions, row, owner, binary, t, 0)
+                add_expression(exprs, expressions, row, owner, binary, t, facts.get(left))
                 binary_inputs(args, row, expressions.get(left), expressions.get(right))
             }
             if (node_kind == "true-kw" || node_kind == "false-kw") {
@@ -257,15 +265,23 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
                 let right = left + 1
                 append_expression(exprs, left, owner, constant_op(), integer_type(), 0)
                 append_expression(exprs, right, owner, constant_op(), integer_type(), value)
-                add_expression(exprs, expressions, row, owner, less_than_op(), t, 0)
+                add_expression(exprs, expressions, row, owner, less_than_op(), t, integer_type())
                 binary_inputs(args, row, left, right)
             }
             if (node_kind == "int-lit" || node_kind == "affix-num") {
                 let negative = negative_source_literal(src, ast, row)
-                let decoded = decode_i32_literal(src, start_of(ast, row), end_of(ast, row), negative, scalar, fuel, deadline)
-                if (decoded == bind_budget()) { return failed(errors, row, decoded) }
-                if (decoded != integer_type()) { return failed(errors, row, hir_unsupported()) }
-                add_expression(exprs, expressions, row, owner, constant_op(), t, scalar.get(0))
+                if (t == integer_type()) {
+                    let decoded = decode_i32_literal(src, start_of(ast, row), end_of(ast, row), negative, scalar, fuel, deadline)
+                    if (decoded == bind_budget()) { return failed(errors, row, decoded) }
+                    if (decoded != t) { return failed(errors, row, hir_type_error()) }
+                    add_expression(exprs, expressions, row, owner, constant_op(), t, scalar.get(0))
+                } else {
+                    let offset = exact.len()
+                    let decoded = decode_wide_integer(src, start_of(ast, row), end_of(ast, row), negative, exact, fuel, deadline)
+                    if (decoded == bind_budget()) { return failed(errors, row, decoded) }
+                    if (decoded != t || exact.len() != offset + wide_literal_stride()) { return failed(errors, row, hir_type_error()) }
+                    add_expression(exprs, expressions, row, owner, wide_constant_op(), t, offset)
+                }
             }
             if (node_kind == "int-literal") {
                 let token = child_with_role(pg, ast, links, row, "value")
@@ -488,9 +504,9 @@ fn lower_global_initializers(count int, layouts List<int>, expression_ids List<i
     return 0
 }
 
-fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var expressions = List<int>.new()
-    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, types, records, exprs, args, expressions, fuel, deadline, errors)
+    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, types, records, exprs, args, expressions, exact, fuel, deadline, errors)
     if (lowered != 0) { return lowered }
     var row = 0
     for (row < row_count(ast)) {
@@ -639,10 +655,13 @@ fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel Lis
         at = at + 3
     }
     if (!left || !right) { return hir_reference_error() }
+    let declared = exprs.get(position + 4)
+    if (declared != 0 && operands != declared) { return hir_type_error() }
     if (logical_op(op)) {
         if (operands != boolean_type()) { return hir_type_error() }
     } else {
-        if (operands != integer_type() && !(equality_op(op) && operands == boolean_type())) { return hir_type_error() }
+        let standard = operands == integer_type() || (equality_op(op) && operands == boolean_type())
+        if (!standard && (declared == 0 || wide_integer_word(operands).len() == 0)) { return hir_type_error() }
     }
     var result = operands
     if (comparison_op(op) || logical_op(op)) { result = boolean_type() }
@@ -1036,7 +1055,7 @@ fn verify_initializer_chain(defs List<int>, parameters List<int>, exprs List<int
     return 0
 }
 
-fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, layouts List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
+fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, layouts List<int>, exact List<int>, rows int, fuel List<int>, deadline i64, errors List<int>) ?VerifiedCore {
     var record_error = List<int>.new()
     record_error.push(0)
     let shape_status = verify_record_shapes(records, fuel, deadline, record_error)
@@ -1098,6 +1117,10 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
             }
         }
         if (op == constant_op() && type_id != integer_type()) { status = hir_type_error() }
+        if (op == wide_constant_op()) {
+            status = hir_type_error()
+            if (data >= 0 && data % wide_literal_stride() == 0 && data <= exact.len() - wide_literal_stride() && exact.get(data) == type_id) { status = 0 }
+        }
         if (op == text_literal_op()) {
             status = hir_type_error()
             if (type_id == text_view_type() && data >= 0) { status = 0 }
@@ -1136,6 +1159,23 @@ fn has_text(defs List<int>, parameters List<int>, exprs List<int>) bool {
     if (find_row(defs, 4, text_view_type(), 1) >= 0) { return true }
     if (find_row(parameters, 4, text_view_type(), 2) >= 0) { return true }
     return find_row(exprs, 5, text_view_type(), 3) >= 0
+}
+
+fn uses_lane(defs List<int>, parameters List<int>, exprs List<int>, lane int) bool {
+    return find_row(defs, 4, lane, 1) >= 0 || find_row(parameters, 4, lane, 2) >= 0 || find_row(exprs, 5, lane, 3) >= 0
+}
+
+fn integer_types(defs List<int>, parameters List<int>, exprs List<int>) Str {
+    var types = ""
+    var lane = i8_type()
+    for (lane <= u64_type()) {
+        let word = wide_integer_word(lane)
+        if (word.len() > 0 && uses_lane(defs, parameters, exprs, lane)) {
+            types = types + " type " + id("t", lane) + " " + word + " {}\n"
+        }
+        lane = lane + 1
+    }
+    return types
 }
 
 fn write_mapped_arguments(args List<int>, call int, evaluation_field Str, binding_field Str, formal_field Str) Str {
@@ -1182,7 +1222,7 @@ fn write_record_types(records List<int>, ast List<int>, src List<int>, declarati
     return join_rows(output, output.len())
 }
 
-fn write_binary(args List<int>, expression int, op int) Str {
+fn write_binary(args List<int>, expression int, op int, lane int) Str {
     var lhs = -1
     var rhs = -1
     var at = 0
@@ -1194,7 +1234,7 @@ fn write_binary(args List<int>, expression int, op int) Str {
     }
     var policy = ""
     if (overflow_op(op)) { policy = "overflow: trap; " }
-    return "op: " + binary_word(op) + "; " + policy + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
+    return "op: " + typed_binary_word(op, lane) + "; " + policy + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
 }
 
 fn assigned(statements List<int>, local int) bool {
@@ -1263,7 +1303,7 @@ fn render_definition(def int, ast List<int>, src List<int>, declarations List<in
     return " function " + key + " { name: \"" + name + "\"; body: " + ref_text("b", def) + " }\n"
 }
 
-fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
+fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>, exact List<int>, integer_decls Str, ast List<int>, src List<int>, declarations List<int>, modules List<int>, has_globals bool) Str {
     var output = List<Str>.new()
     var schema = "auto.hir.core.draft"
     var profile = "core-i32-draft"
@@ -1283,8 +1323,12 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
         }
     }
     var capabilities = ""
+    if (integer_decls.len() > 0) {
+        schema = "auto.hir.numeric.draft"
+        profile = "source-numeric-draft"
+    }
     if (text_domain) { capabilities = " requires: [\"ac.runtime.text.v1\"]\n" }
-    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n"
+    let opening = "hir(schema: \"" + schema + "\", revision: 1u32, profile: \"" + profile + "\") {\n" + capabilities + " module m {\n path: \"" + module_name_at(modules, 0) + "\"\n types {\n type t1 i32 {}\n type t2 bool {}\n" + integer_decls
     output.push(opening.move)
     if (records.len() > 0) {
         let record_declarations = write_record_types(records, ast, src, declarations)
@@ -1354,6 +1398,9 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 let data = exprs.get(expr_at + 4)
                 var form = "constant"
                 var fields = "value: " + from_int(data) + "i32"
+                if (op == wide_constant_op()) {
+                    fields = "value: " + format_wide_integer(exact, data)
+                }
                 if (op == read_op()) {
                     form = "read_local"
                     fields = "local: " + ref_text("l", data)
@@ -1365,7 +1412,7 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                 if (binary_op(op)) {
                     form = "binary"
                     if (logical_op(op)) { form = "logical" }
-                    fields = write_binary(args, expr, op)
+                    fields = write_binary(args, expr, op, data)
                 }
                 if (op == text_literal_op()) {
                     form = "str_lit"
@@ -1481,13 +1528,19 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var blocks = List<int>.new()
     var statements = List<int>.new()
     var records = List<int>.new()
+    var exact = List<int>.new()
     let shaped = source_record_shapes(pg, ast, declarations, facts, types, records, fuel, deadline)
     if (shaped != 0) {
         failed(errors, 0, shaped)
         return ""
     }
-    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, fuel, deadline, errors)
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, errors)
     if (status != 0) { return "" }
+    let integer_decls = integer_types(defs, parameters, exprs)
+    if (integer_decls.len() > 0 && (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs))) {
+        failed(errors, 0, hir_unsupported())
+        return ""
+    }
     if (control == 1) { defs.set(2, row_count(ast)) }
     if (control == 2) {
         var position = 0
@@ -1500,9 +1553,9 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
         }
     }
     if (control == 3 && layouts.len() >= global_layout_stride()) { layouts.set(2, 0) }
-    let verified = verify(defs, parameters, exprs, args, blocks, statements, records, layouts, row_count(ast), fuel, deadline, errors)
+    let verified = verify(defs, parameters, exprs, args, blocks, statements, records, layouts, exact, row_count(ast), fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, ast, src, declarations, modules, layouts.len() > 0) }
+        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, exact, integer_decls.move, ast, src, declarations, modules, layouts.len() > 0) }
         None -> { errors.set(0, source_origin(row_count(ast), errors.get(0))) }
     }
     return ""
@@ -1528,6 +1581,7 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     if (root < 0) { return hir_shape_error() }
     let text_record = text_record_transport(bytes, tokens, values, nodes, fields, root)
     let scalar = scalar_transport(bytes, tokens, values, nodes, fields, root)
+    let numeric = numeric_transport(bytes, tokens, values, nodes, fields, root)
     if (rows > 0 && !text_record) { return hir_shape_error() }
     var definitions = List<int>.new()
     var parameters = List<int>.new()
@@ -1536,12 +1590,13 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     var blocks = List<int>.new()
     var statements = List<int>.new()
     var records = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, scalar, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records)
+    var exact = List<int>.new()
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, scalar, numeric, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records, exact, fuel, deadline)
     if (!take_step(fuel, deadline)) { return bind_budget() }
-    if (status == hir_global_authority_error()) { return status }
+    if (status == hir_global_authority_error() || status == bind_budget()) { return status }
     if (status == 0) {
         var errors = List<int>.new()
-        let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, records, layouts, rows, fuel, deadline, errors)
+        let verified = verify(definitions, parameters, expressions, arguments, blocks, statements, records, layouts, exact, rows, fuel, deadline, errors)
         is verified {
             Some(_) -> {}
             None -> { return errors.get(1) }
@@ -1549,13 +1604,17 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     }
     var schema = core_schema()
     if (text_record) { schema = global_schema() }
-    if (scalar) { schema = scalar_schema() }
+    // The admitted numeric subset has the same tagged nodes and field keys
+    // as scalar HIR. Its identity, operand lanes and payloads were bound
+    // above. Do not parse the unrelated aggregate/closure branches here.
+    if (scalar || numeric) { schema = scalar_schema() }
     let shaped = validate_transport_arena(str_to_bytes(schema), bytes, parser_error, tokens, nodes, fields, items, root)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (!shaped) { return hir_shape_error() }
     if (status != 0) { return status }
     if (text_record) { return 1 }
     if (scalar) { return 2 }
+    if (numeric) { return 3 }
     return 0
 }
 
