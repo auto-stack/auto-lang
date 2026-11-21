@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-21
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1081, PLAN-1083, PLAN-1085, PLAN-1086, PLAN-1087, PLAN-1089]
 supersedes_spec_components: [docs/specs/ace-migration/m2-scheduler.md, docs/specs/ace-migration/m2-control-effects.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -325,7 +325,7 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -349,9 +349,9 @@ cargo t case-av-language-parity ace-source ace-semantics ace-av ace-lowering
 - [x] **T-05** work：41 项唯一活动 AV 检查，13 份旧文档与四个原有语言输入保源和各自预期；父侧 8 项隔离、身份与判决控制通过。
 - [x] **T-06** work：冻结普通 AV 及共同职责组。AV 组保留一个基面原红，两个墙钟预算首次失败已用同归档重放通过。
 - [x] **T-07** review：逐 AC 复核代码、实际子项、源身份和审定 Spec 增量，最终复审 pass。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：真实落主、归档校验和专属路径清理已核实。
 
-下一执行入口：按复审绑定合入、校验 canonical 来源、归档和清理（T-08）。
+本计划 T-01..08 已完成。周期批量回归按独立到期规则执行。
 
 ## 9. 复审记录
 
@@ -428,6 +428,20 @@ stage: review | review_scope: final | reviewer: Codex 同会话、独立证据�
 - 主检出 debug `auto-case.exe`（2026-11-20T04:43:43Z）、debug `av-worker.exe`（2026-11-20T04:44:11Z）和 release `av-worker.exe`（2026-11-19T03:10:13Z）早于交付，release `auto-case.exe` 缺席。交付验证采用冻结的 debug 工具。工作树与材料清理仍由 T-08 收尾。
 
 - `archived`：实际路径 `docs/plans/archive/1090-av-parity-tasks-async-and-actors.md`，r3、`completion_kind: delivered`。复核 7/8 任务、9/10 验收，T-08 与 AC-08 待清理。独立解析各出链和本包六个导航/Spec 入链，均指向实际文件。其它会话中的 PLAN-1113 草稿仍用原活跃相对链接，归其 owner 更新。
+
+### 2026-11-21 r3 · 清理收据
+
+交付提交 `c4ecdf12abb7be08d78ae51160a872ccf17dc91c` 和归档提交 `6030a26de5f441e49ffe7f296ad3ae141362f1fd` 均在 master。按原命令、归档 manifest 和实际路径核对了根/ACE target、脚本辅助 target、FFI 专用 target/源/提供方、父子运行报告和归档证据。nextest 自带临时解包目录已自动清理。两个工作树、组目录和唯一材料区都完成绝对路径及归属校验。
+
+| 已删除路径 | 文件数 | 文件字节总和 |
+|---|---:|---:|
+| D:/autostack/.wt/lang-1090/auto-lang | 126677 | 20635770936 |
+| D:/autostack/.wt/lang-1090/auto-down | 1318 | 27021855 |
+| D:/autostack/plan-artifacts/plan-1090 | 9442 | 2933553619 |
+
+所有路径在 PowerShell `wt-guard.ps1` 输出 clean 后清除，两个 `git worktree remove`、分支删除及材料根移除均成功。2026-11-21T10:26:29+08:00 确认工作树清单、分支、组目录和材料 scope 均已清除。构建中间产物随树清除；证据摘要先写入归档，无待保留件。批量回归按合入后 %5 到期触发，单独从主检出执行。
+
+stage: merge | plan_id: PLAN-1090 | plan_revision: r3 | outcome: pass | reviewed_commit: eb6c9a528d393059acff54784edaa850d8fe6900 | delivery_commit: c4ecdf12abb7be08d78ae51160a872ccf17dc91c | archive_commit: 6030a26de5f441e49ffe7f296ad3ae141362f1fd | completion_kind: delivered | cleanup: removed | next: batch due check
 
 ## 10. 待澄清事项
 
