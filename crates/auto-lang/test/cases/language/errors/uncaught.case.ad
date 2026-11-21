@@ -40,3 +40,4 @@ message-contains: "final-parity-uncaught"
 Final acceptance case: an uncaught `fail` terminates with a run-stage
 language error whose message survives — never a silent success, never a
 generic trap without the original text.
+
