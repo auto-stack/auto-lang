@@ -136,6 +136,47 @@ fn main() int {
 }
 
 #[test]
+fn plan1094_dbg_legacy_shapes() {
+    use base64::Engine as _;
+    let cases = [
+        ("dual-len", "use.py numpy: arange\nfn main() int {\n var t = arange(6)\n print(t.len())\n var s = \"abc\"\n print(s.len())\n return 0\n}\n"),
+        ("err-oracle", "use.py builtins: int\nfn main() int {\n try { var x = int(\"abc\"); print(\"no-error\") } catch e { print(\"caught: \" + e.to(str)) }\n print(\"end\")\n return 0\n}\n"),
+        ("across-fn", "use.py builtins: int\nfn getnum(s str) int { return int(s).to(int) }\nfn main() int { return getnum(\"42\") }\n"),
+        ("native-len", "fn main() int {\n var s = \"abcdef\"\n if s.len() != 6 { return 0 }\n var xs = [1, 2, 3, 4]\n if xs.len() != 4 { return 0 }\n var t = \"x\" + s\n if t.len() != 7 { return 0 }\n return 42\n}\n"),
+    ];
+    for (name, src) in cases {
+        let mut req = request(src, "main.as");
+        if name == "native-len" {
+            req.as_object_mut().unwrap().remove("foreign");
+        }
+        let step = serve(&req).expect("worker")["steps"][0].clone();
+        let stdout = base64::engine::general_purpose::STANDARD
+            .decode(step["console"]["stdout_b64"].as_str().unwrap_or(""))
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        println!("DBG legacy {name}: outcome={} value={:?} stdout={:?} diag={:?} lang_err={:?}", step["outcome"], step["value"], stdout, step["diag"], step["language_error"]);
+    }
+}
+
+#[test]
+fn plan1094_dbg_legacy_shapes2() {
+    use base64::Engine as _;
+    let cases = [
+        ("len-attr", "use.py builtins: list\nfn main() int {\n var xs = list(\"xy\")\n print(xs.len())\n return 0\n}\n"),
+        ("len-pylist", "use.py builtins: list\nfn main() int {\n var xs = list((1, 2, 3))\n print(xs.len())\n return 0\n}\n"),
+        ("nested-fn", "use.py builtins: int\nfn main() int {\n fn getnum(s str) int { return int(s).to(int) }\n return getnum(\"42\")\n}\n"),
+    ];
+    for (name, src) in cases {
+        let step = serve(&request(src, "main.as")).expect("worker")["steps"][0].clone();
+        let stdout = base64::engine::general_purpose::STANDARD
+            .decode(step["console"]["stdout_b64"].as_str().unwrap_or(""))
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        println!("DBG legacy2 {name}: outcome={} value={:?} stdout={:?} diag={:?}", step["outcome"], step["value"], stdout, step["diag"]);
+    }
+}
+
+#[test]
 fn plan1094_py_unicode_nul_roundtrip() {
     let source = r#"use.py builtins: str
 fn main() int {

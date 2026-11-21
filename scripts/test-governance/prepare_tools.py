@@ -194,6 +194,10 @@ def prepare(root, names, output, prepared, source_state=None, *, tools=None):
         for path in effective:
             receipts.append({"tool":name,"path":str(path),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
         if tool.get("env"):env[tool["env"]]=str(effective[0])
+        # PLAN-1094: a directory-backed env var (the first artifact's parent
+        # — e.g. the av provider root holding the prepared closures).
+        if tool.get("dir_env"):
+            env[tool["dir_env"]] = str(effective[0].parent)
     return env,receipts
 
 
@@ -207,6 +211,10 @@ def case_tools(rows):
             for prefix,tool in (("ac-a2r/","a2x"),("ac-a2c/","a2x"),("ac-av/","av"),("ac/mir-native-collections-","mn-collections"),("ac/mir-native-","mn"),("cte/","cte"),("sema/","sema"),("abi/","abi")):
                 if recipe.startswith(prefix):names.add(tool);matched=True;break
             if not matched:raise ValueError(f"unmapped probe tool recipe: {recipe}")
+            if "av" in names:
+                # PLAN-1094: the ordinary AV view binds registered prepared
+                # providers (f0_text / py); prepare them with the worker.
+                names.add("av-providers")
     return sorted(names)
 
 

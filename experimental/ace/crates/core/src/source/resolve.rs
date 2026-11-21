@@ -20261,6 +20261,12 @@ F:{d}
                 let target = to_word.map(super::resolve::vt_of_word).unwrap_or(VT::I32);
                 return self.py_to_sugar(&recv, target, span);
             }
+            // PLAN-1094: `.len()` on a Python object is Python's builtin
+            // `len(obj)` — the `__len__` protocol (the legacy obj_len
+            // combinator's ordinary-AV form), not an attribute call.
+            if name.name == "len" && args.is_empty() {
+                return self.py_call_sugar(&recv, "__len__", args, span);
+            }
             if to_word.is_some() {
                 self.bind_err(
                     "source.py-domain",

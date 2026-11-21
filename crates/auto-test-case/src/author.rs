@@ -271,6 +271,9 @@ struct ProbeSection {
     av_resource: Option<CVal>,
     /// PLAN-1093: the prepared foreign provider binding (raw CVal kept).
     foreign: Option<CVal>,
+    /// PLAN-1094: expected language-error classification + original span.
+    error_kind: Option<(String, usize)>,
+    error_span: Option<(String, usize)>,
     /// CF-07 MN nested oracles.
     mn_resource: Option<CVal>,
     declaration: Option<CVal>,
@@ -1423,6 +1426,25 @@ fn decode_one_case(
                             }
                             Some(_) => return err(p.section_line, "foreign 需要对象值"),
                         };
+                        let error_span = match &p.error_span {
+                            None => None,
+                            Some((text, line)) => {
+                                let (s, e) = text.split_once("..").ok_or_else(|| AuthorError {
+                                    line: *line,
+                                    message: "error-span 需要 `start..end` 半开字节范围".into(),
+                                })?;
+                                Some((
+                                    s.trim().parse::<u32>().map_err(|_| AuthorError {
+                                        line: *line,
+                                        message: "error-span 起始不是数字".into(),
+                                    })?,
+                                    e.trim().parse::<u32>().map_err(|_| AuthorError {
+                                        line: *line,
+                                        message: "error-span 结束不是数字".into(),
+                                    })?,
+                                ))
+                            }
+                        };
                         options.probe_av = Some(ProbeAvSpec {
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
@@ -1431,6 +1453,8 @@ fn decode_one_case(
                             invalidation,
                             resource: av_resource,
                             foreign,
+                            error_kind: p.error_kind.as_ref().map(|(v, _)| v.clone()),
+                            error_span,
                         });
                     }
                     ProbeFamily::Mn => {
@@ -2684,6 +2708,8 @@ fn decode_h3_section(
             let mut av_resource = None;
             let mut mn_resource = None;
             let mut foreign = None;
+            let mut error_kind = None;
+            let mut error_span = None;
             let mut declaration = None;
             let mut history = None;
             let mut turnaround = None;
@@ -2723,6 +2749,8 @@ fn decode_h3_section(
                     "av-resource" => av_resource = Some(a.value.clone()),
                     "mn-resource" => mn_resource = Some(a.value.clone()),
                     "foreign" => foreign = Some(a.value.clone()),
+                    "error-kind" => error_kind = Some((want_str(a)?.to_string(), a.line)),
+                    "error-span" => error_span = Some((want_str(a)?.to_string(), a.line)),
                     "declaration" => declaration = Some(a.value.clone()),
                     "history" => history = Some(a.value.clone()),
                     "turnaround" => turnaround = Some(a.value.clone()),
@@ -2782,6 +2810,8 @@ fn decode_h3_section(
                 av_resource,
                 mn_resource,
                 foreign,
+                error_kind,
+                error_span,
                 declaration,
                 history,
                 turnaround,

@@ -2599,6 +2599,8 @@ fn decode_options(
                     invalidation,
                     resource,
                     foreign,
+                    error_kind: None,
+                    error_span: None,
                 })
             }
         };
@@ -3433,6 +3435,14 @@ pub struct ProbeAvSpec {
     /// binds (`foreign: { kind, provider }`). Declarative only — every
     /// artifact identity rides the prepared closure the worker loads.
     pub foreign: Option<ProbeAvForeignSpec>,
+    /// PLAN-1094: the expected language-error CLASSIFICATION the worker
+    /// observed (`language_error.kind`, e.g. `python.5` for a ValueError)
+    /// — the parent-side classification oracle for the py error lanes.
+    pub error_kind: Option<String>,
+    /// PLAN-1094: the expected ORIGINAL SOURCE SPAN of the failing
+    /// operation (`source_span.start..source_span.end` half-open bytes in
+    /// the entry source) — the parent-side position oracle.
+    pub error_span: Option<(u32, u32)>,
 }
 
 /// PLAN-1093: the prepared foreign provider binding (kind + provider id).

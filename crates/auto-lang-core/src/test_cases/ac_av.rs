@@ -2022,9 +2022,41 @@ fn run_check_with_transport(
         // like the scheduler family.
         || family == RecipeFamily::LanguageSource
     {
-        // PLAN-968: the scheduler face's ERROR completions assert no
-        // streams (the case gate forbids them there); the full console
-        // oracle contract applies to success completions.
+        // PLAN-1094: a Python case whose adapter cannot be prepared (the
+        // CPython interpreter is absent on this machine — the prepare bin
+        // wrote the `py-unavailable` marker) is an explicit NOT_RUN, never
+        // a silent PASS nor a misleading FAIL of the language itself.
+        if family == RecipeFamily::LanguageSource {
+            let py_foreign = check
+                .options
+                .probe_av
+                .as_ref()
+                .and_then(|av| av.foreign.as_ref())
+                .filter(|foreign| foreign.provider == "py");
+            if let Some(foreign) = py_foreign {
+                let root = std::env::var("ACE_AV_PROVIDER_ROOT").ok();
+                let closure_missing = root
+                    .as_ref()
+                    .map(|r| !Path::new(r).join("py.descriptor.json").is_file())
+                    .unwrap_or(true);
+                let marker = root
+                    .as_ref()
+                    .map(|r| Path::new(r).join("py-unavailable").is_file())
+                    .unwrap_or(false);
+                if closure_missing && marker {
+                    return Ok(Verdict {
+                        status: Status::NotRun,
+                        mismatches: vec![],
+                        detail: Some(format!(
+                            "py adapter `{}` is unavailable on this machine (CPython missing) — NOT_RUN, never PASS",
+                            foreign.provider
+                        )),
+                        artifacts: vec![],
+                        native: None,
+                    });
+                }
+            }
+        }
         if family == RecipeFamily::SchedulerSource
             && !matches!(
                 oracle.completion,
@@ -2618,6 +2650,41 @@ fn run_check_with_transport(
                 {
                     infra_detail = Some("invalid worker language error observation".to_owned());
                     break 'admit;
+                }
+            }
+            // PLAN-1094: the parent-side classification + position ORACLES
+            // (the py error lanes' `error-kind` / `error-span` attributes).
+            if family == RecipeFamily::LanguageSource {
+                if let Some(av) = &check.options.probe_av {
+                    if let Some(want_kind) = &av.error_kind {
+                        let got_kind = step.language_error.as_ref().map(|e| e.kind.as_str());
+                        if got_kind != Some(want_kind.as_str()) {
+                            mismatches.push(Mismatch {
+                                observation: "language-error-kind".into(),
+                                kind: "classification".into(),
+                                expected: want_kind.clone(),
+                                actual: got_kind.unwrap_or("<none>").to_string(),
+                                first_diff: None,
+                            });
+                        }
+                    }
+                    if let Some((want_s, want_e)) = av.error_span {
+                        let got = step.source_span.as_ref();
+                        let ok = got.is_some_and(|span| {
+                            span.start as u32 == want_s && span.end as u32 == want_e
+                        });
+                        if !ok {
+                            mismatches.push(Mismatch {
+                                observation: "language-error-span".into(),
+                                kind: "position".into(),
+                                expected: format!("{want_s}..{want_e}"),
+                                actual: got.map_or("<none>".into(), |span| {
+                                    format!("{}..{}", span.start, span.end)
+                                }),
+                                first_diff: None,
+                            });
+                        }
+                    }
                 }
             }
         }

@@ -91,12 +91,22 @@ fn prepare_f0(root: &Path) -> Result<()> {
 
 /// The 1026 py-bridge provider: the shared cached pyo3 build is copied
 /// into the shared root under the provider's own stamp/dll names so it can
-/// coexist with f0_text in ONE provider root.
+/// coexist with f0_text in ONE provider root. A missing CPython interpreter
+/// is a NAMED unavailability (`py-unavailable` marker) — the ordinary AV
+/// view reports py cases NOT_RUN instead of failing the language.
 fn prepare_py(root: &Path) -> Result<()> {
     use ace_abi::rust_provider::{py_bridge_provider_source, py_bridge_shared_build};
     let out = root.join("out");
     std::fs::create_dir_all(&out)?;
-    let build = py_bridge_shared_build()?;
+    let build = match py_bridge_shared_build() {
+        Ok(build) => build,
+        Err(e) => {
+            std::fs::write(root.join("py-unavailable"), format!("py adapter unavailable: {e}"))
+                .ok();
+            println!("py: UNAVAILABLE ({e}) — py cases will be NOT_RUN");
+            return Ok(());
+        }
+    };
     let dll = out.join("py_bridge.dll");
     let lib = out.join("py_bridge.lib");
     std::fs::copy(&build.cdylib, &dll)?;
@@ -118,6 +128,7 @@ fn prepare_py(root: &Path) -> Result<()> {
         Some("py_bridge.lib"),
         Some("py-build-stamp.txt"),
     )?;
+    let _ = std::fs::remove_file(root.join("py-unavailable"));
     println!("py: dll {} sha256={}", dll.display(), sha256_hex(&dll));
     Ok(())
 }
