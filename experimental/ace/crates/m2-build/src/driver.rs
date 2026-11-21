@@ -24,7 +24,8 @@ use crate::identity::{
 };
 use crate::probe;
 use crate::recipe::{
-    BuildToolDependency, RunDependency, SdkArtifact, SdkPayload, SdkRecipe, SDK_RECIPE_SCHEMA,
+    BuildToolDependency, RunDependency, SdkArtifact, SdkPayload, SdkRecipe, AV_RUST_PROGRAM_PATH,
+    SDK_RECIPE_SCHEMA,
 };
 use crate::selection::{admit_selection, ProviderArtifact, ProviderSelection};
 use crate::M2Reject;
@@ -302,7 +303,8 @@ impl M2Build {
             #[cfg(windows)]
             TargetKind::Av if provider.is_some() => {
                 let provider = provider.as_ref().expect("guarded provider");
-                let run = crate::rust_project::build_and_run(inputs, src, provider)?;
+                let (run, mut products) =
+                    crate::rust_project::build_and_run(inputs, src, provider)?;
                 let receipt = serde_json::json!({
                     "schema": BUILD_RECEIPT_SCHEMA,
                     "target": "av",
@@ -310,11 +312,12 @@ impl M2Build {
                     "channel": run.channel,
                     "provider_artifact_sha256": provider.artifact_sha256,
                 });
+                products.push((
+                    "targets/av/build-receipt.json".into(),
+                    serde_json::to_vec_pretty(&receipt).unwrap(),
+                ));
                 (
-                    vec![(
-                        "targets/av/build-receipt.json".into(),
-                        serde_json::to_vec_pretty(&receipt).unwrap(),
-                    )],
+                    products,
                     Some(run),
                     BuildCounts {
                         lane: "av".into(),
@@ -623,6 +626,13 @@ impl M2Build {
         providers: Vec<ProviderArtifactInput>,
         grant: &str,
     ) -> Result<SdkRecipe, M2Reject> {
+        let pack_rust = targets.contains(&TargetKind::Av) && inputs.rust_provider.is_some();
+        if pack_rust && !providers.is_empty() {
+            return Err(M2Reject::new(
+                "m2build.rust-sdk",
+                "the AV Rust provider comes from the project declaration; omit --provider",
+            ));
+        }
         let mut provenance = Vec::new();
         let mut artifacts = Vec::new();
         let mut payload_files: Vec<(String, Vec<u8>)> = Vec::new();
@@ -639,7 +649,9 @@ impl M2Build {
                 let sha = ace_a2x_core::sha256::sha256_hex(&bytes);
                 artifacts.push(SdkArtifact {
                     path: path.clone(),
-                    role: if path.ends_with(".exe") {
+                    role: if path.starts_with("providers/") {
+                        "provider".into()
+                    } else if path.ends_with(".exe") {
                         "exe".into()
                     } else if path.ends_with("build-receipt.json") {
                         "receipt".into()
@@ -727,10 +739,37 @@ impl M2Build {
             payload_files.push((path.clone(), text.clone().into_bytes()));
         }
         let entry_symbol = format!("sf_{}", inputs.entry);
-        let consumer = ConsumerRequirements::native_program(
+        #[allow(unused_mut)]
+        let mut consumer = ConsumerRequirements::native_program(
             &entry_symbol,
             &ace_a2x_core::sha256::sha256_hex(format!("{entry_symbol}()->i32").as_bytes()),
         );
+        #[cfg(windows)]
+        if pack_rust {
+            let (rust_selection, requirements) =
+                crate::rust_project::selection(&payload_files, grant)?;
+            for library in &requirements.runtime_dependencies {
+                run_deps.push(RunDependency {
+                    name: library.clone(),
+                    kind: "system-lib".into(),
+                    detail: "PE import of the selected Rust provider".into(),
+                });
+            }
+            let provider_build = provenance
+                .iter()
+                .find(|identity| identity.target == TargetKind::Av)
+                .and_then(|identity| identity.provider_build.as_ref())
+                .ok_or_else(|| {
+                    M2Reject::new("m2build.rust-sdk", "missing provider build provenance")
+                })?;
+            build_inputs.push(BuildToolDependency {
+                name: "rustc".into(),
+                identity: provider_build.rustc_identity.clone(),
+                role: "provider compilation".into(),
+            });
+            selection = Some(rust_selection);
+            consumer = requirements;
+        }
         let recipe = SdkRecipe {
             schema: SDK_RECIPE_SCHEMA.into(),
             project: inputs.name.clone(),
@@ -745,12 +784,15 @@ impl M2Build {
             provider_selection: selection,
             provenance,
         };
-        recipe.write_to_dir(
-            out_dir,
-            &SdkPayload {
-                files: payload_files,
-            },
-        )?;
+        let payload = SdkPayload {
+            files: payload_files,
+        };
+        #[cfg(windows)]
+        if pack_rust {
+            crate::rust_project::publish_sdk(out_dir, &recipe, &payload)?;
+            return Ok(recipe);
+        }
+        recipe.write_to_dir(out_dir, &payload)?;
         Ok(recipe)
     }
 
@@ -765,9 +807,32 @@ impl M2Build {
         grant: &str,
     ) -> Result<RunObservation, M2Reject> {
         let (recipe, files) = SdkRecipe::load_verify(sdk_root)?;
+        if target == TargetKind::Av
+            && (recipe
+                .provenance
+                .iter()
+                .any(|id| id.target == TargetKind::Av && id.provider_build.is_some())
+                || recipe
+                    .artifacts
+                    .iter()
+                    .any(|artifact| artifact.path == AV_RUST_PROGRAM_PATH))
+        {
+            #[cfg(windows)]
+            return crate::rust_project::run_sdk(sdk_root, &recipe, &files, grant);
+            #[cfg(not(windows))]
+            return Err(M2Reject::new(
+                "m2build.rust-target",
+                "this Rust shim ABI requires Windows/MSVC",
+            ));
+        }
         // Admission 1: the selection (per-run grant; precise pin).
         if let Some(selection) = &recipe.provider_selection {
-            let primary = &selection.artifacts[0];
+            let primary = selection.artifacts.first().ok_or_else(|| {
+                M2Reject::new(
+                    "m2build.selection.artifact-missing",
+                    "missing primary provider",
+                )
+            })?;
             let on_disk = files
                 .iter()
                 .find(|(p, _)| *p == primary.path)

@@ -69,6 +69,36 @@ pub fn rustc_identity(cwd: &Path) -> Result<String, String> {
     Ok(stdout.trim().to_owned())
 }
 
+/// Physical facts of a prepared Windows/MSVC provider, read without loading it.
+pub fn inspect_rust_cdylib(bytes: &[u8]) -> Result<(Vec<String>, Vec<String>), String> {
+    use object::Object;
+
+    let file = object::File::parse(bytes).map_err(|err| err.to_string())?;
+    if file.format() != object::BinaryFormat::Pe
+        || file.architecture() != object::Architecture::X86_64
+        || !file.is_little_endian()
+    {
+        return Err("expected an x86_64 Windows provider DLL".into());
+    }
+    let mut exports = file
+        .exports()
+        .map_err(|err| err.to_string())?
+        .iter()
+        .map(|export| String::from_utf8_lossy(export.name()).into_owned())
+        .collect::<Vec<_>>();
+    exports.sort();
+    exports.dedup();
+    let mut libraries = file
+        .imports()
+        .map_err(|err| err.to_string())?
+        .iter()
+        .map(|import| String::from_utf8_lossy(import.library()).to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    libraries.sort();
+    libraries.dedup();
+    Ok((exports, libraries))
+}
+
 fn run_rustc(args: &[&str], cwd: &Path) -> Result<(i32, String, String), String> {
     // PLAN-967 T-11 (V-ABI-CROSS): an explicit second-toolchain override;
     // the default stays the ambient rustc; identity is recorded per build.
@@ -1344,12 +1374,29 @@ pub fn open_session_from_build(
     build: &RustProviderBuild,
     generation: u64,
 ) -> Result<F0Session, String> {
+    open_session(build, generation, false)
+}
+
+/// Open a relocated provider with the SDK directory and System32 as the
+/// only search roots for dependent DLLs.
+pub fn open_sdk_session_from_build(
+    build: &RustProviderBuild,
+    generation: u64,
+) -> Result<F0Session, String> {
+    open_session(build, generation, true)
+}
+
+fn open_session(
+    build: &RustProviderBuild,
+    generation: u64,
+    sdk_local: bool,
+) -> Result<F0Session, String> {
     let admitted = build
         .manual
         .clone()
         .admit(&f0_authority(build, generation))
         .map_err(|e| format!("admit: {e}"))?;
-    let mut provider = load(build, generation)?;
+    let mut provider = load_provider(build, generation, sdk_local)?;
     let mut session = ace_av_core::foreign_exec::ForeignSession::new();
     session.adopt(std::mem::replace(
         &mut provider.table,
@@ -1383,20 +1430,45 @@ impl Drop for LoadedRustProvider {
 /// Load the built cdylib in-process and resolve its exports into the AV
 /// stub table at `generation`.
 pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProvider, String> {
+    load_provider(build, generation, false)
+}
+
+fn load_provider(
+    build: &RustProviderBuild,
+    generation: u64,
+    sdk_local: bool,
+) -> Result<LoadedRustProvider, String> {
+    use windows_sys::Win32::System::LibraryLoader::{
+        LoadLibraryExW, LoadLibraryW, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+        LOAD_LIBRARY_SEARCH_SYSTEM32,
+    };
     let path = build
         .cdylib
         .to_str()
         .ok_or("non-utf8 cdylib path")?
         .to_string();
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-    let library = unsafe { windows_sys::Win32::System::LibraryLoader::LoadLibraryW(wide.as_ptr()) };
+    let library = unsafe {
+        if sdk_local {
+            LoadLibraryExW(
+                wide.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        } else {
+            LoadLibraryW(wide.as_ptr())
+        }
+    };
     if library.is_null() {
         return Err(format!(
             "LoadLibraryW failed for {}",
             build.cdylib.display()
         ));
     }
-    let mut table = ace_av_core::foreign_exec::ForeignStubTable::new(generation);
+    let mut loaded = LoadedRustProvider {
+        library,
+        table: ace_av_core::foreign_exec::ForeignStubTable::new(generation),
+    };
     // The frozen panic channel: bind the exported flag before any call.
     let flag_name: Vec<u8> = b"f0_panic_flag\0".to_vec();
     let flag_sym = unsafe {
@@ -1404,23 +1476,15 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
     };
     let flag_fn: unsafe extern "C" fn() -> *mut u32 = match flag_sym {
         Some(sym) => unsafe { std::mem::transmute(sym) },
-        None => {
-            unsafe {
-                windows_sys::Win32::Foundation::FreeLibrary(library as _);
-            }
-            return Err("the F0 panic flag export `f0_panic_flag` is missing".into());
-        }
+        None => return Err("the F0 panic flag export `f0_panic_flag` is missing".into()),
     };
-    table.set_panic_flag(unsafe { flag_fn() });
+    loaded.table.set_panic_flag(unsafe { flag_fn() });
     for f in &build.manifest.functions {
         let name: Vec<u8> = f.export.bytes().chain(std::iter::once(0)).collect();
         let sym = unsafe {
             windows_sys::Win32::System::LibraryLoader::GetProcAddress(library, name.as_ptr())
         };
         if sym.is_none() {
-            unsafe {
-                windows_sys::Win32::Foundation::FreeLibrary(library as _);
-            }
             return Err(format!(
                 "export `{}` missing from the provider cdylib",
                 f.export
@@ -1501,7 +1565,8 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
                 >(sym))
             },
         };
-        table
+        loaded
+            .table
             .insert(ace_av_core::foreign_exec::ForeignStub {
                 provider: build.manifest.provider.clone(),
                 symbol: f.export.clone(),
@@ -1512,5 +1577,5 @@ pub fn load(build: &RustProviderBuild, generation: u64) -> Result<LoadedRustProv
             })
             .map_err(|e| e.to_string())?;
     }
-    Ok(LoadedRustProvider { library, table })
+    Ok(loaded)
 }

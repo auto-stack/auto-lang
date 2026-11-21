@@ -99,3 +99,19 @@ owner=PLAN-1063；Windows 原 required 门不减；交叉编译成功或 Windows
    `m2build.run.runtime-dependency`（具名，不把 traceback 计为运行）；emit 从不执行程序。
 5. **非 Python 回归**：既有五目标行为不变；A2py 的非 Python 工程不受 py 车道影响
    （`p1107_v08_…`）。证据：`crates/m2-build/tests/py_project_1107.rs`。
+
+## 普通 AV Rust 工程与 SDK（PLAN-1113）
+
+- **工程输入**：既有 `project.json` 和 `src/*.at` 包含普通 Auto 源入口。Rust 工程增加
+  `rust_provider: {"source":"provider.rs","cargo_lock":"Cargo.lock"}`，两路径相对工程根。
+  provider 的注解是绑定声明与 shim 的来源。带注解 Cargo 依赖需提供 `cargo_lock`，以
+  `cargo build --offline --locked` 构建。工程 caps 显式声明外部调用授权。
+- **身份与缓存**：967 provider 身份纳入锁文件 SHA-256。AV 工程节点另记录实际 DLL SHA-256；
+  同一 provider 在 Auto body 变更后可复用。生成器、shim 和 rustc 身份用于构建与来源，
+  SDK 运行兼容以当前 ABI、物理目标、符号签名与真实 DLL 运行依赖核验。
+- **分发**：既有 `ac-build sdk --project <dir> --target av --root <dir> --out <dir>`
+  打包 `targets/av/program.abc`、`targets/av/rust-program.json` 与
+  `providers/rust/provider.dll`，由 978 recipe 声明摘要、授权与运行依赖。运行用
+  `ac-build run --sdk <dir> --target av --grant <grant>`，先核闭包、pin、授权与运行
+  兼容，再用当前 stub 表重验 ABC 并执行。此运行路径在源工程与编译工具不可见时已验证。
+  重新打包先写入并验证新闭包，发布失败时保留旧可用 SDK。

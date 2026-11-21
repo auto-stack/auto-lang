@@ -574,6 +574,27 @@ pub fn execute_foreign_program(
         .map_err(|e| json!({"stage":"admit","code":"abc","message":format!("{e:?}")}))?;
     let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &program.owner, table)
         .map_err(|e| json!({"stage":"admit","code":"abc","message":e.to_string()}))?;
+    let declarations = loaded
+        .module()
+        .funcs
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instrs)
+        .filter_map(|instr| match instr {
+            ace_av_core::mir::MirInstr::ForeignCall { declaration, .. } => Some(declaration),
+            _ => None,
+        });
+    for declaration in declarations {
+        let missing = std::iter::once(ace_foreign_contract::manual::SOURCE_CAP)
+            .chain(declaration.capabilities.iter().map(String::as_str))
+            .find(|need| !caps.iter().any(|granted| granted.as_str() == *need));
+        if let Some(missing) = missing {
+            return Err(diag(
+                "source.foreign-capability",
+                format!("current foreign grant {missing} is required"),
+            ));
+        }
+    }
     let grants: Vec<_> = caps
         .iter()
         .filter(|cap| {

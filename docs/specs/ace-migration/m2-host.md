@@ -176,3 +176,16 @@ V-03 cancel/late 与回调形态 V-04 全量仍在 939 native 道（callback/txn
 - **合同与自动绑定（无手工 manifest）**：`ace-foreign-contract` 新增 `ResKind::OutBytes`；`crates/auto-bindgen/src/{rust,c}_import.rs` 从 Rust `&mut [u8]` 与 C `(uint8_t* dst, uint64_t cap)` 自动导出输出帧声明（保留 `&mut i32` 等非字节切片的 `rust-import` 具名拒绝，不放宽任意 `&mut`）。
 - **物理执行与守卫（`av-core::foreign_exec`）**：新增 `OutBufferFrame` 与 `dispatch_view_out_bytes`，在调用前校验 `owner`/`origin`/session `generation`/可写权限/`0 <= off <= cap` 与 `run_bytes` 预算，分配带前导/尾随 guard bytes 的隔离暂存区并在返回后校验 `0 <= n <= cap` 与 guard bytes 完整性（错写即主机失败、`0` 字节泄露，过期/取消/跨代帧调用前拒、`callee_count = 0`）。
 - **永久证据与 B 分账**：`ace-abi::out_frame_1064`（3 E2E：`v_frame_rust_provider_read_into_and_guards` / `v_frame_c_provider_read_into` / `v_frame_security_lifecycle_and_import_negatives`）+ `auto-bindgen` 10/10；`AC` native 机器代码侧 `OutBytes` 调用与帧守卫校验已依 `SD-AC-STAGED` 移交 `PLAN-1068 T-03`。
+
+## 普通 AV Rust 工程（PLAN-1113）
+
+Windows/MSVC 的 `ac-build` 从工程声明读取 Rust provider 源与可选锁文件。普通 Auto
+的 `use.rs` 引用该源声明的 provider 身份。967 生成的 C-compatible shim、受检声明和
+`F0Session` 由 1093 普通编译入口消费，产出带 owner 的 ABC。执行时先按当前会话代次
+重新准入 ABC，再逐调用声明检查当前授权。SDK 每次打开新的会话，provider DLL 从 SDK 与
+系统目录解析运行依赖。
+
+已验证的工程调用包含借用 UTF-8、空串、provider 换版以及带锁的 Rust 依赖。在同一已打开
+会话重放工程 ABC，撤权、预取消和关闭后旧代次均为零新增派发。shim 隔离 Rust panic，
+同一会话随后可以执行合法调用。普通工程的 owned 析构、闭包回调和同步/异步完成端口由
+V-02 逐项验收，当前 Rust importer 与 AV callback 执行边界见 PLAN-1113 §10。

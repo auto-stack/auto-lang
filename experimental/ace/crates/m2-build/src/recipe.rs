@@ -37,6 +37,7 @@ use crate::M2Reject;
 
 pub const SDK_RECIPE_SCHEMA: &str = "ace-m2-build/sdk-recipe/1";
 pub const INSTALL_MANIFEST: &str = "install-manifest.json";
+pub(crate) const AV_RUST_PROGRAM_PATH: &str = "targets/av/rust-program.json";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildToolDependency {
@@ -189,6 +190,9 @@ impl SdkRecipe {
     ///   rejected (a smuggled dependency must not ride along);
     /// * every declared path is a safe relative path.
     pub fn load_verify(root: &Path) -> Result<(SdkRecipe, Vec<(String, Vec<u8>)>), M2Reject> {
+        let root = root
+            .canonicalize()
+            .map_err(|e| M2Reject::new("m2build.recipe.missing", format!("open SDK root: {e}")))?;
         let doc_path = root.join(INSTALL_MANIFEST);
         let doc = std::fs::read(&doc_path).map_err(|e| {
             M2Reject::new(
@@ -209,8 +213,7 @@ impl SdkRecipe {
         }
         let mut out: Vec<(String, Vec<u8>)> = Vec::new();
         for artifact in &recipe.artifacts {
-            Self::safe_rel(&artifact.path)?;
-            let full = root.join(PathBuf::from(artifact.path.replace('/', "\\")));
+            let full = closure_member(&root, &artifact.path)?;
             let bytes = std::fs::read(&full).map_err(|_| {
                 M2Reject::new(
                     "m2build.recipe.missing",
@@ -233,7 +236,7 @@ impl SdkRecipe {
         for source in &recipe.sources {
             Self::safe_rel(&source.path)?;
             let rel = format!("sources/{}/{}", recipe.project, source.path);
-            let full = root.join(PathBuf::from(rel.replace('/', "\\")));
+            let full = closure_member(&root, &rel)?;
             let bytes = std::fs::read_to_string(&full).map_err(|_| {
                 M2Reject::new(
                     "m2build.recipe.missing",
@@ -252,8 +255,8 @@ impl SdkRecipe {
         // stdlib closure (declared under provenance, lives at its own path)
         for path in recipe.stdlib_files() {
             Self::safe_rel(&path)?;
-            let full = root.join(PathBuf::from(path.replace('/', "\\")));
-            if full.is_file() {
+            if root.join(&path).is_file() {
+                let full = closure_member(&root, &path)?;
                 let bytes = std::fs::read(&full)
                     .map_err(|e| M2Reject::new("m2build.recipe.io", format!("read {path}: {e}")))?;
                 out.push((path.clone(), bytes));
@@ -269,18 +272,44 @@ impl SdkRecipe {
             allowed.insert(p);
         }
         allowed.insert(INSTALL_MANIFEST.to_string());
-        let mut stack = vec![root.to_path_buf()];
+        let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
             let entries = std::fs::read_dir(&dir)
                 .map_err(|e| M2Reject::new("m2build.recipe.io", format!("read_dir: {e}")))?;
             for entry in entries.flatten() {
                 let full = entry.path();
-                if full.is_dir() {
+                let ty = entry.file_type().map_err(|e| {
+                    M2Reject::new(
+                        "m2build.recipe.io",
+                        format!("inspect {}: {e}", full.display()),
+                    )
+                })?;
+                #[cfg(windows)]
+                let reparse_point = {
+                    use std::os::windows::fs::MetadataExt;
+                    std::fs::symlink_metadata(&full)
+                        .map_err(|e| M2Reject::new("m2build.recipe.io", e.to_string()))?
+                        .file_attributes()
+                        & 0x400
+                        != 0
+                };
+                #[cfg(not(windows))]
+                let reparse_point = ty.is_symlink();
+                if reparse_point {
+                    return Err(M2Reject::new(
+                        "m2build.recipe.dev-tree-escape",
+                        format!(
+                            "SDK directory contains a redirected path at {}",
+                            full.display()
+                        ),
+                    ));
+                }
+                if ty.is_dir() {
                     stack.push(full);
                     continue;
                 }
                 let rel = full
-                    .strip_prefix(root)
+                    .strip_prefix(&root)
                     .unwrap_or(&full)
                     .to_string_lossy()
                     .replace('\\', "/");
@@ -327,4 +356,21 @@ impl SdkRecipe {
         String::from_utf8(bytes.1.clone())
             .map_err(|e| M2Reject::new("m2build.recipe.schema", format!("source not UTF-8: {e}")))
     }
+}
+
+fn closure_member(root: &Path, relative: &str) -> Result<PathBuf, M2Reject> {
+    SdkRecipe::safe_rel(relative)?;
+    let path = root.join(relative).canonicalize().map_err(|e| {
+        M2Reject::new(
+            "m2build.recipe.missing",
+            format!("declared member `{relative}` is missing: {e}"),
+        )
+    })?;
+    if !path.starts_with(root) {
+        return Err(M2Reject::new(
+            "m2build.recipe.dev-tree-escape",
+            format!("declared member `{relative}` resolves outside the SDK"),
+        ));
+    }
+    Ok(path)
 }
