@@ -2761,7 +2761,6 @@ impl PlanCtx<'_> {
                         vt = self.program.records[*ri].fields[*fi].vt;
                     }
                     let place = plan.places.len();
-                    eprintln!("DBG1094 plan place span {:?} local {} path {:?}", span, local.0, path);
                     plan.places.push(PNode {
                         local: local.0,
                         path: path.iter().map(|(_, fi)| *fi as u32).collect(),

@@ -4,10 +4,17 @@
 //! nested python calls, the ValueError catch/uncaught pair with the
 //! `python.value` classification, the unicode/NUL text lane, and the
 //! `with` context-manager statement (enter/exit exactly once).
+//!
+//! The py bridge is ONE SERIAL SESSION per process (the frozen v1 support
+//! boundary) — tests sharing this process serialize through PY_LOCK so
+//! parallel nextest threads cannot corrupt the interpreter state.
 
 use ace_av::language_source_worker::serve;
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+static PY_LOCK: Mutex<()> = Mutex::new(());
 
 fn provider_root() -> String {
     // The prepare-av-providers bin writes the closures into its own exe
@@ -40,6 +47,7 @@ fn plan1094_py_nested_call_runs_42() {
     let source = r#"use.py builtins: int, str
 fn main() int { return int(str(42)).to(int) }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
@@ -52,6 +60,7 @@ fn main() int {
  try { return int("abc").to(int) } catch e { return 42 }
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
@@ -65,6 +74,7 @@ fn main() int {
  return int("abc").to(int)
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "diag", "{step}");
     assert_eq!(step["diag"]["stage"], "run", "{step}");
@@ -89,6 +99,7 @@ fn main() int {
  if buf.closed.to(bool) { return 42 }; return 0
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
@@ -104,6 +115,7 @@ fn main() int {
  if buf.closed.to(bool) { return 42 }; return 0
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
@@ -117,6 +129,7 @@ fn main() int {
  try { with int("abc") as x { } } catch e { return 42 }; return 0
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
@@ -130,6 +143,7 @@ fn main() int {
  if p.to(str) == "中文\0尾" { return 42 }; return 0
 }
 "#;
+    let _guard = PY_LOCK.lock().expect("py lock");
     let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
     assert_eq!(step["outcome"], "success", "{step}");
     assert_eq!(step["value"], 42, "{step}");
