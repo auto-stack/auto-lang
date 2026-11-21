@@ -432,3 +432,91 @@ Legacy 99_script_err/05_obj_call_auto_catch: a REAL Python `TypeError`
 Auto values (`.upper()` mis-routed) is NOT replicated — a native `str`'s
 methods route natively (the plan's named decision, "旧 obj_call Auto 分支假
 阳性等 bug 不机械复制").
+
+## Case: with-break-exits-once
+id: "av.parity.1094.with-break-exits-once"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py io: StringIO
+use.py contextlib: closing
+fn main() int {
+ let buf = StringIO()
+ var i = 0
+ for i < 3 {
+  with closing(buf) as r { r.write("ok"); break }
+ }
+ if buf.closed.to(bool) { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+WITH-EXITS (break): `break` inside a `with` body routes through `__exit__`
+EXACTLY ONCE (buf.closed proves the exit ran), then the loop exits.
+
+## Case: with-nested-exits
+id: "av.parity.1094.with-nested-exits"
+tags: ["av-language-parity", "plan-1094"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py io: StringIO
+use.py contextlib: closing
+fn main() int {
+ let buf1 = StringIO()
+ let buf2 = StringIO()
+ with closing(buf1) as a {
+  with closing(buf2) as b { b.write("x") }
+ }
+ if buf1.closed.to(bool) && buf2.closed.to(bool) { return 42 }; return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+WITH-EXITS (nested): nested `with` blocks both run their `__exit__` in
+Python's LIFO order (both buffers closed).
