@@ -1,3 +1,7 @@
+## D-1088-LAYOUT-01 — AV 空记录布局的旧断言与当前语义不一致（OPEN，2026-11-21）
+
+PLAN-1088 的 `6f26279ab` 允许空记录布局。原测试 `layout::tests::layout_rejects_non_record_and_empty` 仍要求拒绝，PLAN-1091 冻结组和隔离重放均在 `LayoutDesc { size: 0, align: 1, fields: [], is_copy: true }` 上失败。基面与候选的布局源和测试为同一 Git blob。AV layout owner 需按确认的空记录合同拆分该测试，保留非 record 的拒绝，同时为合法空记录的零尺寸、对齐和 Copy 性建立精确断言。关闭条件为两种控制在固定 AV 组通过。复现见 [PLAN-1091 §9](archive/1091-av-parity-comptime-and-macros.md#9-复审记录)。
+
 ## R1047-01 / R1047-02 — AAC 基础 HIR 的早返回与声明原型（CLOSED，2026-11-21）
 
 - PLAN-1047 r6 复审在真实 Windows 阶段入口观察到两处合法源码在 HIR 生成时被拒。无显式 `else` 的终结 `if` 后有后续返回，`hir.unsupported 0 54..62`。签名原型与同模块正文已成功绑定，HIR 仍在原型 0..18 拒绝。归 PLAN-1047 T-04/T-06。756b79850 修复后，原样真/假分支 PE 分别返回 31、0，原型 PE 返回 42，坏槽位在 Auto descriptor 拒绝。39d092c36 的复审和固定组通过。见 [PLAN-1047 §9](archive/1047-aac-binding-types-and-checked-hir.md#9-复审记录)。

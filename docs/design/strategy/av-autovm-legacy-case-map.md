@@ -21,7 +21,7 @@
 | [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md) | 7 | 待AVP-00核角色，未执行 |
 | [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md) | 4 | 原源和 VM oracle 已迁入生成器语料，AV 原样通过 |
 | [PLAN-1090](../../plans/1090-av-parity-tasks-async-and-actors.md) | 13 | 待AVP-00核角色，未执行 |
-| [PLAN-1091](../../plans/1091-av-parity-comptime-and-macros.md) | 0 | 待AVP-00核角色，未执行 |
+| [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md) | 0 | 待AVP-00核角色，未执行 |
 | [PLAN-1092](../../plans/1092-av-parity-attributes-and-metadata.md) | 0 | 待AVP-00核角色，未执行 |
 | [PLAN-1093](../../plans/1093-av-parity-foreign-language-surface.md) | 70 | 待AVP-00核角色，未执行 |
 | [PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md) | 7 | 待AVP-00核角色，未执行 |
