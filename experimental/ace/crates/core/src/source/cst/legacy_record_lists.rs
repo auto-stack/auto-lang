@@ -228,7 +228,7 @@ impl HandlerLists {
                     self.collect(body, state, &inner);
                 }
                 ComponentStmt::While { body, .. } => self.collect(body, state, &scope),
-                ComponentStmt::AssignLocal { .. } | ComponentStmt::Send { .. } => {}
+                ComponentStmt::AssignLocal { .. } | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
             }
         }
     }

@@ -222,6 +222,41 @@ pub fn shim_fs_mtime(path: String) -> Result<i64, String> {
     Ok(secs)
 }
 
+#[auto_macros::rust_fn("auto.fs.session_root")]
+pub fn shim_session_root() -> String {
+    crate::file_session::current_session()
+        .and_then(|session| session.read_root().ok())
+        .unwrap_or_default()
+}
+
+/// Typed counterpart of `fs.read_dir`, including dotfiles and directories.
+#[auto_macros::rust_fn("auto.fs.read_dir_names")]
+pub fn shim_read_dir_names(path: String) -> Result<Vec<String>, String> {
+    let path = resolve_request_file_path(&path)?;
+    crate::vm::native::read_dir_names(&path)
+}
+
+#[auto_macros::rust_fn("auto.fs.session_list")]
+pub fn shim_session_list(path: String) -> String {
+    crate::file_session::current_session()
+        .and_then(|session| session.list(Path::new(&path)).ok())
+        .map(|listing| {
+            serde_json::json!({ "ok": true, "path": listing.path, "entries": listing.entries })
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+#[auto_macros::rust_fn("auto.fs.session_mutate")]
+pub fn shim_session_mutate(operation: String, path: String, target: String) -> bool {
+    use crate::file_session::FileMutation;
+
+    let Some(action) = FileMutation::from_request(&operation, &path, &target) else {
+        return false;
+    };
+    crate::file_session::current_session().is_some_and(|session| session.mutate(action).is_ok())
+}
+
 /// Check if path is a directory
 #[auto_macros::rust_fn("File.is_dir")]
 pub fn shim_file_is_dir(path: String) -> bool {

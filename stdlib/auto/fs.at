@@ -19,6 +19,24 @@ fn rename(old str, new str) void
 #[vm]
 fn read_dir(dir str) str
 
+/// Read all direct child names as a list, including dotfiles. A failed read raises an error.
+#[vm]
+fn read_dir_names(dir str) []str
+
+/// Return the host-granted directory for this file session, or an empty string.
+#[vm]
+fn session_root() str
+
+/// List a directory beneath the session's read grant as JSON.
+/// An empty string denotes a denied or failed access.
+#[vm]
+fn session_list(path str) str
+
+/// Run a mutation allowed by the active file session. Copy and rename require
+/// a target path. Other operations require an empty target string.
+#[vm]
+fn session_mutate(operation str, path str, target str) bool
+
 /// List direct child names (non-recursive; dotfiles skipped; sorted).
 /// Returns an empty list when the directory cannot be read.
 #[vm]

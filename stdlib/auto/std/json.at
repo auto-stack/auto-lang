@@ -1,0 +1,17 @@
+use auto.json
+
+/// Encode a string as a JSON value through the VM serializer.
+pub fn json_str(value Str) Str {
+    let encoded str = json.stringify(value)
+    return encoded.to(Str)
+}
+
+/// Compatibility entry for the typed JSON root member readers.
+pub fn json_object_text(s str, key str, fallback str) Str {
+    let value str = json.object_text(s, key, fallback)
+    return value.to(Str)
+}
+
+pub fn json_object_i32(s str, key str, fallback int) int {
+    return json.object_i32(s, key, fallback)
+}

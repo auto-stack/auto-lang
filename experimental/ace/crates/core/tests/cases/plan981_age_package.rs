@@ -93,3 +93,41 @@ fn p981_age_package_profile_identity_round_trips() {
         ace_core::hir::HirDomain::TextRecord
     );
 }
+
+#[test]
+fn p114_age_package_checks_directory_metadata_integer_conversions() {
+    use ace_core::source::{
+        age_h0::LegacyWidgetAlias,
+        age_package::compile_age_package,
+        packages::{PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"fn kibibytes(bytes u64) int {
+    let unit u64 = (1024).to(u64)
+    return (bytes / unit).to(int)
+}
+fn timestamp(minutes int) i64 {
+    return minutes.to(i64) * (60).to(i64)
+}
+widget Files {
+    model {
+        var size int = kibibytes((8192).to(u64))
+        var current bool = timestamp(120) > (0).to(i64)
+    }
+    view { text "Files" {} }
+}
+"#;
+    let compile = |source: &str| compile_age_package(
+        &[PackageModuleInput {
+            package: "app".into(), id: "files".into(), source: source.into(),
+            version: "1.0.0".into(), provider: None,
+        }],
+        "app::files",
+        LegacyWidgetAlias::Accept,
+        &[PACKAGES_CAPABILITY.to_owned()],
+    );
+    compile(source).expect("AGE may convert checked integer widths");
+    let invalid = source.replace("bytes / unit", "bytes / unit.to(int)");
+    let errors = compile(&invalid).err().expect("mixed-width arithmetic requires a conversion");
+    assert!(errors.iter().any(|error| error.code == "source.type-mismatch"), "{errors:?}");
+}

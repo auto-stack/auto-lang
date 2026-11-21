@@ -117,7 +117,7 @@ fn value_matches_spelling(v: &ComponentFieldValue, spelling: &str) -> bool {
     }
 }
 
-fn field_value_to_arg(v: &ComponentFieldValue) -> EntryArg<'static> {
+pub(crate) fn field_value_to_arg(v: &ComponentFieldValue) -> EntryArg<'static> {
     match v {
         ComponentFieldValue::Int(i) => EntryArg::Value(Value::I32(*i)),
         ComponentFieldValue::Bool(b) => EntryArg::Value(Value::Bool(*b)),

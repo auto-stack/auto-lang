@@ -509,8 +509,10 @@ fn bind_packages_face_with(
             ));
         }
         // PLAN-945：包名 `std` 保留给冻结公共标准库切片。
+        let age_json = face == Faces::Age && super::stdlib::is_frozen_age_json_module(input);
         if input.package == super::stdlib::STDLIB_PACKAGE
             && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+            && !age_json
         {
             return Err(fail(
                 &key,
@@ -527,6 +529,7 @@ fn bind_packages_face_with(
         let parsed = match face {
             Faces::Aggregates => parse_package_source_aggregates(&input.source, caps, budget),
             Faces::AggregatesCt => parse_package_source_aggregates_ct(&input.source, caps, budget),
+            Faces::Age if age_json => parse_package_source(&input.source, caps, budget),
             Faces::Age => {
                 parse_package_source_age_with_style_dependencies(
                     &input.source,
@@ -557,8 +560,8 @@ fn bind_packages_face_with(
         }
         units.insert(key, syntax);
     }
-    let augmented;
-    let inputs = if face == Faces::Age
+    let mut augmented = Vec::new();
+    if face == Faces::Age
         && units.iter().any(|(key, unit)| needs_age_math(key, unit, &units))
     {
         let math = super::stdlib::age_math_input();
@@ -567,11 +570,37 @@ fn bind_packages_face_with(
                 module: super::stdlib::AGE_MATH_MODULE.into(),
                 diagnostic: ds.remove(0),
             })?;
-        units.insert(super::stdlib::AGE_MATH_MODULE.into(), syntax);
-        augmented = inputs.iter().cloned().chain([math]).collect::<Vec<_>>();
-        &augmented
-    } else {
+        let key = super::stdlib::AGE_MATH_MODULE;
+        total = total.checked_add(math.source.len()).filter(|total| *total <= budget.work_bytes)
+            .ok_or_else(|| fail(key, "source.resource", "module input byte budget", zero))?;
+        units.insert(key.into(), syntax);
+        augmented.push(math);
+    }
+    if face == Faces::Age
+        && !units.contains_key("std::json")
+        && units.values().any(|unit| unit.imports.iter().any(|import| {
+            matches!(import.path.as_slice(), [package, module, _] if package == "std" && module == "json")
+                && (import.reexport || unit.referenced.contains(import.bound_name()))
+        }))
+    {
+        let json = super::stdlib::age_json_input();
+        let key = unit_key(&json.package, &json.id);
+        if total.checked_add(json.source.len()).is_none_or(|total| total > budget.work_bytes) {
+            return Err(fail(&key, "source.resource", "module input byte budget", zero));
+        }
+        let syntax = parse_package_source(&json.source, caps, budget)
+            .map_err(|mut diagnostics| PackageDiagnostic {
+                module: key.clone(),
+                diagnostic: diagnostics.remove(0),
+            })?;
+        units.insert(key, syntax);
+        augmented.push(json);
+    }
+    let inputs = if augmented.is_empty() {
         inputs
+    } else {
+        augmented.splice(0..0, inputs.iter().cloned());
+        &augmented
     };
     // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景 `Send`/`SendArgs`
     // 的**声明级**核对（arity/载荷域）在**包级**一次做——`ForNode{node}` 的
@@ -586,7 +615,7 @@ fn bind_packages_face_with(
             return Err(d);
         }
         *out.widget_refs = crate::source::age_package::bind_widget_packages(
-            out.components, &mut units, scenario, &sites,
+            out.components, &mut units, entry, scenario, &sites,
         )?;
         if let Some(runtime) = out.runtime_components.as_mut() {
             **runtime = crate::source::age_package::add_widget_runtime_state(
@@ -884,8 +913,10 @@ fn bind_package_syntax_inner(
         // PLAN-945：恢复路径同守 `std` 冻结身份（与冷路径同一拒绝）。
         // PLAN-972（T-02）：装配 aggregates 线另认装配标准库集的冻结身份
         //（同包名 lane 分离；仓外来源两线都不认）。
+        let age_json = face == Faces::Age && super::stdlib::is_frozen_age_json_module(input);
         if input.package == super::stdlib::STDLIB_PACKAGE
             && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
+            && !age_json
             && !(aggregates
                 && in_face
                 && super::stdlib::is_frozen_std_assembled_module(
@@ -915,8 +946,14 @@ fn bind_package_syntax_inner(
         let u = units
             .get(&key)
             .ok_or_else(|| fail(&key, "source.module-missing", "source unit absent", zero))?;
+        let json_grammar_id = if age_json {
+            let grammar = packages_grammar().map_err(|e| fail(&key, "source.infra", e, zero))?;
+            Some(format!("{}", grammar.program().identity.grammar_id.0))
+        } else {
+            None
+        };
         if u.source_hash != crate::runtime_contract::sha256_hex(input.source.as_bytes())
-            || u.grammar_id != grammar_id
+            || u.grammar_id.as_str() != json_grammar_id.as_deref().unwrap_or(&grammar_id)
         {
             return Err(fail(
                 &key,
@@ -1462,14 +1499,13 @@ fn bind_package_syntax_inner(
     let mut initializers: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut offset = 0usize;
     let mut identity = format!("{PACKAGES_BINDING_VERSION}:{}:{entry}\n", entry.len());
-    let mut result_grammar_id = String::new();
+    let result_grammar_id = units[entry].grammar_id.clone();
     let admit_meta = face == Faces::Auto
         && caps
             .iter()
             .any(|cap| cap == crate::source::META_CAPABILITY);
     for (key, unit) in &units {
         let (pkg, module) = split_key(key);
-        result_grammar_id = unit.grammar_id.clone();
         identity.push_str(&format!(
             "{}:{}:{}:{}:{}:{}:{}\n",
             pkg.len(),
@@ -1480,6 +1516,9 @@ fn bind_package_syntax_inner(
             module,
             crate::runtime_contract::sha256_hex(sources[key].as_bytes())
         ));
+        if unit.grammar_id != result_grammar_id {
+            identity.push_str(&format!("module-grammar:{}\n", unit.grammar_id));
+        }
         // PLAN-1043：装配身份进模块行（实现层 kind+sha、候选存在集、ctx）。
         if let Some(layer) = impl_sources.get(key) {
             identity.push_str(&format!(
@@ -2756,6 +2795,9 @@ impl<'a> Walker<'a> {
         if self.age && name.name == "List" {
             return Ok(name.name.clone());
         }
+        if self.age && name.name == "List" {
+            return Ok(name.name.clone());
+        }
         if self.my_decls().types.contains_key(&name.name) {
             return Ok(type_symbol(self.pkg(), self.module(), &name.name));
         }
@@ -3830,6 +3872,46 @@ mod tests {
             &[PACKAGES_CAPABILITY.into()],
             FrontBudget::WORK_OWNED_64MIB,
         )
+    }
+
+    #[test]
+    fn age_json_is_loaded_by_a_referenced_import_and_uses_the_frozen_source() {
+        let use_json = |source| input("app", "main", source);
+        let bind_age = |inputs: &[PackageModuleInput]| {
+            bind_packages_age(
+                inputs,
+                "app::main",
+                &[PACKAGES_CAPABILITY.into()],
+                FrontBudget::WORK_OWNED_64MIB,
+                &crate::source::age_component::ComponentScenario {
+                    instances: 0,
+                    ops: Vec::new(),
+                },
+            )
+        };
+        let unused = use_json("use std.json.json_is_valid\nfn main() int { return 1 }");
+        let result = bind_age(&[unused]).unwrap();
+        assert!(!result.bound.units.contains_key("std::json"));
+
+        let used = use_json(r#"use std.json.json_is_valid
+fn main() int {
+    if json_is_valid("{}") { return 1 }
+    return 0
+}"#);
+        let result = bind_age(&[used.clone()]).unwrap();
+        assert!(result.bound.units.contains_key("std::json"));
+        assert!(result.sources.iter().any(|source| source.key == "std::json"));
+        assert_eq!(result.grammar_id, result.bound.units["app::main"].grammar_id);
+        crate::source::age_package::compile_age_package(
+            &[used.clone()],
+            "app::main",
+            crate::source::age_h0::LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.into()],
+        ).expect("typecheck and verify the frozen codec in an AGE package");
+
+        let spoofed = input("std", "json", "pub fn json_is_valid(s str) bool { return true }");
+        let error = bind_age(&[used, spoofed]).err().expect("reject forged std::json");
+        assert_eq!(error.diagnostic.code, super::super::stdlib::STDLIB_RESERVED);
     }
 
     #[test]

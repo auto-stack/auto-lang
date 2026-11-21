@@ -769,3 +769,17 @@ A live view call materializes its checked widget model at most once and reuses
 it for model reads within that call. Widget inputs and state dispatch remain
 scoped to their instance, and replay uses the ordinary verification and
 resource limits.
+
+## 16. 文件管理器与画廊树组件（PLAN-114）
+
+AGE 包按入口绑定实际导入的组件和辅助模块。原 Widgets Gallery 的
+`/filetree` 与 `/treeview` 各有独立的受检组件闭包。嵌套记录和列表携带节点
+ID、标签、子节点与 badge。展开和选择使用所声明的节点 ID。子组件绑定的属性与
+事件载荷经共享检查，无效组件引用、缺失声明和不匹配的载荷会产生具名诊断。
+路由保留目标页的诊断及其他可装载页面。
+
+AV 和 A2Vue 根据已受检的模型与事件函数生成视图。文件管理器的目录结果通过
+`file:list` 回复为 `DirListing`，目录项保留 `u64` 大小和 `i64` 修改时间。
+`file:mutate` 与 `file:open` 绑定当前实例的宿主请求与回复。文件访问由宿主在
+实际读写或打开前按活动授权检查。实例关闭后，旧请求和回复失效。Windows 受检
+桌面可打开同一已授权根内的普通文件。A2Vue 的打开动作返回桌面使用提示。

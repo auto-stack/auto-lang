@@ -1,3 +1,23 @@
+const _widgetModuleConstants = new Map();
+
+function a2x_widget_global_init(symbol, value, text) {
+  if (_widgetModuleConstants.has(symbol)) {
+    _trap('Internal', `module constant ${symbol} was initialized twice`);
+  }
+  // Snapshot text as bytes owned by the factory. The per-frame text ledger
+  // can release the initializer's temporary without invalidating the cell.
+  _widgetModuleConstants.set(symbol, text ? a2x_str_to_borrowed(value).slice() : value);
+  return 0;
+}
+
+function a2x_widget_global_get(symbol, owned) {
+  if (!_widgetModuleConstants.has(symbol)) {
+    _trap('Internal', `module constant ${symbol} was read before initialization`);
+  }
+  const value = _widgetModuleConstants.get(symbol);
+  return owned ? a2x_str_clone(value) : value;
+}
+
 function a2x_widget_begin_frame() {
   _RT.budget_left = A2X_DEFAULT_BUDGET;
 }

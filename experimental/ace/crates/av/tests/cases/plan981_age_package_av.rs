@@ -1150,6 +1150,105 @@ widget TreePage {
 }
 
 #[test]
+fn p114_directory_listing_payload_updates_only_the_addressed_instance() {
+    use ace_core::atom_text::Span;
+    use ace_core::source::ast::{Expr, ExprKind, Ident, NamedCtorField, TypeAnn, TypeRef};
+
+    let page = r#"type DirEntry {
+    name str
+    path str
+    is_dir bool
+    size int
+    mtime int
+}
+type DirListing {
+    ok bool
+    path str
+    entries List<DirEntry>
+}
+widget Browser {
+    msg { DirectoryListed(DirListing), ApplyListing(DirListing) }
+    model {
+        var current_path str = "home"
+        var first_name str = "old.txt"
+        var entry_count int = 1
+    }
+    on {
+        .DirectoryListed(listing DirListing) -> { .ApplyListing(listing.move) }
+        .ApplyListing(listing DirListing) -> {
+            if listing.ok {
+                .current_path = listing.path
+                .entry_count = listing.entries.len()
+                .first_name = ""
+                if .entry_count > 0 {
+                    .first_name = listing.entries[0].name
+                }
+            }
+        }
+    }
+    view { text f"${.current_path}:${.first_name}:${.entry_count}" {} }
+}
+"#;
+    let span = Span { start: 0, end: 0 };
+    let value = |kind| Expr { kind, span };
+    let string = |text: &str| value(ExprKind::StrLit(text.to_owned()));
+    let name = |text: &str| Ident { name: text.into(), span };
+    let record = |ty, entries: Vec<(&str, Expr)>| value(ExprKind::CtorNamed {
+        ty: name(ty),
+        args: Vec::new(),
+        fields: entries.into_iter().map(|(field, value)| NamedCtorField {
+            name: name(field), value, span,
+        }).collect(),
+    });
+    let entry = record("DirEntry", vec![
+        ("name", string("计划.txt")), ("path", string("docs/计划.txt")),
+        ("is_dir", value(ExprKind::BoolLit(false))), ("size", value(ExprKind::IntLit(17))),
+        ("mtime", value(ExprKind::IntLit(1700000000))),
+    ]);
+    let listing = |ok, path, entries: Vec<Expr>| {
+        let entries = if entries.is_empty() {
+            value(ExprKind::MethodCall {
+                recv: Box::new(value(ExprKind::GenericType {
+                    name: name("List"),
+                    args: vec![TypeAnn { kind: TypeRef::Record(name("DirEntry")), span }],
+                })),
+                name: name("new"),
+                args: Vec::new(),
+                instance: None,
+            })
+        } else {
+            value(ExprKind::ArrayLit(entries))
+        };
+        record("DirListing", vec![
+            ("ok", value(ExprKind::BoolLit(ok))), ("path", string(path)), ("entries", entries),
+        ])
+    };
+    let result = |instance, payload| ScenarioOp::SendArgs {
+        instance, msg: "DirectoryListed".into(), args: vec![payload],
+    };
+    let modules = [input("app", page)];
+    let compile = |ops| compile_age_package_with_scenario(
+        &modules, "app::app", LegacyWidgetAlias::Accept, &caps(),
+        &ComponentScenario { instances: 2, ops },
+    );
+    let compiled = compile(vec![
+        result(0, listing(true, "docs", vec![entry])),
+        result(0, listing(false, "outside", vec![])),
+    ]).expect("check the typed directory reply and run it through the scenario");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 2).unwrap();
+    assert_eq!(observed.components[0].instance_texts, [vec!["docs:计划.txt:1"], vec!["home:old.txt:1"]]);
+    let errors = compile(vec![result(0, string("outside"))]).err().unwrap();
+    assert!(errors.iter().any(|error| error.code == "source.type-mismatch"), "{errors:?}");
+
+    let aliasing = page.replace(".ApplyListing(listing.move)", ".ApplyListing(listing)");
+    let errors = compile_age_package_with_scenario(
+        &[input("app", &aliasing)], "app::app", LegacyWidgetAlias::Accept, &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    ).err().unwrap();
+    assert!(errors.iter().any(|error| error.code == "source.age.handler-record-transfer"), "{errors:?}");
+}
+
+#[test]
 fn p114_package_model_carries_typed_node_rows_to_the_helper_and_event_scope() {
     use ace_core::source::age_component::InitialValue;
 

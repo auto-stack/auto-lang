@@ -10,7 +10,7 @@
 //! also serves packages-modules for if-cond and for-cond (grammar rule
 //! + pratt table + condition-unary/-postfix/-ctor/-atom widened).
 //!
-//! Verified here: json.at parses as a package module (19 pub exports,
+//! Verified here: json.at parses as a package module (public exports,
 //! 8 private helpers declared but NOT exported), the app::jsond module
 //! compiles through compile_package_product with a cross-module pub
 //! consumption, and the private-visibility negative — importing a
@@ -45,7 +45,7 @@ fn input(package: &str, id: &str, source: &str) -> PackageModuleInput {
 fn module_1064_json_at_parses_with_pub_private_split() {
     let m = parse_package_source(JSON_AT, &caps(), FrontBudget::WORK_OWNED_64MIB)
         .expect("json.at parses as a package module");
-    assert_eq!(m.exports.len(), 19, "the 19 pub fns of json.at");
+    assert_eq!(m.exports.len(), 21, "the public JSON functions");
     for private in [
         "json_cp",
         "json_ws",

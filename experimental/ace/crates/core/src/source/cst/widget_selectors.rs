@@ -120,6 +120,7 @@ impl ListEscapes {
                     ComponentStmt::Let { value, .. }
                     | ComponentStmt::AssignLocal { value, .. }
                     | ComponentStmt::Effect { value, .. }
+                    | ComponentStmt::Focus { target: value, .. }
                     | ComponentStmt::Call { call: value, .. } => self.expression(value, false),
                     ComponentStmt::Send { args, .. } => {
                         for arg in args {
@@ -294,6 +295,7 @@ fn specialize_body(
             ComponentStmt::Assign(assign) => specialize_expr(&mut assign.rhs, inputs, &locals),
             ComponentStmt::AssignLocal { value, .. }
             | ComponentStmt::Effect { value, .. }
+                    | ComponentStmt::Focus { target: value, .. }
             | ComponentStmt::Call { call: value, .. } => {
                 specialize_expr(value, inputs, &locals);
             }

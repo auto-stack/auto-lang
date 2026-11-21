@@ -86,6 +86,8 @@ pub struct SeedRecord {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SeedCollTy {
     I32,
+    I64,
+    U64,
     Bool,
     F32,
     StrOwned,
@@ -98,6 +100,8 @@ impl SeedCollTy {
     fn token(&self) -> String {
         match self {
             SeedCollTy::I32 => "i32".into(),
+            SeedCollTy::I64 => "i64".into(),
+            SeedCollTy::U64 => "u64".into(),
             SeedCollTy::Bool => "bool".into(),
             SeedCollTy::F32 => "f32".into(),
             SeedCollTy::StrOwned => "Str".into(),
@@ -110,6 +114,8 @@ impl SeedCollTy {
     fn parse_token(tok: &str) -> Result<Self, A2xReject> {
         match tok {
             "i32" => Ok(SeedCollTy::I32),
+            "i64" => Ok(SeedCollTy::I64),
+            "u64" => Ok(SeedCollTy::U64),
             "bool" => Ok(SeedCollTy::Bool),
             "f32" => Ok(SeedCollTy::F32),
             "Str" => Ok(SeedCollTy::StrOwned),
@@ -141,6 +147,8 @@ impl SeedCollTy {
     pub fn elem_tag(&self) -> String {
         match self {
             SeedCollTy::I32 => "i32".into(),
+            SeedCollTy::I64 => "i64".into(),
+            SeedCollTy::U64 => "u64".into(),
             SeedCollTy::Bool => "bool".into(),
             SeedCollTy::F32 => "f32".into(),
             SeedCollTy::StrOwned => "str".into(),
@@ -219,6 +227,8 @@ fn seed_field_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedFieldTy, A2xReje
 fn seed_coll_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedCollTy, A2xReject> {
     match ty {
         Ty::I32 => Ok(SeedCollTy::I32),
+        Ty::I64 => Ok(SeedCollTy::I64),
+        Ty::U64 => Ok(SeedCollTy::U64),
         Ty::Bool => Ok(SeedCollTy::Bool),
         Ty::F32 => Ok(SeedCollTy::F32),
         Ty::StrOwned => Ok(SeedCollTy::StrOwned),
@@ -581,7 +591,7 @@ impl RecordPlan {
                 .iter()
                 .map(|(name, ty)| {
                     let kind = match ty {
-                        SeedCollTy::I32 | SeedCollTy::Bool | SeedCollTy::F32 => FieldKind::Scalar,
+                        SeedCollTy::I32 | SeedCollTy::I64 | SeedCollTy::U64 | SeedCollTy::Bool | SeedCollTy::F32 => FieldKind::Scalar,
                         SeedCollTy::StrOwned => FieldKind::StrOwned,
                         SeedCollTy::Record(inner) => FieldKind::Record(inner.clone()),
                         SeedCollTy::Variant(_) | SeedCollTy::List(_) => FieldKind::SharedCollection,

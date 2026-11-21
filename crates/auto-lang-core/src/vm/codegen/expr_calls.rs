@@ -1441,6 +1441,8 @@ impl Codegen {
                             }
                             ("json", "decode") => Some("auto.json.decode".to_string()),
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
+                            ("json", "object_text") => Some("auto.json.object_text".to_string()),
+                            ("json", "object_i32") => Some("auto.json.object_i32".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),
                             ("json", "as_int") => Some("auto.json.as_int".to_string()),
                             ("json", "as_number") => Some("auto.json.as_number".to_string()),

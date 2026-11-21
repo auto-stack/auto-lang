@@ -33,7 +33,13 @@ pub fn json_escape(s Str) Str {
                             let tb Str = "\\t"
                             out = out + tb
                         } else {
-                            out = out + s.slice(i, i + 1)
+                            if code < 32 {
+                                let prefix Str = "\\u00"
+                                let high = code / 16
+                                out = out + prefix + json_digit(high) + json_hex_low(code - high * 16)
+                            } else {
+                                out = out + s.slice(i, i + 1)
+                            }
                         }
                     }
                 }
@@ -76,6 +82,16 @@ pub fn json_digit(d int) Str {
     if d == 7 { return "7" }
     if d == 8 { return "8" }
     return "9"
+}
+
+fn json_hex_low(d int) Str {
+    if d == 10 { return "a" }
+    if d == 11 { return "b" }
+    if d == 12 { return "c" }
+    if d == 13 { return "d" }
+    if d == 14 { return "e" }
+    if d == 15 { return "f" }
+    return json_digit(d)
 }
 
 // scalar leaves
@@ -866,6 +882,10 @@ pub fn json_parse_str_ok(s str, path str) int {
 // JSON escape incl. \uXXXX (char.to(Str) materialization, B1).
 pub fn json_parse_str(s str, path str) Str {
     let v = json_path_value(s, path)
+    return json_string_at(s, v)
+}
+
+fn json_string_at(s str, v int) Str {
     if v <= 0 {
         return ""
     }
@@ -990,6 +1010,83 @@ pub fn json_parse_str(s str, path str) Str {
         }
     }
     return ""
+}
+
+// A fully validated root object, with decoded names and last-member wins.
+fn json_root_member(s str, key str) int {
+    if !json_is_valid(s) {
+        return 0
+    }
+    let root = json_ws(s, 0)
+    if json_cp(s, root) != 123 {
+        return 0
+    }
+    var p = json_ws(s, root + 1)
+    var found = 0
+    let wanted Str = key.to(Str)
+    for json_cp(s, p) != 125 {
+        let name Str = json_string_at(s, p)
+        let colon = json_ws(s, json_str_end(s, p))
+        let start = json_ws(s, colon + 1)
+        if name == wanted && (name.len() > 0 || json_cp(s, p + 1) == 34) {
+            found = start
+        }
+        p = json_ws(s, json_skip_value(s, start))
+        if json_cp(s, p) == 44 {
+            p = json_ws(s, p + 1)
+        }
+    }
+    return found
+}
+
+/// Read a string member of the root object. Missing and invalid values use fallback.
+pub fn json_object_text(s str, key str, fallback str) Str {
+    let v = json_root_member(s, key)
+    if v == 0 {
+        return fallback.to(Str)
+    }
+    if json_cp(s, v) != 34 {
+        return fallback.to(Str)
+    }
+    let value Str = json_string_at(s, v)
+    if value.len() == 0 && json_cp(s, v + 1) != 34 {
+        return fallback.to(Str)
+    }
+    return value
+}
+
+/// Read a root object member written as a signed 32-bit JSON integer.
+pub fn json_object_i32(s str, key str, fallback int) int {
+    let v = json_root_member(s, key)
+    if v == 0 {
+        return fallback
+    }
+    let end = json_num_end(s, v)
+    if end <= v {
+        return fallback
+    }
+    var p = v
+    var limit_digit = 7
+    if json_cp(s, p) == 45 {
+        p = p + 1
+        limit_digit = 8
+    }
+    var value = 0
+    for p < end {
+        let digit = json_cp(s, p) - 48
+        if digit < 0 || digit > 9 {
+            return fallback
+        }
+        if value < -214748364 || (value == -214748364 && digit > limit_digit) {
+            return fallback
+        }
+        value = value * 10 - digit
+        p = p + 1
+    }
+    if limit_digit == 8 {
+        return value
+    }
+    return 0 - value
 }
 
 // The integer value (kind 3); 0 when missing/malformed/wrong kind

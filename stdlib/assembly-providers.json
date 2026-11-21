@@ -18,7 +18,7 @@
     { "module": "http", "target": "rust", "kind": "a2r-std", "status": "unverified", "locator": "a2r_std::http", "reason": "a2r-std http.rs 为客户端实现，非 VM server 的 Rust 后端（networking-stdlib 规约）；server 面无 Rust provider——生成 Axum 服务属 auto-man 独立装配（SD-04 边界）" },
     { "module": "http", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 C HTTP provider——Unsupported 而非手写 server（计划 §6.1）" },
 
-    { "module": "json", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.json.*", "notes": "json.vm.at 19 #[vm]" },
+    { "module": "json", "target": "vm", "kind": "native-shim", "status": "supported", "locator": "auto.json.*", "notes": "json.vm.at 21 #[vm]" },
     { "module": "json", "target": "rust", "kind": "a2r-std", "status": "supported", "locator": "a2r_std::json", "notes": "json.rs.at 镜像 parse 破损在案（P6），parity harness 文本级对拍为唯一消费" },
     { "module": "json", "target": "c", "kind": "none", "status": "unsupported", "reason": "无 json.c.at（backend-assembly 缺口表在案）" },
 

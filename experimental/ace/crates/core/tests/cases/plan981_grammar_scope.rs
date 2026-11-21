@@ -314,10 +314,12 @@ fn p981_age_package_grammar_id_is_frozen() {
         // AutoUI PLAN-107: checked list pop statements and the layout's `take` local.
         // PLAN-114: checked same-widget calls scope to the package grammar.
         // PLAN-1093: the C header provider rule is also part of age-package.
-        // PLAN-1095（2026-11-22 具名重基线）：普通 auto 面接纳 H0 node 声明
-        // ——共享 age-node 规则/contextual name 门控增 auto + age-text-item
-        // 双 pratt 臂——**三个 AGE 面漂移**（本行 age-package 为变后值；
-        // 前值 74cf9a93…）；语义不变。
-        "3555cdf060c5a6467a94f223ab2fe9e58587c08ee5381bf225794b422d683371"
+        // PLAN-1095: ordinary Auto admits the shared H0 node declarations.
+        // PLAN-114: keep the authored condition of a package timer.
+        // PLAN-114: typed handler parameters, mutable locals and while statements.
+        // PLAN-114: same-widget message calls in handler branches.
+        // PLAN-114: explicit .to(int) in AGE package directory metadata helpers.
+        // PLAN-114: package watches and the scoped ui.focus statement.
+        "04f644c886e303914b5f93b637f7b79f22cee67abd32d4f0a06e91156d5bb1be"
     );
 }

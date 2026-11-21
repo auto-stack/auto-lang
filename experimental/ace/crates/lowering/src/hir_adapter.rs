@@ -6288,9 +6288,16 @@ k 0
                 Ok(dst)
             }
             hir::ExprKind::TextToOwned { operand } if self.owned => {
-                let v = self.eval_expr(*operand, depth + 1)?;
+                let src = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
-                self.emit(MirInstr::StrToOwned { dst, view: v }, sp)?;
+                // Checked HIR permits either text representation. Owned text
+                // needs a fresh copy, while a view must be materialized.
+                let instruction = if matches!(self.out.types.get(self.slot_ty_all(src) as usize), Some(MirType::Str)) {
+                    MirInstr::Clone { dst, src }
+                } else {
+                    MirInstr::StrToOwned { dst, view: src }
+                };
+                self.emit(instruction, sp)?;
                 Ok(dst)
             }
             hir::ExprKind::TextFromChar { operand } if self.owned => {

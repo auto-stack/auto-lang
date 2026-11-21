@@ -16,6 +16,8 @@ use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span};
 use crate::verify::CheckedModule;
 
+pub(crate) mod outbound;
+
 /// 组件面领域身份（进入描述；与 grammar id 一起构成证据身份）。
 pub const AGE_COMPONENT_DOMAIN: &str = "ace.age.component/v1";
 /// 隐藏求值函数前缀（用户顶层名含此前缀 = 具名冲突）。
@@ -47,13 +49,8 @@ pub struct ComponentAssign {
     pub span: Span,
 }
 
-/// PLAN-981（G2，2026-11-18 用户裁定）：`on` 体的**一条语句**（按源序）。
-///
-/// 赋值沿 [`ComponentAssign`] 旧形；hook-local `let` / `if-else` 只在
-/// age-package 作者面投影产出——age-component 裁剪不含这两条文法臂，
-/// `let`/`if` 在该面 `on` 体是语法拒（fail-closed，不开"能解析、跑不了"
-/// 的半面）。TS/WEB 复放车道（980）只复放赋值：见 [`ComponentNodeOut`]
-/// 的 `handler_stmts` 契约——消费方见 Let/If 时必须具名拒，不得部分复放。
+/// One statement in an AGE handler, in source order.
+/// Consumers that only replay model assignments must reject richer bodies.
 #[derive(Clone, Debug)]
 pub enum ComponentStmt {
     Assign(ComponentAssign),
@@ -62,10 +59,10 @@ pub enum ComponentStmt {
     /// 裸名引用遮蔽同拼写的 model 字段（同形参规则；`.field` 恒指字段）。
     Let {
         name: Ident,
-        mutable: bool,
         /// 可选类型注解（`let q Sweep2D = …`）；无注解由共享 resolver 按
         /// gfx 服务声明表定型。
         ann: Option<TypeAnn>,
+        mutable: bool,
         value: Expr,
         span: Span,
     },
@@ -111,6 +108,8 @@ pub enum ComponentStmt {
         args: Vec<Expr>,
         span: Span,
     },
+    /// Request focus in this widget when the host publishes the frame.
+    Focus { target: Expr, span: Span },
 }
 
 /// PLAN-980 WEB #6p（调用表达式形）：**通道调用**语句行——callee ∈ widget
@@ -152,6 +151,149 @@ pub struct ComponentHandler {
     pub stmts: Vec<ComponentStmt>,
     pub assigns: Vec<ComponentAssign>,
     pub span: Span,
+}
+
+/// The compatibility VM implements `Env.track() == "vm"`. Checked package
+/// hosts never run on that track. Keep the surviving branch's lexical scope
+/// and exclude inactive branches from both lowering and import reachability.
+pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &mut Vec<Span>) {
+    use super::ast::BinOp;
+
+    fn is_legacy_track(expr: &Expr) -> bool {
+        match &expr.kind {
+            ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args, .. } => {
+                name.name == "track" && args.is_empty()
+                    && matches!(&recv.kind, ExprKind::Var(name) if name.name == "Env")
+            }
+            _ => false,
+        }
+    }
+
+    fn checked_guard(expr: &Expr) -> Option<bool> {
+        let ExprKind::Binary { op, lhs, rhs } = &expr.kind else { return None };
+        if matches!(op, BinOp::And | BinOp::Or) {
+            let left = checked_guard(lhs)?;
+            let right = checked_guard(rhs)?;
+            return Some(if *op == BinOp::And { left && right } else { left || right });
+        }
+        if !is_legacy_track(lhs)
+            || !matches!(&rhs.kind, ExprKind::StrLit(value) if matches!(value.as_str(), "vm" | "vue"))
+        {
+            return None;
+        }
+        match op {
+            BinOp::Eq => Some(false),
+            BinOp::Ne => Some(true),
+            _ => None,
+        }
+    }
+
+    fn span(stmt: &ComponentStmt) -> Span {
+        match stmt {
+            ComponentStmt::Assign(assign) => assign.span,
+            ComponentStmt::Let { span, .. } | ComponentStmt::If { span, .. }
+            | ComponentStmt::While { span, .. } | ComponentStmt::Send { span, .. }
+            | ComponentStmt::Focus { span, .. } | ComponentStmt::For { span, .. }
+            | ComponentStmt::AssignLocal { span, .. } | ComponentStmt::Effect { span, .. }
+            | ComponentStmt::Call { span, .. } => *span,
+        }
+    }
+
+    fn visit(stmts: &mut [ComponentStmt], mut shadowed: bool, inactive: &mut Vec<Span>) {
+        for stmt in stmts {
+            match stmt {
+                ComponentStmt::Let { name, .. } => shadowed |= name.name == "Env",
+                ComponentStmt::While { body, .. } => visit(body, shadowed, inactive),
+                ComponentStmt::For { name, body, .. } => {
+                    visit(body, shadowed || name.name == "Env", inactive);
+                }
+                ComponentStmt::If { cond, then, els, .. } => {
+                    if let Some(checked) = (!shadowed).then(|| checked_guard(cond)).flatten() {
+                        inactive.push(cond.span);
+                        cond.kind = ExprKind::BoolLit(checked);
+                        if checked {
+                            if let Some(branch) = els.take() {
+                                inactive.extend(branch.iter().map(span));
+                            }
+                        } else {
+                            inactive.extend(then.drain(..).map(|stmt| span(&stmt)));
+                        }
+                    }
+                    visit(then, shadowed, inactive);
+                    if let Some(branch) = els {
+                        visit(branch, shadowed, inactive);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn view_span(item: &ComponentViewItem) -> Span {
+        match item {
+            ComponentViewItem::Text(item) => item.span,
+            ComponentViewItem::Element(item) => item.span,
+            ComponentViewItem::Entry(item) => item.span,
+            ComponentViewItem::Cond(item) => item.span,
+            ComponentViewItem::For(item) => item.span,
+        }
+    }
+
+    fn visit_view(items: &mut Vec<ComponentViewItem>, shadowed: bool, inactive: &mut Vec<Span>) {
+        let mut active_items = Vec::with_capacity(items.len());
+        for mut item in std::mem::take(items) {
+            match &mut item {
+                ComponentViewItem::Cond(branch) => {
+                    if let Some(checked) = (!shadowed).then(|| checked_guard(&branch.cond)).flatten() {
+                        inactive.push(branch.cond.span);
+                        let (remaining, removed) = if checked {
+                            (&mut branch.then_items, &branch.else_items)
+                        } else {
+                            (&mut branch.else_items, &branch.then_items)
+                        };
+                        inactive.extend(removed.iter().map(view_span));
+                        visit_view(remaining, shadowed, inactive);
+                        active_items.append(remaining);
+                        continue;
+                    }
+                    visit_view(&mut branch.then_items, shadowed, inactive);
+                    visit_view(&mut branch.else_items, shadowed, inactive);
+                }
+                ComponentViewItem::Element(element) => visit_view(&mut element.items, shadowed, inactive),
+                ComponentViewItem::For(row) => {
+                    let shadowed = shadowed || row.value == "Env" || row.index.as_deref() == Some("Env");
+                    visit_view(&mut row.items, shadowed, inactive);
+                }
+                ComponentViewItem::Text(_) | ComponentViewItem::Entry(_) => {}
+            }
+            active_items.push(item);
+        }
+        *items = active_items;
+    }
+
+    let model_shadows = node.fields.iter().any(|field| field.name == "Env")
+        || node.params.iter().any(|param| param.name == "Env");
+    for handler in &mut node.handlers {
+        let shadowed = model_shadows || handler.params.iter().any(|(name, _)| name == "Env");
+        visit(&mut handler.stmts, shadowed, inactive);
+    }
+    let view_start = inactive.len();
+    visit_view(&mut node.view.tree, model_shadows, inactive);
+    for (_, items) in &mut node.view.named_trees {
+        visit_view(items, model_shadows, inactive);
+    }
+    if view_start != inactive.len() {
+        let texts = std::mem::take(&mut node.view.texts);
+        let exits = std::mem::take(&mut node.view.text_exits);
+        for (text, exit) in texts.into_iter().zip(exits) {
+            if !inactive[view_start..].iter().any(|span| {
+                span.start <= text.span.start && text.span.end <= span.end
+            }) {
+                node.view.texts.push(text);
+                node.view.text_exits.push(exit);
+            }
+        }
+    }
 }
 
 /// B-LANGUAGE-I（AGE-L03）：一个**直属出口**事实（`view` / `view-2d` / `view-3d` /
@@ -463,6 +605,8 @@ pub struct ComponentMemberRow {
     /// B-LANGUAGE-I（R59-3）：lifecycle/watch 体内语句（`.field = <rhs>`），按声明序；
     /// RHS 进唯一 verify，LHS 字段存在性由前门另查。
     pub stmts: Vec<(String, Expr)>,
+    /// Package watch bodies use the same ordered statements as message handlers.
+    pub watch_body: Option<Vec<ComponentStmt>>,
     /// R61-2/R62-2：`watch { .a, .b -> … }` 的全部源（按声明序；带修饰写
     /// `a.b`），与 `source_spans` 同序（span 指向源 token，不是整个成员）。
     pub sources: Vec<String>,
@@ -492,6 +636,8 @@ pub struct ComponentNode {
     pub view: ComponentView,
     /// PLAN-980：widget 声明成员槽位（msg/design 等；见类型注释）。
     pub messages: Vec<ComponentMsgVariant>,
+    /// Concrete record declarations in the same AGE package module.
+    pub(crate) payload_records: Vec<String>,
     /// PLAN-980 WEB #6i：`msg Msg { … }` 的具名段（`None` = 匿名 `msg { … }`）。
     pub message_set_name: Option<String>,
     pub design: Vec<ComponentDesignEntry>,
@@ -882,6 +1028,7 @@ fn rewrite_store_stmts(
             ComponentStmt::Call { call: value, .. }
             | ComponentStmt::Let { value, .. }
             | ComponentStmt::Effect { value, .. }
+            | ComponentStmt::Focus { target: value, .. }
             | ComponentStmt::AssignLocal { value, .. } => rewrite_store_expr(value, map)?,
             ComponentStmt::Send { args, .. } => {
                 for arg in args {
@@ -985,6 +1132,7 @@ fn subst_params_stmts(stmts: &mut [ComponentStmt], subs: &[(String, Expr)]) {
             ComponentStmt::Call { call: value, .. }
             | ComponentStmt::Let { value, .. }
             | ComponentStmt::Effect { value, .. }
+            | ComponentStmt::Focus { target: value, .. }
             | ComponentStmt::AssignLocal { value, .. } => subst_params_expr(value, subs),
             ComponentStmt::Send { args, .. } => {
                 for arg in args {
@@ -1131,6 +1279,7 @@ fn inline_computed_stmts(
             ComponentStmt::Call { call: value, .. }
             | ComponentStmt::Let { value, .. }
             | ComponentStmt::Effect { value, .. }
+            | ComponentStmt::Focus { target: value, .. }
             | ComponentStmt::AssignLocal { value, .. } => inline_computed_expr(value, computed, 0)?,
             ComponentStmt::Send { args, .. } => {
                 for arg in args {
@@ -1433,6 +1582,7 @@ fn needs_collections_face(node: &ComponentNode) -> bool {
             ComponentStmt::Call { call: value, .. }
             | ComponentStmt::Let { value, .. }
             | ComponentStmt::Effect { value, .. }
+            | ComponentStmt::Focus { target: value, .. }
             | ComponentStmt::AssignLocal { value, .. } => expr_needs(value),
             ComponentStmt::Send { args, .. } => args.iter().any(expr_needs),
             ComponentStmt::If { cond, then, els, .. } => {
@@ -1568,6 +1718,7 @@ pub(crate) fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
             ComponentStmt::Call { call: value, span }
             | ComponentStmt::Let { value, span, .. }
             | ComponentStmt::Effect { value, span }
+            | ComponentStmt::Focus { target: value, span }
             | ComponentStmt::AssignLocal { value, span, .. } => {
                 if expr_refs_store(value) {
                     return Some(*span);
@@ -2890,13 +3041,24 @@ pub(crate) fn payload_type(spelling: &str) -> Option<TypeWord> {
     }
 }
 
+fn handler_payload(node: &ComponentNode, spelling: &str, span: Span) -> Option<TypeAnn> {
+    let kind = if let Some(ty) = payload_type(spelling) {
+        TypeRef::Builtin(ty)
+    } else if node.payload_records.iter().any(|name| name == spelling) {
+        TypeRef::Record(Ident { name: spelling.to_owned(), span })
+    } else {
+        return None;
+    };
+    Some(TypeAnn { kind, span })
+}
+
 /// 一条定向事件对该 node 声明的核对（IF-981-EVENT-PAYLOAD-B）：
 /// arity 与载荷类型域。返回 `(declared_arity, payload_tys)`；unsupported
 /// 拼写以 `source.age.component-unsupported` 具名拒（效果前拒）。
 pub(crate) fn check_event_dispatch(
     node: &ComponentNode,
     op: &ScenarioOp,
-) -> Result<(usize, Vec<TypeWord>), Vec<Diagnostic>> {
+) -> Result<(usize, Vec<TypeAnn>), Vec<Diagnostic>> {
     let args_len = match op {
         ScenarioOp::Send { .. } => 0usize,
         ScenarioOp::SendArgs { args, .. } => args.len(),
@@ -2923,14 +3085,14 @@ pub(crate) fn check_event_dispatch(
     let mut tys = Vec::new();
     if let Some(v) = variant {
         for spelling in &v.payload {
-            match payload_type(spelling) {
+            match handler_payload(node, spelling, v.span) {
                 Some(t) => tys.push(t),
                 None => {
                     return Err(vec![text_diag(
                         "source.age.component-unsupported",
                         format!(
                             "message `{}` declares payload type `{spelling}`, which this slice \
-                            cannot hold yet (supported: int/i32/bool/str/float/f32); the dispatch is \
+                             cannot hold yet; the dispatch is \
                              rejected instead of running the handler without its value",
                             v.name
                         ),
@@ -3015,7 +3177,8 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         out.push((a.field.clone(), a.span));
                     }
                     ComponentStmt::If { then, els, .. } => {
-                        collect_assign_targets(then, out);                        if let Some(e) = els {
+                        collect_assign_targets(then, out);
+                        if let Some(e) = els {
                             collect_assign_targets(e, out);
                         }
                     }
@@ -3023,7 +3186,8 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                         collect_assign_targets(body, out);
                     }
                     ComponentStmt::Let { .. } | ComponentStmt::AssignLocal { .. }
-                    | ComponentStmt::Call { .. } | ComponentStmt::Effect { .. } | ComponentStmt::Send { .. } => {}
+                    | ComponentStmt::Call { .. } | ComponentStmt::Effect { .. }
+                    | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
                 }
             }
         }
@@ -3047,7 +3211,7 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                     | ComponentStmt::AssignLocal { .. }
                     | ComponentStmt::Call { .. }
                     | ComponentStmt::Effect { .. }
-                    | ComponentStmt::Send { .. } => {}
+                    | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
                     ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => collect_local_names(body, out),
                 }
             }
@@ -3165,6 +3329,11 @@ fn walk_stmt_exprs(
                     }
                 }
             }
+            ComponentStmt::Focus { target, .. } => {
+                if let Some(ds) = f(target) {
+                    return Err(ds);
+                }
+            }
         }
     }
     Ok(())
@@ -3250,19 +3419,56 @@ pub(crate) fn handler_check_fn(
     if h.body_foreign {
         return None;
     }
-    let first_field = node.fields.iter()
-        .find(|field| package_lists || field_type(field).is_some())?;
-    let variant = node.messages.iter().find(|v| v.name == h.msg);
-    let payload = variant.map(|v| v.payload.as_slice()).unwrap_or(&[]);
+    let payload = node.messages.iter().find(|v| v.name == h.msg)
+        .map_or(&[][..], |variant| variant.payload.as_slice());
+    behavior_check_fn(node, node_index, handler_index, prefix, package_lists, Behavior {
+        body: &h.stmts, params: &h.params, payload, channels: &h.channel_calls, span: h.span,
+        allow_outbound: true,
+    })
+}
+
+pub(crate) fn watch_check_fn(
+    node: &ComponentNode,
+    node_index: usize,
+    index: usize,
+    prefix: &str,
+    row: &ComponentMemberRow,
+) -> Result<Item, Vec<Diagnostic>> {
+    behavior_check_fn(node, node_index, index, prefix, true, Behavior {
+        body: row.watch_body.as_deref().expect("checked package watch body"),
+        params: &[], payload: &[], channels: &[], span: row.span, allow_outbound: false,
+    }).ok_or_else(|| vec![text_diag(
+        "source.age.watch-model", "a checked watch requires a model", row.span,
+    )])?
+}
+
+struct Behavior<'a> {
+    body: &'a [ComponentStmt],
+    params: &'a [(String, Span)],
+    payload: &'a [String],
+    channels: &'a [ComponentChannelCall],
+    span: Span,
+    allow_outbound: bool,
+}
+
+fn behavior_check_fn(
+    node: &ComponentNode,
+    node_index: usize,
+    handler_index: usize,
+    prefix: &str,
+    package_lists: bool,
+    behavior: Behavior<'_>,
+) -> Option<Result<Item, Vec<Diagnostic>>> {
+    let first_field = node.fields.iter().find(|field| package_lists || field_type(field).is_some())?;
     // 形参类型必须可承载；不可承载的载荷车道由派发守卫具名拒，这里不造假类型。
     let mut params = Vec::new();
-    for (i, ((_name, span), spelling)) in h.params.iter().zip(payload.iter()).enumerate() {
-        match payload_type(spelling) {
+    for (i, ((_name, span), spelling)) in behavior.params.iter().zip(behavior.payload).enumerate() {
+        match handler_payload(node, spelling, *span) {
             Some(ty) => {
                 // owned str 载荷按 `move` 形参铸造——handler 体把值写进 owned 字段，
                 // 只读视图形参会在检查时报 ownership（与真实派发路径的 owned let
                 // 局部同语义）；int/bool 是拷贝值，Default 即可。
-                let mode = if matches!(ty, TypeWord::StrOwned) {
+                let mode = if matches!(ty.kind, TypeRef::Builtin(TypeWord::StrOwned) | TypeRef::Record(_)) {
                     crate::source::ast::ParamMode::Move
                 } else {
                     crate::source::ast::ParamMode::Default
@@ -3272,10 +3478,7 @@ pub(crate) fn handler_check_fn(
                         name: format!("{prefix}{node_index}_{handler_index}_{i}"),
                         span: *span,
                     },
-                    ty: TypeAnn {
-                        kind: TypeRef::Builtin(ty),
-                        span: *span,
-                    },
+                    ty,
                     mode,
                     default: None,
                     span: *span,
@@ -3319,7 +3522,7 @@ pub(crate) fn handler_check_fn(
         });
     }
     // 赋值体：形参名 → 函数参数名（裸名遮蔽 model；`.field` 恒指字段）。
-    let param_locals: Vec<(String, String, Span)> = h
+    let param_locals: Vec<(String, String, Span)> = behavior
         .params
         .iter()
         .enumerate()
@@ -3335,14 +3538,27 @@ pub(crate) fn handler_check_fn(
     // `if/else`）——检查函数不铸部分体（#6o 合同）；与场景重放
     // （instance_stmts）共用同一条脱糖 `hook_stmts_lower`，无第二求值器。
     // hook-local 局部名以 handler 序定位（同一检查函数内唯一）。
+    let has_outbound = package_lists && outbound::has_messages(node);
+    let has_focus = package_lists && outbound::has_focus(node);
+    let mut locals = HandlerLocals {
+        allow_outbound: has_outbound && behavior.allow_outbound,
+        allow_focus: has_focus,
+        ..Default::default()
+    };
+    if has_outbound {
+        stmts.push(outbound::empty_queue(outbound::FIELD, behavior.span));
+    }
+    if has_focus {
+        stmts.push(outbound::empty_queue(outbound::FOCUS_FIELD, behavior.span));
+    }
     if let Err(ds) = hook_stmts_lower(
         binding,
         handler_index,
         node,
-        &h.stmts,
+        behavior.body,
         &param_locals,
         &mut stmts,
-        &mut HandlerLocals::default(),
+        &mut locals,
     ) {
         return Some(Err(ds));
     }
@@ -3359,7 +3575,7 @@ pub(crate) fn handler_check_fn(
     // 真核），值弃用（通道本身=宿主通知，不进受检值域——#6m 实参=宿主
     // 通道先例）；**原源 span 保留**（lane 按精确 span 经 a2x-ts 发射实参
     // 文本）。未验证的实参拼写绝不直接拼接。
-    for (ci, cc) in h.channel_calls.iter().enumerate() {
+    for (ci, cc) in behavior.channels.iter().enumerate() {
         for (ai, arg) in cc.args.iter().enumerate() {
             let renamed = match rename_expr_with_params(
                 arg,
@@ -3400,16 +3616,16 @@ pub(crate) fn handler_check_fn(
     Some(Ok(Item::Fn(FnItem {
         name: Ident {
             name: format!("{prefix}{node_index}_{handler_index}"),
-            span: h.span,
+            span: behavior.span,
         },
         type_params: Vec::new(),
         params,
         ret: ret_ty,
         body: Block {
             stmts,
-            span: h.span,
+            span: behavior.span,
         },
-        span: h.span,
+        span: behavior.span,
         receiver: Receiver::Free,
         owner: None,
         script: false,
@@ -3598,7 +3814,8 @@ pub(crate) fn lambda_value_fn(
                     });
                 }
                 ComponentStmt::Let { .. } | ComponentStmt::AssignLocal { .. }
-                | ComponentStmt::Effect { .. } | ComponentStmt::Send { .. } => return None,
+                | ComponentStmt::Effect { .. } | ComponentStmt::Send { .. }
+                | ComponentStmt::Focus { .. } => return None,
             }
         }
         Some(Ok(()))
@@ -3630,7 +3847,8 @@ pub(crate) fn lambda_value_fn(
             | ComponentStmt::While { span, .. }
             | ComponentStmt::Call { span, .. }
             | ComponentStmt::Effect { span, .. }
-            | ComponentStmt::Send { span, .. } => *span,
+            | ComponentStmt::Send { span, .. }
+            | ComponentStmt::Focus { span, .. } => *span,
         })
         .unwrap_or(first_field.span);
     Some(Ok(Item::Fn(FnItem {
@@ -3760,6 +3978,8 @@ struct HandlerLocals {
     next: usize,
     inlined_statements: usize,
     calls: Vec<(usize, Span)>,
+    allow_outbound: bool,
+    allow_focus: bool,
 }
 
 impl HandlerLocals {
@@ -3909,7 +4129,6 @@ fn hook_stmts_lower(
                             &scope,
                         )?,
                         field,
-                        &scope,
                     ),
                     span: assign.span,
                 });
@@ -3942,6 +4161,12 @@ fn hook_stmts_lower(
                         list_new_from_array(bound, &args[0])
                     }
                     _ => bound,
+                };
+                let bound = if model_text_element(value, &node.fields, &scope) {
+                    text_locals.insert(local.clone());
+                    clone_handler_value(bound, value.span)
+                } else {
+                    bound
                 };
                 if matches!(ann.as_ref().map(|a| &a.kind), Some(TypeRef::Builtin(TypeWord::StrOwned | TypeWord::Str))) {
                     text_locals.insert(local.clone());
@@ -4090,27 +4315,47 @@ fn hook_stmts_lower(
                     span: *span,
                 });
             }
+            ComponentStmt::Focus { target, span } => {
+                if !locals.allow_focus {
+                    return Err(vec![text_diag(
+                        "source.age.handler-focus", "ui.focus requires a checked widget host", *span,
+                    )]);
+                }
+                let target = rename_expr_with_params(target, binding, &node.fields, &scope)?;
+                let name = locals.bind(inst, seq, "focus_target");
+                outbound::append_focus(target, &name, out);
+            }
             ComponentStmt::Send { message, args, span } => {
                 let diagnostic = |code, message| vec![text_diag(code, message, *span)];
                 let variant = node.messages.iter().find(|v| v.name == *message)
                     .ok_or_else(|| diagnostic(
                         "source.age.handler-message", format!("unknown widget message `{message}`"),
                     ))?;
-                let (ordinal, target) = node.handlers.iter().enumerate()
-                    .find(|(_, handler)| handler.msg == *message)
-                    .ok_or_else(|| diagnostic(
-                        "source.age.handler-message", format!("message `{message}` has no handler"),
-                    ))?;
-                if target.params.len() != variant.payload.len() {
-                    return Err(diagnostic(
-                        "source.age.handler-payload",
-                        format!("handler for `{message}` does not bind the declared payload"),
-                    ));
-                }
                 if args.len() != variant.payload.len() {
                     return Err(diagnostic(
                         "source.age.handler-payload",
                         format!("message `{message}` expects {} values, found {}", variant.payload.len(), args.len()),
+                    ));
+                }
+                let Some((ordinal, target)) = node.handlers.iter().enumerate()
+                    .find(|(_, handler)| handler.msg == *message)
+                else {
+                    if !locals.allow_outbound {
+                        return Err(diagnostic(
+                            "source.age.handler-outbound",
+                            format!("message `{message}` requires a checked widget event consumer"),
+                        ));
+                    }
+                    let values = args.iter()
+                        .map(|arg| rename_expr_with_params(arg, binding, &node.fields, &scope))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    outbound::append(message, &variant.payload, values, inst, seq, *span, out, locals)?;
+                    continue;
+                };
+                if target.params.len() != variant.payload.len() {
+                    return Err(diagnostic(
+                        "source.age.handler-payload",
+                        format!("handler for `{message}` does not bind the declared payload"),
                     ));
                 }
                 if target.body_foreign || !target.channel_calls.is_empty() {
@@ -4132,22 +4377,31 @@ fn hook_stmts_lower(
                 let mut stmts = Vec::new();
                 let mut params = Vec::new();
                 for ((arg, spelling), (name, param_span)) in args.iter().zip(&variant.payload).zip(&target.params) {
-                    let ty = payload_type(spelling).ok_or_else(|| diagnostic(
+                    let ty = handler_payload(node, spelling, arg.span).ok_or_else(|| diagnostic(
                         "source.age.handler-payload",
                         format!("message `{message}` uses unsupported payload type `{spelling}`"),
                     ))?;
                     let local = locals.bind(inst, seq, name);
                     let mut value = rename_expr_with_params(arg, binding, &node.fields, &scope)?;
-                    if ty == TypeWord::StrOwned && matches!(
+                    if matches!(ty.kind, TypeRef::Record(_))
+                        && matches!(value.kind, ExprKind::Var(_) | ExprKind::Field { .. } | ExprKind::Index { .. })
+                    {
+                        return Err(vec![text_diag(
+                            "source.age.handler-record-transfer",
+                            "pass a fresh record or transfer an owned local with `.move`",
+                            arg.span,
+                        )]);
+                    }
+                    if ty.kind == TypeRef::Builtin(TypeWord::StrOwned) && matches!(
                         value.kind, ExprKind::Var(_) | ExprKind::Field { .. } | ExprKind::Index { .. }
                     ) {
                         let arg_span = value.span;
-                        value = copy_handler_text(value, arg_span);
+                        value = clone_handler_value(value, arg_span);
                     }
                     stmts.push(Stmt::Let {
                         kw: arg.span,
                         name: Ident { name: local.clone(), span: arg.span },
-                        ann: Some(TypeAnn { kind: TypeRef::Builtin(ty), span: arg.span }),
+                        ann: Some(ty),
                         mutable: false,
                         value,
                         span: arg.span,
@@ -4195,6 +4449,8 @@ pub(crate) fn rename_expr_with_params(
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)
         | ExprKind::CharLit(_)
+        | ExprKind::TypeWordArg(_)
+        | ExprKind::GenericType { .. }
         | ExprKind::NilLit => expr.clone(),
         ExprKind::ArrayLit(items) => Expr {
             span: expr.span,
@@ -4440,7 +4696,6 @@ pub(crate) fn rename_expr_with_params(
         },
         // PLAN-105 T-02：泛型类型接收位（`List<int>.new()` 的 `List<int>`）——
         // 类型不是值，原样透传（类型实参由共享 resolver 校验）。
-        ExprKind::GenericType { .. } => expr.clone(),
         _ => {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
@@ -4467,15 +4722,10 @@ fn rename_arg(
         },
     })
 }
-/// PLAN-981（IF-981-PARAMS-B）：owned-str 载荷局部直接赋给 owned 字段是**隐式
-/// 转移**（`verify.ownership-required`）——把这类裸参数读包成 `.clone()`（拷贝
-/// 一份新值）。求值次数不变（局部已由 `let` 求值一次；clone 是拷贝不是重求值），
-/// 标量载荷不受影响（拷贝语义，无需包）。
-fn wrap_owned_transfer(
-    value: Expr,
-    field: &ComponentField,
-    _param_locals: &[(String, String, Span)],
-) -> Expr {
+/// Reading an existing local or a record field into an owned model field
+/// copies the text. Explicit moves and newly produced values keep their
+/// authored ownership semantics.
+fn wrap_owned_transfer(value: Expr, field: &ComponentField) -> Expr {
     if matches!(&value.kind, ExprKind::ArrayLit(items) if items.is_empty()) {
         let span = value.span;
         if let Some(TypeRef::Generic { name, args }) = model_list_type(field) {
@@ -4525,7 +4775,7 @@ fn clone_if_place(value: Expr) -> Expr {
     value
 }
 
-fn copy_handler_text(value: Expr, name_span: Span) -> Expr {
+fn clone_handler_value(value: Expr, name_span: Span) -> Expr {
     Expr {
         span: value.span,
         kind: ExprKind::Method {
@@ -4534,6 +4784,25 @@ fn copy_handler_text(value: Expr, name_span: Span) -> Expr {
             args: Vec::new(),
         },
     }
+}
+
+fn model_text_element(
+    value: &Expr,
+    fields: &[ComponentField],
+    scope: &[(String, String, Span)],
+) -> bool {
+    let ExprKind::Index { base, .. } = &value.kind else { return false };
+    let name = match &base.kind {
+        ExprKind::Field { base, name } if matches!(&base.kind, ExprKind::Var(id) if id.name == "self") => name,
+        ExprKind::Var(id) if !scope.iter().any(|(name, _, _)| *name == id.name) => id,
+        _ => return false,
+    };
+    fields.iter().find(|field| field.name == name.name)
+        .and_then(model_list_type)
+        .is_some_and(|ty| matches!(ty, TypeRef::Generic { args, .. }
+            if matches!(args.as_slice(), [TypeAnn {
+                kind: TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned), ..
+            }])))
 }
 
 /// 场景：单个实例的局部状态 + 定向 ops（驱动、状态函数与文本函数共用形状）。
@@ -4716,10 +4985,7 @@ pub(crate) fn instance_stmts(
                     name: local.clone(),
                     span: *p_span,
                 },
-                ann: Some(TypeAnn {
-                    kind: TypeRef::Builtin(*ty),
-                    span: anchor,
-                }),
+                ann: Some(ty.clone()),
                 mutable: false,
                 value: bound,
                 span: anchor,

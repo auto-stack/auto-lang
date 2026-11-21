@@ -19,10 +19,12 @@ use ace_av_core::mir::{
     MirConst, MirType, RecordTypeRef, SlotKind, Terminator,
 };
 use ace_core::source::age_package::{
-    computed_fn_name_at, widget_view_fn_name_at, AgePackageCompilation, AgeWidgetProperty, AgeWidgetRef,
+    computed_fn_name_at, widget_timer_fn_name_at, widget_view_fn_name_at, AgePackageCompilation,
+    AgeWidgetProperty, AgeWidgetRef,
 };
 
 mod live_view;
+pub mod live_session;
 pub use live_view::{WidgetElement, WidgetEvent, WidgetTimer, WidgetViewItem};
 use ace_lowering::lower_checked_age_package;
 use crate::age_component::ComponentFieldValue;
@@ -204,34 +206,52 @@ pub fn observe_package_scalar_states(
     index: usize,
     instance: usize,
 ) -> Result<Vec<(String, ComponentFieldValue)>, String> {
+    observe_package_scalar_states_with_limits(compiled, index, instance, &ExecLimits::default())
+}
+
+/// Read scalar states under the host's checked execution limits.
+pub fn observe_package_scalar_states_with_limits(
+    compiled: &AgePackageCompilation,
+    index: usize,
+    instance: usize,
+    limits: &ExecLimits,
+) -> Result<Vec<(String, ComponentFieldValue)>, String> {
+    observe_package_scalar_fields(compiled, index, instance, None, limits)
+}
+
+/// Read only the scalar fields needed by the host, in declaration order.
+pub fn observe_package_scalar_fields(
+    compiled: &AgePackageCompilation,
+    index: usize,
+    instance: usize,
+    fields: Option<&[&str]>,
+    limits: &ExecLimits,
+) -> Result<Vec<(String, ComponentFieldValue)>, String> {
     let component = compiled.description.components.get(index)
         .ok_or("unknown package component")?;
-    let mut row = Vec::new();
-    let linked = compiled.first_widget_ref().is_some();
-    let mut lowered: Option<MirModule> = None;
-    for (field, ty) in &component.fields {
-        if !matches!(ty.as_str(), "int" | "i32" | "str" | "Str" | "bool" | "f32" | "float") {
-            continue;
-        }
+    let scalars = component.fields.iter().filter(|(name, ty)| {
+        fields.is_none_or(|wanted| wanted.contains(&name.as_str()))
+            && matches!(ty.as_str(), "int" | "i32" | "str" | "Str" | "bool" | "f32" | "float")
+    });
+    let Some((first, _)) = scalars.clone().next() else {
+        return Ok(Vec::new());
+    };
+    let state_definition = |field: &str| {
         let name = ace_core::source::age_component::state_fn_name_at(index, instance, field);
-        let symbol = resolve_symbol(compiled, &component.module, &name)?;
-        let def_id = format!("d_{symbol}");
-        let value = if linked {
-            // Checked widget views already slice the MIR to the entry and
-            // its dependencies. Read a model field with the same scope so
-            // unrelated widgets do not consume its verification budget.
-            if lowered.is_none() {
-                lowered = Some(lower_checked_age_package(&compiled.checked, &def_id, 0x981)
-                    .map_err(|err| format!("lower `{def_id}`: {err:?}"))?);
-            }
-            let mut mir = lowered.as_ref().expect("lowered state module").clone();
-            mir.entry = mir.funcs.iter().position(|function| function.name == def_id)
-                .ok_or_else(|| format!("missing lowered state function `{def_id}`"))? as u32;
-            live_view::retain_entry_closure(&mut mir)?;
-            execute_value_module(&mir, &def_id, &ExecLimits::default())?
-        } else {
-            execute_value(&compiled.checked, &def_id)?
-        };
+        resolve_symbol(compiled, &component.module, &name).map(|symbol| format!("d_{symbol}"))
+    };
+    let first = state_definition(first)?;
+    // Lower the package once. Each getter verifies and runs only its entry
+    // closure, just as the view and timer projections do.
+    let mut mir = lower_checked_age_package(&compiled.checked, &first, 0x981)
+        .map_err(|error| format!("lower `{first}`: {error:?}"))?;
+    let mut row = Vec::new();
+    for (field, ty) in scalars {
+        let definition = state_definition(field)?;
+        let entry = mir.funcs.iter().position(|function| function.name == definition)
+            .ok_or_else(|| format!("missing lowered state getter `{definition}`"))?;
+        mir.entry = entry as u32;
+        let value = execute_widget_value(mir.clone(), &definition, limits)?;
         let value = match (ty.as_str(), value) {
             ("int" | "i32", Value::I32(value)) => ComponentFieldValue::Int(value),
             ("bool", Value::Bool(value)) => ComponentFieldValue::Bool(value),
@@ -368,6 +388,29 @@ pub fn evaluate_package_entry_view(
 ) -> Result<Vec<WidgetViewItem>, String> {
     let (mir, def_id) = lower_package_entry_view(compiled, instance)?;
     live_view::decode_view(execute_widget_value(mir, &def_id, limits)?)
+}
+
+/// Evaluate the entry widget's checked timer condition against this scenario.
+pub fn evaluate_package_timer(
+    compiled: &AgePackageCompilation,
+    node: usize,
+    instance: usize,
+    timer: usize,
+    limits: &ExecLimits,
+) -> Result<bool, String> {
+    let owner = compiled.description.components.get(node)
+        .filter(|owner| owner.module == compiled.description.entry)
+        .ok_or("source.age.av-timer: the timer owner is not the entry widget")?;
+    let name = widget_timer_fn_name_at(node, instance, timer);
+    let symbol = compiled.symbol_of_in(&owner.module, &name)
+        .ok_or("source.age.av-timer: missing checked condition")?;
+    let def_id = format!("d_{symbol}");
+    let mir = lower_checked_age_package(&compiled.checked, &def_id, 0x981)
+        .map_err(|err| format!("lower `{def_id}`: {err:?}"))?;
+    match execute_widget_value(mir, &def_id, limits)? {
+        Value::Bool(enabled) => Ok(enabled),
+        _ => Err("source.age.av-timer: condition did not return bool".into()),
+    }
 }
 
 fn lower_package_entry_view(

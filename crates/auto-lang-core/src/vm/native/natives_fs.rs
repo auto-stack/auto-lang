@@ -212,16 +212,20 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .get_string(path_idx)
         .map(|b| String::from_utf8_lossy(&b).to_string())
         .unwrap_or_default();
-    let entries: Vec<String> = std::fs::read_dir(&path)
-        .map_err(|e| VMError::RuntimeError(format!("read_dir failed: {}: {}", path, e)))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .collect();
+    let entries = read_dir_names(std::path::Path::new(&path)).map_err(VMError::RuntimeError)?;
     let json = serde_json::to_string(&entries)
         .map_err(|e| VMError::RuntimeError(format!("read_dir json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
     vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
+}
+
+pub(crate) fn read_dir_names(path: &std::path::Path) -> Result<Vec<String>, String> {
+    Ok(std::fs::read_dir(path)
+        .map_err(|error| format!("read_dir failed: {}: {error}", path.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect())
 }
 
 /// Canonicalize a path (absolute, resolved symlinks).

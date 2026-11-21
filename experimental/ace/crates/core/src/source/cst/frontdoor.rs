@@ -903,6 +903,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
     let mut imports = Vec::new();
     // PLAN-980 ④-A：导入项自身的 span（引用集要把导入拼写排除在外）。
     let mut import_spans: Vec<(usize, usize)> = Vec::new();
+    let mut inactive_hosts = Vec::new();
     // PLAN-980 P3：style 字面量表（用法投影期替换用）与待解析的 ident 复制。
     let mut style_lits: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
@@ -950,6 +951,46 @@ pub(crate) fn project_packages_front_with_widget_lists(
             .merge(metadata.pragmas)
             .map_err(|diagnostic| vec![diagnostic])?;
         source_metadata.annotations.extend(metadata.annotations);
+        let payload_records: Vec<_> = if matches!(face, PackagesFace::Age { .. }) {
+            program.items.iter().filter_map(|item| match item {
+                crate::source::ast::Item::Type(record) if record.type_params.is_empty() => {
+                    Some(record.name.name.clone())
+                }
+                _ => None,
+            }).collect()
+        } else {
+            Vec::new()
+        };
+        let specializes_legacy_vm = if matches!(face, PackagesFace::Age { .. })
+            && src.contains("Env") && src.contains("track")
+        {
+            use crate::source::ast::Item;
+            let declares_env = program.items.iter().any(|item| {
+                let name = match item {
+                    Item::Fn(value) => &value.name,
+                    Item::Type(value) => &value.name,
+                    Item::Const(value) => &value.name,
+                    Item::Store(value) => &value.name,
+                    _ => return false,
+                };
+                name.name == "Env"
+            });
+            let mut pending = vec![tree.root];
+            let mut imports_env = false;
+            while let Some(node) = pending.pop() {
+                let kind = Some(tree.kind(node));
+                if [use_item_p, age_use_sym, age_use_module].contains(&kind)
+                    && path_segments(tree, node).iter().any(|name| name == "Env")
+                {
+                    imports_env = true;
+                    break;
+                }
+                pending.extend(tree.children(node));
+            }
+            !declares_env && !imports_env
+        } else {
+            false
+        };
         items.extend(program.items);
         // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
         // 与普通包项并排记录（结构名按 Schema 的 role 归属，不按拼写猜）。
@@ -1044,7 +1085,11 @@ pub(crate) fn project_packages_front_with_widget_lists(
             // 一个 node 时 `ForNode{1}` 报 "package declares 1 component(s)"）。
             // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
             // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
-            for node in nodes {
+            for mut node in nodes {
+                if specializes_legacy_vm {
+                    crate::source::age_component::specialize_legacy_vm_guards(&mut node, &mut inactive_hosts);
+                }
+                node.payload_records.clone_from(&payload_records);
                 if !node.fields.iter().any(|field| field.name == "store") {
                     if let Some(span) = node.handlers.iter().find_map(|handler| {
                         crate::source::age_component::stmt_refs_store(&handler.stmts)
@@ -1059,26 +1104,23 @@ pub(crate) fn project_packages_front_with_widget_lists(
                 }
                 items.extend(node.inferred_records.iter().cloned().map(crate::source::ast::Item::Type));
                 for param in &node.params {
-                    use crate::source::ast::{ExprKind, TypeRef, TypeWord};
+                    use crate::source::ast::ExprKind;
 
                     let Some(default) = &param.default else {
                         continue;
                     };
                     let supported = node.legacy_widget
-                        && match param.ty.as_str() {
-                            "List" => {
-                                let text_list = param.collection_type.as_ref().is_none_or(|ann| {
-                                    matches!(&ann.kind, TypeRef::Generic { args, .. }
-                                        if args.len() == 1 && matches!(args[0].kind,
-                                            TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned)))
-                                });
-                                text_list && matches!(&default.kind, ExprKind::ArrayLit(items)
-                                    if items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_))))
-                            }
+                        && (param.collection_type.as_ref().is_some_and(|ann| {
+                            matches!(&ann.kind, crate::source::ast::TypeRef::Generic { name, .. } if name.name == "List")
+                                && matches!(default.kind, ExprKind::ArrayLit(_))
+                        }) || match param.ty.as_str() {
+                            "List" => matches!(&default.kind, ExprKind::ArrayLit(items)
+                                if items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))),
                             "str" | "Str" => matches!(default.kind, ExprKind::StrLit(_)),
                             "bool" => matches!(default.kind, ExprKind::BoolLit(_)),
+                            "int" | "i32" => matches!(default.kind, ExprKind::IntLit(_)),
                             _ => false,
-                        };
+                        });
                     if !supported {
                         return Err(err(
                             "source.age.widget-param-default",
@@ -1221,7 +1263,6 @@ pub(crate) fn project_packages_front_with_widget_lists(
                 // 现在按文本叶同一机制生成检查函数（`let` 绑定 + 定值返回），
                 // 名字解析/类型/可见性都由共享检查判定，诊断落回作者 span。
                 {
-                    use crate::source::age_component::ComponentViewFor;
                     let component_index = age_components.len();
                     let mut value_fns = 0usize;
                     let mut check_value = |expr: &crate::source::ast::Expr, loops: &[&ComponentViewFor]| -> Result<(), Vec<Diagnostic>> {
@@ -1333,39 +1374,79 @@ pub(crate) fn project_packages_front_with_widget_lists(
                             }
                         }
                     }
-                    type ScopedViewExpr<'a> = (&'a crate::source::ast::Expr, Vec<&'a ComponentViewFor>, bool);
+                    use crate::source::age_component::{
+                        ComponentViewDataField, ComponentViewFor,
+                    };
+                    use crate::source::age_package::ScopedViewCheck;
+                    use crate::source::ast::Expr;
+
+                    #[derive(Default)]
+                    struct ViewChecks<'a> {
+                        plain: Vec<ScopedViewCheck<'a>>,
+                        scoped: Vec<(ScopedViewCheck<'a>, Vec<&'a ComponentViewFor>)>,
+                    }
+                    impl<'a> ViewChecks<'a> {
+                        fn push(&mut self, check: ScopedViewCheck<'a>, loops: &[&'a ComponentViewFor]) {
+                            if !loops.is_empty() {
+                                self.scoped.push((check, loops.to_vec()));
+                            } else if matches!(check, ScopedViewCheck::Value(_)
+                                | ScopedViewCheck::Condition(_) | ScopedViewCheck::Key(_))
+                            {
+                                self.plain.push(check);
+                            }
+                        }
+                    }
                     fn collect_item_exprs<'a>(
                         items: &'a [crate::source::age_component::ComponentViewItem],
                         msgs: &[String],
-                        out: &mut Vec<ScopedViewExpr<'a>>,
-                        class_conditions: &mut Vec<ScopedViewExpr<'a>>,
+                        view_data: &[ComponentViewDataField],
                         loops: &mut Vec<&'a ComponentViewFor>,
+                        inert: bool,
+                        checks: &mut ViewChecks<'a>,
                     ) -> Result<(), Vec<Diagnostic>> {
-                        use crate::source::age_component::{ComponentClassPart, ComponentEntryValue};
-                        use crate::source::age_component::ComponentViewItem;
+                        use crate::source::age_component::{ComponentClassPart, ComponentEntryValue, ComponentViewItem};
                         use crate::source::ast::{Expr, ExprKind};
                         for it in items {
                             match it {
                                 ComponentViewItem::Text(text) => {
-                                        out.push((&text.expr, loops.clone(), true));
+                                    checks.push(ScopedViewCheck::Text(&text.expr), loops);
                                 }
                                 ComponentViewItem::Element(e) => {
                                     if let Some(l) = &e.label {
-                                        out.push((l, loops.clone(), !loops.is_empty()));
+                                        let check = if loops.is_empty() {
+                                            ScopedViewCheck::Value(l)
+                                        } else {
+                                            ScopedViewCheck::Text(l)
+                                        };
+                                        checks.push(check, loops);
                                     }
-                                    collect_item_exprs(&e.items, msgs, out, class_conditions, loops)?;
+                                    collect_item_exprs(&e.items, msgs, view_data, loops, inert, checks)?;
                                 }
                                 ComponentViewItem::For(f) => {
-                                    loops.push(f);
-                                    collect_item_exprs(&f.items, msgs, out, class_conditions, loops)?;
-                                    loops.pop();
+                                    let data_name = match &f.iter.kind {
+                                        ExprKind::Var(id) => Some(&id.name),
+                                        ExprKind::Field { base, name }
+                                            if matches!(&base.kind, ExprKind::Var(id) if id.name == "self") =>
+                                                Some(&name.name),
+                                        _ => None,
+                                    };
+                                    let static_data = inert || (loops.is_empty() && data_name
+                                        .is_some_and(|name| view_data.iter().any(|field| &field.name == name)));
+                                    if static_data {
+                                        collect_item_exprs(&f.items, msgs, view_data, loops, true, checks)?;
+                                    } else {
+                                        loops.push(f);
+                                        checks.push(ScopedViewCheck::Iteration, loops);
+                                        collect_item_exprs(&f.items, msgs, view_data, loops, false, checks)?;
+                                        loops.pop();
+                                    }
                                 }
                                 // PLAN-980 view-if：条件表达式入绑定验证 +
                                 // 双子树照走。
                                 ComponentViewItem::Cond(c) => {
-                                    out.push((&c.cond, loops.clone(), false));
-                                    collect_item_exprs(&c.then_items, msgs, out, class_conditions, loops)?;
-                                    collect_item_exprs(&c.else_items, msgs, out, class_conditions, loops)?;
+                                    checks.push(ScopedViewCheck::Condition(&c.cond), loops);
+                                    collect_item_exprs(&c.then_items, msgs, view_data, loops, inert, checks)?;
+                                    collect_item_exprs(&c.else_items, msgs, view_data, loops, inert, checks)?;
                                 }
                                 ComponentViewItem::Entry(en) => {
                                     if event_binding_msg(en, msgs).is_some() || en.message_call().is_some() {
@@ -1387,23 +1468,33 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                                     item.span,
                                                 )]);
                                             }
-                                            out.extend(items.iter().map(|item| (item, loops.clone(), false)));
+                                            for value in items {
+                                                checks.push(ScopedViewCheck::Value(value), loops);
+                                            }
                                         }
                                         ComponentEntryValue::Expr(x) => {
-                                            let render_text = !loops.is_empty() && matches!(
-                                                en.key.as_str(), "key" | "text" | "label" | "class" | "style"
-                                            );
-                                            out.push((x, loops.clone(), render_text));
+                                            let kind = match en.key.as_str() {
+                                                "key" => ScopedViewCheck::Key(x),
+                                                "text" | "label" if !loops.is_empty() => ScopedViewCheck::Text(x),
+                                                _ => ScopedViewCheck::Value(x),
+                                            };
+                                            checks.push(kind, loops);
                                         }
                                         ComponentEntryValue::Lambda { assigns, stmts, .. } => {
                                             for a in assigns {
-                                                out.push((&a.rhs, loops.clone(), false));
+                                                checks.push(ScopedViewCheck::Value(&a.rhs), loops);
                                             }
-                                            push_stmt_conds(stmts, &mut |cond| out.push((cond, loops.clone(), false)));
+                                            let mut conditions = Vec::new();
+                                            push_stmt_conds(stmts, &mut |cond| conditions.push(cond));
+                                            for cond in conditions {
+                                                checks.push(ScopedViewCheck::Condition(cond), loops);
+                                            }
                                         }
                                         // PLAN-1072 刀B：条件样式 cond 入绑定
                                         // 验证（两臂为字面量/替换后字面量）。
-                                        ComponentEntryValue::If { cond, .. } => out.push((cond, loops.clone(), false)),
+                                        ComponentEntryValue::If { cond, .. } => {
+                                            checks.push(ScopedViewCheck::Condition(cond), loops);
+                                        }
                                         ComponentEntryValue::ClassList(parts) => {
                                             if !matches!(en.key.as_str(), "style" | "class") {
                                                 return Err(vec![crate::source::age_h0::text_diag(
@@ -1412,24 +1503,15 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                                     en.span,
                                                 )]);
                                             }
-                                            let first_value = out.len();
                                             for part in parts {
                                                 match part {
-                                                    ComponentClassPart::Value(value) => out.push((value, loops.clone(), false)),
+                                                    ComponentClassPart::Value(value) => checks.push(ScopedViewCheck::Value(value), loops),
                                                     ComponentClassPart::If { cond, then_value, else_value } => {
-                                                        class_conditions.push((cond, loops.clone(), false));
-                                                        out.extend([(then_value, loops.clone(), false), (else_value, loops.clone(), false)]);
+                                                        checks.push(ScopedViewCheck::Condition(cond), loops);
+                                                        checks.push(ScopedViewCheck::Value(then_value), loops);
+                                                        checks.push(ScopedViewCheck::Value(else_value), loops);
                                                     }
                                                 }
-                                            }
-                                            if let Some((value, _, _)) = out[first_value..].iter().find(|(value, _, _)| {
-                                                !matches!(value.kind, ExprKind::StrLit(_))
-                                            }) {
-                                                return Err(vec![crate::source::age_h0::text_diag(
-                                                    "source.age.class-list",
-                                                    "a conditional class list requires quoted text values",
-                                                    value.span,
-                                                )]);
                                             }
                                         }
                                         ComponentEntryValue::ChildEvent(_) => {}
@@ -1441,36 +1523,41 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     }
                     let declared_msgs: Vec<String> =
                         node.messages.iter().map(|m| m.name.clone()).collect();
-                    let mut entry_exprs = Vec::new();
-                    let mut class_conditions = Vec::new();
-                    collect_item_exprs(&node.view.tree, &declared_msgs, &mut entry_exprs, &mut class_conditions, &mut Vec::new())?;
-                    for (_, items) in &node.view.named_trees {
-                        collect_item_exprs(items, &declared_msgs, &mut entry_exprs, &mut class_conditions, &mut Vec::new())?;
+                    let mut checks = ViewChecks::default();
+                    for tree in std::iter::once(node.view.tree.as_slice())
+                        .chain(node.view.named_trees.iter().map(|(_, items)| items.as_slice()))
+                    {
+                        collect_item_exprs(
+                            tree, &declared_msgs, &node.view_data, &mut Vec::new(), false,
+                            &mut checks,
+                        )?;
                     }
-                    for (expr, loops, render_text) in entry_exprs {
-                        if render_text {
-                            use crate::source::ast::{Arg, Expr, ExprKind, Ident};
-                            check_value(&Expr {
-                                span: expr.span,
-                                kind: ExprKind::Call {
-                                    callee: Ident { name: "__fstr".into(), span: expr.span },
-                                    args: vec![Arg::Pos(expr.clone())],
-                                },
-                            }, &loops)?;
-                        } else {
-                            check_value(expr, &loops)?;
+                    for check in checks.plain {
+                        match check {
+                            ScopedViewCheck::Condition(expr) => {
+                                let negated = Expr {
+                                    span: expr.span,
+                                    kind: crate::source::ast::ExprKind::Unary {
+                                        op: crate::source::ast::UnaryOp::Not,
+                                        operand: Box::new(expr.clone()),
+                                    },
+                                };
+                                check_value(&negated, &[])?;
+                            }
+                            ScopedViewCheck::Value(expr) | ScopedViewCheck::Key(expr) => check_value(expr, &[])?,
+                            _ => unreachable!("plain view checks are values, conditions, or keys"),
                         }
                     }
-                    for (cond, loops, _) in class_conditions {
-                        use crate::source::ast::{Expr, ExprKind, UnaryOp};
-                        check_value(&Expr {
-                            span: cond.span,
-                            kind: ExprKind::Unary {
-                                op: UnaryOp::Not,
-                                operand: Box::new(cond.clone()),
-                            },
-                        }, &loops)?;
-                    }
+                    let scoped_items = checks.scoped.into_iter().enumerate().map(|(index, (value, loops))| {
+                        let symbol = format!(
+                            "{}view_{}_{}",
+                            crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                            component_index, index,
+                        );
+                        crate::source::age_package::check_scoped_view_value(
+                            symbol, &node, node_index, &loops, value,
+                        )
+                    }).collect::<Result<Vec<_>, _>>()?;
                     let mut event_items = Vec::new();
                     let mut event_index = 0;
                     for tree in std::iter::once(node.view.tree.as_slice())
@@ -1538,11 +1625,15 @@ pub(crate) fn project_packages_front_with_widget_lists(
                         // R62-2：诊断落在**源 token** 上；修饰形只检查头字段。
                         for (source, source_span) in m.sources.iter().zip(m.source_spans.iter()) {
                             let head = source.split('.').next().unwrap_or(source);
-                            if !node.fields.iter().any(|f| f.name == head) {
+                            let is_property = m.watch_body.is_some()
+                                && crate::source::age_package::widget_value_params(&node).iter()
+                                    .any(|parameter| parameter.name == head
+                                        && crate::source::age_package::widget_prop_type(parameter).is_some());
+                            if !is_property && !node.fields.iter().any(|f| f.name == head) {
                                 return Err(vec![crate::source::age_h0::text_diag(
                                     "source.age.member-field",
                                     format!(
-                                        "`{source}` is not a `model` field of this node; \
+                                        "`{source}` is not a model field or value property of this node; \
                                          the `{}` member watches it",
                                         m.role
                                     ),
@@ -1551,7 +1642,13 @@ pub(crate) fn project_packages_front_with_widget_lists(
                             }
                         }
                     }
-                    for m in &node.members {
+                    for (index, m) in node.members.iter().enumerate() {
+                        if m.watch_body.is_some() {
+                            handler_check_items.push(crate::source::age_component::watch_check_fn(
+                                &node, node_index, index, "__age_p_hidden_wv_", m,
+                            )?);
+                            continue;
+                        }
                         for (field, rhs) in &m.stmts {
                             if !node.fields.iter().any(|f| f.name == *field) {
                                 return Err(vec![crate::source::age_h0::text_diag(
@@ -1569,6 +1666,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     }
                     items.extend(handler_check_items);
                     items.extend(event_items);
+                    items.extend(scoped_items);
                 } // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                   // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                   // 不另建求值器，也不把手写数值当常量。
@@ -2388,6 +2486,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
             }
             let (a, b) = (s as usize, e as usize);
             if import_spans.iter().any(|(x, y)| a >= *x && b <= *y) {
+                return;
+            }
+            if inactive_hosts.iter().any(|span| a >= span.start && b <= span.end) {
                 return;
             }
             if let Ok(spelled) = snap.read_str(s, e) {

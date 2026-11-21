@@ -3563,7 +3563,7 @@ fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
     // The `.as(T)`/`.to(T)` step carries the num-ty-word NODE (field
     // "word"); the keyword LEAF is its direct child.
     let word = match cx.field_child(step, "word") {
-        Some(nty) => cx.children(nty).into_iter().next()?,
+        Some(nty) => cx.children(nty).into_iter().next().unwrap_or(nty),
         None => {
             // Fallback: a direct keyword leaf (shape tolerance).
             cx.children(step).into_iter().find(|&c| {
@@ -3613,6 +3613,12 @@ fn numeric_step_word(cx: &Cx, step: u32) -> Option<(Span, TypeWord)> {
         TypeWord::I32
     } else if g == k.tok_bool {
         TypeWord::Bool
+    } else if cx.age_face && g == k.tok_ident {
+        match cx.spelling(word).as_str() {
+            "i64" => TypeWord::I64,
+            "u64" => TypeWord::U64,
+            _ => return None,
+        }
     } else {
         return None;
     };
@@ -6209,6 +6215,7 @@ impl<'a> Engine<'a> {
                         stmts: Vec::new(),
                         sources: Vec::new(),
                         source_spans: Vec::new(),
+                        watch_body: None,
                         span: self.cx.span_of(member),
                     });
                 }
@@ -6259,6 +6266,7 @@ impl<'a> Engine<'a> {
                         sources: Vec::new(),
                         source_spans: Vec::new(),
                         span: self.cx.span_of(member),
+                        watch_body: None,
                     });
                 }
                 _ => {}
@@ -6302,6 +6310,7 @@ impl<'a> Engine<'a> {
                 tree,
             },
             messages,
+            payload_records: Vec::new(),
             message_set_name,
             design,
             members: member_rows,
@@ -6444,6 +6453,7 @@ impl<'a> Engine<'a> {
             members.push(ComponentMemberRow {
                 role: "timer", name: "Tick".into(), num: Some(i64::from(ms)), value: running,
                 text: None, stmts: Vec::new(), sources: Vec::new(), source_spans: Vec::new(),
+                watch_body: None,
                 span: interval.span,
             });
         }
@@ -7199,7 +7209,8 @@ impl<'a> Engine<'a> {
                 | crate::source::age_component::ComponentStmt::AssignLocal { .. }
                 | crate::source::age_component::ComponentStmt::Call { .. }
                 | crate::source::age_component::ComponentStmt::Effect { .. }
-                | crate::source::age_component::ComponentStmt::Send { .. } => {}
+                | crate::source::age_component::ComponentStmt::Send { .. }
+                | crate::source::age_component::ComponentStmt::Focus { .. } => {}
             }
         }
     }
@@ -7741,6 +7752,15 @@ impl<'a> Engine<'a> {
             if self.cx.tree.kind(c) != item_kind {
                 continue;
             }
+            if role == "timer" && self.cx.profile == SourceProfile::AgePackage {
+                let interval = self.cx.field_child(c, "k1").expect("timer interval key");
+                if self.cx.spelling(interval) != "every_ms" {
+                    let span = self.cx.span_of(interval);
+                    self.cx.reject(span, || Diagnostic::new(
+                        Stage::Text, "source.syntax", "expected the timer interval key `every_ms`", span,
+                    ));
+                }
+            }
             // 直接字段优先；`watch { .src -> … }` 的源在嵌套 `age-watch-source`
             // 里（字段 `source`），所以要能往下找一层（R59-4：此前 watch 行名字为空）。
             let name = self
@@ -7799,19 +7819,33 @@ impl<'a> Engine<'a> {
                 .cx
                 .field_child(c, "v1")
                 .map(|v| self.cx.spelling(v).parse::<i64>().unwrap_or(0));
+            let sources = self.member_sources(c);
+            let watch_body = (role == "watch" && self.cx.profile == SourceProfile::AgePackage).then(|| {
+                let kind = self.rule_kind_of("age-on-branch-stmt");
+                let nodes = self.cx.children(c).into_iter()
+                    .filter(|&node| Some(self.cx.tree.kind(node)) == kind)
+                    .collect::<Vec<_>>();
+                let mut stmts = self.project_on_stmts(&nodes);
+                Self::resolve_handler_scope(&mut stmts, &mut BTreeSet::new(), false);
+                stmts
+            });
+            let stmts = if let Some(body) = &watch_body {
+                let mut assigns = Vec::new();
+                Self::flat_handler_assigns(body, &mut assigns);
+                assigns.into_iter().map(|assign| (assign.field, assign.rhs)).collect()
+            } else {
+                self.member_stmts(c)
+            };
             rows.push(ComponentMemberRow {
                 role,
                 name,
                 value,
                 text,
                 num,
-                stmts: self.member_stmts(c),
-                sources: self
-                    .member_sources(c)
-                    .iter()
-                    .map(|(s, _)| s.clone())
-                    .collect(),
-                source_spans: self.member_sources(c).iter().map(|(_, sp)| *sp).collect(),
+                stmts,
+                watch_body,
+                sources: sources.iter().map(|(name, _)| name.clone()).collect(),
+                source_spans: sources.into_iter().map(|(_, span)| span).collect(),
                 span: self.cx.span_of(c),
             });
         }
@@ -7841,6 +7875,7 @@ impl<'a> Engine<'a> {
                 text: None,
                 num: None,
                 stmts: Vec::new(),
+                watch_body: None,
                 sources: Vec::new(),
                 source_spans: Vec::new(),
                 span: expose_span,
@@ -8958,6 +8993,14 @@ impl<'a> Engine<'a> {
             _ => {}
         }
         let word = self.cx.spelling(word_leaf);
+        // Keep the native directory metadata width in records and helpers.
+        if self.cx.age_face {
+            match word.as_str() {
+                "u64" => return int(TypeWord::U64),
+                "i64" => return int(TypeWord::I64),
+                _ => {}
+            }
+        }
         // PLAN-935（T-02）：instances 面类型位裸 ident = 声明类型变量；PLAN-963
         // 把同一规则扩到「当前声明带类型参数」的任意面（generic record 的字段/
         // 方法注解）。仍只在拼写匹配当前声明参数表时成立——同名 record/局部不
@@ -9360,6 +9403,10 @@ impl<'a> Engine<'a> {
                     els: None,
                     span,
                 })
+            }
+            "age-on-focus" => {
+                let target = self.cx.field_child(inner, "target").expect("focus target");
+                Some(ComponentStmt::Focus { target: self.project_expr_sync(target), span: self.cx.span_of(inner) })
             }
             "age-on-message" => {
                 let message = self.cx.field_child(inner, "message").expect("handler message");

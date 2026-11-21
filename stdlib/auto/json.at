@@ -94,3 +94,9 @@ pub fn minify(s str) str;
 /// Validate if a string is valid JSON
 /// Returns 1 if valid, 0 otherwise
 pub fn is_valid(s str) int;
+
+/// Read a root object string member, falling back for any other shape.
+pub fn object_text(s str, key str, fallback str) str;
+
+/// Read a root object member written as a signed 32-bit JSON integer.
+pub fn object_i32(s str, key str, fallback int) int;

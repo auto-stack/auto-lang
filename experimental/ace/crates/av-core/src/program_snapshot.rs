@@ -27,6 +27,11 @@ use crate::mir::{
 };
 use std::sync::Arc;
 
+mod host_input;
+mod saved_cells;
+pub use host_input::HostInput;
+pub use saved_cells::SavedGlobalCells;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum InitState {
     Pending,
@@ -80,6 +85,8 @@ pub struct ProgramSnapshot {
     cells: std::cell::RefCell<Vec<Option<crate::av::GlobalValue>>>,
     init_slots: Vec<u32>,
     initialization: std::cell::Cell<InitState>,
+    host_inputs: Vec<u32>,
+    cell_owner: std::rc::Rc<()>,
     /// PLAN-946 (T-02): link-computed — EVERY linked unit is a
     /// collections-family MIR profile (`av.collections/1`/`av.closures/1`).
     /// Drives the unit view's shared-param answer so a List/Variant
@@ -131,8 +138,26 @@ impl ProgramSnapshot {
         producer: &MirModule,
         init_names: &[String],
     ) -> Result<Self, String> {
+        Self::link_with_host_inputs(code, entry, revision, span_maps, producer, init_names, &[])
+    }
+
+    /// Link a program with designated, immutable cells for scoped host inputs.
+    pub fn link_with_host_inputs(
+        code: Vec<Arc<FunctionCode>>,
+        entry: &str,
+        revision: u64,
+        span_maps: Vec<crate::span_map::SpanSegments>,
+        producer: &MirModule,
+        init_names: &[String],
+        host_inputs: &[u32],
+    ) -> Result<Self, String> {
         use crate::mir::MirInstr;
 
+        for &input in host_inputs {
+            if !producer.globals.get(input as usize).is_some_and(|global| !global.mutable) {
+                return Err(format!("global.host-input: cell #{input} must be immutable"));
+            }
+        }
         let mut scratch = MirModule::new(producer.owner.clone());
         let global_types = merge_types(&mut scratch, producer);
         for code_unit in &code {
@@ -162,6 +187,9 @@ impl ProgramSnapshot {
                         MirInstr::GlobalSet { src, global, .. } => (*global, *src, false),
                         _ => continue,
                     };
+                    if host_inputs.contains(&ordinal) && !matches!(instr, MirInstr::GlobalGet { .. }) {
+                        return Err(format!("global.host-input: code cannot write cell #{ordinal}"));
+                    }
                     let global = producer
                         .globals
                         .get(ordinal as usize)
@@ -183,14 +211,16 @@ impl ProgramSnapshot {
                 }
             }
         }
-        Self::link_with_globals(
+        let mut snapshot = Self::link_with_globals(
             code,
             entry,
             revision,
             span_maps,
             producer.globals.clone(),
             init_names,
-        )
+        )?;
+        snapshot.host_inputs = host_inputs.to_vec();
+        Ok(snapshot)
     }
 
     pub fn initialized(&self) -> bool {
@@ -231,6 +261,41 @@ impl ProgramSnapshot {
                     .unwrap_or(crate::contract::Value::Nil)
             })
             .collect()
+    }
+
+    /// Keep the current global cells if an operation fails. Save their complete
+    /// runtime storage, including any environment owned by a global closure.
+    pub fn with_global_transaction<T, E>(
+        &self,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
+        let initialization = self.initialization.get();
+        let previous = self.cells.borrow().clone();
+        let result = operation();
+        if result.is_err() {
+            *self.cells.borrow_mut() = previous;
+            self.initialization.set(initialization);
+        }
+        result
+    }
+
+    /// Evaluate a candidate update and restore the original cells. Its result
+    /// and full state can be committed later by the same snapshot.
+    pub fn preview_global_update<T, E>(
+        &self,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<PreparedGlobalUpdate<'_, T>, E> {
+        let original = self.cells.borrow().clone();
+        let initialization = self.initialization.get();
+        let result = operation();
+        let candidate = self.cells.replace(original);
+        let candidate_initialization = self.initialization.replace(initialization);
+        result.map(|value| PreparedGlobalUpdate {
+            snapshot: self,
+            candidate,
+            initialization: candidate_initialization,
+            value,
+        })
     }
 
     /// PLAN-1106（事件事务回滚）：整表恢复全局 cell（长度必须与 globals
@@ -476,6 +541,8 @@ impl ProgramSnapshot {
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
             initialization: std::cell::Cell::new(InitState::Pending),
+            host_inputs: Vec::new(),
+            cell_owner: std::rc::Rc::new(()),
             collections_family,
         })
     }
@@ -498,6 +565,8 @@ impl ProgramSnapshot {
             cells: std::cell::RefCell::new(Vec::new()),
             init_slots: Vec::new(),
             initialization: std::cell::Cell::new(InitState::Pending),
+            host_inputs: Vec::new(),
+            cell_owner: std::rc::Rc::new(()),
             collections_family: false,
         }
     }
@@ -637,6 +706,22 @@ impl ProgramSnapshot {
     /// THIS snapshot; unchanged functions report an unchanged generation.
     pub fn generation_of(&self, def_id: &str) -> Option<u64> {
         self.find_code(def_id).map(|c| c.generation())
+    }
+}
+
+/// A checked branch of an update that belongs to one mounted snapshot.
+pub struct PreparedGlobalUpdate<'a, T> {
+    snapshot: &'a ProgramSnapshot,
+    candidate: Vec<Option<crate::av::GlobalValue>>,
+    initialization: InitState,
+    value: T,
+}
+
+impl<T> PreparedGlobalUpdate<'_, T> {
+    pub fn commit(self) -> T {
+        self.snapshot.cells.replace(self.candidate);
+        self.snapshot.initialization.set(self.initialization);
+        self.value
     }
 }
 

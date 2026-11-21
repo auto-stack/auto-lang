@@ -87,6 +87,23 @@ fn p981_member_slots_coexist_in_order() {
     );
 }
 
+#[test]
+fn p981_timer_retains_the_condition_and_rejects_unknown_keys() {
+    let out = compile(&body("timer { Tick (every_ms: 250, when: .count < 2) }"))
+        .expect("the conditional timer parses");
+    let timer = out.description.components[0].members.iter()
+        .find(|row| row.role == "timer").unwrap();
+    assert_eq!(timer.name, "Tick");
+    assert_eq!(timer.num, Some(250));
+    assert!(matches!(
+        timer.value.as_ref().map(|value| &value.kind),
+        Some(ace_core::source::ast::ExprKind::Binary { .. })
+    ));
+    for bad in ["Tick (period: 250)", "Tick (every_ms: 250, while: true)"] {
+        assert!(compile(&body(&format!("timer {{ {bad} }}"))).is_err(), "{bad}");
+    }
+}
+
 /// 槽位内部的坏语法仍在作者源具名拒绝，不静默丢槽位。
 #[test]
 fn p981_malformed_member_slot_is_rejected() {

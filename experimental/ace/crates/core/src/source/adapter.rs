@@ -393,10 +393,14 @@ fn graft_stdlib_list(src: &str) -> String {
 const STDLIB_ASM_TEXT_AT: &str = include_str!("../../../../../../stdlib/ace/asm/text.at");
 pub(super) const STDLIB_TEXT_MANGLE: &str = "__std_text_";
 pub(super) const STDLIB_TEXT_FIND: &str = "__std_text_find";
-const TEXT_PREDICATE_FNS: &[&str] = &["ends_with", "eq_at"];
+const TEXT_PREDICATE_FNS: &[&str] = &["starts_with", "ends_with", "eq_at"];
+
+pub(super) fn needs_linked_text_predicates(src: &str) -> bool {
+    src.contains(".starts_with") || src.contains(".ends_with")
+}
 
 pub(super) fn needs_text_predicates(src: &str) -> bool {
-    src.contains(".ends_with") || src.contains(".contains")
+    needs_linked_text_predicates(src) || src.contains(".contains")
 }
 
 /// AGE uses the ordinary text predicates with the package binder's source

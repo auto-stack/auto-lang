@@ -94,3 +94,9 @@ fn minify(s str) str
 /// Check if string is valid JSON
 #[vm]
 fn is_valid(s str) int
+
+#[vm]
+fn object_text(s str, key str, fallback str) str
+
+#[vm]
+fn object_i32(s str, key str, fallback int) int

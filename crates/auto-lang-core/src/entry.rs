@@ -337,6 +337,10 @@ fn module_path_candidates(rel: &str) -> Vec<String> {
 }
 
 pub fn resolve_module_path(base_dir: &std::path::Path, module: &str) -> Option<std::path::PathBuf> {
+    if module == "std.json" {
+        let path = crate::stdlib_assembly::loader::repo_stdlib_root().ok()?.join("std/json.at");
+        return path.is_file().then_some(path);
+    }
     // Plan 061:外部后端链接 —— `back.X` 优先映射到后端项目根
     // (`back.api` → `<root>/api.at`,`back.shell` → `<root>/shell.at`;
     // mod.at 形态同样支持)。未配置或不命中则回落常规解析(本地 back/)。

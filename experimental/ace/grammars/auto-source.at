@@ -330,6 +330,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-handler-pop) { spelling: "pop", token: "ident", role: "list-pop", profiles: [age-package] }
         name(age-timer-when) { spelling: "when", token: "ident", role: "timer-guard", profiles: [age-component, age-package] }
         name(age-timer-head) { spelling: "timer", token: "ident", role: "timer", profiles: [age-component, age-package] }
+        name(age-ui-namespace) { spelling: "ui", token: "ident", role: "ui", profiles: [age-package] }
+        name(age-ui-focus) { spelling: "focus", token: "ident", role: "focus", profiles: [age-package] }
         name(age-package-import-kind) { spelling: "package", token: "ident", role: "package", profiles: [age-package] }
         name(age-package-import-from) { spelling: "from", token: "ident", role: "from", profiles: [age-package] }
         // PLAN-968: `on { ... }` message-handler head inside a `task`
@@ -790,6 +792,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
             alt { age-on-let() {} }
             alt(profiles: [age-package]) { age-on-message() {} }
+            alt(profiles: [age-package]) { age-on-focus() {} }
             alt { age-on-if() {} }
             alt(profiles: [age-package]) { age-on-for() {} }
             alt(profiles: [age-package]) { age-on-while() {} }
@@ -976,7 +979,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             lbrace(same-line: true, cut: true) {}
             // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
             // 开头，pratt 在下一个 `.` 处自然停下。
-            many { age-view-stmt() {} }
+            many(profiles: [age-component]) { age-view-stmt() {} }
+            many(profiles: [age-package]) { age-on-branch-stmt() {} }
             rbrace() {}
         }
         // R60-3：watch 源允许跨行（`watch {\n    .count -> …`）；此前 `dot(same-line)`
@@ -1245,6 +1249,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             opt { ann-ty(field: "ann") {} }
             assign() {}
             pratt(of: "wide-ops", field: "value") {}
+            opt { age-stmt-semi() {} }
         }
         age-on-message(profiles: [age-package], expect: "a widget message `.Name(arguments)`") {
             dot() {}
@@ -1257,6 +1262,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-on-message-args(profiles: [age-package]) {
             pratt(of: "wide-ops", field: "value") {}
             many { age-on-message-arg-tail() {} }
+        }
+        age-on-focus(profiles: [age-package], expect: "a checked `ui.focus(id)` effect") {
+            name(of: "age-ui-namespace") {} dot(same-line: true) {}
+            name(of: "age-ui-focus") {} lparen(same-line: true) {}
+            pratt(of: "wide-ops", field: "target")
+            rparen() {}
+            opt { age-stmt-semi() {} }
         }
         age-on-message-arg-tail(profiles: [age-package]) {
             comma() {}
@@ -1296,6 +1308,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-on-let() {} }
             alt(profiles: [age-package]) { age-on-var() {} }
             alt(profiles: [age-package]) { age-on-message() {} }
+            alt(profiles: [age-package]) { age-on-focus() {} }
             alt { age-on-if() {} }
             alt(profiles: [age-package]) { age-on-for() {} }
             alt(profiles: [age-package]) { age-on-while() {} }
@@ -3470,6 +3483,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { dot(same-line: true) r-as(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) ident(field: "word") rparen() {} }
+            alt(profiles: [age-package]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) int-kw(field: "word") rparen() {} }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，

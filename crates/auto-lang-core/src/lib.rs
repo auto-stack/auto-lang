@@ -118,6 +118,7 @@ pub mod test_runner;
 pub mod trans;
 pub mod util;
 pub mod vm;
+pub mod file_session;
 
 // ---- 原 auto-lang lib.rs Core 根项（T-02 拆分，行号精确切割）----
 // Global tokio runtime for VM execution

@@ -13699,6 +13699,10 @@ F:{d}
         match &value.kind {
             RExprKind::Move { .. } => {}
             RExprKind::RecordClone { .. } if self.coll.age_package => {}
+            // An ordinary call returning the exact nominal record creates an
+            // owned result slot. The list can take that temporary directly.
+            RExprKind::CallFn { .. }
+                if self.profile.is_auto_language() && matches!(*elem, VT::Rec(_)) && value.vt == *elem => {}
             RExprKind::CtorPos { .. } | RExprKind::CtorNamed { .. } => {
                 // a fresh rvalue transfers at commit; its Str-typed literal
                 // fields retag to the record's owned field types (AP-4 —
@@ -20112,6 +20116,18 @@ F:{d}
         to_word: Option<TypeWord>,
         span: Span,
     ) -> ResolvedExpr {
+        if name.name == "codepoint_at" && recv.vt.is_text() && to_word.is_none() {
+            let at = ast::Ident {
+                name: "char_at".into(),
+                span: name.span,
+            };
+            let codepoint = ast::Ident {
+                name: "to_codepoint".into(),
+                span: name.span,
+            };
+            let scalar = self.resolve_method(&at, recv, args, None, span);
+            return self.resolve_method(&codepoint, scalar, Vec::new(), None, span);
+        }
         if self.profile.is_auto_language() {
             if name.name == "len" && to_word.is_none() && args.is_empty() {
                 if let RExprKind::CallIntrinsic {
@@ -20148,7 +20164,7 @@ F:{d}
                     return self.resolve_text_contains(recv, args, span);
                 }
                 if matches!(
-                    name.name.as_str(), "find" | "trim" | "split" | "substr" | "ends_with",
+                    name.name.as_str(), "find" | "trim" | "split" | "substr" | "starts_with" | "ends_with",
                 ) {
                     return self.resolve_std_text_method(name, recv, args, span);
                 }

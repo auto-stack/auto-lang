@@ -229,7 +229,7 @@ pub struct SemanticView<'a> {
     pub domain: hir::HirDomain,
     /// The source profile identity this domain corresponds to.
     pub profile: &'static str,
-    age_text_display: bool,
+    age_package: bool,
     functions: Vec<FnFacts<'a>>,
     /// Signature-only functions (single-body fragments; see `ExternalFn`).
     externals: Vec<ExternalFn>,
@@ -309,13 +309,12 @@ impl<'a> SemanticView<'a> {
         Self::from_checked_module(checked, false)
     }
 
-    /// Admit the checked AGE package's text-display expressions when
-    /// constructing the package fragment view.
+    /// Admit the checked expressions used by the AGE package fragment.
     pub fn from_checked_age_package(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
         if checked.domain() == hir::HirDomain::Closures
             && checked.required_capabilities().iter().any(|cap| cap == "av.aggregates/1")
         {
-            return Self::from_checked(checked);
+            return Self::from_checked_module(checked, true);
         }
         if checked.domain() != hir::HirDomain::TextRecord {
             return Err(A2xReject::domain("AGE package view requires checked text-record HIR"));
@@ -325,7 +324,7 @@ impl<'a> SemanticView<'a> {
 
     fn from_checked_module(
         checked: &'a CheckedModule,
-        age_text_display: bool,
+        age_package: bool,
     ) -> Result<Self, A2xReject> {
         let domain = checked.domain();
         // PLAN-962: the aggregates surface binds under the closures domain
@@ -368,7 +367,7 @@ impl<'a> SemanticView<'a> {
             module,
             domain,
             profile,
-            age_text_display,
+            age_package,
             functions,
             externals: Vec::new(),
             records,
@@ -489,7 +488,7 @@ impl<'a> SemanticView<'a> {
             module,
             domain,
             profile,
-            age_text_display: false,
+            age_package: false,
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
             records: collect_records(module)?,
@@ -660,6 +659,10 @@ impl<'a> SemanticView<'a> {
         self.functions.iter().find(|f| f.def_index == def_index)
     }
 
+    pub fn def_name_for_diagnostic(&self, def_index: usize) -> Option<&str> {
+        self.module.defs.get(def_index).map(hir::Def::name_for_diagnostic)
+    }
+
     /// The signature-only external owning `def_index`, if any.
     pub fn external_by_def(&self, def_index: usize) -> Option<&ExternalFn> {
         self.externals.iter().find(|f| f.def_index == def_index)
@@ -730,6 +733,11 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _, _)| *d == def_index)
             .map(|(_, sym, is_set)| (sym.as_str(), *is_set))
+    }
+
+    /// Whether the view was admitted for checked AGE package emission.
+    pub fn is_age_package(&self) -> bool {
+        self.age_package
     }
 
     /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：本视图的全局模型（Rust 代码生
@@ -1214,7 +1222,7 @@ impl<'a> SemanticView<'a> {
                 // PLAN-904: the collections node surface.
                 if let Some(family) = self.text_record_family(self.domain) {
                     if kind_in_family(other, family)
-                        || (self.age_text_display && matches!(other, hir::ExprKind::TextDisplay { .. }))
+                        || (self.age_package && matches!(other, hir::ExprKind::TextDisplay { .. }))
                     {
                         return Ok(());
                     }
@@ -1232,7 +1240,9 @@ impl<'a> SemanticView<'a> {
                 if self.domain == hir::HirDomain::Collections
                     || self.profile == "auto.source.aggregates.draft"
                 {
-                    if kind_in_family(other, Family::Collections) {
+                    if kind_in_family(other, Family::Collections)
+                        || (self.age_package && matches!(other, hir::ExprKind::RecordClone { .. }))
+                    {
                         return Ok(());
                     }
                     return Err(A2xReject::unsupported_expr(format!(

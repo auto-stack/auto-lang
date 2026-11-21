@@ -627,6 +627,11 @@ fn main() int { hit = hit + 1; return f(39) + hit }"#,
             diags[0].diagnostic.code,
             "source.module-duplicate-declaration"
         );
+        let refused: Result<(), ()> = current.current.with_global_transaction(|| {
+            assert_eq!(current.run_value(), Ok(Value::I32(43)));
+            Err(())
+        });
+        assert_eq!(refused, Err(()));
         assert_eq!(current.run_value(), Ok(Value::I32(43)));
 
         let (restored, targets) = PackageStore::restore(&dir, &receipt).unwrap();

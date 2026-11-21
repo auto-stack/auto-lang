@@ -14,6 +14,7 @@ const MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/math
 const TEXT_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/text.at");
 const LIST_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/list.at");
 const AGE_MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/age/math.at");
+const JSON_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/json.at");
 pub(super) const AGE_MATH_MODULE: &str = "std::age_math";
 
 pub(super) fn age_math_input() -> PackageModuleInput {
@@ -26,12 +27,28 @@ pub(super) fn age_math_input() -> PackageModuleInput {
     }
 }
 
+/// The AGE package lane can opt into the existing source-owned JSON codec by import.
+pub(crate) fn age_json_input() -> PackageModuleInput {
+    PackageModuleInput {
+        package: STDLIB_PACKAGE.into(),
+        version: STDLIB_VERSION.into(),
+        id: "json".into(),
+        source: JSON_SOURCE.into(),
+        provider: None,
+    }
+}
+
 pub(super) fn is_age_math_input(input: &PackageModuleInput) -> bool {
     input.package == STDLIB_PACKAGE
         && input.id == "age_math"
         && input.version == STDLIB_VERSION
         && input.source == AGE_MATH_SOURCE
         && input.provider.is_none()
+}
+
+pub(crate) fn is_frozen_age_json_module(input: &PackageModuleInput) -> bool {
+    input.package == STDLIB_PACKAGE && input.id == "json" && input.version == STDLIB_VERSION
+        && input.source == JSON_SOURCE && input.provider.is_none()
 }
 
 /// 冻结 stdlib 输入（math/text 两模块，plain packages 面的原契约——

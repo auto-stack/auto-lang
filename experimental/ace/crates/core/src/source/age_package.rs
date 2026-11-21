@@ -37,8 +37,19 @@ pub(crate) mod widget_lists;
 mod widget_runtime;
 pub(crate) use widget_runtime::add_widget_runtime_state;
 pub(crate) use widget_runtime::runtime_computed_name;
-pub use widget_runtime::{AgeWidgetRuntimeComponent, AgeWidgetRuntimeHandler};
-pub use live_view::widget_view_fn_name_at;
+pub use widget_runtime::{
+    widget_timer_interval_ms, AgeWidgetRuntimeComponent, AgeWidgetRuntimeHandler, AgeWidgetRuntimeTimer,
+    AgeWidgetRuntimeWatch, AgeWidgetWatchSource,
+};
+pub use live_view::{widget_timer_fn_name_at, widget_view_fn_name_at};
+pub use super::age_component::outbound::FIELD as WIDGET_OUTBOUND_FIELD;
+pub use super::age_component::outbound::FOCUS_FIELD as WIDGET_FOCUS_FIELD;
+
+/// The source literal identifying a host-owned directory listing binding.
+pub const FILE_LIST_BINDING: &str = "\"file:list\"";
+pub const FILE_MUTATE_BINDING: &str = "\"file:mutate\"";
+pub const FILE_OPEN_BINDING: &str = "\"file:open\"";
+pub const WIDGET_CONTEXT_BINDING: &str = "\"widget:context\"";
 
 /// PLAN-981：包面的**消费者配置**（不是源语言的一部分）——实例数与定向事件
 /// 序列。与 979 组件场景是**同一个类型**（同一套脱糖口径，不复制一份）。
@@ -145,8 +156,14 @@ pub struct AgePackageComponent {
     pub handler_msgs: Vec<String>,
     /// Bound declaration-check functions for payload or structured model handlers.
     pub checked_handler_symbols: std::collections::BTreeMap<String, String>,
-    /// Unit messages whose entire handler forwards to an exact message parameter.
+    /// Unit handlers that forward to a declared message parameter.
     pub handler_forwards: std::collections::BTreeMap<String, String>,
+    /// A checked handler can emit an event to its parent.
+    pub emits_outbound: bool,
+    /// The component declares checked watch transitions.
+    pub has_watches: bool,
+    /// A checked transition can request focus from the widget host.
+    pub requests_focus: bool,
     /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
     pub messages: Vec<AgeMessageVariant>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行（按声明序）。
@@ -685,7 +702,7 @@ pub enum AgeWidgetProperty {
     Message { name: String, target: String, payload: Vec<String> },
 }
 
-pub(crate) type AgeWidgetRefs =
+pub type AgeWidgetRefs =
     std::collections::BTreeMap<(String, String), Vec<AgeWidgetRef>>;
 
 impl AgePackageCompilation {
@@ -894,7 +911,7 @@ fn compile_age_package_mode(
     let uses_text_predicates = inputs
         .iter()
         .any(|unit| super::adapter::needs_text_predicates(&unit.source));
-    if inputs.iter().any(|unit| unit.source.contains(".ends_with")) {
+    if inputs.iter().any(|unit| super::adapter::needs_linked_text_predicates(&unit.source)) {
         let source = super::adapter::graft_package_text_predicates(&mut product.bound)
             .map_err(|d| vec![d])?;
         product.sources.push(source);
@@ -906,10 +923,21 @@ fn compile_age_package_mode(
     // 面规则永不触发"这一类缺陷（端口/ f32 / move 各一次）。
     super::infer::complete(&mut product.bound.program)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
-    // List inputs, outputs, and handler locals share the collection verifier.
+    // List models, record fields and helpers use the ordinary Auto ownership
+    // and collection verifier.
+    let auto_type = |ann: &TypeAnn| {
+        matches!(&ann.kind, TypeRef::Generic { name, .. } if name.name == "List")
+            || matches!(ann.kind, TypeRef::Builtin(TypeWord::U64 | TypeWord::I64))
+    };
     let profile = if uses_text_predicates
         || product.bound.program.items.iter().any(|item| {
-            matches!(item, Item::Fn(function) if function_has_typed_list(function))
+            match item {
+                Item::Fn(function) => {
+                    function_has_typed_list(function) || auto_type(&function.ret) || function.params.iter().any(|param| auto_type(&param.ty))
+                }
+                Item::Type(record) => record.fields.iter().any(|field| auto_type(&field.ty)),
+                _ => false,
+            }
         })
     {
         SourceProfile::Auto
@@ -1059,7 +1087,17 @@ fn relabel_package_diags(mut diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
 
 /// 扁平坐标的诊断归位到所属模块（保模块内偏移）——跨模块错误不报合成偏移。
 fn locate_all(bound: &super::packages::BoundPackages, ds: Vec<Diagnostic>) -> Vec<Diagnostic> {
-    ds.into_iter().map(|d| bound.locate(d).diagnostic).collect()
+    ds.into_iter().map(|diagnostic| {
+        let super::packages::PackageDiagnostic { module, mut diagnostic } = bound.locate(diagnostic);
+        if let Some(segment) = bound.segments.iter()
+            .find(|segment| super::packages::unit_key(&segment.package, &segment.module) == module)
+            .filter(|segment| segment.source.is_char_boundary(diagnostic.span.start))
+        {
+            let (line, column) = crate::atom_text::line_col(&segment.source, diagnostic.span.start);
+            diagnostic.message = format!("{module}:{line}:{column}: {}", diagnostic.message);
+        }
+        diagnostic
+    }).collect()
 }
 
 fn list_element(ann: &TypeAnn) -> Option<&TypeAnn> {
@@ -1569,6 +1607,9 @@ fn read_back_components(
                 widget_runtime::unit_callback(&p.node, handler)
                     .map(|channel| (handler.msg.clone(), channel.into()))
             }).collect(),
+            emits_outbound: super::age_component::outbound::has_messages(&p.node),
+            has_watches: p.node.members.iter().any(|row| row.watch_body.is_some()),
+            requests_focus: super::age_component::outbound::has_focus(&p.node),
             handler_assigns: p
                 .node
                 .handlers
@@ -2133,6 +2174,72 @@ impl<'a> ViewScope<'a> {
     }
 }
 
+pub(crate) enum ScopedViewCheck<'a> {
+    Iteration,
+    Value(&'a Expr),
+    Text(&'a Expr),
+    Condition(&'a Expr),
+    Key(&'a Expr),
+}
+
+pub(crate) fn check_scoped_view_value(
+    symbol: String,
+    node: &ComponentNode,
+    node_index: usize,
+    loops: &[&ComponentViewFor],
+    check: ScopedViewCheck<'_>,
+) -> Result<Item, Vec<Diagnostic>> {
+    let scope = ViewScope::new(&symbol, node, node_index, 0, loops)?;
+    let (span, body) = match check {
+        ScopedViewCheck::Iteration => (loops.last().expect("scoped view loop").span, Vec::new()),
+        ScopedViewCheck::Value(expr) | ScopedViewCheck::Text(expr)
+        | ScopedViewCheck::Condition(expr) | ScopedViewCheck::Key(expr) => {
+            let span = expr.span;
+            let bound = scope.rename(expr)?;
+            let value = match check {
+                ScopedViewCheck::Text(_) => Expr {
+                    span, kind: ExprKind::Method {
+                        recv: Box::new(bound),
+                        name: Ident { name: "clone".into(), span },
+                        args: Vec::new(),
+                    },
+                },
+                ScopedViewCheck::Condition(_) => Expr {
+                    span, kind: ExprKind::Unary {
+                        op: UnaryOp::Not, operand: Box::new(bound),
+                    },
+                },
+                ScopedViewCheck::Key(_) => Expr {
+                    span, kind: ExprKind::Call {
+                        callee: Ident { name: "__fstr".into(), span },
+                        args: vec![Arg::Pos(bound)],
+                    },
+                },
+                _ => bound,
+            };
+            (span, vec![Stmt::ExprStmt { value, span }])
+        }
+    };
+    let mut body = scope.wrap(body);
+    body.push(Stmt::Return {
+        value: Expr { kind: ExprKind::IntLit(0), span },
+        span,
+    });
+    Ok(Item::Fn(FnItem {
+        name: Ident { name: symbol, span },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::Int), span },
+        body: Block { stmts: body, span },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+        proto: false,
+        test_attribute: None,
+    }))
+}
+
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
 ///
 /// 这是普通 Auto 源，交给唯一 verify；本函数不改判据、不建第二套检查。
@@ -2314,6 +2421,7 @@ enum RefFailure {
 pub(crate) fn bind_widget_packages(
     components: &[super::packages::PackagedAgeComponent],
     units: &mut std::collections::BTreeMap<String, super::packages::PackageSyntax>,
+    entry: &str,
     scenario: &super::age_component::ComponentScenario,
     sites: &WidgetSiteTargets,
 ) -> Result<AgeWidgetRefs, super::packages::PackageDiagnostic> {
@@ -2348,11 +2456,11 @@ pub(crate) fn bind_widget_packages(
         if !checked_spans.is_empty() {
             units.get_mut(module).expect("parent module was parsed")
                 .program.items.retain(|item| !matches!(item, Item::Fn(function)
-                    if function.name.name.starts_with(&view_prefix)
+                    if (function.name.name.starts_with(&view_prefix) || function.name.name.starts_with(&format!("{AGE_PACKAGE_HIDDEN_PREFIX}view_")))
                         && checked_spans.contains(&(function.span.start, function.span.end))));
         }
     }
-    live_view::add_widget_views(components, units, &resolved, scenario)?;
+    live_view::add_widget_views(components, units, &resolved, entry, scenario)?;
     Ok(resolved)
 }
 

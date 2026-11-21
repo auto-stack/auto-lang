@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use ace_core::source::age_package::{AgePackageDescription, AgeWidgetRef, AgeWidgetRefs};
+
 use super::{
     execute_bound_widget, widget_component, widget_view_fn_name_at, AgePackageCompilation,
     CalleeRef, ComponentFieldValue, ExecLimits, MirInstr, MirModule, Value,
@@ -40,9 +42,14 @@ pub struct WidgetEvent {
 // for this invocation. Retain initializer roots and closure constructor targets
 // alongside normal callees. The resulting module still goes through admission.
 pub(super) fn retain_entry_closure(mir: &mut MirModule) -> Result<(), String> {
+    retain_closures(mir, &[])
+}
+
+pub(super) fn retain_closures(mir: &mut MirModule, entries: &[u32]) -> Result<(), String> {
     let mut retained = vec![false; mir.funcs.len()];
     let mut pending = mir.init.clone();
     pending.push(mir.entry);
+    pending.extend_from_slice(entries);
     while let Some(index) = pending.pop() {
         let selected = retained
             .get_mut(index as usize)
@@ -204,20 +211,40 @@ pub(super) fn compose(
     mir: &MirModule,
     instance: usize,
     limits: &ExecLimits,
-    mut items: Vec<WidgetViewItem>,
+    items: Vec<WidgetViewItem>,
 ) -> Result<Vec<WidgetViewItem>, String> {
-    let root = compiled
-        .description
+    compose_with(&compiled.description, &compiled.widget_refs, items, |site, properties| {
+        let (node, _) = widget_component(compiled, site)?;
+        let name = widget_view_fn_name_at(node, instance);
+        let symbol = compiled.symbol_of_in(&site.module, &name)
+            .ok_or_else(|| invalid("missing checked child view"))?;
+        let def_id = format!("d_{symbol}");
+        let entry = mir.funcs.iter().position(|function| function.name == def_id)
+            .ok_or_else(|| invalid("missing lowered child view"))?;
+        let mut mir = mir.clone();
+        mir.entry = entry as u32;
+        decode_view(execute_bound_widget(compiled, site, instance, properties, limits, mir, &def_id)?)
+    })
+}
+
+pub(super) fn compose_with<F>(
+    description: &AgePackageDescription,
+    widget_refs: &AgeWidgetRefs,
+    mut items: Vec<WidgetViewItem>,
+    child_view: F,
+) -> Result<Vec<WidgetViewItem>, String>
+where
+    F: FnMut(&AgeWidgetRef, &[(String, String)]) -> Result<Vec<WidgetViewItem>, String>,
+{
+    let root = description
         .components
         .iter()
-        .find(|component| component.module == compiled.description.entry)
+        .find(|component| component.module == description.entry)
         .ok_or_else(|| invalid("entry component is missing"))?;
     let owner = (root.module.clone(), root.name.clone());
     let mut view = Composition {
-        compiled,
-        mir,
-        instance,
-        limits,
+        widget_refs,
+        child_view,
         active: vec![owner.clone()],
         scoped: BTreeMap::new(),
     };
@@ -225,11 +252,9 @@ pub(super) fn compose(
     Ok(items)
 }
 
-struct Composition<'a> {
-    compiled: &'a AgePackageCompilation,
-    mir: &'a MirModule,
-    instance: usize,
-    limits: &'a ExecLimits,
+struct Composition<'a, F> {
+    widget_refs: &'a AgeWidgetRefs,
+    child_view: F,
     active: Vec<(String, String)>,
     scoped: BTreeMap<ScopedSite, Vec<WidgetViewItem>>,
 }
@@ -241,7 +266,10 @@ struct ScopedSite {
     properties: Vec<(String, String)>,
 }
 
-impl Composition<'_> {
+impl<F> Composition<'_, F>
+where
+    F: FnMut(&AgeWidgetRef, &[(String, String)]) -> Result<Vec<WidgetViewItem>, String>,
+{
     fn expand(
         &mut self,
         owner: &(String, String),
@@ -252,7 +280,6 @@ impl Composition<'_> {
                 continue;
             };
             let site = self
-                .compiled
                 .widget_refs
                 .get(owner)
                 .into_iter()
@@ -280,31 +307,7 @@ impl Composition<'_> {
                 element.children = items.clone();
                 continue;
             }
-            let (node, _) = widget_component(self.compiled, site)?;
-            let name = widget_view_fn_name_at(node, self.instance);
-            let symbol = self
-                .compiled
-                .symbol_of_in(&site.module, &name)
-                .ok_or_else(|| invalid("missing checked child view"))?;
-            let def_id = format!("d_{symbol}");
-            let entry = self
-                .mir
-                .funcs
-                .iter()
-                .position(|function| function.name == def_id)
-                .ok_or_else(|| invalid("missing lowered child view"))?;
-            let mut mir = self.mir.clone();
-            mir.entry = entry as u32;
-            let result = execute_bound_widget(
-                self.compiled,
-                site,
-                self.instance,
-                &element.properties,
-                self.limits,
-                mir,
-                &def_id,
-            )?;
-            let mut items = decode_view(result)?;
+            let mut items = (self.child_view)(site, &element.properties)?;
             self.active.push(target.clone());
             self.expand(&target, &mut items)?;
             self.active.pop();
@@ -394,8 +397,20 @@ fn event<'a>(cells: &mut impl Iterator<Item = &'a Value>) -> Result<WidgetEvent,
     let mut args = Vec::new();
     for _ in 0..count {
         let ty = next(cells)?;
-        let value = next(cells)?;
-        args.push(match ty {
+        args.push(scalar(ty, next(cells)?)?);
+    }
+    Ok(WidgetEvent { key, message, args })
+}
+
+pub(super) fn payload<'a, 'b>(
+    cells: &mut impl Iterator<Item = &'a Value>,
+    types: impl Iterator<Item = &'b str>,
+) -> Result<Vec<ComponentFieldValue>, String> {
+    types.map(|ty| scalar(ty, next(cells)?)).collect()
+}
+
+pub(super) fn scalar(ty: &str, value: &str) -> Result<ComponentFieldValue, String> {
+    Ok(match ty {
             "str" | "Str" => ComponentFieldValue::Str(value.to_owned()),
             "bool" => ComponentFieldValue::Bool(
                 value
@@ -408,12 +423,10 @@ fn event<'a>(cells: &mut impl Iterator<Item = &'a Value>) -> Result<WidgetEvent,
                     .map_err(|_| invalid("invalid integer payload"))?,
             ),
             _ => return Err(invalid("unknown payload type")),
-        });
-    }
-    Ok(WidgetEvent { key, message, args })
+    })
 }
 
-fn text(cell: &Value) -> Result<&str, String> {
+pub(super) fn text(cell: &Value) -> Result<&str, String> {
     let Value::Str(value) = cell else {
         return Err(invalid("expected text"));
     };

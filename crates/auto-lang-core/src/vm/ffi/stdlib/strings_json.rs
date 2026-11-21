@@ -502,6 +502,26 @@ pub fn shim_json_is_valid(s: String) -> bool {
     serde_json::from_str::<serde_json::Value>(&s).is_ok()
 }
 
+fn json_root_member<'a>(source: &'a str, key: &str) -> Option<&'a serde_json::value::RawValue> {
+    let object: std::collections::BTreeMap<String, &serde_json::value::RawValue> =
+        serde_json::from_str(source).ok()?;
+    object.get(key).copied()
+}
+
+#[auto_macros::rust_fn("auto.json.object_text")]
+pub fn shim_json_object_text(s: String, key: String, fallback: String) -> String {
+    json_root_member(&s, &key)
+        .and_then(|value| serde_json::from_str(value.get()).ok())
+        .unwrap_or(fallback)
+}
+
+#[auto_macros::rust_fn("auto.json.object_i32")]
+pub fn shim_json_object_i32(s: String, key: String, fallback: i32) -> i32 {
+    json_root_member(&s, &key)
+        .and_then(|value| value.get().parse().ok())
+        .unwrap_or(fallback)
+}
+
 /// Get a value from a JSON object by key
 #[auto_macros::rust_fn("Json.get")]
 pub fn shim_json_get(json_str: String, key: String) -> String {
@@ -1834,6 +1854,24 @@ pub(super) fn register_regex_i18n_shims(natives: &mut crate::vm::native::NativeI
 
 #[cfg(test)]
 mod p949_tests {
+    #[test]
+    fn json_object_readers_keep_the_original_integer_token() {
+        use super::{shim_json_object_i32, shim_json_object_text};
+
+        let integer = |raw: &str| shim_json_object_i32(raw.into(), "revision".into(), -17);
+        assert_eq!(integer(r#"{"revision":-0}"#), 0);
+        assert_eq!(integer(r#"{"revision":-2147483648}"#), i32::MIN);
+        assert_eq!(integer(r#"{"revision":2147483647}"#), i32::MAX);
+        for raw in [r#"{"revision":4e0}"#, r#"{"revision":4.0}"#, r#"{"revision":4294967300}"#,
+                    r#"{"revision":4,"revision":"4"}"#, r#"{"revision":4"#] {
+            assert_eq!(integer(raw), -17, "{raw}");
+        }
+        let text = |raw: &str| shim_json_object_text(raw.into(), "file.name".into(), "fallback".into());
+        assert_eq!(text(r#"{"file\u002ename":"\uD83D\uDE00"}"#), "😀");
+        assert_eq!(text(r#"{"file.name":""}"#), "");
+        assert_eq!(text(r#"{"file.name":"\uD800"}"#), "fallback");
+    }
+
     fn output(source: &str) -> String {
         crate::execution_engine::execute_with_engine_capture(
             crate::execution_engine::ExecutionEngine::AutoVM,

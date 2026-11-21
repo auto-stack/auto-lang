@@ -58,7 +58,7 @@ auto-terminal-core = { path = "../auto-terminal-core" }
 rustyline = { workspace = true, features = ["with-file-history"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
 serde = { workspace = true, features = ["derive"] }
 auto-text-core = { path = "../auto-text-core" }
 auto-media-core = { path = "../auto-media-core", default-features = false, features = ["image-codec"] }
@@ -99,6 +99,8 @@ tar = "0.4"
 flate2 = "1"
 zip = { workspace = true }
 same-file = "1"
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
 ansi_term = "0.12"
 tokio-util = { version = "0.7", features = ["io"], optional = true }
 futures = "0.3"
@@ -113,3 +115,9 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_System_IO", "Wdk_Storage_FileSystem"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple", target_os = "redox"))'.dependencies]
+rustix = { version = "1", features = ["fs"] }

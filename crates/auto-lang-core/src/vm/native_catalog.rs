@@ -1164,6 +1164,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.join", 2865, String),
             // 2026-08-22:read_dir 白名单补登记(ash-gui cd 目录补全用)。
             ("auto.fs.read_dir", 2866, String),
+            ("auto.fs.session_root", 3054, String),
+            ("auto.fs.session_list", 3055, String),
+            ("auto.fs.session_mutate", 3056, Bool),
+            ("auto.fs.read_dir_names", 3057, List),
             // Plan 626 T-04:嵌套目录树 JSON(TreeView 节点 schema 直配)。
             ("auto.fs.tree", 2875, String),
             // Plan 060:merged 模式 shell 执行提交(参数 int,str,str;返回 void)。
@@ -1422,6 +1426,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.json.is_null", 1914, Void),
             ("auto.json.keys", 1915, Void),
             ("auto.json.has_key", 1917, Void),
+            ("auto.json.object_text", 3058, String),
+            ("auto.json.object_i32", 3059, Int),
 
             // === Plan 340: JSON ↔ VM value conversion + JSON HTTP helpers (3100-3106) ===
             ("auto.json.to_value", 3100, Void),
@@ -2427,6 +2433,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.json.is_null", 1914),
     ("auto.json.keys", 1915),
     ("auto.json.has_key", 1917),
+    ("auto.json.object_text", 3058),
+    ("auto.json.object_i32", 3059),
     // Plan 340: JSON ↔ VM value + JSON HTTP helpers
     ("auto.json.to_value", 3100),
     ("auto.json.from_value", 3101),
@@ -2930,6 +2938,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.fs.parent", 2864),
     ("auto.fs.join", 2865),
     ("auto.fs.read_dir", 2866),
+    ("auto.fs.session_root", 3054),
+    ("auto.fs.session_list", 3055),
+    ("auto.fs.session_mutate", 3056),
+    ("auto.fs.read_dir_names", 3057),
     // Plan 626 T-04:嵌套目录树 JSON。
     ("auto.fs.tree", 2875),
     ("auto.shell.exec_submit", 2867),

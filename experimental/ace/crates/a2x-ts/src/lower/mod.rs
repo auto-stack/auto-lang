@@ -576,14 +576,15 @@ impl<'v, 'a> Cx<'v, 'a> {
         let kind = self.expr_kind(id);
         let v = self.lower_expr(id)?;
         let src = self.expr_ty(id)?;
-        // A borrowed *representation* must be promoted even when the verifier
-        // typed the literal at its owning use site (a `StrLit` is an immortal
-        // view at runtime, never an owned buffer).
+        // Literals are immortal byte views. Record fields and list entries
+        // lend their stored values, even when their declared type is Str.
         let borrowed_rep = matches!(
             kind,
             hir::ExprKind::StrLit { .. }
                 | hir::ExprKind::TextSlice { .. }
                 | hir::ExprKind::TextToBorrowed { .. }
+                | hir::ExprKind::FieldGet { .. }
+                | hir::ExprKind::ListGet { .. }
         );
         if target == Ty::StrOwned && (src == Ty::Str || borrowed_rep) {
             let t = self.fresh_temp();
@@ -1162,6 +1163,30 @@ impl<'v, 'a> Cx<'v, 'a> {
             let args = place_args(&slots, bindings, 3);
             return Ok(format!("a2x_str_find({})", args.join(", ")));
         }
+        let view = self.view;
+        if view.is_age_package() && self.lang == ScriptLang::JavaScript {
+            if let Some((symbol, is_set)) = view.global_accessor(target) {
+                let global = view.globals_model()?.into_iter()
+                    .find(|global| global.symbol == symbol)
+                    .ok_or_else(|| A2xReject::new("a2x.internal", "module constant has no model"))?;
+                let text = matches!(global.ty, Ty::Str | Ty::StrOwned);
+                if global.mutable || !(text || matches!(global.ty,
+                    Ty::Bool | Ty::Char | Ty::I8 | Ty::U8 | Ty::I32 | Ty::U32 | Ty::I64 | Ty::U64 | Ty::F32 | Ty::F64))
+                {
+                    return Err(A2xReject::new("a2ts.widget-global-unsupported", format!(
+                        "checked widget module global `{}` must be an immutable scalar or text constant", global.name,
+                    )));
+                }
+                return match (is_set, eval_args) {
+                    (false, []) => Ok(format!("a2x_widget_global_get({symbol:?}, {})", global.ty == Ty::StrOwned)),
+                    (true, [value]) => {
+                        let value = self.lower_expr(*value)?;
+                        Ok(format!("a2x_widget_global_init({symbol:?}, {value}, {text})"))
+                    }
+                    _ => Err(A2xReject::new("a2x.internal", "invalid module constant accessor arity")),
+                };
+            }
+        }
         // 2) scheduler intrinsics are a named rejection (no silent async)
         if let Some(sym) = self.view.sched_symbol(target) {
             return Err(A2xReject::new(
@@ -1211,7 +1236,8 @@ impl<'v, 'a> Cx<'v, 'a> {
             .view
             .fn_by_def(target)
             .ok_or_else(|| {
-                A2xReject::unsupported_expr(format!("call target def {target} is not in the view"))
+                let name = self.view.def_name_for_diagnostic(target).unwrap_or("unknown");
+                A2xReject::unsupported_expr(format!("call target `{name}` (def {target}) is not in the view"))
             })?
             .clone();
         let mut slots = Vec::with_capacity(eval_args.len());

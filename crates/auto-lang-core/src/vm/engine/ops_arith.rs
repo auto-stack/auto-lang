@@ -2056,7 +2056,7 @@ impl AutoVM {
                                 self.rc_push_str_idx(task, idx as usize);
                             }
                         }
-                        "char_code_at" | "charCodeAt" => {
+                        "char_code_at" | "charCodeAt" | "codepoint_at" => {
                             let i = if arg_count >= 1 {
                                 auto_val::decode_i32(task.ram.pop_nv())
                             } else {

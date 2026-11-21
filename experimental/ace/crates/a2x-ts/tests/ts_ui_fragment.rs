@@ -80,18 +80,25 @@ fn run_driver(dir: &PathBuf, lang: ScriptLang, driver: &str) -> (i32, String, St
 #[test]
 fn checked_widget_view_and_child_property_follow_the_current_model() {
     use ace_a2x_ts::seed::{decode_coll_seed, encode_coll_seed, render_coll_seed_helpers};
-    use ace_a2x_ts::{emit_function_body_fragment, runtime_export_names, ts_fn_name};
+    use ace_a2x_ts::{emit_function_body_fragment, script_widget_runtime_body, ts_fn_name};
     use ace_core::source::age_h0::LegacyWidgetAlias;
     use ace_core::source::age_package::{compile_age_package_widget_runtime, AgeWidgetProperty};
     use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
     let source = r#"
+use support.caption: BASE
+
+style pane_tone = "text-primary"
+const START int = BASE + 2
+const MARKER Str = "界" + "面"
+
 widget Parent {
     use { package: support from "../components" }
     msg { Add(int), Rename(str) }
     model {
-        count int = 3
-        label str = "initial"
+        count int = START
+        var label str = "initial"
+        var previous_label str = ""
         ids List = []
         rows List = []
     }
@@ -105,22 +112,38 @@ widget Parent {
             .rows = rows
             var selected = .rows[0]
             var title = selected.title
+            .previous_label = .label
             .label = title
         }
     }
     view {
-        text f"Count ${.count}" {}
+        text f"${MARKER} Count ${.count}" { style: pane_tone }
         CaptionWidget (caption: .label) {}
     }
 }
 "#;
     let child_source = r#"
+pub const BASE int = 3
+
+type CaptionText { text str }
+
+fn render_caption(value Str) Str {
+    let box = CaptionText { text: value.to(str).to(Str) }
+    let local = box.text
+    return "Caption " + local
+}
+
 widget CaptionWidget (caption: str) {
     msg {}
     model {}
-    view { text .caption {} }
+    view {
+        // Wide view
+        text render_caption(.caption) {}
+    }
 }
-"#;
+"#.replace("// Wide view", &(0..64)
+        .map(|index| format!("text \"prefix {index}\" {{}}\n"))
+        .collect::<String>());
     let entry = "app::main";
     let child_module = "support::caption";
     let compiled = compile_age_package_widget_runtime(
@@ -163,11 +186,12 @@ widget CaptionWidget (caption: str) {
     let view = ace_a2x_core::SemanticView::from_checked_age_package(&compiled.checked).unwrap();
     let context = FragmentProgramContext::from_view(&view);
     let seed = decode_coll_seed(&encode_coll_seed(&view).unwrap()).unwrap();
-    let mut driver = format!(
-        "import {{ {} }} from './a2x_rt.mjs';\n",
-        runtime_export_names().join(", ")
-    );
-    driver.push_str(&render_coll_seed_helpers(&seed, false));
+    let mut driver = String::from("import assert from 'node:assert/strict';\nfunction fixture() {\n");
+    driver.push_str(&script_widget_runtime_body());
+    for line in render_coll_seed_helpers(&seed, false).lines() {
+        driver.push_str(line.strip_prefix("export ").unwrap_or(line));
+        driver.push('\n');
+    }
     for function in view.functions() {
         let fragment =
             emit_function_body_fragment(ScriptLang::JavaScript, &view, function, &context).unwrap();
@@ -184,20 +208,30 @@ widget CaptionWidget (caption: str) {
             fragment.text.join("\n")
         ));
     }
+    for initializer in view.global_init_fns() {
+        driver.push_str(&format!("{}();\n", ts_fn_name(initializer)));
+    }
     driver.push_str(&format!(
         r#"
-import assert from 'node:assert/strict';
+a2x_widget_keep_models([]);
 const seed = {init};
 const initial = seed();
 const independent = seed();
 const added = {add}(initial, 7);
 const renamed = {rename}(added, a2x_str_to_owned(a2x_str_lit('updated')));
 const cells = result => result.items.map(a2x_str_utf8);
-assert.ok(cells({parent_view}(initial)).includes('Count 3'));
-assert.ok(cells({parent_view}(renamed)).includes('Count 10'));
-assert.ok(cells({parent_view}(independent)).includes('Count 3'));
-assert.ok(cells({child_view}({caption}(renamed))).includes('updated'));
-assert.ok(cells({child_view}({caption}(added))).includes('initial'));
+assert.ok(cells({parent_view}(initial)).includes('界面 Count 5'));
+assert.ok(cells({parent_view}(renamed)).includes('界面 Count 12'));
+assert.ok(cells({parent_view}(independent)).includes('界面 Count 5'));
+assert.ok(cells({parent_view}(initial)).includes('text-primary'));
+assert.equal(a2x_str_utf8(renamed.previous_label), 'initial');
+const renamedChild = cells({child_view}({caption}(renamed)));
+const prefix = Array.from({{ length: 64 }}, (_, index) => ['text', 'prefix ' + index]).flat();
+assert.deepEqual(renamedChild, [...prefix, 'text', 'Caption updated']);
+assert.ok(cells({child_view}({caption}(added))).includes('Caption initial'));
+}}
+fixture();
+fixture();
 console.log('WIDGET_OK');
 "#,
         init = symbol(parent.initialize.as_ref().unwrap()),

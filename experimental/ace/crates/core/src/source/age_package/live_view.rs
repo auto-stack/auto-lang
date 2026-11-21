@@ -8,14 +8,15 @@ use super::{
     AgeWidgetRef, AgeWidgetRefs, Arg, BinOp,
     Block, ComponentNode, ComponentViewEntry, ComponentViewFor, ComponentViewItem, Diagnostic,
     Expr, ExprKind, FnItem, Ident, Item, PackagedAgeComponent, Receiver, Span, Stmt, TypeAnn,
-    TypeRef, TypeWord, ViewScope, AGE_PACKAGE_HIDDEN_PREFIX,
+    TypeRef, TypeWord, ViewScope, AGE_PACKAGE_HIDDEN_PREFIX, FILE_LIST_BINDING, FILE_MUTATE_BINDING,
+    FILE_OPEN_BINDING, WIDGET_CONTEXT_BINDING,
 };
 use crate::source::{
     age_component::{
         instance_stmts, payload_type, ComponentClassPart, ComponentEntryValue, ComponentScenario,
         FieldBinding,
     },
-    ast::{AssignTarget, Param},
+    ast::{AssignTarget, Param, ParamMode},
     packages::{PackageDiagnostic, PackageSyntax},
 };
 
@@ -23,10 +24,15 @@ pub fn widget_view_fn_name_at(node: usize, instance: usize) -> String {
     format!("{AGE_PACKAGE_HIDDEN_PREFIX}widget_view_{node}_{instance}")
 }
 
+pub fn widget_timer_fn_name_at(node: usize, instance: usize, timer: usize) -> String {
+    format!("{AGE_PACKAGE_HIDDEN_PREFIX}widget_timer_{node}_{instance}_{timer}")
+}
+
 pub(super) fn add_widget_views(
     components: &[PackagedAgeComponent],
     units: &mut BTreeMap<String, PackageSyntax>,
     refs: &AgeWidgetRefs,
+    entry: &str,
     scenario: &ComponentScenario,
 ) -> Result<(), PackageDiagnostic> {
     let targets: BTreeSet<_> = refs
@@ -34,12 +40,20 @@ pub(super) fn add_widget_views(
         .flatten()
         .map(|widget| (widget.module.as_str(), widget.node.as_str()))
         .collect();
+    let instances = scenario.instances;
+    let entry_node = components.iter().position(|component| component.module == entry);
     for (index, component) in components.iter().enumerate() {
         let node = &component.node;
         let sites = refs.get(&(component.module.clone(), node.name.name.clone()));
+        let is_live_root = instances != 0 && Some(index) == entry_node;
+        let handles_root_timers = is_live_root && node.members.iter().any(|row| row.role == "timer");
+        let has_host_bindings = is_live_root && node.members.iter().any(|row| {
+            row.role == "bind" && (matches!(row.name.as_str(), FILE_LIST_BINDING | FILE_MUTATE_BINDING | FILE_OPEN_BINDING | WIDGET_CONTEXT_BINDING)
+                || row.name.trim_matches('"').starts_with("storage:"))
+        });
         if node.view.exit != "view"
             || !node.view_data.is_empty()
-            || (sites.is_none()
+            || (!handles_root_timers && !has_host_bindings && sites.is_none()
                 && !targets.contains(&(component.module.as_str(), node.name.name.as_str())))
         {
             continue;
@@ -49,7 +63,7 @@ pub(super) fn add_widget_views(
             .get_mut(&component.module)
             .expect("widget module")
             .program;
-        add_component_views(node, index, sites, scenario, &mut program.items)
+        add_component_views(node, index, sites, scenario, handles_root_timers, &mut program.items)
             .map_err(|mut diagnostics| PackageDiagnostic {
                 module: component.module.clone(),
                 diagnostic: diagnostics.remove(0),
@@ -63,6 +77,7 @@ fn add_component_views(
     index: usize,
     sites: &[AgeWidgetRef],
     scenario: &ComponentScenario,
+    handles_root_timers: bool,
     items: &mut Vec<Item>,
 ) -> Result<(), Vec<Diagnostic>> {
     let span = node.head_span;
@@ -73,21 +88,46 @@ fn add_component_views(
         && !node.members.iter().any(|member| member.role == "computed");
     let scenario = resolve_tick_spelling(scenario, node);
     if snapshot {
-        items.push(Item::Type(widget_runtime::model_record(node, &record)?));
+        items.push(Item::Type(widget_runtime::model_record(node, &record, &[])?));
     }
+    let timers = if handles_root_timers {
+        widget_runtime::timer_declarations(node)?
+    } else {
+        Vec::new()
+    };
     for instance in 0..scenario.instances.max(1) {
         let symbol = widget_view_fn_name_at(index, instance);
         let params = widget_input_params(node);
         let state = FieldBinding::state_at(index, instance, node);
         let binding = if snapshot { FieldBinding::runtime_at(index, node, &model) } else { state };
-        let mut view = build_view(node, &symbol, sites, binding, params.clone())?;
+        let mut view_params = params.clone();
+        if snapshot {
+            view_params.push(Param {
+                name: model.clone(),
+                ty: TypeAnn { kind: TypeRef::Record(record.clone()), span },
+                mode: ParamMode::Default,
+                default: None,
+                span,
+            });
+        }
+        let mut views = build_view(node, &symbol, sites, binding, view_params)?;
+        let Some(Item::Fn(mut view)) = views.pop() else {
+            unreachable!("checked view builder ends with the entry function");
+        };
+        items.extend(views);
+        for (timer, (row, _)) in timers.iter().enumerate() {
+            if let Some(value) = &row.value {
+                let name = widget_timer_fn_name_at(index, instance, timer);
+                items.push(widget_runtime::timer_guard(node, &name, value, state, &params)?);
+            }
+        }
         if snapshot {
             // Replay the checked model once per view call. The view reads the
             // resulting fields, so adding a read does not duplicate the handlers.
             let replay = ident(&format!("{symbol}_replay"), span);
             let ty = TypeAnn { kind: TypeRef::Record(record.clone()), span };
             let mut stmts = instance_stmts(instance, index, node, &scenario, &Default::default(), true)?;
-            stmts.push(widget_runtime::return_model(node, &record, instance));
+            stmts.push(widget_runtime::return_model(node, &record, instance, &[]));
             items.push(Item::Fn(FnItem {
                 name: replay.clone(),
                 type_params: Vec::new(),
@@ -101,6 +141,7 @@ fn add_component_views(
                 proto: false,
                 test_attribute: None,
             }));
+            view.params.pop();
             view.body.stmts.insert(0, Stmt::Let {
                 kw: span,
                 span,
@@ -121,7 +162,7 @@ pub(super) fn build_view(
     sites: &[AgeWidgetRef],
     binding: FieldBinding<'_>,
     params: Vec<Param>,
-) -> Result<FnItem, Vec<Diagnostic>> {
+) -> Result<Vec<Item>, Vec<Diagnostic>> {
     let span = node.head_span;
     let scope = ViewScope::with_binding(symbol, node, binding, &[])?;
     let out = ident(&format!("{symbol}_output"), span);
@@ -152,6 +193,10 @@ pub(super) fn build_view(
         loops: 0,
         cells: 0,
         sites,
+        params: &params,
+        output_ty: &ret,
+        emitted_cells: 0,
+        fragments: Vec::new(),
     };
     build.items(&node.view.tree, &scope, &mut stmts, "", false)?;
     for timer in node.members.iter().filter(|member| member.role == "timer") {
@@ -172,7 +217,8 @@ pub(super) fn build_view(
         value: read(&out),
         span,
     });
-    Ok(FnItem {
+    let mut functions = build.fragments;
+    functions.push(Item::Fn(FnItem {
         name: ident(symbol, span),
         type_params: Vec::new(),
         params,
@@ -187,8 +233,13 @@ pub(super) fn build_view(
         script: false,
         proto: false,
         test_attribute: None,
-    })
+    }));
+    Ok(functions)
 }
+
+// Split ordered tape appends before large views accumulate a wide MIR frame.
+// A fragment uses the same checked inputs and the same output list as its caller.
+const VIEW_FRAGMENT_CELLS: usize = 96;
 
 struct ViewBody<'a> {
     symbol: &'a str,
@@ -196,6 +247,10 @@ struct ViewBody<'a> {
     loops: usize,
     cells: usize,
     sites: &'a [AgeWidgetRef],
+    params: &'a [Param],
+    output_ty: &'a TypeAnn,
+    emitted_cells: usize,
+    fragments: Vec<Item>,
 }
 
 impl ViewBody<'_> {
@@ -207,6 +262,8 @@ impl ViewBody<'_> {
         element_tag: &str,
         skip_entries: bool,
     ) -> Result<(), Vec<Diagnostic>> {
+        let mut start = stmts.len();
+        let mut cells_before = self.emitted_cells;
         for item in items {
             match item {
                 ComponentViewItem::Text(text) => {
@@ -275,8 +332,46 @@ impl ViewBody<'_> {
                     self.iteration(iteration, scope, stmts, element_tag)?;
                 }
             }
+            // Loop bodies reference generated row/index locals. Keep those
+            // scopes intact and split around the complete loop instead.
+            if scope.visible.is_empty() && self.emitted_cells - cells_before >= VIEW_FRAGMENT_CELLS {
+                let body = stmts.split_off(start);
+                stmts.push(self.fragment(body));
+                self.emitted_cells = cells_before + 1;
+                cells_before = self.emitted_cells;
+                start = stmts.len();
+            }
         }
         Ok(())
+    }
+
+    fn fragment(&mut self, mut stmts: Vec<Stmt>) -> Stmt {
+        let span = self.out.span;
+        let name = ident(&format!("{}_fragment_{}", self.symbol, self.fragments.len()), span);
+        let mut params = self.params.to_vec();
+        params.push(Param {
+            name: self.out.clone(), ty: self.output_ty.clone(), mode: ParamMode::Default,
+            default: None, span,
+        });
+        let args = params.iter().map(|param| {
+            let value = read(&param.name);
+            if param.mode == ParamMode::Move {
+                Arg::MovePos(Expr {
+                    span,
+                    kind: ExprKind::Method { recv: Box::new(value), name: ident("clone", span), args: Vec::new() },
+                })
+            } else {
+                Arg::Pos(value)
+            }
+        }).collect();
+        stmts.push(Stmt::Return { value: Expr { kind: ExprKind::IntLit(0), span }, span });
+        self.fragments.push(Item::Fn(FnItem {
+            name: name.clone(), type_params: Vec::new(), params,
+            ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::I32), span },
+            body: Block { stmts, span }, span,
+            receiver: Receiver::Free, owner: None, script: false, proto: false, test_attribute: None,
+        }));
+        Stmt::ExprStmt { value: Expr { kind: ExprKind::Call { callee: name, args }, span }, span }
     }
 
     fn iteration(
@@ -353,20 +448,12 @@ impl ViewBody<'_> {
         if entry.is_event && !matches!(entry.value, ComponentEntryValue::ChildEvent(_)) {
             return self.event(entry, scope, stmts);
         }
-        if element_tag == "drawer" && entry.key == "open" {
-            let ComponentEntryValue::Expr(cond) = &entry.value else {
-                return Err(view_error("this drawer `open` binding", span));
-            };
-            let mut then = Vec::new();
-            let mut els = Vec::new();
-            self.emit(&mut then, "property", prop(literal("true", span)));
-            self.emit(&mut els, "property", prop(literal("false", span)));
-            stmts.push(if_stmt(scope.rename(cond)?, then, els, span));
-            return Ok(());
-        }
+        let boolean = matches!((element_tag, entry.key.as_str()),
+            ("drawer" | "alert-dialog", "open") | ("button" | "input", "disabled")
+            | ("sidebar_menu_button", "active") | (_, "checked"));
         match &entry.value {
             ComponentEntryValue::Expr(expr) => {
-                self.value_property(entry, expr, scope, stmts)?;
+                self.value_property(entry, expr, scope, stmts, boolean)?;
             }
             ComponentEntryValue::If {
                 cond,
@@ -375,8 +462,8 @@ impl ViewBody<'_> {
             } => {
                 let mut then = Vec::new();
                 let mut els = Vec::new();
-                self.value_property(entry, then_value, scope, &mut then)?;
-                self.value_property(entry, else_value, scope, &mut els)?;
+                self.value_property(entry, then_value, scope, &mut then, boolean)?;
+                self.value_property(entry, else_value, scope, &mut els, boolean)?;
                 stmts.push(if_stmt(scope.rename(cond)?, then, els, span));
             }
             ComponentEntryValue::ClassList(parts) => {
@@ -443,10 +530,11 @@ impl ViewBody<'_> {
         value: &Expr,
         scope: &ViewScope<'_>,
         stmts: &mut Vec<Stmt>,
+        boolean: bool,
     ) -> Result<(), Vec<Diagnostic>> {
         let span = entry.span;
         let property = |value| [literal(&entry.key, span), value];
-        if entry.key == "checked" {
+        if boolean {
             let mut then = Vec::new();
             let mut els = Vec::new();
             self.emit(&mut then, "property", property(literal("true", span)));
@@ -525,6 +613,7 @@ impl ViewBody<'_> {
     fn emit(&mut self, stmts: &mut Vec<Stmt>, op: &str, values: impl IntoIterator<Item = Expr>) {
         let span = self.out.span;
         for mut value in std::iter::once(literal(op, span)).chain(values) {
+            self.emitted_cells += 1;
             if !matches!(value.kind, ExprKind::StrLit(_)) {
                 let value_span = value.span;
                 let cell = ident(&format!("{}_cell_{}", self.symbol, self.cells), value_span);
