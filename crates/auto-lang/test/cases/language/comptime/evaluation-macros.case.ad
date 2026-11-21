@@ -430,3 +430,21 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 stage: "resolve"
 code: "cte.type/value-domain"
+
+## Case: fold-typed-i32
+id: "av.parity.1091.fold-typed-i32"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return #{ -42i32 } + 84 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42

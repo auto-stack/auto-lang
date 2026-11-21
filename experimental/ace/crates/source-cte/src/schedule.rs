@@ -810,6 +810,10 @@ fn direct_call_args(e: &Expr) -> Option<Vec<CtValue>> {
 fn lit_value(e: &Expr) -> Option<CtValue> {
     match &e.kind {
         ExprKind::IntLit(v) => Some(CtValue::I32(*v)),
+        ExprKind::TypedLit {
+            ty: ace_core::source::ast::TypeWord::Int | ace_core::source::ast::TypeWord::I32,
+            bits,
+        } => Some(CtValue::I32(*bits as i32)),
         ExprKind::BoolLit(v) => Some(CtValue::Bool(*v)),
         _ => None,
     }
