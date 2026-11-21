@@ -911,6 +911,7 @@ fn inner_span(s: &Stmt) -> Span {
         | Stmt::AggIsMatch { span, .. }
         | Stmt::ForIn { span, .. }
         | Stmt::Try { span, .. }
+        | Stmt::With { span, .. }
         | Stmt::HashIf { span, .. }
         | Stmt::HashFor { span, .. }
         | Stmt::HashIs { span, .. } => *span,

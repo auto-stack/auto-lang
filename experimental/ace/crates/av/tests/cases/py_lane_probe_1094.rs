@@ -2,7 +2,8 @@
 //! the prepared py-bridge provider closure (the same foreign lane as the
 //! 1093 providers). These tests bind the §6 contract shapes end-to-end:
 //! nested python calls, the ValueError catch/uncaught pair with the
-//! `python.value` classification, and the unicode/NUL text lane.
+//! `python.value` classification, the unicode/NUL text lane, and the
+//! `with` context-manager statement (enter/exit exactly once).
 
 use ace_av::language_source_worker::serve;
 use serde_json::json;
@@ -73,6 +74,52 @@ fn main() int {
     assert!(step["source_span"].is_object(), "{step}");
     // `int("abc")` starts at byte 45 in the frozen source (line 3).
     assert_eq!(step["source_span"]["start"], 45, "{step}");
+}
+
+#[test]
+fn plan1094_py_with_context_manager_close() {
+    // §6 context-manager-close: `with closing(buf) as r` enters, the body
+    // raises a language error, `__exit__` closes buf EXACTLY ONCE, and the
+    // error propagates to the outer catch (no suppression by closing).
+    let source = r#"use.py io: StringIO
+use.py contextlib: closing
+fn main() int {
+ let buf = StringIO()
+ try { with closing(buf) as r { r.write("ok"); fail("stop") } } catch e { }
+ if buf.closed.to(bool) { return 42 }; return 0
+}
+"#;
+    let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
+    assert_eq!(step["outcome"], "success", "{step}");
+    assert_eq!(step["value"], 42, "{step}");
+}
+
+#[test]
+fn plan1094_py_with_normal_exit() {
+    let source = r#"use.py io: StringIO
+use.py contextlib: closing
+fn main() int {
+ let buf = StringIO()
+ with closing(buf) as r { r.write("ok") }
+ if buf.closed.to(bool) { return 42 }; return 0
+}
+"#;
+    let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
+    assert_eq!(step["outcome"], "success", "{step}");
+    assert_eq!(step["value"], 42, "{step}");
+}
+
+#[test]
+fn plan1094_py_with_enter_failure_no_exit() {
+    // An `__enter__` failure must NOT run `__exit__` (Python semantics).
+    let source = r#"use.py builtins: int
+fn main() int {
+ try { with int("abc") as x { } } catch e { return 42 }; return 0
+}
+"#;
+    let step = serve(&request(source, "main.as")).expect("worker response")["steps"][0].clone();
+    assert_eq!(step["outcome"], "success", "{step}");
+    assert_eq!(step["value"], 42, "{step}");
 }
 
 #[test]

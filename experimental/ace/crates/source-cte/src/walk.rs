@@ -162,6 +162,10 @@ macro_rules! tree_walk {
                         pending.extend(catch.$iter().map(|clause| Node::Block(&$($borrow)* clause.body)));
                         pending.extend(finally.$iter().map(Node::Block));
                     }
+                    Stmt::With { expr, body, .. } => {
+                        pending.push(Node::Value(expr));
+                        pending.push(Node::Block(body));
+                    }
                     Stmt::Break { .. } | Stmt::Continue { .. } => {}
                 }
             }

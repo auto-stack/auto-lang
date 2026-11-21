@@ -626,6 +626,12 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<String>) {
                 }
             }
         }
+        Stmt::With { expr, body, .. } => {
+            walk_expr(expr, out);
+            for s in &body.stmts {
+                walk_stmt(s, out);
+            }
+        }
         Stmt::Yield { value, .. } => walk_expr(value, out),
     }
 }

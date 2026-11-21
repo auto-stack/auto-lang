@@ -424,6 +424,20 @@ fn shift_stmt(s: &mut Stmt, delta: i64) {
             }
             shift_span(span, delta);
         }
+        // PLAN-1094：`with <expr> [as <name>] { body }` 平移。
+        Stmt::With {
+            expr,
+            bind,
+            body,
+            span,
+        } => {
+            shift_expr(expr, delta);
+            if let Some(b) = bind {
+                shift_ident(b, delta);
+            }
+            shift_block(body, delta);
+            shift_span(span, delta);
+        }
         Stmt::Yield { value, span } => {
             shift_expr(value, delta);
             shift_span(span, delta);

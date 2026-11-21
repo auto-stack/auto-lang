@@ -398,6 +398,23 @@ pub(crate) fn analyze_capture_uses(
                         visit_block(f, outer_locals, scopes, uses, by_name);
                     }
                 }
+                // PLAN-1094: `with <expr> [as <name>] { body }` — the bind
+                // is a block-scoped name for capture analysis.
+                Stmt::With {
+                    expr,
+                    bind,
+                    body,
+                    ..
+                } => {
+                    visit_expr(expr, outer_locals, scopes, uses, by_name);
+                    let mut bound = BTreeSet::new();
+                    if let Some(b) = bind {
+                        bound.insert(b.name.clone());
+                    }
+                    scopes.push(bound);
+                    visit_block(body, outer_locals, scopes, uses, by_name);
+                    scopes.pop();
+                }
             }
         }
         scopes.pop();
@@ -772,6 +789,22 @@ pub(crate) fn scan_shared_capture_cells(
                     if let Some(f) = finally {
                         visit_block(f, scopes, shared);
                     }
+                }
+                // PLAN-1094: the with bind is a block-scoped name.
+                Stmt::With {
+                    expr,
+                    bind,
+                    body,
+                    ..
+                } => {
+                    visit_expr(expr, scopes, shared);
+                    let mut bound = BTreeMap::new();
+                    if let Some(b) = bind {
+                        bound.insert(b.name.clone(), (b.span.start, false));
+                    }
+                    scopes.push(bound);
+                    visit_block(body, scopes, shared);
+                    scopes.pop();
                 }
             }
         }

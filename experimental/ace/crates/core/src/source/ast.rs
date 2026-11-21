@@ -937,6 +937,15 @@ pub enum Stmt {
         finally: Option<Block>,
         span: Span,
     },
+    /// PLAN-1094: `with <expr> [as <name>] { body }` — a context-manager
+    /// statement (the manager's `__enter__` binds `name`, `__exit__` runs
+    /// exactly once on every exit).
+    With {
+        expr: Expr,
+        bind: Option<Ident>,
+        body: Block,
+        span: Span,
+    },
     /// PLAN-965 (M2-A): `yield expr` inside a `~Iter<T>` generator body.
     Yield {
         value: Expr,

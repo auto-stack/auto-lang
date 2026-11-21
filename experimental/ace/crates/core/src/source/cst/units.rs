@@ -598,6 +598,10 @@ fn references_name(f: &FnItem, name: &str) -> bool {
                             sub.extend(f.stmts.iter().map(WalkItem::Stmt));
                         }
                     }
+                    crate::source::ast::Stmt::With { expr, body, .. } => {
+                        sub.push(WalkItem::Expr(expr));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
+                    }
                 }
                 sub.reverse();
                 work.extend(sub);
@@ -791,6 +795,10 @@ fn collect_lambdas(stmts: &[Stmt], out: &mut Vec<(Span, u64)>, src: &str) {
                         if let Some(f) = finally {
                             sub.extend(f.stmts.iter().map(WalkItem::Stmt));
                         }
+                    }
+                    Stmt::With { expr, body, .. } => {
+                        sub.push(WalkItem::Expr(expr));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
                     }
                 }
                 sub.reverse();
@@ -2206,6 +2214,10 @@ fn extract_lambda_body(f: &FnItem, ordinal: usize) -> Option<ClosureBody> {
                         if let Some(f) = finally {
                             sub.extend(f.stmts.iter().map(WalkItem::Stmt));
                         }
+                    }
+                    Stmt::With { expr, body, .. } => {
+                        sub.push(WalkItem::Expr(expr));
+                        sub.extend(body.stmts.iter().map(WalkItem::Stmt));
                     }
                 }
                 sub.reverse();

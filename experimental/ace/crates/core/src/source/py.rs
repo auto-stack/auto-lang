@@ -42,6 +42,8 @@ fn __py_chunk_i(n int) Str {
 return f"i ${__py_dlen(n)}\n$n\n" }
 fn __py_chunk_b(n int) Str {
 return f"b 1\n$n\n" }
+fn __py_chunk_t(v Str) Str {
+return f"t ${v.len_bytes()}\n$v\n" }
 "#;
 
 /// One `p967.frame/1` static import frame (the frozen wire layout for a

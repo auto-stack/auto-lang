@@ -289,6 +289,8 @@ pub struct SourceKinds {
     pub try_stmt: Option<u32>,
     pub catch_clause: Option<u32>,
     pub finally_clause: Option<u32>,
+    /// PLAN-1094: the `with <expr> [as <name>] { body }` statement rule.
+    pub with_stmt: Option<u32>,
     pub yield_stmt: Option<u32>,
     pub tok_dotquestion: Option<u32>,
     /// PLAN-1080（T-03）：管道步 `|>` token（仅 auto 面）。
@@ -661,6 +663,7 @@ impl SourceKinds {
             try_stmt: rk_opt(p, "try-stmt"),
             catch_clause: rk_opt(p, "catch-clause"),
             finally_clause: rk_opt(p, "finally-clause"),
+            with_stmt: rk_opt(p, "with-stmt"),
             yield_stmt: rk_opt(p, "yield-stmt"),
             tok_dotquestion: token_kind(p, "dotquestion"),
             tok_pipegt: token_kind(p, "pipegt"),

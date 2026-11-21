@@ -2296,6 +2296,20 @@ fn shift_stmt(s: &mut Stmt, offset: usize) {
             }
             sh(span, offset);
         }
+        // PLAN-1094：`with <expr> [as <name>] { body }` 平移。
+        Stmt::With {
+            expr,
+            bind,
+            body,
+            span,
+        } => {
+            shift_expr(expr, offset);
+            if let Some(b) = bind {
+                sh(&mut b.span, offset);
+            }
+            shift_block(body, offset);
+            sh(span, offset);
+        }
         // PLAN-966（T-02）：语句级 CT 平移（谓词表达式 span + 体内语句）。
         Stmt::HashIf {
             cond,
@@ -3036,6 +3050,24 @@ impl<'a> Walker<'a> {
                 Stmt::Yield { value, .. } if self.auto_language => {
                     self.walk_expr(value, &locals)?;
                 }
+                Stmt::With {
+                    expr, bind, body, ..
+                } if self.auto_language => {
+                    self.walk_expr(expr, &locals)?;
+                    let mut with_locals = next_locals.clone();
+                    if let Some(b) = bind {
+                        with_locals.insert(b.name.clone());
+                    }
+                    stack.push(Frame {
+                        stmts: rest,
+                        locals: with_locals.clone(),
+                    });
+                    stack.push(Frame {
+                        stmts: &mut body.stmts,
+                        locals: with_locals,
+                    });
+                    continue;
+                }
                 Stmt::AggIsMatch {
                     scrutinee, arms, ..
                 } if self.auto_language => {
@@ -3055,7 +3087,8 @@ impl<'a> Walker<'a> {
                 | Stmt::ForIn { span, .. }
                 | Stmt::AggIsMatch { span, .. }
                 | Stmt::Try { span, .. }
-                | Stmt::Yield { span, .. } => {
+                | Stmt::Yield { span, .. }
+                | Stmt::With { span, .. } => {
                     return Err(fail(
                         self.key,
                         "source.module-surface",
@@ -3740,7 +3773,8 @@ fn stmt_span(s: &Stmt) -> Span {
         | Stmt::ForIn { span, .. }
         | Stmt::AggIsMatch { span, .. }
         | Stmt::Try { span, .. }
-        | Stmt::Yield { span, .. } => *span,
+        | Stmt::Yield { span, .. }
+        | Stmt::With { span, .. } => *span,
         // PLAN-966（T-02）：语句级 CT 的语句 span。
         Stmt::HashIf { span, .. } | Stmt::HashFor { span, .. } | Stmt::HashIs { span, .. } => *span,
         // PLAN-1082：place 链赋值。

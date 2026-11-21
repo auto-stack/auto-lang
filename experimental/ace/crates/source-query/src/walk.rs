@@ -413,7 +413,8 @@ fn walk_stmt<'a>(
         Stmt::ForIn { span, .. }
         | Stmt::AggIsMatch { span, .. }
         | Stmt::Try { span, .. }
-        | Stmt::Yield { span, .. } => {
+        | Stmt::Yield { span, .. }
+        | Stmt::With { span, .. } => {
             return Err(WalkError::Unsupported {
                 what: "aggregates-control",
                 span: *span,

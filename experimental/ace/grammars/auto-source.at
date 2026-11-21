@@ -3020,6 +3020,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [collections, closures, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct]) { is-stmt() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { agg-is-stmt() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { try-stmt() {} }
+            // PLAN-1094：`with <expr> [as <name>] { body }` —— Python 上下文
+            // 管理器语句（进入调 __enter__、任何出口调 __exit__ 恰一次）。
+            alt(profiles: [auto, auto-packages]) { with-stmt() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { yield-stmt() {} }
             alt { loop-stmt() {} }
             alt { break() {} }
@@ -3310,6 +3313,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             block(field: "body")
             opt { catch-clause(field: "catch") }
             opt { finally-clause(field: "finally") }
+        }
+        // PLAN-1094：`with <expr> [as <name>] { body }` —— 管理器表达式进入
+        // 后绑定 `name`（__enter__ 结果），body 的任何出口都运行 __exit__。
+        with-stmt(profiles: [auto, auto-packages]) {
+            r-with(field: "kw")
+            expr(field: "expr")
+            opt { with-as-bind(field: "bind") }
+            block(field: "body")
+        }
+        with-as-bind(profiles: [auto, auto-packages]) {
+            r-as(field: "kw")
+            ident(field: "name")
         }
         catch-clause(profiles: [aggregates, auto, scheduler, auto-packages]) {
             r-catch(field: "kw")

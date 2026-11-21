@@ -3952,6 +3952,12 @@ enum Frame {
         ann: Option<TypeAnn>,
         mutable: bool,
     },
+    /// PLAN-1094：`with <expr> [as <name>] { body }` —— 管理器语句。
+    /// 表达式与 body 各自入场，finish 时组装 Stmt::With。
+    WithFinish {
+        kw_span: Span,
+        bind: Option<Ident>,
+    },
     /// PLAN-960（T-02）：module-level `const`/`var` 项——初始化表达式入场
     /// 后包装为 Item::Const/Store。
     GlobalItemFinish {
@@ -10879,6 +10885,23 @@ impl<'a> Engine<'a> {
                 self.enter_block(cb);
             }
             self.enter_block(body_n);
+        } else if kind == self.cx.k.with_stmt.unwrap_or(u32::MAX) {
+            // PLAN-1094: `with <expr> [as <name>] { body }`.
+            let kw_span = self
+                .cx
+                .field_child(inner, "kw")
+                .map(|k| self.cx.span_of(k))
+                .unwrap_or_else(|| self.cx.span_of(inner));
+            let bind = self
+                .cx
+                .field_child(inner, "bind")
+                .and_then(|b| self.cx.field_child(b, "name"))
+                .map(|n| ident_of(&mut self.cx, n));
+            let expr_n = self.cx.field_child(inner, "expr").expect("with expr");
+            let body_n = self.cx.field_child(inner, "body").expect("with body");
+            self.stack.push(Frame::WithFinish { kw_span, bind });
+            self.stack.push(Frame::ExprEnter(expr_n));
+            self.enter_block(body_n);
         } else if kind == self.cx.k.yield_stmt.unwrap_or(u32::MAX) {
             let kw_span = self
                 .cx
@@ -13615,6 +13638,17 @@ impl<'a> Engine<'a> {
                     span: kw_span.join(end_span),
                 }));
             }
+            Frame::WithFinish { kw_span, bind } => {
+                let expr = self.pop_e();
+                let body = self.pop_b();
+                let body_span = body.span;
+                self.vals.push(Val::S(Stmt::With {
+                    expr,
+                    bind,
+                    body,
+                    span: kw_span.join(body_span),
+                }));
+            }
             Frame::YieldFinish { kw_span } => {
                 let value = self.pop_e();
                 let span = kw_span.join(value.span);
@@ -15862,6 +15896,10 @@ impl GenericExpand {
                 }
                 Stmt::NestedFn { item } => self.resolve_typed_ctors_in_block(&mut item.body),
                 Stmt::Hold { body, .. } => self.resolve_typed_ctors_in_block(body),
+                Stmt::With { expr, body, .. } => {
+                    self.resolve_typed_ctors_in_expr(expr);
+                    self.resolve_typed_ctors_in_block(body);
+                }
                 Stmt::If {
                     cond, then, els, ..
                 } => {

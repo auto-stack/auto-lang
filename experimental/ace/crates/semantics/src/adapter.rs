@@ -588,7 +588,8 @@ fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
         core_ast::Stmt::ForIn { span, .. }
         | core_ast::Stmt::AggIsMatch { span, .. }
         | core_ast::Stmt::Try { span, .. }
-        | core_ast::Stmt::Yield { span, .. } => {
+        | core_ast::Stmt::Yield { span, .. }
+        | core_ast::Stmt::With { span, .. } => {
             let _ = span;
             return Err("aggregates control/generator statement is outside this adapter's inference surface".into());
         }

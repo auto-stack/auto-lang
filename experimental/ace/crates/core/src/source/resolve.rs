@@ -7030,6 +7030,8 @@ impl<'a, 's> FnResolver<'a, 's> {
         let name = match tag {
             "o" => "__py_chunk_o",
             "b" => "__py_chunk_b",
+            // PLAN-1094: dynamic text crosses via the byte-length chunk.
+            "t" => "__py_chunk_t",
             _ => "__py_chunk_i",
         };
         let span = v.span;
@@ -7148,6 +7150,16 @@ F:{d}
             // any other i32 dynamic value — dynamic "i <dlen>\n<value>\n"
             _ if v.vt == VT::I32 => {
                 let chunk = self.py_chunk_call("i", v);
+                parts.push(PyFramePart::TextExpr(chunk));
+            }
+            // PLAN-1094: nil crosses as Python None (the `with` exit args).
+            RExprKind::NilLit => {
+                parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
+            }
+            // PLAN-1094: dynamic text (the `with` error args) crosses via
+            // the byte-length text chunk.
+            _ if v.vt.is_text() => {
+                let chunk = self.py_chunk_call("t", v);
                 parts.push(PyFramePart::TextExpr(chunk));
             }
             // v1 boundary: dynamic floats/text/other types do not cross
@@ -7310,6 +7322,24 @@ F:{d}
             VT::I32 => {
                 let frame = self.py_recv_frame(recv, span);
                 self.py_op_call("py_to_i32", span, frame)
+            }
+            VT::Bool => {
+                let frame = self.py_recv_frame(recv, span);
+                // the bridge returns a 0/1 i32 — coerce to the Bool face.
+                let raw = self.py_op_call("py_to_bool", span, frame);
+                ResolvedExpr {
+                    span,
+                    vt: self.node_ty(span, VT::Bool),
+                    kind: RExprKind::Binary {
+                        op: BinOp::Ne,
+                        lhs: Box::new(raw),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(0),
+                        }),
+                    },
+                }
             }
             VT::Str | VT::StrOwned => {
                 let len = self.py_stage_len(recv, span);
@@ -7722,6 +7752,19 @@ F:{d}
                             blocks.push((&c.body, nested));
                         }
                         blocks.push((body, visible.clone()));
+                    }
+                    // PLAN-1094: `with <expr> [as <name>] { body }` — the
+                    // bind is a block-scoped name.
+                    Stmt::With {
+                        bind,
+                        body,
+                        ..
+                    } => {
+                        let mut nested = visible.clone();
+                        if let Some(b) = bind {
+                            nested.insert(b.name.clone(), VT::I32);
+                        }
+                        blocks.push((body, nested));
                     }
                 }
             }
@@ -11704,6 +11747,402 @@ F:{d}
         out
     }
 
+    /// PLAN-1094: `with <expr> [as <name>] { body }` — a Python context
+    /// manager statement. The manager evaluates once; `__enter__` binds
+    /// `name`; the body runs inside a protected loop (like try); every exit
+    /// (normal / return / break / continue / language error) runs
+    /// `__exit__` EXACTLY ONCE — normal exits with None args, language
+    /// errors with the error text, and a truthy `__exit__` result SUPPRESSES
+    /// the error (the Python protocol) so control continues after the with.
+    fn resolve_with_stmt(
+        &mut self,
+        expr: &ast::Expr,
+        bind: Option<&ast::Ident>,
+        body: &ast::Block,
+        span: Span,
+        has_following: bool,
+    ) -> Vec<RStmt> {
+        let mut out = Vec::new();
+        if !self.profile.is_aggregates() {
+            self.bind_err(
+                "source.unsupported",
+                "`with` requires full aggregates lowering".to_string(),
+                span,
+            );
+            return out;
+        }
+        let cs = self.ensure_ctrl_state(span);
+        // 1) the manager: one evaluation, held in a py-token local.
+        let cm_value = self.expr_iterative(expr);
+        let manager_is_py = self.py_is_object(&cm_value);
+        if !manager_is_py {
+            self.bind_err(
+                "source.with-manager",
+                "`with` requires a Python context manager expression (a `use.py` object)"
+                    .to_string(),
+                expr.span,
+            );
+        }
+        let cm = self.agg_temp("__with_cm", VT::I32, false, span);
+        if manager_is_py {
+            self.py_locals.insert(cm);
+        }
+        out.push(RStmt::Let {
+            local: cm,
+            value: cm_value,
+            span,
+        });
+        // 2) enter: `__enter__` → the bound name (Python: name = enter()).
+        if manager_is_py {
+            let cm_read = ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::ReadLocal(cm),
+            };
+            let enter = self.py_call_sugar(&cm_read, "__enter__", Vec::new(), span);
+            let enter_l = self.agg_temp("__with_enter", VT::I32, false, span);
+            self.py_locals.insert(enter_l);
+            out.push(RStmt::Let {
+                local: enter_l,
+                value: enter,
+                span,
+            });
+            if let Some(b) = bind {
+                let user = LocalRef(self.locals.len());
+                self.locals.push(LocalDecl {
+                    name: b.name.clone(),
+                    vt: VT::I32,
+                    mutable: false,
+                    is_param: false,
+                    param_index: None,
+                    capture_index: None,
+                    cell: false,
+                    is_capture: false,
+                    mode: ast::ParamMode::Default,
+                    span: b.span,
+                });
+                self.py_locals.insert(user);
+                self.scopes.push(Scope {
+                    names: BTreeMap::from([(b.name.clone(), user)]),
+                    views: BTreeMap::new(),
+                    text_mut_aliases: BTreeMap::new(),
+                });
+                out.push(RStmt::Let {
+                    local: user,
+                    value: ResolvedExpr {
+                        span: b.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(enter_l),
+                    },
+                    span: b.span,
+                });
+            }
+        }
+        // 3) the protected body loop (same shape as try).
+        let with_loop = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.ctrl_frames.push(CtrlFrame::Try {
+            try_loop: with_loop,
+            has_catch: false,
+        });
+        fn rstmts_diverge(stmts: &[RStmt]) -> bool {
+            let Some(last) = stmts.last() else {
+                return false;
+            };
+            match last {
+                RStmt::Return { .. }
+                | RStmt::Fail { .. }
+                | RStmt::Break { .. }
+                | RStmt::Continue { .. } => true,
+                RStmt::If {
+                    then,
+                    els: Some(els),
+                    ..
+                } => rstmts_diverge(&then.stmts) && rstmts_diverge(&els.stmts),
+                _ => false,
+            }
+        }
+        let mut r_body = self.resolve_body(body, false);
+        if !rstmts_diverge(&r_body.stmts) {
+            r_body.stmts.push(RStmt::Break {
+                target: Some(with_loop),
+                span,
+            });
+        }
+        self.ctrl_frames.pop();
+        out.push(RStmt::Loop {
+            body: r_body,
+            span,
+            target: with_loop,
+            unwind: (self.profile.is_auto_language() && !self.is_generator)
+                .then_some((cs.kind, cs.err)),
+        });
+
+        // 4) the exit handler (the loop's normal exit AND the unwind edge
+        // both land here — the runtime set cs.kind=4 + cs.err on unwind):
+        // save the ctrl state, run __exit__ once per the saved kind,
+        // restore, then dispatch.
+        if manager_is_py {
+            let saved_k = self.agg_temp("wk", VT::I32, false, span);
+            let saved_tl = self.agg_temp("wtl", VT::I32, false, span);
+            let saved_e = self.agg_temp("we", VT::StrOwned, false, span);
+            let read = |local: LocalRef, vt: VT, sp: Span| ResolvedExpr {
+                span: sp,
+                vt,
+                kind: RExprKind::ReadLocal(local),
+            };
+            out.push(RStmt::Let {
+                local: saved_k,
+                value: read(cs.kind, VT::I32, span),
+                span,
+            });
+            out.push(RStmt::Let {
+                local: saved_tl,
+                value: read(cs.target_loop, VT::I32, span),
+                span,
+            });
+            out.push(RStmt::Let {
+                local: saved_e,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::Move {
+                        inner: Box::new(read(cs.err, VT::StrOwned, span)),
+                    },
+                },
+                span,
+            });
+            out.push(RStmt::Assign {
+                local: cs.err,
+                path: Vec::new(),
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::StrLit(String::new()),
+                },
+                span,
+            });
+            // __exit__ per the saved kind: 4 = language error (error text
+            // args + suppression check), everything else = None args.
+            let cm_read = read(cm, VT::I32, span);
+            let nil = ResolvedArg {
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::Nil,
+                    kind: RExprKind::NilLit,
+                },
+                name: None,
+                moved: false,
+                span,
+            };
+            let normal_exit = self.py_call_sugar(
+                &cm_read,
+                "__exit__",
+                vec![
+                    ResolvedArg {
+                        value: ResolvedExpr {
+                            span,
+                            vt: VT::Nil,
+                            kind: RExprKind::NilLit,
+                        },
+                        name: None,
+                        moved: false,
+                        span,
+                    },
+                    nil.clone(),
+                    nil,
+                ],
+                span,
+            );
+            let err_exit = self.py_call_sugar(
+                &cm_read,
+                "__exit__",
+                vec![ResolvedArg {
+                    // a CLONE of the text — the original stays for the
+                    // restore/re-raise (the frame arg must not move it).
+                    value: Self::clone_owned_text(read(saved_e, VT::StrOwned, span)),
+                    name: None,
+                    moved: false,
+                    span,
+                }],
+                span,
+            );
+            let supb = self.agg_temp("__with_sup", VT::Bool, false, span);
+            let sup_frame = self.py_recv_frame(&err_exit, span);
+            let sup_raw = self.py_op_call("py_to_bool", span, sup_frame);
+            out.push(RStmt::Let {
+                local: supb,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Ne,
+                        lhs: Box::new(sup_raw),
+                        rhs: Box::new(ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(0),
+                        }),
+                    },
+                },
+                span,
+            });
+            let suppressed = ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::ReadLocal(supb),
+            };
+            let is_error = ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Binary {
+                    op: BinOp::Eq,
+                    lhs: Box::new(read(saved_k, VT::I32, span)),
+                    rhs: Box::new(ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(4),
+                    }),
+                },
+            };
+            // error path: run __exit__(err); if it returns truthy, the
+            // error is suppressed (kind→0 + the suppressed flag) so the
+            // dispatch continues after the with.
+            let suppressed_flag = self.agg_temp("__with_suppressed", VT::Bool, true, span);
+            out.push(RStmt::Let {
+                local: suppressed_flag,
+                value: ResolvedExpr {
+                    span,
+                    vt: VT::Bool,
+                    kind: RExprKind::BoolLit(false),
+                },
+                span,
+            });
+            let mut err_then = vec![RStmt::Let {
+                local: self.agg_temp("__with_exit_err", VT::I32, false, span),
+                value: err_exit,
+                span,
+            }];
+            err_then.push(RStmt::If {
+                cond: suppressed,
+                then: RBlock {
+                    stmts: vec![
+                        RStmt::Assign {
+                            local: cs.kind,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::IntLit(0),
+                            },
+                            span,
+                        },
+                        RStmt::Assign {
+                            local: cs.err,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::StrLit(String::new()),
+                            },
+                            span,
+                        },
+                        RStmt::Assign {
+                            local: suppressed_flag,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span,
+                                vt: VT::Bool,
+                                kind: RExprKind::BoolLit(true),
+                            },
+                            span,
+                        },
+                    ],
+                    span,
+                },
+                els: None,
+                span,
+            });
+            out.push(RStmt::If {
+                cond: is_error,
+                then: RBlock {
+                    stmts: err_then,
+                    span,
+                },
+                els: Some(RBlock {
+                    stmts: vec![RStmt::Let {
+                        local: self.agg_temp("__with_exit_normal", VT::I32, false, span),
+                        value: normal_exit,
+                        span,
+                    }],
+                    span,
+                }),
+                span,
+            });
+            // restore the saved state for the dispatch (the with's own
+            // unwind wrote cs.kind/cs.err; the outer context's state must
+            // survive). A SUPPRESSED error keeps kind 0 + empty err (the
+            // suppressed flag already zeroed them) — the restore of those
+            // two is gated on it.
+            let not_suppressed = ResolvedExpr {
+                span,
+                vt: VT::Bool,
+                kind: RExprKind::Unary {
+                    op: UnaryOp::Not,
+                    operand: Box::new(read(suppressed_flag, VT::Bool, span)),
+                },
+            };
+            out.push(RStmt::If {
+                cond: not_suppressed,
+                then: RBlock {
+                    stmts: vec![
+                        RStmt::Assign {
+                            local: cs.kind,
+                            path: Vec::new(),
+                            value: read(saved_k, VT::I32, span),
+                            span,
+                        },
+                        RStmt::Assign {
+                            local: cs.err,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::Move {
+                                    inner: Box::new(read(saved_e, VT::StrOwned, span)),
+                                },
+                            },
+                            span,
+                        },
+                    ],
+                    span,
+                },
+                els: None,
+                span,
+            });
+            out.push(RStmt::Assign {
+                local: cs.target_loop,
+                path: Vec::new(),
+                value: read(saved_tl, VT::I32, span),
+                span,
+            });
+        }
+        self.emit_post_frame_dispatch(span, &mut out);
+        if self.ctrl_frames.is_empty() && !has_following {
+            let dummy = if self.fn_result == VT::Unit {
+                ResolvedExpr {
+                    span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                }
+            } else {
+                self.dummy_of(self.fn_result, span)
+            };
+            out.push(RStmt::Return { value: dummy, span });
+        }
+        out
+    }
+
     fn resolve_iter_for_in(
         &mut self,
         var: &ast::Ident,
@@ -13558,6 +13997,24 @@ F:{d}
                             "source.unsupported",
                             "control/generator statements require full aggregates lowering"
                                 .to_string(),
+                            *span,
+                        );
+                    }
+                }
+                Stmt::With {
+                    expr,
+                    bind,
+                    body,
+                    span,
+                } => {
+                    if self.profile.is_aggregates() {
+                        let has_following = stack.last().is_some_and(|f| f.idx < f.src.stmts.len());
+                        let stmts = self.resolve_with_stmt(expr, bind.as_ref(), body, *span, has_following);
+                        stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else {
+                        self.bind_err(
+                            "source.unsupported",
+                            "`with` requires full aggregates lowering".to_string(),
                             *span,
                         );
                     }
