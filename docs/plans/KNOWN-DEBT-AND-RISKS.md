@@ -1,3 +1,9 @@
+## D-1055-BASE-01 — PLAN-105 交付基面的下游回归（OPEN，2026-11-21）
+
+1055 在 Windows 下游联合验证中，用同一工作树、工具和固定用例 ID 比较候选与父提交 `0b754af59`。49 个持续失败中的 48 个在父提交同样失败。分布为 `ace-av` 5、其 conformance 26、`ace-av-core` 1、`ace-core` conformance 5、`ace-native` conformance 11。覆盖普通 AV 编译时宏与调度、记录所有权及方法、动态对象、资源 oracle、native worker 诊断等现有合同。空记录旧 oracle 沿 D-1088-LAYOUT-01。唯一候选新增的 AGE grammar ID 漂移由 1055 修复并复验。
+
+共有失败由 PLAN-105 的共享前端与 ACE AV、native 各测试 owner 对照基面归因，关闭条件是在 Windows 固定组复跑原样、独立 oracle、失败和合法近邻。具体范围、实际子进程结果和比较 hash 见 [PLAN-1055 §9](archive/1055-aac-early-typed-mir-and-ct-bootstrap.md#9-复审记录)。
+
 ## D-1088-LAYOUT-01 — AV 空记录布局的旧断言与当前语义不一致（OPEN，2026-11-21）
 
 PLAN-1088 的 `6f26279ab` 允许空记录布局。原测试 `layout::tests::layout_rejects_non_record_and_empty` 仍要求拒绝，PLAN-1091 冻结组和隔离重放均在 `LayoutDesc { size: 0, align: 1, fields: [], is_copy: true }` 上失败。基面与候选的布局源和测试为同一 Git blob。AV layout owner 需按确认的空记录合同拆分该测试，保留非 record 的拒绝，同时为合法空记录的零尺寸、对齐和 Copy 性建立精确断言。关闭条件为两种控制在固定 AV 组通过。复现见 [PLAN-1091 §9](archive/1091-av-parity-comptime-and-macros.md#9-复审记录)。
