@@ -36,6 +36,7 @@ ace-a2x-store = { path = "../a2x-store" }
 ace-native = { path = "../native" }
 ace-source-query = { path = "../source-query" }
 ace-av-core = { path = "../av-core" }
+ace-av = { path = "../av" }
 # PLAN-967 F0: the Rust importer (annotated provider source -> manifest +
 # generated shim) lives in the product crate; the probe consumes it by
 # path exactly like auto-lang-core consumes ace-semantics-contract.
@@ -59,8 +60,6 @@ windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32
 [dev-dependencies]
 ace-a2x-python = { path = "../a2x-python" }
 ace-a2x-rust = { path = "../a2x-rust" }
-# PLAN-967 F0: split_units for the AV unit path in the conformance cases.
-ace-av = { path = "../av" }
 
 [[bin]]
 name = "abi-worker"

@@ -74,6 +74,37 @@ pub struct RustFnEntry {
     /// decodes it into typed values for the provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<String>,
+    /// Provider-owned opaque resource operation. Ordinary F0 manifests
+    /// omit this field and keep their original content identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned: Option<RustOwnedEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RustOwnedEntry {
+    pub type_name: String,
+    pub role: RustOwnedRole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RustOwnedRole {
+    OpenText,
+    OpenI32,
+    OpenUnit,
+    Borrow,
+    Close,
+}
+
+impl RustProviderManifest {
+    /// The original close export identifies a resource kind within this provider.
+    pub fn owned_close(&self, type_name: &str) -> Option<(usize, &str)> {
+        self.functions.iter().enumerate().find_map(|(index, f)| {
+            f.owned
+                .as_ref()
+                .filter(|entry| entry.role == RustOwnedRole::Close && entry.type_name == type_name)
+                .map(|_| (index, f.export.as_str()))
+        })
+    }
 }
 
 /// The frozen tag-frame encoding identity (IF-CALL physical projection).
@@ -86,6 +117,7 @@ pub enum RustParam {
     OutBytes,
     I32,
     Bool,
+    OwnedHandle,
     /// `frame: &F0Frame` — the whole call rides the tag frame (the only
     /// parameter a frame-declared fn may take).
     FrameCall,
@@ -169,7 +201,13 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
         // The annotated function must exist in the source with an
         // importable signature: metadata may never invent or widen a
         // provider (params + ret cross-checked against the annotation).
-        let (mut params, ret_kind) = require_pub_fn_signature(source, &a.rust_name)?;
+        let (mut params, ret_kind, owned) = if let Some(type_name) = a.owned_type.as_deref() {
+            let (params, owned) = require_owned_signature(source, &a, type_name)?;
+            (params, "i32".to_owned(), Some(owned))
+        } else {
+            let (params, ret) = require_pub_fn_signature(source, &a.rust_name)?;
+            (params, ret, None)
+        };
         // T-05 F1 (IF-CALL): a frame-declared fn takes EXACTLY one
         // `frame: &F0Frame` parameter — the whole call rides the tag
         // frame over the view wire (a frame annotation on an ordinary
@@ -195,6 +233,9 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
         }
         let _ = &mut params;
         let form = match (a.form.as_str(), a.ret.as_deref(), ret_kind.as_str()) {
+            ("owned_open" | "owned_borrow" | "owned_close", None, _) if owned.is_some() => {
+                RustFnForm::PureI32
+            }
             ("pure", Some("i32"), "i32") => RustFnForm::PureI32,
             ("pure", Some("bool"), "bool") => RustFnForm::PureBool,
             ("fallible", None, "Option<i32>") => RustFnForm::FallibleI32 { errors: a.errors },
@@ -225,8 +266,10 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
             form,
             params,
             frame: a.frame.clone(),
+            owned,
         });
     }
+    validate_owned_entries(&functions)?;
     Ok(RustProviderManifest {
         format: IMPORT_FORMAT.into(),
         provider,
@@ -244,6 +287,7 @@ struct FnAnnotation {
     ret: Option<String>,
     errors: Vec<(String, i32)>,
     frame: Option<String>,
+    owned_type: Option<String>,
 }
 
 fn parse_provider_header(
@@ -322,6 +366,7 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
     let mut ret = None;
     let mut errors = Vec::new();
     let mut frame = None;
+    let mut owned_type = None;
     for part in parts {
         if let Some(v) = part.strip_prefix("symbol=") {
             symbol = Some(v.to_string());
@@ -329,6 +374,18 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
             form = Some(v.to_string());
         } else if let Some(v) = part.strip_prefix("ret=") {
             ret = Some(v.to_string());
+        } else if let Some(v) = part.strip_prefix("owned=") {
+            let valid = v
+                .bytes()
+                .next()
+                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+                && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+            if !valid || owned_type.replace(v.to_owned()).is_some() {
+                return Err(err(
+                    "rust-import.owned",
+                    format!("invalid or duplicate owned type (line {})", idx + 1),
+                ));
+            }
         } else if let Some(v) = part.strip_prefix("frame=") {
             if v != FRAME_FORMAT {
                 return Err(err(
@@ -381,7 +438,18 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
             format!("fn annotation needs form= (line {})", idx + 1),
         )
     })?;
-    if !matches!(form.as_str(), "pure" | "fallible") {
+    let owned_form = matches!(form.as_str(), "owned_open" | "owned_borrow" | "owned_close");
+    if owned_form {
+        if owned_type.is_none() || frame.is_some() || ret.is_some() || !errors.is_empty() {
+            return Err(err(
+                "rust-import.owned",
+                format!(
+                    "{form} needs owned=Type and a matching Rust signature (line {})",
+                    idx + 1
+                ),
+            ));
+        }
+    } else if owned_type.is_some() || !matches!(form.as_str(), "pure" | "fallible") {
         return Err(err(
             "rust-import.domain",
             format!("form `{form}` is outside the F0 domain (line {})", idx + 1),
@@ -406,7 +474,82 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
         ret,
         errors,
         frame,
+        owned_type,
     })
+}
+
+fn require_owned_signature(
+    source: &str,
+    a: &FnAnnotation,
+    type_name: &str,
+) -> Result<(Vec<RustParam>, RustOwnedEntry), ImportError> {
+    let (params, ret) = public_fn_shape(source, &a.rust_name)?;
+    let params = params.trim();
+    let param_type = if params.is_empty() {
+        String::new()
+    } else {
+        params
+            .split_once(':')
+            .map(|(_, ty)| ty.split_whitespace().collect::<String>())
+            .unwrap_or_else(|| "?".into())
+    };
+    let ret: String = ret.split_whitespace().collect();
+    let boxed = format!("Box<{type_name}>");
+    let borrowed = format!("&{type_name}");
+    let (params, role) = match (a.form.as_str(), param_type.as_str(), ret.as_str()) {
+        ("owned_open", "&str", result) if result == boxed => {
+            (vec![RustParam::ViewUtf8], RustOwnedRole::OpenText)
+        }
+        ("owned_open", "i32", result) if result == boxed => {
+            (vec![RustParam::I32], RustOwnedRole::OpenI32)
+        }
+        ("owned_open", "", result) if result == boxed => (vec![], RustOwnedRole::OpenUnit),
+        ("owned_borrow", param, "i32") if param == borrowed => {
+            (vec![RustParam::OwnedHandle], RustOwnedRole::Borrow)
+        }
+        ("owned_close", param, "i32") if param == boxed => {
+            (vec![RustParam::OwnedHandle], RustOwnedRole::Close)
+        }
+        _ => {
+            return Err(err(
+                "rust-import.owned",
+                format!(
+                    "fn `{}` signature is incompatible with {} owned={type_name}",
+                    a.rust_name, a.form
+                ),
+            ))
+        }
+    };
+    Ok((
+        params,
+        RustOwnedEntry {
+            type_name: type_name.into(),
+            role,
+        },
+    ))
+}
+
+fn validate_owned_entries(functions: &[RustFnEntry]) -> Result<(), ImportError> {
+    let mut resources = std::collections::BTreeMap::<&str, (bool, usize)>::new();
+    for owned in functions.iter().filter_map(|f| f.owned.as_ref()) {
+        let (has_open, closes) = resources.entry(&owned.type_name).or_default();
+        match owned.role {
+            RustOwnedRole::OpenText | RustOwnedRole::OpenI32 | RustOwnedRole::OpenUnit => {
+                *has_open = true
+            }
+            RustOwnedRole::Close => *closes += 1,
+            RustOwnedRole::Borrow => {}
+        }
+    }
+    for (type_name, (has_open, closes)) in resources {
+        if !has_open || closes != 1 {
+            return Err(err(
+                "rust-import.owned-lifecycle",
+                format!("owned {type_name} needs an opener and exactly one consuming close"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn is_provider_id(id: &str) -> bool {
@@ -486,21 +629,7 @@ fn require_pub_fn_signature(
     source: &str,
     name: &str,
 ) -> Result<(Vec<RustParam>, String), ImportError> {
-    let needle = format!("pub fn {name}(");
-    let Some(pos) = source.find(&needle) else {
-        return Err(err(
-            "rust-import.domain",
-            format!("annotated fn `{name}` has no `pub fn {name}(` in the provider source"),
-        ));
-    };
-    let after = &source[pos + needle.len()..];
-    let Some(close) = after.find(')') else {
-        return Err(err(
-            "rust-import.domain",
-            format!("cannot find the parameter list end for fn `{name}`"),
-        ));
-    };
-    let params_text = after[..close].trim();
+    let (params_text, ret) = public_fn_shape(source, name)?;
     let mut params = Vec::new();
     let mut views = 0usize;
     let mut out_bufs = 0usize;
@@ -578,26 +707,6 @@ fn require_pub_fn_signature(
             ),
         ));
     }
-    let rest = &after[close + 1..];
-    let rest_trim = rest.trim_start();
-    if rest_trim.starts_with('<') {
-        return Err(err(
-            "rust-import.generics",
-            format!("fn `{name}` is generic; import the CONCRETE instances"),
-        ));
-    }
-    let Some(arrow) = rest_trim.find("->") else {
-        return Err(err(
-            "rust-import.domain",
-            format!("fn `{name}` has no return type"),
-        ));
-    };
-    let after_arrow = rest_trim[arrow + 2..].trim_start();
-    let ret = after_arrow
-        .split(|c: char| c == '{' || c == ';')
-        .next()
-        .unwrap_or("")
-        .trim();
     match ret {
         "i32" | "bool" | "Option<i32>" => Ok((params, ret.to_string())),
         "String" => Err(err(
@@ -617,6 +726,33 @@ fn require_pub_fn_signature(
             format!("fn `{name}` returns `{other}`; importable returns are i32, bool, Option<i32>"),
         )),
     }
+}
+
+fn public_fn_shape<'a>(source: &'a str, name: &str) -> Result<(&'a str, &'a str), ImportError> {
+    let needle = format!("pub fn {name}(");
+    let Some(pos) = source.find(&needle) else {
+        return Err(err(
+            "rust-import.domain",
+            format!("annotated fn `{name}` has no `pub fn {name}(` in the provider source"),
+        ));
+    };
+    let after = &source[pos + needle.len()..];
+    let Some((params, rest)) = after.split_once(')') else {
+        return Err(err(
+            "rust-import.domain",
+            format!("cannot find the parameter list end for fn `{name}`"),
+        ));
+    };
+    let Some(ret) = rest.trim_start().strip_prefix("->") else {
+        return Err(err(
+            "rust-import.domain",
+            format!("fn `{name}` has no return type"),
+        ));
+    };
+    Ok((
+        params.trim(),
+        ret.split(['{', ';']).next().unwrap_or_default().trim(),
+    ))
 }
 
 /// Generate the C-compatible shim source for the whole provider. The
@@ -683,6 +819,10 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
         out.push_str(FRAME_SHIM_PRELUDE);
     }
     for f in &manifest.functions {
+        if let Some(owned) = &f.owned {
+            emit_owned_fn(&mut out, f, owned);
+            continue;
+        }
         if f.frame.is_some() {
             emit_frame_fn(&mut out, f);
             continue;
@@ -713,7 +853,7 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
                 // frame fns are emitted by emit_frame_fn (they never
                 // reach the general frame loop; import() enforces the
                 // single-parameter shape)
-                RustParam::FrameCall => {}
+                RustParam::FrameCall | RustParam::OwnedHandle => {}
                 RustParam::I32 => {
                     if !params_c.is_empty() {
                         params_c.push_str(", ");
@@ -772,6 +912,42 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
         }
     }
     out
+}
+
+fn emit_owned_fn(out: &mut String, f: &RustFnEntry, owned: &RustOwnedEntry) {
+    let ty = &owned.type_name;
+    let name = &f.rust_name;
+    let (params, ret, body) = match owned.role {
+        RustOwnedRole::OpenText => (
+            "data: *const u8, byte_len: u64",
+            "i64",
+            format!("Box::into_raw({name}(__f0_view(data, byte_len))) as i64"),
+        ),
+        RustOwnedRole::OpenI32 => (
+            "seed: i32",
+            "i64",
+            format!("Box::into_raw({name}(seed)) as i64"),
+        ),
+        RustOwnedRole::OpenUnit => ("", "i64", format!("Box::into_raw({name}()) as i64")),
+        RustOwnedRole::Borrow => (
+            "handle: i64",
+            "i32",
+            format!(
+                "{name}(unsafe {{ (handle as *const {ty}).as_ref().expect(\"owned handle\") }})"
+            ),
+        ),
+        RustOwnedRole::Close => (
+            "handle: i64",
+            "i32",
+            format!(
+                "assert_ne!(handle, 0); {name}(unsafe {{ Box::from_raw(handle as *mut {ty}) }})"
+            ),
+        ),
+    };
+    out.push_str(&format!(
+        "#[no_mangle]\npub extern \"C\" fn {export}({params}) -> {ret} {{\n    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{ {body} }})) {{\n        Ok(value) => value,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
+        export = f.export
+    ));
 }
 
 /// The p967.frame/1 tag-frame shim prelude (generated; DO NOT EDIT).
@@ -948,6 +1124,9 @@ pub fn to_manual_manifest(
                 RustParam::OutBytes => ResKind::OutBytes,
                 RustParam::I32 => ResKind::I32,
                 RustParam::Bool => ResKind::Bool,
+                RustParam::OwnedHandle => ResKind::Handle {
+                    provider: manifest.provider.clone(),
+                },
             })
             .collect();
         let (form, error_model, resource, effect) = match &f.form {
@@ -993,6 +1172,16 @@ pub fn to_manual_manifest(
                     "checked".into(),
                 )
             }
+        };
+        let resource = match f.owned.as_ref().map(|owned| owned.role) {
+            Some(RustOwnedRole::OpenText | RustOwnedRole::OpenI32 | RustOwnedRole::OpenUnit) => {
+                ResourceForm::Pure {
+                    ret: ResOut::Handle {
+                        provider: manifest.provider.clone(),
+                    },
+                }
+            }
+            _ => resource,
         };
         functions.push(FnFact {
             symbol: f.export.clone(),

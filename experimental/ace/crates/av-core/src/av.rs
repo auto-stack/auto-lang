@@ -4491,7 +4491,10 @@ fn dispatch_with_host<V: ModuleView>(
                             "foreign.callback-unsupported: the F0 AV domain admits no callback lanes".into(),
                         ));
                     }
-                    if args.is_empty() || args.len() > 4 {
+                    let callable = table.callable_of(declaration);
+                    if !matches!(callable, Some(crate::foreign_exec::ForeignCallable::Owned(_)))
+                        && (args.is_empty() || args.len() > 4)
+                    {
                         return Some(ExecOutcome::Infra(
                             "foreign.arity: the AV foreign domain admits one view plus up to three scalar lanes"
                                 .into(),
@@ -4507,7 +4510,29 @@ fn dispatch_with_host<V: ModuleView>(
                         });
                     }
                     let frame = st.frames.last().expect("frame");
-                    let dispatched = match table.callable_of(declaration) {
+                    let dispatched = match callable {
+                        Some(crate::foreign_exec::ForeignCallable::Owned(_)) => {
+                            use crate::foreign_exec::OwnedArgument;
+
+                            match args.as_slice() {
+                                [] => table.dispatch_owned(declaration, OwnedArgument::Unit),
+                                [arg] => {
+                                    let value = &frame.slots[*arg as usize];
+                                    if let Value::I32(n) = value {
+                                        table.dispatch_owned(declaration, OwnedArgument::I32(*n))
+                                    } else {
+                                        let view = match foreign_view(value) {
+                                            Ok(view) => view,
+                                            Err(out) => return Some(out),
+                                        };
+                                        table.dispatch_owned(declaration, OwnedArgument::Text(view.bytes()))
+                                    }
+                                }
+                                _ => return Some(ExecOutcome::Infra(
+                                    "foreign.lane: owned resource operation takes at most one argument".into(),
+                                )),
+                            }
+                        }
                         Some(crate::foreign_exec::ForeignCallable::ViewOutBytesToI32(_)) => {
                             if args.len() != 2 {
                                 return Some(ExecOutcome::Infra(

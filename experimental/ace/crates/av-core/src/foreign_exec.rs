@@ -47,6 +47,74 @@ pub type ViewI32OutI32Fn =
 pub type ViewOutBytesI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, dst: *mut u8, cap: u64) -> i32;
 pub type OutBytesI32Fn = unsafe extern "C" fn(dst: *mut u8, cap: u64) -> i32;
+pub type OwnedHandleFn = unsafe extern "C" fn(handle: i64) -> i32;
+
+#[derive(Clone, Copy, Debug)]
+pub enum OwnedOpen {
+    Text(unsafe extern "C" fn(*const u8, u64) -> i64),
+    I32(unsafe extern "C" fn(i32) -> i64),
+    Unit(unsafe extern "C" fn() -> i64),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum OwnedCall {
+    Open {
+        start: OwnedOpen,
+        close: OwnedHandleFn,
+        class: usize,
+    },
+    Borrow {
+        call: OwnedHandleFn,
+        class: usize,
+    },
+    Close {
+        call: OwnedHandleFn,
+        class: usize,
+    },
+}
+
+pub enum OwnedArgument<'a> {
+    Unit,
+    I32(i32),
+    Text(&'a [u8]),
+}
+
+impl OwnedCall {
+    fn matches(self, sig: &ace_foreign_contract::ResourceSig, provider: &str) -> bool {
+        use ace_foreign_contract::{ResKind, ResOut, ResourceForm};
+
+        match (self, &sig.form, sig.params.as_slice()) {
+            (
+                OwnedCall::Open { start, .. },
+                ResourceForm::Pure {
+                    ret: ResOut::Handle { provider: owner },
+                },
+                params,
+            ) if owner == provider => matches!(
+                (start, params),
+                (OwnedOpen::Text(_), [ResKind::ViewText])
+                    | (OwnedOpen::I32(_), [ResKind::I32])
+                    | (OwnedOpen::Unit(_), [])
+            ),
+            (
+                OwnedCall::Borrow { .. } | OwnedCall::Close { .. },
+                ResourceForm::Pure { ret: ResOut::I32 },
+                [ResKind::Handle { provider: owner }],
+            ) => owner == provider,
+            _ => false,
+        }
+    }
+}
+
+fn next_owned_id() -> Option<i32> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+
+    // Handles from a closed session must never alias a newly opened one,
+    // even when two independent bindings have the same initial generation.
+    static NEXT: AtomicI32 = AtomicI32::new(1);
+    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .ok()
+}
 
 /// The frozen F0/T-11 physical callables.
 #[derive(Clone, Copy, Debug)]
@@ -61,6 +129,7 @@ pub enum ForeignCallable {
     /// PLAN-1064 T-FRAME: checked writable out-buffer frames.
     ViewOutBytesToI32(ViewOutBytesI32Fn),
     OutBytesToI32(OutBytesI32Fn),
+    Owned(OwnedCall),
 }
 
 /// Access rights for a host-managed checked writable output borrow frame.
@@ -452,6 +521,23 @@ pub struct ForeignStubTable {
     out_expected_origin: String,
     python_error_observers: Option<Box<[SourceDecl; 2]>>,
     completion_ports: std::sync::Arc<CompletionPorts>,
+    owned_handles: std::collections::BTreeMap<i32, OwnedHandle>,
+    code_lease: Option<std::rc::Rc<dyn std::fmt::Debug>>,
+}
+
+#[derive(Debug)]
+struct OwnedHandle {
+    provider: String,
+    generation: u64,
+    class: usize,
+    raw: i64,
+    close: OwnedHandleFn,
+}
+
+impl Drop for ForeignStubTable {
+    fn drop(&mut self) {
+        self.release_owned_handles();
+    }
 }
 
 impl ForeignStubTable {
@@ -468,6 +554,8 @@ impl ForeignStubTable {
             out_expected_origin: "guest".into(),
             python_error_observers: None,
             completion_ports: std::sync::Arc::new(CompletionPorts::new(current_generation)),
+            owned_handles: std::collections::BTreeMap::new(),
+            code_lease: None,
         }
     }
 
@@ -653,6 +741,21 @@ impl ForeignStubTable {
         self.current_generation += 1;
         self.completion_ports
             .bind_session_generation(self.current_generation);
+        self.release_owned_handles();
+    }
+
+    /// Keep the original native code image alive as long as its stubs or
+    /// resource destructors can still be used.
+    pub fn pin_code_image(&mut self, lease: std::rc::Rc<dyn std::fmt::Debug>) {
+        assert!(self.entries.is_empty() && self.owned_handles.is_empty());
+        self.code_lease = Some(lease);
+    }
+
+    fn release_owned_handles(&mut self) {
+        for (_, handle) in std::mem::take(&mut self.owned_handles) {
+            unsafe { (handle.close)(handle.raw) };
+            let _ = self.take_panic_flag();
+        }
     }
 
     pub fn generation(&self) -> u64 {
@@ -702,7 +805,7 @@ impl ForeignStubTable {
             // signature mismatch, not a hit.
             if e.provider == provider
                 && e.content_version == declaration.content_version
-                && matches!(
+                && (matches!(
                     (e.callable, declaration.resource().map(|r| &r.form)),
                     (
                         ForeignCallable::PureI32(_),
@@ -747,7 +850,8 @@ impl ForeignStubTable {
                             ret: ace_foreign_contract::ResOut::I32
                         })
                     )
-                )
+                ) || matches!(e.callable, ForeignCallable::Owned(op)
+                    if declaration.resource().is_some_and(|sig| op.matches(sig, provider))))
             {
                 return Ok(i);
             }
@@ -885,6 +989,13 @@ impl ForeignStubTable {
             ));
         }
         let callable = self.entries[idx].callable;
+        if matches!(callable, ForeignCallable::Owned(_)) {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.lane",
+                "owned resources require the checked owner path",
+            ));
+        }
         let data = bytes.as_ptr();
         let byte_len = bytes.len() as u64;
         // Reentry guard: the same discipline as the console host scope.
@@ -921,7 +1032,9 @@ impl ForeignStubTable {
                     let status = unsafe { f(data, byte_len, scalars[0], &mut out) };
                     ForeignDispatch::Fallible(status, out)
                 }
-                ForeignCallable::ViewOutBytesToI32(_) | ForeignCallable::OutBytesToI32(_) => {
+                ForeignCallable::ViewOutBytesToI32(_)
+                | ForeignCallable::OutBytesToI32(_)
+                | ForeignCallable::Owned(_) => {
                     panic!("out-buffer callable must dispatch via dispatch_view_out_bytes")
                 }
             }))
@@ -942,19 +1055,150 @@ impl ForeignStubTable {
         let result = result?;
         // The frozen panic channel: observe (and clear) the provider's
         // exported flag; a raised flag invalidates the call's values.
-        if !self.panic_flag.is_null() {
-            let flag = unsafe {
-                std::sync::atomic::AtomicU32::from_ptr(self.panic_flag)
-                    .swap(0, std::sync::atomic::Ordering::SeqCst)
-            };
-            if flag != 0 {
-                self.rejected_count += 1;
-                return Err(ForeignExecError::Panic(
-                    "provider panic raised the exported flag (in-unit catch)".into(),
-                ));
-            }
+        if self.take_panic_flag() {
+            self.rejected_count += 1;
+            return Err(ForeignExecError::Panic(
+                "provider panic raised the exported flag (in-unit catch)".into(),
+            ));
         }
         Ok(result)
+    }
+
+    fn take_panic_flag(&self) -> bool {
+        !self.panic_flag.is_null()
+            && unsafe {
+                std::sync::atomic::AtomicU32::from_ptr(self.panic_flag)
+                    .swap(0, std::sync::atomic::Ordering::SeqCst)
+                    != 0
+            }
+    }
+
+    pub fn dispatch_owned(
+        &mut self,
+        declaration: &SourceDecl,
+        input: OwnedArgument<'_>,
+    ) -> Result<ForeignDispatch, ForeignExecError> {
+        let idx = self.lookup(declaration).map_err(|failure| {
+            self.rejected_count += 1;
+            ForeignExecError::Reject(failure)
+        })?;
+        let stub = &self.entries[idx];
+        if stub.generation != self.current_generation {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.generation",
+                "owned provider binding is stale",
+            ));
+        }
+        let ForeignCallable::Owned(operation) = stub.callable else {
+            return Err(reject(
+                "foreign.lane",
+                "expected an owned resource callable",
+            ));
+        };
+        let _scope = crate::host::ProviderScope::enter().ok_or_else(|| {
+            self.rejected_count += 1;
+            reject(
+                "foreign.reentry",
+                "synchronous provider reentry is forbidden",
+            )
+        })?;
+        let value = match operation {
+            OwnedCall::Open {
+                start,
+                close,
+                class,
+            } => {
+                let id = next_owned_id()
+                    .ok_or_else(|| reject("foreign.handle-space", "owned handle IDs exhausted"))?;
+                let raw = match (start, input) {
+                    (OwnedOpen::Text(call), OwnedArgument::Text(bytes)) => {
+                        if std::str::from_utf8(bytes).is_err() {
+                            self.rejected_count += 1;
+                            return Err(reject("foreign.utf8", "owned opener takes valid UTF-8"));
+                        }
+                        if bytes.len() > MAX_CALL_BYTES
+                            || self.run_bytes.saturating_add(bytes.len()) > MAX_RUN_BYTES
+                        {
+                            self.rejected_count += 1;
+                            return Err(reject(
+                                "foreign.call-bytes",
+                                "owned opener exceeds the view budget",
+                            ));
+                        }
+                        self.run_bytes += bytes.len();
+                        unsafe { call(bytes.as_ptr(), bytes.len() as u64) }
+                    }
+                    (OwnedOpen::I32(call), OwnedArgument::I32(seed)) => unsafe { call(seed) },
+                    (OwnedOpen::Unit(call), OwnedArgument::Unit) => unsafe { call() },
+                    _ => {
+                        return Err(reject(
+                            "foreign.lane",
+                            "owned opener argument shape mismatch",
+                        ))
+                    }
+                };
+                self.callee_count += 1;
+                if self.take_panic_flag() {
+                    self.rejected_count += 1;
+                    if raw != 0 {
+                        unsafe { close(raw) };
+                        let _ = self.take_panic_flag();
+                    }
+                    return Err(ForeignExecError::Panic("owned opener panicked".into()));
+                }
+                if raw == 0 {
+                    return Err(reject(
+                        "foreign.handle-null",
+                        "owned opener returned no resource",
+                    ));
+                }
+                self.owned_handles.insert(
+                    id,
+                    OwnedHandle {
+                        provider: stub.provider.clone(),
+                        generation: stub.generation,
+                        class,
+                        raw,
+                        close,
+                    },
+                );
+                id
+            }
+            OwnedCall::Borrow { call, class } | OwnedCall::Close { call, class } => {
+                let OwnedArgument::I32(id) = input else {
+                    return Err(reject(
+                        "foreign.lane",
+                        "owned resource needs an opaque handle",
+                    ));
+                };
+                let Some(handle) = self.owned_handles.get(&id).filter(|entry| {
+                    entry.provider == stub.provider
+                        && entry.generation == stub.generation
+                        && entry.class == class
+                }) else {
+                    self.rejected_count += 1;
+                    return Err(reject(
+                        "foreign.handle",
+                        "handle is closed or belongs to another resource binding",
+                    ));
+                };
+                let raw = handle.raw;
+                if matches!(operation, OwnedCall::Close { .. }) {
+                    self.owned_handles.remove(&id);
+                }
+                let result = unsafe { call(raw) };
+                self.callee_count += 1;
+                if self.take_panic_flag() {
+                    self.rejected_count += 1;
+                    return Err(ForeignExecError::Panic(
+                        "owned resource operation panicked".into(),
+                    ));
+                }
+                result
+            }
+        };
+        Ok(ForeignDispatch::PureI32(value))
     }
 
     /// PLAN-1064 T-FRAME: checked dispatch for `ResKind::OutBytes` (`ViewText + OutBytes -> i32`

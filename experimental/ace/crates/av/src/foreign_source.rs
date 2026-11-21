@@ -255,16 +255,41 @@ fn load_prepared_rust(
         .admit(&authority)
         .map_err(|e| diag("foreign.admit", e))?;
     let library = load_library(&dll).map_err(diag_wrap("foreign.load"))?;
+    let lease = std::rc::Rc::new(PreparedRustLibrary(library));
     let mut table = ForeignStubTable::new(1);
-    bind_rust_panic_flag(library, &mut table).map_err(|e| {
-        free_library(library);
-        diag("foreign.load", e)
-    })?;
+    table.pin_code_image(lease);
+    unsafe { bind_rust_exports(library, &manifest, &manual, 1, &mut table) }
+        .map_err(diag_wrap("foreign.load"))?;
+    Ok((admitted, table))
+}
+
+#[derive(Debug)]
+struct PreparedRustLibrary(windows_sys::Win32::Foundation::HMODULE);
+
+impl Drop for PreparedRustLibrary {
+    fn drop(&mut self) {
+        free_library(self.0);
+    }
+}
+
+/// Populate the checked Rust provider table from a generated shim.
+///
+/// # Safety
+/// `library` must be the pinned image built from the checked `manifest` and
+/// its generated C shim. The table must keep that image leased through the
+/// lifetime of every bound entry.
+pub unsafe fn bind_rust_exports(
+    library: windows_sys::Win32::Foundation::HMODULE,
+    manifest: &auto_bindgen::rust_import::RustProviderManifest,
+    manual: &ace_foreign_contract::manual::ManualManifest,
+    generation: u64,
+    table: &mut ForeignStubTable,
+) -> Result<(), String> {
+    bind_rust_panic_flag(library, table)?;
     for f in &manifest.functions {
-        let sym = export_of(library, &f.export).map_err(|e| {
-            free_library(library);
-            diag("foreign.load", e)
-        })?;
+        let sym = export_of(library, &f.export)?;
+        // PLAN-967 T-11: mixed view+scalar frames select their callable
+        // by the PARAM SHAPE + form (view first, then i32 lanes).
         let view_first = matches!(
             f.params.first(),
             Some(auto_bindgen::rust_import::RustParam::ViewUtf8)
@@ -280,77 +305,116 @@ fn load_prepared_rust(
             .iter()
             .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
             .count();
-        // The frozen 967 callable mapping (identical to rust_provider::load).
-        let callable = match f.form {
-            auto_bindgen::rust_import::RustFnForm::PureI32
-                if view_first && has_out_bytes && scalars == 0 =>
-            {
+        let callable = if let Some(owned) = &f.owned {
+            use ace_av_core::foreign_exec::{ForeignCallable, OwnedCall, OwnedHandleFn, OwnedOpen};
+            use auto_bindgen::rust_import::RustOwnedRole;
+
+            let (class, close) = manifest
+                .owned_close(&owned.type_name)
+                .ok_or_else(|| format!("missing close export for {}", owned.type_name))?;
+            let close = export_of(library, close)?;
+            // Every export was generated from the importer-checked Rust
+            // signature; its physical C function type is fixed by the role.
+            let close: OwnedHandleFn = unsafe { std::mem::transmute(close) };
+            let operation = match owned.role {
+                RustOwnedRole::OpenText => OwnedCall::Open {
+                    start: OwnedOpen::Text(unsafe { std::mem::transmute(sym) }),
+                    close,
+                    class,
+                },
+                RustOwnedRole::OpenI32 => OwnedCall::Open {
+                    start: OwnedOpen::I32(unsafe { std::mem::transmute(sym) }),
+                    close,
+                    class,
+                },
+                RustOwnedRole::OpenUnit => OwnedCall::Open {
+                    start: OwnedOpen::Unit(unsafe { std::mem::transmute(sym) }),
+                    close,
+                    class,
+                },
+                RustOwnedRole::Borrow => OwnedCall::Borrow {
+                    call: unsafe { std::mem::transmute(sym) },
+                    class,
+                },
+                RustOwnedRole::Close => OwnedCall::Close { call: close, class },
+            };
+            ForeignCallable::Owned(operation)
+        } else {
+            match f.form {
+                auto_bindgen::rust_import::RustFnForm::PureI32
+                    if view_first && has_out_bytes && scalars == 0 =>
                 unsafe {
-                    ForeignCallable::ViewOutBytesToI32(std::mem::transmute::<
+                    ace_av_core::foreign_exec::ForeignCallable::ViewOutBytesToI32(
+                        std::mem::transmute::<
+                            _,
+                            unsafe extern "C" fn(*const u8, u64, *mut u8, u64) -> i32,
+                        >(sym),
+                    )
+                },
+                auto_bindgen::rust_import::RustFnForm::PureI32 if only_out_bytes => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::OutBytesToI32(
+                        std::mem::transmute::<_, unsafe extern "C" fn(*mut u8, u64) -> i32>(sym),
+                    )
+                },
+                auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::ViewI32I32ToI32(
+                        std::mem::transmute::<
+                            _,
+                            unsafe extern "C" fn(*const u8, u64, i32, i32) -> i32,
+                        >(sym),
+                    )
+                },
+                auto_bindgen::rust_import::RustFnForm::PureI32 => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::PureI32(std::mem::transmute::<
                         _,
-                        unsafe extern "C" fn(*const u8, u64, *mut u8, u64) -> i32,
+                        unsafe extern "C" fn(*const u8, u64) -> i32,
                     >(sym))
-                }
-            }
-            auto_bindgen::rust_import::RustFnForm::PureI32 if only_out_bytes => unsafe {
-                ForeignCallable::OutBytesToI32(
-                    std::mem::transmute::<_, unsafe extern "C" fn(*mut u8, u64) -> i32>(sym),
-                )
-            },
-            auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
-                ForeignCallable::ViewI32I32ToI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, i32, i32) -> i32,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureI32 => unsafe {
-                ForeignCallable::PureI32(
-                    std::mem::transmute::<_, unsafe extern "C" fn(*const u8, u64) -> i32>(sym),
-                )
-            },
-            auto_bindgen::rust_import::RustFnForm::PureBool if view_first && scalars == 1 => unsafe {
-                ForeignCallable::ViewI32ToBool(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, i32) -> u8,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureBool => unsafe {
-                ForeignCallable::PureBool(
-                    std::mem::transmute::<_, unsafe extern "C" fn(*const u8, u64) -> u8>(sym),
-                )
-            },
-            auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. }
-                if view_first && scalars == 1 =>
-            {
+                },
+                auto_bindgen::rust_import::RustFnForm::PureBool if view_first && scalars == 1 => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::ViewI32ToBool(
+                        std::mem::transmute::<_, unsafe extern "C" fn(*const u8, u64, i32) -> u8>(
+                            sym,
+                        ),
+                    )
+                },
+                auto_bindgen::rust_import::RustFnForm::PureBool => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::PureBool(std::mem::transmute::<
+                        _,
+                        unsafe extern "C" fn(*const u8, u64) -> u8,
+                    >(sym))
+                },
+                auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. }
+                    if view_first && scalars == 1 =>
                 unsafe {
-                    ForeignCallable::ViewI32FallibleI32(std::mem::transmute::<
-                        _,
-                        unsafe extern "C" fn(*const u8, u64, i32, *mut i32) -> i32,
-                    >(sym))
-                }
+                    ace_av_core::foreign_exec::ForeignCallable::ViewI32FallibleI32(
+                        std::mem::transmute::<
+                            _,
+                            unsafe extern "C" fn(*const u8, u64, i32, *mut i32) -> i32,
+                        >(sym),
+                    )
+                },
+                auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. } => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::FallibleOutI32(
+                        std::mem::transmute::<
+                            _,
+                            unsafe extern "C" fn(*const u8, u64, *mut i32) -> i32,
+                        >(sym),
+                    )
+                },
             }
-            auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. } => unsafe {
-                ForeignCallable::FallibleOutI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, *mut i32) -> i32,
-                >(sym))
-            },
         };
         table
-            .insert(ForeignStub {
+            .insert(ace_av_core::foreign_exec::ForeignStub {
                 provider: manifest.provider.clone(),
                 symbol: f.export.clone(),
                 content_version: manual.facts.content_version.clone(),
-                generation: 1,
+                generation,
                 callable,
                 frame: f.frame.is_some(),
             })
-            .map_err(|e| {
-                free_library(library);
-                diag("foreign.load", e.to_string())
-            })?;
+            .map_err(|e| e.to_string())?;
     }
-    Ok((admitted, table))
+    Ok(())
 }
 
 /// Load a prepared C provider closure (manifest JSON + DLL) and map its

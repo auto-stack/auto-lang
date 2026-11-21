@@ -1413,17 +1413,16 @@ fn open_session(
 /// A loaded provider: keeps the OS library alive and owns the stub table
 /// built from its exports. Dropping frees the library.
 pub struct LoadedRustProvider {
-    library: windows_sys::Win32::Foundation::HMODULE,
     pub table: ace_av_core::foreign_exec::ForeignStubTable,
+    _library: std::rc::Rc<RustLibrary>,
 }
 
-impl Drop for LoadedRustProvider {
+#[derive(Debug)]
+struct RustLibrary(windows_sys::Win32::Foundation::HMODULE);
+
+impl Drop for RustLibrary {
     fn drop(&mut self) {
-        if !self.library.is_null() {
-            unsafe {
-                windows_sys::Win32::Foundation::FreeLibrary(self.library as _);
-            }
-        }
+        unsafe { windows_sys::Win32::Foundation::FreeLibrary(self.0 as _) };
     }
 }
 
@@ -1466,116 +1465,18 @@ fn load_provider(
         ));
     }
     let mut loaded = LoadedRustProvider {
-        library,
         table: ace_av_core::foreign_exec::ForeignStubTable::new(generation),
+        _library: std::rc::Rc::new(RustLibrary(library)),
     };
-    // The frozen panic channel: bind the exported flag before any call.
-    let flag_name: Vec<u8> = b"f0_panic_flag\0".to_vec();
-    let flag_sym = unsafe {
-        windows_sys::Win32::System::LibraryLoader::GetProcAddress(library, flag_name.as_ptr())
-    };
-    let flag_fn: unsafe extern "C" fn() -> *mut u32 = match flag_sym {
-        Some(sym) => unsafe { std::mem::transmute(sym) },
-        None => return Err("the F0 panic flag export `f0_panic_flag` is missing".into()),
-    };
-    loaded.table.set_panic_flag(unsafe { flag_fn() });
-    for f in &build.manifest.functions {
-        let name: Vec<u8> = f.export.bytes().chain(std::iter::once(0)).collect();
-        let sym = unsafe {
-            windows_sys::Win32::System::LibraryLoader::GetProcAddress(library, name.as_ptr())
-        };
-        if sym.is_none() {
-            return Err(format!(
-                "export `{}` missing from the provider cdylib",
-                f.export
-            ));
-        }
-        // PLAN-967 T-11: mixed view+scalar frames select their callable
-        // by the PARAM SHAPE + form (view first, then i32 lanes).
-        let view_first = matches!(
-            f.params.first(),
-            Some(auto_bindgen::rust_import::RustParam::ViewUtf8)
-                | Some(auto_bindgen::rust_import::RustParam::FrameCall)
-        );
-        let has_out_bytes = f
-            .params
-            .iter()
-            .any(|p| matches!(p, auto_bindgen::rust_import::RustParam::OutBytes));
-        let only_out_bytes = f.params.len() == 1 && has_out_bytes;
-        let scalars = f
-            .params
-            .iter()
-            .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
-            .count();
-        let callable = match f.form {
-            auto_bindgen::rust_import::RustFnForm::PureI32
-                if view_first && has_out_bytes && scalars == 0 =>
-            unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::ViewOutBytesToI32(
-                    std::mem::transmute::<
-                        _,
-                        unsafe extern "C" fn(*const u8, u64, *mut u8, u64) -> i32,
-                    >(sym),
-                )
-            },
-            auto_bindgen::rust_import::RustFnForm::PureI32 if only_out_bytes => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::OutBytesToI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*mut u8, u64) -> i32,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 2 => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::ViewI32I32ToI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, i32, i32) -> i32,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureI32 => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::PureI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64) -> i32,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureBool if view_first && scalars == 1 => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::ViewI32ToBool(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, i32) -> u8,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::PureBool => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::PureBool(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64) -> u8,
-                >(sym))
-            },
-            auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. }
-                if view_first && scalars == 1 =>
-            unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::ViewI32FallibleI32(
-                    std::mem::transmute::<
-                        _,
-                        unsafe extern "C" fn(*const u8, u64, i32, *mut i32) -> i32,
-                    >(sym),
-                )
-            },
-            auto_bindgen::rust_import::RustFnForm::FallibleI32 { .. } => unsafe {
-                ace_av_core::foreign_exec::ForeignCallable::FallibleOutI32(std::mem::transmute::<
-                    _,
-                    unsafe extern "C" fn(*const u8, u64, *mut i32) -> i32,
-                >(sym))
-            },
-        };
-        loaded
-            .table
-            .insert(ace_av_core::foreign_exec::ForeignStub {
-                provider: build.manifest.provider.clone(),
-                symbol: f.export.clone(),
-                content_version: build.manual.facts.content_version.clone(),
-                generation,
-                callable,
-                frame: f.frame.is_some(),
-            })
-            .map_err(|e| e.to_string())?;
+    loaded.table.pin_code_image(loaded._library.clone());
+    unsafe {
+        ace_av::foreign_source::bind_rust_exports(
+            library,
+            &build.manifest,
+            &build.manual,
+            generation,
+            &mut loaded.table,
+        )?;
     }
     Ok(loaded)
 }

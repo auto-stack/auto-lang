@@ -187,5 +187,13 @@ Windows/MSVC 的 `ac-build` 从工程声明读取 Rust provider 源与可选锁�
 
 已验证的工程调用包含借用 UTF-8、空串、provider 换版以及带锁的 Rust 依赖。在同一已打开
 会话重放工程 ABC，撤权、预取消和关闭后旧代次均为零新增派发。shim 隔离 Rust panic，
-同一会话随后可以执行合法调用。普通工程的 owned 析构、闭包回调和同步/异步完成端口由
-V-02 逐项验收，当前 Rust importer 与 AV callback 执行边界见 PLAN-1113 §10。
+同一会话随后可以执行合法调用。
+
+Rust 注解的 `owned_open`、`owned_borrow`、`owned_close` 共享 `owned=Type`，分别核
+`Box<Type>` 返回、`&Type` 只读借用和消费 `Box<Type>`。编译到中立资源声明，Auto 按
+939 既有整型句柄表面传值。会话把 guest token 绑定到真实 provider、资源类型和代次，并
+对原 DLL 持有代码租约。显式关闭在调用原方前撤销条目，错误或会话关闭由原方处理剩余条目。
+工程和搬移后的 SDK 均验证恰一次析构，双关闭具名拒绝。
+
+完成端口随 `ForeignSession` 代次同步。重复取消不会多生成一次 release，关闭后的到达
+记录为 late drop。端口宿主证据和普通工程的回调、同步/异步端口组合按 V-02 分项验收。
