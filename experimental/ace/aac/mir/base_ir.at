@@ -16,9 +16,20 @@ pub fn constant_instruction() int { return 1 }
 pub fn copy_instruction() int { return 2 }
 pub fn binary_instruction() int { return 3 }
 pub fn call_instruction() int { return 5 }
+pub fn field_get_instruction() int { return 7 }
+pub fn aggregate_instruction() int { return 9 }
+pub fn view_instruction() int { return 12 }
+pub fn borrow_end_instruction() int { return 14 }
+pub fn drop_instruction() int { return 15 }
 pub fn jump_terminator() int { return 16 }
 pub fn branch_terminator() int { return 17 }
 pub fn return_terminator() int { return 18 }
+
+// Wire type tags (ABC): 0=I32 1=Bool 2=Fn 3=I64 4=U64 5=F32 6=F64 7=Record
+// 8=Char 9=Str 10=StrView 11=MutRef 12=RecordView 19=I8 20=U8 21=U32.
+pub fn record_wire_tag() int { return 7 }
+pub fn record_view_wire_tag() int { return 12 }
+pub fn function_wire_tag() int { return 2 }
 
 pub fn outside_base_profile() int { return -60 }
 pub fn invalid_mir_reference() int { return -61 }

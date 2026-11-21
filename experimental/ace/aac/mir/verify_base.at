@@ -1,10 +1,12 @@
 use app.base_ir.account
+use app.base_ir.aggregate_instruction
 use app.base_ir.binary_instruction
 use app.base_ir.block_stride
 use app.base_ir.branch_terminator
 use app.base_ir.call_instruction
 use app.base_ir.constant_instruction
 use app.base_ir.copy_instruction
+use app.base_ir.field_get_instruction
 use app.base_ir.function_stride
 use app.base_ir.instruction_stride
 use app.base_ir.invalid_mir_reference
@@ -13,11 +15,14 @@ use app.base_ir.parameter_slot
 use app.base_ir.return_terminator
 use app.base_ir.slot_stride
 use app.base_ir.temporary_slot
+use app.base_ir.view_instruction
 use app.binding.bind_budget
 use app.core_ops.binary_op
 use app.core_ops.comparison_op
 use app.core_ops.equality_op
 use app.core_ops.logical_op
+use app.core_records.record_at
+use app.core_records.record_next
 use app.numeric_literal.exact_literal_stride
 use app.numeric_literal.exact_scalar_word
 use app.types.boolean_type
@@ -32,6 +37,10 @@ fn in_table(rows List<int>, stride int, index int) bool {
 
 fn scalar(lane int) bool {
     return lane == integer_type() || lane == boolean_type() || exact_scalar_word(lane).len() > 0
+}
+
+fn data_value(recs List<int>, lane int) bool {
+    return scalar(lane) || record_at(recs, lane) >= 0
 }
 
 fn lane_at(slots List<int>, owner int, slot int) int {
@@ -83,7 +92,7 @@ fn check_call(slots List<int>, functions List<int>, operands List<int>, owner in
     return 0
 }
 
-fn check_instruction(functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, at int, fuel List<int>, deadline i64) int {
+fn check_instruction(functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, recs List<int>, at int, fuel List<int>, deadline i64) int {
     let block = instrs.get(at)
     if (!in_table(blocks, block_stride(), block)) { return invalid_mir_reference() }
     let row = block * block_stride()
@@ -103,9 +112,38 @@ fn check_instruction(functions List<int>, slots List<int>, blocks List<int>, ins
     if (op == call_instruction()) {
         return check_call(slots, functions, operands, owner, dst, first, second, detail, fuel, deadline)
     }
+    if (op == aggregate_instruction()) {
+        // The aggregate's `first` operand is the record TYPE id, not a slot.
+        if (record_at(recs, dst) < 0 || first != dst) { return invalid_mir_type() }
+        let origin = record_at(recs, first)
+        let fields = recs.get(origin + 1)
+        if (detail != fields || second < 0 || second > operands.len() - detail) { return invalid_mir_reference() }
+        if (!account(fuel, deadline, fields)) { return bind_budget() }
+        var at2 = 0
+        for (at2 < fields) {
+            let lane = lane_at(slots, owner, operands.get(second + at2))
+            if (lane < 0) { return lane }
+            let expected = recs.get(origin + 3 + at2 * 2 + 1)
+            if (lane != expected) { return invalid_mir_type() }
+            at2 = at2 + 1
+        }
+        return 0
+    }
     let lhs = lane_at(slots, owner, first)
     if (lhs < 0) { return lhs }
     if (op == copy_instruction()) {
+        if (dst != lhs) { return invalid_mir_type() }
+        return 0
+    }
+    if (op == field_get_instruction()) {
+        if (record_at(recs, lhs) < 0) { return invalid_mir_type() }
+        let origin = record_at(recs, lhs)
+        if (detail < 0 || detail >= recs.get(origin + 1)) { return invalid_mir_reference() }
+        let expected = recs.get(origin + 3 + detail * 2 + 1)
+        if (dst != expected) { return invalid_mir_type() }
+        return 0
+    }
+    if (op == view_instruction()) {
         if (dst != lhs) { return invalid_mir_type() }
         return 0
     }
@@ -119,7 +157,7 @@ fn check_instruction(functions List<int>, slots List<int>, blocks List<int>, ins
     return 0
 }
 
-pub fn check_base_shape(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+pub fn check_base_shape(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, recs List<int>, fuel List<int>, deadline i64) int {
     if (!in_table(functions, function_stride(), entry)) { return invalid_mir_reference() }
     if (functions.get(entry * function_stride() + 2) != 0) { return invalid_mir_type() }
     var at = 0
@@ -133,14 +171,14 @@ pub fn check_base_shape(entry int, functions List<int>, slots List<int>, blocks 
         if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
         let owner = at / function_stride()
         if (!owned_block(blocks, owner, functions.get(at + 3))) { return invalid_mir_reference() }
-        if (!scalar(functions.get(at + 1))) { return invalid_mir_type() }
+        if (!data_value(recs, functions.get(at + 1))) { return invalid_mir_type() }
         var scan = 0
         var arity = 0
         var after_parameter = false
         for (scan < slots.len()) {
             if (slots.get(scan) == owner) {
                 let kind = slots.get(scan + 2)
-                if (!scalar(slots.get(scan + 1)) || kind < parameter_slot() || kind > temporary_slot()) { return invalid_mir_type() }
+                if (!data_value(recs, slots.get(scan + 1)) || kind < parameter_slot() || kind > temporary_slot()) { return invalid_mir_type() }
                 if (kind == parameter_slot()) {
                     if (after_parameter) { return invalid_mir_type() }
                     arity = arity + 1
@@ -181,7 +219,7 @@ pub fn check_base_shape(entry int, functions List<int>, slots List<int>, blocks 
     at = 0
     for (at < instrs.len()) {
         if (!account(fuel, deadline, 0)) { return bind_budget() }
-        let status = check_instruction(functions, slots, blocks, instrs, operands, constants, at, fuel, deadline)
+        let status = check_instruction(functions, slots, blocks, instrs, operands, constants, recs, at, fuel, deadline)
         if (status != 0) { return status }
         at = at + instruction_stride()
     }
@@ -293,11 +331,11 @@ fn verify_initialization(owner int, functions List<int>, slots List<int>, blocks
             for (at < instrs.len()) {
                 if (instrs.get(at) == block) {
                     let op = instrs.get(at + 1)
-                    if (op == copy_instruction() || op == binary_instruction()) {
+                    if (op == copy_instruction() || op == binary_instruction() || op == field_get_instruction() || op == view_instruction()) {
                         if (!read_initialized(instrs.get(at + 3), slot_ids, values)) { return uninitialized_mir_slot() }
                         if (op == binary_instruction() && !read_initialized(instrs.get(at + 4), slot_ids, values)) { return uninitialized_mir_slot() }
                     }
-                    if (op == call_instruction()) {
+                    if (op == call_instruction() || op == aggregate_instruction()) {
                         let begin = instrs.get(at + 4)
                         let count_args = instrs.get(at + 5)
                         if (!account(fuel, deadline, count_args)) { return bind_budget() }
@@ -321,8 +359,8 @@ fn verify_initialization(owner int, functions List<int>, slots List<int>, blocks
     return 0
 }
 
-pub fn verify_base(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
-    let shape = check_base_shape(entry, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+pub fn verify_base(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, recs List<int>, fuel List<int>, deadline i64) int {
+    let shape = check_base_shape(entry, functions, slots, blocks, instrs, operands, constants, recs, fuel, deadline)
     if (shape != 0) { return shape }
     var owner = 0
     for (owner < functions.len() / function_stride()) {

@@ -27,6 +27,21 @@ fn execute_auto_mir(bytes: &[u8]) -> ExecOutcome {
     ace_av_core::execute(&loaded, &Default::default(), &Default::default()).0
 }
 
+/// The record domain lowers through the owned wire generation (v2); the
+/// consumer re-stamps the owner with the owned schema.
+fn execute_owned_auto_mir(bytes: &[u8]) -> ExecOutcome {
+    let decoded = ace_av_core::decode_abc(bytes).expect("AVAD shape and checksum");
+    let loaded = ace_av_core::verify_abc(
+        decoded,
+        &ace_av_core::mir::OwnerScope {
+            schema: ace_av_core::contract::MIR_OWNED_SCHEMA.into(),
+            module: "app.main".into(),
+        },
+    )
+    .expect("independent MIR consumer admission");
+    ace_av_core::execute(&loaded, &Default::default(), &Default::default()).0
+}
+
 /// V-04 标量部分：四种短路极性的 trap 执行计数可观测。
 ///
 /// 独立预期：`false && (1/0>0)` 与 `true || (1/0>0)` 的 RHS 不执行，结果
@@ -144,6 +159,41 @@ fn aac1050_v02_mir_mutations_reject_with_stage_location_and_legal_neighbor_runs(
             );
         }
     }
+}
+
+/// V-01 数据域部分：record 构造（Aggregate 按字段声明序）、字段读取
+/// （FieldGet）、借用视图参数（RecordView，owned 线代际 v2）经 Auto
+/// lower/verify 后由独立消费端解码、复验并真实执行。
+///
+/// 独立预期：ctor+field 直读得 42；经 `fetch`（record 按视图参数）调用得
+/// 42；带 `let` 绑定与分支的 record 程序得 7。
+#[test]
+fn aac1050_v01_record_ctor_field_get_and_view_param_run_in_av() {
+    let ctor_get = b"type Pair { number int; enabled bool }
+fn main() int { let p = Pair(enabled: true, number: 42); return p.number }";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(ctor_get).expect("Auto MIR record ctor+get")),
+        ExecOutcome::Success { value: Value::I32(42), .. }
+    ));
+
+    let view_call = b"type Pair { number int; enabled bool }
+fn fetch(boxed Pair) int { return boxed.number }
+fn main() int { return fetch(Pair(enabled: true, number: 42)) }";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(view_call).expect("Auto MIR record view param")),
+        ExecOutcome::Success { value: Value::I32(42), .. }
+    ));
+
+    let let_branch = b"type Pair { number int; enabled bool }
+fn pick(flag bool, a int, b int) int { if flag { return a }\n return b }
+fn main() int {
+    let p = Pair(enabled: true, number: 7)
+    return pick(p.enabled, p.number, 0)
+}";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(let_branch).expect("Auto MIR record branch")),
+        ExecOutcome::Success { value: Value::I32(7), .. }
+    ));
 }
 
 fn run(source: &[u8]) -> Result<Vec<u8>, String> {

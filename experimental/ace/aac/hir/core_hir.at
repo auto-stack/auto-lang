@@ -1697,7 +1697,7 @@ fn mir_control(control int, functions List<int>, blocks List<int>, instrs List<i
     return invalid_mir_reference()
 }
 
-fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int, entry_name Str) int {
+fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, records List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int, entry_name Str) int {
     var entry = -1
     var at = 0
     for (at < defs.len()) {
@@ -1715,13 +1715,13 @@ fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<
     var blocks = List<int>.new()
     var instrs = List<int>.new()
     var operands = List<int>.new()
-    let status = lower_base(defs, parameters, exprs, args, hir_blocks, statements, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    let status = lower_base(defs, parameters, exprs, args, records, hir_blocks, statements, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
     if (status != 0) { return status }
     let applied = mir_control(control, functions, blocks, instrs, operands, exact, fuel, deadline)
     if (applied != 0) { return applied }
-    let verified = verify_base(entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    let verified = verify_base(entry, functions, slots, blocks, instrs, operands, exact, records, fuel, deadline)
     if (verified != 0) { return verified }
-    return encode_base_abc(out, ast, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    return encode_base_abc(out, ast, src, declarations, records, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
 }
 
 pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int, abc List<int>, entry_name Str) Str {
@@ -1778,11 +1778,11 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     is verified {
         Some(checked) -> {
             if (control >= 4) {
-                if (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs)) {
+                if (layouts.len() > 0 || has_text(defs, parameters, exprs)) {
                     failed(errors, 0, outside_base_profile())
                     return ""
                 }
-                let status = emit_base_mir(abc, ast, src, declarations, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control, entry_name)
+                let status = emit_base_mir(abc, ast, src, declarations, records, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control, entry_name)
                 if (status != 0) {
                     failed(errors, 0, status)
                     return ""

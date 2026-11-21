@@ -3,12 +3,14 @@ use app.base_ir.add_block
 use app.base_ir.add_function
 use app.base_ir.add_instruction
 use app.base_ir.add_slot
+use app.base_ir.aggregate_instruction
 use app.base_ir.binary_instruction
 use app.base_ir.block_stride
 use app.base_ir.branch_terminator
 use app.base_ir.call_instruction
 use app.base_ir.constant_instruction
 use app.base_ir.copy_instruction
+use app.base_ir.field_get_instruction
 use app.base_ir.find_id
 use app.base_ir.finish_block
 use app.base_ir.function_stride
@@ -35,6 +37,8 @@ use app.core_ops.loop_statement
 use app.core_ops.read_op
 use app.core_ops.return_exit
 use app.core_ops.statement_stride
+use app.core_records.record_at
+use app.core_records.record_next
 use app.numeric_literal.exact_literal_stride
 use app.numeric_literal.exact_scalar_word
 use app.types.boolean_type
@@ -43,6 +47,15 @@ use app.types.integer_type
 fn scalar(lane int) bool {
     return lane == integer_type() || lane == boolean_type() || exact_scalar_word(lane).len() > 0
 }
+
+fn data_value(recs List<int>, lane int) bool {
+    return scalar(lane) || record_at(recs, lane) >= 0
+}
+
+// Expression op identities shared with core_hir's HIR table.
+fn record_constructor_op() int { return 9 }
+fn record_field_op() int { return 10 }
+fn record_view_op() int { return 11 }
 
 fn add_small_constant(constants List<int>, lane int, value int) int {
     let index = constants.len() / exact_literal_stride()
@@ -72,7 +85,7 @@ fn push_expr(work List<int>, id int, stage int, first int, second int) int {
 // Each expression produces one typed temporary. The stack records postfix
 // work explicitly, including the two continuations of a lazy expression.
 // The current block can change even while evaluating a call argument.
-fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args List<int>, recs List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
     var work = List<int>.new()
     var results = List<int>.new()
     push_expr(work, id, 0, 0, 0)
@@ -90,16 +103,24 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
         let block = current.get(0)
         if (stage == 0) {
             if (op == constant_op() || op == exact_constant_op() || op == read_op()) {
-                let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
                 if (op == read_op()) {
                     let src = local_slot_index(slots, owner, data, fuel, deadline)
                     if (src < 0) { return src }
+                    if (record_at(recs, lane) >= 0) {
+                        // Record reads fold to the local slot (a record
+                        // value is never copied between slots).
+                        results.push(src)
+                        continue
+                    }
+                    let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
                     add_instruction(instrs, block, copy_instruction(), dst, src, -1, 0, expr)
-                } else {
-                    var literal = data / exact_literal_stride()
-                    if (op == constant_op()) { literal = add_small_constant(constants, lane, data) }
-                    add_instruction(instrs, block, constant_instruction(), dst, literal, -1, 0, expr)
+                    results.push(dst)
+                    continue
                 }
+                let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
+                var literal = data / exact_literal_stride()
+                if (op == constant_op()) { literal = add_small_constant(constants, lane, data) }
+                add_instruction(instrs, block, constant_instruction(), dst, literal, -1, 0, expr)
                 results.push(dst)
                 continue
             }
@@ -119,8 +140,14 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
                 push_expr(work, lhs, 0, 0, 0)
                 continue
             }
-            if (op != call_op() && !binary_op(op)) { return outside_base_profile() }
+            if (op != call_op() && !binary_op(op) && op != record_constructor_op() && op != record_field_op() && op != record_view_op()) { return outside_base_profile() }
             push_expr(work, expr, 1, results.len(), 0)
+            if (op == record_view_op()) {
+                // Borrow views fold to their base expression (the owned
+                // value satisfies the borrowed-view position directly).
+                push_expr(work, data, 0, 0, 0)
+                continue
+            }
             var at = args.len() - 3
             for (at >= 0) {
                 if (args.get(at) == expr) { push_expr(work, args.get(at + 1), 0, 0, 0) }
@@ -161,6 +188,15 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
             results.push(first)
             continue
         }
+        if (op == record_view_op()) {
+            // The base value satisfies the view position; the result is the
+            // base slot itself (no separate temporary, no wire instruction).
+            if (results.len() - first != 1) { return invalid_mir_reference() }
+            let folded = results.get(first)
+            for (results.len() > first) { results.remove(results.len() - 1) }
+            results.push(folded)
+            continue
+        }
         let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
         if (op == call_op()) {
             let target = find_id(functions, function_stride(), 0, data, fuel, deadline)
@@ -185,8 +221,40 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
             }
             add_instruction(instrs, block, call_instruction(), dst, target, begin, count, expr)
         } else {
-            if (results.len() - first != 2) { return invalid_mir_reference() }
-            add_instruction(instrs, block, binary_instruction(), dst, results.get(first), results.get(first + 1), op, expr)
+            if (op == record_constructor_op()) {
+                let origin = record_at(recs, data)
+                if (origin < 0) { return outside_base_profile() }
+                let fields = recs.get(origin + 1)
+                let count = results.len() - first
+                if (!account(fuel, deadline, args.len() / 3 + count)) { return bind_budget() }
+                if (count != fields) { return invalid_mir_reference() }
+                let begin = operands.len()
+                var slot = 0
+                for (slot < fields) {
+                    operands.push(-1)
+                    slot = slot + 1
+                }
+                var at = 0
+                var evaluated = first
+                for (at < args.len()) {
+                    if (args.get(at) == expr) {
+                        let field = args.get(at + 2)
+                        if (field < 0 || field >= fields) { return invalid_mir_reference() }
+                        operands.set(begin + field, results.get(evaluated))
+                        evaluated = evaluated + 1
+                    }
+                    at = at + 3
+                }
+                add_instruction(instrs, block, aggregate_instruction(), dst, data, begin, fields, expr)
+            } else {
+                if (op == record_field_op()) {
+                    if (results.len() - first != 1) { return invalid_mir_reference() }
+                    add_instruction(instrs, block, field_get_instruction(), dst, results.get(first), -1, data, expr)
+                } else {
+                    if (results.len() - first != 2) { return invalid_mir_reference() }
+                    add_instruction(instrs, block, binary_instruction(), dst, results.get(first), results.get(first + 1), op, expr)
+                }
+            }
         }
         for (results.len() > first) { results.remove(results.len() - 1) }
         results.push(dst)
@@ -204,7 +272,7 @@ fn push_body(work List<int>, source int, entry int, next int, stop int, repeat i
     return 0
 }
 
-fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<int>, recs List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
     var work = List<int>.new()
     var current = List<int>.new()
     current.push(entry)
@@ -233,7 +301,7 @@ fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<in
                     push_body(work, second, body, body, after, body)
                     current.set(0, after)
                 } else {
-                    let value = lower_expression(second, owner, current, exprs, args, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+                    let value = lower_expression(second, owner, current, exprs, args, recs, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
                     if (value < 0) { return value }
                     if (op == if_statement()) {
                         let join = add_block(blocks, owner, source)
@@ -259,7 +327,7 @@ fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<in
         let exit = hir_blocks.get(block * 6 + 2)
         if (exit == return_exit()) {
             let result = hir_blocks.get(block * 6 + 5)
-            let value = lower_expression(result, owner, current, exprs, args, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+            let value = lower_expression(result, owner, current, exprs, args, recs, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
             if (value < 0) { return value }
             let status = finish_block(blocks, current.get(0), return_terminator(), value, -1, -1)
             if (status != 0) { return status }
@@ -277,18 +345,18 @@ fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<in
     return 0
 }
 
-pub fn lower_base(defs List<int>, locals List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+pub fn lower_base(defs List<int>, locals List<int>, exprs List<int>, args List<int>, recs List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
     var definition = 0
     for (definition < defs.len()) {
         if (!account(fuel, deadline, locals.len() / 4 * 2)) { return bind_budget() }
         let def = defs.get(definition)
         let lane = defs.get(definition + 1)
-        if (!scalar(lane) || defs.get(definition + 2) != def) { return outside_base_profile() }
+        if (!data_value(recs, lane) || defs.get(definition + 2) != def) { return outside_base_profile() }
         var arity = 0
         var at = 0
         for (at < locals.len()) {
             if (locals.get(at) == def) {
-                if (!scalar(locals.get(at + 2))) { return outside_base_profile() }
+                if (!data_value(recs, locals.get(at + 2))) { return outside_base_profile() }
                 if (locals.get(at + 3) >= 0) { arity = arity + 1 }
             }
             at = at + 4
@@ -324,7 +392,7 @@ pub fn lower_base(defs List<int>, locals List<int>, exprs List<int>, args List<i
         let hir_entry = defs.get(definition + 3)
         let entry = add_block(blocks, function, hir_entry)
         functions.set(function * function_stride() + 3, entry)
-        let status = lower_body(hir_entry, function, entry, exprs, args, hir_blocks, statements, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+        let status = lower_body(hir_entry, function, entry, exprs, args, recs, hir_blocks, statements, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
         if (status != 0) { return status }
         definition = definition + 4
     }
