@@ -109,6 +109,8 @@ owner=PLAN-1063；Windows 原 required 门不减；交叉编译成功或 Windows
 - **身份与缓存**：967 provider 身份纳入锁文件 SHA-256。AV 工程节点另记录实际 DLL SHA-256；
   同一 provider 在 Auto body 变更后可复用。生成器、shim 和 rustc 身份用于构建与来源，
   SDK 运行兼容以当前 ABI、物理目标、符号签名与真实 DLL 运行依赖核验。
+  完成端口的同步或异步模式进入符号合同摘要。提供异步端口时，SDK 声明 `multi` 线程
+  模型并在执行前重核。
 - **分发**：既有 `ac-build sdk --project <dir> --target av --root <dir> --out <dir>`
   打包 `targets/av/program.abc`、`targets/av/rust-program.json` 与
   `providers/rust/provider.dll`，由 978 recipe 声明摘要、授权与运行依赖。运行用

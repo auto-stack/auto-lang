@@ -88,6 +88,12 @@ pub enum RustCompletion {
     Async,
 }
 
+impl RustCompletion {
+    pub fn is_async(self) -> bool {
+        self == Self::Async
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RustOwnedEntry {
     pub type_name: String,

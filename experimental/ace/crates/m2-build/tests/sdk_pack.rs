@@ -74,9 +74,10 @@ pub fn background_double(input: i32) -> i32 {
     let mut driver = M2Build::new(&dev);
     let project = driver.build(TargetKind::Av, &inputs).expect("run project");
     assert_eq!(project.run.unwrap().exit_code, Some(45));
-    driver
+    let mut recipe = driver
         .build_sdk(&inputs, &[TargetKind::Av], &sdk, vec![], "run:rust")
         .expect("pack SDK");
+    assert_eq!(recipe.consumer_requirements.threading, "multi");
     drop(driver);
     std::fs::rename(&sdk, root.join("moved")).expect("relocate SDK");
     std::fs::remove_dir_all(&dev).expect("remove development cache");
@@ -88,6 +89,16 @@ pub fn background_double(input: i32) -> i32 {
         )),
         45
     );
+    recipe.consumer_requirements.threading = "single".into();
+    std::fs::write(
+        root.join("moved/install-manifest.json"),
+        serde_json::to_vec_pretty(&recipe).unwrap(),
+    )
+    .expect("substitute incompatible threading");
+    let error = M2Build::new(&root.join("consumer"))
+        .run_sdk(&root.join("moved"), TargetKind::Av, "run:rust")
+        .expect_err("wrong threading is rejected");
+    assert_eq!(error.code, "m2build.compat.threading");
     std::fs::remove_dir_all(root).expect("remove test scratch");
 }
 

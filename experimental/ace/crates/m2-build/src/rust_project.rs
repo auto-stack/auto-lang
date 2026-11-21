@@ -280,18 +280,28 @@ fn offer(build: &RustProviderBuild, dll: &[u8]) -> Result<ProviderOffer, M2Rejec
                 entry.export
             )));
         }
+        let sig = match entry.completion {
+            Some(mode) => serde_json::to_vec(&(fact, mode)),
+            None => serde_json::to_vec(fact),
+        }
+        .map_err(sdk_error)?;
         offered_symbols.push(SymbolContract {
             name: entry.export.clone(),
-            signature_hash: sha256_hex(&serde_json::to_vec(fact).map_err(sdk_error)?),
+            signature_hash: sha256_hex(&sig),
         });
     }
+    let is_multi = build
+        .manifest
+        .functions
+        .iter()
+        .any(|entry| entry.completion.is_some_and(|mode| mode.is_async()));
     Ok(ProviderOffer {
         target: TargetAxis::host(),
         abi_domain: build.manual.callconv.clone(),
         interface_schema: build.manual.schema.clone(),
         offered_symbols,
         semantic_owner: build.manual.facts.logical.clone(),
-        threading: "single".into(),
+        threading: if is_multi { "multi" } else { "single" }.into(),
         runtime_dependencies: libraries,
     })
 }
