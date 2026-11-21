@@ -1963,3 +1963,19 @@ fn aac1049_resources_rejects_use_after_move_before_backend() {
     assert!(accepted.starts_with("aac.type-report/1"), "{accepted}");
     assert!(!accepted.contains("use-after-move"), "{accepted}");
 }
+
+#[test]
+fn aac1049_domains_classify_nodes_without_silent_scalar_meaning() {
+    use ace_aac_syntax_conformance::run_domains_case;
+
+    // V-03: domain nodes are named with their module and span; the audit is
+    // in-process and never converts a node into scalar runtime code.
+    let source = concat!(
+        "node Greeting { view { text \"hi\" {} } }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let report = run_domains_case(source.as_bytes()).expect("domain classification");
+    assert!(report.starts_with("aac.domain-report/1\n"), "{report}");
+    assert!(report.contains("DOMAIN-NODE app.main Greeting "), "{report}");
+    assert!(!report.contains("TYPE "), "domain report must stay static: {report}");
+}

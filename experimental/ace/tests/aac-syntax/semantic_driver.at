@@ -55,6 +55,7 @@ use app.meta.required_line
 use app.cte.ct_read_tokens
 use app.control.lazy_report_line
 use app.resources.use_after_move
+use app.domains.domain_node_report
 use app.nominal_layout.type_recursive_layout_error
 use app.patterns.type_exhaustive_error
 use app.patterns.type_match_branch_error
@@ -666,6 +667,18 @@ fn project(steps int) Str {
             row5 = row5 + 1
         }
         return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps, ct_deadline)
+    }
+    let domains_on = get("AAC1049_DOMAINS")
+    if (domains_on == "1") {
+        var links6 = List<int>.new()
+        if (!build_child_index(ast, links6)) { return "ERROR resource.ast\n" }
+        var fuel6 = List<int>.new()
+        fuel6.push(steps)
+        let now6 = mono_ms()
+        if (now6 < 0i64) { return "ERROR os.clock\n" }
+        let lines = domain_node_report(pg, ast, links6, src, names, fuel6, now6 + 5000i64)
+        if (lines.len() == 0) { return "ERROR domain.unsupported\n" }
+        return "aac.domain-report/1\n" + lines
     }
     let instances_on = get("AAC1048_INSTANCES")
     if (instances_on.len() > 0 && roots.len() > 0) {

@@ -1,0 +1,51 @@
+// AAC domains module (PLAN-1049 T-03): bounded classification of domain
+// nodes (Schema/AutoUI/AGE `node { view { text ... } }` declarations). The
+// Auto side names each domain node and its module; it never silently treats
+// a domain node as scalar runtime code. Without a renderer this stage signs
+// only the semantic classification; the real host execution is a named
+// successor (1053).
+
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.kind
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.semantic_tree.span_text
+use std.conv.from_int
+
+fn module_name(modules List<int>, id int) Str {
+    var offset = 0
+    var current = 0
+    for (offset < modules.len()) {
+        let end = offset + 1 + modules.get(offset)
+        if (current == id) { return span_text(modules, offset + 1, end) }
+        offset = end
+        current = current + 1
+    }
+    return ""
+}
+
+// "DOMAIN-NODE <module> <name> <span-start>..<span-end>" per domain node.
+pub fn domain_node_report(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, fuel List<int>, deadline i64) Str {
+    var report = ""
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return "" }
+        let node_kind = kind(pg, ast, row)
+        if (node_kind == "age-node-item" || node_kind == "age-node-c-item" || node_kind == "age-pub-node-item") {
+            var name = child_with_role(pg, ast, links, row, "name")
+            if (name < 0) { name = child_with_role(pg, ast, links, row, "head") }
+            var line = "DOMAIN-NODE " + module_name(modules, source_id(ast, row)) + " "
+            if (name >= 0) {
+                line = line + spelling(src, ast, name)
+            }
+            line = line + " " + from_int(start_of(ast, row)) + ".." + from_int(end_of(ast, row)) + "\n"
+            report = report + line
+        }
+        row = row + 1
+    }
+    return report
+}
