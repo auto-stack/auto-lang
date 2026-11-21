@@ -64,6 +64,18 @@ fn assert_diag(src: &str, want_code: &str) {
 }
 
 #[test]
+fn wide_integer_interpolation_survives_av_verification() {
+    assert_stdout(
+        r#"fn main() {
+    let signed = -2147483649i64
+    let unsigned = 4294967296u64
+    print(f"${signed}/${unsigned}")
+}"#,
+        "-2147483649/4294967296\n",
+    );
+}
+
+#[test]
 fn t05_types_variants_cases() {
     // named-enum-payload (§6 #1)
     assert_exit(

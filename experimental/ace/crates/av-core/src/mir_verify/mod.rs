@@ -4171,18 +4171,6 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
-            MirInstr::TextDisplay { dst, src } => {
-                let source = slot_ty_of(f, *src, sp, "text-display source")?;
-                let result = slot_ty_of(f, *dst, sp, "text-display result")?;
-                if !matches!(self.module.types.get(source as usize), Some(MirType::I32 | MirType::F32))
-                    || !matches!(self.module.types.get(result as usize), Some(MirType::Str))
-                {
-                    return Err(err(
-                        "mir.text-display-type",
-                        "text display requires an i32 or f32 source and an owned Str result".into(),
-                    ));
-                }
-            }
             // -- PLAN-824 dynamic surface (typing arms) ----------
             MirInstr::DynPack { dst, src } => {
                 if !self.dynamic_values() {
@@ -4374,7 +4362,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 let source = slot_ty_of(f, *src, sp, "display source")?;
                 let output = slot_ty_of(f, *dst, sp, "display destination")?;
                 let source = self.module.types.get(source as usize);
-                let integer = source == Some(&MirType::I32)
+                let displayable = matches!(source, Some(MirType::I32 | MirType::F32))
                     || (self.is_closures
                         && matches!(
                             source,
@@ -4386,10 +4374,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                     | MirType::U64
                             )
                         ));
-                if !integer || self.module.types.get(output as usize) != Some(&MirType::Str) {
+                if !displayable || self.module.types.get(output as usize) != Some(&MirType::Str) {
                     return Err(err(
                         "mir.text-display",
-                        "expected an integer source and an owned Str destination".into(),
+                        "expected a displayable number and an owned Str destination".into(),
                     ));
                 }
             }

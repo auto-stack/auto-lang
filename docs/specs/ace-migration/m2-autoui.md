@@ -748,13 +748,16 @@ PrevMonth，frames≥1 errors=0）；浏览器腿五 app 门 failures=0（012/01
 
 ## 17. Checked chart widgets
 
-An AGE package specializes a legacy widget's bare list parameter at each
-static call site. The checked model uses that site's record type and field
-keys, so sibling chart instances can accept different nominal records. A
-literal key outside a typed record is diagnosed at its source span. A sparse
-anonymous row inferred for a legacy widget uses an empty string for a missing
-optional text field and the legacy zero value for a literal key absent from
-the entire sparse shape.
+An AGE package can infer a legacy widget's required bare list parameter from
+a directly supplied caller model field with a known scalar or nominal record
+element type. A widget in its own module outside the entry can specialize
+multiple static call sites individually when each site is outside a view loop
+and supplies those traceable types. Other call sites use the ordinary checked
+package binder. Specialized sibling chart instances can accept different
+nominal records, and a literal key outside a typed record is diagnosed at its
+source span. A sparse anonymous row inferred for a legacy widget uses an empty
+string for a missing optional text field and the legacy zero value for a
+literal key absent from the entire sparse shape.
 
 Widget state handlers check indexed updates, iteration and typed message
 arguments before execution. Pointer messages use the declared f32 payload and
