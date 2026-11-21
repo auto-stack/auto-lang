@@ -20,6 +20,9 @@ ace-syntax-runtime = { path = "../../crates/syntax-runtime" }
 ace-syntax-grammar = { path = "../../crates/syntax-grammar" }
 serde_json = { version = "1", optional = true }
 
+[dev-dependencies]
+ace-lowering = { path = "../../crates/lowering" }
+
 [[test]]
 name = "conformance"
 path = "tests/conformance.rs"

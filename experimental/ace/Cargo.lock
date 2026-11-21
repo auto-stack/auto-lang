@@ -162,6 +162,7 @@ dependencies = [
  "ace-av",
  "ace-av-core",
  "ace-core",
+ "ace-lowering",
  "ace-source-query",
  "ace-syntax-grammar",
  "ace-syntax-runtime",

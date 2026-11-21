@@ -1082,9 +1082,22 @@ fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
         .unwrap_or_else(|| panic!("missing logical expression: {atom}"));
     assert!(logical.contains("op: and;"), "{logical}");
     assert!(atom.contains("op: div_i32;"), "{atom}");
-    let bound = ace_core::descriptor::bind(ace_core::scalar_descriptor(), &atom)
-        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
-    ace_core::verify::verify_scalar(bound).expect("independent typed HIR verification");
+    assert!(matches!(
+        reference_scalar_outcome(&atom),
+        ace_av_core::ExecOutcome::Success {
+            value: ace_av_core::Value::I32(42),
+            ..
+        }
+    ));
+    let eager = std::str::from_utf8(source).unwrap().replacen("false &&", "true &&", 1);
+    let eager_atom = run_core_hir_case(eager.as_bytes(), "verify").expect("Auto eager control HIR");
+    assert!(matches!(
+        reference_scalar_outcome(&eager_atom),
+        ace_av_core::ExecOutcome::Trap {
+            kind: ace_av_core::contract::TrapKind::DivByZero,
+            ..
+        }
+    ));
     let read_back = |text: &str| {
         run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto Atom readback")
     };
@@ -1103,6 +1116,24 @@ fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
         .replace("auto.hir.scalar.draft", "auto.hir.core.draft")
         .replace("scalar-i32-draft", "core-i32-draft");
     assert_eq!(read_back(&wrong_profile), "ERROR hir.unsupported\n");
+}
+
+// This is an independent oracle for the Auto-produced HIR. The AAC MIR
+// phase and bridge must never call this reference lowering as a service.
+fn reference_scalar_outcome(atom: &str) -> ace_av_core::ExecOutcome {
+    let bundle = ace_core::descriptor::bind(ace_core::scalar_descriptor(), atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    let checked = ace_core::verify::verify_scalar(bundle).expect("reference HIR verification");
+    let entry = checked.bundle().modules[0]
+        .defs
+        .iter()
+        .find(|def| def.name_for_diagnostic() == "main")
+        .expect("main definition");
+    let mir = ace_lowering::lower_checked(&checked, &entry.id_text, 0).expect("reference lowering");
+    let bytes = ace_av_core::encode_abc(&mir).unwrap().to_flat();
+    let decoded = ace_av_core::decode_abc(&bytes).unwrap();
+    let loaded = ace_av_core::verify_abc(decoded, &mir.owner).expect("reference MIR admission");
+    ace_av_core::execute(&loaded, &Default::default(), &Default::default()).0
 }
 
 #[test]
@@ -1167,9 +1198,13 @@ fn aac1055_conditional_loop_preserves_scopes_and_continuations() {
     assert_eq!(atom.matches("loop(id:").count(), 3, "{atom}");
     assert_eq!(atom.matches("break(target:").count(), 4, "{atom}");
     assert_eq!(atom.matches("continue(target:").count(), 1, "{atom}");
-    let bound = ace_core::descriptor::bind(ace_core::scalar_descriptor(), &atom)
-        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
-    ace_core::verify::verify_scalar(bound).expect("independent structured control verification");
+    assert!(matches!(
+        reference_scalar_outcome(&atom),
+        ace_av_core::ExecOutcome::Success {
+            value: ace_av_core::Value::I32(0),
+            ..
+        }
+    ));
     let admit = |text: &str| {
         run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto loop HIR readback")
     };
