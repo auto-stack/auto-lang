@@ -6,8 +6,9 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-19
 plan_revision: 3
-current_step: 0
+current_step: 7
 total_steps: 8
+status: reviewed
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080, PLAN-1081, PLAN-1082, PLAN-1083, PLAN-1084, PLAN-1085, PLAN-1086, PLAN-1087, PLAN-1088, PLAN-1089, PLAN-1090, PLAN-1091, PLAN-1092, PLAN-1093, PLAN-1094]
 supersedes_spec_components: [docs/specs/ace-migration/m2-facade.md, docs/specs/ace-migration/m2-modules.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
 new_spec_components: []
@@ -365,19 +366,57 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 本轮任务状态（全部未施工）：
 
-- [ ] **T-01** work：见上表唯一任务合同。
-- [ ] **T-02** work：见上表唯一任务合同。
-- [ ] **T-03** work：见上表唯一任务合同。
-- [ ] **T-04** work：见上表唯一任务合同。
-- [ ] **T-05** work：见上表唯一任务合同。
-- [ ] **T-06** work：见上表唯一任务合同。
-- [ ] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-01** work：冻结旧/新实际输入、规范差异与边界；129 份旧文档清单核角色；canonical 位置定案；有界全链可行性探测（见 §9 work 收据）。
+- [x] **T-02** work：普通 Auto profile 统一生产路径：同包同 session 组合（工程 fn 值、record 字面量、try/finally、task、CT+filter）；建 canonical 作者与 legacy-map 行（见 §9）。
+- [x] **T-03** work：PROJECT-RESTORE 补充 ID：坏编辑→恢复冷等值、双 store 隔离（见 §9）。
+- [x] **T-04** work：Node 面接入普通链 + 979 producer CPU 观察 + `nodes` oracle（C4 全链；见 §9）。
+- [x] **T-05** work：§6 草案落实为唯一活跃作者（composition/domain 两文件 + suite）；129 行迁移；故意红元控制（见 §9）。
+- [x] **T-06** work：冻结候选提交；固定组执行并核子项/资源/源身份；规范增量四份；IF-AV-PARITY-PROJECT（见 §9）。
+- [x] **T-07** review：独立逐 AC 核验通过，见 §9 复审收据。
+- [x] **T-08** merge：落主/归档/清理完成，见 §9 merge 收据。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
 ## 9. 复审记录
 
+- 2026-11-22 merge 收据：`stage: merge | plan_id: PLAN-1095 | plan_revision: r3 | outcome: pass | delivery_commit: f70320f5c | archive_commit: 待簿记提交 | next: done`。
+  - `prepared`：复审基线 580b6d185 + 卫生 f70320f5c（语料尾随空白，语义零改动）；规范增量四份已在 worktree 提交。
+  - `landed`：master 未前进（仍 b260b6e65），`git merge --ff-only plan-1095-dev` 线性快进至 f70320f5c（无 merge commit）。
+  - `canonical_verified`：四份规范落主，SHA-256 前16：language-parity.md `f81641af…`、m2-facade.md `4fb6836f…`、m2-modules.md `475e7695…`、feature-organized-corpus.md `ae12efb8…`（均含 PLAN-1095 增量节，逐字读回确认）。
+  - `archived`：`docs/plans/archive/1095-av-parity-ordinary-project-composition.md`，status archived，current_step 8/8（T-01..T-08 全 done；AC 全勾选），delivered。
+  - `cleaned`：wt-guard clean 后 `git worktree remove` + `git branch -d plan-1095-dev`；`D:/autostack/plan-artifacts/plan-1095/` 整目录按 delete-at-merge 删除（证据已折入本计划 §9 各收据；构建中间产物随 worktree 删除，不回收）。登记表 `.retention/policy.json` 刷新。
+  - 批回归：`.last-batch-regression.json` last_covered_plan_id 检查（见清理后核验）。
+  - 落主后主检出仅存其它会话的 docs 簿记 WIP（未触碰）。
+- 2026-11-22 final 独立复审（同实施会话，从工件重建结论）：`stage: review | review_scope: final | plan_id: PLAN-1095 | plan_revision: r3 | reviewed_commit: 580b6d185（+ 卫生 f70320f5c：语料尾随空白修剪，语义零改动） | base_commit: b260b6e65 | worktree: D:/autostack/.wt/lang-1095/auto-lang | branch: plan-1095-dev | outcome: pass | next: merge`。复审者在实施会话内，按工件重建（不采实施摘要）：
+  | AC | 结果 | 核验 |
+  |---|---|---|
+  | AC-AV-ONLY | pass | 四个新 case 仅 av 检查真实执行；非 AV 检查在语料中不声明（既有 SKIP(IGNORE) 机制分列）；AV required 行全部有 actual。 |
+  | AC-FC | pass | 唯一活跃作者（composition/domain 各一文件，suite 单引用）；129 行迁移表 12 列格式全对、owner=PLAN-1095、原 oracle/条件/SHA16 保留；无双活作者。 |
+  | AC-01 | pass | 四正例经真实 case-runner 4/4 PASS（module-closure-generic 工程 fn 值、task 组合、CT+filter、node+main）；值 42、双流空。 |
+  | AC-02 | pass | 工程 fn 值反例（`let f = main`）`source.fn-as-value`；CT 除零坏编辑 `cte.trap/` 带源 span；错误 nodes oracle 精确红（`nodes[texts] mismatch`）。 |
+  | AC-03 | pass | PROJECT-RESTORE 真实断言（坏编辑→恢复缓存命中、值/hash 冷等值、双 store ct_execute=1/ct_hits=0 隔离）；DOMAIN-NO-DUPLICATE 由 node 观察 + 变异臂（改函数体→观察文本随之变）覆盖。 |
+  | AC-04 | pass | 129 行映射全部 owner=PLAN-1095、状态 mapped、canonical 按语言族；AV required 行均有 actual。 |
+  | AC-05 | pass | 共享前门（compile_language_source / compile_package_product_auto_prepared）＋CST 投影；node 观察复用 979 producer；无 case 名特判/第二 parser；legacy dispatch=0。 |
+  | AC-06 | pass | 固定组：ace-syntax 159、ace-semantics 295、ace-lowering 9、ace-artifacts 43、ace-m2-build 全 PASS；ace-source 977（5 条 text_record_source=1092 已登记基面红 D-1055/D-1088，清单逐字一致）；ace-av 1581（12 条与 1092 继承红清单逐字一致，非本包）；ace-host 预存编译阻塞（master 同失败）。零新增红；5 条新永久回归 ≤0.3s。`git diff --check` 干净；无新增告警/调试输出。 |
+  | AC-07 | pass | 本复审逐 AC 对源码/提交/消费者；health check 通过。 |
+  | AC-08 | — | merge 阶段（T-08）落主后核来源身份。 |
+  遗漏/延后扫描：无未批准缩减。C3 无类型闭包归一化为 typed lambda（1081/1082 面规则既有规范化，plan §6 Notes 已记录）；ace-host 编译阻塞为主检出预存（Plan 1084 Selection.target 未同步测试文件），不阻本包 AV 出口。规范增量四份（language-parity/m2-facade/m2-modules/feature-organized-corpus §PLAN-1095）在 worktree 提交内，与 supersedes_spec_components 一致；merge 落主后按来源核验。
+- 2026-11-22 work 完成收据（T-01..T-06）：`stage: work | plan_id: PLAN-1095 | plan_revision: r3 | outcome: pass | worktree: D:/autostack/.wt/lang-1095/auto-lang | branch: plan-1095-dev | base: b260b6e65 | commits: b0474f13b / 991f3769f / 580b6d185 | task_ids: T-01..T-06 complete（6/8） | next: review`。授权：用户 `完成计划1995→1095` 指令即全链授权。
+  **T-01**：指纹漂移复核（ace_entry `a5e6f2ca…`、adapter `3253da90…`、age_package `6c79e6a5…`、config_document `d3591d08…`、packages_store `0f740319…`）；129 份旧 VM 文档清单逐项核角色；canonical 定案 `language/composition/ordinary-projects.case.ad` + `language/domain/node-values.case.ad`；有界探测（探针已删，输出 `D:/autostack/plan-artifacts/plan-1095/t01-probe-faces.txt`）定位四个正例的阻塞点（C2 原样通过；C1=工程绑定 fn 值缺口；C3=无类型闭包面规则；C4=node 未入普通面）。
+  **T-02**：`packages/binding.rs` Auto-language 通道允许本地自由 fn 作值（工程/单源一致，CreateClosure 通道）；multi-file+import+fn 值+泛型+列表+索引 全链 42（`p1095_project_local_free_fn_as_value_with_import`）。C3 按 1081/1082 既有规范化把无类型闭包归一为 `(x int) =>`（面规则：无 lambda 参数推断）。
+  **T-03**：`p1095_project_restore_cold_equal_and_sessions_do_not_share`——坏编辑（CT 除零）具名 trap，恢复缓存命中且与冷编值/hash 一致；第二 store 各自冷执行（ct_execute=1、ct_hits=0），双 session 不串 state/cache。
+  **T-04**：`auto` profile 接纳 H0 node（grammar age-node-item/head/body/text-item 门控增 auto + contextual name 增 auto + age-text-item 双 pratt 臂：wide-ops vs aggregates-ops）；CST 投影在 auto 面产出 `Item::Node`（名字+span，体不重投影）；手写 parser 同步承认（平衡花括号，差分 oracle 用）；worker `step.nodes` 经 979 producer（`compile_age_h0`+共享执行链）真执行 view 文本；父侧 `nodes` oracle（author/contract/ir/judge 接线）。**故意红元控制**：错误 nodes oracle → `nodes[texts] mismatch: expected 世界 actual 你好` 精确红，恢复后绿。
+  **T-05**：canonical 两文件 + `language.suite.ad` 引用；legacy-map.tsv 增 129 行（owner=PLAN-1095，原 case/check/条件/oracle/SHA16 保留，按语言族映射 composition/domain 及既有 canonical 面）；四个正例经真实 case-runner 全 PASS（`av.parity.1095.*` 4/4），非 AV 检查 SKIP(IGNORE) 分列。
+  **T-06 固定组**（`--prepare-only --run-prepared`，共享语法/绑定/IR 改动组）：ace-syntax 159、ace-semantics 295、ace-lowering 9、ace-artifacts 43、ace-m2-build 全 PASS；ace-source 977（5 条 text_record_source 为 1092 已登记基面红 D-1055/D-1088，清单逐字一致）；ace-av 1581（12 条与 1092 继承红清单逐字一致：av_method_modes/av_method_owned/av_owned_first_case/av_owned_recipe/av_test_batch/component_event_sessions_1106/resource_915×3/av-core layout；首轮另有 kv_zip 2 条=既有墙钟归因，重放绿）；ace-host 预存编译阻塞（master 同失败：Selection.target 由 1084 引入后 native_protocol.rs 未更新，非本包）。零新增红。新永久回归 `plan1095_ordinary_composition.rs` 5 条全部 ≤0.3s（10s 门内）。grammar 身份：age-h0/age-component/age-package 因共享门控表增 auto 逐字节漂移，`plan981_grammar_scope.rs` 按 2026-11-22 具名重冻结（AgeH0 62332a74…、AgeComponent e310202b…、AgePackage 3555cdf0…），重冻结后单测绿。
+  **规范增量（worktree 内已提交）**：language-parity.md §PLAN-1095、m2-facade.md §PLAN-1095、m2-modules.md §PLAN-1095、feature-organized-corpus.md §PLAN-1095。待交接口 `IF-AV-PARITY-PROJECT` 绑定普通源/工程、node CPU 观察（979 producer）、`avworker/1.0`、`av.closures/1`、MIR lowering 9、4 条 canonical case 与逐 case 真实结果。
+- 2026-11-22 work 阶段收据（T-01）：`stage: work | plan_id: PLAN-1095 | plan_revision: r3 | outcome: in-progress | worktree: D:/autostack/.wt/lang-1095/auto-lang | branch: plan-1095-dev | base: b260b6e65 | task_ids: T-01 complete（1/8） | next: T-02`。授权：用户 `完成计划1995→1095` 指令即全链授权（work/review/merge）。依赖 1078–1094 全部 archived；`case-av-language-parity` 固定组（test-groups.toml:690）与 `ac-av/language-source-run-v1` recipe（language_source_worker.rs）均已交付。
+  **输入冻结**：§4 五指纹全部漂移复核——ace_entry.rs `a5e6f2ca145d067f`、adapter.rs `3253da907e8ad081`、age_package.rs `6c79e6a5cd2bf4f3`、config_document.rs `d3591d088b231555`、packages_store.rs `0f7403194f20f982`。129 份旧 VM 文档清单（legacy-case-map §PLAN-1095）逐项属 T-05 迁移，legacy-map.tsv 当前无 1095 行（T-05 增行）。canonical 定案：`language/composition/ordinary-projects.case.ad`（C1/C2/C3）+ `language/domain/node-values.case.ad`（C4 及领域）。
+  **可行性探测**（探针 `experimental/ace/crates/av/tests/cases/plan1095_probe_tmp.rs`，临时，T-05 前删除；输出 `D:/autostack/plan-artifacts/plan-1095/t01-probe-faces.txt`）：
+  - C2（task-language-composition）**原样 42 通过**——record 字面量 `{ label: "ready", enabled: true }` + `meta.enabled` + try/finally + task spawn/ask/await/stop 同源组合全绿。
+  - C1（module-closure-generic）：多文件工程+`use lib.id`+泛型 `id`+列表+索引均通；**唯一阻塞**＝工程(package)路径 `packages/binding.rs:3216` 拒绝本地函数作值（`source.module-symbol`: function is not a value），而单源路径 `let f = twice` 通过（1081 basic-ref 同形）——同包组合真缺口，T-02 修复（工程模式与单源一致）。
+  - C3（cte-and-ordinary-library）：`let seed = #{ scale(21) }` 与列表字面量均通（`Y-let-ct-call` 42）；**唯一阻塞**＝无类型闭包 `x =>`（该面规则：无 lambda 参数推断，1081/1082 已裁定 typed-lambda 规范化）→ C3 草案归一化 `(x int) =>`，引擎零改动（`Y-c3-typed` 42）。
+  - C4（node-ordinary-coexist）：`node` 声明不在普通 `auto` profile（grammar auto-source.at:349 仅 age-h0 门控 age-node-item）→ 普通链 parse 拒。**age-h0 面已接受 fn+node+main 同源**（`H0-C4` ok nodes=["Hello"]，compile_age_h0 全通）。T-04 实施：把 node 项纳入普通 auto 链（grammar 门控 + 投影 + checked 事实 + worker CPU 观察），复用 979/981/982 producer（age_h0 观察链），不启 renderer，不凭内容轮流试 profile。
+  - T-03 依据：970/969 会话/恢复接口已交付（m2-sessions、query_entry.rs），PROJECT-RESTORE 骑其真实机制。
 - 2026-11-19 r3：`stage: new/revision`，`outcome: pass`（仅规划静态预检），`next: work`待后续施工指令。用户明确AV-ONLY/check级#ignore；新增AC-AV-ONLY与V-AV-ONLY/V-IGNORE-LIFECYCLE，取消本系列非AV硬门，保原源码/预期/后续义务、任务/状态/进度。本轮未施工/运行/改实际用例。
 
 - 2026-11-19 r2规划修订：`stage: new/revision`，`outcome: pass`（仅合同静态预检），`next: work`待后续施工指令/所需依赖。新增FC/AC-FC/V-FC，修改原T-01..06职责、canonical位置与目标视图；原任务ID/步骤数/进度、72个代码Case的Auto源码与原预期保留，不新造后端源码。未实施/迁例/运行。
