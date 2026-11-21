@@ -105,9 +105,7 @@ ext 与自有方法同名）、`source.argument`（缺位/超元数/中段缺席
 - **D-963-C2 可变实参**：AutoLang 无用户声明位拼写，legacy 唯一 varargs 是 builtin
   `List.new(1,2,3,4,5)`（无类型参数）；ACE collections 支持矩阵为显式 `List<T>.new()` + `push`
   （962 交付）。owner：962 collections 支持矩阵裁定者。关闭：对 `List.new(a,b,c)` 形给显式裁定。
-- **D-963-C3 `#[with(T)]` 遵从注解形**：ACE 无语言属性语法（`visibility.attributes` 仍
-  `MetaSupport::SchemaOnly`，owner 为 language attribute grammar plan），963 以
-  `source.unsupported` 具名迁移拒；规范形 `fn f<T>` / `fn f<T has S>` / `type N as Spec`。
+- **D-963-C3 属性拼写**：普通 AV 支持 `#[with(T)]`、`#[with(T as Spec)]`，用既有泛型实例化与名义见证校验。963 窄面仍保原迁移拒绝。见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。
 - **D-963-C4 记录类型模块全局 `.move` 转移**：普通 Auto AV 包通过 `av.globals.take/1` 实现。`GlobalTake` 验证 mutable cell 和目标型别，成功后清空源格，重读给 `av.trap.global-moved`，整格赋值可回填。窄域与 native 的 module globals 能力仍按各自合同。具 owned 字段的记录真跨参移动及反例见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
 - **D-963-C5 默认实参求值作用域**：见上节（本文件已明写边界）。owner：963 T-08 后续。
 - **D-963-C6 ACE workspace 无 rustfmt 门禁**：master 基线已非 clean，本计划 20 个触碰文件
@@ -146,6 +144,6 @@ Auto 面 `fn(T..)R` 类型位与函数值全链打通：形参 `f fn(int)int` �
 
 普通 AV 在已绑定实参和返回上下文处求解实例，复用既有替换与具体签名，经受检 HIR、MIR 和 ABC 执行。局部 `Box<int>`、模板内 `Box<T>`、显式别名、泛型 enum 载荷、泛型方法及跨模块记录和方法实例已有公共 AV 检查。普通 AV 的未知参数化类型给 `source.undefined`，未满足声明约束给 `source.instances-bound`，类型和值实参的数量、次序和域按对应声明检查。D-963-C7 的普通 AV 局部注解路径已有具名正负控。
 
-遵从闭包将直接和继承 spec 见证送入约束判定。关联类型的绑定用于具体记录签名与默认体；普通单模块可用具备完整具体签名的 spec 分派值。动态分派沿核验后的名义 variant 和方法执行。相同替换的包实例覆盖冷编、体变更、签名变化、版本漂移及跨版本恢复拒绝。D-963-C3 的源码属性拼写由 PLAN-1092 接入现有边界。
+遵从闭包将直接和继承 spec 见证送入约束判定。关联类型的绑定用于具体记录签名与默认体；普通单模块可用具备完整具体签名的 spec 分派值。动态分派沿核验后的名义 variant 和方法执行。相同替换的包实例覆盖冷编、体变更、签名变化、版本漂移及跨版本恢复拒绝。普通 AV 的源码属性拼写由 PLAN-1092 接入上述实例化边界。
 
 验收、原旧义务与复现命令见 [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md)。

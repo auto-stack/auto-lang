@@ -120,3 +120,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 `language.suite.ad` 引用任务和异步的唯一普通 AV 作者，共 41 条 AV 检查。13 份旧 Actor 文档保持原 Case ID、源码与 stdout，另保留 3 个历史 Rust 内联源码和 1 个纯语言 Cookbook 源码。迁移表区分原 VM ignored、原 A2R 预期角色和 AV 阶段选择。非 AV 原检查保留其原始条件、预期和 owner。[任务和异步语料](../../../crates/auto-lang/test/cases/language/async/tasks-actors.case.ad)
 
 父端按目标独立判定值、双流与异常。控制覆盖改动源身份、故意改错 AV 预期、旧活作者重复、零有效 AV 与非 AV 工具隔离。冻结结果及原文件身份见 [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md)。
+
+## PLAN-1092 增量（metadata 家族）
+
+标注与字段元数据的唯一公共作者为 [attributes.case.ad](../../../crates/auto-lang/test/cases/language/metadata/attributes.case.ad)，由 `language.suite.ad` 引用。18 条普通 AV 检查独立判定值、双流和具名错误。其中一个共享 Case 持有依阶段忽略的 AC 检查。父端反控覆盖选错预期、零有效 AV、重复 Case 和源身份失效。
+
+本包主承接旧 VM 文档为零。迁移表保 963/971/555/936/967、旧 Task shim 及独立的 A2R/A2C 目标预期。原消费端及判决见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。

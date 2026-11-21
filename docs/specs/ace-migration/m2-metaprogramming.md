@@ -83,8 +83,9 @@ arch/env/ABI 的正式来源分账：978（target triple/SDK）、967（FFI/ABI�
 ## 元数据
 
 `FieldCount`/`HasField` 查询（`cte.meta.fields/v1`）由 936 交付、958 worker 前门承载；
-本前门通过 worker 前门消费同一合同（V-02 复用证据）。`#[attr]` 路由不属本面：
-`#[test]`→971、`#[api]`→980/982、`#[c]`/`#[vm]`→967。
+本前门通过 worker 消费同一合同（V-02 复用证据）。普通 AV 接受 `ct_field_count(Type)`、`ct_has_field(Type, field)`，使用对应记录在本次绑定中的字段事实。泛型参数作选择子时，先使用各个实例的具体记录，替换结果以函数实例和原源跨度定位。跨模块字段增加、改名或恢复会更新依赖查询。已证明只读取入参和字面量的独立闭合标量调用可维持自己的冻结槽。涉及外部声明的调用保完整源闭包身份。
+
+普通 AV 属性按消费端路由，`#[test]` 进入 971，`#[api]` 进入实际 AV Web 服务，外库继续由 ABI provider 授权。详见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。任意运行期反射、字段遍历和自动 serde 仍是各自的后继能力。
 
 ## 阶段分账
 

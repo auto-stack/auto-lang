@@ -336,3 +336,13 @@ after`（d01 静默失效债闭） | PASS |
 Actor 支持 typed、变体、字符串、guard 和 else handler，以及状态初始化、start、stop、FIFO 与有界背压。L-29 由延迟体、值传播与捕获隔离覆盖，L-31 由 ask/reply、消费、未回复与迟到回包覆盖，L-43 由 handler、生命周期、跨函数与存储覆盖。同一普通源码经共享 CST、Checked HIR、MIR、固定 ABC 与 AV 调度器执行。
 
 `IF-AV-PARITY-SCHEDULER` 绑定 `av.closures/1`、`avworker/1`、MIR lowering 8、当前 host/provider 授权和逐检查结果。41 条普通 AV 源码检查与旧义务身份见 [任务和异步语料](../../../crates/auto-lang/test/cases/language/async/tasks-actors.case.ad) 和 [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md)。
+
+## PLAN-1092 增量（AVP-14，标注与元数据）
+
+普通 AV 的共享 CST 接受 `#[with(T)]` 和 `#[with(T as Spec)]`。绑定和实例化沿用显式泛型和名义 spec 见证。重复参数、重复属性、未知属性和错误位置有具名绑定诊断。普通 AV 选择 `#[vm]` 的实现，排除仅写 `#[c]` 或 `#[rs]` 的声明。包 `pub` 可见性由现有模块绑定器判定。
+
+`#[test]` 进入 971 的声明发现。显式普通 AV 项目发现零参、无类型参数、返回 unit 或 int 的标记函数，执行结果按原测试报告判定。文件级 `#[rust]` 优先于 `#[script]`，无显式 pragma 时 `.as` 选择脚本模式。文件模式与运行能力由各自前门接入，Python 动态脚本由 PLAN-1094 承接。
+
+`#[single]` 任务在一次运行中按任务类型复用一个懒建的 64 槽邮箱。静态 ask/send/stop 进入现有 AV 调度器。`#[async]` 标记的实际效果由已有 `~T` 返回面确定。普通语言 worker 继续使用 `avworker/1`、`av.closures/1`，普通 MIR lowering 缓存身份为 9。
+
+`#[api]` 的 method/path 与目标可见性经共享 CST 交给 auto-web 的 AV 服务。服务按受检 HIR 区分借用 `str` 和文件通道，并在驻留 AV 程序上执行。接口 `IF-AV-PARITY-METADATA` 由 `compile_language_source_with_metadata` 提供受检模块及同一源单元的 `SourceMetadata`。CST 也提供 `#[export]` 的归一 ABI 名和 Rust 透传属性的原参数跨度。已有外库链接与授权归 967 和其后继，Rust 属性交对应发射器。AV 阶段验收以及唯一公共作者见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。

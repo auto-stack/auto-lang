@@ -29,7 +29,7 @@
 |---|---|---|
 | 编译期项目检查面 | `auto_lang_core::ace_entry`：`AceCheckRequest{modules,entry_module,capabilities,cancel}` → `AceCheckReport{engine,outcome,declarations,tests,wall_ms}`；`AceCheckOutcome::{Clean,Diagnostics(Vec<AceDiagnostic>),Cancelled,ResourceDenied,Denied,HostFailure}`；`AceDiagnostic{module=原文件`pkg::mod`,stage,code,message,span=模块内原span}` 保留**每个**诊断；`AceDeclaration{name,module,symbol,params,ret,span}` 为 producer 声明表。`check_ace_project(_named)`；执行器 `check_project` 默认具名 `ace.host/check-unsupported`，未注册=`ace.host/project-executor-unregistered`，旧引擎=`ace.engine/unknown` 零 dispatch。**只编译不执行**（trap 入口仍 Clean 已验） | `crates/auto-lang-core/src/ace_entry.rs`；`crates/auto-lang-ace-host/tests/p971_tool_face.rs` |
 | 发现闸门 | `run_ace_project_tests(_named)`：先检查→发现→按发现名在项目道执行；`AceTestRunOutcome::{Passed,Failed{message},NoTestsDiscovered{message},Diagnostic,Denied,ResourceDenied,Cancelled,HostFailure}`；**零发现=具名 NoTestsDiscovered 且 exit 1**；执行结果必须恰好覆盖每个发现名（缺/改名=`ace.test/results-mismatch`，exit 1，绝无真空 PASS）；测试失败/超时（墙）/编译拒绝分别是具名终态 | 同上 |
-| 发现契约（冻结） | 零参数且声明返回 `int` 的声明；排除入口 `main`；合成 `__init` 跳过。ACE 源面**无 `#[test]` 注解**，发现基于 producer 声明事实（非旧 AST walk）。**已验后果**：库模块里合法的零参 `int` helper 也会被发现并执行（非零返回即整轮失败）——契约边界的测例在 `p971_tool_face.rs`，语言侧收窄/属性面归 D-971-B-01 | 同上 |
+| 发现契约（冻结） | 零参数且声明返回 `int` 的声明；排除入口 `main`；合成 `__init` 跳过。冻结 960 窄面的发现基于 producer 声明事实。**已验后果**：库模块里合法的零参 `int` helper 也会被发现并执行（非零返回即整轮失败）——契约边界的测例在 `p971_tool_face.rs`，普通 AV 项目的标记发现见下文 | 同上 |
 | 源码级调试面 | `AceBreakpoint{module,symbol,span:Option<AceSpan>}`（`span=None`=函数首指令；`Some`=与该指令原源 span 相交）、`AceDebugCommand::{Continue,Step,StepOver,StepOut}`、`AceDebugStop::{Entry,Breakpoint{index},Step,StepOver,StepOut,Finished}`、`AceDebugSnapshot{stop,frames(外层→内层, module/function/span/locals),steps,outcome,message}`、`AceDebugSession{snapshot,resume,set_breakpoints,cancel,close}`、`start_ace_debug(_named)`；宿主 `start_debug` 默认具名 `ace.debug/unsupported`。停点/栈/locals 来自**真实 AV 暂停链**：`PausedRun::debug_position/debug_snapshot/frame_depth` + `execute_program_steps_after_init`（模块初始化先跑一次后停在入口首指令）。局部名取自同一 lowering 世代的 `PackageAvTarget::slot_names`（ABC 线不序列化槽名）；平面 MIR span 按模块段起点回映为模块内原 span。`cancel` 是**会话存活期**的停止句柄（start 请求的旗标只是初始状态）；`close` 回收 scratch（无 `ace-p971-project-*` 残留） | `crates/auto-lang-ace-host/src/debug.rs`；`tests/p971_debug_face.rs` |
 | LSP 诊断接管 | `auto-lsp` 诊断后端＝`check_ace_project`（编译期、多文档），legacy `Parser` 通道**整体删除**（无回退）；单合成包名取工作区根目录名，模块 id=相对路径去扩展名、分隔符压平为 `_`（嵌套 `lib/util.at`→`lib_util`）；诊断按 `module` 落到所属文档并用该文档自身文本把模块内字节 span 换为 UTF-16 范围（钳制）；**V-08**：内容世代快照丢弃过期结果、发布携带被检内容版本、乱序 didChange 丢弃、~150ms debounce；模块集=**已打开文档**（didClose 导入件后 importer 下次检查报未解析导入，已验）；诊断仅 ERROR（旧 warning 无 ACE 等价面）；非 Windows 发具名 `ace.host/unavailable` | `auto-ui/crates/auto-lsp/src/{diagnostics,backend}.rs`；`tests/lsp_ace_diagnostics_971.rs` |
 | 既存 LSP 能力核验（未重写分析器） | 真 bin 用例核验：跨**包路径** goto（`use pac.lib.util` + `lib/util.at`）落原模块原声明位置（line0/char3）、hover 有符号信息、`workspace/symbol` 列出、`semanticTokens/full` 非空、completion 有响应、signatureHelp 有内容；inlay 仅“请求被接受”（缺口 D-971-B-05）。修复 **F-971-B-01**：Windows 下跨文件 goto 目标 URI/文档路径改为平台正确 URL 转换，定义位置由目标源文按 `fn/type/enum/const/spec <name>` 推导（原实现 goto 恒 null、位置取不可用 fragment span） | 同上＋`tests/lsp_protocol_test.rs` |
@@ -40,7 +40,7 @@
 
 - **Playground 脚本式 run/debug 前门**（`code_runner`/`vm_runner`/`agent_debug`/`debugger`）未迁：包/项目道拒绝表达式语句（`source.unsupported`）、console 仅独立单模块 `host-console` profile，而现有 demo 是脚本式源；需语言面扩展（D-971-B-03）。
 - **debug/test 工具面的生产 UI 消费者**：`start_ace_debug`/`run_ace_project_tests` 目前只有参考宿主+永久 fixture 消费者（D-971-B-04，随 r8 收窄迁后继）。
-- 发现契约的 helper 假阳性（D-971-B-01）、notebook 无 console（D-971-B-02）、LSP inlay 内容未断言（D-971-B-05）、编辑器宿主 E2E 未跑（D-971-B-06）均见 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
+- 冻结窄面的发现合同（D-971-B-01）、notebook 无 console（D-971-B-02）、LSP inlay 内容未断言（D-971-B-05）、编辑器宿主 E2E 未跑（D-971-B-06）均见 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
 - acworker/1 线按冻结**不扩展**（一致性 adapter 非产品入口；多文件产品入口=项目面）。
 - 平台：ACE host 仅 Windows x64（其他平台具名失败）；UI 同。
 
@@ -52,3 +52,7 @@
 - 端到端墙判别受冻结步预算（1M instr）与编译时长限制：世代内墙**接线**由单测判别；端到端负控（1ms墙spin）证明拒绝不挂起，不为修复提供独立判别（如实记录）。
 - `ac_protocol.rs`（acworker/1 镜像）无漂移不改；项目面不经 case-worker 进程（一致性adapter面非产品入口）。
 - 平台：Windows x64（桥 crate Windows-only）；UI 同。
+
+## 普通 AV 项目的测试发现（PLAN-1092）
+
+显式携带 `ac.source.language.av/v1` 的项目用同一个 971 测试入口。共享 CST 在标记声明上提供 `#[test]` 的原源跨度，项目检查用此事实发现零参、无类型参数、返回 unit 或 int 的普通函数。未标记的 helper 不参与该发现。测试执行维持独立世代、原结果覆盖校验及具名失败，unit 完成与 int 返回 0 均通过。原 960 包面保冻结的零参 int 规则。见 [PLAN-1092](../../plans/archive/1092-av-parity-attributes-and-metadata.md)。

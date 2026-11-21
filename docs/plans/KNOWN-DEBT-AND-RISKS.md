@@ -4,6 +4,8 @@
 
 共有失败由 PLAN-105 的共享前端与 ACE AV、native 各测试 owner 对照基面归因，关闭条件是在 Windows 固定组复跑原样、独立 oracle、失败和合法近邻。具体范围、实际子进程结果和比较 hash 见 [PLAN-1055 §9](archive/1055-aac-early-typed-mir-and-ct-bootstrap.md#9-复审记录)。
 
+PLAN-1092 复核原 AV 公共语料并恢复动态对象解码、具名 actor 消息绑定和字符串池燃料边界。该次固定组中仍有 18 个 D-1055-BASE-01 原失败，另记空记录测试与旧控制台各一项。现存失败和原 owner 见 [PLAN-1092](archive/1092-av-parity-attributes-and-metadata.md)。
+
 ## D-1088-LAYOUT-01 — AV 空记录布局的旧断言与当前语义不一致（OPEN，2026-11-21）
 
 PLAN-1088 的 `6f26279ab` 允许空记录布局。原测试 `layout::tests::layout_rejects_non_record_and_empty` 仍要求拒绝，PLAN-1091 冻结组和隔离重放均在 `LayoutDesc { size: 0, align: 1, fields: [], is_copy: true }` 上失败。基面与候选的布局源和测试为同一 Git blob。AV layout owner 需按确认的空记录合同拆分该测试，保留非 record 的拒绝，同时为合法空记录的零尺寸、对齐和 Copy 性建立精确断言。关闭条件为两种控制在固定 AV 组通过。复现见 [PLAN-1091 §9](archive/1091-av-parity-comptime-and-macros.md#9-复审记录)。
@@ -4531,7 +4533,7 @@ owner=PLAN-917 域（a2r_std 发射条件变化 vs 917 T-05 冻结金样）。�
 
 - **D-963-C1 — 管道算子 `|>` 未实现（L-47「调用语义」含此形态）**：legacy 在 parser 期脱糖（`crates/auto-lang-core/src/parser/expressions.rs:562-590`：`expr |> .m(args)` → `expr.m(args)`、`expr |> .f` → `expr.f`，左结合，优先级在赋值之上比较之下，行首形态为显式续行，语义裁见 `docs/design/pipe-operator.md`）；ACE `grammars/auto-source.at` 与全部 crate 无 `PipeGt`/pipe（全库 grep 零命中）。owner：PLAN-963 T-08 后续（或 965 运算符面接管）。关闭：`x |> .m(y)` 与 `x |> .f` 两形态经四端真实运行各 1 正例 + 1 负控（`|>` 后非 `.` 具名拒）。
 - **D-963-C2 — 「可变实参」在 AutoLang 无用户声明位拼写**：L-24 后继列写「默认/命名/可变实参」，但分母无对应行、legacy AST/parser 无 rest/variadic 参数，legacy 唯一「varargs」用例是 builtin `List.new(1,2,3,4,5)`（`crates/auto-lang/test/vm/13_collections/032_list_varargs`、`033_list_varargs_empty`，无类型参数）。ACE collections 的支持矩阵是显式 `List<T>.new()` + `push`（962 交付），故 963 侧无可实现面；963 只交付默认实参 + 命名实参（有真实四端证据）。owner：PLAN-962 collections 支持矩阵裁定者。关闭：962 owner 对 `List.new(a,b,c)` 形给出「支持」或「具名拒」的显式裁定并落控制。
-- **D-963-C3 — `#[with(T)]` / `#[with(T as Clone)]` 遵从注解形**：Plan 061 旧拼写；ACE 无语言属性语法（`semantics-contract/src/metadata.rs` 的 `visibility.attributes` 仍 `MetaSupport::SchemaOnly`、`future_owner: "language attribute grammar plan"`），故 963 以 `source.unsupported` **具名迁移拒**落地负控，规范形为 `fn f<T>` / `fn f<T has S>` / `type N as Spec`。owner：language attribute grammar plan。关闭：属性语法落地后把迁移拒改为支持或维持具名拒并同步 docs/specs。
+- **D-963-C3 — 泛型约束属性拼写**：PLAN-1092 已关闭普通 AV 的 `#[with(T)]` 和 `#[with(T as Spec)]` 接面，实例化继续校验名义见证。963 窄面保原迁移拒绝。Rust trait 等独立发射合同由各目标 owner 接续。
 - **D-963-C4 — 记录类型模块全局的 `.move` 转移**：`pub const ORIGIN Point<int> = Point { x: 40 }` 在 verify 被 `record param 0 requires a borrow argument` 拒——`module.global.set:<sym>` 伪签名只有借用形，owned 跨参转移（`.move` 实参与 MoveOwn 形参）未实现；native mn 亦不支持 module globals。owner：PLAN-960 模块面 follow-up。关闭：owned 记录常量声明与跨模块读取经 AV/mn 各 1 真实运行。
 - **D-963-C5 — 默认实参的求值作用域边界（963 自定，legacy 无义务）**：默认值在**空局部作用域**解析（fail-closed 成 `source.undefined`），因此 `fn f(a int, b int = a)` 与引用模块全局的默认值不被接受；补位实参恒 `moved: false`，故 `move` 形参不能靠默认值满足（`parameter N of ... declares move but the argument is not marked .move`，`text_resources.rs:1434`）。legacy 的默认参数是 parser-only（VM 按全元数调用、从不填充），无行为 oracle 可继承。owner：963 T-08 后续（如语言需要前向可见参数默认值，须先定求值序规范）。关闭：规范给出默认值可见集（仅字面量/常量/全局）并补正反例；维持现状则需在 docs/specs 明写该边界。
 - **D-963-C6 — ACE workspace 无 rustfmt 门禁，本计划 20 个触碰文件非 fmt-clean**：`cargo fmt --all --check`（`experimental/ace`）在 master 基线上已对 6 个未触碰文件报差异（如 `crates/a2r-actor-tests/tests/actor_parity.rs`、`a2r-std/src/sse.rs`），本计划新增/修改的 20 个文件（含 5 个新增测试文件）同样非 clean；本轮未统一格式化（格式改动会触发四组重跑且 ACE 无 fmt 门禁）。owner：ACE workspace 治理。关闭：`cargo fmt --all --check` 在 `experimental/ace` 全绿并加入组门禁。
@@ -4820,7 +4822,7 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 - 现象：B 期冻结的发现契约=零参 `int` 声明（排除入口 `main`、跳过 `__init`），ACE 源面无 `#[test]` 注解。库模块里合法的零参 `int` helper（如 `fn version() int { return 3 }`）会被当作测试执行，返回非零即整轮失败；已有永久用例 `p971_tool_face.rs` §7 记录该行为，不是静默缺陷。
 - owner：语言侧发现面（ACE `#[test]` 属性面或发现收窄）；本工具包只按冻结契约消费。
 - 关闭条件：语言侧提供属性面或收窄契约并补正反控（helper 不被执行、真测试仍被发现），本包同步更新 §5 冻结记录与用例。
-- 状态：open（不阻塞 PLAN-971 当前切片；merge 与批量回归继续具名记录）。
+- 状态：PLAN-1092 关闭显式普通 AV 项目的误发现。971 同一入口读取共享 `#[test]`，只执行标记声明，helper 未执行。冻结 960 窄面的原发现规则及其见证继续有效。
 
 ## D-971-B-02 — Notebook 无 console 通道（print 单元格具名拒绝）（2026-11-17 PLAN-971 B 复审 F-3 登记）
 
