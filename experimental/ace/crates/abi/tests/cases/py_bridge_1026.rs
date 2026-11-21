@@ -251,14 +251,16 @@ fn p1026_py_bridge_math_slice() {
     );
     let len = expect_i32(
         call_op(t, env, "py_stage_str", &frame(&format!("o:{pi}"), &[], &[])),
-        "3.141592653589793".len() as i32,
+        "3.141592653589793".chars().count() as i32,
         "str(math.pi) staged length",
     );
     assert_eq!(len, 17);
+    // PLAN-1094: the staged lane is codepoint-wise (UTF-32-LE words), so
+    // word 0 is the first Unicode scalar ('3'), not a 4-byte ASCII pack.
     let word0 = expect_i32(
         call_op(t, env, "py_str_word", &frame("n", &[("i", "0")], &[])),
-        i32::from_le_bytes(*b"3.14"),
-        "str word 0 = '3.14' (LE)",
+        u32::from('3') as i32,
+        "str word 0 = '3' (UTF-32-LE)",
     );
     let _ = word0;
 
@@ -284,17 +286,20 @@ fn p1026_py_bridge_math_slice() {
         2,
         "AttributeError class code",
     );
+    // PLAN-1094: py_error_stage returns the codepoint count of the staged
+    // text (each codepoint is one UTF-32-LE word); "[2] AttributeError:
+    // module 'math' has no attribute 'nope_missing'" is 65 codepoints.
     let elen = expect_i32(
         call_op(t, env, "py_error_stage", &frame("n", &[], &[])),
         65,
-        "staged error text length ('[2] AttributeError: module … nope_missing')",
+        "staged error text codepoint count ('[2] AttributeError: module … nope_missing')",
     );
     assert!(elen > 0, "staged error text non-empty: {elen}");
-    // word 0 of "[2] AttributeError..." — first four bytes "[2] "
+    // word 0 of "[2] AttributeError..." — the first codepoint is '['
     expect_i32(
         call_op(t, env, "py_str_word", &frame("n", &[("i", "0")], &[])),
-        i32::from_le_bytes(*b"[2] "),
-        "error text word 0",
+        u32::from('[') as i32,
+        "error text word 0 = '[' (UTF-32-LE)",
     );
 
     // lifecycle: release the sqrt token; alive count drops; a dead
@@ -424,10 +429,12 @@ fn p1026_py_bridge_torch_slice() {
         "str(arange(8)) staged length",
     );
     assert!(slen > 20, "staged tensor str non-trivial: {slen}");
+    // PLAN-1094: word 0 is the first UTF-32-LE scalar ('t'), not a
+    // 4-byte ASCII pack.
     expect_i32(
         call_op(t, env, "py_str_word", &frame("n", &[("i", "0")], &[])),
-        i32::from_le_bytes(*b"tens"),
-        "str(tensor) word 0 = 'tens'",
+        u32::from('t') as i32,
+        "str(tensor) word 0 = 't' (UTF-32-LE)",
     );
     // cleanup
     expect_i32(

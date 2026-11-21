@@ -93,7 +93,13 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             //     aggregates 面（py 通道的 ABI 对齐拼写）；
             //   - 所以只有 aggregates profile 的 grammar id 必须移动；其余
             //     邻居行的字节未变（本表逐行冻结，任何邻居漂移都会红）。
-            "ea0f50bc87b0788bc7c16b8b35de6a85054b6e0c8fda3841ba6484b8dbb51a5f",
+            // PLAN-1094（2026-11-21）：普通 AV py lane 语法扩再次移动该面——
+            //   - `use-py-item` 放宽为多成员（`int, str` 按源序形）普通面准入；
+            //   - 新增 `with-stmt`/`with-resource`/`with-tail` 语句面
+            //     （`with expr as name { … }`，Python 上下文管理器）；
+            //   - 只有 aggregates 移动（前值 ea0f50bc…→96383c1a…），其余
+            //     13 面逐字节不变（本表逐行冻结，任何邻居漂移都会红）。
+            "96383c1afbde1f7d52cc21494d6843c5c2971b18b17d5744e7e34f869aabcf05",
         ),
         (
             SourceProfile::Scheduler,
