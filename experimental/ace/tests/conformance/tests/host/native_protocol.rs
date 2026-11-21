@@ -502,6 +502,7 @@ fn r1_consumer_invalid_exe_is_error_not_pass() {
             av_channel: None,
             typed: None,
             trace: None,
+            nodes: None,
         },
         product_from: Some("upstream".into()),
         skip: None,

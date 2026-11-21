@@ -412,3 +412,38 @@ provider py）、`avworker/1.0`、`av.closures/1`、MIR lowering 9 与 12 条 ca
 case（ID 族 `av.parity.1094.*`）的真实逐 case 结果。canonical 语料与迁移行见
 [脚本/Python 作者文件](../../../crates/auto-lang/test/cases/language/script/python-context.case.ad)、
 [PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。
+
+
+## PLAN-1095 增量（AVP-17，普通工程/会话组合与 AGE node CPU 面）
+
+普通 `ac-av/language-source-run-v1` 现在把**同包、同 session 的普通语言组合**作为
+一条生产路径：多文件工程 + `use` 导入 + 本地自由 fn 作值（工程/packages 绑定路径
+与单源一致——`packages/binding.rs` Auto-language 通道，PLAN-1081 T-02 的
+zero-capture CreateClosure 通道）、匿名 record 字面量与字段投影、try/finally、
+task spawn/ask/await/stop、CT 表达式与运行时列表/filter 在同源共存。非 AV 检查
+（AC/A2R/legacy）仍按 AV-ONLY 阶段策略 `#ignore`/未选，不 prepare、不 dispatch、
+不计 PASS。
+
+- **AGE node 声明进入普通 Auto 面（CPU-only）**：`auto` profile（grammar
+  `age-node-item` 及其 head/body/text 子规则与四个 contextual name）接纳 H0
+  node 形状 `node <Name> { view { text <expr> {} } }`；文本表达式在 auto 面用
+  其自有 aggregates-ops 表（age 面仍 wide-ops）。CST 投影在 auto 面产出
+  `Item::Node`（名字 + span，体不重投影）。共享语法身份：age-h0 /
+  age-component / age-package 因共享门控表增 auto 而逐字节漂移，2026-11-22
+  按 PLAN-1095 具名重冻结。
+- **worker node 观察**：同一源经 979 producer（`compile_age_h0` +
+  `observe_age_h0` 的共享执行链）产出 node 的 view 文本真实值，写入响应
+  `step.nodes`（name / head_role / view.role / texts[].value）；无 node 声明时
+  字段缺席。父侧 `nodes` oracle（`nodes: { Name: [texts] }`）逐名/逐文本断言，
+  变异必红。不启动 renderer；OnEvents/Scene/NavCall 旧 parser-only 通道按 L
+  表分账，不属本批。
+- **PROJECT-RESTORE**：同一 store/session 内坏编辑（CT trap）具名失败后，
+  恢复函数体走缓存命中且与冷编值/hash 一致；第二 store 各自冷执行（
+  ct_execute=1、ct_hits=0），跨 session 不串 state/cache。
+
+canonical 语料：`language/composition/ordinary-projects.case.ad`（module-closure-
+generic / task-language-composition / cte-and-ordinary-library）、
+`language/domain/node-values.case.ad`（node-ordinary-coexist）。`IF-AV-PARITY-PROJECT`
+绑定普通源/工程、node CPU 观察（979 producer）、`avworker/1.0`、`av.closures/1`、
+MIR lowering 9 与逐 case 真实结果；129 份旧 VM 文档义务行（legacy-map.tsv
+owner=PLAN-1095）映射到对应 canonical 面，原 oracle/条件/SHA16 保留。

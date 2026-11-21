@@ -153,3 +153,17 @@ pending 交原 owner）；旧 obj_call 对 Auto 值的假阳性不复制。父�
 （必红）、重复 Case ID（必红）与源身份失效。
 
 来源 [PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。
+
+
+## PLAN-1095 增量（composition/domain 家族）
+
+新增 canonical 作者 `language/composition/ordinary-projects.case.ad`（
+module-closure-generic / task-language-composition / cte-and-ordinary-library）
+与 `language/domain/node-values.case.ad`（node-ordinary-coexist），均加入
+`language.suite.ad`。AV 检查真实执行；`node-ordinary-coexist` 使用新增
+`nodes` oracle（`nodes: { Name: [texts] }`，仅普通 language-source 成功完成
+允许）断言 979 producer 对同一源的真实 view 文本——变异必红（2026-11-22 故意红
+实测）。129 份旧 VM 文档义务行追加至 `language/migration/legacy-map.tsv`
+（owner=PLAN-1095，原 case/check/条件/oracle/SHA16 保留，canonical 按语言族
+映射）。非 AV 检查在本包保持 AV-ONLY `#ignore`/未选，不 prepare、不 dispatch、
+不计 PASS；后端任务逐 check 打开后按同一源真实运行。

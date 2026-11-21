@@ -83,3 +83,15 @@ const/store 的初始化值在运行期求值：绑定器把读写改写为 `mod
 ## 普通 Auto AV 工程（PLAN-1085）
 
 `compile_package_product_auto` 使用公共 CST、包图绑定与普通 Auto 类型检查进入 `av.closures/1`。项目文件集按原虚拟路径和内容校验。初始化合成到包图并全链重新准入每个 ABC 单元。链接时，单元中的全局读、写、取出按 ordinal 与 producer 类型表重新匹配。`av.globals.take/1` 标记可移动 cell 的新指令准入。每代全局状态在内存持有，包根包含源身份和编译 profile，冷恢复沿同一前门而得到新代。初始化失败释放已取得的 owned 值，同代重试重新执行初始化。公开 ABI、类型/环境表和平台/host 权限沿共享契约。原词法/包规则和其它 target 范围见上文，普通工程实测与来源见 [PLAN-1085](../../plans/archive/1085-av-parity-modules-and-global-state.md)。
+
+
+## PLAN-1095 增量（普通工程组合收口）
+
+普通 Auto 包/工程面（PLAN-1085 之上）新增：本地自由 fn 作值（工程绑定通道与
+单源一致）；匿名 record 字面量/字段投影、try/finally、task 组合在同源共存；
+CT 表达式与运行时列表/filter 同 session 组合。AGE node 声明在普通 Auto 面由
+CST 投影为 `Item::Node`（名字+span，体不重投影），node view 文本经 979 producer
+真实执行观察。工程恢复语义：坏编辑具名失败、恢复缓存命中且与冷编一致、双
+session 不串 state/cache。共享语法/绑定/IR 改动仅按 AV 及共同正确性验证；非 AV
+目标检查保 `#ignore` 与后续 owner。来源与逐 case 结果见
+[PLAN-1095](../../plans/1095-av-parity-ordinary-project-composition.md)。

@@ -49,3 +49,15 @@ daily 组不构建 ACE）。
   句柄不穿透中立合同（后续任务扩展）。
 - 消费方接线：978/B0 与 980/HELLO 经 `auto_lang_core::run_ace`＋
   `auto_lang_ace_host::install()`；UI 不自建第二解释器/私有 FFI runtime。
+
+
+## PLAN-1095 增量（普通工程/会话组合与 AGE node CPU 面）
+
+本包在已交 M2 基线上新增：①工程绑定路径的本地自由 fn 值（`packages/binding.rs`
+Auto-language 通道，与单源 CreateClosure 通道一致）；②`auto` profile 接纳 H0
+AGE node 声明（共享语法门控增 auto；age-h0/age-component/age-package 身份按
+2026-11-22 具名重冻结）；③language-source worker 对同一源复用 979 producer 产出
+node view 文本 CPU 观察（`step.nodes`），父侧 `nodes` oracle 逐名/逐文本断言；
+④PROJECT-RESTORE 的坏编辑→恢复冷等值与双 session 隔离。仅 AV 及其共享正确性
+参与本包门；非 AV 检查保 `#ignore`/未选与后续 owner，原历史收据不改。真实入口、
+逐 case 结果与来源见 [PLAN-1095](../../plans/1095-av-parity-ordinary-project-composition.md)。
