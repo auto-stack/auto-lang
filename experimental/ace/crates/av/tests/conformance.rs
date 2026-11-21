@@ -326,3 +326,6 @@ mod plan982_c_multi;
 
 #[path = "cases/plan1087_errors.rs"]
 mod plan1087_errors;
+
+#[path = "cases/plan1090_tasks_actors.rs"]
+mod plan1090_tasks_actors;

@@ -1966,7 +1966,7 @@ fn ty_name_t(
         VT::Dyn => "t_dyn".to_string(),
         VT::Variant(i) => variant_atom_id(i, variants),
         // PLAN-968: task handles / ask futures are opaque i32 ids.
-        VT::Task(_) | VT::Future(_) => "t_i32".to_string(),
+        VT::Task(_) | VT::TaskRef(_) | VT::Future(_) | VT::Deferred(_) => "t_i32".to_string(),
         VT::Function(i) => format!("t_closure_sig_{}", i),
         // not reachable through a compiling entry-unit program (Unit is a
         // result type); the Atom id keeps the name meaningful for any
@@ -6220,6 +6220,21 @@ pub(crate) fn sched_intrinsic_signature(
 ) -> Option<(Vec<VT>, Option<VT>)> {
     let rest = sym.strip_prefix("__sched_")?;
     let tasks = &program.sched_tasks;
+    if let Some(index) = rest
+        .strip_prefix("future_")
+        .and_then(|i| i.parse::<usize>().ok())
+    {
+        return Some((vec![VT::Function(index)], Some(VT::I32)));
+    }
+    if let Some(index) = rest
+        .strip_prefix("await_deferred_")
+        .and_then(|i| i.parse::<usize>().ok())
+    {
+        return Some((
+            vec![VT::I32],
+            Some(program.function_types.get(index)?.result),
+        ));
+    }
     if let Some(t) = rest.strip_prefix("spawn_") {
         let t = tasks.iter().find(|x| x.name == t)?;
         let mut params = vec![VT::Str, VT::I32];
@@ -6233,11 +6248,21 @@ pub(crate) fn sched_intrinsic_signature(
     }
     if let Some(t) = rest.strip_prefix("send_") {
         let t = tasks.iter().find(|x| x.name == t)?;
-        return Some((vec![VT::I32, t.msg], Some(VT::I32)));
+        let message = if t.msg == VT::StrOwned {
+            VT::Str
+        } else {
+            t.msg
+        };
+        return Some((vec![VT::I32, message], Some(VT::I32)));
     }
     if let Some(t) = rest.strip_prefix("ask_") {
         let t = tasks.iter().find(|x| x.name == t)?;
-        return Some((vec![VT::I32, t.msg], Some(VT::I32)));
+        let message = if t.msg == VT::StrOwned {
+            VT::Str
+        } else {
+            t.msg
+        };
+        return Some((vec![VT::I32, message], Some(VT::I32)));
     }
     if let Some(t) = rest.strip_prefix("await_") {
         let t = tasks.iter().find(|x| x.name == t)?;
@@ -6245,7 +6270,12 @@ pub(crate) fn sched_intrinsic_signature(
     }
     if let Some(t) = rest.strip_prefix("reply_") {
         let t = tasks.iter().find(|x| x.name == t)?;
-        return Some((vec![t.reply], Some(VT::I32)));
+        let reply = if t.reply == VT::StrOwned {
+            VT::Str
+        } else {
+            t.reply
+        };
+        return Some((vec![reply], Some(VT::I32)));
     }
     if let Some(t) = rest.strip_prefix("recv_") {
         let t = tasks.iter().find(|x| x.name == t)?;
@@ -6270,7 +6300,7 @@ pub(crate) fn sched_intrinsic_signature(
         return Some((params, Some(VT::I32)));
     }
     match rest {
-        "stop" | "sleep" => Some((vec![VT::I32], Some(VT::I32))),
+        "stop" | "sleep" | "detach" => Some((vec![VT::I32], Some(VT::I32))),
         _ => None,
     }
 }

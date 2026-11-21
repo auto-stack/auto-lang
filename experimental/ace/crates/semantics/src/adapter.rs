@@ -121,7 +121,7 @@ fn vt_name(v: &ace_core::source::resolve::VT) -> &'static str {
         VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::F32 | VT::F64 => "numeric",
         // PLAN-968: scheduler handles/futures are outside this inference
         // profile (distinct label, never a silent i32).
-        VT::Task(_) | VT::Future(_) => "scheduler",
+        VT::Task(_) | VT::TaskRef(_) | VT::Future(_) | VT::Deferred(_) => "scheduler",
         VT::Bool => "bool",
         VT::Str | VT::StrOwned | VT::Char => "text",
         VT::Rec(_) => "record",

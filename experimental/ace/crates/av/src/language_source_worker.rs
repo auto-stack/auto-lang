@@ -5,6 +5,7 @@
 use ace_av_core::abc::encode_abc;
 use ace_av_core::av::{execute_sched, CancelFlag, ExecLimits, ExecTrace};
 use ace_av_core::contract::{fnv1a64, ExecOutcome, LanguageErrorKind, ObjectKey, SpanInfo, Value};
+use ace_av_core::mir::{MirInstr, MirModule};
 use ace_av_core::mir_verify::MirVerifyError;
 use ace_av_core::verify_mir;
 use ace_core::atom_text::Diagnostic;
@@ -677,6 +678,7 @@ fn run_chain(
             }
             diagnostic
         })?;
+        authorize_console_calls(&mir, caps, path)?;
         let abc = encode_abc(&mir)
             .map_err(|e| json!({"stage":"encode","code":"abc","message":format!("{e:?}")}))?;
         let flat = abc.to_flat();
@@ -875,4 +877,34 @@ fn main() int { return #{ f(40) } }";
         assert_eq!(revoked["counters"]["ct_hits"], 0, "{revoked}");
         assert_eq!(revoked["counters"]["ct_execute"], 0, "{revoked}");
     }
+}
+
+fn authorize_console_calls(mir: &MirModule, grants: &[String], path: &str) -> Result<(), Json> {
+    for function in &mir.funcs {
+        let instructions = function.blocks.iter().flat_map(|block| &block.instrs);
+        for (index, instruction) in instructions.enumerate() {
+            let MirInstr::HostCall { host, .. } = instruction else {
+                continue;
+            };
+            let import = &mir.host_imports[*host as usize];
+            if matches!(
+                import.capability.as_str(),
+                ace_av_core::host::STDOUT | ace_av_core::host::STDERR
+            ) && grants.contains(&import.capability)
+            {
+                continue;
+            }
+            let message = format!("console capability `{}` is not granted", import.capability);
+            let mut diagnostic =
+                json!({"stage":"verify", "code":"host.unauthorized", "message":message});
+            if let Ok(entry) = function.spans.binary_search_by_key(&(index as u32), |(instr, _)| *instr)
+            {
+                let (_, span) = function.spans[entry];
+                diagnostic["path"] = json!(path);
+                diagnostic["span"] = json!({"start":span.start, "end":span.end});
+            }
+            return Err(diagnostic);
+        }
+    }
+    Ok(())
 }

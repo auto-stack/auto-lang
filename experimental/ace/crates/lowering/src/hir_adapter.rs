@@ -680,8 +680,7 @@ fn lower_checked_collection_family(
                     });
                     def_map.insert(di as u32, CalleeRef::Import(idx));
                 } else if symbol.starts_with("__sched_") {
-                    let sig =
-                        owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                    let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
                     let idx = out.intern_import(MirImport {
                         symbol: symbol.clone(),
                         effect: match effect {
@@ -4262,6 +4261,7 @@ k 0
                 | MirInstr::ListGet { .. }
                 | MirInstr::ListPlace { .. }
                 | MirInstr::ForeignCall { .. }
+                | MirInstr::SchedAwait { .. }
         );
         let result = instr.def_slot();
         self.emit_instr(instr, span)?;
@@ -5212,12 +5212,8 @@ k 0
                                     &symbol,
                                     dst,
                                     &arg_slots,
-                                    &self
-                                        .out
-                                        .funcs
-                                        .iter()
-                                        .map(|f| f.name.clone())
-                                        .collect::<Vec<String>>(),
+                                    self.hir_module,
+                                    self.def_map,
                                 )?;
                                 let no_result = sched_op_has_no_result(&instr);
                                 self.emit(instr, sp)?;
@@ -5816,17 +5812,8 @@ k 0
                         let sym = self.out.imports[idx as usize].symbol.clone();
                         if sym.starts_with("__sched_") {
                             let dst = self.temp_ty(ty)?;
-                            let instr = sched_instr_of(
-                                &sym,
-                                dst,
-                                &actuals,
-                                &self
-                                    .out
-                                    .funcs
-                                    .iter()
-                                    .map(|f| f.name.clone())
-                                    .collect::<Vec<String>>(),
-                            )?;
+                            let instr =
+                                sched_instr_of(&sym, dst, &actuals, self.hir_module, self.def_map)?;
                             let no_result = sched_op_has_no_result(&instr);
                             self.emit(instr, sp)?;
                             if no_result {
@@ -8210,6 +8197,7 @@ fn sched_op_has_no_result(i: &ace_av_core::mir::MirInstr) -> bool {
             | MirInstr::SchedStop { .. }
             | MirInstr::SchedSleep { .. }
             | MirInstr::SchedGo { .. }
+            | MirInstr::SchedDetach { .. }
     )
 }
 
@@ -8220,24 +8208,25 @@ fn sched_instr_of(
     sym: &str,
     dst: u32,
     actuals: &[u32],
-    func_names: &[String],
+    module: &hir::Module,
+    definitions: &BTreeMap<u32, CalleeRef>,
 ) -> Result<ace_av_core::mir::MirInstr, AdapterError> {
     use ace_av_core::mir::MirInstr;
     let rest = sym.strip_prefix("__sched_").unwrap_or(sym);
-    // The MIR fn name is the def's emitted identity (the source adapter's
-    // `d_f<fi>_<name>` form); match by suffix on the plain fn name.
-    let fn_idx_by_name = |name: &str| -> Result<u32, AdapterError> {
-        let want = format!("_{name}");
-        func_names
+    let driver_index = |task: &str| -> Result<u32, AdapterError> {
+        let id = format!("d___task_{task}");
+        let function = module
+            .defs
             .iter()
-            .position(|f| f.ends_with(&want) || f.as_str() == name)
-            .map(|i| i as u32)
-            .ok_or_else(|| {
-                AdapterError::inv(
-                    "lower.sched-callee",
-                    format!("scheduler callee function `{name}` missing"),
-                )
-            })
+            .position(|def| def.id_text == id)
+            .and_then(|index| definitions.get(&(index as u32)));
+        match function {
+            Some(CalleeRef::Func(index)) => Ok(*index),
+            _ => Err(AdapterError::inv(
+                "lower.sched-callee",
+                format!("scheduler driver `{id}` missing"),
+            )),
+        }
     };
     if let Some(t) = rest.strip_prefix("spawn_") {
         // actuals: [name-str, capacity, inits...] — the name string is a
@@ -8248,7 +8237,7 @@ fn sched_instr_of(
                 format!("`{sym}` needs a task name and a capacity"),
             ));
         }
-        let callee = fn_idx_by_name(&format!("__task_{t}"))?;
+        let callee = driver_index(t)?;
         return Ok(MirInstr::SchedSpawn {
             callee,
             capacity: actuals[1],
@@ -8287,6 +8276,11 @@ fn sched_instr_of(
             dst,
         },
         _ if rest.starts_with("reply_") => MirInstr::SchedReply { value: actuals[0] },
+        _ if rest.starts_with("future_") => MirInstr::SchedFuture {
+            closure: actuals[0],
+            dst,
+        },
+        "detach" => MirInstr::SchedDetach { future: actuals[0] },
         _ if rest.starts_with("await_") => MirInstr::SchedAwait {
             future: actuals[0],
             dst,

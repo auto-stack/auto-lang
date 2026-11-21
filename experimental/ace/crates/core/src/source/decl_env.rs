@@ -100,7 +100,9 @@ fn vt_token(v: &super::resolve::VT) -> String {
         VT::I32 => "i32".into(),
         // PLAN-968：调度器句柄按运行时形状命名（i32 id）。
         VT::Task(i) => format!("task:{i}"),
+        VT::TaskRef(i) => format!("taskref:{i}"),
         VT::Future(i) => format!("future:{i}"),
+        VT::Deferred(i) => format!("deferred:{i}"),
         // PLAN-962：tuple 形状标识。
         VT::Tuple(ti) => format!("tuple:{ti}"),
         VT::Bool => "bool".into(),

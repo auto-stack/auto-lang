@@ -68,10 +68,14 @@ pub enum VT {
     /// task — `VT::Task(i)` indexes into [`CollTables::sched_tasks`]. At
     /// runtime a handle is the i32 scheduler task id.
     Task(usize),
+    /// Ordinary TaskRef<T>, interned by mailbox payload type.
+    TaskRef(usize),
     /// PLAN-968: an unresolved `ask` reply future, monomorphic per task —
     /// `VT::Future(i)` indexes into [`CollTables::sched_tasks`]. At
     /// runtime a future is the i32 scheduler reply-port id.
     Future(usize),
+    /// Ordinary Future<T>, indexed by the zero-argument completion signature.
+    Deferred(usize),
     /// PLAN-961 numeric surface (`byte`≡U8, `uint`≡U32, `float`≡F32,
     /// `double`≡`f64`≡F64).
     I8,
@@ -109,8 +113,8 @@ impl VT {
             VT::Nil => "nil",
             VT::Dyn => "Dyn",
             // PLAN-968 scheduler handle types (opaque i32 ids at runtime).
-            VT::Task(_) => "task",
-            VT::Future(_) => "future",
+            VT::Task(_) | VT::TaskRef(_) => "task",
+            VT::Future(_) | VT::Deferred(_) => "future",
         }
     }
 
@@ -205,6 +209,25 @@ pub fn builtin_method(recv: VT, name: &str) -> Option<(BuiltinMethod, &'static [
 fn retag_literal(v: &mut ResolvedExpr, want: VT) {
     if matches!(v.kind, RExprKind::StrLit(_)) && matches!(want, VT::Str | VT::StrOwned) {
         v.vt = want;
+    }
+}
+
+/// Contextual integer literals fit their annotated type without changing
+/// the type of explicitly suffixed literals or ordinary arithmetic.
+fn retag_integer_literal(expression: &mut ResolvedExpr, expected: VT) {
+    let RExprKind::IntLit(value) = expression.kind else {
+        return;
+    };
+    let bits = match expected {
+        VT::I8 => i8::try_from(value).ok().map(|value| value as u8 as u64),
+        VT::U8 => u8::try_from(value).ok().map(u64::from),
+        VT::U32 | VT::U64 => u64::try_from(value).ok(),
+        VT::I64 => Some(value as i64 as u64),
+        _ => None,
+    };
+    if let Some(bits) = bits {
+        expression.vt = expected;
+        expression.kind = RExprKind::TypedLit { vt: expected, bits };
     }
 }
 
@@ -1096,6 +1119,7 @@ pub struct CollTables {
     script_errors: bool,
     /// PLAN-968: the scheduler task type table (scheduler face only).
     pub sched_tasks: Vec<SchedTaskType>,
+    task_messages: Vec<VT>,
     pub lists: Vec<VT>,
     pub variants: Vec<ResolvedVariant>,
     pub function_types: Vec<ClosureFnType>,
@@ -1129,6 +1153,15 @@ pub struct CollTables {
 }
 
 impl CollTables {
+    fn intern_task_message(&mut self, message: VT) -> usize {
+        if let Some(index) = self.task_messages.iter().position(|ty| *ty == message) {
+            return index;
+        }
+        let index = self.task_messages.len();
+        self.task_messages.push(message);
+        index
+    }
+
     fn intern_function(&mut self, signature: ClosureFnType) -> usize {
         if let Some(i) = self.function_types.iter().position(|s| *s == signature) {
             return i;
@@ -1672,7 +1705,7 @@ pub(crate) fn resolve_with_source_mode(
         variants: coll.variants,
         function_types: coll.function_types,
         objects: coll.objects,
-        sched_tasks: Vec::new(),
+        sched_tasks: coll.sched_tasks,
     })
 }
 
@@ -2222,6 +2255,24 @@ fn resolve_detailed_in_mode(
     if let Some(foreign) = supply.and_then(|s| s.foreign()) {
         validate_foreign_context(program, foreign, capabilities)?;
     }
+    let empty_schedule = super::sched_desugar::SchedSurface::default();
+    let desugared = if surface.is_auto_language()
+        && program
+            .items
+            .iter()
+            .any(|item| matches!(item, ast::Item::Task(_)))
+    {
+        Some(super::sched_desugar::desugar_tasks(program, true)?)
+    } else {
+        None
+    };
+    let (program, sched) = match &desugared {
+        Some((program, schedule)) => (program, Some(schedule)),
+        None => (
+            program,
+            sched.or_else(|| surface.is_auto_language().then_some(&empty_schedule)),
+        ),
+    };
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     // PLAN-936（T-04）：meta 查询与 CT 表达式能力（各自独立门；meta 默认关）。
     let meta_enabled = capabilities.iter().any(|c| c == META_CAPABILITY);
@@ -2971,12 +3022,12 @@ fn resolve_detailed_in_mode(
     // or caller — sees stable indices.
     if let Some(surface_tbl) = sched {
         for t in &surface_tbl.tasks {
-            let msg = vt_of_word(t.msg);
+            let msg = vt_of_ann_coll(&t.msg, &rec_index, &mut coll, &mut diags, TypePos::Local);
             let reply = vt_of_word(t.reply);
             coll.sched_tasks.push(SchedTaskType {
                 name: t.name.clone(),
                 driver: t.driver_fn.clone(),
-                fields_vt: t.fields.iter().map(|(_, w)| vt_of_word(*w)).collect(),
+                fields_vt: t.fields.iter().map(|(_, w, _)| vt_of_word(*w)).collect(),
                 msg,
                 reply,
             });
@@ -5025,7 +5076,10 @@ pub(crate) fn decide_capture(
     move_capture: bool,
     written: bool,
 ) -> CaptureDecision {
-    let copy = matches!(source_vt, VT::I32 | VT::Bool | VT::Char);
+    let copy = matches!(
+        source_vt,
+        VT::I32 | VT::Bool | VT::Char | VT::TaskRef(_) | VT::Deferred(_)
+    ) || (move_capture && vt_is_numeric(source_vt));
     // PLAN-964: an OBJECT captures as a Move Rc share (the cell's nature
     // is shared-mutable — aliases observe each other's writes; a written
     // object capture keeps the share, never a private snapshot). Nil is
@@ -5804,6 +5858,7 @@ fn vt_of_ann_coll(
             VT::Variant(vi)
         }
         ast::TypeRef::Generic { name, args } => match (name.name.as_str(), args.len()) {
+            (super::sched_desugar::ACTOR_PAYLOAD_TYPE, 0) if coll.ordinary_auto => VT::Dyn,
             (INFERRED_OBJECT_TYPE, 0) if coll.aggregates_admission => {
                 VT::Object(coll.intern_object(VT::Dyn))
             }
@@ -5813,6 +5868,18 @@ fn vt_of_ann_coll(
             // field is therefore a LIST-typed field: fixed-size handle,
             // and the record containment cycle walk does not follow it
             // (legal recursion: `type Node { next Box<Node> }`).
+            ("Future", 1) if coll.ordinary_auto => {
+                let result = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Result);
+                VT::Deferred(coll.intern_function(ClosureFnType {
+                    params: Vec::new(),
+                    result,
+                }))
+            }
+            ("TaskRef", 1) if coll.ordinary_auto => {
+                let message =
+                    vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::ContainerPayload);
+                VT::TaskRef(coll.intern_task_message(message))
+            }
             ("Box", 1) if coll.aggregates_admission => {
                 let elem = vt_of_ann_coll(&args[0], rec_index, coll, diags, TypePos::Local);
                 match elem {
@@ -5863,9 +5930,13 @@ fn vt_of_ann_coll(
                         "List does not nest List (822 element domain)".to_string(),
                         args[0].span,
                     ),
-                    VT::StrOwned | VT::I32 | VT::Bool | VT::Rec(_) | VT::Variant(_) => {
-                        VT::List(coll.intern_list(elem))
-                    }
+                    VT::StrOwned
+                    | VT::I32
+                    | VT::Bool
+                    | VT::Rec(_)
+                    | VT::Variant(_)
+                    | VT::TaskRef(_)
+                    | VT::Deferred(_) => VT::List(coll.intern_list(elem)),
                     // PLAN-962: wide numerics and char ride the numeric
                     // element closure the MIR verifier already admits.
                     VT::Char
@@ -6078,7 +6149,9 @@ pub(crate) fn iter_record_name(elem: VT) -> String {
         // PLAN-968: handles never iterate; the spelling only feeds the
         // synthesized record name so it stays stable and unique.
         VT::Task(i) => format!("task{i}"),
+        VT::TaskRef(i) => format!("taskref{i}"),
         VT::Future(i) => format!("future{i}"),
+        VT::Deferred(i) => format!("deferred{i}"),
         VT::Bool => "bool".to_string(),
         VT::Str => "str".to_string(),
         VT::StrOwned => "Str".to_string(),
@@ -7743,6 +7816,7 @@ F:{d}
         let old_catch_errs = std::mem::replace(&mut self.catch_err_locals, Vec::new());
         let old_is_gen = std::mem::replace(&mut self.is_generator, false);
         let old_is_script = std::mem::replace(&mut self.is_script, false);
+        let old_diverged = std::mem::replace(&mut self.expr_diverged, false);
 
         let mut param_names = Vec::new();
         let mut param_types = Vec::new();
@@ -7860,6 +7934,7 @@ F:{d}
         self.catch_err_locals = old_catch_errs;
         self.is_generator = old_is_gen;
         self.is_script = old_is_script;
+        self.expr_diverged = old_diverged;
         LambdaBodyOut {
             param_names,
             param_types,
@@ -14409,6 +14484,9 @@ F:{d}
                             self.copy_record_parameter(&mut value);
                         }
                         retag_literal(&mut value, self.fn_result);
+                        if self.profile.is_auto_language() {
+                            retag_integer_literal(&mut value, self.fn_result);
+                        }
                         if matches!(
                             &value.kind,
                             RExprKind::CreateClosure { captures, .. }
@@ -14491,7 +14569,13 @@ F:{d}
                     // value bound to a discarded temp — PLAN-965
                     // (F-965-R1-01): the old silent drop lost calls (and a
                     // callee's language error) entirely.
-                    let stmt = if is_iter_close {
+                    let sched_effect = self.profile.is_auto_language()
+                        && self.fn_result == VT::Unit
+                        && matches!(&value.kind, RExprKind::CallIntrinsic { symbol, .. }
+                            if symbol.starts_with("__sched_send_")
+                                || symbol.starts_with("__sched_go_")
+                                || matches!(*symbol, "__sched_stop" | "__sched_sleep" | "__sched_detach"));
+                    let stmt = if is_iter_close || sched_effect {
                         let local = self.agg_temp("it_close", VT::I32, false, *span);
                         RStmt::Let {
                             local,
@@ -15339,6 +15423,19 @@ F:{d}
             // here means a non-scheduler face carried one through — named
             // rejection, never a silent drop.
             ExprKind::Await(inner) => {
+                if self.profile.is_auto_language() {
+                    let value = self.expr_iterative(inner);
+                    return self.scheduler_operation(
+                        "__sched_await",
+                        vec![ResolvedArg {
+                            span: inner.span,
+                            value,
+                            moved: false,
+                            name: None,
+                        }],
+                        e.span,
+                    );
+                }
                 let _ = self.expr(inner);
                 self.bind_err(
                     "source.sched-unsupported",
@@ -15352,6 +15449,45 @@ F:{d}
                 }
             }
             ExprKind::Go(inner) => {
+                if self.profile.is_auto_language() {
+                    let direct = match &inner.kind {
+                        ExprKind::Call { callee, args }
+                            if self
+                                .sigs
+                                .get(&callee.name)
+                                .is_some_and(|sig| !matches!(sig.result, VT::Deferred(_))) =>
+                        {
+                            Some((callee, args))
+                        }
+                        _ => None,
+                    };
+                    if let Some((callee, args)) = direct {
+                        let mut operands = vec![Arg::Pos(Expr {
+                            kind: ExprKind::StrLit(callee.name.clone()),
+                            span: callee.span,
+                        })];
+                        operands.extend_from_slice(args);
+                        return self.call(
+                            &ast::Ident {
+                                name: "__sched_go".into(),
+                                span: e.span,
+                            },
+                            &operands,
+                            e.span,
+                        );
+                    }
+                    let value = self.expr_iterative(inner);
+                    return self.scheduler_operation(
+                        "__sched_detach",
+                        vec![ResolvedArg {
+                            value,
+                            name: None,
+                            moved: false,
+                            span: inner.span,
+                        }],
+                        e.span,
+                    );
+                }
                 let _ = self.expr(inner);
                 self.bind_err(
                     "source.sched-unsupported",
@@ -16383,6 +16519,26 @@ F:{d}
             return instances::pending_expression(span);
         }
         if let Some(rrecv) = recv {
+            if self.profile.is_auto_language() && matches!(rrecv.vt, VT::TaskRef(_)) {
+                let operation = match name.name.as_str() {
+                    "send" => "__sched_send",
+                    "ask" => "__sched_ask",
+                    "stop" => "__sched_stop",
+                    _ => "",
+                };
+                if !operation.is_empty() {
+                    rargs.insert(
+                        0,
+                        ResolvedArg {
+                            span: rrecv.span,
+                            value: *rrecv,
+                            moved: false,
+                            name: None,
+                        },
+                    );
+                    return self.scheduler_operation(operation, rargs, span);
+                }
+            }
             // PLAN-782: on the combination surface the record dot postfix
             // claims method chains first, so a TEXT receiver's builtin
             // call (`t.text.len()`) arrives here — route it into the text
@@ -16895,6 +17051,11 @@ F:{d}
         enum Task<'a> {
             /// Resolve this node into `slot`.
             Visit { node: &'a Expr, slot: usize },
+            MailboxArg {
+                receiver: usize,
+                node: &'a Expr,
+                slot: usize,
+            },
             /// All argument slots are filled; resolve callee/bindings into
             /// `dest` (R5: nested calls must not recurse through call()).
             CallOut {
@@ -17348,6 +17509,21 @@ F:{d}
                         instance,
                     } = &node.kind
                     {
+                        if self.profile.is_auto_language()
+                            && instance.is_none()
+                            && name.name == "spawn"
+                            && matches!(&recv.kind, ExprKind::Var(id) if id.name == "Task" && self.lookup(&id.name).is_none() && !self.rec_index.contains_key(&id.name))
+                        {
+                            out[slot] = self.call(
+                                &ast::Ident {
+                                    name: "__sched_spawn".into(),
+                                    span: name.span,
+                                },
+                                args,
+                                node.span,
+                            );
+                            continue;
+                        }
                         let text_alias = match &recv.kind {
                             ExprKind::Var(alias) => self.lookup_text_mut_alias(&alias.name),
                             _ => None,
@@ -17556,6 +17732,14 @@ F:{d}
                         let mut names = Vec::with_capacity(args.len());
                         let mut spans = Vec::with_capacity(args.len());
                         let mut subtasks = Vec::with_capacity(args.len() + 1);
+                        let mailbox = if self.profile.is_auto_language()
+                            && matches!(name.name.as_str(), "send" | "ask")
+                            && args.len() == 1
+                        {
+                            recv_slot
+                        } else {
+                            None
+                        };
                         for a in args {
                             let sp = out.len();
                             out.push(dummy_resolved());
@@ -17564,7 +17748,14 @@ F:{d}
                                 Arg::Pos(e) | Arg::MovePos(e) => {
                                     names.push(None);
                                     spans.push(e.span);
-                                    subtasks.push(Task::Visit { node: e, slot: sp });
+                                    subtasks.push(match mailbox {
+                                        Some(receiver) => Task::MailboxArg {
+                                            receiver,
+                                            node: e,
+                                            slot: sp,
+                                        },
+                                        None => Task::Visit { node: e, slot: sp },
+                                    });
                                 }
                                 Arg::Named {
                                     name: n,
@@ -17854,6 +18045,18 @@ F:{d}
                                 kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
                             };
                         }
+                    }
+                }
+                Task::MailboxArg {
+                    receiver,
+                    node,
+                    slot,
+                } => {
+                    if let Some(value) = self.resolve_implicit_actor_message(out[receiver].vt, node)
+                    {
+                        out[slot] = value;
+                    } else {
+                        stack.push(Task::Visit { node, slot });
                     }
                 }
                 Task::RecordMethodOut {
@@ -19855,6 +20058,19 @@ F:{d}
                             },
                         }));
                     }
+                    (_, ty)
+                        if self.profile.is_auto_language()
+                            && vt_is_numeric(ty)
+                            && !vt_is_float(ty) =>
+                    {
+                        parts.push(FStrPart::Expr(ResolvedExpr {
+                            span: a.value.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::TextDisplay {
+                                operand: Box::new(a.value.clone()),
+                            },
+                        }));
+                    }
                     (_, other_vt) => {
                         self.bind_err(
                             "source.fstr-arg",
@@ -20420,6 +20636,9 @@ F:{d}
         if callee.name.starts_with("__sched_") {
             return self.resolve_sched_call(callee, rargs, call_span);
         }
+        if self.profile.is_auto_language() && callee.name == "sleep" {
+            return self.scheduler_operation("__sched_sleep", rargs, call_span);
+        }
 
         self.bind_err(
             "source.undefined",
@@ -20455,6 +20674,91 @@ F:{d}
         leaked
     }
 
+    fn resolve_implicit_actor_message(&mut self, receiver: VT, e: &Expr) -> Option<ResolvedExpr> {
+        let VT::TaskRef(message) = receiver else {
+            return None;
+        };
+        let VT::Variant(variant) = self.coll.task_messages[message] else {
+            return None;
+        };
+        if !self.coll.variants[variant]
+            .name
+            .starts_with(super::sched_desugar::ACTOR_MESSAGE_PREFIX)
+        {
+            return None;
+        }
+        let (name, args) = match &e.kind {
+            ExprKind::Var(name) => (name, &[][..]),
+            ExprKind::Call { callee, args } => (callee, args.as_slice()),
+            _ => return None,
+        };
+        if self.lookup(&name.name).is_some() || self.sigs.contains_key(&name.name) {
+            return None;
+        }
+        let (disc, want) = self.coll.variants[variant]
+            .arms
+            .iter()
+            .enumerate()
+            .find_map(|(i, (arm, ty))| (arm == &name.name).then_some((i, *ty)))?;
+        let arity = match want {
+            None => 0,
+            Some(VT::Tuple(tuple)) => self.coll.tuples[tuple].len(),
+            _ => 1,
+        };
+        let mut values = self.resolve_args(args);
+        if values.len() != arity || values.iter().any(|arg| arg.name.is_some()) {
+            self.bind_err(
+                "source.sched-argument",
+                format!("message `{}` expects {arity} positional values", name.name),
+                e.span,
+            );
+            return Some(instances::pending_expression(e.span));
+        }
+        let payload = match want {
+            None => None,
+            Some(VT::Tuple(tuple)) => {
+                let elems = values
+                    .into_iter()
+                    .map(|arg| Self::coerce_dynamic(arg.value, VT::Dyn))
+                    .collect();
+                Some(Box::new(ResolvedExpr {
+                    span: e.span,
+                    vt: VT::Tuple(tuple),
+                    kind: RExprKind::TupleLit { elems },
+                }))
+            }
+            Some(_) => Some(Box::new(Self::coerce_dynamic(
+                values.remove(0).value,
+                VT::Dyn,
+            ))),
+        };
+        Some(ResolvedExpr {
+            span: e.span,
+            vt: VT::Variant(variant),
+            kind: RExprKind::VariantCtor {
+                variant,
+                disc: disc as u32,
+                payload,
+            },
+        })
+    }
+
+    fn scheduler_operation(
+        &mut self,
+        operation: &str,
+        args: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        self.resolve_sched_call(
+            &ast::Ident {
+                name: operation.into(),
+                span,
+            },
+            args,
+            span,
+        )
+    }
+
     /// PLAN-968: type one desugared `__sched_*` intrinsic call against
     /// the scheduler side-table. Handles/futures are monomorphic per
     /// declared task (`VT::Task(i)`/`VT::Future(i)`, `i` = the surface's
@@ -20485,6 +20789,14 @@ F:{d}
         let name = callee.name.as_str();
         let mut args: Vec<ResolvedExpr> = Vec::new();
         for a in rargs {
+            if self.profile.is_auto_language() && a.name.is_some() {
+                self.bind_err(
+                    "source.sched-argument",
+                    "scheduler operations require positional arguments",
+                    a.span,
+                );
+                return named_i32(call_span);
+            }
             args.push(a.value);
         }
         let arity_err = |r: &mut Self, want: &str| {
@@ -20512,6 +20824,52 @@ F:{d}
                 })
         };
         match name {
+            "__sched_future" if self.profile.is_auto_language() => {
+                let [thunk] = args.as_slice() else {
+                    arity_err(self, "one zero-argument async body");
+                    return named_i32(call_span);
+                };
+                let VT::Function(signature) = thunk.vt else {
+                    self.bind_err(
+                        "source.sched-argument",
+                        "a future requires an async body",
+                        thunk.span,
+                    );
+                    return named_i32(call_span);
+                };
+                if !self.coll.function_types[signature].params.is_empty() {
+                    self.bind_err(
+                        "source.sched-argument",
+                        "an async body takes no arguments",
+                        thunk.span,
+                    );
+                    return named_i32(call_span);
+                }
+                let symbol = Self::sched_sym("__sched_future", &signature.to_string());
+                ResolvedExpr {
+                    span: call_span,
+                    vt: VT::Deferred(signature),
+                    kind: RExprKind::CallIntrinsic { symbol, args },
+                }
+            }
+            "__sched_detach" if self.profile.is_auto_language() => {
+                if !matches!(args.as_slice(), [value] if matches!(value.vt, VT::Deferred(_))) {
+                    self.bind_err(
+                        "source.sched-argument",
+                        "`go` requires a future or a direct call",
+                        call_span,
+                    );
+                    return named_i32(call_span);
+                }
+                ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: "__sched_detach",
+                        args,
+                    },
+                }
+            }
             "__sched_spawn" => {
                 // PLAN-1067 review R-1067-11: spawning a task from inside a
                 // task driver leaves the scheduler surface (the driver's own
@@ -20522,7 +20880,7 @@ F:{d}
                 // `task_of_driver` — that helper reports its own "only legal
                 // inside a driver" error for every ordinary caller.
                 let inside_driver = surface.tasks.iter().any(|t| t.driver_fn == self.owner_name);
-                if inside_driver {
+                if !self.profile.is_auto_language() && inside_driver {
                     self.bind_err(
                         "source.sched-task",
                         "`Task.spawn` inside a task driver is not part of the scheduler surface",
@@ -20535,7 +20893,7 @@ F:{d}
                 // a driver): the backend's callee table is built for the entry
                 // unit, so such a call surfaced as an unnamed lowering error.
                 // One named rule for every non-entry position.
-                if self.owner_name != "main" {
+                if !self.profile.is_auto_language() && self.owner_name != "main" {
                     self.bind_err(
                         "source.sched-task",
                         "`Task.spawn` is only legal in the program entry (`main`)",
@@ -20582,8 +20940,7 @@ F:{d}
                     );
                     return named_i32(call_span);
                 }
-                let inits = &args[2..];
-                if inits.len() > info.fields.len() {
+                if args.len() - 2 > info.fields.len() {
                     self.bind_err(
                         "source.sched-argument",
                         format!(
@@ -20595,8 +20952,16 @@ F:{d}
                     );
                     return named_i32(call_span);
                 }
-                for (k, init) in inits.iter().enumerate() {
+                if self.profile.is_auto_language() {
+                    for (_, _, default) in info.fields.iter().skip(args.len() - 2) {
+                        args.push(self.expr_iterative(default));
+                    }
+                }
+                for (k, init) in args[2..].iter_mut().enumerate() {
                     let want = vt_of_word(info.fields[k].1);
+                    if self.profile.is_auto_language() {
+                        retag_literal(init, want);
+                    }
                     // Text literals arrive as borrowed Str; owned Str
                     // fields accept either face of the literal.
                     let matches = init.vt == want
@@ -20618,9 +20983,15 @@ F:{d}
                     }
                 }
                 let sym = Self::sched_sym("__sched_spawn", &info.name);
+                let ty = if self.profile.is_auto_language() {
+                    let message = self.coll.sched_tasks[task_idx].msg;
+                    VT::TaskRef(self.coll.intern_task_message(message))
+                } else {
+                    VT::Task(task_idx)
+                };
                 ResolvedExpr {
                     span: call_span,
-                    vt: self.node_ty(call_span, VT::Task(task_idx)),
+                    vt: self.node_ty(call_span, ty),
                     kind: RExprKind::CallIntrinsic { symbol: sym, args },
                 }
             }
@@ -20629,8 +21000,34 @@ F:{d}
                     arity_err(self, "a task handle and one message");
                     return named_i32(call_span);
                 }
-                let ti = match args[0].vt {
-                    VT::Task(i) => i,
+                let is_send = name == "__sched_send";
+                let (want_msg, task_type) = match args[0].vt {
+                    VT::Task(i) => (self.coll.sched_tasks[i].msg, Some(i)),
+                    VT::TaskRef(i) => {
+                        let message = self.coll.task_messages[i];
+                        let mut candidates = self
+                            .coll
+                            .sched_tasks
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, task)| task.msg == message);
+                        let first = candidates.next().map(|(index, _)| index);
+                        if !is_send
+                            && (first.is_none()
+                                || candidates.any(|(_, task)| {
+                                    task.reply
+                                        != self.coll.sched_tasks[first.expect("first task")].reply
+                                }))
+                        {
+                            self.bind_err(
+                                "source.sched-argument",
+                                "ask requires an unambiguous reply type for this TaskRef",
+                                args[0].span,
+                            );
+                            return named_i32(call_span);
+                        }
+                        (message, first)
+                    }
                     _ => {
                         self.bind_err(
                             "source.sched-argument",
@@ -20647,24 +21044,54 @@ F:{d}
                         return named_i32(call_span);
                     }
                 };
-                let want_msg = self.coll.sched_tasks[ti].msg;
+                if self.profile.is_auto_language() {
+                    let message = &mut args[1];
+                    retag_integer_literal(message, want_msg);
+                    if want_msg == VT::StrOwned && message.vt == VT::Str {
+                        let borrowed = std::mem::replace(
+                            message,
+                            instances::pending_expression(message.span),
+                        );
+                        *message = Self::own_dynamic_text(borrowed);
+                    }
+                }
                 if args[1].vt != want_msg {
                     self.bind_err(
                         "source.sched-argument",
                         format!(
                             "the message type for task `{}` is {}",
-                            self.coll.sched_tasks[ti].name,
+                            task_type
+                                .map_or("TaskRef", |ti| self.coll.sched_tasks[ti].name.as_str()),
                             want_msg.as_str()
                         ),
                         args[1].span,
                     );
                     return named_i32(call_span);
                 }
-                let is_send = name == "__sched_send";
-                // The import seam's def result is i32 (the closures-family
-                // type table has no unit result); call-for-effect discards.
-                let vt = if is_send { VT::I32 } else { VT::Future(ti) };
-                let tname = self.coll.sched_tasks[ti].name.clone();
+                // Side-effect ops carry a dummy I32 return value in HIR.
+                let vt = if is_send {
+                    VT::I32
+                } else {
+                    let task = task_type.expect("ask reply type");
+                    if self.profile.is_auto_language() {
+                        let result = self.coll.sched_tasks[task].reply;
+                        VT::Deferred(self.coll.intern_function(ClosureFnType {
+                            params: Vec::new(),
+                            result,
+                        }))
+                    } else {
+                        VT::Future(task)
+                    }
+                };
+                let Some(task_type) = task_type else {
+                    self.bind_err(
+                        "source.sched-argument",
+                        "no actor has this mailbox type",
+                        args[0].span,
+                    );
+                    return named_i32(call_span);
+                };
+                let tname = self.coll.sched_tasks[task_type].name.clone();
                 let sym = if is_send {
                     Self::sched_sym("__sched_send", &tname)
                 } else {
@@ -20681,7 +21108,7 @@ F:{d}
                     arity_err(self, "a task handle");
                     return named_i32(call_span);
                 }
-                if !matches!(args[0].vt, VT::Task(_)) {
+                if !matches!(args[0].vt, VT::Task(_) | VT::TaskRef(_)) {
                     self.bind_err(
                         "source.sched-argument",
                         "`stop` takes a task handle",
@@ -20751,6 +21178,16 @@ F:{d}
                 }
                 let ti = match args[0].vt {
                     VT::Future(i) => i,
+                    VT::Deferred(signature) => {
+                        let result = self.coll.function_types[signature].result;
+                        let symbol =
+                            Self::sched_sym("__sched_await_deferred", &signature.to_string());
+                        return ResolvedExpr {
+                            span: call_span,
+                            vt: self.node_ty(call_span, result),
+                            kind: RExprKind::CallIntrinsic { symbol, args },
+                        };
+                    }
                     _ => {
                         self.bind_err(
                             "source.sched-argument",

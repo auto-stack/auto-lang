@@ -1,0 +1,1442 @@
+# Tasks, actors and asynchronous values
+
+The ordinary AV checks share each original Auto source and its independent VM observation.
+
+## Case: ask-reply
+id: "av.parity.1090.ask-reply"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Q { on { n int -> { reply(n + 1) } } }
+fn main() int { let h = Task.spawn("Q", 1); let n = await h.ask(41); h.stop(); return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: spawn-outside-main
+id: "av.parity.1090.spawn-outside-main"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Q { on { n int -> { reply(n + 1) } } }
+fn request() int { let h = Task.spawn("Q", 1); let n = await h.ask(41); h.stop(); return n }
+fn main() int { return request() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: async-block-value
+id: "av.parity.1090.async-block-value"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let f = ~{ 40 + 2 }; return f.await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+## Case: fifo-capacity
+id: "av.parity.1090.fifo-capacity"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Echo { on { n int -> { print(n) } } }
+fn main() int { let h = Task.spawn("Echo", 1); h.send(19); h.send(23); h.stop(); return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+19
+23
+```
+
+#### stderr
+
+```text
+```
+
+## Case: legacy-23-actor-001-start-hook
+id: "legacy.23_actor.001_start_hook"
+entry-mode: "program"
+
+### Auto
+path: "start_hook.at"
+```auto
+task Greeter {
+    fn start() ! {
+        print("Greeter started")
+    }
+    on {
+        1 -> {
+            print("got msg")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Greeter", 16)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+Greeter started
+got msg
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+Greeter started
+got msg
+```
+
+## Case: legacy-23-actor-002-message-handler
+id: "legacy.23_actor.002_message_handler"
+entry-mode: "program"
+
+### Auto
+path: "message_handler.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got one
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got one
+```
+
+## Case: legacy-23-actor-003-multi-message
+id: "legacy.23_actor.003_multi_message"
+entry-mode: "program"
+
+### Auto
+path: "multi_message.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+        2 -> {
+            print("got two")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send(1)
+    h.send(2)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got one
+got two
+got one
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got one
+got two
+got one
+```
+
+## Case: legacy-23-actor-004-else-handler
+id: "legacy.23_actor.004_else_handler"
+entry-mode: "program"
+
+### Auto
+path: "else_handler.at"
+```auto
+task Router {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("matched one")
+        }
+        else -> {
+            print("fell through")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Router", 16)
+    h.send(99)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+fell through
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+fell through
+```
+
+## Case: legacy-23-actor-005-state-write
+id: "legacy.23_actor.005_state_write"
+entry-mode: "program"
+
+### Auto
+path: "state_write.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = 42
+            print("handler ran")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+handler ran
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+handler ran
+```
+
+## Case: legacy-23-actor-006-state-increment
+id: "legacy.23_actor.006_state_increment"
+entry-mode: "program"
+
+### Auto
+path: "state_increment.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            if count == 2 {
+                print("reached two")
+            }
+            if count == 3 {
+                print("reached three")
+            }
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(1)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+reached two
+reached three
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+reached two
+reached three
+```
+
+## Case: legacy-23-actor-007-named-variants
+id: "legacy.23_actor.007_named_variants"
+entry-mode: "program"
+
+### Auto
+path: "named_variants.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        Add(val) -> {
+            count = count + val
+            if count == 8 {
+                print("reached eight")
+            }
+        }
+        Reset -> {
+            count = 0
+            print("reset")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    h.send(Add(3))
+    h.send(Add(5))
+    h.send(Reset)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+reached eight
+reset
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+reached eight
+reset
+```
+
+## Case: legacy-23-actor-008-string-pattern
+id: "legacy.23_actor.008_string_pattern"
+entry-mode: "program"
+
+### Auto
+path: "string_pattern.at"
+```auto
+task Echo {
+    fn start() ! {
+    }
+    on {
+        "ping" -> {
+            print("pong")
+        }
+        "bye" -> {
+            print("farewell")
+        }
+        else -> {
+            print("unknown")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Echo", 16)
+    h.send("ping")
+    h.send("bye")
+    h.send("what")
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+pong
+farewell
+unknown
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+pong
+farewell
+unknown
+```
+
+## Case: legacy-23-actor-009-stop-hook
+id: "legacy.23_actor.009_stop_hook"
+entry-mode: "program"
+
+### Auto
+path: "stop_hook.at"
+```auto
+task Worker {
+    fn start() ! {
+        print("started")
+    }
+    fn stop() ! {
+        print("stopped")
+    }
+    on {
+        1 -> {
+            print("got one")
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Worker", 16)
+    h.send(1)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+started
+got one
+stopped
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+started
+got one
+stopped
+```
+
+## Case: legacy-23-actor-010-handle-cross-fn
+id: "legacy.23_actor.010_handle_cross_fn"
+entry-mode: "program"
+
+### Auto
+path: "handle_cross_fn.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            print("got one")
+        }
+    }
+}
+
+fn spawn_and_send() {
+    let h = Task.spawn("Counter", 16)
+    h.send(1)
+    h.send(1)
+}
+
+fn main() {
+    spawn_and_send()
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got one
+got one
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got one
+got one
+```
+
+## Case: legacy-23-actor-011-handle-param
+id: "legacy.23_actor.011_handle_param"
+entry-mode: "program"
+
+### Auto
+path: "handle_param.at"
+```auto
+task Counter {
+    count = 0
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            count = count + 1
+            print("got one")
+        }
+    }
+}
+
+fn forward(h TaskRef<i64>) {
+    h.send(1)
+    h.send(1)
+}
+
+fn main() {
+    let h = Task.spawn("Counter", 16)
+    forward(h)
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got one
+got one
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got one
+got one
+```
+
+## Case: legacy-23-actor-012-external-enum-msg
+id: "legacy.23_actor.012_external_enum_msg"
+entry-mode: "program"
+
+### Auto
+path: "external_enum_msg.at"
+```auto
+pub enum Event {
+    A
+    B(str)
+}
+
+task Sink {
+    fn start() ! {
+    }
+    on {
+        ev Event -> {
+            is ev {
+                Event.A -> {
+                    print("got A")
+                }
+                Event.B(s) -> {
+                    print("got B")
+                    print(s)
+                }
+            }
+        }
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    h.send(Event.A)
+    h.send(Event.B("hello"))
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+got A
+got B
+hello
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+got A
+got B
+hello
+```
+
+## Case: legacy-23-actor-021-handle-struct-field
+id: "legacy.23_actor.021_handle_struct_field"
+entry-mode: "program"
+
+### Auto
+path: "handle_struct_field.at"
+```auto
+task Sink {
+    fn start() ! {
+    }
+    on {
+        1 -> {
+            print("sink got one")
+        }
+    }
+}
+
+type Worker {
+    handle TaskRef<i64>
+
+    fn emit() {
+        self.handle.send(1)
+        self.handle.send(1)
+    }
+}
+
+fn main() {
+    let h = Task.spawn("Sink", 16)
+    let w = Worker { handle: h }
+    w.emit()
+}
+```
+
+### VM result
+#ignore
+check-id: "vm-stdout"
+
+```text
+sink got one
+sink got one
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+sink got one
+sink got one
+```
+
+## Case: future-list
+id: "av.parity.1090.future-list"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn work(n int) ~int { return n + 1 }
+fn make() List<Future<int>> { return [work(18), work(22)] }
+fn main() int { let xs = make(); return xs[0].await + xs[1].await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: future-record
+id: "av.parity.1090.future-record"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Job { future Future<int> }
+fn work(n int) ~int { return n }
+fn accept(j Job) int { return j.future.await }
+fn main() int { return accept(Job { future: work(42) }) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: go-once
+id: "av.parity.1090.go-once"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn work(n int) ~int { print(n); return n }
+fn main() int {
+ let f = work(42)
+ print("queued")
+ f.go
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+queued
+42
+```
+
+## Case: ordinary-go
+id: "av.parity.1090.ordinary-go"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn worker(n int) { print(n) }
+fn main() { go worker(42) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: owned-capture
+id: "av.parity.1090.owned-capture"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+ let text Str = "stays owned"
+ let f = ~{
+   sleep(25)
+   print(text)
+   42
+ }
+ return f.await
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+stays owned
+```
+
+## Case: start-default
+id: "av.parity.1090.start-default"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T {
+ count = 40
+ on { n int -> { reply(count + n) } }
+}
+fn main() int { let h = Task.spawn("T", 1); return h.ask(2).await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: handler-spawn
+id: "av.parity.1090.handler-spawn"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Leaf { on { n int -> { reply(n + 1) } } }
+task Root {
+ on {
+  n int -> {
+   let child = Task.spawn("Leaf", 1)
+   let value = child.ask(n).await
+   child.stop()
+   reply(value)
+  }
+ }
+}
+fn main() int { let h = Task.spawn("Root", 1); return h.ask(41).await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: guard
+id: "av.parity.1090.guard"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T { on { n int if n < 0 -> { reply(0) }; else -> { reply(42) } } }
+fn main() int { let h = Task.spawn("T", 1); return await h.ask(1) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: closed-send
+id: "av.parity.1090.closed-send"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T { on { n int -> { print(n) } } }
+fn main() int { let h = Task.spawn("T", 1); h.stop(); h.send(1); return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "send on a closed task"
+
+## Case: unreplied
+id: "av.parity.1090.unreplied"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T { on { n int -> { print(n) } } }
+fn main() int { let h = Task.spawn("T", 1); return h.ask(42).await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "task closed without replying"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: consumed
+id: "av.parity.1090.consumed"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let f = ~{ 42 }; print(f.await); return f.await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "await on an already-consumed future"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: cap-zero
+id: "av.parity.1090.cap-zero"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T { on { n int -> { print(n) } } }
+fn main() int { let h = Task.spawn("T", 0); return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "task mailbox capacity must be at least 1"
+
+## Case: park-and-drain
+id: "av.parity.1090.park-and-drain"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Sink {
+ fn start() ! { sleep(50) }
+ fn stop() ! { print("stopped") }
+ on { n int -> { print(n) } }
+}
+fn main() int {
+ let sink = Task.spawn("Sink", 1)
+ sink.send(19)
+ sink.send(23)
+ sink.stop()
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+19
+23
+stopped
+```
+
+## Case: iterator-and-error
+id: "av.parity.1090.iterator-and-error"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn numbers() ~Iter<int> { yield 19; yield 23 }
+fn complain() int { fail("inside future") }
+fn main() int {
+ let f = ~{
+  var result = 0
+  for n in numbers() {
+   sleep(1)
+   result = result + n
+  }
+  try { let unused = complain() } catch e { print(e) }
+  return result
+ }
+ return f.await
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+inside future
+```
+
+## Case: typed-handle-return
+id: "av.parity.1090.typed-handle-return"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task One { on { n i64 -> { print("one") } } }
+task Two { on { n i64 -> { print("two") } } }
+fn make() TaskRef<i64> { return Task.spawn("Two", 1) }
+fn pass(h TaskRef<i64>) TaskRef<i64> { return h }
+fn main() int {
+ let original = Task.spawn("One", 1)
+ let other = pass(make())
+ original.send(1)
+ other.send(2)
+ original.stop()
+ other.stop()
+ return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+one
+two
+```
+
+## Case: spawn-private-copy
+id: "legacy.rust.plan348.spawn-private-copy"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+
+fn main() {
+    var counter int = 0
+    ~{
+        counter = 42
+    }.go
+    print(counter.to(str))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+0
+```
+
+## Case: await-body-value
+id: "legacy.rust.plan348.await-body-value"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+
+fn main() {
+    var result int = ~{ 42 }.await
+    print(result.to(str))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+42
+```
+
+## Case: spawn-await-coexist
+id: "legacy.rust.plan348.spawn-await-coexist"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+
+fn main() {
+    var x int = 0
+    ~{ x = 1 }.go
+    var y int = ~{ 7 }.await
+    print(y.to(str))
+    print(x.to(str))
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+7
+0
+```
+
+## Case: 002-timeout
+id: "legacy.cookbook.asynchronous.002_timeout"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// Async timeout pattern demo
+
+fn fetch_network_request() ~uint {
+    return 89
+}
+
+fn main() ~void {
+    let result = fetch_network_request().await
+    print(f"Result: ${result}")
+    assert(true)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+channel: "unit"
+
+#### stdout
+
+```text
+Result: 89
+```
+
+## Case: recovery-after-error
+id: "av.parity.1090.recovery-after-error"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() ~int { fail("future failed") }
+fn main() int {
+ try { return leaf().await } catch e {
+  if e == "future failed" { return 42 }
+ }
+ return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: unhandled-future
+id: "av.parity.1090.unhandled-future"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() ~int { fail("future failed") }
+fn main() int { return leaf().await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "future failed"
+
+## Case: borrowed-async
+id: "av.parity.1090.borrowed-async"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn wait(text str) ~int { print(text); return 42 }
+fn main() int { return wait("borrowed").await }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.closure-capture-unsupported"
+
+## Case: denied-async-console
+id: "av.parity.1090.denied-async-console"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn leaf() ~int { eprint("denied"); return 1 }
+fn main() int {
+    try { return leaf().await } catch e { return 42 }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout"]
+stage: "verify"
+code: "host.unauthorized"
+
+## Case: late-reply
+id: "av.parity.1090.late-reply"
+tags: ["av-language-parity", "plan-1090"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task T { on { n int -> { print("delivered"); reply(n) } } }
+fn main() int {
+ let h = Task.spawn("T", 1)
+ let discarded = h.ask(42)
+ discarded.go
+ h.stop()
+ return discarded.await
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message: "await on an already-consumed future"
+
+#### stdout
+
+```text
+delivered
+```

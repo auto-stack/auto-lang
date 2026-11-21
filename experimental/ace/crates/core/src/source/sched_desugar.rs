@@ -54,9 +54,9 @@ pub struct SchedTaskInfo {
     /// The synthesized driver function's name (`__task_Echo`).
     pub driver_fn: String,
     /// State fields in declaration order: (name, value type word).
-    pub fields: Vec<(String, TypeWord)>,
+    pub fields: Vec<(String, TypeWord, Expr)>,
     /// The unified message type word.
-    pub msg: TypeWord,
+    pub msg: TypeAnn,
     /// The inferred reply type word (i32 when no `reply` call exists).
     pub reply: TypeWord,
     /// The declaration span (diagnostics).
@@ -117,40 +117,49 @@ fn call(callee: &str, args: Vec<Expr>, span: Span) -> Expr {
 pub fn desugar_program(
     program: &super::ast::Program,
 ) -> Result<(super::ast::Program, SchedSurface), Vec<Diagnostic>> {
-    let mut diags: Vec<Diagnostic> = Vec::new();
-    let mut surface = SchedSurface::default();
-    let mut items: Vec<Item> = Vec::new();
-
-    // Pass A: collect tasks, build driver fns + the side-table.
-    for item in &program.items {
+    let (mut program, surface) = desugar_tasks(program, false)?;
+    let mut diags = Vec::new();
+    for item in &mut program.items {
         match item {
-            Item::Task(t) => match build_task(t, &mut surface) {
-                Ok(driver) => items.push(Item::Fn(driver)),
-                Err(mut ds) => diags.append(&mut ds),
-            },
-            other => items.push(other.clone()),
+            Item::Fn(f) => rewrite_fn(f, &mut diags),
+            Item::Type(t) => {
+                for m in &mut t.methods {
+                    rewrite_fn(m, &mut diags);
+                }
+            }
+            _ => {}
         }
     }
-
-    // Pass B: rewrite the operation surface everywhere (fns, methods,
-    // task arms already became plain fns in pass A — their bodies get the
-    // same rewrite below through the items list).
     if diags.is_empty() {
-        for item in items.iter_mut() {
-            match item {
-                Item::Fn(f) => {
-                    rewrite_fn(f, &mut diags);
-                }
-                Item::Type(t) => {
-                    for m in t.methods.iter_mut() {
-                        rewrite_fn(m, &mut diags);
+        Ok((program, surface))
+    } else {
+        Err(diags)
+    }
+}
+
+/// Project actor declarations into shared checked driver functions. Ordinary
+/// Auto binds the operations using the actual receiver and argument types.
+pub(crate) fn desugar_tasks(
+    program: &super::ast::Program,
+    ordinary: bool,
+) -> Result<(super::ast::Program, SchedSurface), Vec<Diagnostic>> {
+    let mut diags = Vec::new();
+    let mut surface = SchedSurface::default();
+    let mut items = Vec::with_capacity(program.items.len());
+    for item in &program.items {
+        match item {
+            Item::Task(t) => {
+                if ordinary {
+                    if let Some(messages) = actor_message_enum(t, &mut diags) {
+                        items.push(Item::Enum(messages));
                     }
                 }
-                Item::Enum(_) | Item::Const(_) | Item::Store(_) | Item::UseRs(_) => {}
-                // PLAN-1026: the py frontdoor has no sched surface.
-                Item::UsePy(_) => {}
-                Item::Task(_) => unreachable!("pass A replaced every task item"),
+                match build_task(t, &mut surface, ordinary) {
+                    Ok(driver) => items.push(Item::Fn(driver)),
+                    Err(mut ds) => diags.append(&mut ds),
+                }
             }
+            other => items.push(other.clone()),
         }
     }
 
@@ -207,7 +216,7 @@ fn pattern_word(p: &TaskPattern, diags: &mut Vec<Diagnostic>) -> Option<TypeWord
                 None
             }
         },
-        TaskPattern::Wildcard(_) => None,
+        TaskPattern::Wildcard(_) | TaskPattern::Named { .. } => None,
     }
 }
 
@@ -296,13 +305,59 @@ fn scan_reply_word_expr(e: &Expr, out: &mut Option<(TypeWord, Span)>) {
     }
 }
 
+/// Typed patterns set the mailbox type. Untyped integer handlers use the
+/// legacy integer message width so their handles match TaskRef<i64>.
+pub(crate) fn ordinary_message_type(task: &TaskItem, diags: &mut Vec<Diagnostic>) -> TypeAnn {
+    if task
+        .arms
+        .iter()
+        .any(|arm| matches!(arm.pattern, TaskPattern::Named { .. }))
+    {
+        return TypeAnn {
+            kind: TypeRef::Record(ident(&actor_message_name(&task.name.name), task.name.span)),
+            span: task.name.span,
+        };
+    }
+    let declared = task.arms.iter().find_map(|arm| {
+        if let TaskPattern::Bind { ty, .. } = &arm.pattern {
+            Some(ty.clone())
+        } else {
+            None
+        }
+    });
+    let ty = declared.unwrap_or_else(|| {
+        let word = task.arms.iter().find_map(|arm| {
+            if let TaskPattern::Lit(e) = &arm.pattern {
+                literal_word(
+                    e,
+                    "message pattern literal",
+                    "source.task-message-type",
+                    diags,
+                )
+                .map(|w| if w == TypeWord::I32 { TypeWord::I64 } else { w })
+            } else {
+                None
+            }
+        });
+        word_ann(word.unwrap_or(TypeWord::I64), task.span)
+    });
+    match ty.kind {
+        TypeRef::Builtin(TypeWord::Str) => word_ann(TypeWord::StrOwned, ty.span),
+        _ => ty,
+    }
+}
+
 /// Build one task's driver function + registry entry.
-fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Diagnostic>> {
+fn build_task(
+    t: &TaskItem,
+    surface: &mut SchedSurface,
+    ordinary: bool,
+) -> Result<FnItem, Vec<Diagnostic>> {
     let mut diags = Vec::new();
     let driver_name = format!("__task_{}", t.name.name);
 
     // Fields: literal-typed defaults (spawn inits override positionally).
-    let mut fields: Vec<(String, TypeWord)> = Vec::new();
+    let mut fields = Vec::new();
     for f in &t.fields {
         if let Some(w) = literal_word(
             &f.default,
@@ -310,9 +365,9 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
             "source.task-field",
             &mut diags,
         ) {
-            fields.push((f.name.name.clone(), w));
+            fields.push((f.name.name.clone(), w, f.default.clone()));
         } else {
-            fields.push((f.name.name.clone(), TypeWord::I32));
+            fields.push((f.name.name.clone(), TypeWord::I32, f.default.clone()));
         }
     }
 
@@ -343,6 +398,9 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
     // Message type: unify literal/binding patterns (wildcards carry none).
     let mut msg_word: Option<TypeWord> = None;
     for arm in &t.arms {
+        if ordinary {
+            break;
+        }
         if let Some(w) = pattern_word(&arm.pattern, &mut diags) {
             match msg_word {
                 None => msg_word = Some(w),
@@ -362,7 +420,11 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
             }
         }
     }
-    let msg = msg_word.unwrap_or(TypeWord::I32);
+    let msg = if ordinary {
+        ordinary_message_type(t, &mut diags)
+    } else {
+        word_ann(msg_word.unwrap_or(TypeWord::I32), t.span)
+    };
 
     // Reply type: first reply() literal; i32 when the task never replies.
     let mut reply_word: Option<(TypeWord, Span)> = None;
@@ -380,12 +442,11 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
     let mut stmts: Vec<Stmt> = Vec::new();
 
     // 1) state locals from the spawn parameters
-    for (i, (fname, w)) in fields.iter().enumerate() {
+    for (i, (fname, _, _)) in fields.iter().enumerate() {
         let init = lit_expr(ExprKind::Var(ident(&format!("__init_{i}"), sp)), sp);
         // The annotation stays implicit: an owned-text field's let-copy
         // materializes through inference (an explicit StrOwned annotation
         // on the param alias elides the copy).
-        let _ = w;
         stmts.push(Stmt::Let {
             kw: sp,
             name: ident(fname, sp),
@@ -422,7 +483,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
     loop_stmts.push(Stmt::Let {
         kw: sp,
         name: ident("__sched_msg", sp),
-        ann: Some(word_ann(msg, sp)),
+        ann: Some(msg.clone()),
         mutable: false,
         value: call("__sched_recv", Vec::new(), sp),
         span: sp,
@@ -452,6 +513,64 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
         els: None,
         span: sp,
     });
+    if ordinary {
+        loop_stmts.extend(build_guarded_dispatch(t, &msg));
+    } else {
+        loop_stmts.extend(build_frozen_dispatch(t));
+    }
+    stmts.push(Stmt::While {
+        cond: lit_expr(ExprKind::BoolLit(true), sp),
+        body: Block {
+            stmts: loop_stmts,
+            span: sp,
+        },
+        span: sp,
+    });
+    // The driver leaves the loop only on stop; the trailing return keeps
+    // the closures-family `int` result contract (0 = orderly stop).
+    stmts.push(Stmt::Return {
+        value: lit_expr(ExprKind::IntLit(0), sp),
+        span: sp,
+    });
+
+    // Params: one per state field (spawn inits).
+    let params: Vec<Param> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, (_, w, _))| Param {
+            span: sp,
+            name: ident(&format!("__init_{i}"), sp),
+            ty: word_ann(*w, sp),
+            mode: ParamMode::Default,
+            default: None,
+        })
+        .collect();
+
+    surface.tasks.push(SchedTaskInfo {
+        name: t.name.name.clone(),
+        driver_fn: driver_name.clone(),
+        fields,
+        msg,
+        reply,
+        span: t.span,
+    });
+
+    Ok(FnItem {
+        name: ident(&driver_name, t.name.span),
+        type_params: Vec::new(),
+        params,
+        ret: word_ann(TypeWord::I32, sp),
+        body: Block { stmts, span: sp },
+        span: t.span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+        proto: false,
+    })
+}
+
+fn build_frozen_dispatch(t: &TaskItem) -> Option<Stmt> {
+    let sp = t.span;
     // dispatch: literal arms -> an if/else-if chain; the (single)
     // binding/wildcard arm becomes the final else. Binding arms re-bind
     // the received message under the pattern name.
@@ -487,6 +606,7 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
                 }
             }
             TaskPattern::Wildcard(_) => arm.body.clone(),
+            TaskPattern::Named { .. } => unreachable!("named variants are ordinary-Auto only"),
         };
         let cond = match &arm.pattern {
             TaskPattern::Lit(l) => Some(lit_expr(
@@ -542,58 +662,232 @@ fn build_task(t: &TaskItem, surface: &mut SchedSurface) -> Result<FnItem, Vec<Di
             span: sp,
         });
     }
-    if let Some(chain_stmt) = chain {
-        loop_stmts.push(chain_stmt);
+    chain
+}
+
+pub(crate) const ACTOR_MESSAGE_PREFIX: &str = "__task_message_";
+pub(crate) const ACTOR_PAYLOAD_TYPE: &str = "<actor-payload>";
+
+fn actor_message_name(task: &str) -> String {
+    format!("{ACTOR_MESSAGE_PREFIX}{task}")
+}
+
+fn actor_message_enum(
+    task: &TaskItem,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<super::ast::EnumItem> {
+    use super::ast::{EnumArm, EnumItem};
+
+    let mut arms: Vec<EnumArm> = Vec::new();
+    for arm in &task.arms {
+        if let TaskPattern::Named { name, bindings } = &arm.pattern {
+            let element = TypeAnn {
+                kind: TypeRef::Generic {
+                    name: ident(ACTOR_PAYLOAD_TYPE, name.span),
+                    args: Vec::new(),
+                },
+                span: name.span,
+            };
+            let payload = match bindings.len() {
+                0 => None,
+                1 => Some(element),
+                count => Some(TypeAnn {
+                    kind: TypeRef::Tuple(vec![element; count]),
+                    span: name.span,
+                }),
+            };
+            if let Some(previous) = arms.iter().find(|arm| arm.name.name == name.name) {
+                let same_count = match (&previous.payload, &payload) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => match (&a.kind, &b.kind) {
+                        (TypeRef::Tuple(a), TypeRef::Tuple(b)) => a.len() == b.len(),
+                        (TypeRef::Generic { .. }, TypeRef::Generic { .. }) => true,
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                if !same_count {
+                    diags.push(diag(
+                        "source.task-pattern",
+                        "message arms disagree on their payload arity",
+                        name.span,
+                    ));
+                }
+            } else {
+                arms.push(EnumArm {
+                    name: name.clone(),
+                    payload,
+                    fields: Vec::new(),
+                    disc: None,
+                    span: name.span,
+                });
+            }
+        }
     }
-    stmts.push(Stmt::While {
-        cond: lit_expr(ExprKind::BoolLit(true), sp),
-        body: Block {
-            stmts: loop_stmts,
-            span: sp,
-        },
-        span: sp,
-    });
-    // The driver leaves the loop only on stop; the trailing return keeps
-    // the closures-family `int` result contract (0 = orderly stop).
-    stmts.push(Stmt::Return {
-        value: lit_expr(ExprKind::IntLit(0), sp),
-        span: sp,
-    });
-
-    // Params: one per state field (spawn inits).
-    let params: Vec<Param> = fields
-        .iter()
-        .enumerate()
-        .map(|(i, (_, w))| Param {
-            span: sp,
-            name: ident(&format!("__init_{i}"), sp),
-            ty: word_ann(*w, sp),
-            mode: ParamMode::Default,
-            default: None,
-        })
-        .collect();
-
-    surface.tasks.push(SchedTaskInfo {
-        name: t.name.name.clone(),
-        driver_fn: driver_name.clone(),
-        fields,
-        msg,
-        reply,
-        span: t.span,
-    });
-
-    Ok(FnItem {
-        name: ident(&driver_name, t.name.span),
+    if arms.is_empty() {
+        return None;
+    }
+    for arm in &task.arms {
+        if matches!(arm.pattern, TaskPattern::Lit(_) | TaskPattern::Bind { .. }) {
+            diags.push(diag(
+                "source.task-message-type",
+                "an implicit variant mailbox uses named arms and else",
+                arm.span,
+            ));
+        }
+    }
+    Some(EnumItem {
+        name: ident(&actor_message_name(&task.name.name), task.name.span),
         type_params: Vec::new(),
-        params,
-        ret: word_ann(TypeWord::I32, sp),
-        body: Block { stmts, span: sp },
-        span: t.span,
-        receiver: Receiver::Free,
-        owner: None,
-        script: false,
-        proto: false,
+        instance: None,
+        spec_witnesses: false,
+        arms,
+        methods: Vec::new(),
+        span: task.span,
     })
+}
+
+fn build_guarded_dispatch(task: &TaskItem, message_type: &TypeAnn) -> Vec<Stmt> {
+    use super::ast::{AggArmBody, AggMatchArm, MatchPattern};
+
+    if let TypeRef::Record(message) = &message_type.kind {
+        if message.name.starts_with(ACTOR_MESSAGE_PREFIX) {
+            let span = task.span;
+            let mut arms = Vec::new();
+            for arm in &task.arms {
+                let pat = match &arm.pattern {
+                    TaskPattern::Named { name, bindings } => MatchPattern::Variant {
+                        qual: Some(message.clone()),
+                        name: name.clone(),
+                        bindings: bindings.clone(),
+                    },
+                    TaskPattern::Wildcard(_) => MatchPattern::Else,
+                    _ => continue, // mixed mailbox shapes were diagnosed during declaration binding
+                };
+                arms.push(AggMatchArm {
+                    pat,
+                    body: AggArmBody::Block(arm.body.clone()),
+                    guard: arm.guard.clone(),
+                    span: arm.span,
+                });
+            }
+            if !arms
+                .iter()
+                .any(|arm| matches!(arm.pat, MatchPattern::Else) && arm.guard.is_none())
+            {
+                arms.push(AggMatchArm {
+                    pat: MatchPattern::Else,
+                    body: AggArmBody::Block(Block {
+                        stmts: Vec::new(),
+                        span,
+                    }),
+                    guard: None,
+                    span,
+                });
+            }
+            return vec![Stmt::AggIsMatch {
+                scrutinee: lit_expr(ExprKind::Var(ident("__sched_msg", span)), span),
+                arms,
+                span,
+            }];
+        }
+    }
+    use super::ast::{AssignTarget, BinOp, UnaryOp};
+
+    let span = task.span;
+    let matched = ident("__sched_matched", span);
+    let mut statements = vec![Stmt::Let {
+        kw: span,
+        name: matched.clone(),
+        ann: None,
+        mutable: true,
+        value: lit_expr(ExprKind::BoolLit(false), span),
+        span,
+    }];
+    for arm in &task.arms {
+        let span = arm.span;
+        let message = || lit_expr(ExprKind::Var(ident("__sched_msg", span)), span);
+        let unmatched = lit_expr(
+            ExprKind::Unary {
+                op: UnaryOp::Not,
+                operand: Box::new(lit_expr(ExprKind::Var(matched.clone()), span)),
+            },
+            span,
+        );
+        let mut then = Vec::new();
+        let condition = match &arm.pattern {
+            TaskPattern::Lit(lit) => {
+                let expected = match (&message_type.kind, &lit.kind) {
+                    (TypeRef::Builtin(TypeWord::I64), ExprKind::IntLit(n)) => lit_expr(
+                        ExprKind::TypedLit {
+                            ty: TypeWord::I64,
+                            bits: *n as i64 as u64,
+                        },
+                        lit.span,
+                    ),
+                    _ => lit.clone(),
+                };
+                let comparison = lit_expr(
+                    ExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(message()),
+                        rhs: Box::new(expected),
+                    },
+                    lit.span,
+                );
+                lit_expr(
+                    ExprKind::Binary {
+                        op: BinOp::And,
+                        lhs: Box::new(unmatched),
+                        rhs: Box::new(comparison),
+                    },
+                    span,
+                )
+            }
+            TaskPattern::Bind { name, ty } => {
+                then.push(Stmt::Let {
+                    kw: span,
+                    name: name.clone(),
+                    ann: Some(ty.clone()),
+                    mutable: false,
+                    value: message(),
+                    span,
+                });
+                unmatched
+            }
+            TaskPattern::Wildcard(_) => unmatched,
+            TaskPattern::Named { .. } => unreachable!("implicit variant dispatch is handled above"),
+        };
+        let mut body = arm.body.clone();
+        body.stmts.insert(
+            0,
+            Stmt::Assign {
+                target: AssignTarget {
+                    base: matched.clone(),
+                    path: Vec::new(),
+                },
+                value: lit_expr(ExprKind::BoolLit(true), span),
+                span,
+            },
+        );
+        if let Some(guard) = &arm.guard {
+            then.push(Stmt::If {
+                cond: guard.clone(),
+                then: body,
+                els: None,
+                span,
+            });
+        } else {
+            then.append(&mut body.stmts);
+        }
+        statements.push(Stmt::If {
+            cond: condition,
+            then: Block { stmts: then, span },
+            els: None,
+            span,
+        });
+    }
+    statements
 }
 
 fn inner_span(s: &Stmt) -> Span {

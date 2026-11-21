@@ -449,6 +449,13 @@ pub enum MirInstr {
         dst: u32,
     },
     /// Fire-and-forget spawn of a plain function chain.
+    SchedFuture {
+        closure: u32,
+        dst: u32,
+    },
+    SchedDetach {
+        future: u32,
+    },
     SchedGo {
         callee: u32,
         args: Vec<u32>,
@@ -1045,7 +1052,8 @@ impl MirBlock {
             | MirInstr::CallClosure { dst, .. }
             | MirInstr::ListGet { dst, .. }
             | MirInstr::ListPlace { dst, .. }
-            | MirInstr::ForeignCall { dst, .. } => Some(*dst),
+            | MirInstr::ForeignCall { dst, .. }
+            | MirInstr::SchedAwait { dst, .. } => Some(*dst),
             _ => None,
         }
     }

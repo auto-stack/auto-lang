@@ -323,7 +323,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-timer-head) { spelling: "timer", token: "ident", role: "timer", profiles: [age-component, age-package] }
         // PLAN-968: `on { ... }` message-handler head inside a `task`
         // declaration (contextual `on` — not a reserved word).
-        name(task-on-head) { spelling: "on", token: "ident", role: "on", profiles: [scheduler] }
+        name(task-on-head) { spelling: "on", token: "ident", role: "on", profiles: [scheduler, auto] }
     }
     rules {
         // 旧 items() 顶层无行纪律（同线相邻声明合法，c05 差分）——ListPlain；
@@ -386,7 +386,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { tag-item() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { union-item() {} }
             // PLAN-968: `task <Name> { ... }` actor declaration.
-            alt(profiles: [scheduler]) { task-item() {} }
+            alt(profiles: [scheduler, auto]) { task-item() {} }
             // PLAN-982（B-CONFIG-I）：配置文档面以**一个**顺序入口承载顶层文档行序列。
             alt(profiles: [config-document]) { cfg-document-item() {} }
             alt(profiles: [entry-unit, host-console, closures, numeric, aggregates, auto, scheduler, auto-packages]) { script-item() {} }
@@ -1753,9 +1753,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 opt { ret-ty(field: "ty") }
                 block(field: "body")
             }
-            // The combined AAC profile includes both failable returns and the
-            // legacy scheduler marker. Prefer a complete return annotation.
-            alt(profiles: [aac]) {
+            // Ordinary Auto and AAC include failable returns and the legacy
+            // scheduler marker. Prefer a complete return annotation.
+            alt(profiles: [aac, auto]) {
                 ident(field: "name")
                 opt { type-params(field: "type_params") }
                 lparen() {}
@@ -1776,7 +1776,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 // PLAN-968: the legacy effect marker `!` — a scheduler-only
                 // step (other profiles keep the exact historical leaf stream
                 // and the projection classifier consumes `!` as before).
-                opt(profiles: [scheduler]) { bang(field: "effect") }
+                opt(profiles: [scheduler, auto]) { bang(field: "effect") }
                 // PLAN-968: bare unit-result fns (`fn main() { ... }`). The
                 // ret-ty step is optional for ALL profiles now; the projection
                 // classifier keeps the required-ret contract (the N42
@@ -1872,6 +1872,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { f64-kw(field: "word") }
             alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { generic-ty(field: "generic") }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { tilde-ty(field: "tilde") }
+            alt(profiles: [auto]) { future-ty(field: "tilde") }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { err-ty(field: "err") }
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { ident(field: "word") }
@@ -1901,6 +1902,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { f64-kw(field: "word") }
             alt(profiles: [record, record-instances, collections, closures, numeric, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { generic-ty(field: "generic") }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { tilde-ty(field: "tilde") }
+            alt(profiles: [auto]) { future-ty(field: "tilde") }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { err-ty(field: "err") }
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { optional-ty(field: "optional") }
             alt(profiles: [text, text-record, age-h0, age-component, text-record-instances, host-console, record, record-instances, entry-unit, collections, closures, scalar-instances, scalar-ct, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { ident(field: "word") }
@@ -1987,6 +1989,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         tilde-ty(profiles: [aggregates, auto, scheduler, auto-packages]) {
             tilde(field: "t")
             generic-ty(field: "generic")
+        }
+        future-ty(profiles: [auto]) {
+            tilde(field: "t")
+            err-inner(field: "inner")
         }
         err-ty(profiles: [aggregates, auto, scheduler, auto-packages]) {
             bang(field: "b")
@@ -2260,14 +2266,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // Members separate on newline/`;` (list-nl, the type-item member
         // convention). Projection enforces: hook names start/stop only,
         // exactly one `on` block, wildcard/binding pattern contract.
-        task-item(recover: true, profiles: [scheduler]) {
+        task-item(recover: true, profiles: [scheduler, auto]) {
             r-task(field: "kw")
             ident(field: "name")
             lbrace() {}
             list-nl { task-member() {} }
             rbrace() {}
         }
-        task-member(profiles: [scheduler]) {
+        task-member(profiles: [scheduler, auto]) {
             alt { task-hook(field: "hook") }
             alt { task-on(field: "handler") }
             alt { task-field(field: "field") }
@@ -2276,31 +2282,34 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // function (the scheduler fn-tail: optional `!` marker, optional
         // ret); projection rejects names other than start/stop and the
         // resolve layer rejects parameters on hooks.
-        task-hook(profiles: [scheduler]) {
+        task-hook(profiles: [scheduler, auto]) {
             fn(field: "kw")
             fn-tail(field: "tail")
         }
-        task-on(profiles: [scheduler], expect: "an `on { <pattern> -> { .. } }` message-handler block") {
+        task-on(profiles: [scheduler, auto], expect: "an `on { <pattern> -> { .. } }` message-handler block") {
             name(of: "task-on-head", field: "on") {}
             lbrace() {}
             list-nl { task-arm() {} }
             rbrace() {}
         }
-        task-arm(profiles: [scheduler]) {
+        task-arm(profiles: [scheduler, auto]) {
             task-pattern(field: "pattern")
+            opt(profiles: [auto]) { arm-guard(field: "guard") }
             arrow() {}
             block(field: "body")
         }
         // `<int-lit>` | `<str-lit>` | `<ident> [<ann-ty>]` — the ident form
         // covers both the typed binding (`n int`) and the wildcard (`_`);
         // projection rejects a typed `_` and an untyped named binding.
-        task-pattern(profiles: [scheduler]) {
+        task-pattern(profiles: [scheduler, auto]) {
             alt { int-lit(field: "lit") }
             alt { str-lit(field: "lit") }
+            alt(profiles: [auto]) { else(field: "fallback") }
+            alt(profiles: [auto]) { ident(field: "bind") arm-payload(field: "payload") }
             alt { ident(field: "bind") opt { ann-ty(field: "ty") } }
         }
         // `<name> = <default>` state field (type inferred from the default).
-        task-field(profiles: [scheduler], expect: "a task state field `<name> = <default>`") {
+        task-field(profiles: [scheduler, auto], expect: "a task state field `<name> = <default>`") {
             ident(field: "name")
             assign() {}
             pratt(of: "aggregates-ops", field: "value") {}
@@ -2532,8 +2541,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 表达式语句全 profile 解析（backtracking 需要），投影按
             // entry/collections 能力拒绝并保真旧 span（表达式整体 span）
             // PLAN-968: the go and reply statements (reserved-word heads).
-            alt(profiles: [scheduler]) { go-stmt() {} }
-            alt(profiles: [scheduler]) { reply-stmt() {} }
+            alt(profiles: [scheduler, auto]) { go-stmt() {} }
+            alt(profiles: [scheduler, auto]) { reply-stmt() {} }
             alt(profiles: [auto, auto-packages]) { block() {} }
             alt { expr-stmt() {} }
         }
@@ -2836,11 +2845,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // statement form (scheduler face only; its value is unit).
         // PLAN-968: `go <call>` — the reserved `go` as a dedicated
         // statement form (scheduler face only).
-        go-stmt(profiles: [scheduler], expect: "a `go <call>` statement") {
+        go-stmt(profiles: [scheduler, auto], expect: "a `go <call>` statement") {
             r-go(field: "kw")
             expr(field: "value")
         }
-        reply-stmt(profiles: [scheduler], expect: "a `reply(<value>)` statement") {
+        reply-stmt(profiles: [scheduler, auto], expect: "a `reply(<value>)` statement") {
             r-reply(field: "kw")
             lparen(same-line: true) {}
             expr(field: "value")
@@ -2870,8 +2879,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [scalar, scalar-instances, scalar-modules, packages-modules, packages-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, age-package, config-document, auto-packages]) { bang() {} unary-expr(field: "operand", same-line: true) }
             // PLAN-968: `await <expr>` / `go <expr>` prefix operators
             // (scheduler face only; operand anchored to the same line).
-            alt(profiles: [scheduler]) { r-await() {} expr(field: "operand", same-line: true) }
-            alt(profiles: [scheduler]) { r-go() {} expr(field: "operand", same-line: true) }
+            alt(profiles: [scheduler, auto]) { r-await() {} expr(field: "operand", same-line: true) }
+            alt(profiles: [scheduler, auto]) { r-go() {} expr(field: "operand", same-line: true) }
             alt { postfix-expr() {} }
         }
         postfix-expr {
@@ -2925,9 +2934,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dot(same-line: true) r-view(same-line: true, field: "member") }
             // PLAN-965（M2-A）：`May.nil` 变体无载荷成员后缀（`nil` 为保留 token）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dot(same-line: true) r-nil(same-line: true, field: "member") }
+            alt(profiles: [auto]) { dot(same-line: true) r-await(field: "member") }
+            alt(profiles: [auto]) { dot(same-line: true) r-go(field: "member") }
             // PLAN-968: `Task.spawn` — the reserved `spawn` as a method
             // member (scheduler face only).
-            alt(profiles: [scheduler]) { dot(same-line: true) r-spawn(same-line: true, field: "member") }
+            alt(profiles: [scheduler, auto]) { dot(same-line: true) r-spawn(same-line: true, field: "member") }
             // PLAN-981（D-981-GFX-SPAWN-SPELLING）：021 冻结拼写 `render2d.spawn`
             // ——`spawn` 是全域保留 token，普通 `ident` 成员位匹配不到，AGE 作者
             // 面因此写不出该服务调用。只开**成员位**（不新增 token、不改拼写）；
@@ -3017,7 +3028,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { ident() {} }
             alt { lparen() {} expr() {} rparen() {} }
         }
+        async-block(profiles: [auto]) {
+            tilde(field: "kw")
+            block(field: "body")
+        }
         atom-expr {
+            alt(profiles: [auto]) { async-block() {} }
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
             alt(profiles: [scalar-ct, aac, auto, auto-packages]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。

@@ -66,6 +66,7 @@ struct UntypedFn {
 #[derive(Default)]
 struct Ctx<'p> {
     records: BTreeMap<String, &'p TypeItem>,
+    task_messages: BTreeMap<String, TypeAnn>,
     /// Typed free-function returns by name.
     typed_rets: BTreeMap<String, Ty>,
     /// Typed method returns by `Rec::name`.
@@ -80,6 +81,7 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
     normalize_auto_face(program);
     merge_prototypes(program, &mut diags);
     complete_owned_text_results(program);
+    infer_unit_methods(program);
     for item in &mut program.items {
         let Item::Type(record) = item else {
             continue;
@@ -155,10 +157,16 @@ pub(crate) fn complete(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
                 }
             }
             Item::Type(t) => {
-                register_method_returns(&mut ctx, &t.name.name, &t.methods);
                 ctx.records.entry(t.name.name.clone()).or_insert(t);
+                register_method_returns(&mut ctx, &t.name.name, &t.methods);
             }
             Item::Enum(e) => register_method_returns(&mut ctx, &e.name.name, &e.methods),
+            Item::Task(task) => {
+                ctx.task_messages.insert(
+                    task.name.name.clone(),
+                    super::sched_desugar::ordinary_message_type(task, &mut diags),
+                );
+            }
             Item::Store(crate::source::ast::StoreItem { name, ty, .. })
             | Item::Const(crate::source::ast::ConstItem { name, ty, .. }) => {
                 ctx.typed_rets
@@ -394,11 +402,57 @@ fn complete_owned_text_results(program: &mut Program) {
     }
 }
 
+fn infer_unit_methods(program: &mut Program) {
+    let mut ctx = Ctx::default();
+    let mut unit_methods = Vec::new();
+    for (index, item) in program.items.iter().enumerate() {
+        if let Item::Type(record) = item {
+            ctx.records.insert(record.name.name.clone(), record);
+            register_method_returns(&mut ctx, &record.name.name, &record.methods);
+            for (method_index, method) in record.methods.iter().enumerate() {
+                if method.ret.kind == TypeRef::Inferred
+                    && ctx.method_rets[&format!("{}::{}", record.name.name, method.name.name)]
+                        == Ty::Concrete(TypeRef::Builtin(TypeWord::Void))
+                {
+                    unit_methods.push((index, method_index));
+                }
+            }
+        }
+    }
+    for (index, method_index) in unit_methods {
+        if let Item::Type(record) = &mut program.items[index] {
+            record.methods[method_index].ret.kind = TypeRef::Builtin(TypeWord::Void);
+        }
+    }
+}
+
 fn register_method_returns(ctx: &mut Ctx, owner: &str, methods: &[FnItem]) {
     for method in methods {
+        let ty = if method.ret.kind == TypeRef::Inferred {
+            let mut env = fn_env(method, ctx);
+            env.0.insert(
+                "self".into(),
+                Ty::Concrete(TypeRef::Record(super::ast::Ident {
+                    name: owner.into(),
+                    span: method.span,
+                })),
+            );
+            let mut values = Vec::new();
+            collect_block_value(&method.body, &env, ctx, &mut Vec::new(), &mut values);
+            if values
+                .iter()
+                .all(|ty| *ty == Ty::Concrete(TypeRef::Builtin(TypeWord::Void)))
+            {
+                Ty::Concrete(TypeRef::Builtin(TypeWord::Void))
+            } else {
+                Ty::Unknown
+            }
+        } else {
+            Ty::of_ann(&method.ret)
+        };
         ctx.method_rets
             .entry(format!("{owner}::{}", method.name.name))
-            .or_insert_with(|| Ty::of_ann(&method.ret));
+            .or_insert(ty);
     }
 }
 
@@ -572,9 +626,12 @@ fn walk_block(
     let mut env = env.clone();
     for s in &b.stmts {
         match s {
-            Stmt::Let { name, value, .. } => {
-                let t = estimate(value, &env, ctx, sites);
-                env.0.insert(name.name.clone(), t);
+            Stmt::Let {
+                name, ann, value, ..
+            } => {
+                let inferred = estimate(value, &env, ctx, sites);
+                let ty = ann.as_ref().map_or(inferred, Ty::of_ann);
+                env.0.insert(name.name.clone(), ty);
             }
             Stmt::Assign { value, .. } => {
                 estimate(value, &env, ctx, sites);
@@ -755,6 +812,32 @@ fn estimate(
                     return t.clone();
                 }
             }
+            if name.name == "spawn"
+                && matches!(&recv.kind, ExprKind::Var(id) if id.name == "Task")
+                && !ctx.records.contains_key("Task")
+                && matches!(rt, Ty::Unknown)
+            {
+                if let Some(Arg::Pos(Expr {
+                    kind: ExprKind::StrLit(task),
+                    ..
+                })) = args.first()
+                {
+                    if let Some(message) = ctx.task_messages.get(task) {
+                        return Ty::Concrete(TypeRef::Generic {
+                            name: super::ast::Ident {
+                                name: "TaskRef".into(),
+                                span: e.span,
+                            },
+                            args: vec![message.clone()],
+                        });
+                    }
+                }
+            }
+            if matches!(&rt, Ty::Concrete(TypeRef::Generic { name, .. }) if name.name == "TaskRef")
+                && matches!(name.name.as_str(), "send" | "stop")
+            {
+                return Ty::Concrete(TypeRef::Builtin(TypeWord::Void));
+            }
             if name.name == "to_upper"
                 && args.is_empty()
                 && matches!(
@@ -766,6 +849,7 @@ fn estimate(
             }
             Ty::Unknown
         }
+        ExprKind::Go(_) => Ty::Concrete(TypeRef::Builtin(TypeWord::Void)),
         ExprKind::MutArg { .. } | ExprKind::ViewArg { .. } => Ty::Unknown,
         _ => Ty::Unknown,
     }
@@ -921,9 +1005,12 @@ fn collect_block_value(
     let mut env = env.clone();
     for s in &b.stmts {
         match s {
-            Stmt::Let { name, value, .. } => {
-                let t = estimate(value, &env, ctx, sites);
-                env.0.insert(name.name.clone(), t);
+            Stmt::Let {
+                name, ann, value, ..
+            } => {
+                let inferred = estimate(value, &env, ctx, sites);
+                let ty = ann.as_ref().map_or(inferred, Ty::of_ann);
+                env.0.insert(name.name.clone(), ty);
             }
             Stmt::Return { value, .. } => tails.push(estimate(value, &env, ctx, sites)),
             Stmt::ExprStmt { value, .. } => {

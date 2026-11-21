@@ -351,6 +351,7 @@ pub struct TaskFieldDecl {
 #[derive(Clone, Debug)]
 pub struct OnArm {
     pub pattern: TaskPattern,
+    pub guard: Option<Expr>,
     pub body: Block,
     /// Pattern start through the closing brace.
     pub span: Span,
@@ -362,6 +363,7 @@ pub struct OnArm {
 pub enum TaskPattern {
     Lit(Expr),
     Bind { name: Ident, ty: TypeAnn },
+    Named { name: Ident, bindings: Vec<Ident> },
     Wildcard(Span),
 }
 

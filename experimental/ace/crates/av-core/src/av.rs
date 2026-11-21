@@ -121,6 +121,8 @@ pub struct ExecTrace {
     pub call_frame_commits: u64,
     pub frames_remaining: u64,
     pub handled_language_errors: u64,
+    /// Shared queue and completion counters for one scheduler execution.
+    pub scheduler: Option<SchedulerFacts>,
     pub last_language_error: Option<crate::contract::LanguageErrorOrigin>,
     /// PLAN-915: the value-allocation ordinal the fault seam counted during
     /// THIS execution (0 when no fault seam was configured). A discovery
@@ -135,6 +137,18 @@ pub struct ExecTrace {
     /// [`execute_observed`]; shares its storage with the arena free hook
     /// so post-execution result drops keep appending `free` facts).
     pub lifecycle: crate::lifecycle::LifecycleLog,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SchedulerFacts {
+    pub parked_senders: u64,
+    pub woken_senders: u64,
+    pub parked_awaits: u64,
+    pub woken_awaits: u64,
+    pub text_allocations: usize,
+    /// Owned text retained after scheduler frames and queues were released.
+    /// The caller can still own a text result.
+    pub live_text_after_cleanup: usize,
 }
 
 /// PLAN-915 R03 observation: what the List-Place path actually did.
@@ -444,6 +458,15 @@ pub fn execute_console_foreign(
     }
     stubs.authorize_module(module.module())?;
     stubs.reset_run_bytes();
+    if has_scheduler_instructions(module) {
+        return Ok(execute_sched_with_providers(
+            module,
+            limits,
+            cancel,
+            Some(provider),
+            Some(stubs),
+        ));
+    }
     Ok(execute_module_impl_with_host(
         module,
         limits,
@@ -471,6 +494,15 @@ pub fn execute_foreign(
 ) -> Result<(ExecOutcome, ExecTrace), crate::host::AdmissionError> {
     stubs.authorize_module(module.module())?;
     stubs.reset_run_bytes();
+    if has_scheduler_instructions(module) {
+        return Ok(execute_sched_with_providers(
+            module,
+            limits,
+            cancel,
+            None,
+            Some(stubs),
+        ));
+    }
     Ok(execute_module_impl_with_host(
         module,
         limits,
@@ -7971,13 +8003,20 @@ fn dispatch_with_host<V: ModuleView>(
                         let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize].clone()
                     };
-                    let Value::I32(n) = sv else {
-                        return Some(ExecOutcome::Infra(format!(
-                            "text-display operand holds {} (admission violation)",
-                            sv.type_name()
-                        )));
+                    let rendered = match sv {
+                        Value::I32(value) => itoa_display(value),
+                        Value::I8(value) => itoa_display(i32::from(value)),
+                        Value::U8(value) => itoa_display(i32::from(value)),
+                        Value::U32(value) => value.to_string().into_bytes(),
+                        Value::I64(value) => value.to_string().into_bytes(),
+                        Value::U64(value) => value.to_string().into_bytes(),
+                        other => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "text-display operand holds {} (admission violation)",
+                                other.type_name(),
+                            )))
+                        }
                     };
-                    let rendered = itoa_display(n);
                     let deep = std::mem::size_of::<Value>() + rendered.len();
                     if let Err(out) = owned_alloc_precheck(st, deep, *dst as usize, limits) {
                         return Some(out);
@@ -8016,7 +8055,7 @@ fn dispatch_with_host<V: ModuleView>(
                         _ => {
                             return Some(ExecOutcome::Error {
                                 message: "task mailbox capacity must be at least 1".into(),
-                                span: None,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                             })
                         }
                     };
@@ -8047,6 +8086,8 @@ fn dispatch_with_host<V: ModuleView>(
                         fn_idx: *callee,
                         args: argv,
                         task: Some(task_idx),
+                        closure: None,
+                        completion: None,
                     });
                     let res = Value::I32(task_idx as i32 + 1);
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
@@ -8063,6 +8104,8 @@ fn dispatch_with_host<V: ModuleView>(
                         fn_idx: *callee,
                         args: argv,
                         task: None,
+                        closure: None,
+                        completion: None,
                     });
                 }
                 MirInstr::SchedSend { handle, msg } => {
@@ -8085,13 +8128,13 @@ fn dispatch_with_host<V: ModuleView>(
                     let Value::I32(hv) = h else {
                         return Some(ExecOutcome::Error {
                             message: "send requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     };
                     if hv <= 0 {
                         return Some(ExecOutcome::Error {
                             message: "send requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     let ti = (hv - 1) as usize;
@@ -8099,13 +8142,13 @@ fn dispatch_with_host<V: ModuleView>(
                     if ti >= t.tasks.len() {
                         return Some(ExecOutcome::Error {
                             message: "send on an unknown task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     if t.tasks[ti].closed || t.tasks[ti].stopped {
                         return Some(ExecOutcome::Error {
                             message: "send on a closed task".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     if t.tasks[ti].queue.len() >= t.tasks[ti].capacity {
@@ -8139,13 +8182,13 @@ fn dispatch_with_host<V: ModuleView>(
                     let Value::I32(hv) = h else {
                         return Some(ExecOutcome::Error {
                             message: "ask requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     };
                     if hv <= 0 {
                         return Some(ExecOutcome::Error {
                             message: "ask requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     let ti = (hv - 1) as usize;
@@ -8154,13 +8197,13 @@ fn dispatch_with_host<V: ModuleView>(
                     if ti >= t.tasks.len() {
                         return Some(ExecOutcome::Error {
                             message: "ask on an unknown task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     if t.tasks[ti].closed || t.tasks[ti].stopped {
                         return Some(ExecOutcome::Error {
                             message: "ask on a closed task".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     if t.tasks[ti].queue.len() >= t.tasks[ti].capacity {
@@ -8190,7 +8233,7 @@ fn dispatch_with_host<V: ModuleView>(
                     if port <= 0 {
                         return Some(ExecOutcome::Error {
                             message: "reply is only legal while handling an ask message".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     let raw_v =
@@ -8221,13 +8264,13 @@ fn dispatch_with_host<V: ModuleView>(
                     let Value::I32(hv) = caller.slots[*handle as usize] else {
                         return Some(ExecOutcome::Error {
                             message: "stop requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     };
                     if hv <= 0 {
                         return Some(ExecOutcome::Error {
                             message: "stop requires a task handle".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     let mut t = tables_arc.lock().expect("sched tables");
@@ -8246,7 +8289,7 @@ fn dispatch_with_host<V: ModuleView>(
                     let Value::I32(mv) = caller.slots[*ms as usize] else {
                         return Some(ExecOutcome::Error {
                             message: "sleep requires an int duration".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     };
                     let chain = st.sched_chain_id;
@@ -8267,6 +8310,89 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     return None;
                 }
+                MirInstr::SchedFuture { closure, dst } => {
+                    let Some(tables) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "future creation outside the scheduler".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let Value::Closure(reference) = caller.slots[*closure as usize] else {
+                        return Some(ExecOutcome::Infra(
+                            "future constructor requires a closure".into(),
+                        ));
+                    };
+                    let entry = st.closure_envs.get(&reference.env).filter(|entry| {
+                        entry.borrows.is_empty() && closure_ref_valid(st, reference)
+                    });
+                    let Some(entry) = entry.cloned() else {
+                        return Some(ExecOutcome::Trap {
+                            kind: TrapKind::InvalidHandle,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                        });
+                    };
+                    let bytes = {
+                        let mut visited = 0;
+                        let env = entry.env.borrow();
+                        let bytes = env.deep_size(&mut visited)
+                            .saturating_add(closure_binding_bytes(env.field_count(), 0));
+                        st.steps = st.steps.saturating_add(visited);
+                        bytes
+                    };
+                    let id = {
+                        let mut tables = tables.lock().expect("sched tables");
+                        let reserved = tables.deferred_bytes.saturating_add(bytes);
+                        if reserved > limits.max_slot_bytes {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: "deferred future environments exceed the slot budget".into(),
+                            });
+                        }
+                        let Ok(id) = i32::try_from(tables.ports.len() + 1) else {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::TableEntries,
+                                message: "future table exhausted".into(),
+                            });
+                        };
+                        tables.deferred_bytes = reserved;
+                        tables.ports.push(SchedPortState::Deferred { entry, bytes });
+                        id
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, Value::I32(id), limits) {
+                        return Some(out);
+                    }
+                }
+                MirInstr::SchedDetach { future } => {
+                    let Some(tables) = st.sched.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "future detach outside the scheduler".into(),
+                        ));
+                    };
+                    let caller = st.frames.last().expect("frame present");
+                    let Value::I32(id) = caller.slots[*future as usize] else {
+                        return Some(ExecOutcome::Infra("detach requires a future handle".into()));
+                    };
+                    let mut tables = tables.lock().expect("sched tables");
+                    let port = id
+                        .checked_sub(1)
+                        .and_then(|i| usize::try_from(i).ok());
+                    match port.and_then(|index| tables.take_completion(index)) {
+                        Some(SchedPortState::Deferred { entry, .. }) => {
+                            st.sched_spawned.push(SchedSpawnReq::deferred(entry, None));
+                        }
+                        Some(
+                            SchedPortState::Pending
+                            | SchedPortState::Published(_)
+                            | SchedPortState::Failed { .. },
+                        ) => {}
+                        _ => {
+                            return Some(ExecOutcome::Error {
+                                message: "detach on an unavailable future".into(),
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            })
+                        }
+                    }
+                }
                 MirInstr::SchedAwait { future, dst } => {
                     let Some(tables_arc) = st.sched.clone() else {
                         return Some(ExecOutcome::Infra(
@@ -8277,7 +8403,7 @@ fn dispatch_with_host<V: ModuleView>(
                     let Value::I32(pv) = caller.slots[*future as usize] else {
                         return Some(ExecOutcome::Error {
                             message: "await requires an ask future".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     };
                     if pv <= 0
@@ -8288,37 +8414,56 @@ fn dispatch_with_host<V: ModuleView>(
                     {
                         return Some(ExecOutcome::Error {
                             message: "await on an unknown future".into(),
-                            span: None,
+                            span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
                         });
                     }
                     let mut t = tables_arc.lock().expect("sched tables");
-                    match std::mem::replace(&mut t.ports[pv as usize - 1], SchedPortState::Taken) {
+                    let state = t.take_completion(pv as usize - 1).expect("checked reply port");
+                    match state {
+                        SchedPortState::Deferred { .. } | SchedPortState::Pending => {
+                            if let SchedPortState::Deferred { entry, .. } = state {
+                                st.sched_spawned
+                                    .push(SchedSpawnReq::deferred(entry, Some(pv)));
+                            }
+                            t.ports[pv as usize - 1] = SchedPortState::Pending;
+                            drop(t);
+                            st.sched_park = Some(SchedPark::AwaitPort(pv));
+                            st.frames.last_mut().expect("frame present").ip -= 1;
+                            return None;
+                        }
                         SchedPortState::Published(v) => {
                             if let Err(out) = commit_slot_write(st, *dst as usize, v, limits) {
                                 return Some(out);
                             }
                         }
-                        SchedPortState::Taken => {
-                            return Some(ExecOutcome::Error {
-                                message: "await on an already-consumed future".into(),
-                                span: None,
-                            });
-                        }
-                        SchedPortState::Closed => {
-                            return Some(ExecOutcome::Error {
-                                message: "task closed without replying".into(),
-                                span: None,
-                            });
-                        }
-                        SchedPortState::Pending => {
-                            // restore and park: re-executes on publication.
-                            t.ports[pv as usize - 1] = SchedPortState::Pending;
+                        failure => {
                             drop(t);
-                            st.sched_park = Some(SchedPark::AwaitPort(pv));
-                            if let Some(fr) = st.frames.last_mut() {
-                                fr.ip -= 1;
+                            use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
+                            let fallback = LanguageErrorOrigin {
+                                kind: LanguageErrorKind::Explicit,
+                                span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                            };
+                            let (message, origin) = match failure {
+                                SchedPortState::Failed { message, origin } => (message, origin),
+                                SchedPortState::Taken => {
+                                    ("await on an already-consumed future".into(), fallback)
+                                }
+                                SchedPortState::Closed => {
+                                    ("task closed without replying".into(), fallback)
+                                }
+                                _ => unreachable!("only completion failures remain"),
+                            };
+                            st.trace.last_language_error = Some(origin);
+                            match unwind_to_invoke(v, st, limits, &message, origin, true) {
+                                Ok(true) => continue,
+                                Ok(false) => {
+                                    return Some(ExecOutcome::Error {
+                                        message,
+                                        span: origin.span,
+                                    })
+                                }
+                                Err(outcome) => return Some(outcome),
                             }
-                            return None;
                         }
                     }
                 }
@@ -8401,6 +8546,16 @@ fn dispatch_with_host<V: ModuleView>(
                             return Some(out);
                         }
                         continue;
+                    }
+                    // Once a handler has returned to the loop, it can no
+                    // longer reply to the message it consumed.
+                    if st.sched_reply_port > 0 {
+                        let completed = std::mem::take(&mut st.sched_reply_port);
+                        if let Some(port @ SchedPortState::Pending) =
+                            t.ports.get_mut(completed as usize - 1)
+                        {
+                            *port = SchedPortState::Closed;
+                        }
                     }
                     let stopped =
                         ti < t.tasks.len() && t.tasks[ti].stopped && t.tasks[ti].queue.is_empty();
@@ -9371,8 +9526,13 @@ struct SchedTaskSlot {
 /// One ask reply port.
 #[derive(Clone, Debug)]
 enum SchedPortState {
+    Deferred { entry: ClosureEntry, bytes: usize },
     Pending,
     Published(Value),
+    Failed {
+        message: String,
+        origin: crate::contract::LanguageErrorOrigin,
+    },
     /// Consumed by its single await.
     Taken,
     /// PLAN-1067 T-05: the producing task closed WITHOUT publishing. The
@@ -9389,11 +9549,24 @@ struct SchedTables {
     draining: bool,
     tasks: Vec<SchedTaskSlot>,
     ports: Vec<SchedPortState>,
+    facts: SchedulerFacts,
+    text_arenas: Vec<crate::owned_text::StrArena>,
+    deferred_bytes: usize,
     /// Virtual milliseconds; only advances when every chain is parked on
     /// timers or message waits (earliest-deadline-first).
     clock_ms: u64,
     /// (deadline, chain id) sleep timers.
     timers: Vec<(u64, usize)>,
+}
+
+impl SchedTables {
+    fn take_completion(&mut self, index: usize) -> Option<SchedPortState> {
+        let state = std::mem::replace(self.ports.get_mut(index)?, SchedPortState::Taken);
+        if let SchedPortState::Deferred { bytes, .. } = &state {
+            self.deferred_bytes -= *bytes;
+        }
+        Some(state)
+    }
 }
 
 /// Why a chain parked (mirrored between LoopState and the scheduler).
@@ -9410,6 +9583,20 @@ struct SchedSpawnReq {
     fn_idx: u32,
     args: Vec<Value>,
     task: Option<usize>,
+    closure: Option<ClosureEntry>,
+    completion: Option<i32>,
+}
+
+impl SchedSpawnReq {
+    fn deferred(closure: ClosureEntry, completion: Option<i32>) -> Self {
+        Self {
+            fn_idx: closure.func,
+            args: Vec::new(),
+            task: None,
+            closure: Some(closure),
+            completion,
+        }
+    }
 }
 
 /// One multiplexed chain.
@@ -9417,6 +9604,7 @@ struct SchedChain {
     st: LoopState,
     task: Option<usize>,
     main: bool,
+    completion: Option<i32>,
     done: Option<ExecOutcome>,
     park: Option<SchedPark>,
 }
@@ -9492,7 +9680,66 @@ pub fn execute_sched(
     cancel: &CancelFlag,
     host: &mut dyn crate::host::ConsoleHost,
 ) -> (ExecOutcome, ExecTrace) {
+    execute_sched_with_providers(module, limits, cancel, Some(host), None)
+}
+
+fn has_scheduler_instructions(module: &LoadedModule) -> bool {
+    module
+        .module()
+        .funcs
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instrs)
+        .any(|instruction| {
+            matches!(
+                instruction,
+                MirInstr::SchedSpawn { .. }
+                    | MirInstr::SchedSend { .. }
+                    | MirInstr::SchedAsk { .. }
+                    | MirInstr::SchedReply { .. }
+                    | MirInstr::SchedStop { .. }
+                    | MirInstr::SchedSleep { .. }
+                    | MirInstr::SchedAwait { .. }
+                    | MirInstr::SchedFuture { .. }
+                    | MirInstr::SchedDetach { .. }
+                    | MirInstr::SchedGo { .. }
+                    | MirInstr::SchedRecv { .. }
+                    | MirInstr::SchedPort { .. }
+                    | MirInstr::SchedStopping { .. }
+            )
+        })
+}
+
+fn execute_sched_with_providers(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    host: Option<&mut dyn crate::host::ConsoleHost>,
+    foreign: Option<&mut crate::foreign_exec::ForeignStubTable>,
+) -> (ExecOutcome, ExecTrace) {
     let tables = std::sync::Arc::new(std::sync::Mutex::new(SchedTables::default()));
+    let (outcome, mut trace) =
+        execute_scheduled(module, limits, cancel, host, foreign, tables.clone());
+    let mut tables = tables.lock().expect("sched tables");
+    tables.tasks.clear();
+    tables.ports.clear();
+    let mut facts = tables.facts;
+    for arena in &tables.text_arenas {
+        facts.text_allocations += arena.successful_allocs();
+        facts.live_text_after_cleanup += arena.live();
+    }
+    trace.scheduler = Some(facts);
+    (outcome, trace)
+}
+
+fn execute_scheduled(
+    module: &LoadedModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    mut host: Option<&mut dyn crate::host::ConsoleHost>,
+    mut foreign: Option<&mut crate::foreign_exec::ForeignStubTable>,
+    tables: std::sync::Arc<std::sync::Mutex<SchedTables>>,
+) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
     let view = MergedView(m);
     let mut chains: Vec<SchedChain> = Vec::new();
@@ -9506,6 +9753,11 @@ pub fn execute_sched(
         EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     main_st.sched = Some(tables.clone());
     main_st.sched_chain_id = 0;
+    tables
+        .lock()
+        .expect("sched tables")
+        .text_arenas
+        .push(main_st.arena.clone());
     if let Some(out) = dispatch_with_host(
         &view,
         limits,
@@ -9514,9 +9766,10 @@ pub fn execute_sched(
         &mut main_st,
         Some(0),
         false,
-        Some(host),
+        host.as_mut()
+            .map(|provider| &mut **provider as &mut dyn crate::host::ConsoleHost),
         None,
-        None,
+        foreign.as_deref_mut(),
     ) {
         let trace = std::mem::replace(&mut main_st.trace, ExecTrace::default());
         return (out, trace);
@@ -9525,6 +9778,7 @@ pub fn execute_sched(
         st: main_st,
         task: None,
         main: true,
+        completion: None,
         done: None,
         park: None,
     });
@@ -9564,13 +9818,51 @@ pub fn execute_sched(
         for (ci, req) in new_reqs {
             let id = chains.len();
             match sched_new_chain(&view, req.fn_idx, &req.args, &tables, id, req.task) {
-                Ok(st) => chains.push(SchedChain {
-                    st,
-                    task: req.task,
-                    main: false,
-                    done: None,
-                    park: None,
-                }),
+                Ok(mut st) => {
+                    if let Some(entry) = req.closure {
+                        let Some(handle) = reserve_closure_handle() else {
+                            return (
+                                ExecOutcome::Resource {
+                                    kind: ResourceKind::TableEntries,
+                                    message: "closure handle space exhausted".into(),
+                                },
+                                take_trace(&mut chains),
+                            );
+                        };
+                        let env = entry.env.borrow();
+                        let mut visited = 0;
+                        let bytes = env
+                            .deep_size(&mut visited)
+                            .saturating_add(closure_binding_bytes(env.field_count(), 0));
+                        drop(env);
+                        if bytes > limits.max_slot_bytes {
+                            return (
+                                ExecOutcome::Resource {
+                                    kind: ResourceKind::SlotBytes,
+                                    message: "future environment exceeds the slot budget".into(),
+                                },
+                                take_trace(&mut chains),
+                            );
+                        }
+                        st.steps = st.steps.saturating_add(visited);
+                        st.slot_bytes = st.slot_bytes.saturating_add(bytes);
+                        st.closure_envs.insert(handle, entry);
+                        st.frames.last_mut().expect("future frame").closure_env = Some(handle);
+                    }
+                    tables
+                        .lock()
+                        .expect("sched tables")
+                        .text_arenas
+                        .push(st.arena.clone());
+                    chains.push(SchedChain {
+                        st,
+                        task: req.task,
+                        main: false,
+                        completion: req.completion,
+                        done: None,
+                        park: None,
+                    });
+                }
                 Err(out) => {
                     // A failed chain start fails the program (named).
                     let _ = ci;
@@ -9639,17 +9931,25 @@ pub fn execute_sched(
                 match park {
                     SchedPark::Recv(ti) => !t.tasks[ti].queue.is_empty() || t.tasks[ti].stopped,
                     SchedPark::SendFull(ti) => {
-                        t.tasks[ti].closed || t.tasks[ti].queue.len() < t.tasks[ti].capacity
+                        let task = &t.tasks[ti];
+                        task.closed || task.stopped || task.queue.len() < task.capacity
                     }
                     SchedPark::AwaitPort(p) => {
-                        !matches!(t.ports.get(p as usize), Some(SchedPortState::Pending))
+                        !matches!(t.ports.get(p as usize - 1), Some(SchedPortState::Pending))
                     }
                     SchedPark::Sleep(deadline) => t.clock_ms >= deadline,
                 }
             };
             if ready {
-                if matches!(park, SchedPark::Sleep(_)) {
-                    ch.st.sched_sleep_fired = true;
+                match park {
+                    SchedPark::Sleep(_) => ch.st.sched_sleep_fired = true,
+                    SchedPark::SendFull(_) => {
+                        tables.lock().expect("sched tables").facts.woken_senders += 1
+                    }
+                    SchedPark::AwaitPort(_) => {
+                        tables.lock().expect("sched tables").facts.woken_awaits += 1
+                    }
+                    SchedPark::Recv(_) => {}
                 }
                 ch.park = None;
                 ch.st.sched_park = None;
@@ -9692,32 +9992,33 @@ pub fn execute_sched(
                         };
                         if any_live {
                             let mut t = tables.lock().expect("sched tables");
-                            t.draining = true;
-                            for slot in t.tasks.iter_mut() {
-                                slot.stopped = true;
+                            if !t.draining {
+                                t.draining = true;
+                                for task in &mut t.tasks {
+                                    task.stopped = true;
+                                }
+                                // Buffered messages can still produce replies.
+                                // First give their drivers the ordinary wake pass.
+                                continue;
                             }
-                            // PLAN-1067 T-05: a future nobody can publish any
-                            // more is CLOSED, so its waiter terminates with the
-                            // named language error during the drain instead of
-                            // spinning on the multiplex guard.
-                            for state in t.ports.iter_mut() {
+                            let mut closed = false;
+                            for state in &mut t.ports {
                                 if matches!(state, SchedPortState::Pending) {
                                     *state = SchedPortState::Closed;
+                                    closed = true;
                                 }
+                            }
+                            if closed {
+                                continue;
                             }
                             drop(t);
-                            for ch in chains.iter_mut() {
-                                if ch.done.is_none() {
-                                    ch.park = None;
-                                    ch.st.sched_park = None;
-                                }
-                            }
-                            // One more drain round; bounded by the guard.
-                            let all_done_after_drain = chains.iter().all(|c| c.done.is_some());
-                            if all_done_after_drain {
-                                break;
-                            }
-                            continue;
+                            return (
+                                ExecOutcome::Resource {
+                                    kind: ResourceKind::InstrSteps,
+                                    message: "scheduler drain cannot make progress".into(),
+                                },
+                                take_trace(&mut chains),
+                            );
                         }
                         break;
                     }
@@ -9751,16 +10052,44 @@ pub fn execute_sched(
                 &mut chains[ci].st,
                 Some(1),
                 false,
-                Some(host),
+                host.as_mut()
+                    .map(|provider| &mut **provider as &mut dyn crate::host::ConsoleHost),
                 None,
-                None,
+                foreign.as_deref_mut(),
             );
             stepped = true;
             match out {
-                Some(o) => {
+                Some(mut o) => {
+                    let mut published = false;
+                    if let Some(port) = chains[ci].completion {
+                        use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
+                        let completion = match &mut o {
+                            ExecOutcome::Success { value, .. } => Some(SchedPortState::Published(
+                                std::mem::replace(value, Value::Unit),
+                            )),
+                            ExecOutcome::Error { message, span } => Some(SchedPortState::Failed {
+                                message: std::mem::take(message),
+                                origin: chains[ci].st.trace.last_language_error.unwrap_or(
+                                    LanguageErrorOrigin {
+                                        kind: LanguageErrorKind::Explicit,
+                                        span: *span,
+                                    },
+                                ),
+                            }),
+                            _ => None,
+                        };
+                        if let Some(completion) = completion {
+                            let mut tables = tables.lock().expect("sched tables");
+                            let state = &mut tables.ports[port as usize - 1];
+                            if matches!(state, SchedPortState::Pending) {
+                                *state = completion;
+                            }
+                            published = true;
+                        }
+                    }
                     if chains[ci].main {
                         main_outcome = Some(o.clone());
-                    } else if !matches!(o, ExecOutcome::Success { .. }) {
+                    } else if !published && !matches!(o, ExecOutcome::Success { .. }) {
                         // A task/go chain failure fails the program (the
                         // frozen M2-A propagation rule).
                         let trace = take_trace(&mut chains);
@@ -9776,6 +10105,15 @@ pub fn execute_sched(
                 }
                 None => {
                     if let Some(p) = chains[ci].st.sched_park {
+                        match p {
+                            SchedPark::SendFull(_) => {
+                                tables.lock().expect("sched tables").facts.parked_senders += 1
+                            }
+                            SchedPark::AwaitPort(_) => {
+                                tables.lock().expect("sched tables").facts.parked_awaits += 1
+                            }
+                            _ => {}
+                        }
                         chains[ci].park = Some(p);
                     }
                 }

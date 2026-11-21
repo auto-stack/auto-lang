@@ -271,7 +271,9 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         | MirInstr::SchedGo { .. }
         | MirInstr::SchedRecv { .. }
         | MirInstr::SchedPort { .. }
-        | MirInstr::SchedStopping { .. } => "sched-op".to_string(),
+        | MirInstr::SchedStopping { .. }
+        | MirInstr::SchedFuture { .. }
+        | MirInstr::SchedDetach { .. } => "sched-op".to_string(),
         MirInstr::HostCall { host, arg } => {
             let h = m
                 .host_imports

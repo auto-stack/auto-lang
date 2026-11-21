@@ -254,6 +254,8 @@ pub const OP_SCHED_GO: u8 = 0x48;
 pub const OP_SCHED_RECV: u8 = 0x49;
 pub const OP_SCHED_PORT: u8 = 0x4A;
 pub const OP_SCHED_STOPPING: u8 = 0x4B;
+pub const OP_SCHED_FUTURE: u8 = 0x54;
+pub const OP_SCHED_DETACH: u8 = 0x55;
 
 // sub-ops
 pub const BIN_ADD: u8 = 1;
@@ -1674,6 +1676,15 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_SCHED_AWAIT);
                         put_u32(&mut w, *future);
                         put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedFuture { closure, dst } => {
+                        put_u8(&mut w, OP_SCHED_FUTURE);
+                        put_u32(&mut w, *closure);
+                        put_u32(&mut w, *dst);
+                    }
+                    MirInstr::SchedDetach { future } => {
+                        put_u8(&mut w, OP_SCHED_DETACH);
+                        put_u32(&mut w, *future);
                     }
                     MirInstr::SchedGo { callee, args } => {
                         if args.len() > u8::MAX as usize {
@@ -3529,6 +3540,13 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         let future = c.u32()?;
                         let dst = c.u32()?;
                         MirInstr::SchedAwait { future, dst }
+                    }
+                    OP_SCHED_FUTURE if family == WireFamily::Closures => MirInstr::SchedFuture {
+                        closure: c.u32()?,
+                        dst: c.u32()?,
+                    },
+                    OP_SCHED_DETACH if family == WireFamily::Closures => {
+                        MirInstr::SchedDetach { future: c.u32()? }
                     }
                     OP_SCHED_GO if family == WireFamily::Closures => {
                         let callee = c.u32()?;

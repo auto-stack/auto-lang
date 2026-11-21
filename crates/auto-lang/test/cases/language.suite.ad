@@ -22,5 +22,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/generics/spec-dispatch.case.ad",
   "language/generics/record-templates.case.ad",
   "language/comptime/evaluation-macros.case.ad",
+  "language/async/tasks-actors.case.ad",
 ] }
 ```

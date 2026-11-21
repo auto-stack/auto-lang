@@ -1453,7 +1453,12 @@ impl<'a, 'r> Verifier<'a, 'r> {
             // nested container itself join the element closure.
             Some(MirType::I8 | MirType::U8 | MirType::U32) if aggregates => true,
             Some(MirType::List(_)) if aggregates => true,
-            Some(MirType::Dyn) if code == "mir.type.list-elem" && self.language_values() => true,
+            Some(MirType::Dyn)
+                if matches!(code, "mir.type.list-elem" | "mir.type.variant-payload")
+                    && self.language_values() =>
+            {
+                true
+            }
             // PLAN-964: an OBJECT element rides the collections family (the
             // closures profile represents a shared object capture as a
             // List<Object> env cell).
@@ -4267,6 +4272,52 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
+            MirInstr::TextDisplay { dst, src } => {
+                let source = slot_ty_of(f, *src, sp, "display source")?;
+                let output = slot_ty_of(f, *dst, sp, "display destination")?;
+                let source = self.module.types.get(source as usize);
+                let integer = source == Some(&MirType::I32)
+                    || (self.is_closures
+                        && matches!(
+                            source,
+                            Some(
+                                MirType::I8
+                                    | MirType::U8
+                                    | MirType::U32
+                                    | MirType::I64
+                                    | MirType::U64
+                            )
+                        ));
+                if !integer || self.module.types.get(output as usize) != Some(&MirType::Str) {
+                    return Err(err(
+                        "mir.text-display",
+                        "expected an integer source and an owned Str destination".into(),
+                    ));
+                }
+            }
+            MirInstr::SchedFuture { closure, dst } => {
+                let input = slot_ty_of(f, *closure, sp, "future closure")?;
+                let output = slot_ty_of(f, *dst, sp, "future destination")?;
+                if !self.is_closures
+                    || !matches!(self.module.types.get(input as usize), Some(MirType::Closure(sig)) if sig.params.is_empty())
+                    || self.module.types.get(output as usize) != Some(&MirType::I32)
+                {
+                    return Err(err(
+                        "mir.sched-future",
+                        "expected a zero-argument closure and an i32 future slot".into(),
+                    ));
+                }
+            }
+            MirInstr::SchedDetach { future } => {
+                let input = slot_ty_of(f, *future, sp, "detached future")?;
+                if !self.is_closures || self.module.types.get(input as usize) != Some(&MirType::I32)
+                {
+                    return Err(err(
+                        "mir.sched-future",
+                        "expected an i32 future slot".into(),
+                    ));
+                }
+            }
             MirInstr::StrUpper { dst, view } => {
                 if !self.is_closures
                     || !self
@@ -4857,6 +4908,7 @@ impl MirInstr {
             MirInstr::SchedSpawn { dst, .. }
             | MirInstr::SchedAsk { dst, .. }
             | MirInstr::SchedAwait { dst, .. }
+            | MirInstr::SchedFuture { dst, .. }
             | MirInstr::SchedRecv { dst, .. }
             | MirInstr::SchedPort { dst, .. }
             | MirInstr::SchedStopping { dst, .. } => Some(*dst),
@@ -4865,7 +4917,8 @@ impl MirInstr {
             | MirInstr::SchedReply { .. }
             | MirInstr::SchedStop { .. }
             | MirInstr::SchedSleep { .. }
-            | MirInstr::SchedGo { .. } => None,
+            | MirInstr::SchedGo { .. }
+            | MirInstr::SchedDetach { .. } => None,
             MirInstr::ListNew { dst, .. }
             | MirInstr::ListLen { dst, .. }
             | MirInstr::ListCap { dst, .. }
@@ -4953,7 +5006,8 @@ impl MirInstr {
             MirInstr::SchedStop { handle } | MirInstr::SchedSleep { ms: handle } => {
                 vec![*handle]
             }
-            MirInstr::SchedAwait { future, .. } => vec![*future],
+            MirInstr::SchedAwait { future, .. } | MirInstr::SchedDetach { future } => vec![*future],
+            MirInstr::SchedFuture { closure, .. } => vec![*closure],
             MirInstr::SchedRecv { .. }
             | MirInstr::SchedPort { .. }
             | MirInstr::SchedStopping { .. } => vec![],

@@ -86,6 +86,8 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
                         | crate::mir::MirInstr::SchedSleep { .. }
                         | crate::mir::MirInstr::SchedAwait { .. }
                         | crate::mir::MirInstr::SchedGo { .. }
+                        | crate::mir::MirInstr::SchedFuture { .. }
+                        | crate::mir::MirInstr::SchedDetach { .. }
                         | crate::mir::MirInstr::SchedRecv { .. }
                         | crate::mir::MirInstr::SchedPort { .. }
                         | crate::mir::MirInstr::SchedStopping { .. }

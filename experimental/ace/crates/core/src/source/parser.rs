@@ -1275,6 +1275,7 @@ impl<'s> Parser<'s> {
                         let span = pat_start.join(body_span);
                         arms.push(OnArm {
                             pattern,
+                            guard: None,
                             body,
                             span,
                         });

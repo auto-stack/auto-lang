@@ -859,6 +859,8 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::SchedSleep { .. } => "SCHED_SLEEP",
         MirInstr::SchedAwait { .. } => "SCHED_AWAIT",
         MirInstr::SchedGo { .. } => "SCHED_GO",
+        MirInstr::SchedFuture { .. } => "SCHED_FUTURE",
+        MirInstr::SchedDetach { .. } => "SCHED_DETACH",
         MirInstr::SchedRecv { .. } => "SCHED_RECV",
         MirInstr::SchedPort { .. } => "SCHED_PORT",
         MirInstr::SchedStopping { .. } => "SCHED_STOPPING",

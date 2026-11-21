@@ -2664,7 +2664,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                 if let Some(d) = self.walk_closure_expr() {
                     return Some(d);
                 }
-            } else if (g == k.tok_r_await || g == k.tok_r_go) && self.cx.profile.is_scheduler() {
+            } else if (g == k.tok_r_await || g == k.tok_r_go)
+                && (self.cx.profile.is_scheduler() || self.cx.profile.is_auto_language())
+            {
                 // PLAN-968: `await`/`go` prefix operators — consumed, the
                 // operand walk continues (mirrors the oracle's prefix parse).
                 self.i += 1;
@@ -3840,6 +3842,9 @@ enum Frame {
         op: UnaryOp,
     },
     /// PLAN-968: `await`/`go` prefix wrap-up (scheduler face).
+    AsyncBlockFinish {
+        span: Span,
+    },
     SchedPrefixFinish {
         is_await: bool,
         kw_span: Span,
@@ -6756,8 +6761,14 @@ impl<'a> Engine<'a> {
             self.drive();
             let body = self.pop_b();
             let span = self.cx.span_of(arm);
+            let guard = self
+                .cx
+                .field_child(arm, "guard")
+                .and_then(|guard| self.cx.field_child(guard, "cond"))
+                .map(|cond| self.project_expr_sync(cond));
             arms.push(OnArm {
                 pattern,
+                guard,
                 body,
                 span,
             });
@@ -6769,6 +6780,9 @@ impl<'a> Engine<'a> {
     /// the same named rejections as the oracle (`source.task-pattern`,
     /// `source.literal-range`).
     fn run_task_pattern(&mut self, node: u32) -> TaskPattern {
+        if let Some(fallback) = self.cx.field_child(node, "fallback") {
+            return TaskPattern::Wildcard(self.cx.span_of(fallback));
+        }
         if let Some(lit) = self.cx.child_of_kind(node, self.cx.k.tok_int_lit) {
             let span = self.cx.span_of(lit);
             let raw = self.cx.spelling(lit);
@@ -6810,6 +6824,23 @@ impl<'a> Engine<'a> {
             .expect("pattern ident");
         let bind = ident_of(&mut self.cx, bind_leaf);
         let ty = self.cx.field_child(node, "ty");
+        if self.cx.profile.is_auto_language() && bind.name != "_" && ty.is_none() {
+            let mut bindings = Vec::new();
+            if let Some(payload) = self.cx.field_child(node, "payload") {
+                let mut nodes = vec![payload];
+                while let Some(child) = nodes.pop() {
+                    if self.cx.tree.kind(child) == self.cx.k.tok_ident {
+                        bindings.push(ident_of(&mut self.cx, child));
+                    } else {
+                        nodes.extend(self.cx.children(child).into_iter().rev());
+                    }
+                }
+            }
+            return TaskPattern::Named {
+                name: bind,
+                bindings,
+            };
+        }
         if bind.name == "_" {
             if let Some(ty_n) = ty {
                 let span = self.cx.span_of(ty_n);
@@ -6965,7 +6996,7 @@ impl<'a> Engine<'a> {
             Some(ty_n) => self.classify_word(ty_n, true, false),
             None => {
                 let span = name.span.join(fn_tail_rparen_span(&self.cx, tail));
-                if self.cx.profile.is_scheduler() {
+                if self.cx.profile.is_scheduler() || self.cx.field_child(tail, "effect").is_some() {
                     TypeAnn {
                         kind: TypeRef::Builtin(TypeWord::Void),
                         span,
@@ -7689,7 +7720,7 @@ impl<'a> Engine<'a> {
         let mut payload = self
             .cx
             .field_child(a, "payload")
-            .map(|t| self.classify_word(t, false, false));
+            .map(|t| self.classify_storage_word(t));
         let tail_kind = self.cx.k.enum_payload_tail.unwrap_or(u32::MAX);
         let mut tails: Vec<u32> = self
             .cx
@@ -7847,12 +7878,38 @@ impl<'a> Engine<'a> {
 
     /// PLAN-965 (M2-A): `~Iter<T>` generator stream type -> `TypeRef::Stream`.
     fn project_tilde_ty(&mut self, node: u32) -> TypeAnn {
+        if let Some(inner) = self.cx.field_child(node, "inner") {
+            let span = self.cx.span_of(node);
+            return TypeAnn {
+                kind: TypeRef::Generic {
+                    name: Ident {
+                        name: "Future".into(),
+                        span,
+                    },
+                    args: vec![self.classify_storage_word(inner)],
+                },
+                span,
+            };
+        }
         let g = self.cx.field_child(node, "generic").expect("tilde generic");
         let inner = match self.project_generic_ty(g) {
             TypeAnn {
                 kind: TypeRef::Generic { name, mut args },
                 ..
             } if name.name == "Iter" && args.len() == 1 => args.remove(0),
+            other if self.cx.profile.is_auto_language() => {
+                let span = self.cx.span_of(node);
+                return TypeAnn {
+                    kind: TypeRef::Generic {
+                        name: Ident {
+                            name: "Future".into(),
+                            span,
+                        },
+                        args: vec![other],
+                    },
+                    span,
+                };
+            }
             other => other,
         };
         TypeAnn {
@@ -9229,6 +9286,12 @@ impl<'a> Engine<'a> {
 
     fn enter_expr(&mut self, node: u32) {
         let kind = self.cx.expression_kind(node);
+        if Some(kind) == self.cx.k.async_block {
+            let span = self.cx.span_of(node);
+            self.stack.push(Frame::AsyncBlockFinish { span });
+            self.enter_block(self.cx.field_child(node, "body").expect("async body"));
+            return;
+        }
         if kind == self.cx.k.expr {
             // 分派节点 → 内层产物。
             let inner = self
@@ -9375,6 +9438,10 @@ impl<'a> Engine<'a> {
     fn enter_atom(&mut self, node: u32) {
         for c in self.cx.children(node) {
             let ck = self.cx.expression_kind(c);
+            if Some(ck) == self.cx.k.async_block {
+                self.stack.push(Frame::ExprEnter(c));
+                return;
+            }
             // PLAN-950: preserve the qualified source identity for module binding.
             if self
                 .cx
@@ -10311,6 +10378,8 @@ impl<'a> Engine<'a> {
                 // PLAN-968: `Task.spawn` member leaf (`spawn` is reserved).
                 || mk == self.cx.k.tok_r_spawn
                 || (self.cx.profile.is_auto_language()
+                    && (mk == self.cx.k.tok_r_await || mk == self.cx.k.tok_r_go))
+                || (self.cx.profile.is_auto_language()
                     && ([self.cx.k.tok_int_lit, self.cx.k.tok_true, self.cx.k.tok_false]
                         .contains(&mk)
                         || self.cx.k.tok_double_kw == Some(mk)))
@@ -10337,6 +10406,19 @@ impl<'a> Engine<'a> {
     }
 
     fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
+        if let Some(op) = member {
+            let token = self.cx.tree.kind(op);
+            if token == self.cx.k.tok_r_await || token == self.cx.k.tok_r_go {
+                return Expr {
+                    span: recv.span.join(self.cx.span_of(op)),
+                    kind: if token == self.cx.k.tok_r_await {
+                        ExprKind::Await(Box::new(recv))
+                    } else {
+                        ExprKind::Go(Box::new(recv))
+                    },
+                };
+            }
+        }
         // PLAN-965: `.?` and `.?(fallback)` steps (aggregates only).
         if self.step_is_dotquestion(step) {
             let span = recv.span.join(self.cx.span_of(step));
@@ -12161,12 +12243,34 @@ impl<'a> Engine<'a> {
                 name,
                 type_params,
                 params,
-                ret,
+                mut ret,
                 receiver,
                 owner,
             } => {
-                let body = self.pop_b();
+                let mut body = self.pop_b();
                 let span = self.cx.span_of(node);
+                if self.cx.profile.is_auto_language()
+                    && self
+                        .cx
+                        .spelling_by_range(ret.span.start as u64, ret.span.end as u64)
+                        .starts_with('~')
+                {
+                    if let TypeRef::Generic { name: future, args } = &ret.kind {
+                        if future.name == "Future" {
+                            let result = args.first().cloned().expect("async result type");
+                            if name.name == "main" && receiver == Receiver::Free {
+                                // The AV entry itself runs on a scheduler chain.
+                                ret = result;
+                            } else {
+                                let value = async_future(body, Some(result), span);
+                                body = Block {
+                                    stmts: vec![Stmt::Return { value, span }],
+                                    span,
+                                };
+                            }
+                        }
+                    }
+                }
                 self.vals.push(Val::F(FnItem {
                     span,
                     name,
@@ -12291,6 +12395,10 @@ impl<'a> Engine<'a> {
                     },
                 };
                 self.vals.push(Val::S(Stmt::ExprStmt { value: e, span }));
+            }
+            Frame::AsyncBlockFinish { span } => {
+                let body = self.pop_b();
+                self.vals.push(Val::E(async_future(body, None, span)));
             }
             Frame::SchedPrefixFinish { is_await, kw_span } => {
                 let operand = self.pop_e();
@@ -14503,5 +14611,47 @@ impl<'a> InDeclProjector<'a> {
     /// 首个投影诊断（有则调用方整体失败——与顶层首事实序一致）。
     pub fn first_diag(&self) -> Option<Diagnostic> {
         self.eng.cx.first_diag()
+    }
+}
+
+fn async_future(mut body: Block, result: Option<TypeAnn>, span: Span) -> Expr {
+    let void = result
+        .as_ref()
+        .is_some_and(|ty| ty.kind == TypeRef::Builtin(TypeWord::Void));
+    if !void {
+        if let Some(Stmt::ExprStmt { value, span }) = body.stmts.last_mut() {
+            let terminal = matches!(&value.kind, ExprKind::Call { callee, .. }
+                if matches!(callee.name.as_str(), "fail" | "rethrow"));
+            if !terminal {
+                let span = *span;
+                let value = std::mem::replace(
+                    value,
+                    Expr {
+                        span,
+                        kind: ExprKind::IntLit(0),
+                    },
+                );
+                *body.stmts.last_mut().expect("checked tail") = Stmt::Return { value, span };
+            }
+        }
+    }
+    let thunk = Expr {
+        span,
+        kind: ExprKind::Closure {
+            move_capture: true,
+            params: Vec::new(),
+            result,
+            body: Box::new(ClosureBody::Block(body)),
+        },
+    };
+    Expr {
+        span,
+        kind: ExprKind::Call {
+            callee: Ident {
+                name: "__sched_future".into(),
+                span,
+            },
+            args: vec![Arg::Pos(thunk)],
+        },
     }
 }

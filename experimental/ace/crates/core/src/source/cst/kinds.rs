@@ -13,6 +13,7 @@ pub struct SourceKinds {
     pub fn_item: u32,
     /// PLAN-968: `task Name { ... }` actor declaration (scheduler face only).
     pub task_item: Option<u32>,
+    pub async_block: Option<u32>,
     pub task_member: Option<u32>,
     pub task_on: Option<u32>,
     pub task_arm: Option<u32>,
@@ -430,6 +431,7 @@ impl SourceKinds {
             item: rk("item"),
             fn_item: rk("fn-item"),
             task_item: rk_opt(p, "task-item"),
+            async_block: rk_opt(p, "async-block"),
             task_member: rk_opt(p, "task-member"),
             task_on: rk_opt(p, "task-on"),
             task_arm: rk_opt(p, "task-arm"),

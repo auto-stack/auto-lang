@@ -3403,7 +3403,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::SchedGo { .. }
             | MirInstr::SchedRecv { .. }
             | MirInstr::SchedPort { .. }
-            | MirInstr::SchedStopping { .. } => {
+            | MirInstr::SchedStopping { .. }
+            | MirInstr::SchedFuture { .. }
+            | MirInstr::SchedDetach { .. } => {
                 return Err("native.sched-unsupported: the task scheduler surface is not part of the native backend".into())
             }
             MirInstr::GlobalGet { dst, global } if self.mode == LowerMode::Program => {

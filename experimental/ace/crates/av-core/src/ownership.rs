@@ -696,6 +696,16 @@ fn verify_owned_function_impl(
                     st.define_slot(*dst as usize);
                     continue;
                 }
+                MirInstr::SchedFuture { closure, dst } => {
+                    check_read!(closure, "future closure");
+                    check_def_conflict!(dst, "future");
+                    st.define_slot(*dst as usize);
+                    continue;
+                }
+                MirInstr::SchedDetach { future } => {
+                    check_read!(future, "detached future");
+                    continue;
+                }
                 MirInstr::SchedGo { args, .. } => {
                     for a in args {
                         check_read!(a, "scheduler argument");

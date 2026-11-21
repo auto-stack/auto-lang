@@ -147,7 +147,7 @@ pub(super) fn dummy_expr_for_vt(
             kind: RExprKind::IntLit(0),
         },
         // PLAN-968: scheduler handles/futures synthesize the 0 id literal.
-        VT::Task(_) | VT::Future(_) => ResolvedExpr {
+        VT::Task(_) | VT::TaskRef(_) | VT::Future(_) | VT::Deferred(_) => ResolvedExpr {
             span,
             vt,
             kind: RExprKind::IntLit(0),
