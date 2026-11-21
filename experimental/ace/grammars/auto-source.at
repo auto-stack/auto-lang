@@ -1865,26 +1865,49 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `fn` 之后的共享形状（自由函数与方法共用；receiver/owner 由投影
         // 从外层 type-item 上下文恢复）
         fn-tail {
-            ident(field: "name")
-            // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级
-            // 门控——被裁 profile 该步缺席 = 形状与旧 fn-tail 逐字节等价）。
-            // PLAN-963（T-02）：record-instances 面同样在此步启用模板参数。
-            opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package]) { type-params(field: "type_params") }
-            lparen() {}
-            params(repeat: "opt", field: "params")
-            rparen() {}
-            // PLAN-968: the legacy effect marker `!` — a scheduler-only
-            // step (other profiles keep the exact historical leaf stream
-            // and the projection classifier consumes `!` as before).
-            opt(profiles: [scheduler]) { bang(field: "effect") }
-            // PLAN-968: bare unit-result fns (`fn main() { ... }`). The
-            // ret-ty step is optional for ALL profiles now; the projection
-            // classifier keeps the required-ret contract (the N42
-            // `source.unsupported` first diagnostic) for every non-
-            // scheduler face, byte-identical with the historical parse-
-            // failure mapping.
-            opt { ret-ty(field: "ty") }
-            block(field: "body")
+            // Let `double` name an ordinary function or member.
+            alt(profiles: [auto, auto-packages]) {
+                double-kw(field: "name")
+                opt(profiles: [auto, auto-packages]) { type-params(field: "type_params") }
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                opt { ret-ty(field: "ty") }
+                block(field: "body")
+            }
+            // Ordinary Auto and AAC include failable returns and the legacy
+            // scheduler marker. Prefer a complete return annotation.
+            alt(profiles: [aac, auto]) {
+                ident(field: "name")
+                opt { type-params(field: "type_params") }
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                ret-ty(field: "ty")
+                block(field: "body")
+            }
+            alt {
+                ident(field: "name")
+                // PLAN-935（T-02）：有限类型参数 `<T>`（scalar-instances, scalar-ct 面步骤级
+                // 门控——被裁 profile 该步缺席 = 形状与旧 fn-tail 逐字节等价）。
+                // PLAN-963（T-02）：record-instances 面同样在此步启用模板参数。
+                opt(profiles: [scalar-instances, scalar-ct, packages-modules, packages-ct, record-instances, text-record-instances, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto, auto-packages]) { type-params(field: "type_params") }
+                lparen() {}
+                params(repeat: "opt", field: "params")
+                rparen() {}
+                // PLAN-968: the legacy effect marker `!` — a scheduler-only
+                // step (other profiles keep the exact historical leaf stream
+                // and the projection classifier consumes `!` as before).
+                opt(profiles: [scheduler, auto]) { bang(field: "effect") }
+                // PLAN-968: bare unit-result fns (`fn main() { ... }`). The
+                // ret-ty step is optional for ALL profiles now; the projection
+                // classifier keeps the required-ret contract (the N42
+                // `source.unsupported` first diagnostic) for every non-
+                // scheduler face, byte-identical with the historical parse-
+                // failure mapping.
+                opt { ret-ty(field: "ty") }
+                block(field: "body")
+            }
         }
         // PLAN-935（T-02）：类型参数表 `<T>` / `<T, U>`（投影/实例层先限一
         // 个；>1 由投影具名拒，语法形状此处一次到位）。
@@ -3112,7 +3135,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, aggregates, auto, scheduler, auto-packages, age-component]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -3158,7 +3181,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages, age-component]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
-            alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
+            alt(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
             // choice 头部即 `( params ) =>` 匹配；普通 `( expr )` 组在 `=>`
             // 缺席时由 lambda 备选干净失败回退到括号组备选）。
@@ -3179,20 +3202,39 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { lparen() {} expr() {} rparen() {} }
         }
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像
-        // generic-atom：平衡 `<...>`（值实参只认十进制整数字面量）后紧随 `(`；
-        // 其他形（如 `a < b > (c)`）在原子备选干净失败后回退 ident + 比较算子。
-        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) {
-            ident(field: "name")
-            lt() {}
-            const-args(field: "cargs")
-            gt() {}
-            lparen() {}
-            args(field: "args")
-            rparen() {}
+        // Angle arguments must be followed by a call. Integer literals are
+        // accepted by both the ordinary and the frozen value-only profiles.
+        generic-call(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, age-component, aac]) {
+            // Ordinary explicit type arguments use a joint opening `<` so
+            // a spaced comparison can keep going through the Pratt parser.
+            alt(profiles: [auto, auto-packages]) {
+                ident(field: "name")
+                lt(adjacent: true) {}
+                instance-args(field: "iargs")
+                gt() {}
+                lparen() {}
+                args(field: "args")
+                rparen() {}
+            }
+            alt {
+                ident(field: "name")
+                lt() {}
+                const-args(field: "cargs")
+                gt() {}
+                lparen() {}
+                args(field: "args")
+                rparen() {}
+            }
         }
-        const-args(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { const-arg() {} many { const-arg-tail() {} } }
-        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { comma() {} const-arg() {} }
-        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, age-component, aac]) { int-lit(field: "lit") }
+        instance-args(profiles: [auto, auto-packages]) { instance-arg() {} many { instance-arg-tail() {} } }
+        instance-arg-tail(profiles: [auto, auto-packages]) { comma() {} instance-arg() {} }
+        instance-arg(profiles: [auto, auto-packages]) {
+            alt { int-lit(field: "lit") }
+            alt { ann-ty(field: "ty") }
+        }
+        const-args(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, age-component, aac]) { const-arg() {} many { const-arg-tail() {} } }
+        const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, age-component, aac]) { comma() {} const-arg() {} }
+        const-arg(profiles: [scalar-instances, record-instances, text-record-instances, auto, auto-packages, age-component, aac]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
         // PLAN-105 W105：age-component 回归（W38 首开，W85 手工重建文法时丢失）——
         // 012/013 的 `List<T>.new()` 组件面 handler/初值形。
