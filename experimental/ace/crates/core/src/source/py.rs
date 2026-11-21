@@ -65,7 +65,7 @@ pub fn has_use_py(program: &Program) -> bool {
 /// number of hoisted imports (0 when the program has no use.py items —
 /// the helpers are then not injected either; the py lane is opt-in by
 /// the import's presence).
-pub fn front_door(program: &mut Program) -> usize {
+pub fn front_door(program: &mut Program, user_source_len: usize) -> usize {
     let mut imports: Vec<(String, String, Span)> = Vec::new();
     for item in &program.items {
         if let Item::UsePy(u) = item {
@@ -93,6 +93,17 @@ pub fn front_door(program: &mut Program) -> usize {
         .into_iter()
         .filter(|i| matches!(i, Item::Fn(_)))
         .collect();
+    // PLAN-1094: the helpers parse from their OWN frozen text, so their
+    // spans live in the helpers' byte coordinates. Re-base them past the
+    // user source — the shared HIR span gate clamps such internal spans to
+    // the source end (approximate diagnostics) instead of mapping helper
+    // coordinates onto user bytes, which breaks UTF-8 boundaries for
+    // multibyte user sources.
+    for item in &mut helper_items {
+        if let Item::Fn(helper) = item {
+            super::cst::shift_fn_item(helper, user_source_len);
+        }
+    }
     let mut new_items: Vec<Item> = Vec::with_capacity(program.items.len() + helper_items.len());
     new_items.append(&mut helper_items);
     new_items.extend(std::mem::take(&mut program.items));

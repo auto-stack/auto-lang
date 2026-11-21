@@ -19744,6 +19744,7 @@ F:{d}
                 );
             }
             if recv.vt == VT::I32
+                && !self.py_is_object(&recv)
                 && ((name.name == "to" && to_word.is_some_and(|word| vt_of_word(word).is_text()))
                     || (name.name == "to_str" && args.is_empty() && to_word.is_none()))
             {

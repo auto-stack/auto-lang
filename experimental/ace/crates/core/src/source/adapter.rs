@@ -629,8 +629,9 @@ fn compile_source_with_foreign(
             Err(d) => return Err(vec![d]),
         };
         // PLAN-1026: the use.py front door (helper injection + hoisted member
-        // imports) — a no-op without use.py items.
-        super::py::front_door(&mut program);
+        // imports) — a no-op without use.py items. The user source length
+        // re-bases the injected helpers' spans past the user bytes.
+        super::py::front_door(&mut program, src.len());
         let parts = compile_program_observed_with_age(
             &program,
             src,
@@ -2760,6 +2761,7 @@ impl PlanCtx<'_> {
                         vt = self.program.records[*ri].fields[*fi].vt;
                     }
                     let place = plan.places.len();
+                    eprintln!("DBG1094 plan place span {:?} local {} path {:?}", span, local.0, path);
                     plan.places.push(PNode {
                         local: local.0,
                         path: path.iter().map(|(_, fi)| *fi as u32).collect(),
@@ -6212,6 +6214,7 @@ impl<'p> Emitter<'p> {
                 )));
             }
             if !boundary(s.start) || !boundary(s.end) {
+
                 return Err(internal_diag(format!(
                     "span {:?} is not on UTF-8 boundaries after projection",
                     s

@@ -577,6 +577,8 @@ impl ForeignStubTable {
             }
         };
         check_cancel()?;
+        // PLAN-1094: the staged error lane is codepoint-wise (UTF-32-LE
+        // words) — one word per char, then UTF-8 re-encoding.
         let length = match self.dispatch_view(&stage, EMPTY)? {
             ForeignDispatch::PureI32(value @ 0..=262) => value as usize,
             _ => {
@@ -586,8 +588,8 @@ impl ForeignStubTable {
                 ))
             }
         };
-        let mut bytes = Vec::with_capacity(length + 3);
-        for index in 0..length.div_ceil(4) {
+        let mut bytes = Vec::with_capacity(length * 4);
+        for index in 0..length {
             let position = index.to_string();
             let frame = format!(
                 "p967.frame/1\nr n 0\n\np 1\ni {}\n{position}\nk 0\n",
@@ -595,7 +597,17 @@ impl ForeignStubTable {
             );
             check_cancel()?;
             match self.dispatch_view(&word, frame.as_bytes())? {
-                ForeignDispatch::PureI32(value) => bytes.extend(value.to_le_bytes()),
+                ForeignDispatch::PureI32(value) => {
+                    let cp = u32::from_le_bytes(value.to_le_bytes()) as u32;
+                    let Some(c) = char::from_u32(cp) else {
+                        return Err(reject(
+                            "foreign.py-error-observer",
+                            "invalid error text codepoint",
+                        ));
+                    };
+                    let mut buf = [0u8; 4];
+                    bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+                }
                 _ => {
                     return Err(reject(
                         "foreign.py-error-observer",
@@ -604,7 +616,6 @@ impl ForeignStubTable {
                 }
             }
         }
-        bytes.truncate(length);
         let stage = std::str::from_utf8(&bytes)
             .map_err(|_| reject("foreign.py-error-observer", "invalid error text"))?;
         let (class, message) = stage

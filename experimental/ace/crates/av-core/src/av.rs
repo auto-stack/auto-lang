@@ -4623,6 +4623,24 @@ fn dispatch_with_host<V: ModuleView>(
                                         )));
                                     }
                                 }
+                            } else if let Ok(Some((class, message))) =
+                                table.python_exception(declaration, cancel)
+                            {
+                                // PLAN-1094: an UNCAUGHT Python exception is a
+                                // language-error terminal state with the same
+                                // classification as the handled arm — the
+                                // ordinary AV worker reports `python.{class}`
+                                // and the failing operation's source span,
+                                // never a silent foreign-status trap.
+                                let origin = crate::contract::LanguageErrorOrigin {
+                                    kind: crate::contract::LanguageErrorKind::Python(class),
+                                    span,
+                                };
+                                st.trace.last_language_error = Some(origin);
+                                return Some(ExecOutcome::Error {
+                                    message,
+                                    span,
+                                });
                             }
                             return Some(ExecOutcome::Trap {
                                 kind: crate::contract::TrapKind::ForeignStatus,

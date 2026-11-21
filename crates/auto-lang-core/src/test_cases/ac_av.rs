@@ -1515,7 +1515,7 @@ const PLACE_SEQUENCES: &[(&str, &str, i32, i32)] = &[
 /// case may bind only these; any other provider id is a named block
 /// (the parent never invents provider authority).
 const REGISTERED_FOREIGN_PROVIDERS: &[(&str, &str)] =
-    &[("rust", "f0_text"), ("c", "parity1093_c")];
+    &[("rust", "f0_text"), ("c", "parity1093_c"), ("rust", "py")];
 
 
 /// PLAN-821 T-02: the PARENT's frozen av.owned-fixture/1 expectation

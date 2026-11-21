@@ -4065,16 +4065,14 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
     }
 
     /// `__py_staged_text(len)` — the word-wise readback loop: an owned Str
-    /// assembled from `py_str_word` calls (frame built per iteration with
-    /// `__py_dlen` — a module fn the front door injected).
-    /// `__py_staged_text(len)` — the word-wise readback loop: an owned Str
-    /// assembled from `py_str_word` calls. The staged channel is ASCII-only
-    /// (the provider rejects non-ASCII), so each word's byte 0 IS the char
-    /// and bytes 1..3 are zero: ONE unconditional append per word, no inner
-    /// byte loop, no branches in the body. Every view is minted AND
-    /// borrow-ended inside the body block (the statement-tail epilogue
-    /// cannot end loop-body views on zero-iteration paths — the watermark
-    /// is advanced past them at the end).
+    /// assembled from `py_str_word` calls. PLAN-1094: the staged lane is
+    /// CODEPOINT-wise (UTF-32-LE words), so one word is exactly one Unicode
+    /// scalar — the loop strides `i < len`, converts each word directly
+    /// (`CharFromCodepoint`, no per-byte ASCII extraction) and appends.
+    /// NUL is a normal scalar. Every view is minted AND borrow-ended inside
+    /// the body block (the statement-tail epilogue cannot end loop-body
+    /// views on zero-iteration paths — the watermark is advanced past them
+    /// at the end).
     fn emit_py_staged_text(
         &mut self,
         len: SlotId,
@@ -4167,21 +4165,20 @@ k 0
             },
             sp,
         )?;
-        let c4 = self.py_k(t32, MirConst::I32(4), sp)?;
         let hdr = self.new_block()?;
         let body = self.new_block()?;
         let exit = self.new_block()?;
         self.set_term(Terminator::Jump { target: hdr });
         self.cur = hdr;
         self.terminated = false;
-        // cond: i * 4 < len
-        let i4 = self.py_bin(BinOp::MulI32, t32, i, c4, sp)?;
+        // cond: i < len (one word per codepoint — PLAN-1094: the staged
+        // lane is codepoint-wise UTF-32-LE words)
         let c = self.temp_ty(tb)?;
         self.emit(
             MirInstr::Bin {
                 op: BinOp::LtI32,
                 dst: c,
-                lhs: i4,
+                lhs: i,
                 rhs: len,
             },
             sp,
@@ -4268,89 +4265,28 @@ k 0
             sp,
         )?;
         self.emit(MirInstr::BorrowEnd { token: frame_v }, sp)?;
-        // each word holds FOUR little-endian bytes; every nonzero byte is
-        // one staged ASCII char (byte order within the word preserved)
-        let c256 = self.py_k(t32, MirConst::I32(256), sp)?;
-        let c65536 = self.py_k(t32, MirConst::I32(65536), sp)?;
-        let c16777216 = self.py_k(t32, MirConst::I32(16777216), sp)?;
-        let one32 = self.py_k(t32, MirConst::I32(1), sp)?;
-        let mut d_slot = one32;
-        // per-byte temps are REUSED across the four bytes (slot count
-        // discipline: the ownership budget is blocks x slots sensitive)
+        // PLAN-1094: each word IS one codepoint (UTF-32-LE staging) — the
+        // frozen per-byte ASCII extraction is retired. NUL (codepoint 0)
+        // is appended like any other char.
         let ch = self.temp_ty(tch)?;
+        self.emit(MirInstr::CharFromCodepoint { dst: ch, code: w }, sp)?;
         let cs = self.temp_ty(tstr)?;
+        self.emit(MirInstr::StrFromChar { dst: cs, ch }, sp)?;
         let cs_v = self.temp_ty(tview)?;
+        self.emit(MirInstr::View { dst: cs_v, src: cs }, sp)?;
         let fresh = self.temp_ty(tstr)?;
-        let wq = self.temp_ty(t32)?;
-        let bslot = self.temp_ty(t32)?;
-        let bnz2 = self.temp_ty(tb)?;
-        let b0 = self.py_k(t32, MirConst::I32(0), sp)?;
-        for d_pow in 0..4 {
-            if d_pow > 0 {
-                // rebuild the divisor 10^(d_pow-1) each iteration after the
-                // first (constants above cover 10/100/1000; pick by index)
-                d_slot = match d_pow {
-                    1 => c256,
-                    2 => c65536,
-                    _ => c16777216,
-                };
-            }
-            self.emit(
-                MirInstr::Bin {
-                    op: BinOp::DivI32,
-                    dst: wq,
-                    lhs: w,
-                    rhs: d_slot,
-                },
-                sp,
-            )?;
-            self.emit(
-                MirInstr::Bin {
-                    op: BinOp::RemI32,
-                    dst: bslot,
-                    lhs: wq,
-                    rhs: c256,
-                },
-                sp,
-            )?;
-            let b = bslot;
-            self.emit(
-                MirInstr::Bin {
-                    op: BinOp::NeI32,
-                    dst: bnz2,
-                    lhs: b,
-                    rhs: b0,
-                },
-                sp,
-            )?;
-            let appb = self.new_block()?;
-            let contb = self.new_block()?;
-            self.set_term(Terminator::Branch {
-                cond: bnz2,
-                then: appb,
-                else_: contb,
-            });
-            self.cur = appb;
-            self.terminated = false;
-            self.emit(MirInstr::CharFromCodepoint { dst: ch, code: b }, sp)?;
-            self.emit(MirInstr::StrFromChar { dst: cs, ch }, sp)?;
-            self.emit(MirInstr::View { dst: cs_v, src: cs }, sp)?;
-            let acc_v = self.py_view(dst, sp)?;
-            self.emit(
-                MirInstr::StrConcat {
-                    dst: fresh,
-                    lhs: acc_v,
-                    rhs: cs_v,
-                },
-                sp,
-            )?;
-            self.emit(MirInstr::BorrowEnd { token: acc_v }, sp)?;
-            self.emit(MirInstr::BorrowEnd { token: cs_v }, sp)?;
-            self.emit(MirInstr::Copy { dst, src: fresh }, sp)?;
-            self.set_term(Terminator::Jump { target: contb });
-            self.cur = contb;
-            self.terminated = false;
-        }
+        let acc_v = self.py_view(dst, sp)?;
+        self.emit(
+            MirInstr::StrConcat {
+                dst: fresh,
+                lhs: acc_v,
+                rhs: cs_v,
+            },
+            sp,
+        )?;
+        self.emit(MirInstr::BorrowEnd { token: acc_v }, sp)?;
+        self.emit(MirInstr::BorrowEnd { token: cs_v }, sp)?;
+        self.emit(MirInstr::Copy { dst, src: fresh }, sp)?;
         // i = i + 1 ; loop
         let one = self.py_k(t32, MirConst::I32(1), sp)?;
         self.emit(

@@ -592,11 +592,28 @@ pub(crate) fn project_program_with_caps(
                     .field_child(node, "mod-head")
                     .expect("use.py module head");
                 let mut module = vec![ident_of(&mut eng.cx, head_leaf)];
+                // PLAN-1094: members may spell Auto keywords (Python builtins
+                // like `int`/`float`/`bool`) — they are bridge strings, not
+                // Auto declarations, so the spelling is read WITHOUT the
+                // regular name check.
+                let member_leaf_of = |cx: &mut Cx, node: u32| -> u32 {
+                    let name = cx
+                        .field_child(node, "name")
+                        .or_else(|| cx.field_child(node, "member-head"))
+                        .or_else(|| cx.field_child(node, "member"))
+                        .expect("use.py member name leaf");
+                    name
+                };
+                let member_ident_of = |cx: &Cx, leaf: u32| Ident {
+                    name: cx.spelling(leaf),
+                    span: cx.span_of(leaf),
+                };
                 let member_head_leaf = eng
                     .cx
                     .field_child(node, "member-head")
                     .expect("use.py member head");
-                let mut members = vec![ident_of(&mut eng.cx, member_head_leaf)];
+                let head_leaf_n = member_leaf_of(&mut eng.cx, member_head_leaf);
+                let mut members = vec![member_ident_of(&eng.cx, head_leaf_n)];
                 let mut last_end = eng.cx.span_of(member_head_leaf).end;
                 for c in eng.cx.children(node) {
                     let ck = eng.cx.tree.kind(c);
@@ -605,7 +622,8 @@ pub(crate) fn project_program_with_caps(
                         module.push(ident_of(&mut eng.cx, seg));
                     } else if Some(ck) == use_py_member_tail_kind {
                         let m = eng.cx.field_child(c, "member").expect("use.py member");
-                        let id = ident_of(&mut eng.cx, m);
+                        let leaf_n = member_leaf_of(&mut eng.cx, m);
+                        let id = member_ident_of(&eng.cx, leaf_n);
                         last_end = id.span.end;
                         members.push(id);
                     }
@@ -11863,6 +11881,27 @@ impl<'a> Engine<'a> {
             if ck == self.cx.k.tok_ident {
                 let span = self.cx.span_of(c);
                 let name = self.cx.spelling(c);
+                self.vals.push(Val::E(Expr {
+                    kind: ExprKind::Var(Ident { name, span }),
+                    span,
+                }));
+                return;
+            }
+            // PLAN-1094: a keyword-spelled name atom (`int(...)` etc. on the
+            // ordinary face) — the py-member-name rule node carries the
+            // token leaf under `name`; spelling is used (no name check).
+            if self
+                .cx
+                .k
+                .name_word
+                .is_some_and(|kind| kind == ck)
+            {
+                let leaf = self
+                    .cx
+                    .field_child(c, "name")
+                    .expect("name-word leaf");
+                let span = self.cx.span_of(leaf);
+                let name = self.cx.spelling(leaf);
                 self.vals.push(Val::E(Expr {
                     kind: ExprKind::Var(Ident { name, span }),
                     span,

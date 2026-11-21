@@ -93,6 +93,10 @@ pub struct SourceKinds {
     pub postfix_expr: u32,
     pub postfix_step: Option<u32>,
     pub atom_expr: u32,
+    /// PLAN-1094: the `py-member-name` rule — a name atom spelling an ident
+    /// OR any keyword (`int`/`float`/`bool` as callable names for the py
+    /// lane; only the auto face admits it).
+    pub name_word: Option<u32>,
     pub leading_dot: Option<u32>,
     pub ctor_expr: Option<u32>,
     /// PLAN-963（T-02）：显式类型实参构造 `Point<int> { .. }`（record 族
@@ -495,6 +499,7 @@ impl SourceKinds {
             postfix_expr: rk("postfix-expr"),
             postfix_step: rk_opt(p, "postfix-step"),
             atom_expr: rk("atom-expr"),
+            name_word: rk_opt(p, "py-member-name"),
             leading_dot: rk_opt(p, "leading-dot"),
             ctor_expr: rk_opt(p, "ctor-expr"),
             typed_ctor_expr: rk_opt(p, "typed-ctor-expr"),

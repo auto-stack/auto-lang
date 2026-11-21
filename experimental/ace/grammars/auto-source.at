@@ -1787,6 +1787,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-1026：`use.py a.b: m1, m2` 项——点路径模块 + 冒号 + 成员清单
         //（many 尾规则各带一个分隔符 + 标识符；投影期合成 Item::UsePy）。
+        // PLAN-1094：成员名可拼写为 Auto 关键字（Python 内建 `int`/`float`/
+        // `bool`/`str` 等）——成员只是跨桥字符串，不是 Auto 声明；语法层按
+        // 逐 token 枚举关键字臂，投影期免常规名字检查取拼写。
         use-py-item(profiles: [aggregates, auto, auto-packages]) {
             r-use(field: "kw") {}
             dot(field: "dot") {}
@@ -1794,7 +1797,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "mod-head")
             many { use-py-mod-tail() {} }
             colon() {}
-            ident(field: "member-head")
+            py-member-name(field: "member-head")
             many { use-py-member-tail() {} }
         }
         use-py-mod-tail(profiles: [aggregates, auto, auto-packages]) {
@@ -1803,7 +1806,84 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         use-py-member-tail(profiles: [aggregates, auto, auto-packages]) {
             comma() {}
-            ident(field: "member")
+            py-member-name(field: "member")
+        }
+        // PLAN-1094：一个 use.py 成员名——普通标识符或任意关键字拼写
+        //（Python 内建与 Auto 保留字交叠，如 `int`/`float`/`bool`）。
+        py-member-name(profiles: [aggregates, auto, auto-packages]) {
+            alt { ident(field: "name") }
+            alt { fn(field: "name") }
+            alt { let(field: "name") }
+            alt { var(field: "name") }
+            alt { if(field: "name") }
+            alt { else(field: "name") }
+            alt { while(field: "name") }
+            alt { loop(field: "name") }
+            alt { break(field: "name") }
+            alt { continue(field: "name") }
+            alt { return(field: "name") }
+            alt { true-kw(field: "name") }
+            alt { false-kw(field: "name") }
+            alt { for(field: "name") }
+            alt { int-kw(field: "name") }
+            alt { i32(field: "name") }
+            alt { bool(field: "name") }
+            alt { i8-kw(field: "name") }
+            alt { u8-kw(field: "name") }
+            alt { byte-kw(field: "name") }
+            alt { uint-kw(field: "name") }
+            alt { u32-kw(field: "name") }
+            alt { i64-kw(field: "name") }
+            alt { u64-kw(field: "name") }
+            alt { float-kw(field: "name") }
+            alt { f32-kw(field: "name") }
+            alt { double-kw(field: "name") }
+            alt { f64-kw(field: "name") }
+            alt { type-kw(field: "name") }
+            alt { static(field: "name") }
+            alt { mut(field: "name") }
+            alt { enum(field: "name") }
+            alt { is(field: "name") }
+            alt { in(field: "name") }
+            alt { grid-kw(field: "name") }
+            alt { r-alias(field: "name") }
+            alt { r-as(field: "name") }
+            alt { r-await(field: "name") }
+            alt { r-catch(field: "name") }
+            alt { r-const(field: "name") }
+            alt { r-copy(field: "name") }
+            alt { r-dep(field: "name") }
+            alt { r-ext(field: "name") }
+            alt { r-finally(field: "name") }
+            alt { r-go(field: "name") }
+            alt { r-has(field: "name") }
+            alt { r-hold(field: "name") }
+            alt { r-impl(field: "name") }
+            alt { r-link(field: "name") }
+            alt { r-mod(field: "name") }
+            alt { r-move(field: "name") }
+            alt { r-nil(field: "name") }
+            alt { r-null(field: "name") }
+            alt { r-outlet(field: "name") }
+            alt { r-pac(field: "name") }
+            alt { r-reply(field: "name") }
+            alt { r-routes(field: "name") }
+            alt { r-shared(field: "name") }
+            alt { r-spawn(field: "name") }
+            alt { r-spec(field: "name") }
+            alt { r-super(field: "name") }
+            alt { r-super2(field: "name") }
+            alt { r-super3(field: "name") }
+            alt { r-super4(field: "name") }
+            alt { r-tag(field: "name") }
+            alt { r-task(field: "name") }
+            alt { r-to(field: "name") }
+            alt { r-try(field: "name") }
+            alt { r-union(field: "name") }
+            alt { r-use(field: "name") }
+            alt { r-view(field: "name") }
+            alt { r-with(field: "name") }
+            alt { r-yield(field: "name") }
         }
         qualified-name(profiles: [scalar-modules]) {
             ident(field: "module")
@@ -3499,6 +3579,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { true-kw(field: "kw") }
             alt { false-kw(field: "kw") }
             alt { ident() {} }
+            // PLAN-1094: a keyword-spelled name atom (the py lane's
+            // `int(...)` / `float(...)` calls; the resolver routes them to
+            // the hoisted member imports — undefined elsewhere).
+            alt(profiles: [auto, auto-packages]) { py-member-name() {} }
             alt { lparen() {} expr() {} rparen() {} }
         }
         // PLAN-963（T-04）：`rep<2>(21)` —— 显式值实参调用原子。提交条件镜像

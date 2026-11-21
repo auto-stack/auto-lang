@@ -62,9 +62,18 @@ pub struct ProviderDescriptor {
     /// The C provider header digest (blake3 hex, c only).
     #[serde(default)]
     pub provider_digest: Option<String>,
-    /// DLL file name; defaults to `<provider>.dll`.
+    /// DLL file name; defaults to `<provider>.dll` (C) / `f0_text_provider.dll` (rust).
     #[serde(default)]
     pub dll: Option<String>,
+    /// Staticlib file name (rust only; defaults to `f0_text_provider.lib`).
+    #[serde(default)]
+    pub lib: Option<String>,
+    /// Build-stamp file name inside `out/` (rust only; defaults to
+    /// `f0-build-stamp.txt`). PLAN-1094: the ordinary AV view shares ONE
+    /// provider root across registered providers, so a second rust provider
+    /// (the py bridge) carries its own stamp file name.
+    #[serde(default)]
+    pub stamp: Option<String>,
 }
 
 pub const DESCRIPTOR_SCHEMA: &str = "plan1093.provider-descriptor/1";
@@ -182,15 +191,27 @@ fn load_prepared_rust(
         .rustc_identity
         .as_deref()
         .ok_or_else(|| diag("foreign.prepared", "rust provider closure lacks a rustc identity"))?;
+    let dll_name = descriptor
+        .dll
+        .clone()
+        .unwrap_or_else(|| "f0_text_provider.dll".to_string());
+    let lib_name = descriptor
+        .lib
+        .clone()
+        .unwrap_or_else(|| "f0_text_provider.lib".to_string());
+    let stamp_name = descriptor
+        .stamp
+        .clone()
+        .unwrap_or_else(|| "f0-build-stamp.txt".to_string());
     let out = root.join("out");
-    let stamp_path = out.join("f0-build-stamp.txt");
+    let stamp_path = out.join(&stamp_name);
     let stamp = format!("{provider_digest}\n{shim_digest}\n{rustc_identity}\n");
     let prepared = stamp_path.is_file()
         && std::fs::read_to_string(&stamp_path)
             .map(|s| s == stamp)
             .unwrap_or(false)
-        && out.join("f0_text_provider.dll").is_file()
-        && out.join("f0_text_provider.lib").is_file();
+        && out.join(&dll_name).is_file()
+        && out.join(&lib_name).is_file();
     if !prepared {
         return Err(diag(
             "foreign.prepared",
@@ -200,7 +221,7 @@ fn load_prepared_rust(
             ),
         ));
     }
-    let dll = out.join("f0_text_provider.dll");
+    let dll = out.join(&dll_name);
     let actual = sha256_hex(&dll).map_err(diag_wrap("foreign.artifact"))?;
     if actual != descriptor.artifact_sha256 {
         return Err(diag(
@@ -477,6 +498,15 @@ pub fn run_foreign_chain(
     capture: &mut ConsoleCapture,
 ) -> Result<(ExecOutcome, ExecTrace), Json> {
     let (admitted, mut table) = load_provider(foreign)?;
+    // PLAN-1094: the py bridge is an ordinary-AV provider like any other,
+    // but its failures stage the Python exception lanes — the runtime must
+    // attach the error observers so a failed py op unwinds as a
+    // `LanguageErrorKind::Python(class)` language error (catchable).
+    if foreign.provider == "py" {
+        table
+            .bind_python_error_observers(&admitted)
+            .map_err(|e| diag("foreign.py-observer", format!("{}: {}", e.code, e.message)))?;
+    }
     let compiled = compile_language_source_with_foreign(source, path, caps, &admitted)
         .map_err(|ds| {
             let d = &ds[0];

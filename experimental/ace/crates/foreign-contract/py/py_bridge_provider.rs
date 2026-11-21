@@ -41,7 +41,8 @@ const CLASS_DEAD: u8 = 21;
 const CLASS_TEXT: u8 = 22;
 const CLASS_FLOAT_BOUNDARY: u8 = 23;
 
-/// Display/text channel cap (bytes; ASCII-only v1 — T-01 freeze).
+/// Display/text channel cap in CODEPOINTS (PLAN-1094: the staged lane is
+/// codepoint-wise UTF-32-LE words; the v1 ASCII-byte boundary was narrower).
 const TEXT_CAP: usize = 256;
 
 fn registry() -> &'static Mutex<BTreeMap<u64, Py<PyAny>>> {
@@ -424,19 +425,23 @@ pub fn py_stage_str(frame: &F0Frame) -> Option<i32> {
         })?;
         let s = if repr == Some(true) { obj.repr()? } else { obj.str()? };
         let text = s.to_cow()?.to_string();
-        if !text.is_ascii() {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "py.text-channel: non-ASCII display rejected (v1)",
-            ));
-        }
-        if text.len() > TEXT_CAP {
+        // PLAN-1094: the staged lane is CODEPOINT-wise (UTF-32-LE words),
+        // so Unicode text round-trips byte-exactly through the word lane
+        // (the v1 ASCII byte-lane was a narrower boundary). Still bounded:
+        // the cap is now in codepoints.
+        let chars: Vec<u32> = text.chars().map(u32::from).collect();
+        if chars.len() > TEXT_CAP {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "py.text-channel: over cap ({}/{TEXT_CAP})",
-                text.len()
+                chars.len()
             )));
         }
-        *str_cell().lock().unwrap() = text.into_bytes();
-        Ok(str_cell().lock().unwrap().len() as i32)
+        let mut bytes = Vec::with_capacity(chars.len() * 4);
+        for c in chars {
+            bytes.extend(c.to_le_bytes());
+        }
+        *str_cell().lock().unwrap() = bytes;
+        Ok((str_cell().lock().unwrap().len() / 4) as i32)
     })
 }
 
@@ -459,9 +464,14 @@ pub fn py_str_word(frame: &F0Frame) -> i32 {
 // auto-ffi fn py_error_stage symbol=py.error_stage.v1 form=pure ret=i32 frame=p967.frame/1
 pub fn py_error_stage(_frame: &F0Frame) -> i32 {
     let (class, text) = last_error().lock().unwrap().clone();
+    // PLAN-1094: the same codepoint-wise lane as py_stage_str.
     let staged = format!("[{class}] {text}");
-    *str_cell().lock().unwrap() = staged.into_bytes();
-    str_cell().lock().unwrap().len() as i32
+    let mut bytes = Vec::with_capacity(staged.chars().count() * 4);
+    for c in staged.chars() {
+        bytes.extend(u32::from(c).to_le_bytes());
+    }
+    *str_cell().lock().unwrap() = bytes;
+    (str_cell().lock().unwrap().len() / 4) as i32
 }
 
 // auto-ffi fn py_error_class symbol=py.error_class.v1 form=pure ret=i32 frame=p967.frame/1
