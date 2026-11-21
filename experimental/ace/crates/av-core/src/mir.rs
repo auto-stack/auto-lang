@@ -1157,6 +1157,24 @@ pub struct MirModule {
 }
 
 impl MirModule {
+    /// PLAN-105 W110（D-105-预算裁定 a）：验证分析预算**按面分档**——AGE
+    /// 组件面（携带 `ac.age.elem-view.v1`）的 ownership root 矩阵随视图/
+    /// 占位槽数二次增长，真实组件 handler（012 Tick 形）在 16MB 基线档过紧；
+    /// 该面走 64MB 档（~2x 头寸）。其余 profile 保持冻结基线
+    /// [`crate::contract::MAX_VERIFY_ANALYSIS_BYTES`]；二次 blowup 门在两档
+    /// 均有效（阈值仍先于分配检查）。
+    pub fn verify_analysis_budget(&self) -> usize {
+        if self
+            .capabilities
+            .iter()
+            .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY)
+        {
+            crate::contract::MAX_VERIFY_ANALYSIS_BYTES_AGE_COMPONENT
+        } else {
+            crate::contract::MAX_VERIFY_ANALYSIS_BYTES
+        }
+    }
+
     pub fn new(owner: OwnerScope) -> Self {
         MirModule {
             profile: AV_PROFILE.to_string(),

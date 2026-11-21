@@ -2074,12 +2074,14 @@ impl<'a, 'r> Verifier<'a, 'r> {
             .saturating_add(capture_count.saturating_mul(40))
             .saturating_add(max_operands.saturating_mul(std::mem::size_of::<u32>()));
         self.analysis_bytes = self.analysis_bytes.max(analysis_bound as u64);
-        if analysis_bound > MAX_VERIFY_ANALYSIS_BYTES {
+        // PLAN-105 W110（D-105-预算裁定 a）：预算按面分档（AGE 组件面 64MB 档）。
+        let budget = self.module.verify_analysis_budget();
+        if analysis_bound > budget {
             return Err(MirVerifyError::Resource {
                 kind: ResourceKind::VerifyMemory,
                 message: format!(
                     "environment alias analysis for `{}` needs up to {} bytes, above {}",
-                    f.name, analysis_bound, MAX_VERIFY_ANALYSIS_BYTES
+                    f.name, analysis_bound, budget
                 ),
             });
         }

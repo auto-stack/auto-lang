@@ -285,6 +285,12 @@ pub const SLOT_CELL_BYTES: usize = std::mem::size_of::<Value>();
 /// before the work-step budget rejected it). Part of the 16 MiB staging
 /// partition of the managed 32 MiB envelope.
 pub const MAX_VERIFY_ANALYSIS_BYTES: usize = 16 * 1024 * 1024;
+/// PLAN-105 W110（D-105-预算裁定 a）：AGE 组件面的分析预算分档——真实
+/// 组件 handler（012 Tick 形）的 ownership root 矩阵随视图/占位槽数二次
+/// 增长，16MB 基线档对全组最大 handler 过紧；AGE 面（携带
+/// `ac.age.elem-view.v1`）走 64MB 档（~2x 头寸），其余 profile 保持冻结
+/// 基线。二次 blowup 门在两档均有效（阈值仍先于分配检查）。
+pub const MAX_VERIFY_ANALYSIS_BYTES_AGE_COMPONENT: usize = 64 * 1024 * 1024;
 /// Upper bound on one decoded module's structural heap estimate, checked
 /// at admission before deep verification (wire length is not a working-set
 /// proxy; a tiny wire can declare large tables).

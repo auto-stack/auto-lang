@@ -324,14 +324,14 @@ fn verify_owned_function_impl(
         .saturating_add(blocks as u64 * 64);
     let bound = bound as usize;
     *analysis_bytes = (*analysis_bytes).max(bound as u64);
-    if bound > crate::contract::MAX_VERIFY_ANALYSIS_BYTES {
+    // PLAN-105 W110（D-105-预算裁定 a）：预算按面分档（AGE 组件面 64MB 档）。
+    let budget = m.verify_analysis_budget();
+    if bound > budget {
         return Err(MirVerifyError::Resource {
             kind: crate::contract::ResourceKind::VerifyMemory,
             message: format!(
                 "ownership analysis for `{}` needs ~{} bytes, above the frozen {} budget",
-                f.name,
-                bound,
-                crate::contract::MAX_VERIFY_ANALYSIS_BYTES
+                f.name, bound, budget
             ),
         });
     }
