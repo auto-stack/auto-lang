@@ -1,0 +1,437 @@
+// AAC instances expand (PLAN-1048 T-02): the source-to-source expansion
+// pass. Consumes the instance core surface and the demand table, produces
+// the edits/arena for the driver's per-module rewrite plus the concrete
+// function texts and the per-module instance assignment, and drives the
+// whole pass (worksheet included).
+
+use app.binding.call_parameter_slots
+use app.binding.take_step
+use app.digest.utf8_bytes
+use app.instances_core.args_text
+use app.instances_core.collect_templates
+use app.instances_core.concrete_name
+use app.instances_core.concrete_type_spelling
+use app.instances_core.decl_kind
+use app.instances_core.decl_name_token
+use app.instances_core.hex_text
+use app.instances_core.instance_arity
+use app.instances_core.key_parts_for
+use app.instances_core.sq_hash_bytes
+use app.instances_core.template_identities
+use app.instances_core.template_module
+use app.instances_core.template_spelling
+use app.instances_core.tp_const
+use app.instances_core.tp_type
+use app.instances_core.tpl_count
+use app.instances_core.tpl_stride
+use app.instances_solve.demand_callee
+use app.instances_solve.demand_call
+use app.instances_solve.demand_stride_of
+use app.instances_solve.demand_tpl
+use app.instances_solve.demand_value
+use app.instances_solve.discover_demands
+use app.instances_solve.instance_index
+use app.instances_solve.key_hex
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.kind
+use app.semantic_tree.module_name_at
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.semantic_tree.span_text
+use std.conv.from_int
+
+// ---------------------------------------------------------------------------
+// Edit machinery: flat edits [start, end, arena_ofs, arena_len] sorted by
+// start, applied over source [lo, hi) with a byte arena for replacements.
+// ---------------------------------------------------------------------------
+
+fn edit_stride() int { return 4 }
+
+fn insert_edit(edits List<int>, start int, end int, ofs int, len int, fuel List<int>, deadline i64) int {
+    var at = 0
+    for (at < edits.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        if (edits.get(at) > start) { break }
+        at = at + edit_stride()
+    }
+    edits.push(0)
+    edits.push(0)
+    edits.push(0)
+    edits.push(0)
+    var move_at = edits.len() - edit_stride()
+    for (move_at > at) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        edits.set(move_at, edits.get(move_at - edit_stride()))
+        edits.set(move_at + 1, edits.get(move_at - edit_stride() + 1))
+        edits.set(move_at + 2, edits.get(move_at - edit_stride() + 2))
+        edits.set(move_at + 3, edits.get(move_at - edit_stride() + 3))
+        move_at = move_at - edit_stride()
+    }
+    edits.set(at, start)
+    edits.set(at + 1, end)
+    edits.set(at + 2, ofs)
+    edits.set(at + 3, len)
+    return 0
+}
+
+fn apply_edits(src List<int>, lo int, hi int, edits List<int>, arena List<int>) Str {
+    var out = ""
+    var cursor = lo
+    var i = 0
+    for (i < edits.len() / edit_stride()) {
+        let start = edits.get(i * edit_stride())
+        let end = edits.get(i * edit_stride() + 1)
+        let ofs = edits.get(i * edit_stride() + 2)
+        let len = edits.get(i * edit_stride() + 3)
+        if (start < cursor || end < start || end > hi) { return "" }
+        out = out + span_text(src, cursor, start)
+        if (len > 0) { out = out + span_text(arena, ofs, ofs + len) }
+        cursor = end
+        i = i + 1
+    }
+    out = out + span_text(src, cursor, hi)
+    return out
+}
+
+
+// Same rewrite, restricted to [lo, hi): edits outside the range are ignored.
+fn apply_edits_range(src List<int>, lo int, hi int, edits List<int>, arena List<int>) Str {
+    var out = ""
+    var cursor = lo
+    var i = 0
+    for (i < edits.len() / edit_stride()) {
+        let start = edits.get(i * edit_stride())
+        let end = edits.get(i * edit_stride() + 1)
+        let ofs = edits.get(i * edit_stride() + 2)
+        let len = edits.get(i * edit_stride() + 3)
+        if (end <= lo) { i = i + 1; continue }
+        if (start >= hi) { break }
+        if (start < lo || end > hi) { return "" }
+        if (start < cursor) { return "" }
+        out = out + span_text(src, cursor, start)
+        if (len > 0) { out = out + span_text(arena, ofs, ofs + len) }
+        cursor = end
+        i = i + 1
+    }
+    out = out + span_text(src, cursor, hi)
+    return out
+}
+
+// Public entry for the driver: rewrite one module's byte range.
+pub fn rewrite_range(src List<int>, lo int, hi int, edits List<int>, arena List<int>) Str {
+    return apply_edits_range(src, lo, hi, edits, arena)
+}
+
+// ---------------------------------------------------------------------------
+// Concrete function text for one instance: the template's declaration with
+// the type-params deleted, the name replaced, type-param annotations
+// concretized and const-param references replaced by their values.
+// ---------------------------------------------------------------------------
+
+fn concretize_annotation(pg List<int>, ast List<int>, links List<int>, src List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, tpl int, values List<int>, ann int, edits List<int>, arena List<int>, fuel List<int>, deadline i64) int {
+    if (!take_step(fuel, deadline)) { return -100 }
+    // The annotation node's span may include trivia; the type token itself
+    // is the "word" child, whose span is the exact substitution site.
+    var token = ann
+    let word = child_with_role(pg, ast, links, ann, "word")
+    if (word >= 0) { token = word }
+    let spelling_at = spelling(src, ast, token)
+    var position = 0
+    let decl_count = tpls.get(tpl * tpl_stride() + 2)
+    for (position < decl_count) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        if (decl_kind(decl_order, tpl, position) == tp_type() && spelling(src, ast, decl_name_token(decl_names, tpl, position)) == spelling_at) {
+            let concrete = concrete_type_spelling(values.get(position))
+            if (concrete.len() == 0) { return instance_arity() }
+            let ofs = arena.len()
+            let bytes = utf8_bytes(concrete)
+            var b = 0
+            for (b < bytes.len()) {
+                arena.push(bytes.get(b))
+                b = b + 1
+            }
+            let inserted = insert_edit(edits, start_of(ast, token), end_of(ast, token), ofs, bytes.len(), fuel, deadline)
+            if (inserted != 0) { return inserted }
+            return 0
+        }
+        position = position + 1
+    }
+    return 0
+}
+
+fn concrete_fn_text(pg List<int>, ast List<int>, links List<int>, src List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, tpl int, values List<int>, fuel List<int>, deadline i64) Str {
+    let fn_row = tpls.get(tpl * tpl_stride())
+    let sig_start = tpls.get(tpl * tpl_stride() + 3)
+    let sig_end = tpls.get(tpl * tpl_stride() + 4)
+    let body_end = tpls.get(tpl * tpl_stride() + 5)
+    var sig = List<int>.new()
+    sig.push(fn_row)
+    sig.push(-1)
+    let tail = child_with_kind(pg, ast, links, fn_row, "fn-tail")
+    if (tail >= 0) { sig.set(0, tail) }
+    var edits = List<int>.new()
+    var arena = List<int>.new()
+    let tp_node = child_with_role(pg, ast, links, sig.get(0), "type_params")
+    if (tp_node >= 0) {
+        let inserted = insert_edit(edits, start_of(ast, tp_node), end_of(ast, tp_node), 0, 0, fuel, deadline)
+        if (inserted != 0) { return "" }
+    }
+    let name = child_with_role(pg, ast, links, sig.get(0), "name")
+    if (name >= 0) {
+        let concrete = concrete_name(src, ast, tpls, decl_order, decl_names, tpl, values)
+        let ofs = arena.len()
+        let bytes = utf8_bytes(concrete)
+        var b = 0
+        for (b < bytes.len()) {
+            arena.push(bytes.get(b))
+            b = b + 1
+        }
+        let inserted = insert_edit(edits, start_of(ast, name), end_of(ast, name), ofs, bytes.len(), fuel, deadline)
+        if (inserted != 0) { return "" }
+    }
+    var slots = call_parameter_slots(pg, ast, links, sig.get(0))
+    var slot = 0
+    for (slot < slots.len()) {
+        if (!take_step(fuel, deadline)) { return "" }
+        let ann = child_with_role(pg, ast, links, slots.get(slot), "ty")
+        if (ann >= 0) {
+            let status = concretize_annotation(pg, ast, links, src, tpls, decl_order, decl_names, tpl, values, ann, edits, arena, fuel, deadline)
+            if (status != 0) { return "" }
+        }
+        slot = slot + 1
+    }
+    let ret = child_with_role(pg, ast, links, sig.get(0), "ty")
+    if (ret >= 0) {
+        let status = concretize_annotation(pg, ast, links, src, tpls, decl_order, decl_names, tpl, values, ret, edits, arena, fuel, deadline)
+        if (status != 0) { return "" }
+    }
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return "" }
+        let start = start_of(ast, row)
+        let end = end_of(ast, row)
+        if (start >= sig_end && end <= body_end && kind(pg, ast, row) == "ident") {
+            let spelling_at = spelling(src, ast, row)
+            var position = 0
+            let decl_count = tpls.get(tpl * tpl_stride() + 2)
+            for (position < decl_count) {
+                if (!take_step(fuel, deadline)) { return "" }
+                if (decl_kind(decl_order, tpl, position) == tp_const() && spelling(src, ast, decl_name_token(decl_names, tpl, position)) == spelling_at) {
+                    let ofs = arena.len()
+                    let value = from_int(values.get(position))
+                    let bytes = utf8_bytes(value)
+                    var b = 0
+                    for (b < bytes.len()) {
+                        arena.push(bytes.get(b))
+                        b = b + 1
+                    }
+                    let inserted = insert_edit(edits, start, end, ofs, bytes.len(), fuel, deadline)
+                    if (inserted != 0) { return "" }
+                }
+                position = position + 1
+            }
+        }
+        row = row + 1
+    }
+    return apply_edits(src, sig_start, body_end, edits, arena)
+}
+
+// ---------------------------------------------------------------------------
+// The main pass.
+// ---------------------------------------------------------------------------
+
+fn module_count(names List<int>) int {
+    var offset = 0
+    var id = 0
+    for (offset < names.len()) {
+        offset = offset + 1 + names.get(offset)
+        id = id + 1
+    }
+    return id
+}
+
+fn first_demand_of(demands List<int>, demand_instance List<int>, inst int) int {
+    var at = 0
+    var di = 0
+    for (at < demands.len()) {
+        if (demand_instance.get(di) == inst) { return at }
+        at = at + demand_stride_of(demands, at)
+        di = di + 1
+    }
+    return -1
+}
+
+fn demand_values_into(demands List<int>, at int, out List<int>) int {
+    let count = demands.get(at + 3)
+    var i = 0
+    for (i < count) {
+        out.push(demand_value(demands, at, i))
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn run_instance_pass(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, package Str, edits List<int>, arena List<int>, inst_texts List<int>, inst_meta List<int>, mod_insts List<int>, lines List<Str>, fuel List<int>, deadline i64) int {
+    var tpls = List<int>.new()
+    var decl_order = List<int>.new()
+    var decl_names = List<int>.new()
+    let collected = collect_templates(pg, ast, links, src, modules, tpls, decl_order, decl_names, fuel, deadline)
+    if (collected != 0) { return collected }
+    let count = tpl_count(tpls)
+    if (count == 0) { return 0 }
+    var hex_bytes = List<int>.new()
+    var z = 0
+    for (z < count * 192) {
+        hex_bytes.push(0)
+        z = z + 1
+    }
+    let identified = template_identities(pg, ast, links, src, modules, tpls, hex_bytes, fuel, deadline)
+    if (identified != 0) { return identified }
+    var demands = List<int>.new()
+    let discovered = discover_demands(pg, ast, links, src, tpls, decl_order, demands, fuel, deadline)
+    if (discovered != 0) { return discovered }
+    var keys = List<int>.new()
+    var inst_tpl = List<int>.new()
+    var demand_instance = List<int>.new()
+    var at = 0
+    for (at < demands.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let tpl = demand_tpl(demands, at)
+        var values = List<int>.new()
+        demand_values_into(demands, at, values)
+        let key = sq_hash_bytes("ac935/instance-key/v1", key_parts_for(hex_bytes, tpls, decl_order, decl_names, src, ast, tpl, values))
+        let idx = instance_index(keys, inst_tpl, key, tpl, fuel, deadline)
+        if (idx == -100) { return -100 }
+        demand_instance.push(idx)
+        at = at + demand_stride_of(demands, at)
+    }
+    let mcount = module_count(modules)
+    lines.push("aac.instance-report/1")
+    var t = 0
+    for (t < count) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let module = module_name_at(modules, template_module(ast, tpls, t))
+        lines.push("TEMPLATE " + hex_text(hex_bytes, t, 0) + " " + module + " " + template_spelling(src, ast, tpls, t) + " " + hex_text(hex_bytes, t, 1) + " " + hex_text(hex_bytes, t, 2))
+        t = t + 1
+    }
+    var inst = 0
+    for (inst < keys.len() / 32) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let tpl = inst_tpl.get(inst)
+        let first = first_demand_of(demands, demand_instance, inst)
+        if (first < 0) { return instance_arity() }
+        var values = List<int>.new()
+        demand_values_into(demands, first, values)
+        lines.push("INSTANCE " + key_hex(keys, inst) + " " + hex_text(hex_bytes, tpl, 0) + " " + template_spelling(src, ast, tpls, tpl) + " " + args_text(src, ast, tpls, decl_order, decl_names, tpl, values) + " " + concrete_name(src, ast, tpls, decl_order, decl_names, tpl, values))
+        inst = inst + 1
+    }
+    var d = 0
+    var di = 0
+    for (d < demands.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let call = demand_call(demands, d)
+        let inst = demand_instance.get(di)
+        let key = key_hex(keys, inst)
+        let module = module_name_at(modules, source_id(ast, call))
+        lines.push("CALL " + key + " " + module + " " + from_int(start_of(ast, call)) + ".." + from_int(end_of(ast, call)))
+        d = d + demand_stride_of(demands, d)
+        di = di + 1
+    }
+    var m = 0
+    for (m < mcount) {
+        mod_insts.push(0)
+        m = m + 1
+    }
+    d = 0
+    di = 0
+    for (d < demands.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let call = demand_call(demands, d)
+        let module = source_id(ast, call)
+        let inst = demand_instance.get(di)
+        var seen = false
+        var cursor = 0
+        var mi = 0
+        for (mi < module) {
+            cursor = cursor + 1 + mod_insts.get(cursor)
+            mi = mi + 1
+        }
+        let limit = cursor + 1 + mod_insts.get(cursor)
+        var check = cursor + 1
+        for (check < limit) {
+            if (mod_insts.get(check) == inst) { seen = true }
+            check = check + 1
+        }
+        if (!seen) {
+            mod_insts.set(cursor, mod_insts.get(cursor) + 1)
+            mod_insts.push(inst)
+        }
+        d = d + demand_stride_of(demands, d)
+        di = di + 1
+    }
+    inst = 0
+    for (inst < keys.len() / 32) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let tpl = inst_tpl.get(inst)
+        let first = first_demand_of(demands, demand_instance, inst)
+        if (first < 0) { return instance_arity() }
+        var values = List<int>.new()
+        demand_values_into(demands, first, values)
+        let text = concrete_fn_text(pg, ast, links, src, tpls, decl_order, decl_names, tpl, values, fuel, deadline)
+        if (text.len() == 0) { return instance_arity() }
+        let ofs = inst_texts.len()
+        let bytes = utf8_bytes(text)
+        var b = 0
+        for (b < bytes.len()) {
+            inst_texts.push(bytes.get(b))
+            b = b + 1
+        }
+        inst_meta.push(ofs)
+        inst_meta.push(bytes.len())
+        inst = inst + 1
+    }
+    t = 0
+    for (t < count) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let fn_row = tpls.get(t * tpl_stride())
+        let inserted = insert_edit(edits, start_of(ast, fn_row), end_of(ast, fn_row), 0, 0, fuel, deadline)
+        if (inserted != 0) { return inserted }
+        t = t + 1
+    }
+    d = 0
+    di = 0
+    for (d < demands.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let tpl = demand_tpl(demands, d)
+        var values = List<int>.new()
+        demand_values_into(demands, d, values)
+        let concrete = concrete_name(src, ast, tpls, decl_order, decl_names, tpl, values)
+        let ofs = arena.len()
+        let bytes = utf8_bytes(concrete)
+        var b = 0
+        for (b < bytes.len()) {
+            arena.push(bytes.get(b))
+            b = b + 1
+        }
+        let callee = demand_callee(demands, d)
+        let inserted = insert_edit(edits, start_of(ast, callee), end_of(ast, callee), ofs, bytes.len(), fuel, deadline)
+        if (inserted != 0) { return inserted }
+        // Explicit instance args (`name<2>(...)`) become plain calls: drop
+        // the region between the callee name and the argument list.
+        let call = demand_call(demands, d)
+        if (kind(pg, ast, call) == "generic-call") {
+            let lparen = child_with_kind(pg, ast, links, call, "lparen")
+            if (lparen >= 0 && start_of(ast, lparen) > end_of(ast, callee)) {
+                let removed = insert_edit(edits, end_of(ast, callee), start_of(ast, lparen), 0, 0, fuel, deadline)
+                if (removed != 0) { return removed }
+            }
+        }
+        d = d + demand_stride_of(demands, d)
+        di = di + 1
+    }
+    return 0
+}

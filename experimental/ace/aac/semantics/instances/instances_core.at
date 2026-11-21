@@ -1,0 +1,454 @@
+// AAC instances core (PLAN-1048 T-02): framed identity, template table and
+// instance identity bytes, ported from the real Rust instance machinery
+// (source-query/instances.rs, PLAN-935/963). Split from the single instances
+// module so each Auto module stays within the grammar parse budget; this
+// file owns the identity and template collection surface.
+//
+// Identity contract (byte-compatible where the Rust side defines bytes):
+//   * logical = sq_hash("ac935/instance-logical/v1", [package, module, "tpl",
+//     template]) — exactly the Rust scheme (SQ_PRODUCER "plan934/source-sq"
+//     frame);
+//   * key = sq_hash("ac935/instance-key/v1", [logical, "sig", sig_version,
+//     "body", body_version, declaration-order interleaved (param, suffix) and
+//     (param, "u32", value-hex), algo, schema]). The Auto-side sig/body
+//     versions are blake3 over the template's signature/body text under the
+//     plan934/fn-sig and plan934/fn-body domains (a documented Auto canonical;
+//     the Rust internal canonical differs, so the full key is asserted for
+//     determinism and distinctness, and logical for byte equality);
+//   * concrete name = template + "_" + suffixes (type suffixes i32/bool/text,
+//     const "u32_<decimal>"), matching the Rust assembly spelling.
+//
+// Bounded profile: scalar/type/text params and u32 const params, single-file
+// and cross-module (project) programs. Constraints (<T has S>), record/
+// enum/method instances, nested containers and recursive budgets are named
+// successors (1050/1053) and are refused here, never silently reused.
+
+use app.binding.bind_budget
+use app.binding.call_parameter_slots
+use app.binding.take_step
+use app.digest.blake3_bytes
+use app.digest.blake3_hex_bytes
+use app.digest.utf8_bytes
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.module_name_at
+use app.semantic_tree.next_sibling
+use app.semantic_tree.parent
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use app.semantic_tree.span_text
+use std.conv.from_int
+
+pub fn instance_unsupported() int { return -70 }
+pub fn instance_constraint() int { return -71 }
+pub fn instance_arity() int { return -72 }
+pub fn instance_recursive() int { return -73 }
+
+pub fn ty_i32() int { return 1 }
+pub fn ty_bool() int { return 2 }
+pub fn ty_text() int { return 3 }
+pub fn ty_record() int { return 4 }
+
+pub fn tp_type() int { return 1 }
+pub fn tp_const() int { return 2 }
+
+// ---------------------------------------------------------------------------
+// Framed identity (SQ_PRODUCER "plan934/source-sq" ‖ 0 ‖ domain ‖ 0 ‖
+// { u64le(len) ‖ part }*), exactly the Rust sq_hash framing.
+// ---------------------------------------------------------------------------
+
+fn append_u64le(dst List<int>, n int) int {
+    dst.push(n % 256)
+    dst.push((n / 256) % 256)
+    dst.push((n / 65536) % 256)
+    dst.push((n / 16777216) % 256)
+    dst.push(0)
+    dst.push(0)
+    dst.push(0)
+    dst.push(0)
+    return 0
+}
+
+fn append_str(dst List<int>, s Str) int {
+    let bytes = utf8_bytes(s)
+    append_u64le(dst, bytes.len())
+    var i = 0
+    for (i < bytes.len()) {
+        dst.push(bytes.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn append_raw(dst List<int>, s Str) int {
+    let bytes = utf8_bytes(s)
+    var i = 0
+    for (i < bytes.len()) {
+        dst.push(bytes.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+fn sq_frame(domain Str, parts List<Str>) List<int> {
+    var frame = List<int>.new()
+    append_raw(frame, "plan934/source-sq")
+    frame.push(0)
+    append_raw(frame, domain)
+    frame.push(0)
+    for (parts.len() > 0) {
+        let part = parts.remove(0)
+        append_str(frame, part.move)
+    }
+    return frame
+}
+
+pub fn sq_hash_hex(domain Str, parts List<Str>) Str {
+    return blake3_hex_bytes(sq_frame(domain, parts))
+}
+
+pub fn sq_hash_bytes(domain Str, parts List<Str>) List<int> {
+    return blake3_bytes(sq_frame(domain, parts))
+}
+
+// ---------------------------------------------------------------------------
+// Template table (flat List<int>, stride 9):
+//   fn_row, name_token, decl_count, sig_start, sig_end, body_end,
+//   type_count, const_count, hex_base
+// hex_bytes carries 192 bytes per template: logical hex(64) sig hex(64)
+// body hex(64), in template order.
+// decl_order/decl_names carry declaration-order kind/name tokens per
+// template, separated by -1.
+// ---------------------------------------------------------------------------
+
+pub fn tpl_stride() int { return 9 }
+
+fn template_decls(pg List<int>, ast List<int>, links List<int>, tp_node int, decl_order List<int>, decl_names List<int>, counts List<int>, fuel List<int>, deadline i64) int {
+    var child = first_child(links, tp_node)
+    var types = 0
+    var consts = 0
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        var param = child
+        if (kind(pg, ast, child) == "type-param-tail") {
+            param = child_with_kind(pg, ast, links, child, "type-param")
+        }
+        if (param >= 0 && kind(pg, ast, param) == "type-param") {
+            let name = child_with_role(pg, ast, links, param, "name")
+            if (name < 0) { return instance_arity() }
+            let const_kw = child_with_role(pg, ast, links, param, "const_kw")
+            if (const_kw >= 0) {
+                decl_order.push(tp_const())
+                consts = consts + 1
+            } else {
+                decl_order.push(tp_type())
+                types = types + 1
+            }
+            decl_names.push(name)
+        }
+        child = next_sibling(links, child)
+    }
+    counts.push(types)
+    counts.push(consts)
+    return 0
+}
+
+pub fn collect_templates(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let node_kind = kind(pg, ast, row)
+        if (node_kind == "fn-item") {
+            var sig = List<int>.new()
+            sig.push(row)
+            sig.push(-1)
+            let tail = child_with_kind(pg, ast, links, row, "fn-tail")
+            if (tail >= 0) { sig.set(0, tail) }
+            let tp_node = child_with_role(pg, ast, links, sig.get(0), "type_params")
+            if (tp_node >= 0) {
+                let name = child_with_role(pg, ast, links, sig.get(0), "name")
+                if (name < 0) { return instance_arity() }
+                var counts = List<int>.new()
+                let counted = template_decls(pg, ast, links, tp_node, decl_order, decl_names, counts, fuel, deadline)
+                if (counted != 0) { return counted }
+                let decl_count = counts.get(0) + counts.get(1)
+                if (decl_count == 0) { return instance_arity() }
+                let body = child_with_role(pg, ast, links, sig.get(0), "body")
+                if (body < 0) { return instance_arity() }
+                let sig_start = start_of(ast, row)
+                let sig_end = start_of(ast, body)
+                let body_end = end_of(ast, row)
+                if (sig_end < sig_start || body_end < sig_end) { return instance_arity() }
+                let module = module_name_at(modules, source_id(ast, row))
+                if (module.len() == 0) { return instance_unsupported() }
+                tpls.push(row)
+                tpls.push(name)
+                tpls.push(decl_count)
+                tpls.push(sig_start)
+                tpls.push(sig_end)
+                tpls.push(body_end)
+                tpls.push(counts.get(0))
+                tpls.push(counts.get(1))
+                tpls.push(0)
+                decl_order.push(-1)
+                decl_names.push(-1)
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+pub fn tpl_count(tpls List<int>) int {
+    return tpls.len() / tpl_stride()
+}
+
+pub fn template_spelling(src List<int>, ast List<int>, tpls List<int>, at int) Str {
+    return spelling(src, ast, tpls.get(at * tpl_stride() + 1))
+}
+
+pub fn template_module(ast List<int>, tpls List<int>, at int) int {
+    return source_id(ast, tpls.get(at * tpl_stride()))
+}
+
+// ---------------------------------------------------------------------------
+// Versions and logical identity (192 hex bytes per template).
+// ---------------------------------------------------------------------------
+
+fn write_hex_bytes(hex_bytes List<int>, at int, lane int, value Str) int {
+    let bytes = utf8_bytes(value)
+    if (bytes.len() != 64) { return instance_unsupported() }
+    var base = at * 192 + lane * 64
+    var i = 0
+    for (i < 64) {
+        hex_bytes.set(base + i, bytes.get(i))
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn hex_text(hex_bytes List<int>, tpl int, lane int) Str {
+    let base = tpl * 192 + lane * 64
+    return span_text(hex_bytes, base, base + 64)
+}
+
+pub fn template_identities(pg List<int>, ast List<int>, links List<int>, src List<int>, modules List<int>, tpls List<int>, hex_bytes List<int>, fuel List<int>, deadline i64) int {
+    let count = tpl_count(tpls)
+    var at = 0
+    for (at < count) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let sig_start = tpls.get(at * tpl_stride() + 3)
+        let sig_end = tpls.get(at * tpl_stride() + 4)
+        let body_end = tpls.get(at * tpl_stride() + 5)
+        let module = module_name_at(modules, template_module(ast, tpls, at))
+        let name = template_spelling(src, ast, tpls, at)
+        var sig_parts = List<Str>.new()
+        sig_parts.push(span_text(src, sig_start, sig_end))
+        let sig_hex = sq_hash_hex("plan934/fn-sig/v1", sig_parts)
+        var body_parts = List<Str>.new()
+        body_parts.push(span_text(src, sig_end, body_end))
+        let body_hex = sq_hash_hex("plan934/fn-body/v1", body_parts)
+        var log_parts = List<Str>.new()
+        log_parts.push(module.move)
+        log_parts.push("tpl")
+        log_parts.push(name.move)
+        let logical = sq_hash_hex("ac935/instance-logical/v1", log_parts)
+        if (write_hex_bytes(hex_bytes, at, 0, logical) != 0) { return instance_unsupported() }
+        if (write_hex_bytes(hex_bytes, at, 1, sig_hex) != 0) { return instance_unsupported() }
+        if (write_hex_bytes(hex_bytes, at, 2, body_hex) != 0) { return instance_unsupported() }
+        at = at + 1
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Declaration segments (decl_order/decl_names are -1 separated per template).
+// ---------------------------------------------------------------------------
+
+fn decl_segment_at(decl_order List<int>, at int) int {
+    var segment = 0
+    var i = 0
+    for (i < decl_order.len()) {
+        if (decl_order.get(i) == -1) {
+            segment = segment + 1
+            if (segment == at) { return i + 1 }
+        }
+        i = i + 1
+    }
+    if (at == 0) { return 0 }
+    return -1
+}
+
+pub fn decl_kind(decl_order List<int>, at int, position int) int {
+    return decl_order.get(decl_segment_at(decl_order, at) + position)
+}
+
+pub fn decl_name_token(decl_names List<int>, at int, position int) int {
+    return decl_names.get(decl_segment_at(decl_names, at) + position)
+}
+
+// ---------------------------------------------------------------------------
+// Argument solving (bounded shape): literals and annotated parameters.
+// ---------------------------------------------------------------------------
+
+pub fn annotation_code(pg List<int>, ast List<int>, src List<int>, ann int, fuel List<int>, deadline i64) int {
+    if (!take_step(fuel, deadline)) { return -100 }
+    let text = spelling(src, ast, ann)
+    if (text == "int" || text == "i32") { return ty_i32() }
+    if (text == "bool") { return ty_bool() }
+    if (text == "str" || text == "Str") { return ty_text() }
+    return -1
+}
+
+// The parameter with the same name in the enclosing function, or -1 when
+// there is no enclosing fn / no matching parameter, -100 on budget.
+pub fn enclosing_param(pg List<int>, ast List<int>, links List<int>, src List<int>, ident int, fuel List<int>, deadline i64) int {
+    var at = parent(ast, ident)
+    for (at >= 0) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let node_kind = kind(pg, ast, at)
+        if (node_kind == "fn-item" || node_kind == "fn-tail") {
+            var sig = at
+            if (node_kind == "fn-item") {
+                let tail = child_with_kind(pg, ast, links, at, "fn-tail")
+                if (tail >= 0) { sig = tail }
+            }
+            let params = call_parameter_slots(pg, ast, links, sig)
+            var slot = 0
+            for (slot < params.len()) {
+                if (!take_step(fuel, deadline)) { return -100 }
+                let param_name = child_with_role(pg, ast, links, params.get(slot), "name")
+                if (param_name >= 0 && spelling(src, ast, param_name) == spelling(src, ast, ident)) {
+                    let ann = child_with_role(pg, ast, links, params.get(slot), "ty")
+                    if (ann < 0) { return -1 }
+                    return ann
+                }
+                slot = slot + 1
+            }
+            return -1
+        }
+        at = parent(ast, at)
+    }
+    return -1
+}
+
+pub fn solve_arg_type(pg List<int>, ast List<int>, links List<int>, src List<int>, value int, fuel List<int>, deadline i64) int {
+    var node = value
+    var depth = 0
+    for (depth < 8) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let wrapper = kind(pg, ast, node)
+        if (wrapper == "expr" || wrapper == "unary-expr" || wrapper == "atom-expr" || wrapper == "postfix-expr" || wrapper == "condition-postfix" || wrapper == "int-literal") {
+            let child = first_child(links, node)
+            if (child < 0) { return -1 }
+            node = child
+            depth = depth + 1
+            continue
+        }
+        break
+    }
+    if (!take_step(fuel, deadline)) { return -100 }
+    let node_kind = kind(pg, ast, node)
+    if (node_kind == "affix-num" || node_kind == "int-lit") { return ty_i32() }
+    if (node_kind == "true-kw" || node_kind == "false-kw") { return ty_bool() }
+    if (node_kind == "str-lit") { return ty_text() }
+    if (node_kind == "ident") {
+        let ann = enclosing_param(pg, ast, links, src, node, fuel, deadline)
+        if (ann == -100) { return -100 }
+        if (ann < 0) { return -1 }
+        return annotation_code(pg, ast, src, ann, fuel, deadline)
+    }
+    return -1
+}
+
+// ---------------------------------------------------------------------------
+// Key parts, concrete names, fixed hex.
+// ---------------------------------------------------------------------------
+
+pub fn ty_suffix(code int) Str {
+    if (code == ty_i32()) { return "i32" }
+    if (code == ty_bool()) { return "bool" }
+    if (code == ty_text()) { return "text" }
+    return ""
+}
+
+pub fn concrete_type_spelling(code int) Str {
+    if (code == ty_i32()) { return "int" }
+    if (code == ty_bool()) { return "bool" }
+    if (code == ty_text()) { return "str" }
+    return ""
+}
+
+pub fn fixed_hex(value int) Str {
+    var hex = ""
+    var digits = 0
+    var v = value
+    for (digits < 8) {
+        hex = "0123456789abcdef".slice(v % 16, v % 16 + 1) + hex
+        v = v / 16
+        digits = digits + 1
+    }
+    return hex
+}
+
+pub fn key_parts_for(hex_bytes List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, src List<int>, ast List<int>, tpl int, values List<int>) List<Str> {
+    var parts = List<Str>.new()
+    parts.push(hex_text(hex_bytes, tpl, 0))
+    parts.push("sig")
+    parts.push(hex_text(hex_bytes, tpl, 1))
+    parts.push("body")
+    parts.push(hex_text(hex_bytes, tpl, 2))
+    var position = 0
+    for (position < tpls.get(tpl * tpl_stride() + 2)) {
+        let decl_k = decl_kind(decl_order, tpl, position)
+        let name = spelling(src, ast, decl_name_token(decl_names, tpl, position))
+        if (decl_k == tp_type()) {
+            parts.push(name.move)
+            parts.push(ty_suffix(values.get(position)))
+        } else {
+            parts.push(name.move)
+            parts.push("u32")
+            parts.push(fixed_hex(values.get(position)))
+        }
+        position = position + 1
+    }
+    parts.push("ac935/instances-discovery/3")
+    parts.push("ac935/instances/v1")
+    return parts
+}
+
+pub fn concrete_name(src List<int>, ast List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, tpl int, values List<int>) Str {
+    var name = template_spelling(src, ast, tpls, tpl)
+    var position = 0
+    for (position < tpls.get(tpl * tpl_stride() + 2)) {
+        let decl_k = decl_kind(decl_order, tpl, position)
+        if (decl_k == tp_type()) {
+            name = name + "_" + ty_suffix(values.get(position))
+        } else {
+            name = name + "_u32_" + from_int(values.get(position))
+        }
+        position = position + 1
+    }
+    return name
+}
+
+pub fn args_text(src List<int>, ast List<int>, tpls List<int>, decl_order List<int>, decl_names List<int>, tpl int, values List<int>) Str {
+    var text = ""
+    var position = 0
+    for (position < tpls.get(tpl * tpl_stride() + 2)) {
+        let decl_k = decl_kind(decl_order, tpl, position)
+        if (position > 0) { text = text + "," }
+        if (decl_k == tp_type()) {
+            text = text + ty_suffix(values.get(position))
+        } else {
+            text = text + "u32=" + from_int(values.get(position))
+        }
+        position = position + 1
+    }
+    return text
+}

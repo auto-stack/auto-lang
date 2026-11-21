@@ -113,6 +113,18 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/choices.at").into(),
         ),
         (
+            "instances_core.at".into(),
+            include_str!("../../../aac/semantics/instances/instances_core.at").into(),
+        ),
+        (
+            "instances_solve.at".into(),
+            include_str!("../../../aac/semantics/instances/instances_solve.at").into(),
+        ),
+        (
+            "instances_expand.at".into(),
+            include_str!("../../../aac/semantics/instances/instances_expand.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),
@@ -634,6 +646,67 @@ fn run_project(
             cmd.env("AAC1047_HIR", mode);
         }
         execute_report(cmd, &output, "semantic-project")
+    })
+}
+
+/// PLAN-1048: single-file semantic run with the instance pre-pass enabled.
+/// Returns the ordinary semantic report of the expanded program plus the
+/// instance worksheet (identity table) when templates were present.
+pub fn run_instance_case(sample: &[u8]) -> Result<(String, String), String> {
+    let exe = prepared_semantic()?;
+    with_fixture("instance", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let worksheet = root.join("worksheet.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write instance input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, true, None);
+        cmd.env("AAC1048_INSTANCES", "1")
+            .env("AAC1048_WORKSHEET", &worksheet);
+        let report = execute_report(cmd, &output, "instance")?;
+        let sheet = std::fs::read_to_string(&worksheet).unwrap_or_default();
+        Ok((report, sheet))
+    })
+}
+
+/// PLAN-1048: project-mode semantic run with the instance pre-pass enabled.
+/// The worksheet carries the cross-module instance identity table.
+pub fn run_instance_project(modules: &[(&str, &str)]) -> Result<(String, String), String> {
+    let exe = prepared_semantic()?;
+    with_fixture("instance-project", |root| {
+        let output = root.join("report.txt");
+        let worksheet = root.join("worksheet.txt");
+        let mut names = Vec::with_capacity(modules.len());
+        for (name, source) in modules {
+            if name.split('/').count() > 2
+                || name.split('/').any(|part| {
+                    part.is_empty() || !part.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                })
+            {
+                return Err(format!("invalid fixture module name: {name}"));
+            }
+            let input = root.join(format!("{name}.at"));
+            std::fs::create_dir_all(input.parent().unwrap()).map_err(|err| err.to_string())?;
+            std::fs::write(input, source).map_err(|err| err.to_string())?;
+            names.push(*name);
+        }
+        let mut cmd = Command::new(exe);
+        cmd.current_dir(root)
+            .env("AAC1047_PROJECT", root)
+            .env("AAC1047_PACKAGE", "app")
+            .env("AAC1047_INVENTORY", names.join("\n"))
+            .env("AAC1047_OUTPUT", &output)
+            .env("AAC1047_TYPED", "1")
+            .env("AAC1048_INSTANCES", "1")
+            .env("AAC1048_WORKSHEET", &worksheet)
+            .env_remove("AAC1047_HIR")
+            .env_remove("AAC1047_STEPS")
+            .env_remove("AAC1047_ARTIFACT")
+            .env_remove("AAC1047_STAGED")
+            .env_remove("AAC1047_FOREIGN_PATH")
+            .env_remove("AAC1047_FOREIGN_AUTHORITY");
+        let report = execute_report(cmd, &output, "instance-project")?;
+        let sheet = std::fs::read_to_string(&worksheet).unwrap_or_default();
+        Ok((report, sheet))
     })
 }
 

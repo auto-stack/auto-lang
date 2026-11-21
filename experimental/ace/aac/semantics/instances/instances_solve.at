@@ -1,0 +1,265 @@
+// AAC instances solve (PLAN-1048 T-02): call-site demand discovery and
+// argument solving. Consumes the instance core surface and produces the
+// demand table that the expand module materializes.
+//
+// Demands: flat entries [call_row, callee_token, tpl_index, decl_count,
+// decl_count ints (type code or const value, declaration order)].
+
+use app.binding.bind_budget
+use app.binding.call_args
+use app.binding.direct_callee
+use app.binding.take_step
+use app.digest.hex_bytes
+use app.digest.utf8_bytes
+use app.instances_core.annotation_code
+use app.instances_core.decl_kind
+use app.instances_core.instance_arity
+use app.instances_core.instance_unsupported
+use app.instances_core.solve_arg_type
+use app.instances_core.template_module
+use app.instances_core.template_spelling
+use app.instances_core.tp_const
+use app.instances_core.tp_type
+use app.instances_core.tpl_count
+use app.instances_core.tpl_stride
+use app.semantic_tree.child_with_kind
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.row_count
+use app.semantic_tree.source_id
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+use std.conv.to_int
+
+fn positional_arg_values(pg List<int>, ast List<int>, links List<int>, call int, out List<int>, fuel List<int>, deadline i64) int {
+    let args = call_args(pg, ast, links, call)
+    if (args < 0) { return 0 }
+    var child = first_child(links, args)
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let node_kind = kind(pg, ast, child)
+        var arg = -1
+        if (node_kind == "arg") { arg = child }
+        if (node_kind == "arg-tail") { arg = child_with_kind(pg, ast, links, child, "arg") }
+        if (arg >= 0) {
+            var value = first_child(links, arg)
+            if (value >= 0 && kind(pg, ast, value) == "named-arg") {
+                value = child_with_role(pg, ast, links, value, "value")
+            }
+            if (value >= 0) { out.push(value) }
+        }
+        child = next_sibling(links, child)
+    }
+    return 0
+}
+
+fn explicit_iargs(pg List<int>, ast List<int>, links List<int>, src List<int>, iargs int, kinds List<int>, values List<int>, fuel List<int>, deadline i64) int {
+    var child = first_child(links, iargs)
+    for (child >= 0) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        var entry = child
+        if (kind(pg, ast, child) == "instance-arg-tail") { entry = child_with_kind(pg, ast, links, child, "instance-arg") }
+        if (entry >= 0) {
+            let lit = child_with_kind(pg, ast, links, entry, "int-lit")
+            if (lit >= 0) {
+                let parsed = to_int(spelling(src, ast, lit))
+                is parsed {
+                    Some(value) -> {
+                        kinds.push(tp_const())
+                        values.push(value)
+                    }
+                    None -> { return -100 }
+                }
+            } else {
+                let ann = child_with_kind(pg, ast, links, entry, "ann-ty")
+                if (ann >= 0) {
+                    let code = annotation_code(pg, ast, src, ann, fuel, deadline)
+                    if (code < 0) { return -100 }
+                    kinds.push(tp_type())
+                    values.push(code)
+                } else {
+                    return -100
+                }
+            }
+        }
+        child = next_sibling(links, child)
+    }
+    return 0
+}
+
+// -1 no template, -2 ambiguous, -100 budget, else template index.
+fn match_template(src List<int>, ast List<int>, tpls List<int>, callee int, caller_module int, fuel List<int>, deadline i64) int {
+    let name = spelling(src, ast, callee)
+    let count = tpl_count(tpls)
+    var at = 0
+    var candidate = -1
+    var local = -1
+    for (at < count) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        if (template_spelling(src, ast, tpls, at) == name) {
+            if (template_module(ast, tpls, at) == caller_module) { local = at }
+            if (candidate < 0) { candidate = at }
+        }
+        at = at + 1
+    }
+    if (local >= 0) { return local }
+    if (candidate >= 0) {
+        var second = -1
+        at = candidate + 1
+        for (at < count) {
+            if (!take_step(fuel, deadline)) { return -100 }
+            if (template_spelling(src, ast, tpls, at) == name && at != candidate) {
+                second = at
+                break
+            }
+            at = at + 1
+        }
+        if (second < 0) { return candidate }
+        return -2
+    }
+    return -1
+}
+
+pub fn discover_demands(pg List<int>, ast List<int>, links List<int>, src List<int>, tpls List<int>, decl_order List<int>, demands List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        let node_kind = kind(pg, ast, row)
+        var callee = -1
+        var iargs_node = -1
+        if (node_kind == "call") {
+            callee = direct_callee(pg, ast, links, row)
+        }
+        if (node_kind == "generic-call") {
+            callee = child_with_role(pg, ast, links, row, "name")
+            iargs_node = child_with_role(pg, ast, links, row, "iargs")
+        }
+        var tpl = -1
+        if (callee >= 0) {
+            let caller_module = source_id(ast, row)
+            let matched = match_template(src, ast, tpls, callee, caller_module, fuel, deadline)
+            if (matched == -100) { return -100 }
+            if (matched == -2) { return instance_unsupported() }
+            tpl = matched
+        }
+        if (tpl >= 0) {
+            var i_kinds = List<int>.new()
+            var i_values = List<int>.new()
+            if (iargs_node >= 0) {
+                let collected = explicit_iargs(pg, ast, links, src, iargs_node, i_kinds, i_values, fuel, deadline)
+                if (collected == -100) { return instance_arity() }
+                if (collected != 0) { return collected }
+            }
+            var arg_values = List<int>.new()
+            let arg_status = positional_arg_values(pg, ast, links, row, arg_values, fuel, deadline)
+            if (arg_status == -100) { return -100 }
+            var values = List<int>.new()
+            var ti = 0
+            var ci = 0
+            var arg_at = 0
+            var position = 0
+            let decl_count = tpls.get(tpl * tpl_stride() + 2)
+            for (position < decl_count) {
+                let decl_k = decl_kind(decl_order, tpl, position)
+                if (decl_k == tp_type()) {
+                    var solved = -1
+                    if (ti < i_kinds.len() && i_kinds.get(ti) == tp_type()) {
+                        solved = i_values.get(ti)
+                    } else {
+                        if (arg_at < arg_values.len()) {
+                            solved = solve_arg_type(pg, ast, links, src, arg_values.get(arg_at), fuel, deadline)
+                            if (solved == -100) { return -100 }
+                        }
+                    }
+                    if (solved < 0) { return instance_arity() }
+                    values.push(solved)
+                    ti = ti + 1
+                    if (arg_at < arg_values.len()) { arg_at = arg_at + 1 }
+                } else {
+                    var value = -1
+                    if (ci < i_kinds.len() && i_kinds.get(ci) == tp_const()) {
+                        value = i_values.get(ci)
+                    } else {
+                        return instance_arity()
+                    }
+                    values.push(value)
+                    ci = ci + 1
+                }
+                position = position + 1
+            }
+            demands.push(row)
+            demands.push(callee)
+            demands.push(tpl)
+            demands.push(decl_count)
+            var v = 0
+            for (v < decl_count) {
+                demands.push(values.get(v))
+                v = v + 1
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Demand table accessors and instance deduplication (32 raw bytes per key).
+// ---------------------------------------------------------------------------
+
+pub fn demand_stride_of(demands List<int>, at int) int {
+    return 4 + demands.get(at + 3)
+}
+
+pub fn demand_tpl(demands List<int>, at int) int {
+    return demands.get(at + 2)
+}
+
+pub fn demand_value(demands List<int>, at int, position int) int {
+    return demands.get(at + 4 + position)
+}
+
+pub fn demand_call(demands List<int>, at int) int {
+    return demands.get(at)
+}
+
+pub fn demand_callee(demands List<int>, at int) int {
+    return demands.get(at + 1)
+}
+
+fn key_equal(keys List<int>, base_a int, other List<int>, base_b int) bool {
+    var i = 0
+    for (i < 32) {
+        if (keys.get(base_a + i) != other.get(base_b + i)) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+pub fn instance_index(keys List<int>, inst_tpl List<int>, key List<int>, tpl int, fuel List<int>, deadline i64) int {
+    var at = 0
+    for (at < keys.len()) {
+        if (!take_step(fuel, deadline)) { return -100 }
+        if (key_equal(keys, at, key, 0)) { return at / 32 }
+        at = at + 32
+    }
+    var i = 0
+    for (i < 32) {
+        keys.push(key.get(i))
+        i = i + 1
+    }
+    inst_tpl.push(tpl)
+    return keys.len() / 32 - 1
+}
+
+pub fn key_hex(keys List<int>, instance int) Str {
+    var bytes = List<int>.new()
+    var i = 0
+    for (i < 32) {
+        bytes.push(keys.get(instance * 32 + i))
+        i = i + 1
+    }
+    return hex_bytes(bytes)
+}

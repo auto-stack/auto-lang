@@ -43,6 +43,12 @@ use app.foreign_contract.foreign_handle_error
 use app.foreign_contract.foreign_layout_error
 use app.foreign_contract.foreign_provider_error
 use app.foreign_contract.foreign_signature_error
+use app.instances_core.instance_arity
+use app.instances_core.instance_constraint
+use app.instances_core.instance_recursive
+use app.instances_core.instance_unsupported
+use app.instances_expand.rewrite_range
+use app.instances_expand.run_instance_pass
 use app.nominal_layout.type_recursive_layout_error
 use app.patterns.type_exhaustive_error
 use app.patterns.type_match_branch_error
@@ -63,11 +69,13 @@ use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
 use app.semantic_tree.kind
+use app.semantic_tree.module_name_at
 use app.semantic_tree.parse_semantic_source
 use app.semantic_tree.row_count
 use app.semantic_tree.source_id
 use app.semantic_tree.spelling
 use app.semantic_tree.start_of
+use app.semantic_tree.span_text
 use app.source_catalog.identifier
 use app.syntax_cst.join_rows
 use app.syntax_frontend.fetch_parts
@@ -89,6 +97,7 @@ use app.types.f64_type
 use app.types.primitive
 use app.verify_base.invalid_mir_type
 use app.verify_base.uninitialized_mir_slot
+use app.digest.utf8_bytes
 use std.conv.from_int
 use std.conv.to_int
 use std.env.get
@@ -151,6 +160,10 @@ fn diagnostic_name(code int) Str {
     if (code == uninitialized_mir_slot()) { return "mir.uninitialized" }
     if (code == invalid_ct_entry()) { return "ct.entry" }
     if (code == annotation_owner_error()) { return "type.annotation-owner" }
+    if (code == instance_unsupported()) { return "instance.unsupported" }
+    if (code == instance_constraint()) { return "instance.constraint" }
+    if (code == instance_arity()) { return "instance.arity" }
+    if (code == instance_recursive()) { return "instance.recursive" }
     return "internal.semantic"
 }
 
@@ -395,6 +408,98 @@ fn has_named_inventory(inventory Str) bool {
     return !separated
 }
 
+// PLAN-1048: the instance pre-pass. When AAC1048_INSTANCES is set, the
+// loaded program is expanded (templates stripped, calls rewritten to
+// concrete instances, concrete functions appended per module) and the
+// rebuilt tables replace the originals before the ordinary pipeline runs.
+// The worksheet is written to AAC1048_WORKSHEET; no templates means the
+// program is copied through untouched.
+fn expand_instances(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, names List<int>, package Str, new_src List<int>, new_ast List<int>, new_bases List<int>, new_roots List<int>, steps int) Str {
+    var links = List<int>.new()
+    if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
+    var fuel = List<int>.new()
+    fuel.push(steps)
+    let started = mono_ms()
+    if (started < 0i64) { return "ERROR os.clock\n" }
+    var deadline = started + 5000i64
+    var edits = List<int>.new()
+    var arena = List<int>.new()
+    var inst_texts = List<int>.new()
+    var inst_meta = List<int>.new()
+    var mod_insts = List<int>.new()
+    var lines = List<Str>.new()
+    let status = run_instance_pass(pg, ast, links, src, names, package, edits, arena, inst_texts, inst_meta, mod_insts, lines, fuel, deadline)
+    if (status != 0) { return "ERROR " + diagnostic_name(status) + "\n" }
+    if (lines.len() == 0) {
+        var i = 0
+        for (i < src.len()) {
+            new_src.push(src.get(i))
+            i = i + 1
+        }
+        i = 0
+        for (i < ast.len()) {
+            new_ast.push(ast.get(i))
+            i = i + 1
+        }
+        i = 0
+        for (i < bases.len()) {
+            new_bases.push(bases.get(i))
+            i = i + 1
+        }
+        i = 0
+        for (i < roots.len()) {
+            new_roots.push(roots.get(i))
+            i = i + 1
+        }
+        return ""
+    }
+    let worksheet = get("AAC1048_WORKSHEET")
+    if (worksheet.len() == 0) { return "ERROR instance.unsupported\n" }
+    var report = ""
+    for (lines.len() > 0) {
+        report = report + lines.remove(0) + "\n"
+    }
+    if (write_text(worksheet, report) != 0) { return "ERROR os.write\n" }
+    var module = 0
+    for (module < roots.len()) {
+        let lo = bases.get(module)
+        var hi = src.len()
+        if (module + 1 < bases.len()) { hi = bases.get(module + 1) }
+        var text = rewrite_range(src, lo, hi, edits, arena)
+        var cursor = 0
+        var mi = 0
+        for (mi < module) {
+            cursor = cursor + 1 + mod_insts.get(cursor)
+            mi = mi + 1
+        }
+        var count = mod_insts.get(cursor)
+        var ii = 0
+        for (ii < count) {
+            let inst = mod_insts.get(cursor + 1 + ii)
+            let ofs = inst_meta.get(inst * 2)
+            let len = inst_meta.get(inst * 2 + 1)
+            text = text + "\n" + span_text(inst_texts, ofs, ofs + len)
+            ii = ii + 1
+        }
+        if (text.len() > 0) {
+            let bytes = utf8_bytes(text)
+            var rows = List<int>.new()
+            var diagnostic = List<int>.new()
+            let parsed = parse_semantic_source(pg, format_mode("aac"), bytes, module, 0, rows, diagnostic)
+            if (parsed == -2 || parsed == -3) { return "ERROR resource.source\n" }
+            if (parsed == -4) { return "ERROR source.utf8\n" }
+            if (parsed == -7 && diagnostic.len() >= 3) {
+                return "ERROR source.syntax " + from_int(module) + " " + from_int(diagnostic.get(1)) + ".." + from_int(diagnostic.get(2)) + "\n"
+            }
+            if (parsed < 0) { return "ERROR source.projection\n" }
+            if (!append_source(bytes, rows, new_src, new_ast, new_bases, new_roots)) { return "ERROR resource.source\n" }
+        }
+        module = module + 1
+    }
+    if (new_roots.len() == 0) { return "ERROR instance.arity\n" }
+    return ""
+}
+
 fn project(steps int) Str {
     var ct_deadline = 0i64
     let mode = get("AAC1047_HIR")
@@ -448,6 +553,19 @@ fn project(steps int) Str {
             if (result.len() > 0) { return result }
             add_module_name(names, key)
         }
+    }
+    let instances_on = get("AAC1048_INSTANCES")
+    if (instances_on.len() > 0 && roots.len() > 0) {
+        var new_src = List<int>.new()
+        var new_ast = List<int>.new()
+        var new_bases = List<int>.new()
+        var new_roots = List<int>.new()
+        let expanded = expand_instances(pg, src, ast, bases, roots, names, package, new_src, new_ast, new_bases, new_roots, steps)
+        if (expanded.len() > 0) { return expanded }
+        src = new_src
+        ast = new_ast
+        bases = new_bases
+        roots = new_roots
     }
     return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps, ct_deadline)
 }

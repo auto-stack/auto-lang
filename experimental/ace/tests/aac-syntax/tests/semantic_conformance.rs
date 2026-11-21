@@ -1705,3 +1705,117 @@ fn normalizes_forward_type_aliases_and_rejects_a_cycle() {
         )
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-1048: generic instantiation and instance identity (V-01..V-05).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn aac1048_instances_id_distinguishes_int_and_bool_instances() {
+    use ace_aac_syntax_conformance::run_instance_case;
+    use ace_source_query::ident::sq_hash;
+
+    let source = concat!(
+        "fn id<T>(x T) T { return x }\n",
+        "fn main() int { return id(7) }\n",
+    );
+    let (report, sheet) = run_instance_case(source.as_bytes()).expect("Auto instance pass");
+    // The template is stripped from the expanded program and the call is
+    // rewritten to the concrete function (assembly spelling uses the
+    // identity suffixes, so the Int instance is id_i32).
+    assert!(!report.contains("<T>"), "template survived expansion: {report}");
+    assert!(report.contains("id_i32"), "concrete call missing: {report}");
+    assert!(
+        report.lines().any(|l| l.starts_with("DECL") && l.contains("id_i32")),
+        "concrete declaration missing: {report}"
+    );
+    let mut templates = 0;
+    let mut instances = 0;
+    for line in sheet.lines() {
+        if line.starts_with("TEMPLATE ") { templates += 1 }
+        if line.starts_with("INSTANCE ") { instances += 1 }
+    }
+    assert_eq!((templates, instances), (1, 1), "worksheet: {sheet}");
+    // The logical identity is byte-compatible with the Rust reference.
+    let logical = sq_hash(
+        "ac935/instance-logical/v1",
+        &[b"app.main", b"tpl", b"id"],
+    );
+    eprintln!("rust logical: {logical}");
+    eprintln!("auto sheet: {sheet}");
+    assert!(
+        sheet.contains(&format!(" {logical} app.main id ")),
+        "logical mismatch: {sheet}"
+    );
+    // A bool argument is a distinct instance with a distinct key.
+    let (_, sheet2) = run_instance_case(b"fn id<T>(x T) T { return x }\nfn main() int { let b = id(true)\n return 7 }".as_slice()).expect("bool instance");
+    let mut key1 = String::new();
+    let mut key2 = String::new();
+    for line in sheet.lines().chain(sheet2.lines()) {
+        if let Some(rest) = line.strip_prefix("INSTANCE ") {
+            let first = rest.split_whitespace().next().unwrap();
+            if key1.is_empty() { key1 = first.to_string() } else if first != key1 && key2.is_empty() { key2 = first.to_string() }
+        }
+    }
+    assert!(!key1.is_empty() && !key2.is_empty(), "expected two instance keys: {sheet} / {sheet2}");
+    assert_ne!(key1, key2, "Int and Bool instances must not share a key");
+}
+
+#[test]
+fn aac1048_instances_swap_and_arity_refuse_without_reuse() {
+    use ace_aac_syntax_conformance::run_instance_case;
+
+    // Two type parameters, swapped argument order: distinct keys, no reuse.
+    let (report, sheet) = run_instance_case(
+        b"fn pair<A, B>(a A, b B) A { return a }\nfn main() int { return pair(1, true) }".as_slice(),
+    ).expect("two-param instance");
+    assert!(report.contains("pair_i32_bool"), "concrete name: {report}");
+    let (_, sheet2) = run_instance_case(
+        b"fn pair<A, B>(a A, b B) A { return a }\nfn main() bool { return pair(true, 1) }".as_slice(),
+    ).expect("swapped instance");
+    let mut keys = std::collections::BTreeSet::new();
+    for line in sheet.lines().chain(sheet2.lines()) {
+        if let Some(rest) = line.strip_prefix("INSTANCE ") {
+            keys.insert(rest.split_whitespace().next().unwrap().to_string());
+        }
+    }
+    assert_eq!(keys.len(), 2, "swapped args must not reuse an instance: {sheet} / {sheet2}");
+    // Missing const args are refused (instance.arity), never silently
+    // resolved. The const parameter's declared type defaults to u32.
+    let refused = run_instance_case(
+        b"fn rep<const N>(x int) int { return x + 1 }\nfn main() int { return rep(21) }".as_slice(),
+    );
+    assert!(refused.is_err() || refused.unwrap().0.starts_with("ERROR instance.arity"), "const arity must refuse");
+    // An explicit const argument materializes the value instance.
+    let (_, sheet3) = run_instance_case(
+        b"fn rep<const N>(x int) int { return x + N }\nfn main() int { return rep<2>(21) }".as_slice(),
+    ).expect("const instance");
+    assert!(
+        sheet3.lines().any(|l| l.starts_with("INSTANCE ") && l.contains(" u32=2 ") && l.contains("rep_u32_2")),
+        "const instance identity: {sheet3}"
+    );
+}
+
+#[test]
+fn aac1048_instances_cross_module_owner_identity() {
+    use ace_aac_syntax_conformance::run_instance_project;
+
+    // The same template name in two modules, each called from its own
+    // module: two logicals, never merged.
+    let (_, sheet) = run_instance_project(&[
+        ("alpha", "fn id<T>(x T) T { return x }\nfn use_id() int { return id(3) }"),
+        ("beta", "fn id<T>(x T) T { return x }\nfn use_id() bool { return id(true) }"),
+    ]).expect("cross-module instances");
+    let mut logicals = std::collections::BTreeSet::new();
+    for line in sheet.lines() {
+        if let Some(rest) = line.strip_prefix("TEMPLATE ") {
+            logicals.insert(rest.split_whitespace().nth(1).unwrap().to_string());
+        }
+    }
+    assert_eq!(logicals.len(), 2, "same-name templates in different owners must stay distinct: {sheet}");
+    let mut instances = 0;
+    for line in sheet.lines() {
+        if line.starts_with("INSTANCE ") { instances += 1 }
+    }
+    assert_eq!(instances, 2, "each module's own call materializes its own instance: {sheet}");
+}
