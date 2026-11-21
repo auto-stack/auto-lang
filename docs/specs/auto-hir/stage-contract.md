@@ -196,3 +196,9 @@ Auto 主体从严格源码 AST 建立绑定与类型事实，生成 core-i32/tex
 调用映射、控制流、局部初始化和借位。涉及全局时与实际来源布局、访问与初值绑定。
 受检凭证只由进程内校验形成，运输输入仍须复验。外部语义权限与阶段支持范围见
 [AAC 语义权威](../auto-ac/aac-semantic-authority.md)。
+
+## AAC 的基础 S4–S6（PLAN-1055）
+
+闭合单态纯标量输入经同一 Auto verifier 发给 Auto MIR lowerer。结构化控制、短路、
+精确常量和调用顺序在到 CFG 的转换中保留。MIR 经本地验证后以 AVAD 交独立消费端，
+实际执行入口与 CT 字面调用见 [AAC 基础 Typed MIR 与 CT 调用](../auto-ac/aac-base-mir-and-ct.md)。

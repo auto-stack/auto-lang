@@ -39,5 +39,9 @@ Rust 前端继续提供独立参考。Windows x64 阶段入口已有 A2R 与真�
 可区分函数体依赖与值初始化依赖。名字绑定、条件求值、provider 选择及初始化环语义归
 PLAN-1047/1048。后续代际和整机验收归 PLAN-1053/1054。
 
+PLAN-1055 在共享条件循环规则中从组合 profile 选取一个 `cond` 表达式，保留 `body`
+范围及缺条件诊断。AAC 和标量面的嵌入程序与当前 grammar 重新绑定。
+组合 `aac` 面接受现有整数值实参的调用形状，实例化权威仍在后继阶段。
+
 交付记录见 [PLAN-1046](../../plans/archive/1046-aac-syntax-source-and-modules.md)，
 装配模型见 [ACE 标准库 context 装配](../stdlib/design/context-source-assembly.md)。

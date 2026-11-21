@@ -8,7 +8,7 @@ profile.identity.mir	identity	mir	experimental/ace/crates/av-core/src/mir.rs:873
 profile.identity.source-query	identity	source-query	experimental/ace/crates/source-query/src/lib.rs:FB71ABCC2DF0EFB3	path:sha16	语义事实/查询源码身份（1047 阶段重绑）
 profile.identity.grammar	identity	grammar	experimental/ace/grammars/auto-source.at:F5DEEFC00BF90280	path:sha16	共享语法单文件规则源（1055，含 1090 与 PLAN-105）
 profile.identity.spec-ac-project	identity	spec-ac-project	docs/specs/auto-ac/project.md:A5AD36CCC03E3D77	path:sha16	AC 项目 Spec（1047 阶段重绑）
-profile.identity.spec-hir-stage	identity	spec-hir-stage	docs/specs/auto-hir/stage-contract.md:DE3BF1BC2602D8A3	path:sha16	HIR 阶段合同 Spec
+profile.identity.spec-hir-stage	identity	spec-hir-stage	docs/specs/auto-hir/stage-contract.md:441B558A7CD9CA9E	path:sha16	HIR 阶段合同 Spec（1055）
 profile.identity.spec-abi	identity	spec-abi	docs/specs/auto-abi/project.md:8B75935B41FA1882	path:sha16	AutoABI 候选 profile Spec（1047 阶段重绑）
 profile.host	profile	host	windows-x64	axis	首版独立 AAC 基线 host（x86_64-pc-windows-msvc）
 profile.target	profile	target	windows-x64	axis	首版 target 与 host 同轴；host≠target 场景属后续扩面

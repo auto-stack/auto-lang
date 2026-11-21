@@ -12,3 +12,9 @@
 后果：14原L/V格按原源关闭，全帧清理/预算/身份与失败原子性成为此profile合同；
 旧AV source前端差额、宽typed入口/在线native帧保持各自边界。状态：accepted，见
 [native collections](../auto-mir/native-collections-variants.md)。
+
+## 2026-11-21 / PLAN-1055：AAC 基础 Auto MIR 生产者
+
+`aac/mir` 交基础纯标量 CFG、类型和初始化检查及 AVAD v1 编码，消费同一 Auto 受检 HIR。
+AV 和原生对象服务各自复验后执行或发射。可消费入口和高级阶段归属见
+[AAC 基础 Typed MIR 与 CT 调用](../auto-ac/aac-base-mir-and-ct.md)。
