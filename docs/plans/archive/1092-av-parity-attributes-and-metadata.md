@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-21
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1088, PLAN-1091]
 supersedes_spec_components: [docs/specs/ace-migration/m2-generics.md, docs/specs/ace-migration/m2-metaprogramming.md, docs/specs/ace-migration/m2-tools.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -297,7 +297,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-a
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -321,7 +321,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-a
 - [x] **T-05** work：唯一公共作者与迁移数据已提交，逐例定向 AV 判决和元控制见 §9。
 - [x] **T-06** work：见上表唯一任务合同。
 - [x] **T-07** review：见上表唯一任务合同。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：见上表唯一任务合同。
 
 下一执行入口：核主检出/本包r1与依赖正式来源，创建唯一专属树后从T-01开始；闭合依赖不等于本轮已批准执行。依赖缺失先做不依赖它的输入审计，不能补假PASS。新发现的高风险未定语义先有界探测/决策，超本包目标则显式修订/拆Plan，保全部旧义务。
 
@@ -511,6 +511,11 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-a
 - `docs/specs/ace-migration/m2-tools.md` · SHA256 `ee3d2b965455d72edd9e79f3da13844dcd06896777d35777eaa14f37d5f8c290`
 
 - `archived` · 完成交付记录移至 `docs/plans/archive/1092-av-parity-attributes-and-metadata.md`。终态 `archived`，交付类型 `delivered`。归档时实施/审查步骤 7/8。唯一余项是已交付三工作树、两分支和统一材料区的守护核对与清理。
+
+
+- `cleaned` · 归档提交 `3285675b24610081995dfa3360865b1916275cf1` 已在本地默认分支。三个 worktree 均在删除前以 PowerShell 运行 `D:/autostack/wt-guard.ps1`，全部 clean。按原状态核对 Web 覆盖 4309 文件、5464257445 字节，1.191s。只读 AutoDown 覆盖 1318 文件、27021855 字节，0.493s。语言树含生成目标，覆盖 82261 文件、2103965243 字节，12.934s。三个树、两个临时分支和已空组目录均已核验消失。
+- 逐项对账的输出根为专属语言树内的 `target` / `experimental/ace/target`（含 `target/p982-combo`）、Web 的 `target`、只读 AutoDown 检出，以及统一 `D:/autostack/plan-artifacts/plan-1092` 下的 Cargo/nextest 临时解包、worker 构建、测试文件、用例报告和工具收据。输出过程的 `TMP/TEMP/AUTO_LANG_TEST_SCRATCH` 指向统一材料目录。已核活动进程、候选目录、原 attachments 根和临时根，额外输出根为 0。统一目录经过 guard clean，原 16894 文件、3144086687 字节，删除命令 exit 0（3.059s），随后实测不存在。登记为 `deleted-at-merge`，无留存件与具名持有。
+- `stage: goal | plan_id: PLAN-1092 | plan_revision: r3 | round: 1 | from: merge | to: done | status: archived | outcome: pass | commit: eaab283d0742a6d5d5e3af7db1147d9f2825e43d | web_commit: 0cfc7c78446650631d244a9ea442d28635072958 | next: done`。8/8，`completion_kind: delivered`。
 
 ## 10. 待澄清事项
 
