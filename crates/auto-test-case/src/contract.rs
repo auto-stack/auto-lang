@@ -581,6 +581,10 @@ pub struct ExpectSpec {
     /// reported (`step.trace`, e.g. "ba"). The worker's own report is
     /// observation, never an oracle; the parent compares these bytes.
     pub trace: Option<StreamExpect>,
+    /// PLAN-1095: the node CPU oracle (probe, language-source only) —
+    /// each `(node name, expected view text values)` must be observed in
+    /// the worker's node report (979 producer on the same source).
+    pub nodes: Option<Vec<(String, Vec<String>)>>,
 }
 
 /// PLAN-891 typed-entry expectation: kind label + canonical hex bits.
@@ -730,6 +734,15 @@ fn as_list<'v>(v: &'v CVal, path: &str) -> Result<&'v [CVal], ContractError> {
             format!("expected array, got {}", other.type_name()),
         )),
     }
+}
+
+fn as_str_array(v: &CVal, path: &str) -> Result<Vec<String>, ContractError> {
+    let items = as_list(v, path)?;
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        out.push(as_str(item, path)?.to_string());
+    }
+    Ok(out)
 }
 
 fn req_str(fields: &Fields, key: &str) -> Result<String, ContractError> {
@@ -4048,6 +4061,39 @@ fn decode_expect(
         }
     };
 
+    // PLAN-1095: the node CPU oracle (probe, language-source only). The
+    // declared object maps node names to the exact view text values the
+    // worker's 979-producer observation must report, e.g.
+    // `nodes: { Hello: ["你好"] }`.
+    let nodes = match f.sub("nodes") {
+        None => None,
+        Some(cv) => {
+            if !probe_channels {
+                return Err(err(
+                    &f.path_of("nodes"),
+                    "`nodes` is a probe observation (the node CPU facts of a run step)",
+                ));
+            }
+            if matches!(completion, Completion::Error { .. }) {
+                return Err(err(
+                    &f.path_of("nodes"),
+                    "`nodes` requires completion \"success\" (a trap/diag frame is judged by its own face)",
+                ));
+            }
+            let npath = f.path_of("nodes");
+            let pairs = as_obj(cv, &npath)?;
+            let mut out = Vec::new();
+            for (name, value) in pairs {
+                let texts = as_str_array(value, &npath)?;
+                out.push((name.clone(), texts));
+            }
+            if out.is_empty() {
+                return Err(err(&npath, "`nodes` must declare at least one node"));
+            }
+            Some(out)
+        }
+    };
+
     let perf = match f.sub("perf") {
         None => None,
         Some(pv) => {
@@ -4325,6 +4371,7 @@ fn decode_expect(
         av_channel,
         typed,
         trace,
+        nodes,
     })
 }
 

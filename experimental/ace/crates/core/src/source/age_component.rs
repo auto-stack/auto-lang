@@ -4954,6 +4954,7 @@ fn hidden_name_conflict(items: &[Item]) -> Option<Diagnostic> {
             Item::Const(c) => Some(&c.name),
             Item::Store(s) => Some(&s.name),
             Item::Task(t) => Some(&t.name),
+            Item::Node(n) => Some(&n.name),
             Item::UseRs(_) => None,
             Item::UsePy(_) => None,
         };

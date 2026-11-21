@@ -90,6 +90,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut step = json!({"op":"run", "outcome":"infra", "value":null, "trap":null, "diag":null,
         "source_hash":format!("{:016x}",fnv1a64(source.as_bytes())), "wall_ms":0.0});
 
+    // PLAN-1095: the node CPU observation (979 producer on the same source)
+    // is computed before dispatch — the project lane moves `source`.
+    let node_obs = observe_node_facts(&source, path);
+
     let mut store_writes = Some(0);
     let mut handled_errors = 0;
     let mut runtime_calls = 0;
@@ -284,6 +288,13 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "stdout_present":true,"stderr_present":true,"stdout_truncated":false,"stderr_truncated":false,
         "stdout_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stdout),
         "stderr_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stderr)});
+    // PLAN-1095: the node CPU observation. When the ordinary source carries
+    // an AGE node declaration, the 979 producer observes the same source and
+    // the shared execution chain produces the node's view text values — no
+    // renderer, no event/scene lanes. Absent nodes → the field is absent.
+    if let Some(nodes) = node_obs {
+        step["nodes"] = json!(nodes);
+    }
     step["counters"] = json!({"host_dispatches":capture.dispatches});
     step["counters"]["handled_language_errors"] = json!(handled_errors);
     step["counters"]["ct_execute"] = json!(ct_counters.ct_execute);
@@ -296,6 +307,51 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     step["wall_ms"] = json!(started.elapsed().as_secs_f64() * 1000.0);
     Ok(
         json!({"recipe":RECIPE,"steps":[step],"worker_version":"avworker/1.0","av_core_version":AV_LANGUAGE_PROFILE}),
+    )
+}
+
+/// PLAN-1095: observe the AGE node CPU facts of an ordinary source via the
+/// 979 producer (`compile_age_h0` + the shared execution chain). Only runs
+/// when the ordinary parse admits a node declaration; a non-H0 node body or
+/// any other failure skips the observation (never fails the request).
+fn observe_node_facts(source: &str, path: &str) -> Option<Vec<Json>> {
+    use ace_core::source::{parse_program_with, SourceProfile};
+    let program = parse_program_with(source, SourceProfile::Auto).ok()?;
+    let has_node = program
+        .items
+        .iter()
+        .any(|item| matches!(item, ace_core::source::ast::Item::Node(_)));
+    if !has_node {
+        return None;
+    }
+    let observed = crate::age_h0::observe_age_h0(
+        source,
+        path,
+        ace_core::source::age_h0::LegacyWidgetAlias::Reject,
+    )
+    .ok()?;
+    if observed.nodes.is_empty() {
+        return None;
+    }
+    Some(
+        observed
+            .nodes
+            .iter()
+            .map(|n| {
+                json!({
+                    "name": n.name,
+                    "head_role": n.head_role,
+                    "view": {
+                        "role": n.view.role,
+                        "texts": n.view.texts.iter().map(|t| json!({
+                            "role": t.role,
+                            "value": t.value,
+                            "kind": format!("{:?}", t.kind),
+                        })).collect::<Vec<_>>(),
+                    },
+                })
+            })
+            .collect(),
     )
 }
 

@@ -426,6 +426,8 @@ pub(super) fn collect_agg_iter_records(
                     }
                 }
             }
+            // PLAN-1095: node bodies carry no ordinary type annotations.
+            ast::Item::Node(_) => {}
             ast::Item::Type(t) => {
                 for f in &t.fields {
                     anns.push(&f.ty);

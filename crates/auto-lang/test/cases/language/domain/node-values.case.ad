@@ -1,0 +1,49 @@
+# AGE domain node values on the ordinary Auto face (PLAN-1095)
+
+The canonical author of the domain node-value family. Every case carries ONE
+Auto source; the `av` check runs the ordinary AV language chain
+(`ac-av/language-source-run-v1`). Node declarations are admitted on the
+ordinary face (CPU-only): the same source is observed by the 979 producer and
+the node view text values are asserted through the `nodes` oracle — a real
+AV execution, never a static emit claim. No renderer is started; OnEvents /
+Scene / NavCall old-parser-only lanes are accounted per the legacy L table,
+not this batch.
+
+## Case: node-ordinary-coexist
+id: "av.parity.1095.node-ordinary-coexist"
+tags: ["av-language-parity", "plan-1095", "domain"]
+links: ["PLAN-1095"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn label() str { return "你好" }
+node Hello { view { text label() {} } }
+fn main() int { return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+nodes: { Hello: ["你好"] }
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+§6 contract case: the ordinary chain runs main=42 AND the same source is
+observed by the 979 producer (node name/head role + view text values from the
+shared execution chain). The `nodes` oracle must observe the text "你好" —
+not only the exit code; the renderer is never started.

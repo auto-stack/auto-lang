@@ -26,5 +26,7 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/metadata/attributes.case.ad",
   "language/ffi/imports-callbacks.case.ad",
   "language/script/python-context.case.ad",
+  "language/composition/ordinary-projects.case.ad",
+  "language/domain/node-values.case.ad",
 ] }
 ```

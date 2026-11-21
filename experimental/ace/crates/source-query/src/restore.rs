@@ -130,6 +130,8 @@ pub fn restore_bind(
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-968: task declarations declare no free function here.
             Item::Task(_) => {}
+            // PLAN-1095: node declarations declare no free function here.
+            Item::Node(_) => {}
             // PLAN-967 F0: the import frontdoor declares no function.
             Item::UseRs(_) => {}
             Item::UsePy(_) => {}

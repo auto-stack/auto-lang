@@ -1578,6 +1578,8 @@ pub(crate) fn decl_context_fp(program: &ast::Program, src: &str) -> u64 {
             // PLAN-968: task declarations hash by their full declaration
             // region (fields/hooks/arms all live inside the span).
             ast::Item::Task(t) => mix(&src[t.span.start..t.span.end], &mut h),
+            // PLAN-1095: node declarations hash by their full region too.
+            ast::Item::Node(n) => mix(&src[n.span.start..n.span.end], &mut h),
             // PLAN-960: module globals never reach the single-module closures
             // cache (the packages binder lowers them to init functions); their
             // declaration text is still part of the context identity.
@@ -2100,6 +2102,8 @@ pub fn validate_foreign_context(
             // PLAN-968: task names participate in duplicate-name detection
             // (not callable directly — spawned by string name).
             ast::Item::Task(t) => (t.name.name.as_str(), t.name.span, false),
+            // PLAN-1095: node names participate (not callable).
+            ast::Item::Node(n) => (n.name.name.as_str(), n.name.span, false),
             // PLAN-960: module globals are callable-surface declarations for
             // the foreign directory (name/spans only; accessors are not fns).
             ast::Item::Const(c) => (c.name.name.as_str(), c.name.span, false),
@@ -2764,6 +2768,8 @@ pub(crate) fn resolve_detailed_in_mode(
             // PLAN-1026: the py frontdoor declares no function (members
             // lower to hoisted py_import calls in the script body).
             ast::Item::UsePy(_) => {}
+            // PLAN-1095: node declarations declare no ordinary function.
+            ast::Item::Node(_) => {}
             ast::Item::Type(t) => {
                 for m in &t.methods {
                     fn_receiver.push(m.receiver);

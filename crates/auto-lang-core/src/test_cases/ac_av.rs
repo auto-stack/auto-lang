@@ -719,6 +719,29 @@ struct LanguageErrorObservation {
     span: Option<SourceSpan>,
 }
 
+/// PLAN-1095: one observed AGE node CPU fact (name + view text values)
+/// carried by the ordinary language-source worker response.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct NodeObs {
+    name: String,
+    #[serde(default)]
+    view: Option<NodeObsView>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct NodeObsView {
+    #[serde(default)]
+    role: String,
+    #[serde(default)]
+    texts: Vec<NodeObsText>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct NodeObsText {
+    #[serde(default)]
+    value: String,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StepOut {
@@ -796,6 +819,11 @@ struct StepOut {
     /// Absent on older responses and on trap/diag steps.
     #[serde(default)]
     channel: Option<String>,
+    /// PLAN-1095: the node CPU observation (name → view text values) from
+    /// the ordinary AV chain; present only when the source carries AGE node
+    /// declarations. Asserted by the `nodes` oracle when declared.
+    #[serde(default)]
+    nodes: Vec<NodeObs>,
     #[serde(default)]
     console: Option<ConsoleOut>,
     /// PLAN-915: the R02 sweep face of a resource-recipe run step
@@ -5343,6 +5371,43 @@ fn judge_expectation(
                         actual: actual.unwrap_or("<missing>").to_owned(),
                         first_diff: None,
                     });
+                }
+            }
+            // PLAN-1095: the node CPU oracle. Each declared `name → [texts]`
+            // must find the observed node with that name whose view texts
+            // match the expected values exactly (order-sensitive). The
+            // observation is a real AV execution (979 producer on the same
+            // source) — never a static emit claim.
+            if let Some(want_nodes) = &expect.nodes {
+                for (want_name, want_texts) in want_nodes {
+                    let observed = step
+                        .nodes
+                        .iter()
+                        .find(|n| &n.name == want_name)
+                        .map(|n| {
+                            n.view
+                                .as_ref()
+                                .map(|v| {
+                                    v.texts
+                                        .iter()
+                                        .map(|t| t.value.clone())
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default()
+                        });
+                    match observed {
+                        Some(actual) if &actual == want_texts => {}
+                        other => mismatches.push(Mismatch {
+                            observation: "nodes".into(),
+                            kind: "texts".into(),
+                            expected: format!("{want_name}: {want_texts:?}"),
+                            actual: format!(
+                                "{want_name}: {:?}",
+                                other.unwrap_or_else(|| vec!["<missing>".to_string()])
+                            ),
+                            first_diff: None,
+                        }),
+                    }
                 }
             }
             // PLAN-914: the MARK TRACE oracle. The worker reports the

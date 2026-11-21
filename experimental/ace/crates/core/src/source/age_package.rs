@@ -1440,6 +1440,7 @@ fn hidden_name_conflict(
                 Item::Const(c) => Some(&c.name),
                 Item::Store(s) => Some(&s.name),
                 Item::Task(t) => Some(&t.name),
+                Item::Node(n) => Some(&n.name),
                 Item::UseRs(_) => None,
                 Item::UsePy(_) => None,
             };

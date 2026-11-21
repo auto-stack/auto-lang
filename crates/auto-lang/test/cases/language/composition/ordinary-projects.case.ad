@@ -1,0 +1,146 @@
+# Ordinary project composition (PLAN-1095): modules, closures, tasks, CT and stdlib co-resident in one package
+
+The canonical author of the ordinary-project composition family. Every case
+carries ONE Auto source/project closure; the `av` check runs the ordinary AV
+language chain (`ac-av/language-source-run-v1`). The four §6 draft cases land
+here with the audited typed-lambda normalization (the face has no lambda
+parameter inference — the frozen 1081/1082 rule, recorded in
+`language/migration/legacy-map.tsv`).
+
+## Case: module-closure-generic
+id: "av.parity.1095.module-closure-generic"
+tags: ["av-language-parity", "plan-1095", "composition"]
+links: ["PLAN-1095"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use lib.id
+fn twice(n int) int { return n * 2 }
+fn main() int {
+ let f = twice
+ let xs = [id(19), id(23)]
+ if f(xs[0]) + f(xs[1]) == 84 { return 42 }; return 0
+}
+```
+
+#### lib.at
+
+```auto
+pub fn id<T>(x T) T { return x }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+§6 contract case, original `let f = twice` spelling: the multi-file package
+path admits a local free fn as a value alongside `use lib.id` imports
+(PLAN-1095 T-02 packages/binding.rs Auto-language lane), a generic imported
+fn called through a list literal, and indexing — all in one program. No
+content-based profile switching; the ordinary `auto` profile carries the
+whole source.
+
+## Case: task-language-composition
+id: "av.parity.1095.task-language-composition"
+tags: ["av-language-parity", "plan-1095", "composition"]
+links: ["PLAN-1095"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+task Q { on { n int -> { reply(n + 1) } } }
+fn get() int {
+ let h = Task.spawn("Q", 1)
+ let v = await h.ask(41)
+ h.stop()
+ return v
+}
+fn main() int {
+ let meta = { label: "ready", enabled: true }
+ try { if meta.enabled { return get() }; return 0 } finally { }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+§6 contract case: task spawn/ask/await/stop, an anonymous record literal with
+mixed str/bool fields, field projection and try/finally all compose in one
+ordinary source. CPU-only observation; no UI/GPU started.
+
+## Case: cte-and-ordinary-library
+id: "av.parity.1095.cte-and-ordinary-library"
+tags: ["av-language-parity", "plan-1095", "composition"]
+links: ["PLAN-1095"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn scale<T>(n T) T { return n + n }
+fn main() int {
+ let seed = #{ scale(21) }
+ let xs = [seed - 1, seed]
+ return xs.filter((x int) => x == 42)[0]
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "ac.source.cte.scalar/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+§6 contract case, typed-lambda spelling of the draft's elided `x =>`
+(audited 1081/1082 normalization — the face has no lambda parameter
+inference): a generic fn evaluated at compile time, flowing into a runtime
+list literal and a typed filter HOF call. `ct_execute=1`; the CT call itself
+leaves no runtime frame while the list/filter lane does run.
+

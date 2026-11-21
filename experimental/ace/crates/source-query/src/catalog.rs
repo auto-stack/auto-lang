@@ -139,6 +139,8 @@ impl SignatureCatalog {
                 // PLAN-968: task declarations produce no fn-signature
                 // facts (their drivers desugar first).
                 Item::Task(_) => {}
+                // PLAN-1095: node declarations produce no fn-signature facts.
+                Item::Node(_) => {}
                 Item::Fn(f) => {
                     let facts = produce_fn_sig(program, package, module, &f.name.name)?;
                     by_logical.insert(facts.logical.clone(), facts.name.clone());

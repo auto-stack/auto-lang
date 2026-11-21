@@ -185,7 +185,7 @@ macro_rules! tree_walk {
                         }
                         Item::Const(constant) => on_root(&constant.name.name, Node::Value(&$($borrow)* constant.value)),
                         Item::Store(store) => on_root(&store.name.name, Node::Value(&$($borrow)* store.value)),
-                        Item::Enum(_) | Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => {}
+                        Item::Enum(_) | Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) | Item::Node(_) => {}
                     }
                 }
             }

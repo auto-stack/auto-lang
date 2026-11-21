@@ -379,6 +379,8 @@ pub fn apply_facts_to_resolved(
             // PLAN-968: task declarations declare no free function here
             // (their drivers desugar first on the scheduler face).
             Item::Task(_) => Ok(String::new()),
+            // PLAN-1095: node declarations declare no free function.
+            Item::Node(_) => Ok(String::new()),
             // PLAN-960: module globals carry no body facts.
             Item::Const(_) | Item::Store(_) => Ok(String::new()),
             // PLAN-967 F0: the import frontdoor carries no body facts.
@@ -649,6 +651,8 @@ pub fn bind_with_facts(
             Item::UsePy(_) => {}
             // PLAN-968: task declarations declare no free function here.
             Item::Task(_) => {}
+            // PLAN-1095: node declarations declare no free function here.
+            Item::Node(_) => {}
             Item::Enum(_) => return Err(BindFactsError::Profile("enum declaration")),
         }
     }

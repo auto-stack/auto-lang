@@ -1535,6 +1535,8 @@ fn outline_of(program: &ace_core::source::ast::Program) -> Result<Vec<OutlineEnt
             // PLAN-968: task declarations synthesize their drivers at
             // the desugar stage; no fn/outline entry here.
             Item::Task(_) => {}
+            // PLAN-1095: node declarations contribute no outline entry.
+            Item::Node(_) => {}
             // PLAN-960: module globals contribute no fn/outline entry.
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-967 F0: the import frontdoor contributes no outline.

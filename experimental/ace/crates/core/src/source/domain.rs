@@ -256,6 +256,8 @@ pub fn compile_domain(
             Item::UsePy(_) => None,
             // PLAN-968: task names join the hidden-name conflict check.
             Item::Task(t) => Some(&t.name),
+            // PLAN-1095: node names join the hidden-name conflict check.
+            Item::Node(n) => Some(&n.name),
         };
         if let Some(u) = user {
             if u.name.contains(pkg.hidden_prefix) {

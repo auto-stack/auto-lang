@@ -306,6 +306,18 @@ pub enum Item {
     UsePy(UsePyItem),
     /// PLAN-968: a `task` actor declaration (scheduler surface only).
     Task(TaskItem),
+    /// PLAN-1095: an AGE node declaration admitted on the ordinary Auto
+    /// face. The declaration body is consumed at parse time (CPU-only: the
+    /// node view text is observed via the 979 producer; no renderer, no
+    /// event/scene lanes). Resolve/typecheck/lower never see the body.
+    Node(NodeItem),
+}
+
+/// PLAN-1095: a `node <Name> { ... }` declaration (ordinary Auto face).
+#[derive(Clone, Debug)]
+pub struct NodeItem {
+    pub name: Ident,
+    pub span: Span,
 }
 
 impl Item {
@@ -319,6 +331,7 @@ impl Item {
             Self::UseRs(item) => item.span,
             Self::UsePy(item) => item.span,
             Self::Task(item) => item.span,
+            Self::Node(item) => item.span,
         }
     }
 }

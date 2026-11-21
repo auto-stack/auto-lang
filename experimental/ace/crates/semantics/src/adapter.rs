@@ -186,6 +186,8 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<
             // PLAN-968: task declarations desugar before this projection
             // on the scheduler face; nothing to project here.
             core_ast::Item::Task(_) => {}
+            // PLAN-1095: node declarations project nothing (domain facts).
+            core_ast::Item::Node(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
@@ -312,6 +314,8 @@ pub fn project_body_scoped_with_caps(
             // PLAN-968: task declarations desugar before this projection
             // on the scheduler face; nothing to project here.
             core_ast::Item::Task(_) => {}
+            // PLAN-1095: node declarations project nothing (domain facts).
+            core_ast::Item::Node(_) => {}
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),

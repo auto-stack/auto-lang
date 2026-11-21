@@ -279,6 +279,8 @@ struct ProbeSection {
     declaration: Option<CVal>,
     history: Option<CVal>,
     turnaround: Option<CVal>,
+    /// PLAN-1095: the node CPU oracle (raw CVal; `{ Name: [texts] }`).
+    nodes: Option<CVal>,
     artifacts: Vec<RustArtifact>,
     streams: Vec<StreamBlock>,
     /// CF-07 per-step expectations (#### Observation N, 1-based order).
@@ -549,6 +551,7 @@ fn expect_success() -> ExpectSpec {
         av_channel: None,
         typed: None,
         trace: None,
+        nodes: None,
     }
 }
 
@@ -1768,6 +1771,28 @@ fn decode_one_case(
                 } else if matches!(expect.av_channel.as_deref(), Some("text" | "object")) {
                     return err(p.section_line, "普通 AV text/object 检查必须声明 result");
                 }
+                // PLAN-1095: the node CPU oracle `{ Name: [texts] }` — only on
+                // a successful ordinary AV language-source check.
+                if let Some(nodes_cval) = &p.nodes {
+                    if !language {
+                        return err(p.section_line, "nodes 仅用于 ac-av/language-source-run-v1");
+                    }
+                    if !matches!(expect.completion, Completion::Success) {
+                        return err(p.section_line, "nodes 需要成功完成（exit/stage 反例不适用）");
+                    }
+                    let CVal::Obj(pairs) = nodes_cval else {
+                        return err(p.section_line, "nodes 需要对象值");
+                    };
+                    let mut out = Vec::new();
+                    for (name, value) in pairs {
+                        let texts = want_str_list(value, p.section_line)?;
+                        out.push((name.clone(), texts));
+                    }
+                    if out.is_empty() {
+                        return err(p.section_line, "nodes 需要至少一个节点");
+                    }
+                    expect.nodes = Some(out);
+                }
                 for st in &p.streams {
                     match st.kind {
                         StreamKind::Stdout => expect.stdout = Some(st.expect.clone()),
@@ -2205,6 +2230,8 @@ fn decode_h3_section(
             // PLAN-1094: the language-error classification + original-span
             // oracles for the py error lanes.
             "error-kind", "error-span",
+            // PLAN-1095: the node CPU oracle (node name → view text values).
+            "nodes",
         ],
         t if t.starts_with("AC ") => &[
             "action", "profile", "target", "entry", "cache", "budget", "caps", "support-lib",
@@ -2716,6 +2743,7 @@ fn decode_h3_section(
             let mut declaration = None;
             let mut history = None;
             let mut turnaround = None;
+            let mut nodes = None;
             for a in &attrs {
                 match a.key.as_str() {
                     "recipe" => recipe = Some(want_str(a)?),
@@ -2757,6 +2785,9 @@ fn decode_h3_section(
                     "declaration" => declaration = Some(a.value.clone()),
                     "history" => history = Some(a.value.clone()),
                     "turnaround" => turnaround = Some(a.value.clone()),
+                    // PLAN-1095: the node CPU oracle rides the raw CVal to
+                    // the contract decode (`nodes: { Name: [texts] }`).
+                    "nodes" => nodes = Some(a.value.clone()),
                     _ => unreachable!(),
                 }
             }
@@ -2818,6 +2849,7 @@ fn decode_h3_section(
                 declaration,
                 history,
                 turnaround,
+                nodes,
                 artifacts: Vec::new(),
                 streams: Vec::new(),
                 observations: Vec::new(),
@@ -3692,8 +3724,7 @@ fn want_list(a: &Attr) -> Result<Vec<String>, AuthorError> {
                             ),
                         );
                     }
-                }
-            }
+                }            }
             Ok(out)
         }
         other => err(
@@ -3703,6 +3734,31 @@ fn want_list(a: &Attr) -> Result<Vec<String>, AuthorError> {
                 a.key,
                 other.type_name()
             ),
+        ),
+    }
+}
+
+/// A string-list CVal (used for the `nodes` text values).
+fn want_str_list(v: &CVal, line: usize) -> Result<Vec<String>, AuthorError> {
+    match v {
+        CVal::List(items) => {
+            let mut out = Vec::new();
+            for it in items {
+                match it {
+                    CVal::Str(s) => out.push(s.clone()),
+                    other => {
+                        return err(
+                            line,
+                            format!("nodes 文本列表元素需要字符串，得到 {}", other.type_name()),
+                        );
+                    }
+                }
+            }
+            Ok(out)
+        }
+        other => err(
+            line,
+            format!("nodes 文本需要字符串列表，得到 {}", other.type_name()),
         ),
     }
 }

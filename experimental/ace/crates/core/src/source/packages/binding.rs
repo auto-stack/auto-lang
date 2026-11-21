@@ -1064,6 +1064,10 @@ fn bind_package_syntax_inner(
                 // PLAN-1026: same as use.rs — the py frontdoor is not a named
                 // package declaration.
                 Item::UsePy(_) => continue,
+                // PLAN-1095: the node declaration is a domain fact consumed
+                // by the age producer; the package binding skips it (no
+                // ordinary symbol to declare or rewrite).
+                Item::Node(_) => continue,
             };
             if all.insert(name.name.clone(), span).is_some()
                 || unit.imports.iter().any(|i| i.bound_name() == name.name)
@@ -1081,6 +1085,7 @@ fn bind_package_syntax_inner(
                 Item::Const(_) => d.consts.insert(name.name, span),
                 Item::Store(_) => d.stores.insert(name.name, span),
                 Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => unreachable!(),
+                Item::Node(_) => None,
             };
         }
         decls.insert(key.clone(), d);
@@ -1556,6 +1561,9 @@ fn bind_package_syntax_inner(
                         u.span,
                     ))
                 }
+                // PLAN-1095: a node declaration is allowed in an ordinary
+                // Auto package module (domain fact; no ordinary symbols).
+                Item::Node(_) => {}
                 Item::Fn(original) => {
                     if admit_meta
                         && crate::source::meta_intrinsic(&original.name.name).is_some()
@@ -3214,6 +3222,19 @@ impl<'a> Walker<'a> {
                     return Ok(());
                 }
                 if self.my_decls().fns.contains_key(&v.name) {
+                    if self.auto_language && v.name != "main" {
+                        // PLAN-1095 (T-02): the ordinary Auto package face
+                        // admits a local free fn item in value position as a
+                        // checked FUNCTION VALUE (the same zero-capture
+                        // CreateClosure lane as the single-source face,
+                        // PLAN-1081 T-02). Rewrite to the module symbol so
+                        // the shared resolver keeps the true identity; other
+                        // faces keep the frozen PLAN-964 rejection.
+                        let sym = fn_symbol(self.pkg(), self.module(), &v.name, self.entry);
+                        self.record_read(&sym);
+                        v.name = sym;
+                        return Ok(());
+                    }
                     return Err(fail(
                         self.key,
                         "source.module-symbol",
@@ -4676,7 +4697,7 @@ fn assemble_unit(
         match item {
             // PLAN-967 F0: impl segments never carry the frontdoor item.
             // PLAN-968: nor task declarations (single-module scheduler face).
-            Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) => {}
+            Item::UseRs(_) | Item::UsePy(_) | Item::Task(_) | Item::Node(_) => {}
             Item::Fn(f) => {
                 let name = f.name.name.clone();
                 if let Some(req) = unfilled.remove(&name) {
@@ -5672,6 +5693,14 @@ fn shift_item(item: Item, offset: usize) -> Item {
             u.span.start += offset;
             u.span.end += offset;
             Item::UsePy(u)
+        }
+        // PLAN-1095: the node declaration shifts by its span + name.
+        Item::Node(mut n) => {
+            n.name.span.start += offset;
+            n.name.span.end += offset;
+            n.span.start += offset;
+            n.span.end += offset;
+            Item::Node(n)
         }
     }
 }

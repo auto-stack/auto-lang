@@ -216,6 +216,8 @@ fn decl_spans(program: &ace_core::source::ast::Program) -> (Vec<DeclFn>, Vec<(u6
             Item::Const(_) | Item::Store(_) => {}
             // PLAN-968: task declarations carry no TextRecord decl span.
             Item::Task(_) => {}
+            // PLAN-1095: node declarations carry no TextRecord decl span.
+            Item::Node(_) => {}
             // PLAN-967 F0: the import frontdoor carries no decl span.
             Item::UseRs(_) => {}
             Item::UsePy(_) => {}

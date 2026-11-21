@@ -1160,6 +1160,14 @@ impl<'s> Parser<'s> {
                 self.bump(); // `pub`
                 Ok(Item::Fn(self.fn_item(Receiver::Free)?))
             }
+            // PLAN-1095: AGE node declarations on the ordinary Auto face.
+            // The body is consumed (balanced braces) without projection; the
+            // node CPU facts come from the 979 producer on the same source.
+            Some(Tok::Ident(name))
+                if name.as_str() == "node" && self.surface == SourceProfile::Auto =>
+            {
+                Ok(Item::Node(self.node_item()?))
+            }
             Some(Tok::Kw(Kw::Type)) if self.surface.is_record() => {
                 Ok(Item::Type(self.type_item()?))
             }
@@ -1242,8 +1250,45 @@ impl<'s> Parser<'s> {
     /// `fn start() ! { }` / `fn stop() ! { }`, and exactly one `on { arms }`
     /// message-handler block. Member separators follow the type-item
     /// convention (`;`, newline or the closing brace).
-    fn task_item(&mut self) -> Result<TaskItem, Diagnostic> {
-        let kw = self.bump(); // the `task` reserved token (peeked by item())
+    /// PLAN-1095: `node <Name> { ... }` on the ordinary Auto face. The body
+    /// is consumed as a balanced `{ ... }` block (token-level; the lexer
+    /// already folds strings/comments) — the node's view text CPU facts are
+    /// observed by the 979 producer, not re-parsed here.
+    fn node_item(&mut self) -> Result<NodeItem, Diagnostic> {
+        let start = self.bump(); // the `node` ident (peeked by item())
+        let name = self.expect_ident("node name")?;
+        self.expect_punct(P::LBrace, "`{`")?;
+        let mut depth = 1usize;
+        loop {
+            match self.peek() {
+                None => return Err(self.syntax("expected `}` before end of file")),
+                Some(Token {
+                    tok: Tok::Punct(P::LBrace),
+                    ..
+                }) => {
+                    self.bump();
+                    depth += 1;
+                }
+                Some(Token {
+                    tok: Tok::Punct(P::RBrace),
+                    ..
+                }) => {
+                    self.bump();
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Some(_) => {
+                    self.bump();
+                }
+            }
+        }
+        let span = start.span.join(name.span);
+        Ok(NodeItem { name, span })
+    }
+
+    fn task_item(&mut self) -> Result<TaskItem, Diagnostic> {        let kw = self.bump(); // the `task` reserved token (peeked by item())
         let name = self.expect_ident("task name")?;
         self.expect_punct(P::LBrace, "`{`")?;
         let mut fields: Vec<TaskFieldDecl> = Vec::new();

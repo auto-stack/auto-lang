@@ -212,6 +212,10 @@ pub struct ResolvedOracle {
     /// — the exact execution-order event bytes. Part of the content-bound
     /// identity (changing it invalidates old PASSes).
     pub trace: Option<StreamExpect>,
+    /// PLAN-1095: the node CPU oracle (probe, language-source only) —
+    /// `(node name, expected view text values)` pairs. Content-bound
+    /// identity (changing it invalidates old PASSes).
+    pub nodes: Option<Vec<(String, Vec<String>)>>,
     pub oracle_sha256: String,
 }
 
@@ -350,6 +354,11 @@ pub fn resolve_oracle(
     if let Some(ch) = &expect.av_channel {
         combined.push_str(&format!("av_channel\0{}\0", ch));
     }
+    if let Some(nodes) = &expect.nodes {
+        for (name, texts) in nodes {
+            combined.push_str(&format!("nodes\0{}\0{:?}\0", name, texts));
+        }
+    }
     if let Some(r) = &expect.result {
         combined.push_str(&format!("result\0{}\0{}\0", r.format, r.text));
     }
@@ -400,6 +409,7 @@ pub fn resolve_oracle(
         probe,
         av_channel: expect.av_channel.clone(),
         trace: expect.trace.clone(),
+        nodes: expect.nodes.clone(),
         oracle_sha256,
     })
 }

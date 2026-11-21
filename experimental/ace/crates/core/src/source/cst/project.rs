@@ -233,6 +233,12 @@ pub(crate) fn project_program_with_caps(
         .iter()
         .position(|r| r.name == "use-rs-item")
         .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+    // PLAN-1095: the H0 node declaration kind (ordinary Auto face).
+    let age_node_item_kind = p
+        .rules
+        .iter()
+        .position(|r| r.name == "age-node-item")
+        .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
     let use_c_item_kind = p
         .rules
         .iter()
@@ -411,6 +417,9 @@ pub(crate) fn project_program_with_caps(
             || Some(kind) == use_py_item_kind
             // PLAN-968: `task` declarations are declaration-position items.
             || Some(kind) == k.task_item
+            // PLAN-1095: H0 node declarations are declaration-position items
+            // on the ordinary Auto face.
+            || Some(kind) == age_node_item_kind
         {
             if saw_script {
                 let span = first_leaf_span(&eng.cx, node);
@@ -688,6 +697,18 @@ pub(crate) fn project_program_with_caps(
                 .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32)
                 .is_some_and(|k2| kind == k2)
             {
+                // PLAN-1095: on the ordinary Auto face the H0 node
+                // declaration is a real AST item (CPU-only — the view text
+                // facts come from the 979 producer on the same source).
+                let node_kind = p
+                    .rules
+                    .iter()
+                    .position(|r| r.name == "age-node-item")
+                    .map(|i| ace_syntax_runtime::program::RULE_KIND_BASE + i as u32);
+                if profile.is_auto_language() && node_kind == Some(kind) {
+                    items.push(Item::Node(eng.run_ast_node_item(node)));
+                    continue;
+                }
                 // PLAN-979/981：AGE node 声明由**领域前门**单独投影（候选 + 脱糖），
                 // 不是普通声明项。这里必须显式跳过——否则下面的 `Item::Type`
                 // 兜底会把一个 node 静默变成同名记录类型（本批实测过的静默丢弃）。
@@ -5358,6 +5379,19 @@ impl<'a> Engine<'a> {
     }
 
     /// PLAN-979（T-H0-I）：一个 AGE node 声明的未受信候选投影。
+    /// PLAN-1095: the ordinary Auto face projects an H0 node declaration as
+    /// an opaque AST item (name + span; the body is never re-projected).
+    fn run_ast_node_item(&mut self, node: u32) -> crate::source::ast::NodeItem {
+        use crate::source::ast::{Ident, NodeItem};
+        let name_leaf = self
+            .cx
+            .field_child(node, "name")
+            .expect("age node name leaf");
+        let name = ident_of(&mut self.cx, name_leaf);
+        let span = self.cx.span_of(node);
+        NodeItem { name, span }
+    }
+
     fn run_age_node_item(&mut self, node: u32) -> crate::source::age_h0::AgeNodeItem {
         use crate::source::age_h0::{AgeNodeItem, AgeTextLeaf, AgeViewNode};
         let head_node = self
@@ -16002,9 +16036,11 @@ impl GenericExpand {
                     self.resolve_typed_ctors_in_block(&mut h.body.clone());
                 }
                 for a in &mut t.arms {
-                    self.resolve_typed_ctors_in_block(&mut a.body.clone());
-                }
+                    self.resolve_typed_ctors_in_block(&mut a.body.clone());                }
             }
+            // PLAN-1095: the node declaration body was consumed at parse
+            // time; it carries no ordinary expressions to rewrite.
+            Item::Node(_) => {}
         }
     }
 

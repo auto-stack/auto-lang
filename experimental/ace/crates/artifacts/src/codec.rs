@@ -1565,6 +1565,8 @@ pub fn build_decl_summary(program: &ace_core::source::ast::Program, module: &str
             // functions at the desugar stage; the pre-desugar summary
             // carries only the task name (no free functions).
             Item::Task(_) => {}
+            // PLAN-1095: node declarations carry no free functions.
+            Item::Node(_) => {}
             Item::Fn(f) => {
                 fns.push(FnSummary {
                     name: f.name.name.clone(),

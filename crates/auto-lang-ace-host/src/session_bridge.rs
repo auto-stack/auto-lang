@@ -160,6 +160,7 @@ fn item_name(item: &Item) -> Option<String> {
         // PLAN-982/PLAN-980：`use py` 的 AST 条目已落地，本桥不留名字面（与 `use rs`
         // 同族），其语义由 FFI 面处理。
         Item::UsePy(_) => None,
+        Item::Node(n) => Some(n.name.name.clone()),
     }
 }
 
@@ -173,6 +174,7 @@ fn item_span(item: &Item) -> Span {
         Item::UseRs(u) => u.span,
         Item::Task(t) => t.span,
         Item::UsePy(u) => u.span,
+        Item::Node(n) => n.span,
     }
 }
 

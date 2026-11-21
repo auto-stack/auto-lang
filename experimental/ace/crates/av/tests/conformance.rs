@@ -333,3 +333,6 @@ mod plan1087_errors;
 
 #[path = "cases/plan1090_tasks_actors.rs"]
 mod plan1090_tasks_actors;
+
+#[path = "cases/plan1095_ordinary_composition.rs"]
+mod plan1095_ordinary_composition;

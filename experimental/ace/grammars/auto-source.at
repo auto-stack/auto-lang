@@ -303,13 +303,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
     // 旧作者源兼容别名——是否接纳由调用方的兼容配置决定（关闭 = 受控拒绝），
     // 不自动回落旧引擎。
     contextual(version: 1) {
-        name(age-node-head) { spelling: "node", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
-        name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package] }
-        name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package] }
+        name(age-node-head) { spelling: "node", token: "ident", role: "node", profiles: [age-h0, age-component, age-package, auto] }
+        name(age-widget-head) { spelling: "widget", token: "ident", role: "node", profiles: [age-h0, age-component, age-package, auto] }
+        name(age-view-head) { spelling: "view", token: "r-view", role: "view", profiles: [age-h0, age-component, age-package, auto] }
         // PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 共享 store
         // 声明——`store` 是普通 ident token 的上下文名（不新造保留字）。
         name(age-store-head) { spelling: "store", token: "ident", role: "store", profiles: [age-component, age-package] }
-        name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package] }
+        name(age-text-head) { spelling: "text", token: "ident", role: "text", profiles: [age-h0, age-component, age-package, auto] }
         // PLAN-980 P3（981 回签 (a)）→ PLAN-1072 刀A：style 声明头开 age-component
         // ——惰性视图数据面（投影期字面量替换，981 (c)3 路径；不产 const/fn、
         // 不触发 981 三锁条件）。参数化/pub 仍包面专属（style-params 步骤门控）。
@@ -346,7 +346,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [auto, auto-packages]) { file-mode-item() {} }
             alt(profiles: [auto, auto-packages, aac]) { attributed-item() {} }
             // PLAN-979（T-H0-I）：AGE 领域节点声明（领域包显式启用时才存在）。
-            alt(profiles: [age-h0]) { age-node-item() {} }
+            // PLAN-1095：普通 Auto 面一并接纳（CPU-only node 观察；不启
+            // renderer，不凭内容轮流试 profile）。
+            alt(profiles: [age-h0, auto]) { age-node-item() {} }
             // PLAN-981（IF-981-REF）：`pub node` 形状先于裸 node 备选（首 token
             // `pub` 与 `node` 互异）。当前**不产出**节点可见性，投影处具名拒绝。
             alt(profiles: [age-package]) { age-pub-node-item() {} }
@@ -505,7 +507,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-watch-member() {} }
             alt { age-timer-member() {} }
         }
-        age-node-item(profiles: [age-h0, age-component, age-package], expect: "a `node <Name> { view { text <expression> {} } }` declaration") {
+        // PLAN-1095: the ordinary `auto` face admits the same H0 node shape
+        // (CPU-only observation via the 979 producer).
+        age-node-item(profiles: [age-h0, age-component, age-package, auto], expect: "a `node <Name> { view { text <expression> {} } }` declaration") {
             age-node-head(field: "head") {}
             ident(field: "name")
             lbrace(same-line: true)
@@ -513,19 +517,24 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         // 声明头：规范 `node` + 旧作者源兼容别名 `widget`（同一 role）。
-        age-node-head(profiles: [age-h0, age-component, age-package]) {
+        age-node-head(profiles: [age-h0, age-component, age-package, auto]) {
             alt { name(of: "age-node-head", field: "kw") }
             alt { name(of: "age-widget-head", field: "kw") }
         }
-        age-node-body(profiles: [age-h0, age-component, age-package], expect: "the `view { … }` node body") {
+        age-node-body(profiles: [age-h0, age-component, age-package, auto], expect: "the `view { … }` node body") {
             name(of: "age-view-head", field: "view")
             lbrace(same-line: true)
             list-nl { age-text-item() {} }
             rbrace() {}
         }
-        age-text-item(profiles: [age-h0, age-component, age-package], expect: "a `text <expression> {}` component leaf") {
+        age-text-item(profiles: [age-h0, age-component, age-package, auto], expect: "a `text <expression> {}` component leaf") {
             name(of: "age-text-head", field: "component")
-            pratt(of: "wide-ops", field: "text")
+            // PLAN-1095: the ordinary `auto` face parses the text expression
+            // with its own aggregates-ops table (the age faces use wide-ops).
+            // Each profile trims the other arm; the shared checker requires
+            // the text expression (a missing one produces no texts).
+            opt(profiles: [age-h0, age-component, age-package]) { pratt(of: "wide-ops", field: "text") }
+            opt(profiles: [auto]) { pratt(of: "aggregates-ops", field: "text") }
             lbrace(same-line: true)
             rbrace() {}
         }

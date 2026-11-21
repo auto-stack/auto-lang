@@ -188,11 +188,19 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // AutoUI PLAN-107: parameter-name structure and timer guards.
             // PLAN-114: gallery route targets preserve hyphenated module stems.
             // PLAN-114: a route outlet can carry view properties.
-            "8f3a66cd93035b3d7a2a4d190862f149774c9d50cbc5f10d53711db393f2afe9",
+            // PLAN-1095（2026-11-22 具名重基线）：普通 `auto` 面接纳 H0 node
+            // 声明——共享 age-node-head/age-node-body/age-text-item 与四个
+            // contextual name 的门控表增 `auto`，age-text-item 的文本表达式
+            // 按 profile 选 pratt（wide-ops vs auto 的 aggregates-ops）——
+            // **三个 AGE 面逐字节漂移**（本行 AgeComponent 为变后值）；其余
+            // 邻居（age-h0 见下、12 个非 AGE 面）不受影响。
+            "e310202bbefcf034efdc742e8873f589ee1d51cea6e27d7d4669eaefb7efc128",
         ),
         (
             SourceProfile::AgeH0,
-            "70d732d69ac100a5bbd9cf3f7f7b71c95535e8e3d2abea7f87ffcf8dd1d8eb5a",
+            // PLAN-1095（2026-11-22 具名重基线）：同上——H0 面与 auto 共享
+            // node 规则门控，前值 70d732d6… → 本值；语义不变。
+            "62332a74fb6951bf05c89a3659dce4ea2d331cade28736871382a345e329dc1f",
         ),
     ] {
         assert_eq!(
@@ -306,6 +314,10 @@ fn p981_age_package_grammar_id_is_frozen() {
         // AutoUI PLAN-107: checked list pop statements and the layout's `take` local.
         // PLAN-114: checked same-widget calls scope to the package grammar.
         // PLAN-1093: the C header provider rule is also part of age-package.
-        "74cf9a93fbad632940ef818f9e6f2fcfa2d19fd4572726243d76a437e017eba3"
+        // PLAN-1095（2026-11-22 具名重基线）：普通 auto 面接纳 H0 node 声明
+        // ——共享 age-node 规则/contextual name 门控增 auto + age-text-item
+        // 双 pratt 臂——**三个 AGE 面漂移**（本行 age-package 为变后值；
+        // 前值 74cf9a93…）；语义不变。
+        "3555cdf060c5a6467a94f223ab2fe9e58587c08ee5381bf225794b422d683371"
     );
 }
