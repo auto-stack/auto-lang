@@ -306,6 +306,21 @@ pub enum Item {
     Task(TaskItem),
 }
 
+impl Item {
+    pub(crate) fn span(&self) -> Span {
+        match self {
+            Self::Fn(item) => item.span,
+            Self::Type(item) => item.span,
+            Self::Enum(item) => item.span,
+            Self::Const(item) => item.span,
+            Self::Store(item) => item.span,
+            Self::UseRs(item) => item.span,
+            Self::UsePy(item) => item.span,
+            Self::Task(item) => item.span,
+        }
+    }
+}
+
 /// PLAN-968: a `task Name { ... }` actor declaration (scheduler surface).
 /// Members: state fields with defaults (`count = 0`), optional lifecycle
 /// hooks `fn start() ! {}` / `fn stop() ! {}`, and one `on { ... }` message

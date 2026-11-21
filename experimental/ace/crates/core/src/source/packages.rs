@@ -444,14 +444,15 @@ pub fn parse_package_source_age(
 }
 
 mod binding;
+pub(crate) use binding::assemble_standalone_auto;
 pub use binding::{
     bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
     bind_package_syntax_assembled_aggregates, bind_packages, bind_packages_age,
     bind_packages_aggregates, bind_packages_assembled, bind_packages_assembled_aggregates,
-    bind_packages_auto, fn_symbol, global_symbol, init_symbol, type_symbol, unit_key,
-    BoundPackages, GlobalDecl, PackageDiagnostic, PackageImplLayer, PackageImplSyntax,
-    PackageModuleInput, PackageSegment, PackagedAgeComponent, GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX,
-    GLOBAL_TAKE_PREFIX,
+    bind_packages_auto, bind_packages_auto_with_context, fn_symbol, global_symbol, init_symbol,
+    type_symbol, unit_key, BoundPackages, GlobalDecl, PackageDiagnostic, PackageImplLayer,
+    PackageImplSyntax, PackageModuleInput, PackageSegment, PackagedAgeComponent, GLOBAL_GET_PREFIX,
+    GLOBAL_SET_PREFIX, GLOBAL_TAKE_PREFIX,
 };
 mod provider_sources;
 pub use provider_sources::{

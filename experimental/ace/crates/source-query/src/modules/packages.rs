@@ -50,6 +50,17 @@ pub fn compile_package_product_auto(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
+    compile_package_product_auto_prepared(inputs, entry, caps, budget, |_| Ok(()))
+}
+
+/// Run the consumer's preparation on the bound, concrete package graph.
+pub fn compile_package_product_auto_prepared(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    prepare: impl FnOnce(&mut BoundPackages) -> Result<(), Vec<Diagnostic>>,
+) -> Result<PackageProduct, Vec<PackageDiagnostic>> {
     let mut caps = caps.to_vec();
     let packages = ace_core::source::packages::PACKAGES_CAPABILITY;
     if !caps.iter().any(|cap| cap == packages) {
@@ -118,6 +129,7 @@ pub fn compile_package_product_auto(
             bound.origins.insert(concrete, origin);
         }
     }
+    prepare(&mut bound).map_err(|ds| locate_all(&bound, ds))?;
     let resolved =
         resolve_with(&bound.program, &caps, profile).map_err(|ds| locate_all(&bound, ds))?;
     typecheck_with(&resolved, profile).map_err(|ds| locate_all(&bound, ds))?;

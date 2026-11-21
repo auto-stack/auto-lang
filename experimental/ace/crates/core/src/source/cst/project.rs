@@ -12050,6 +12050,54 @@ impl<'a> Engine<'a> {
                     args.push(Arg::Pos(self.pop_e()));
                 }
                 args.reverse();
+                if self.cx.profile.is_auto_language() {
+                    let log = match name.name.as_str() {
+                        "debug" => Some(("print", "[DEBUG] ")),
+                        "info" => Some(("print", "[INFO] ")),
+                        "warn" => Some(("print", "[WARN] ")),
+                        "error" => Some(("eprint", "[ERROR] ")),
+                        _ => None,
+                    };
+                    if let Some((callee, prefix)) = log {
+                        if argc != 1 {
+                            self.cx.reject(span, || {
+                                Diagnostic::new(
+                                    Stage::Text,
+                                    "source.cte.log-arity",
+                                    "a log macro takes one text argument",
+                                    span,
+                                )
+                            });
+                            self.vals.push(Val::S(Stmt::Break { span }));
+                            return;
+                        }
+                        let Arg::Pos(message) = args.pop().expect("one log argument") else {
+                            unreachable!("macro arguments are positional");
+                        };
+                        let value = Expr {
+                            span,
+                            kind: ExprKind::Call {
+                                callee: Ident {
+                                    name: callee.into(),
+                                    span: name.span,
+                                },
+                                args: vec![Arg::Pos(Expr {
+                                    span: message.span,
+                                    kind: ExprKind::Binary {
+                                        op: BinOp::Add,
+                                        lhs: Box::new(Expr {
+                                            span: name.span,
+                                            kind: ExprKind::StrLit(prefix.into()),
+                                        }),
+                                        rhs: Box::new(message),
+                                    },
+                                })],
+                            },
+                        };
+                        self.vals.push(Val::S(Stmt::ExprStmt { value, span }));
+                        return;
+                    }
+                }
                 let value = Expr {
                     span,
                     kind: ExprKind::Call { callee: name, args },
@@ -14421,7 +14469,16 @@ pub(crate) fn in_decl_projector<'a>(
     profile: SourceProfile,
 ) -> InDeclProjector<'a> {
     InDeclProjector {
-        eng: Engine::new(p, k, tree, snap, profile, false, false, false),
+        eng: Engine::new(
+            p,
+            k,
+            tree,
+            snap,
+            profile,
+            false,
+            profile.is_auto_language(),
+            false,
+        ),
     }
 }
 

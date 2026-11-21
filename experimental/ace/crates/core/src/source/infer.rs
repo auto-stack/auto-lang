@@ -635,6 +635,7 @@ fn estimate(
                 _ => lt,
             }
         }
+        ExprKind::HashExpr { expr } => estimate(expr, env, ctx, sites),
         ExprKind::Unary { op, operand } => {
             let t = estimate(operand, env, ctx, sites);
             match op {

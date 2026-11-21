@@ -31,8 +31,9 @@ use crate::executor::CtExecError;
 use crate::identity::{CtValue, ExpectTy};
 use crate::service::{CtRequest, CtService};
 use crate::store::CtEnvelopeSink;
+use crate::walk::{read, write};
 use ace_core::atom_text::Span;
-use ace_core::source::ast::{Arg, Block, Expr, ExprKind, Item, PlaceStep, Program, Stmt};
+use ace_core::source::ast::{Arg, Block, Expr, ExprKind, FnItem, Item, Program, Receiver, Stmt};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -81,26 +82,30 @@ pub struct MetaAxis {
 #[derive(Clone, Debug)]
 pub enum PlanError {
     /// A query cycle: the chain of (owner) names that closed the loop.
-    Cycle { chain: Vec<String> },
+    Cycle { chain: Vec<String>, span: Span },
     /// The root budget ran out (resource state; nothing published).
-    Deadline { elapsed_ms: u128 },
+    Deadline { elapsed_ms: u128, span: Span },
     /// A demand failed (executor/admission); forwarded with its site.
-    Demand { owner: String, err: CtExecError },
+    Demand {
+        owner: String,
+        err: CtExecError,
+        span: Span,
+    },
 }
 
 impl std::fmt::Display for PlanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PlanError::Cycle { chain } => write!(
+            PlanError::Cycle { chain, .. } => write!(
                 f,
                 "cte.query-cycle: {} (these functions need each other's compile-time values)",
                 chain.join(" -> ")
             ),
-            PlanError::Deadline { elapsed_ms } => write!(
+            PlanError::Deadline { elapsed_ms, .. } => write!(
                 f,
                 "cte.resource.deadline: the root budget was exhausted after {elapsed_ms}ms (resource state; nothing published)"
             ),
-            PlanError::Demand { owner, err } => {
+            PlanError::Demand { owner, err, .. } => {
                 write!(f, "cte demand in `{owner}` failed: {err}")
             }
         }
@@ -191,6 +196,7 @@ fn serve_site<S: CtEnvelopeSink>(
     if budget.exceeded() {
         return Err(PlanError::Deadline {
             elapsed_ms: budget.started.elapsed().as_millis(),
+            span,
         });
     }
     // Cycle: the SAME site (owner + span) is already being served on the
@@ -200,7 +206,7 @@ fn serve_site<S: CtEnvelopeSink>(
     if let Some(hit) = stack.iter().position(|o| *o == node) {
         let mut chain: Vec<String> = stack[hit..].iter().map(|(o, _)| o.clone()).collect();
         chain.push(owner.to_string());
-        return Err(PlanError::Cycle { chain });
+        return Err(PlanError::Cycle { chain, span });
     }
     stack.push(node);
     let result = serve_site_inner(
@@ -238,6 +244,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     let Some(hash_expr) = find_hash(program, owner, span) else {
         return Err(PlanError::Demand {
             owner: owner.to_string(),
+            span,
             err: CtExecError {
                 code: "cte.plan/site-missing".into(),
                 message: format!("no `#{{ ... }}` at the recorded span of `{owner}`"),
@@ -248,6 +255,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     let ExprKind::HashExpr { expr: inner } = &hash_expr.kind else {
         return Err(PlanError::Demand {
             owner: owner.to_string(),
+            span,
             err: CtExecError {
                 code: "cte.plan/not-a-hash".into(),
                 message: "the recorded span does not carry a HashExpr".into(),
@@ -279,8 +287,15 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     }
     // 2) Hash sites inside the CALLEE closure bodies (phase rule: an
     //    explicit hash in a needed callee is a demand of this root).
-    for callee in closure_of(program, owner) {
-        for (closure_owner, closure_span) in hashes_in_body_of(program, &callee) {
+    let keep = if svc.is_auto() {
+        let mut direct = Vec::new();
+        callees_in(read::Node::Value(inner), &mut direct);
+        transitive_callees(program, direct, Vec::new())
+    } else {
+        closure_of(program, owner)
+    };
+    for callee in &keep {
+        for (closure_owner, closure_span) in hashes_in_body_of(program, callee) {
             if !out
                 .values
                 .contains_key(&(closure_span.start as u64, closure_span.end as u64))
@@ -319,6 +334,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
         let Some(rec) = record_of(program, &sel.type_name) else {
             return Err(PlanError::Demand {
                 owner: owner.to_string(),
+                span,
                 err: CtExecError {
                     code: "cte.meta/unknown-type".into(),
                     message: format!("`{}` is not a declared record", sel.type_name),
@@ -345,7 +361,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     }
     // 4) Substitute (nested hash values + meta values -> literals) and
     //    serve through the store-keyed service (single-flight by key).
-    let substituted = substitute(inner, out, &meta_vals);
+    let mut substituted = substitute(inner, out, &meta_vals);
     out.meta_axes.append(&mut meta_axes);
     // The demand's compile program: CLOSURE-FILTERED (the owner, its
     // transitive callee closure and the type declarations — §5.3 "callee/
@@ -358,25 +374,56 @@ fn serve_site_inner<S: CtEnvelopeSink>(
     // closure is compiled under the CT domain's caps (none granted), and
     // still-unserved sites elsewhere in the module cannot pollute this
     // demand.
-    let keep = closure_of(program, owner);
     let mut site_program = Program {
         items: program
             .items
             .iter()
             .filter(|i| match i {
                 Item::Fn(f) => keep.contains(&f.name.name),
+                Item::Const(c) => svc.is_auto() && keep.contains(&c.name.name),
+                Item::Enum(_) => svc.is_auto(),
                 Item::Type(_) => true,
                 _ => false,
             })
             .cloned()
             .collect(),
     };
-    substitute_program_in_place(&mut site_program, out, span, &substituted);
+    substitute_program_in_place(&mut site_program, out, Some((span, &substituted)));
+    if svc.is_auto() {
+        prepare_readonly_globals(&mut site_program, &mut substituted).map_err(|err| {
+            PlanError::Demand {
+                owner: owner.to_string(),
+                span,
+                err,
+            }
+        })?;
+    }
     // A substituted LITERAL (pure-literal or meta-only demand) IS the
     // value — plan-level, never an AV execution (§5.2 literal+Meta 解析).
     if let Some(v) = lit_value(&substituted) {
         out.values.insert((span.start as u64, span.end as u64), v);
         return Ok(());
+    }
+    if svc.is_auto()
+        && matches!(
+            substituted.kind,
+            ExprKind::StrLit(_)
+                | ExprKind::CharLit(_)
+                | ExprKind::ArrayLit(_)
+                | ExprKind::TupleLit(_)
+                | ExprKind::ObjectLit { .. }
+                | ExprKind::TypedLit { .. }
+        )
+    {
+        return Err(PlanError::Demand {
+            owner: owner.to_string(),
+            span,
+            err: CtExecError {
+                code: "cte.type/value-domain".into(),
+                message: "a frozen CT value must be int or bool".into(),
+                av_reached: false,
+            },
+        });
     }
     let expect = expect_of_in(Some(&site_program), &substituted);
     let args = direct_call_args(&substituted);
@@ -399,6 +446,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
         svc.execute_ct(&site_program, src, module_path, &req)
             .map_err(|e| PlanError::Demand {
                 owner: owner.to_string(),
+                span,
                 err: e,
             })?
     } else {
@@ -421,6 +469,7 @@ fn serve_site_inner<S: CtEnvelopeSink>(
         )
         .map_err(|e| PlanError::Demand {
             owner: owner.to_string(),
+            span,
             err: e,
         })?
     };
@@ -442,193 +491,58 @@ fn arg_value(a: &Arg) -> &Expr {
     }
 }
 
-/// The mutable form of [`arg_value`] (in-place substitution/backfill).
-fn arg_value_mut(a: &mut Arg) -> &mut Expr {
-    match a {
-        Arg::Pos(x) | Arg::MovePos(x) => x,
-        Arg::Named { value, .. } => value,
-    }
-}
-
-/// Every hash site of the program: (owner fn name, HashExpr span).
+/// Discover the outer demands under every source root.
 pub fn all_hash_sites(program: &Program) -> Vec<(String, Span)> {
-    let mut out = Vec::new();
-    for item in &program.items {
-        if let Item::Fn(f) = item {
-            collect_hashes_block(&f.body, &f.name.name, &mut out);
-        }
-    }
-    out
+    let mut sites = Vec::new();
+    read::program_roots(program, |owner, root| {
+        collect_hash_sites(root, owner, &mut sites)
+    });
+    sites
 }
 
-fn collect_hashes_block(b: &Block, owner: &str, out: &mut Vec<(String, Span)>) {
-    for s in &b.stmts {
-        collect_hashes_stmt(s, owner, out);
-    }
+fn collect_hash_sites(root: read::Node<'_>, owner: &str, out: &mut Vec<(String, Span)>) {
+    read::visit(root, |value| {
+        if matches!(value.kind, ExprKind::HashExpr { .. }) {
+            out.push((owner.to_string(), value.span));
+            false // Nested hashes belong to this demand.
+        } else {
+            true
+        }
+    });
 }
 
-fn collect_hashes_stmt(s: &Stmt, owner: &str, out: &mut Vec<(String, Span)>) {
-    match s {
-        Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } | Stmt::Let { value, .. } => {
-            collect_hashes_expr(value, owner, out)
-        }
-        Stmt::Assign { value, .. } => collect_hashes_expr(value, owner, out),
-        // PLAN-962：索引赋值。
-        Stmt::IndexAssign(ia) => {
-            collect_hashes_expr(&ia.index, owner, out);
-            collect_hashes_expr(&ia.value, owner, out);
-        }
-        // PLAN-1082：place 链赋值。
-        Stmt::PlaceAssign(pa) => {
-            for st in &pa.steps {
-                if let PlaceStep::Index(ix) = st {
-                    collect_hashes_expr(ix, owner, out);
-                }
-            }
-            collect_hashes_expr(&pa.value, owner, out);
-        }
-        // PLAN-962：tuple 解构。
-        Stmt::LetDestruct { value, .. } => collect_hashes_expr(value, owner, out),
-        // PLAN-1081：嵌套 fn 项收集其体内哈希语句。
-        Stmt::NestedFn { item } => {
-            for st in &item.body.stmts {
-                collect_hashes_stmt(st, owner, out);
-            }
-        }
-        // PLAN-962 (T-08)：hold。
-        Stmt::Hold { body, .. } => {
-            for st in &body.stmts {
-                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
-                | ace_core::source::ast::Stmt::Return { value, .. } = st
-                {
-                    collect_hashes_expr(value, owner, out);
-                }
-            }
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            collect_hashes_expr(cond, owner, out);
-            collect_hashes_block(then, owner, out);
-            if let Some(b) = els {
-                collect_hashes_block(b, owner, out);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            collect_hashes_expr(cond, owner, out);
-            collect_hashes_block(body, owner, out);
-        }
-        Stmt::Loop { body, .. } => collect_hashes_block(body, owner, out),
-        // PLAN-966（T-02）：语句级 CT 体——折叠前同样收集 #{}。
-        Stmt::HashIf { then, els, .. } => {
-            collect_hashes_block(then, owner, out);
-            if let Some(b) = els {
-                collect_hashes_block(b, owner, out);
-            }
-        }
-        Stmt::HashFor { body, .. } => collect_hashes_block(body, owner, out),
-        Stmt::HashIs { arms, .. } => {
-            for a in arms {
-                collect_hashes_block(&a.body, owner, out);
-            }
-        }
-        Stmt::Break { .. } | Stmt::Continue { .. } => {}
-        Stmt::IsMatch { arms, .. } => {
-            for a in arms {
-                collect_hashes_block(&a.body, owner, out);
-            }
-        }
-        Stmt::ForIn { iter, body, .. } => {
-            collect_hashes_expr(iter, owner, out);
-            collect_hashes_block(body, owner, out);
-        }
-        Stmt::AggIsMatch {
-            scrutinee, arms, ..
-        } => {
-            collect_hashes_expr(scrutinee, owner, out);
-            for a in arms {
-                match &a.body {
-                    ace_core::source::ast::AggArmBody::Expr(e) => {
-                        collect_hashes_expr(e, owner, out)
-                    }
-                    ace_core::source::ast::AggArmBody::Block(b) => {
-                        collect_hashes_block(b, owner, out)
-                    }
-                }
-            }
-        }
-        Stmt::Try {
-            body,
-            catch,
-            finally,
-            ..
-        } => {
-            collect_hashes_block(body, owner, out);
-            if let Some(c) = catch {
-                collect_hashes_block(&c.body, owner, out);
-            }
-            if let Some(f) = finally {
-                collect_hashes_block(f, owner, out);
-            }
-        }
-        Stmt::Yield { value, .. } => collect_hashes_expr(value, owner, out),
-    }
+fn hashes_in_expr(expr: &Expr, owner: &str) -> Vec<(String, Span)> {
+    let mut sites = Vec::new();
+    collect_hash_sites(read::Node::Value(expr), owner, &mut sites);
+    sites
 }
 
-fn collect_hashes_expr(e: &Expr, owner: &str, out: &mut Vec<(String, Span)>) {
-    if let ExprKind::HashExpr { .. } = e.kind {
-        out.push((owner.to_string(), e.span));
-        return; // nested hashes belong to the enclosing site's plan
-    }
-    match &e.kind {
-        ExprKind::Call { args, .. }
-        | ExprKind::Method { args, .. }
-        | ExprKind::MethodCall { args, .. } => {
-            for a in args {
-                collect_hashes_expr(arg_value(a), owner, out);
-            }
-        }
-        ExprKind::CallValue { callee, args } => {
-            collect_hashes_expr(callee, owner, out);
-            for a in args {
-                collect_hashes_expr(arg_value(a), owner, out);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            collect_hashes_expr(lhs, owner, out);
-            collect_hashes_expr(rhs, owner, out);
-        }
-        ExprKind::Unary { operand, .. } => collect_hashes_expr(operand, owner, out),
-        ExprKind::Field { base, .. } => collect_hashes_expr(base, owner, out),
-        _ => {}
-    }
-}
-
-/// Nested hash sites inside one hash expression (owner = the enclosing
-/// fn — nested hashes execute in the enclosing site's owner context).
-fn hashes_in_expr(e: &Expr, owner: &str) -> Vec<(String, Span)> {
-    let mut out = Vec::new();
-    collect_hashes_expr(e, owner, &mut out);
-    out
-}
-
-/// Hash sites in one function's body (named by that fn).
 fn hashes_in_body_of(program: &Program, name: &str) -> Vec<(String, Span)> {
-    let mut out = Vec::new();
-    for item in &program.items {
-        if let Item::Fn(f) = item {
-            if f.name.name == name {
-                collect_hashes_block(&f.body, name, &mut out);
-            }
+    let mut sites = Vec::new();
+    read::program_roots(program, |owner, root| {
+        if owner == name {
+            collect_hash_sites(root, owner, &mut sites);
         }
-    }
-    out
+    });
+    sites
 }
 
 /// The direct free-call closure of one fn (names; resolver owns binding).
 fn closure_of(program: &Program, root: &str) -> Vec<String> {
-    let mut seen = vec![root.to_string()];
-    let mut stack = direct_callees_of(program, root);
+    let mut result = transitive_callees(
+        program,
+        direct_callees_of(program, root),
+        vec![root.to_string()],
+    );
+    result.remove(0);
+    result
+}
+
+fn transitive_callees(
+    program: &Program,
+    mut stack: Vec<String>,
+    mut seen: Vec<String>,
+) -> Vec<String> {
     while let Some(n) = stack.pop() {
         if seen.contains(&n) {
             continue;
@@ -640,165 +554,102 @@ fn closure_of(program: &Program, root: &str) -> Vec<String> {
             }
         }
     }
-    seen.remove(0);
     seen
 }
 
 fn direct_callees_of(program: &Program, name: &str) -> Vec<String> {
-    for item in &program.items {
-        if let Item::Fn(f) = item {
-            if f.name.name == name {
-                let mut out = Vec::new();
-                callees_block(&f.body, &mut out);
-                return out;
+    let mut callees = Vec::new();
+    read::program_roots(program, |owner, root| {
+        if owner == name {
+            callees_in(root, &mut callees);
+        }
+    });
+    callees
+}
+
+fn callees_in(root: read::Node<'_>, out: &mut Vec<String>) {
+    read::visit(root, |value| {
+        if let ExprKind::Call { callee, .. } | ExprKind::ConstCall { callee, .. } = &value.kind {
+            let name = callee
+                .name
+                .strip_prefix(ace_core::source::packages::GLOBAL_GET_PREFIX)
+                .unwrap_or(&callee.name);
+            out.push(name.to_string());
+        }
+        true
+    });
+}
+
+// A package constant's checked initializer can run inside a CT demand.
+// Its accessor is a pure function of the other immutable dependencies;
+// this gives the CT closure no access to the runtime package's globals.
+fn prepare_readonly_globals(program: &mut Program, inner: &mut Expr) -> Result<(), CtExecError> {
+    use ace_core::source::packages::{GLOBAL_GET_PREFIX, GLOBAL_SET_PREFIX, GLOBAL_TAKE_PREFIX};
+    let names: std::collections::BTreeSet<_> = program
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let Item::Const(constant) = item {
+                Some(constant.name.name.clone())
+            } else {
+                None
             }
-        }
-    }
-    Vec::new()
-}
-
-fn callees_block(b: &Block, out: &mut Vec<String>) {
-    for s in &b.stmts {
-        callees_stmt(s, out);
-    }
-}
-
-fn callees_stmt(s: &Stmt, out: &mut Vec<String>) {
-    match s {
-        Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } | Stmt::Let { value, .. } => {
-            callees_expr(value, out)
-        }
-        Stmt::Assign { value, .. } => callees_expr(value, out),
-        // PLAN-962：索引赋值。
-        Stmt::IndexAssign(ia) => {
-            callees_expr(&ia.index, out);
-            callees_expr(&ia.value, out);
-        }
-        // PLAN-1082：place 链赋值。
-        Stmt::PlaceAssign(pa) => {
-            for st in &pa.steps {
-                if let PlaceStep::Index(ix) = st {
-                    callees_expr(ix, out);
+        })
+        .collect();
+    let mut illegal = None;
+    let mut rewrite = |expr: &mut Expr| {
+        if let ExprKind::Call { callee, .. } = &mut expr.kind {
+            if let Some(name) = callee.name.strip_prefix(GLOBAL_GET_PREFIX) {
+                if names.contains(name) {
+                    callee.name = format!("__ace_ct_readonly_{name}");
+                } else {
+                    illegal.get_or_insert_with(|| callee.name.clone());
                 }
-            }
-            callees_expr(&pa.value, out);
-        }
-        // PLAN-962：tuple 解构。
-        Stmt::LetDestruct { value, .. } => callees_expr(value, out),
-        // PLAN-1081：嵌套 fn 项收集其体内被调者。
-        Stmt::NestedFn { item } => {
-            for st in &item.body.stmts {
-                callees_stmt(st, out);
+            } else if callee.name.starts_with(GLOBAL_SET_PREFIX)
+                || callee.name.starts_with(GLOBAL_TAKE_PREFIX)
+            {
+                illegal.get_or_insert_with(|| callee.name.clone());
             }
         }
-        // PLAN-962 (T-08)：hold。
-        Stmt::Hold { body, .. } => {
-            for st in &body.stmts {
-                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
-                | ace_core::source::ast::Stmt::Return { value, .. } = st
-                {
-                    callees_expr(value, out);
-                }
-            }
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            callees_expr(cond, out);
-            callees_block(then, out);
-            if let Some(b) = els {
-                callees_block(b, out);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            callees_expr(cond, out);
-            callees_block(body, out);
-        }
-        Stmt::Loop { body, .. } => callees_block(body, out),
-        // PLAN-966（T-02）：语句级 CT 体——折叠前同样收集被调。
-        Stmt::HashIf { then, els, .. } => {
-            callees_block(then, out);
-            if let Some(b) = els {
-                callees_block(b, out);
-            }
-        }
-        Stmt::HashFor { body, .. } => callees_block(body, out),
-        Stmt::HashIs { arms, .. } => {
-            for a in arms {
-                callees_block(&a.body, out);
-            }
-        }
-        Stmt::Break { .. } | Stmt::Continue { .. } => {}
-        Stmt::IsMatch { arms, .. } => {
-            for a in arms {
-                callees_block(&a.body, out);
-            }
-        }
-        Stmt::ForIn { iter, body, .. } => {
-            callees_expr(iter, out);
-            callees_block(body, out);
-        }
-        Stmt::AggIsMatch {
-            scrutinee, arms, ..
-        } => {
-            callees_expr(scrutinee, out);
-            for a in arms {
-                match &a.body {
-                    ace_core::source::ast::AggArmBody::Expr(e) => callees_expr(e, out),
-                    ace_core::source::ast::AggArmBody::Block(b) => callees_block(b, out),
-                }
-            }
-        }
-        Stmt::Try {
-            body,
-            catch,
-            finally,
-            ..
-        } => {
-            callees_block(body, out);
-            if let Some(c) = catch {
-                callees_block(&c.body, out);
-            }
-            if let Some(f) = finally {
-                callees_block(f, out);
-            }
-        }
-        Stmt::Yield { value, .. } => callees_expr(value, out),
+        true
+    };
+    write::visit(write::Node::Value(inner), &mut rewrite);
+    write::program_roots(program, |_, root| write::visit(root, &mut rewrite));
+    if let Some(name) = illegal {
+        return Err(CtExecError {
+            code: "cte.capability/denied".into(),
+            message: format!("`{name}` would access a mutable runtime global during CT evaluation"),
+            av_reached: false,
+        });
     }
-}
-
-fn callees_expr(e: &Expr, out: &mut Vec<String>) {
-    match &e.kind {
-        // PLAN-936：Hash 内的被调方是本需求的调用闭包成员。
-        ExprKind::HashExpr { expr: inner } => callees_expr(inner, out),
-        ExprKind::Call { callee, args } => {
-            out.push(callee.name.clone());
-            for a in args {
-                callees_expr(arg_value(a), out);
-            }
+    for item in &mut program.items {
+        if let Item::Const(constant) = item {
+            let name = ace_core::source::ast::Ident {
+                name: format!("__ace_ct_readonly_{}", constant.name.name),
+                span: constant.name.span,
+            };
+            *item = Item::Fn(FnItem {
+                name,
+                type_params: Vec::new(),
+                params: Vec::new(),
+                ret: constant.ty.clone(),
+                body: Block {
+                    stmts: vec![Stmt::Return {
+                        value: constant.value.clone(),
+                        span: constant.value.span,
+                    }],
+                    span: constant.span,
+                },
+                span: constant.span,
+                receiver: Receiver::Free,
+                owner: None,
+                script: false,
+                proto: false,
+            });
         }
-        ExprKind::Method { args, .. } | ExprKind::MethodCall { args, .. } => {
-            for a in args {
-                callees_expr(arg_value(a), out);
-            }
-        }
-        ExprKind::CallValue { callee, args } => {
-            callees_expr(callee, out);
-            for a in args {
-                callees_expr(arg_value(a), out);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            callees_expr(lhs, out);
-            callees_expr(rhs, out);
-        }
-        ExprKind::Unary { operand, .. } => callees_expr(operand, out),
-        ExprKind::Field { base, .. } => callees_expr(base, out),
-        _ => {}
     }
+    Ok(())
 }
-
-// -- meta selectors --------------------------------------------------------
 
 /// One meta selector occurrence inside a hash expression.
 pub struct MetaSelector {
@@ -879,254 +730,49 @@ fn record_of<'a>(program: &'a Program, name: &str) -> Option<&'a ace_core::sourc
 /// Substitute nested-hash values and meta values with literals (pure AST
 /// substitution — no text is formatted or re-parsed, §2).
 fn substitute(e: &Expr, hash_vals: &ServedRoot, meta_vals: &BTreeMap<(u64, u64), CtValue>) -> Expr {
-    if let Some(v) = meta_vals.get(&(e.span.start as u64, e.span.end as u64)) {
-        return Expr {
-            span: e.span,
-            kind: lit_of(*v),
-        };
-    }
-    if let ExprKind::HashExpr { .. } = e.kind {
-        if let Some(v) = hash_vals.value_at(e.span) {
-            return Expr {
-                span: e.span,
-                kind: lit_of(v),
-            };
+    let mut value = e.clone();
+    write::visit(write::Node::Value(&mut value), |expr| {
+        let key = (expr.span.start as u64, expr.span.end as u64);
+        let frozen = meta_vals.get(&key).copied().or_else(|| {
+            if matches!(expr.kind, ExprKind::HashExpr { .. }) {
+                hash_vals.value_at(expr.span)
+            } else {
+                None
+            }
+        });
+        if let Some(frozen) = frozen {
+            expr.kind = lit_of(frozen);
+            return false;
         }
-    }
-    // rebuild children
-    let kind = match &e.kind {
-        ExprKind::HashExpr { expr: inner } => ExprKind::HashExpr {
-            expr: Box::new(substitute(inner, hash_vals, meta_vals)),
-        },
-        ExprKind::Call { callee, args } => ExprKind::Call {
-            callee: callee.clone(),
-            args: args
-                .iter()
-                .map(|a| substitute_arg(a, hash_vals, meta_vals))
-                .collect(),
-        },
-        ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
-            op: *op,
-            lhs: Box::new(substitute(lhs, hash_vals, meta_vals)),
-            rhs: Box::new(substitute(rhs, hash_vals, meta_vals)),
-        },
-        ExprKind::Unary { op, operand } => ExprKind::Unary {
-            op: *op,
-            operand: Box::new(substitute(operand, hash_vals, meta_vals)),
-        },
-        other => other.clone(),
-    };
-    Expr { span: e.span, kind }
+        true
+    });
+    value
 }
 
-/// Substitute nested-hash/meta values inside ONE argument, keeping its source
-/// shape (`Pos`/`MovePos`/`Named` with its label and span) — the same
-/// `Arg.value` subtree the discovery walks traverse (F26).
-fn substitute_arg(
-    a: &Arg,
-    hash_vals: &ServedRoot,
-    meta_vals: &BTreeMap<(u64, u64), CtValue>,
-) -> Arg {
-    match a {
-        Arg::Pos(x) => Arg::Pos(substitute(x, hash_vals, meta_vals)),
-        Arg::MovePos(x) => Arg::MovePos(substitute(x, hash_vals, meta_vals)),
-        Arg::Named { name, value, span } => Arg::Named {
-            name: name.clone(),
-            value: substitute(value, hash_vals, meta_vals),
-            span: *span,
-        },
-    }
-}
-
-/// The per-site compile program: every served hash site replaced by its
-/// frozen literal, and one chosen site replaced by an arbitrary
-/// expression (its substituted inner). Pure structural substitution.
-fn substitute_program_in_place(p: &mut Program, served: &ServedRoot, site: Span, site_expr: &Expr) {
-    for item in &mut p.items {
-        if let Item::Fn(f) = item {
-            let mut stmts = std::mem::take(&mut f.body.stmts);
-            for st in stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-            f.body.stmts = stmts;
-        }
-    }
-}
-
-fn replace_at(e: &mut Expr, served: &ServedRoot, site: Span, site_expr: &Expr) {
-    if let ExprKind::HashExpr { .. } = e.kind {
-        if e.span.start == site.start && e.span.end == site.end {
-            *e = site_expr.clone();
-            return;
-        }
-        if let Some(v) = served.value_at(e.span) {
-            e.kind = lit_of(v);
-            return;
-        }
-    }
-    match &mut e.kind {
-        ExprKind::HashExpr { expr: inner } => replace_at(inner, served, site, site_expr),
-        ExprKind::Call { args, .. }
-        | ExprKind::Method { args, .. }
-        | ExprKind::MethodCall { args, .. } => {
-            for a in args.iter_mut() {
-                replace_at(arg_value_mut(a), served, site, site_expr);
-            }
-        }
-        ExprKind::CallValue { callee, args } => {
-            replace_at(callee, served, site, site_expr);
-            for a in args.iter_mut() {
-                replace_at(arg_value_mut(a), served, site, site_expr);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            replace_at(lhs, served, site, site_expr);
-            replace_at(rhs, served, site, site_expr);
-        }
-        ExprKind::Unary { operand, .. } => replace_at(operand, served, site, site_expr),
-        ExprKind::Field { base, .. } => replace_at(base, served, site, site_expr),
-        _ => {}
-    }
-}
-
-fn substitute_stmt(s: &mut Stmt, served: &ServedRoot, site: Span, site_expr: &Expr) {
-    match s {
-        Stmt::Return { value, .. }
-        | Stmt::ExprStmt { value, .. }
-        | Stmt::Let { value, .. }
-        | Stmt::Assign { value, .. } => replace_at(value, served, site, site_expr),
-        // PLAN-962：索引赋值。
-        Stmt::IndexAssign(ia) => {
-            replace_at(&mut ia.index, served, site, site_expr);
-            replace_at(&mut ia.value, served, site, site_expr);
-        }
-        // PLAN-1082：place 链赋值。
-        Stmt::PlaceAssign(pa) => {
-            for st in &mut pa.steps {
-                if let PlaceStep::Index(ix) = st {
-                    replace_at(ix, served, site, site_expr);
-                }
-            }
-            replace_at(&mut pa.value, served, site, site_expr);
-        }
-        // PLAN-962：tuple 解构。
-        Stmt::LetDestruct { value, .. } => replace_at(value, served, site, site_expr),
-        // PLAN-1081：嵌套 fn 项替换体内语句。
-        Stmt::NestedFn { item } => {
-            for st in item.body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-        }
-        // PLAN-962 (T-08)：hold。
-        Stmt::Hold { body, .. } => {
-            for st in body.stmts.iter_mut() {
-                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
-                | ace_core::source::ast::Stmt::Return { value, .. } = st
-                {
-                    replace_at(value, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            replace_at(cond, served, site, site_expr);
-            for st in then.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-            if let Some(b) = els {
-                for st in b.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            replace_at(cond, served, site, site_expr);
-            for st in body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-        }
-        Stmt::Loop { body, .. } => {
-            for st in body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-        }
-        // PLAN-966（T-02）：语句级 CT 体内的替换（折叠前）。
-        Stmt::HashIf { then, els, .. } => {
-            for st in then.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-            if let Some(b) = els {
-                for st in b.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::HashFor { body, .. } => {
-            for st in body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-        }
-        Stmt::HashIs { arms, .. } => {
-            for a in arms.iter_mut() {
-                for st in a.body.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::Break { .. } | Stmt::Continue { .. } => {}
-        Stmt::IsMatch { arms, .. } => {
-            for a in arms.iter_mut() {
-                for st in a.body.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::ForIn { iter, body, .. } => {
-            replace_at(iter, served, site, site_expr);
-            for st in body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-        }
-        Stmt::AggIsMatch {
-            scrutinee, arms, ..
-        } => {
-            replace_at(scrutinee, served, site, site_expr);
-            for a in arms.iter_mut() {
-                match &mut a.body {
-                    ace_core::source::ast::AggArmBody::Expr(e) => {
-                        replace_at(e, served, site, site_expr)
-                    }
-                    ace_core::source::ast::AggArmBody::Block(b) => {
-                        for st in b.stmts.iter_mut() {
-                            substitute_stmt(st, served, site, site_expr);
-                        }
+/// Replace the served sites with literals. During preparation for one
+/// execution the demand being evaluated can be replaced by its inner value.
+pub(crate) fn substitute_program_in_place(
+    program: &mut Program,
+    served: &ServedRoot,
+    executing: Option<(Span, &Expr)>,
+) {
+    write::program_roots(program, |_, root| {
+        write::visit(root, |expr| {
+            if matches!(expr.kind, ExprKind::HashExpr { .. }) {
+                if let Some((span, replacement)) = executing {
+                    if expr.span == span {
+                        *expr = replacement.clone();
+                        return false;
                     }
                 }
-            }
-        }
-        Stmt::Try {
-            body,
-            catch,
-            finally,
-            ..
-        } => {
-            for st in body.stmts.iter_mut() {
-                substitute_stmt(st, served, site, site_expr);
-            }
-            if let Some(c) = catch {
-                for st in c.body.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
+                if let Some(value) = served.value_at(expr.span) {
+                    expr.kind = lit_of(value);
+                    return false;
                 }
             }
-            if let Some(f) = finally {
-                for st in f.stmts.iter_mut() {
-                    substitute_stmt(st, served, site, site_expr);
-                }
-            }
-        }
-        Stmt::Yield { value, .. } => replace_at(value, served, site, site_expr),
-    }
+            true
+        });
+    });
 }
 
 fn lit_of(v: CtValue) -> ExprKind {
@@ -1197,7 +843,11 @@ pub fn expect_of_in(program: Option<&Program>, e: &Expr) -> ExpectTy {
         }
     }
     match &e.kind {
-        ExprKind::BoolLit(_) => ExpectTy::Bool,
+        ExprKind::BoolLit(_)
+        | ExprKind::Unary {
+            op: ace_core::source::ast::UnaryOp::Not,
+            ..
+        } => ExpectTy::Bool,
         ExprKind::Binary {
             op:
                 ace_core::source::ast::BinOp::Lt
@@ -1216,161 +866,17 @@ pub fn expect_of_in(program: Option<&Program>, e: &Expr) -> ExpectTy {
     }
 }
 
-fn find_hash<'a>(program: &'a Program, owner: &str, span: Span) -> Option<&'a Expr> {
-    for item in &program.items {
-        if let Item::Fn(f) = item {
-            if f.name.name == owner {
-                let mut found: Option<&Expr> = None;
-                find_hash_block(&f.body, span, &mut found);
-                return found;
-            }
-        }
-    }
-    None
-}
-
-fn find_hash_block<'a>(b: &'a Block, span: Span, found: &mut Option<&'a Expr>) {
-    for s in &b.stmts {
-        find_hash_stmt(s, span, found);
-    }
-}
-
-fn find_hash_stmt<'a>(s: &'a Stmt, span: Span, found: &mut Option<&'a Expr>) {
-    if found.is_some() {
-        return;
-    }
-    match s {
-        Stmt::Return { value, .. } | Stmt::ExprStmt { value, .. } | Stmt::Let { value, .. } => {
-            find_hash_expr(value, span, found)
-        }
-        Stmt::Assign { value, .. } => find_hash_expr(value, span, found),
-        // PLAN-962：索引赋值。
-        Stmt::IndexAssign(ia) => {
-            find_hash_expr(&ia.index, span, found);
-            find_hash_expr(&ia.value, span, found);
-        }
-        // PLAN-1082：place 链赋值。
-        Stmt::PlaceAssign(pa) => {
-            for st in &pa.steps {
-                if let PlaceStep::Index(ix) = st {
-                    find_hash_expr(ix, span, found);
+fn find_hash<'a>(program: &'a Program, name: &str, span: Span) -> Option<&'a Expr> {
+    let mut found = None;
+    read::program_roots(program, |owner, root| {
+        if owner == name && found.is_none() {
+            read::visit(root, |expr| {
+                if expr.span == span && matches!(expr.kind, ExprKind::HashExpr { .. }) {
+                    found = Some(expr);
                 }
-            }
-            find_hash_expr(&pa.value, span, found);
+                found.is_none()
+            });
         }
-        // PLAN-962：tuple 解构。
-        Stmt::LetDestruct { value, .. } => find_hash_expr(value, span, found),
-        // PLAN-1081：嵌套 fn 项查找其体内哈希。
-        Stmt::NestedFn { item } => {
-            for st in &item.body.stmts {
-                find_hash_stmt(st, span, found);
-            }
-        }
-        // PLAN-962 (T-08)：hold。
-        Stmt::Hold { body, .. } => {
-            for st in &body.stmts {
-                if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
-                | ace_core::source::ast::Stmt::Return { value, .. } = st
-                {
-                    find_hash_expr(value, span, found);
-                }
-            }
-        }
-        Stmt::If {
-            cond, then, els, ..
-        } => {
-            find_hash_expr(cond, span, found);
-            find_hash_block(then, span, found);
-            if let Some(b) = els {
-                find_hash_block(b, span, found);
-            }
-        }
-        Stmt::While { cond, body, .. } => {
-            find_hash_expr(cond, span, found);
-            find_hash_block(body, span, found);
-        }
-        Stmt::Loop { body, .. } => find_hash_block(body, span, found),
-        // PLAN-966（T-02）：语句级 CT 体——折叠前同样定位 #{}。
-        Stmt::HashIf { then, els, .. } => {
-            find_hash_block(then, span, found);
-            if let Some(b) = els {
-                find_hash_block(b, span, found);
-            }
-        }
-        Stmt::HashFor { body, .. } => find_hash_block(body, span, found),
-        Stmt::HashIs { arms, .. } => {
-            for a in arms {
-                find_hash_block(&a.body, span, found);
-            }
-        }
-        Stmt::Break { .. } | Stmt::Continue { .. } => {}
-        Stmt::IsMatch { arms, .. } => {
-            for a in arms {
-                find_hash_block(&a.body, span, found);
-            }
-        }
-        Stmt::ForIn { iter, body, .. } => {
-            find_hash_expr(iter, span, found);
-            find_hash_block(body, span, found);
-        }
-        Stmt::AggIsMatch {
-            scrutinee, arms, ..
-        } => {
-            find_hash_expr(scrutinee, span, found);
-            for a in arms {
-                match &a.body {
-                    ace_core::source::ast::AggArmBody::Expr(e) => find_hash_expr(e, span, found),
-                    ace_core::source::ast::AggArmBody::Block(b) => find_hash_block(b, span, found),
-                }
-            }
-        }
-        Stmt::Try {
-            body,
-            catch,
-            finally,
-            ..
-        } => {
-            find_hash_block(body, span, found);
-            if let Some(c) = catch {
-                find_hash_block(&c.body, span, found);
-            }
-            if let Some(f) = finally {
-                find_hash_block(f, span, found);
-            }
-        }
-        Stmt::Yield { value, .. } => find_hash_expr(value, span, found),
-    }
-}
-
-fn find_hash_expr<'a>(e: &'a Expr, span: Span, found: &mut Option<&'a Expr>) {
-    if found.is_some() {
-        return;
-    }
-    if e.span.start as u64 == span.start as u64 && e.span.end as u64 == span.end as u64 {
-        *found = Some(e);
-        return;
-    }
-    match &e.kind {
-        ExprKind::HashExpr { expr: inner } => find_hash_expr(inner, span, found),
-        ExprKind::Call { args, .. }
-        | ExprKind::Method { args, .. }
-        | ExprKind::MethodCall { args, .. } => {
-            for a in args {
-                find_hash_expr(arg_value(a), span, found);
-            }
-        }
-        ExprKind::CallValue { callee, args } => {
-            find_hash_expr(callee, span, found);
-            for a in args {
-                find_hash_expr(arg_value(a), span, found);
-            }
-        }
-        ExprKind::Binary { lhs, rhs, .. } => {
-            find_hash_expr(lhs, span, found);
-            find_hash_expr(rhs, span, found);
-        }
-        ExprKind::Unary { operand, .. } => find_hash_expr(operand, span, found),
-        ExprKind::Field { base, .. } => find_hash_expr(base, span, found),
-        _ => {}
-    }
+    });
+    found
 }

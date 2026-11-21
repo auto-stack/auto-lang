@@ -212,6 +212,12 @@ pub struct PackageAssemblyContext {
 }
 
 impl PackageAssemblyContext {
+    /// The ordinary source worker executes locally. Cross-target callers
+    /// supply their own target and continue to observe the actual host.
+    pub fn local_av() -> Self {
+        Self::new(AssemblyBackend::Av, ProviderChoice::Auto, host_os())
+    }
+
     pub fn new(
         backend: AssemblyBackend,
         provider: ProviderChoice,

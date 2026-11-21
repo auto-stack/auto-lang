@@ -1,0 +1,432 @@
+# Compile-time evaluation and macros
+
+## Case: real-cte-call
+id: "av.parity.1091.real-cte-call"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn sum(a int, b int) int { return a + b }
+fn main() int { let n = #{ sum(20, 22) }; return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: assembly-condition
+id: "av.parity.1091.assembly-condition"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#if true { fn answer() int { return 42 } } else { fn answer() int { return 0 } }
+fn main() int { return answer() }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: macro-function-sugar
+id: "av.parity.1091.macro-function-sugar"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a int, b int) int { return a + b }
+fn main() int { #add(19, 23); return 42 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: unknown-target-fact
+id: "av.parity.1091.unknown-target-fact"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#if sys.unregistered_fact { fn answer() int { return 42 } }
+fn main() int { return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "source.cte.in-name"
+
+## Case: assembly-statement-for-and-is
+id: "av.parity.1091.assembly-statement-for-and-is"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    var n = 0
+    #for i in 0..3 { n = n + 14 }
+    #is 0 {
+        Windows -> { return 0 }
+        else -> { return n }
+    }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: assembly-namespace-package
+id: "av.parity.1091.assembly-namespace-package"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+#in sys {
+    if current == Windows {
+        use auto.math.answer
+    }
+    if current != Windows {
+        use auto.math.answer
+    }
+}
+fn main() int { return #{ answer(40) } }
+```
+
+#### math.at
+
+```auto
+pub fn answer(a int) int { return a + 2 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: concrete-generic
+id: "av.parity.1091.concrete-generic"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn same<T>(n T) T { return n }
+fn main() int { return #{ same<int>(42) } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: readonly-module-value
+id: "av.parity.1091.readonly-module-value"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use auto.math.BASE
+fn main() int { return #{ BASE + 2 } }
+```
+
+#### math.at
+
+```auto
+pub const BASE int = 40
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: fold-list-element
+id: "av.parity.1091.fold-list-element"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = [#{ 40 + 2 }, 22]; return xs[0] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: fold-bool-condition
+id: "av.parity.1091.fold-bool-condition"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { if #{ !false } { return 42 } else { return 10 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 42
+
+## Case: metadata
+id: "av.parity.1091.metadata"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type T { x int; y int }
+fn main() int { return #{ ct_field_count(T) } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
+exit: 2
+
+## Case: runtime-log-streams
+id: "av.parity.1091.runtime-log-streams"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() {
+    let v = "value"
+    #debug(v)
+    #info("i")
+    #warn("w")
+    #error("e")
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+channel: "unit"
+
+#### stdout
+
+```text
+[DEBUG] value
+[INFO] i
+[WARN] w
+```
+
+#### stderr
+
+```text
+[ERROR] e
+```
+
+## Case: function-sugar-effects
+id: "av.parity.1091.function-sugar-effects"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn add(a int, b int) int { print(a + b); return 7 }
+fn main() int { #add(30, 12); return 9 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+exit: 9
+
+#### stdout
+
+```text
+42
+```
+
+## Case: unknown-macro
+id: "av.parity.1091.unknown-macro"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { #unknown(42); return 0 }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "source.undefined"
+
+## Case: capability-revoked
+id: "av.parity.1091.capability-revoked"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { return #{ 40 + 2 } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.cte.capability"
+
+## Case: compile-time-io-denied
+id: "av.parity.1091.compile-time-io-denied"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn helper() int { print(42); return 42 }
+fn main() int { return #{ helper() } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "cte.capability/denied"
+
+## Case: compile-time-frame-budget
+id: "av.parity.1091.compile-time-frame-budget"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn rec(a int) int { return rec(a + 1) }
+fn main() int { return #{ rec(0) } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "cte.resource/Frames"
+
+## Case: assembly-loop-budget
+id: "av.parity.1091.assembly-loop-budget"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { var n = 0; #for i in 0..1025 { n = n + 1 }; return n }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "source.cte.in-budget"
+
+## Case: compile-time-text-boundary
+id: "av.parity.1091.compile-time-text-boundary"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() str { return #{ "text" } }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "cte.type/value-domain"
+
+## Case: compile-time-list-boundary
+id: "av.parity.1091.compile-time-list-boundary"
+tags: ["av-language-parity", "plan-1091"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { let xs = #{ [40, 2] }; return xs[0] + xs[1] }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
+stage: "resolve"
+code: "cte.type/value-domain"

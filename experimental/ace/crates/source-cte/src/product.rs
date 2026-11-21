@@ -180,7 +180,7 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
     )?;
     // 3) Structural backfill: every served site -> its frozen literal.
     let mut substituted = program.clone();
-    substitute_all(&mut substituted, &served);
+    crate::schedule::substitute_program_in_place(&mut substituted, &served, None);
     // 4) The fact lane compiles the substituted program (the query layer
     //    is the type authority; HIR + real verification as the plain lane).
     let mut session = SourceQuerySession::new(package, module);
@@ -217,199 +217,62 @@ pub fn compile_scalar_ct<S: CtEnvelopeSink>(
     })
 }
 
-/// Replace every served hash site (by span) with its frozen literal —
-/// the whole-program form of the planner's per-site substitution.
-fn substitute_all(p: &mut Program, served: &ServedRoot) {
-    use ace_core::source::ast::{Arg, Expr, ExprKind, Item, Stmt};
-    for item in &mut p.items {
-        if let Item::Fn(f) = item {
-            let mut stmts = std::mem::take(&mut f.body.stmts);
-            for st in stmts.iter_mut() {
-                substitute_stmt_all(st, served);
-            }
-            f.body.stmts = stmts;
+/// Serve the selected ordinary program after assembly and instantiation.
+pub fn prepare_auto_ct<S: CtEnvelopeSink>(
+    svc: &mut CtService<S>,
+    program: &mut Program,
+    source: &str,
+    path: &str,
+    caps: &[String],
+) -> Result<(), Vec<Diagnostic>> {
+    use ace_core::atom_text::Stage;
+    let sites = crate::schedule::all_hash_sites(program);
+    let Some((_, first)) = sites.first() else {
+        return Ok(());
+    };
+    if !caps
+        .iter()
+        .any(|cap| cap == ace_core::source::cst::CT_CAPABILITY)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.cte.capability",
+            "a compile-time expression requires ac.source.cte.scalar/v1",
+            *first,
+        )]);
+    }
+    if let Err(diagnostics) = ace_core::source::resolve_with(program, caps, SourceProfile::Auto) {
+        let policy: Vec<_> = diagnostics
+            .into_iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.code.as_str(),
+                    "source.cte.meta-capability" | "source.cte.meta-name-conflict"
+                )
+            })
+            .collect();
+        if !policy.is_empty() {
+            return Err(policy);
         }
     }
-    fn repl(e: &mut Expr, served: &ServedRoot) {
-        if let ExprKind::HashExpr { .. } = e.kind {
-            if let Some(v) = served.value_at(e.span) {
-                e.kind = match v {
-                    crate::identity::CtValue::I32(x) => ExprKind::IntLit(x),
-                    crate::identity::CtValue::Bool(b) => ExprKind::BoolLit(b),
-                };
-                return;
-            }
-        }
-        match &mut e.kind {
-            ExprKind::HashExpr { expr: inner } => repl(inner, served),
-            ExprKind::Call { args, .. }
-            | ExprKind::Method { args, .. }
-            | ExprKind::MethodCall { args, .. } => {
-                for a in args.iter_mut() {
-                    // Pos/MovePos/Named carry the same Arg.value subtree —
-                    // the backfill must reach every one of them (F26).
-                    let value = match a {
-                        Arg::Pos(x) | Arg::MovePos(x) => x,
-                        Arg::Named { value, .. } => value,
-                    };
-                    repl(value, served);
-                }
-            }
-            ExprKind::CallValue { callee, args } => {
-                repl(callee, served);
-                for a in args.iter_mut() {
-                    let value = match a {
-                        Arg::Pos(x) | Arg::MovePos(x) => x,
-                        Arg::Named { value, .. } => value,
-                    };
-                    repl(value, served);
-                }
-            }
-            ExprKind::Binary { lhs, rhs, .. } => {
-                repl(lhs, served);
-                repl(rhs, served);
-            }
-            ExprKind::Unary { operand, .. } => repl(operand, served),
-            ExprKind::Field { base, .. } => repl(base, served),
-            _ => {}
-        }
-    }
-    fn substitute_stmt_all(s: &mut Stmt, served: &ServedRoot) {
-        use ace_core::source::ast::Stmt;
-        match s {
-            Stmt::Return { value, .. }
-            | Stmt::ExprStmt { value, .. }
-            | Stmt::Let { value, .. }
-            | Stmt::Assign { value, .. } => repl(value, served),
-            // PLAN-962：索引赋值替换两内部表达式。
-            Stmt::IndexAssign(ia) => {
-                repl(&mut ia.index, served);
-                repl(&mut ia.value, served);
-            }
-            // PLAN-1082：place 链赋值替换内部表达式。
-            Stmt::PlaceAssign(pa) => {
-                for st in &mut pa.steps {
-                    if let ace_core::source::ast::PlaceStep::Index(ix) = st {
-                        repl(ix, served);
-                    }
-                }
-                repl(&mut pa.value, served);
-            }
-            // PLAN-962：tuple 解构替换值表达式。
-            Stmt::LetDestruct { value, .. } => repl(value, served),
-            // PLAN-1081：嵌套 fn 项替换体内语句。
-            Stmt::NestedFn { item } => {
-                for st in item.body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-            }
-            // PLAN-962 (T-08)：hold 替换体内表达式。
-            Stmt::Hold { body, .. } => {
-                for st in body.stmts.iter_mut() {
-                    if let ace_core::source::ast::Stmt::ExprStmt { value, .. }
-                    | ace_core::source::ast::Stmt::Return { value, .. } = st
-                    {
-                        repl(value, served);
-                    }
-                }
-            }
-            Stmt::If {
-                cond, then, els, ..
-            } => {
-                repl(cond, served);
-                for st in then.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-                if let Some(b) = els {
-                    for st in b.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-            }
-            Stmt::While { cond, body, .. } => {
-                repl(cond, served);
-                for st in body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-            }
-            Stmt::Loop { body, .. } => {
-                for st in body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-            }
-            // PLAN-966（T-02）：语句级 CT 体内的 served 替换（折叠前）。
-            Stmt::HashIf { then, els, .. } => {
-                for st in then.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-                if let Some(b) = els {
-                    for st in b.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-            }
-            Stmt::HashFor { body, .. } => {
-                for st in body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-            }
-            Stmt::HashIs { arms, .. } => {
-                for a in arms.iter_mut() {
-                    for st in a.body.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-            }
-            Stmt::IsMatch { arms, .. } => {
-                for a in arms.iter_mut() {
-                    for st in a.body.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-            }
-            Stmt::ForIn { iter, body, .. } => {
-                repl(iter, served);
-                for st in body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-            }
-            Stmt::Break { .. } | Stmt::Continue { .. } => {}
-            Stmt::AggIsMatch {
-                scrutinee, arms, ..
-            } => {
-                repl(scrutinee, served);
-                for a in arms.iter_mut() {
-                    match &mut a.body {
-                        ace_core::source::ast::AggArmBody::Expr(e) => repl(e, served),
-                        ace_core::source::ast::AggArmBody::Block(b) => {
-                            for st in b.stmts.iter_mut() {
-                                substitute_stmt_all(st, served);
-                            }
-                        }
-                    }
-                }
-            }
-            Stmt::Try {
-                body,
-                catch,
-                finally,
-                ..
-            } => {
-                for st in body.stmts.iter_mut() {
-                    substitute_stmt_all(st, served);
-                }
-                if let Some(c) = catch {
-                    for st in c.body.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-                if let Some(f) = finally {
-                    for st in f.stmts.iter_mut() {
-                        substitute_stmt_all(st, served);
-                    }
-                }
-            }
-            Stmt::Yield { value, .. } => repl(value, served),
-        }
-    }
+    let served = serve_program(
+        svc,
+        program,
+        source,
+        path,
+        "auto",
+        path,
+        &RootBudget::new(RootBudget::default_total()),
+    )
+    .map_err(|error| {
+        use crate::schedule::PlanError;
+        let (code, span) = match &error {
+            PlanError::Cycle { span, .. } => ("cte.query-cycle", *span),
+            PlanError::Deadline { span, .. } => ("cte.resource.deadline", *span),
+            PlanError::Demand { err, span, .. } => (err.code.as_str(), *span),
+        };
+        vec![Diagnostic::new(Stage::Bind, code, error.to_string(), span)]
+    })?;
+    crate::schedule::substitute_program_in_place(program, &served, None);
+    Ok(())
 }

@@ -204,6 +204,27 @@ pub fn compile_language_source_with(
     capabilities: &[String],
     prepare: impl FnOnce(&mut super::ast::Program) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
+    compile_language_source_prepared(
+        src,
+        module_path,
+        capabilities,
+        |program, _, has_instances| {
+            if has_instances {
+                prepare(program)?;
+            }
+            Ok(())
+        },
+    )
+}
+
+/// Prepare the projected program before the shared HIR gate. The AV
+/// consumer supplies its source-query and source-CTE passes here.
+pub fn compile_language_source_prepared(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    prepare: impl FnOnce(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+) -> Result<CompiledSource, Vec<Diagnostic>> {
     // PLAN-1082 (T-03): graft the frozen 972 assembled stdlib list module
     // (name-mangled) onto the single-module ordinary face when the source
     // references the legacy `List.new(` constructor or a HOF method — the
@@ -248,9 +269,7 @@ pub fn compile_language_source_with(
         }
     }
     super::infer::complete(&mut program)?;
-    if has_instances {
-        prepare(&mut program)?;
-    }
+    prepare(&mut program, &grafted, has_instances)?;
     let parts = compile_program_parts(&program, &grafted, module_path, capabilities, profile)?;
     let checked = crate::verify::verify_auto_language(parts.bundle)?;
     Ok(CompiledSource {

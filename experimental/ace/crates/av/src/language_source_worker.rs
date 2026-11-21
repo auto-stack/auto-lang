@@ -89,6 +89,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
 
     let mut store_writes = Some(0);
     let mut handled_errors = 0;
+    let mut runtime_calls = 0;
+    let mut ct_counters = ace_source_cte::CtCounters::default();
+    let store_path = request["store_root"].as_str().map(Path::new);
     let (result, capture) = if let Some(project) = object.get("project") {
         store_writes = None;
         let project: SourceProject =
@@ -115,12 +118,14 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             &caps,
             Path::new(store),
             &mut capture,
+            &mut ct_counters,
         );
         match result {
             Ok(observation) => {
                 store_writes = Some(observation.store_writes);
                 step["trace"] = json!(observation.trace);
                 handled_errors = observation.handled_errors;
+                runtime_calls = observation.runtime_calls;
                 if let Some(error) = observation.language_error {
                     step["language_error"] = error;
                 }
@@ -133,8 +138,17 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         }
     } else {
         let mut capture = ConsoleCapture::default();
-        let result = run_chain(&source, path, &caps, &mut capture).map(|(outcome, trace)| {
+        let result = run_chain(
+            &source,
+            path,
+            &caps,
+            store_path,
+            &mut capture,
+            &mut ct_counters,
+        )
+        .map(|(outcome, trace)| {
             handled_errors = trace.handled_language_errors;
+            runtime_calls = trace.call_frame_commits;
             let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
             if let Some(error) = observed_language_error(&trace, locate) {
                 step["language_error"] = error;
@@ -232,6 +246,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         "stderr_b64":base64::engine::general_purpose::STANDARD.encode(&capture.stderr)});
     step["counters"] = json!({"host_dispatches":capture.dispatches});
     step["counters"]["handled_language_errors"] = json!(handled_errors);
+    step["counters"]["ct_execute"] = json!(ct_counters.ct_execute);
+    step["counters"]["ct_hits"] = json!(ct_counters.ct_hits);
+    step["counters"]["runtime_calls"] = json!(runtime_calls);
     if let Some(writes) = store_writes {
         step["counters"]["store_writes"] = json!(writes);
     }
@@ -393,6 +410,7 @@ struct ProjectObservation {
     source_span: Option<Json>,
     store_writes: u64,
     handled_errors: u64,
+    runtime_calls: u64,
     language_error: Option<Json>,
 }
 
@@ -412,6 +430,7 @@ fn run_project(
     caps: &[String],
     store: &Path,
     capture: &mut ConsoleCapture,
+    ct_counters: &mut ace_source_cte::CtCounters,
 ) -> Result<ProjectObservation, Json> {
     let path_diagnostic = |path: &str| {
         json!({
@@ -437,11 +456,38 @@ fn run_project(
         inputs.push(module);
     }
     let entry = entry.ok_or_else(|| path_diagnostic(entry_path))?;
-    let compiled = ace_source_query::modules::packages::compile_package_product_auto(
+    let compiled = ace_source_query::modules::packages::compile_package_product_auto_prepared(
         &inputs,
         &entry,
         caps,
         FrontBudget::WORK_OWNED_64MIB,
+        |bound| {
+            if !bound
+                .segments
+                .iter()
+                .any(|segment| segment.source.contains('#'))
+            {
+                return Ok(());
+            }
+            // The checked source maps use the binding layer's flat byte
+            // coordinates. This text is only consumed by emit, not parsed.
+            let mut source = String::with_capacity(bound.source_len());
+            for segment in &bound.segments {
+                while source.len() < segment.start {
+                    source.push('\n');
+                }
+                source.push_str(&segment.source);
+            }
+            prepare_ct(
+                &mut bound.program,
+                &source,
+                &entry,
+                &bound.capabilities,
+                Some(store),
+                Some(bound.input_hash.as_str()),
+                ct_counters,
+            )
+        },
     )
     .map_err(|ds| {
         let d = &ds[0];
@@ -507,8 +553,71 @@ fn run_project(
         source_span,
         store_writes: target.lowered,
         handled_errors: trace.handled_language_errors,
+        runtime_calls: trace.call_frame_commits,
         language_error: observed_language_error(&trace, locate),
     })
+}
+
+fn prepare_ct(
+    program: &mut ace_core::source::ast::Program,
+    source: &str,
+    path: &str,
+    caps: &[String],
+    store: Option<&Path>,
+    package_identity: Option<&str>,
+    counters: &mut ace_source_cte::CtCounters,
+) -> Result<(), Vec<Diagnostic>> {
+    use ace_core::atom_text::Stage;
+    let sites = ace_source_cte::schedule::all_hash_sites(program);
+    let Some((_, span)) = sites.first() else {
+        return Ok(());
+    };
+    if !caps
+        .iter()
+        .any(|cap| cap == ace_core::source::cst::CT_CAPABILITY)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "source.cte.capability",
+            "a compile-time expression requires ac.source.cte.scalar/v1",
+            *span,
+        )]);
+    }
+    let mut axes = caps.to_vec();
+    let context = ace_core::source::packages::PackageAssemblyContext::local_av();
+    axes.push(context.identity());
+    axes.push(format!("{:?}", context.sys_facts()));
+    axes.push(ace_lowering::AUTO_LANGUAGE_MIR_LOWERING_VERSION.into());
+    axes.push(package_identity.map_or_else(|| sha256_hex(source.as_bytes()), str::to_owned));
+    if let Some(store) = store {
+        let sink = ace_source_cte::store::ManagedEnvelopeSink::open(store, None).map_err(|e| {
+            vec![Diagnostic::new(
+                Stage::Bind,
+                "cte.infra/store",
+                e.to_string(),
+                *span,
+            )]
+        })?;
+        let mut service = ace_source_cte::CtService::for_auto(sink, axes);
+        prepare_ct_with_service(&mut service, program, source, path, caps, counters)
+    } else {
+        let mut service =
+            ace_source_cte::CtService::for_auto(ace_source_cte::MemoryEnvelopeSink::new(), axes);
+        prepare_ct_with_service(&mut service, program, source, path, caps, counters)
+    }
+}
+
+fn prepare_ct_with_service<S: ace_source_cte::CtEnvelopeSink>(
+    service: &mut ace_source_cte::CtService<S>,
+    program: &mut ace_core::source::ast::Program,
+    source: &str,
+    path: &str,
+    caps: &[String],
+    counters: &mut ace_source_cte::CtCounters,
+) -> Result<(), Vec<Diagnostic>> {
+    let result = ace_source_cte::product::prepare_auto_ct(service, program, source, path, caps);
+    *counters = *service.counters();
+    result
 }
 
 /// The full producer→consumer chain: Auto-profile compile → closures
@@ -519,15 +628,33 @@ fn run_chain(
     source: &str,
     path: &str,
     caps: &[String],
+    store: Option<&Path>,
     capture: &mut ConsoleCapture,
+    ct_counters: &mut ace_source_cte::CtCounters,
 ) -> Result<(ExecOutcome, ExecTrace), Json> {
-        let compiled = ace_core::source::adapter::compile_language_source_with(
-            source,
-            path,
-            caps,
-            |program| ace_source_query::instantiate_auto_program(program, path, caps),
-        )
-        .map_err(|ds| diagnostic(&ds[0], path))?;
+    let compiled = ace_core::source::adapter::compile_language_source_prepared(
+        source,
+        path,
+        caps,
+        |program, projected_source, has_instances| {
+            if has_instances {
+                ace_source_query::instantiate_auto_program(program, path, caps)?;
+            }
+            if source.contains('#') {
+                prepare_ct(
+                    program,
+                    projected_source,
+                    path,
+                    caps,
+                    store,
+                    None,
+                    ct_counters,
+                )?;
+            }
+            Ok(())
+        },
+    )
+    .map_err(|ds| diagnostic(&ds[0], path))?;
         // PLAN-1080: the ordinary language face lowers through the same
         // frozen closures-family MIR with the record-method def admission.
         let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
@@ -561,4 +688,191 @@ fn run_chain(
         &CancelFlag::new(false),
         capture,
     ))
+}
+
+#[cfg(test)]
+mod compile_time_tests {
+    use super::*;
+    use ace_core::source::{cst::CT_CAPABILITY, AUTO_SOURCE_ADMISSION_CAP};
+    use std::sync::atomic::Ordering;
+
+    fn request(source: &str, caps: &[&str], store: Option<&Path>) -> Json {
+        let mut request = json!({
+            "recipe": RECIPE,
+            "nonce": "0".repeat(64),
+            "source_b64": base64::engine::general_purpose::STANDARD.encode(source),
+            "steps": [{"op": "run"}],
+            "source_path": "main.at",
+            "entry": "d_main",
+            "caps": caps,
+        });
+        if let Some(store) = store {
+            request["store_root"] = json!(store);
+        }
+        serve(&request).expect("ordinary worker response")["steps"][0].clone()
+    }
+
+    #[test]
+    fn ct_dispatches_once_and_leaves_no_runtime_call() {
+        let source = "fn twice(n int) int { return n * 2 }
+fn main() int { return #{ twice(21) } }";
+        let ct = request(source, &[AUTO_SOURCE_ADMISSION_CAP, CT_CAPABILITY], None);
+        assert_eq!(ct["value"], 42, "{ct}");
+        assert_eq!(ct["counters"]["ct_execute"], 1, "{ct}");
+        assert_eq!(ct["counters"]["runtime_calls"], 0, "{ct}");
+        let dynamic = request(
+            &source.replace("#{ twice(21) }", "twice(21)"),
+            &[AUTO_SOURCE_ADMISSION_CAP],
+            None,
+        );
+        assert_eq!(dynamic["value"], 42, "{dynamic}");
+        assert_eq!(dynamic["counters"]["ct_execute"], 0, "{dynamic}");
+        assert_eq!(dynamic["counters"]["runtime_calls"], 1, "{dynamic}");
+    }
+
+    #[test]
+    fn ct_cancel_reaches_the_av_and_preserves_the_demand_span() {
+        let caps = vec![
+            AUTO_SOURCE_ADMISSION_CAP.to_string(),
+            CT_CAPABILITY.to_string(),
+        ];
+        let mut service = ace_source_cte::CtService::for_auto(
+            ace_source_cte::MemoryEnvelopeSink::new(),
+            caps.clone(),
+        );
+        service.cancel().store(true, Ordering::Relaxed);
+        let source = "fn count(n int) int { var i = 0; for i < n { i = i + 1 }; return i }\nfn main() int { return #{ count(100000) } }";
+        let result = ace_core::source::adapter::compile_language_source_prepared(
+            source,
+            "main.at",
+            &caps,
+            |program, source, _| {
+                ace_source_cte::product::prepare_auto_ct(
+                    &mut service,
+                    program,
+                    source,
+                    "main.at",
+                    &caps,
+                )
+            },
+        );
+        let error = result.err().expect("cancelled compilation");
+        assert_eq!(error[0].code, "cte.cancelled");
+        assert_eq!(
+            &source[error[0].span.start..error[0].span.end],
+            "#{ count(100000) }"
+        );
+        assert_eq!(service.counters().ct_execute, 1);
+        assert_eq!(service.counters().ct_freeze_publishes, 0);
+    }
+
+    #[test]
+    fn explicit_package_target_changes_ct_selection_and_identity() {
+        use ace_core::source::ast::{ExprKind, Item, Stmt};
+        use ace_core::source::packages::{
+            bind_packages_auto_with_context, PackageAssemblyContext, TargetOs,
+        };
+        let source = "#if sys.current == sys.host { fn main() int { return 1 } } else { fn main() int { return 42 } }";
+        let input = PackageModuleInput {
+            package: "auto".into(),
+            id: "main".into(),
+            version: "0".into(),
+            source: source.into(),
+            provider: None,
+        };
+        let caps = [
+            AUTO_SOURCE_ADMISSION_CAP.to_string(),
+            ace_core::source::packages::PACKAGES_CAPABILITY.to_string(),
+        ];
+        let local = PackageAssemblyContext::local_av();
+        let mut other = local.clone();
+        other.target = if local.target == TargetOs::Macos {
+            TargetOs::Windows
+        } else {
+            TargetOs::Macos
+        };
+        let bind = |context| {
+            bind_packages_auto_with_context(
+                std::slice::from_ref(&input),
+                "auto::main",
+                &caps,
+                FrontBudget::WORK_OWNED_64MIB,
+                context,
+            )
+            .expect("selected Auto package")
+        };
+        let local = bind(&local);
+        let other = bind(&other);
+        assert_ne!(local.input_hash, other.input_hash);
+        for (bound, expected) in [(local, 1), (other, 42)] {
+            let [Item::Fn(entry)] = &bound.program.items[..] else {
+                panic!("expected one selected main")
+            };
+            let [Stmt::Return { value, .. }] = &entry.body.stmts[..] else {
+                panic!("expected a selected return")
+            };
+            assert!(matches!(value.kind, ExprKind::IntLit(actual) if actual == expected));
+        }
+    }
+
+    #[test]
+    fn ct_cache_reopens_after_failed_edit_and_uses_current_source_and_grants() {
+        static NEXT_DIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        struct Scratch(std::path::PathBuf);
+        impl Drop for Scratch {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let store = Scratch(std::env::temp_dir().join(format!(
+            "ace-language-ct-cache-{}-{}",
+            std::process::id(),
+            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+        )));
+        let caps = [AUTO_SOURCE_ADMISSION_CAP, CT_CAPABILITY];
+        let source = "fn f(n int) int { return n + 2 }
+fn main() int { return #{ f(40) } }";
+        let run = |text: &str, grants: &[&str]| request(text, grants, Some(&store.0));
+        let first = run(source, &caps);
+        assert_eq!(first["value"], 42, "{first}");
+        assert_eq!(first["counters"]["ct_execute"], 1, "{first}");
+
+        let bad = run(&source.replace("n + 2", "n / 0"), &caps);
+        assert_eq!(bad["outcome"], "diag", "{bad}");
+        assert!(
+            bad["diag"]["code"]
+                .as_str()
+                .expect("trap code")
+                .starts_with("cte.trap/"),
+            "{bad}"
+        );
+        assert_eq!(bad["counters"]["ct_execute"], 1, "{bad}");
+
+        let restored = run(source, &caps);
+        assert_eq!(restored["value"], 42, "{restored}");
+        assert_eq!(restored["counters"]["ct_execute"], 0, "{restored}");
+        assert_eq!(restored["counters"]["ct_hits"], 1, "{restored}");
+
+        let changed = source.replace("n + 2", "n + 3");
+        let edit = run(&changed, &caps);
+        assert_eq!(edit["value"], 43, "{edit}");
+        assert_eq!(edit["counters"]["ct_execute"], 1, "{edit}");
+        assert_eq!(edit["value"], request(&changed, &caps, None)["value"]);
+
+        let new_grants = run(
+            source,
+            &[AUTO_SOURCE_ADMISSION_CAP, CT_CAPABILITY, "console.stdout"],
+        );
+        assert_eq!(new_grants["value"], 42, "{new_grants}");
+        assert_eq!(new_grants["counters"]["ct_execute"], 1, "{new_grants}");
+        assert_eq!(new_grants["counters"]["ct_hits"], 0, "{new_grants}");
+
+        let revoked = run(source, &[AUTO_SOURCE_ADMISSION_CAP]);
+        assert_eq!(
+            revoked["diag"]["code"], "source.cte.capability",
+            "{revoked}"
+        );
+        assert_eq!(revoked["counters"]["ct_hits"], 0, "{revoked}");
+        assert_eq!(revoked["counters"]["ct_execute"], 0, "{revoked}");
+    }
 }

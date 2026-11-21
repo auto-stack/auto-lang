@@ -21,5 +21,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/generics/list-methods.case.ad",
   "language/generics/spec-dispatch.case.ad",
   "language/generics/record-templates.case.ad",
+  "language/comptime/evaluation-macros.case.ad",
 ] }
 ```

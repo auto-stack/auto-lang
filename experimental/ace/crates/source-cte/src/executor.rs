@@ -125,6 +125,37 @@ pub fn checked_module_of(
     src: &str,
     module_path: &str,
 ) -> Result<CheckedModule, CtExecError> {
+    checked_module_of_profile(program, src, module_path, SourceProfile::Scalar)
+}
+
+fn checked_module_of_profile(
+    program: &Program,
+    src: &str,
+    module_path: &str,
+    profile: SourceProfile,
+) -> Result<CheckedModule, CtExecError> {
+    if profile == SourceProfile::Auto {
+        let parts = ace_core::source::adapter::compile_program_parts(
+            program,
+            src,
+            module_path,
+            &[],
+            profile,
+        )
+        .map_err(|ds| {
+            let code = if ds
+                .iter()
+                .any(|diagnostic| diagnostic.code.contains("capability"))
+            {
+                "cte.capability/denied"
+            } else {
+                "cte.frontend/check"
+            };
+            CtExecError::pre(code, first_diag(&ds))
+        })?;
+        return ace_core::verify::verify_auto_language(parts.bundle)
+            .map_err(|ds| CtExecError::pre("cte.frontend/verify", first_diag(&ds)));
+    }
     let resolved = resolve_with(program, &[], SourceProfile::Scalar)
         .map_err(|ds| CtExecError::pre("cte.frontend/bind", first_diag(&ds)))?;
     let parts = emit_resolved_parts(&resolved, src, module_path, SourceProfile::Scalar)
@@ -203,8 +234,12 @@ pub fn run_entry_on_av_observed(
     cancel: &CancelFlag,
     observe: &mut dyn FnMut(&'static str, std::time::Duration),
 ) -> Result<(Value, AvExecFacts), CtExecError> {
+    let lower = match checked.domain() {
+        ace_core::hir::HirDomain::Closures => ace_lowering::lower_checked_auto_language,
+        _ => lower_checked,
+    };
     let preparation = std::time::Instant::now();
-    let mir = lower_checked(checked, entry_id, snapshot)
+    let mir = lower(checked, entry_id, snapshot)
         .map_err(|e| CtExecError::pre("cte.infra/mir-lower", format!("lowering failed: {e:?}")))?;
     let _ = verify_mir(&mir).map_err(|e| {
         CtExecError::pre(
@@ -217,12 +252,7 @@ pub fn run_entry_on_av_observed(
     let decoded = decode_abc(&abc.to_flat()).map_err(|e| {
         CtExecError::pre("cte.infra/abc-decode", format!("ABC decode failed: {e:?}"))
     })?;
-    let owner = &checked.bundle().modules[0].id_text;
-    let owner_scope = ace_av_core::mir::OwnerScope {
-        schema: ace_av_core::contract::ABC_SCHEMA.to_string(),
-        module: owner.clone(),
-    };
-    let loaded = abc_verify::verify_abc(decoded, &owner_scope).map_err(|e| {
+    let loaded = abc_verify::verify_abc(decoded, &mir.owner).map_err(|e| {
         CtExecError::pre(
             "cte.infra/abc-verify",
             format!("ABC admission failed: {e:?}"),
@@ -302,6 +332,28 @@ pub fn execute_expr(
     expect: ExpectTy,
     ctl: &ExecCtl<'_>,
 ) -> Result<CtExecOutcome, CtExecError> {
+    execute_expr_profile(
+        program,
+        src,
+        module_path,
+        expr,
+        expr_is_bool,
+        expect,
+        ctl,
+        SourceProfile::Scalar,
+    )
+}
+
+pub(crate) fn execute_expr_profile(
+    program: &Program,
+    src: &str,
+    module_path: &str,
+    expr: &Expr,
+    expr_is_bool: bool,
+    expect: ExpectTy,
+    ctl: &ExecCtl<'_>,
+    profile: SourceProfile,
+) -> Result<CtExecOutcome, CtExecError> {
     if ctl.forbid_av {
         return Err(CtExecError::forbidden());
     }
@@ -337,8 +389,10 @@ pub fn execute_expr(
     let mut extended = program.clone();
     extended.items.push(Item::Fn(wrapper));
 
-    let checked = checked_module_of(&extended, src, module_path)?;
-    if !checked.required_capabilities().is_empty() {
+    let checked = checked_module_of_profile(&extended, src, module_path, profile)?;
+    if checked.required_capabilities().iter().any(|capability| {
+        profile != SourceProfile::Auto || capability != ace_core::source::AGGREGATES_ADMISSION_CAP
+    }) {
         return Err(CtExecError::pre(
             "cte.capability/denied",
             format!(
@@ -381,6 +435,28 @@ pub fn execute_call(
     args: &[CtValue],
     expect: ExpectTy,
     ctl: &ExecCtl<'_>,
+) -> Result<CtExecOutcome, CtExecError> {
+    execute_call_profile(
+        program,
+        src,
+        module_path,
+        callee,
+        args,
+        expect,
+        ctl,
+        SourceProfile::Scalar,
+    )
+}
+
+pub(crate) fn execute_call_profile(
+    program: &Program,
+    src: &str,
+    module_path: &str,
+    callee: &str,
+    args: &[CtValue],
+    expect: ExpectTy,
+    ctl: &ExecCtl<'_>,
+    profile: SourceProfile,
 ) -> Result<CtExecOutcome, CtExecError> {
     if ctl.forbid_av {
         return Err(CtExecError::forbidden());
@@ -446,8 +522,10 @@ pub fn execute_call(
     let mut extended = program.clone();
     extended.items.push(Item::Fn(wrapper));
 
-    let checked = checked_module_of(&extended, src, module_path)?;
-    if !checked.required_capabilities().is_empty() {
+    let checked = checked_module_of_profile(&extended, src, module_path, profile)?;
+    if checked.required_capabilities().iter().any(|capability| {
+        profile != SourceProfile::Auto || capability != ace_core::source::AGGREGATES_ADMISSION_CAP
+    }) {
         return Err(CtExecError::pre(
             "cte.capability/denied",
             format!(

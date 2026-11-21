@@ -21,7 +21,7 @@
 //! closure).
 
 use crate::envelope::CtExecutedV1;
-use crate::executor::{execute_call, CtExecError, ExecCtl};
+use crate::executor::{CtExecError, ExecCtl};
 use crate::identity::{exec_key_of, UseBinding};
 use crate::identity::{CtValue, ExpectTy};
 use crate::store::CtEnvelopeSink;
@@ -90,6 +90,8 @@ pub struct CtService<S: CtEnvelopeSink> {
     forbid_av: bool,
     cancel: CancelFlag,
     wall_budget: std::time::Duration,
+    profile: ace_core::source::SourceProfile,
+    execution_axes: Vec<String>,
     /// The real execute-boundary log (correlated to ExecKeys).
     exec_log: Vec<ExecLogEntry>,
 }
@@ -102,8 +104,24 @@ impl<S: CtEnvelopeSink> CtService<S> {
             forbid_av: false,
             cancel: CancelFlag::new(false),
             wall_budget: crate::MAX_CALL_WALL,
+            profile: ace_core::source::SourceProfile::Scalar,
+            execution_axes: vec![crate::CT_PROFILE.to_string()],
             exec_log: Vec::new(),
         }
+    }
+
+    pub fn for_auto(sink: S, mut execution_axes: Vec<String>) -> Self {
+        execution_axes.push(ace_core::source::AUTO_SOURCE_PROFILE.into());
+        execution_axes.sort();
+        execution_axes.dedup();
+        let mut service = Self::new(sink);
+        service.profile = ace_core::source::SourceProfile::Auto;
+        service.execution_axes = execution_axes;
+        service
+    }
+
+    pub(crate) fn is_auto(&self) -> bool {
+        self.profile == ace_core::source::SourceProfile::Auto
     }
 
     pub fn counters(&self) -> &CtCounters {
@@ -150,14 +168,14 @@ impl<S: CtEnvelopeSink> CtService<S> {
         module_path: &str,
         req: &CtRequest,
     ) -> Result<CtAnswer, CtExecError> {
-        let key = exec_key_of(
+        let mut key = exec_key_of(
             program,
             &req.binding.package,
             &req.binding.module,
             &req.callee,
             &req.args,
             req.expect,
-            &[crate::CT_PROFILE.to_string()],
+            &self.execution_axes,
         )
         .map_err(|m| {
             self.counters.ct_rejections += 1;
@@ -169,6 +187,14 @@ impl<S: CtEnvelopeSink> CtService<S> {
         })?;
         // Cache probe first (a hit never runs the AV, even under
         // forbid_av — the control proves exactly this).
+        if self.is_auto() {
+            use ace_av_core::contract::{
+                ABC_CLOSURES_SCHEMA, AV_CLOSURES_PROFILE, MIR_CLOSURES_SCHEMA,
+            };
+            key.engine.av_profile = AV_CLOSURES_PROFILE.into();
+            key.engine.mir_schema = MIR_CLOSURES_SCHEMA.into();
+            key.engine.abc_schema = ABC_CLOSURES_SCHEMA.into();
+        }
         match self.sink.probe(&key) {
             Ok(Some(env)) => {
                 // Re-admission against the CURRENT request: strict tag
@@ -221,7 +247,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
         };
         let key_hash = key.hash();
         let attempt = self.counters.ct_execute + 1;
-        match execute_call(
+        match crate::executor::execute_call_profile(
             program,
             src,
             module_path,
@@ -229,6 +255,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
             &req.args,
             req.expect,
             &ctl,
+            self.profile,
         ) {
             Ok(out) => {
                 self.counters.ct_execute += 1;
@@ -310,13 +337,13 @@ impl<S: CtEnvelopeSink> CtService<S> {
         expect: ExpectTy,
         binding: &crate::identity::UseBinding,
     ) -> Result<CtAnswer, CtExecError> {
-        let key = crate::identity::exec_key_of_expr(
+        let mut key = crate::identity::exec_key_of_expr(
             program,
             &binding.package,
             &binding.module,
             expr,
             expect,
-            &[crate::CT_PROFILE.to_string()],
+            &self.execution_axes,
         )
         .map_err(|m| {
             self.counters.ct_rejections += 1;
@@ -326,6 +353,14 @@ impl<S: CtEnvelopeSink> CtService<S> {
                 av_reached: false,
             }
         })?;
+        if self.is_auto() {
+            use ace_av_core::contract::{
+                ABC_CLOSURES_SCHEMA, AV_CLOSURES_PROFILE, MIR_CLOSURES_SCHEMA,
+            };
+            key.engine.av_profile = AV_CLOSURES_PROFILE.into();
+            key.engine.mir_schema = MIR_CLOSURES_SCHEMA.into();
+            key.engine.abc_schema = ABC_CLOSURES_SCHEMA.into();
+        }
         match self.sink.probe(&key) {
             Ok(Some(env)) => {
                 if env.declared_type != expect {
@@ -374,7 +409,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
         };
         let key_hash = key.hash();
         let attempt = self.counters.ct_execute + 1;
-        match crate::executor::execute_expr(
+        match crate::executor::execute_expr_profile(
             program,
             src,
             module_path,
@@ -382,6 +417,7 @@ impl<S: CtEnvelopeSink> CtService<S> {
             expr_is_bool,
             expect,
             &ctl,
+            self.profile,
         ) {
             Ok(out) => {
                 self.counters.ct_execute += 1;

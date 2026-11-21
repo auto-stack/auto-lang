@@ -50,6 +50,7 @@ pub mod product;
 pub mod schedule;
 pub mod service;
 pub mod store;
+mod walk;
 
 #[cfg(test)]
 mod tests;

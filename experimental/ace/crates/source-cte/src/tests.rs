@@ -653,7 +653,7 @@ fn main() int {
     )
     .expect_err("the A->B->A hash cycle must be rejected");
     match &err {
-        PlanError::Cycle { chain } => {
+        PlanError::Cycle { chain, .. } => {
             assert!(chain
                 .first()
                 .map(|s| s == "a" || s == "main")

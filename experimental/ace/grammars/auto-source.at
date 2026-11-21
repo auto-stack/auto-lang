@@ -378,7 +378,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（仅
             // packages-ct）——`#in` 命名空间上下文与无 namespace 的
             // `#if/#is/#for`（谓词域=显式目标 sys 事实）。
-            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { ct-item() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) { ct-item() {} }
             alt(profiles: [collections, aggregates, auto, scheduler, auto-packages]) { enum-item() {} }
             // PLAN-962（T-08，L-13/L-12）：`tag N { ... }` = enum 声明别名
             //（旧 statements.rs:662 同义）；`union N { f T; ... }` = tagged
@@ -1435,7 +1435,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-960（T-02）：模块级常量 `const NAME: T = expr`（pub 形经
         // public-const 前缀）；模块 store `var NAME: T = expr`（无私有外可见形）。
-        const-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        const-item(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             r-const(field: "kw") {}
             ident(field: "name")
             ann-ty(field: "ty")
@@ -1521,15 +1521,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             use-path(field: "path")
             opt { use-alias() {} }
         }
-        use-alias(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        use-alias(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             r-as(field: "kw") {}
             ident(field: "alias")
         }
-        use-path(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        use-path(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             ident(field: "head")
             many { use-seg() {} }
         }
-        use-seg(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) {
+        use-seg(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages, auto]) {
             dot(same-line: true) {}
             ident(field: "seg")
         }
@@ -1542,13 +1542,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-966（T-02）：项位编译期选择分派——`#in` 与独立的
         // `#if/#is/#for` 共用 packages-ct 面；首个 `#` 后的关键字
         // （in/if/is/for）区分形态。wrapper 只做分派，不消费 token。
-        ct-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        ct-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { in-item() {} }
             alt { ct-if-item() {} }
             alt { ct-is-item() {} }
             alt { ct-for-item() {} }
         }
-        in-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             // `#in` 是项位引入符（行首/前一项之后），不做同行锚定——
             // 与 scalar-ct 的 `#{`（表达式位，须同行）分野。
             hash() {}
@@ -1560,14 +1560,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 目标 sys 事实（`sys.current`/`sys.Windows`/…），语义与 `#in sys`
         // 块内 if/is/for 同一求值器；选中声明/use 按原 Emit 规则落位，未选
         // 分支只保 Text 阶段语法检查。
-        ct-if-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        ct-if-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             in-block(field: "then")
             opt { in-else(field: "else") }
         }
-        ct-is-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        ct-is-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
@@ -1575,7 +1575,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list { in-arm() {} }
             rbrace() {}
         }
-        ct-for-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        ct-for-item(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             for(field: "kw") {}
             ident(field: "var")
@@ -1583,21 +1583,21 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in-range(field: "iter")
             in-block(field: "body")
         }
-        in-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { in-is(field: "is") }
             alt { in-block(field: "block") }
         }
         // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct）——`#if`/
         // `#for`/`#is` 与项位形共用 in-ct-expr/in-range 谓词域；体是普通
         // 语句块（`#` 只作用于本结构，体内不重复 `#`）。
-        hash-if-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-if-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             block(field: "then")
             else-block(repeat: "opt")
         }
-        hash-for-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-for-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             for(field: "kw") {}
             ident(field: "var")
@@ -1605,7 +1605,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             in-range(field: "iter")
             block(field: "body")
         }
-        hash-is-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-is-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
@@ -1615,75 +1615,75 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // 臂：`<pat> -> { }` / `<pat> => { }`（旧 #is 的 `=>` 与 962 的
         // `->` 都接受）+ `else -> { }`。
-        hash-is-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-is-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash-is-pattern(field: "pattern")
             hash-is-sep() {}
             block(field: "body")
         }
-        hash-is-pattern(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-is-pattern(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { hash-is-else(field: "else") }
             alt { in-ct-expr(field: "value") }
         }
-        hash-is-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-is-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             else(field: "kw") {}
         }
-        hash-is-sep(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-is-sep(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { fat-arrow() {} }
             alt { arrow() {} }
         }
         // PLAN-966（T-02）：宏调用 `#name(args...)`——语句位调用糖（旧
         // MacroCall 面）。实参是普通运行期表达式；名字按本模块导入/声明的
         // 函数解析（无独立 Log 运行时；目标专有的宏发射归 967/目标 owner）。
-        hash-macro-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        hash-macro-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             hash() {}
             ident(field: "name")
             lparen() {}
             args(field: "args")
             rparen() {}
         }
-        in-block(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-block(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             lbrace() {}
             list-nl { in-stmt() {} }
             rbrace() {}
         }
-        in-is(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-is(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             is(field: "kw") {}
             in-ct-expr(field: "scrutinee")
             lbrace() {}
             list { in-arm() {} }
             rbrace() {}
         }
-        in-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-arm(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             opt { in-arm-qual(field: "qual") }
             ident(field: "pattern")
             arrow() {}
             in-arm-body(field: "body")
         }
         // 限定模式 `sys.Windows`（qual 须等于 #in 的 namespace，绑定期核）。
-        in-arm-qual(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-arm-qual(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             ident(field: "qual")
             dot(same-line: true) {}
         }
-        in-arm-body(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-arm-body(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { in-use(field: "use") }
             alt { in-block(field: "block") }
         }
-        in-use(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-use(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             r-use(field: "kw") {}
             use-path(field: "path")
             opt { in-use-syms(field: "syms") }
             opt { use-alias() {} }
         }
-        in-use-syms(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-use-syms(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             colon() {}
             ident(field: "head")
             many { in-use-sym-tail() {} }
         }
-        in-use-sym-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-use-sym-tail(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             comma() {}
             ident(field: "sym")
         }
-        in-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-stmt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { in-is(field: "is") }
             alt { in-if(field: "if") }
             alt { in-for(field: "for") }
@@ -1694,17 +1694,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { const-item(field: "const") }
             alt { public-item(field: "public") }
         }
-        in-if(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-if(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             if(field: "kw") {}
             in-ct-expr(field: "cond")
             in-block(field: "then")
             opt { in-else(field: "else") }
         }
-        in-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-else(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             else(field: "kw") {}
             in-block(field: "body")
         }
-        in-for(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-for(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             for(field: "kw") {}
             ident(field: "var")
             in(field: "in") {}
@@ -1713,17 +1713,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // `0..3` 整段会被 affix-num 连续字符集（含 `.`）扫成单 token——
         // 融合形备选承载之（投影按 `..` 拆分）；带空格/标识符边界走分解形。
-        in-range(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-range(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { in-ct-expr(field: "start") dotdot() {} in-ct-expr(field: "end") }
             alt { range-lit(field: "both") }
         }
-        range-lit(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        range-lit(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             affix-num(field: "lit")
         }
-        in-ct-expr(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-ct-expr(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             pratt(of: "in-ct-ops")
         }
-        in-ct-unary(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        in-ct-unary(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { int-literal() {} }
             alt { true-kw(field: "lit") }
             alt { false-kw(field: "lit") }
@@ -1733,7 +1733,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // target 事实供给，绑定期解析；不是运行时名字）。限定形先试、裸名
         // 后备（规则级 alt，不用 opt——pratt primary 内的 opt 尾巴会被
         // 行锚纪律误伤）。
-        ns-ref(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+        ns-ref(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
             alt { ident(field: "head") dot() {} ident(field: "member") }
             alt { ident(field: "head") }
         }
@@ -2507,11 +2507,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { if-stmt() {} }
             // PLAN-966（T-02）：语句级编译期构造（仅 packages-ct；`#` 引入，
             // 与项位 #in 同域同求值器；未选分支只 Text 阶段检查）。
-            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { hash-if-stmt() {} }
-            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { hash-for-stmt() {} }
-            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { hash-is-stmt() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) { hash-if-stmt() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) { hash-for-stmt() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) { hash-is-stmt() {} }
             // PLAN-966（T-02）：宏调用语句 `#name(args...)`（旧 MacroCall 位）。
-            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) { hash-macro-stmt() {} }
+            alt(profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) { hash-macro-stmt() {} }
             alt(profiles: [core]) { while-stmt() {} }
             // PLAN-1041：for-cond 语句分派补 packages-ct（规则本身已在面集内，
             // 公共 stdlib 输出循环需要普通 while 形循环）。PLAN-965：aggregates, auto
@@ -2950,7 +2950,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-936（T-04）：编译期表达式 `#{ expr }` —— 单表达式 CT 需求
         // 原子（引入符与花括号须与表达式同行开始；体为恰一表达式）。
-        hash-expr(profiles: [scalar-ct, aac]) {
+        hash-expr(profiles: [scalar-ct, aac, auto, auto-packages]) {
             hash(same-line: true)
             lbrace(same-line: true)
             expr(field: "expr")
@@ -2980,7 +2980,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         condition-atom(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, auto, scheduler, age-package, packages-modules, config-document, auto-packages]) {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
-            alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
+            alt(profiles: [scalar-ct, aac, auto, auto-packages]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
@@ -3019,7 +3019,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         atom-expr {
             // HashExpr 原子先于其余原子形状（`#` 不与其余形状共享前缀）。
-            alt(profiles: [scalar-ct, aac]) { hash-expr() {} }
+            alt(profiles: [scalar-ct, aac, auto, auto-packages]) { hash-expr() {} }
             // PLAN-962（L-16）：数组/List 字面量 `[e, ...]`（聚合面）。
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { grid-atom() {} }
             alt(profiles: [config-document]) { cfg-empty-array-lit() {} }
@@ -3515,7 +3515,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
     // PLAN-1043（T-03）：#in 编译期条件/判别表达式（仅 packages-ct 面）。
     // 值域=标量事实（i32/bool，与 source-cte CtValue 对齐）；仅比较与逻辑
     // 算子（无算术/无括号分组/无调用——越域由绑定具名拒，不静默扩面）。
-    pratt(in-ct-ops, profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct]) {
+    pratt(in-ct-ops, profiles: [packages-ct, packages-aggregates-ct, packages-aggregates-ct, auto, auto-packages]) {
         primary: "in-ct-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }

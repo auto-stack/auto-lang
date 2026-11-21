@@ -515,7 +515,10 @@ impl PackagesFace {
         }
     }
     fn ct_face(&self) -> bool {
-        matches!(self, PackagesFace::Ct | PackagesFace::AggregatesCt)
+        matches!(
+            self,
+            PackagesFace::Ct | PackagesFace::AggregatesCt | PackagesFace::Auto
+        )
     }
     /// PLAN-972（T-02）：aggregates 域投影（集合族语句/`?T`/闭包类型形状按
     /// 962 域投影）；plain/ct 面保持 TextRecord。
@@ -803,6 +806,7 @@ pub(crate) fn project_packages_front(
     use crate::source::packages::{PackageImport, PackageSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let ct_face = face.ct_face();
+    let face_is_auto = face == PackagesFace::Auto;
     let cached = face
         .grammar()
         .map_err(|e| err("source.infra", e, Span { start: 0, end: 0 }))?;
@@ -1803,23 +1807,15 @@ pub(crate) fn project_packages_front(
                         span,
                     ));
                 };
-                // ct-item 是分派 wrapper：实体是 in-item/ct-if-item/ct-is-item/
-                // ct-for-item 中命中的那个规则节点。
-                let inner = tree
-                    .children(node)
-                    .into_iter()
-                    .find(|&c| {
-                        matches!(
-                            face.rule_of(c),
-                            "in-item" | "ct-if-item" | "ct-is-item" | "ct-for-item"
-                        )
-                    })
-                    .unwrap_or(node);
-                let kind = face.ct_item(inner).map_err(|d| vec![d])?;
+                let kind = face.ct_item_wrapper(node).map_err(|d| vec![d])?;
                 ct_items.push(crate::source::packages::PackageCtItem {
                     kind,
                     span,
-                    decl_slot: items.len(),
+                    decl_slot: if face_is_auto {
+                        items.partition_point(|item| item.span().start < span.start)
+                    } else {
+                        items.len()
+                    },
                     import_slot: imports.len(),
                 });
                 continue;
@@ -2283,6 +2279,23 @@ impl<'a> InFace<'a> {
             .get(idx)
             .map(|r| r.name.as_str())
             .unwrap_or("")
+    }
+
+    fn ct_item_wrapper(
+        &mut self,
+        node: u32,
+    ) -> Result<crate::source::packages::CtItemKind, Diagnostic> {
+        let inner = self
+            .nontrivia(node)
+            .into_iter()
+            .find(|&child| {
+                matches!(
+                    self.rule_of(child),
+                    "in-item" | "ct-if-item" | "ct-is-item" | "ct-for-item"
+                )
+            })
+            .unwrap_or(node);
+        self.ct_item(inner)
     }
 
     /// PLAN-966（T-02）：一项位编译期选择（ct-item 的分派实体）→ 形态。
@@ -3420,7 +3433,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
         }
         Err(e) => return FrontOutcome::Infra(format!("parse: {e}")),
     };
-    let program =
+    let mut program =
         match project::project_program(&cached.program, &cached.kinds, &tree, &snap, profile) {
             Ok(program) => program,
             Err(diags) => {
@@ -3493,6 +3506,45 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                 return FrontOutcome::Diag(diags);
             }
         };
+    if profile.is_auto_language() && src.contains('#') {
+        let mut face = InFace {
+            cached,
+            snap: &snap,
+            tree: &tree,
+            proj: project::in_decl_projector(&cached.program, &cached.kinds, &tree, &snap, profile),
+        };
+        let ct_item = face.rule("ct-item");
+        let mut selections = Vec::new();
+        for decl in &tree.decls {
+            let node = if tree.kind(decl.node) == cached.kinds.item {
+                face.nontrivia(decl.node)
+                    .into_iter()
+                    .next()
+                    .unwrap_or(decl.node)
+            } else {
+                decl.node
+            };
+            if Some(tree.kind(node)) != ct_item {
+                continue;
+            }
+            let kind = match face.ct_item_wrapper(node) {
+                Ok(kind) => kind,
+                Err(error) => return FrontOutcome::Diag(vec![error]),
+            };
+            selections.push(crate::source::packages::PackageCtItem {
+                kind,
+                span: face.span_of(node),
+                decl_slot: 0,
+                import_slot: 0,
+            });
+        }
+        let context = crate::source::packages::PackageAssemblyContext::local_av();
+        if let Err(error) =
+            crate::source::packages::assemble_standalone_auto(&mut program, &selections, &context)
+        {
+            return FrontOutcome::Diag(vec![error]);
+        }
+    }
     // PLAN-979：AGE 领域 profile 额外投影未受信领域候选（结构 + 原 span）。
     let mut age_nodes = Vec::new();
     let mut component_nodes = Vec::new();

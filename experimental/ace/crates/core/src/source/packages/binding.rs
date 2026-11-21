@@ -292,7 +292,36 @@ pub fn bind_packages_auto(
     caps: &[String],
     budget: FrontBudget,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_packages_face(inputs, entry, caps, budget, Faces::Auto)
+    bind_packages_auto_with_context(
+        inputs,
+        entry,
+        caps,
+        budget,
+        &super::PackageAssemblyContext::local_av(),
+    )
+}
+
+/// Bind the ordinary language package face with an explicit target context.
+pub fn bind_packages_auto_with_context(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    context: &super::PackageAssemblyContext,
+) -> Result<BoundPackages, PackageDiagnostic> {
+    bind_packages_face_with(
+        inputs,
+        entry,
+        caps,
+        budget,
+        Faces::Auto,
+        &crate::source::age_component::ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+        None,
+        Some(context),
+    )
 }
 
 /// PLAN-981（IF-981-MODULE）：`age-package` 面的包绑定 —— 同一绑定器、同一
@@ -316,6 +345,7 @@ pub fn bind_packages_age(
         Faces::Age,
         scenario,
         Some(&mut collected),
+        None,
     )?;
     let sources = bound
         .segments
@@ -370,6 +400,7 @@ fn bind_packages_face(
             ops: Vec::new(),
         },
         None,
+        None,
     )
 }
 
@@ -384,6 +415,7 @@ enum Faces {
     Age,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bind_packages_face_with(
     inputs: &[PackageModuleInput],
     entry: &str,
@@ -392,6 +424,7 @@ fn bind_packages_face_with(
     face: Faces,
     scenario: &crate::source::age_component::ComponentScenario,
     mut age_out: Option<&mut Vec<PackagedAgeComponent>>,
+    context: Option<&super::PackageAssemblyContext>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     let mut units = BTreeMap::new();
@@ -492,7 +525,7 @@ fn bind_packages_face_with(
             budget,
             units,
             BTreeMap::new(),
-            None,
+            context,
             face,
         )
     } else {
@@ -3163,6 +3196,7 @@ impl<'a> Walker<'a> {
                 "parameterized types belong to the collections surface (PLAN-962)",
                 span,
             )),
+            ExprKind::HashExpr { expr } if self.auto_language => self.walk_expr(expr, locals),
             ExprKind::HashExpr { .. } => Err(fail(
                 self.key,
                 "source.module-surface",
@@ -4797,6 +4831,41 @@ fn eval_for(
 /// 展开为普通语句：未选分支不落语句、`#for` 按 i32 计数重复（预算 1024）、
 /// `#is` 按值相等选臂（`else` 为兜底）。循环变量只进入 CT 谓词域（运行时
 /// 引用仍是普通未定义名，同旧实现）。折叠后的 AST 不再含 CT 语句变体。
+pub(crate) fn assemble_standalone_auto(
+    program: &mut Program,
+    selections: &[super::PackageCtItem],
+    context: &super::provider_sources::PackageAssemblyContext,
+) -> Result<(), Diagnostic> {
+    let facts = context.sys_facts();
+    for selection in selections {
+        let landed = eval_ct_item("", selection, &facts, &BTreeMap::new())
+            .map_err(|error| error.diagnostic)?;
+        if let Some(import) = landed.imports.first() {
+            return Err(Diagnostic::new(
+                Stage::Bind,
+                "source.module-missing",
+                "a selected package import needs an Auto project",
+                import.span,
+            ));
+        }
+        if let Some(requirement) = landed.requires.first() {
+            return Err(Diagnostic::new(
+                Stage::Bind,
+                "source.assembly.context",
+                "a selected provider requirement needs an assembled Auto project",
+                requirement.span,
+            ));
+        }
+        let at = program
+            .items
+            .partition_point(|item| item.span().start < selection.span.start);
+        program
+            .items
+            .splice(at..at, landed.decls.into_iter().map(|(item, _)| item));
+    }
+    expand_ct_statements("", program, &facts).map_err(|error| error.diagnostic)
+}
+
 fn expand_ct_statements(
     key: &str,
     program: &mut Program,
