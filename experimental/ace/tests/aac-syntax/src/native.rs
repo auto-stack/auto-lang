@@ -69,6 +69,22 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/hir/core_ops.at").into(),
         ),
         (
+            "base_ir.at".into(),
+            include_str!("../../../aac/mir/base_ir.at").into(),
+        ),
+        (
+            "lower_base.at".into(),
+            include_str!("../../../aac/mir/lower_base.at").into(),
+        ),
+        (
+            "base_abc.at".into(),
+            include_str!("../../../aac/mir/base_abc.at").into(),
+        ),
+        (
+            "verify_base.at".into(),
+            include_str!("../../../aac/mir/verify_base.at").into(),
+        ),
+        (
             "core_globals.at".into(),
             include_str!("../../../aac/hir/core_globals.at").into(),
         ),
@@ -211,6 +227,33 @@ pub fn run_type_case(sample: &[u8], steps: Option<u32>) -> Result<String, String
 
 pub fn run_core_hir_case(sample: &[u8], mode: &str) -> Result<String, String> {
     run_semantic_source(sample, None, true, Some(mode))
+}
+
+pub fn run_base_mir_case(sample: &[u8]) -> Result<Vec<u8>, String> {
+    let (report, abc) = run_base_mir_control(sample, "mir")?;
+    let bytes = abc.ok_or_else(|| format!("Auto emitted no ABC: {report}"))?;
+    if report != format!("MIR aac.base-mir/1 {}\n", bytes.len()) {
+        return Err(format!("invalid MIR report: {report}"));
+    }
+    Ok(bytes)
+}
+
+pub fn run_base_mir_control(sample: &[u8], mode: &str) -> Result<(String, Option<Vec<u8>>), String> {
+    let exe = prepared_semantic()?;
+    with_fixture("base-mir", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let abc = root.join("closure.abc");
+        std::fs::write(&input, sample).map_err(|err| format!("write MIR input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, true, Some(mode));
+        cmd.env("AAC1055_ABC", &abc);
+        let report = execute_report(cmd, &output, "base-mir")?;
+        match std::fs::read(abc) {
+            Ok(bytes) => Ok((report, Some(bytes))),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok((report, None)),
+            Err(err) => Err(format!("read ABC: {err}")),
+        }
+    })
 }
 
 pub fn run_global_hir_admission(source: &str, artifact: &str) -> Result<String, String> {

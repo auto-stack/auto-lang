@@ -1,5 +1,14 @@
 use app.atom_data.parse_transport_arena
 use app.atom_data.validate_transport_arena
+use app.base_abc.encode_base_abc
+use app.base_ir.block_stride
+use app.base_ir.call_instruction
+use app.base_ir.copy_instruction
+use app.base_ir.function_stride
+use app.base_ir.instruction_stride
+use app.base_ir.invalid_mir_reference
+use app.base_ir.jump_terminator
+use app.base_ir.outside_base_profile
 use app.binding.bind_budget
 use app.binding.call_mapping_stride
 use app.binding.call_parameter_slots
@@ -33,7 +42,9 @@ use app.core_globals.setter_mode
 use app.core_ops.append_statement
 use app.core_ops.binary_op
 use app.core_ops.break_exit
+use app.core_ops.call_op
 use app.core_ops.comparison_op
+use app.core_ops.constant_op
 use app.core_ops.continue_exit
 use app.core_ops.equality_op
 use app.core_ops.extended_binary
@@ -43,6 +54,7 @@ use app.core_ops.less_than_op
 use app.core_ops.logical_op
 use app.core_ops.loop_statement
 use app.core_ops.overflow_op
+use app.core_ops.read_op
 use app.core_ops.return_exit
 use app.core_ops.source_binary
 use app.core_ops.statement_stride
@@ -61,6 +73,7 @@ use app.hir_schema_data.global_schema
 use app.hir_schema_data.scalar_schema
 use app.initializers.global_layout_stride
 use app.initializers.global_symbol
+use app.lower_base.lower_base
 use app.numeric_literal.append_float_bits
 use app.numeric_literal.decode_i32_literal
 use app.numeric_literal.decode_exact_literal
@@ -91,6 +104,7 @@ use app.types.f64_type
 use app.types.integer_type
 use app.types.i8_type
 use app.types.text_view_type
+use app.verify_base.verify_base
 use std.bytes.decode_utf8
 use std.conv.from_int
 
@@ -104,9 +118,6 @@ pub fn hir_mutability_error() int { return -41 }
 pub fn hir_global_authority_error() int { return -43 }
 pub fn hir_borrow_error() int { return -47 }
 
-fn constant_op() int { return 1 }
-fn read_op() int { return 2 }
-fn call_op() int { return 3 }
 fn text_literal_op() int { return 7 }
 fn text_length_op() int { return 8 }
 fn record_constructor_op() int { return 9 }
@@ -1643,7 +1654,77 @@ fn source_origin(rows int, row int) int {
     return 0
 }
 
-pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int) Str {
+fn mir_control(control int, functions List<int>, blocks List<int>, instrs List<int>, operands List<int>, exact List<int>, fuel List<int>, deadline i64) int {
+    if (control == 4) { return 0 }
+    if (control == 8) {
+        var at = 0
+        for (at < exact.len()) {
+            if (!take_step(fuel, deadline)) { return bind_budget() }
+            if (exact.get(at) == integer_type() && exact.get(at + 1) == 0 && exact.get(at + 2) == 1 && exact.get(at + 3) == 0) {
+                exact.set(at + 2, 2)
+                return 0
+            }
+            at = at + exact_literal_stride()
+        }
+        return invalid_mir_reference()
+    }
+    if (control == 7) {
+        let first = functions.get(3) * block_stride()
+        blocks.set(first + 1, jump_terminator())
+        blocks.set(first + 3, blocks.len() / block_stride())
+        return 0
+    }
+    var at = 0
+    for (at < instrs.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        if (control == 5 && instrs.get(at + 1) == call_instruction()) {
+            instrs.set(at + 3, functions.len() / function_stride())
+            return 0
+        }
+        if (control == 6 && instrs.get(at + 1) == call_instruction() && instrs.get(at + 5) >= 2) {
+            let args = instrs.get(at + 4)
+            let first = operands.get(args)
+            operands.set(args, operands.get(args + 1))
+            operands.set(args + 1, first)
+            return 0
+        }
+        if (control == 9 && instrs.get(at + 1) == copy_instruction()) {
+            instrs.set(at + 3, instrs.get(at + 2))
+            return 0
+        }
+        at = at + instruction_stride()
+    }
+    return invalid_mir_reference()
+}
+
+fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int) int {
+    var entry = -1
+    var at = 0
+    for (at < defs.len()) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let def = defs.get(at)
+        if (def < row_count(ast) && source_id(ast, def) == 0 && spelling(src, ast, decl_name(declarations, def)) == "main") {
+            entry = at / 4
+            break
+        }
+        at = at + 4
+    }
+    if (entry < 0) { return outside_base_profile() }
+    var functions = List<int>.new()
+    var slots = List<int>.new()
+    var blocks = List<int>.new()
+    var instrs = List<int>.new()
+    var operands = List<int>.new()
+    let status = lower_base(defs, parameters, exprs, args, hir_blocks, statements, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    if (status != 0) { return status }
+    let applied = mir_control(control, functions, blocks, instrs, operands, exact, fuel, deadline)
+    if (applied != 0) { return applied }
+    let verified = verify_base(entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    if (verified != 0) { return verified }
+    return encode_base_abc(out, ast, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+}
+
+pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int, abc List<int>) Str {
     var module_id = 0
     for (module_id < roots.len()) {
         var member = first_child(links, roots.get(module_id))
@@ -1695,7 +1776,21 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     if (control == 3 && layouts.len() >= global_layout_stride()) { layouts.set(2, 0) }
     let verified = verify(defs, parameters, exprs, args, blocks, statements, records, layouts, exact, row_count(ast), fuel, deadline, errors)
     is verified {
-        Some(checked) -> { return emit(checked, defs, parameters, exprs, args, blocks, statements, records, exact, exact_type_decls.move, ast, src, declarations, modules, layouts.len() > 0) }
+        Some(checked) -> {
+            if (control >= 4) {
+                if (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs)) {
+                    failed(errors, 0, outside_base_profile())
+                    return ""
+                }
+                let status = emit_base_mir(abc, ast, src, declarations, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control)
+                if (status != 0) {
+                    failed(errors, 0, status)
+                    return ""
+                }
+                return "MIR aac.base-mir/1 " + from_int(abc.len()) + "\n"
+            }
+            return emit(checked, defs, parameters, exprs, args, blocks, statements, records, exact, exact_type_decls.move, ast, src, declarations, modules, layouts.len() > 0)
+        }
         None -> { errors.set(0, source_origin(row_count(ast), errors.get(0))) }
     }
     return ""

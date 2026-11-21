@@ -1,0 +1,334 @@
+use app.base_ir.account
+use app.base_ir.binary_instruction
+use app.base_ir.block_stride
+use app.base_ir.branch_terminator
+use app.base_ir.call_instruction
+use app.base_ir.constant_instruction
+use app.base_ir.copy_instruction
+use app.base_ir.function_stride
+use app.base_ir.instruction_stride
+use app.base_ir.invalid_mir_reference
+use app.base_ir.jump_terminator
+use app.base_ir.parameter_slot
+use app.base_ir.return_terminator
+use app.base_ir.slot_stride
+use app.base_ir.temporary_slot
+use app.binding.bind_budget
+use app.core_ops.binary_op
+use app.core_ops.comparison_op
+use app.core_ops.equality_op
+use app.core_ops.logical_op
+use app.numeric_literal.exact_literal_stride
+use app.numeric_literal.exact_scalar_word
+use app.types.boolean_type
+use app.types.integer_type
+
+pub fn invalid_mir_type() int { return -62 }
+pub fn uninitialized_mir_slot() int { return -63 }
+
+fn in_table(rows List<int>, stride int, index int) bool {
+    return index >= 0 && index < rows.len() / stride
+}
+
+fn scalar(lane int) bool {
+    return lane == integer_type() || lane == boolean_type() || exact_scalar_word(lane).len() > 0
+}
+
+fn lane_at(slots List<int>, owner int, slot int) int {
+    if (!in_table(slots, slot_stride(), slot)) { return invalid_mir_reference() }
+    let at = slot * slot_stride()
+    if (slots.get(at) != owner) { return invalid_mir_reference() }
+    return slots.get(at + 1)
+}
+
+fn owned_block(blocks List<int>, owner int, block int) bool {
+    return in_table(blocks, block_stride(), block) && blocks.get(block * block_stride()) == owner
+}
+
+fn number_owned(rows List<int>, stride int, owner int, indices List<int>) int {
+    var at = 0
+    var count = 0
+    for (at < rows.len()) {
+        var local = -1
+        if (rows.get(at) == owner) {
+            local = count
+            count = count + 1
+        }
+        indices.push(local)
+        at = at + stride
+    }
+    return count
+}
+
+fn check_call(slots List<int>, functions List<int>, operands List<int>, owner int, result int, target int, begin int, count int, fuel List<int>, deadline i64) int {
+    if (!in_table(functions, function_stride(), target) || count < 0 || count > 255 || begin < 0 || begin > operands.len() - count) {
+        return invalid_mir_reference()
+    }
+    if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
+    let callee = target * function_stride()
+    if (functions.get(callee + 2) != count || functions.get(callee + 1) != result) { return invalid_mir_type() }
+    var at = 0
+    var position = 0
+    for (at < slots.len()) {
+        if (slots.get(at) == target && slots.get(at + 2) == parameter_slot()) {
+            if (position >= count) { return invalid_mir_type() }
+            let lane = lane_at(slots, owner, operands.get(begin + position))
+            if (lane < 0) { return lane }
+            if (lane != slots.get(at + 1)) { return invalid_mir_type() }
+            position = position + 1
+        }
+        at = at + slot_stride()
+    }
+    if (position != count) { return invalid_mir_type() }
+    return 0
+}
+
+fn check_instruction(functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, at int, fuel List<int>, deadline i64) int {
+    let block = instrs.get(at)
+    if (!in_table(blocks, block_stride(), block)) { return invalid_mir_reference() }
+    let row = block * block_stride()
+    if (blocks.get(row + 1) == 0) { return invalid_mir_reference() }
+    let owner = blocks.get(row)
+    let op = instrs.get(at + 1)
+    let dst = lane_at(slots, owner, instrs.get(at + 2))
+    if (dst < 0) { return dst }
+    let first = instrs.get(at + 3)
+    let second = instrs.get(at + 4)
+    let detail = instrs.get(at + 5)
+    if (op == constant_instruction()) {
+        if (!in_table(constants, exact_literal_stride(), first)) { return invalid_mir_reference() }
+        if (constants.get(first * exact_literal_stride()) != dst) { return invalid_mir_type() }
+        return 0
+    }
+    if (op == call_instruction()) {
+        return check_call(slots, functions, operands, owner, dst, first, second, detail, fuel, deadline)
+    }
+    let lhs = lane_at(slots, owner, first)
+    if (lhs < 0) { return lhs }
+    if (op == copy_instruction()) {
+        if (dst != lhs) { return invalid_mir_type() }
+        return 0
+    }
+    if (op != binary_instruction() || !binary_op(detail) || logical_op(detail)) { return invalid_mir_type() }
+    let rhs = lane_at(slots, owner, second)
+    if (rhs < 0) { return rhs }
+    if (lhs != rhs || (lhs == boolean_type() && !equality_op(detail))) { return invalid_mir_type() }
+    var expected = lhs
+    if (comparison_op(detail)) { expected = boolean_type() }
+    if (dst != expected) { return invalid_mir_type() }
+    return 0
+}
+
+pub fn check_base_shape(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+    if (!in_table(functions, function_stride(), entry)) { return invalid_mir_reference() }
+    if (functions.get(entry * function_stride() + 2) != 0) { return invalid_mir_type() }
+    var at = 0
+    for (at < slots.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        if (!in_table(functions, function_stride(), slots.get(at))) { return invalid_mir_reference() }
+        at = at + slot_stride()
+    }
+    at = 0
+    for (at < functions.len()) {
+        if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
+        let owner = at / function_stride()
+        if (!owned_block(blocks, owner, functions.get(at + 3))) { return invalid_mir_reference() }
+        if (!scalar(functions.get(at + 1))) { return invalid_mir_type() }
+        var scan = 0
+        var arity = 0
+        var after_parameter = false
+        for (scan < slots.len()) {
+            if (slots.get(scan) == owner) {
+                let kind = slots.get(scan + 2)
+                if (!scalar(slots.get(scan + 1)) || kind < parameter_slot() || kind > temporary_slot()) { return invalid_mir_type() }
+                if (kind == parameter_slot()) {
+                    if (after_parameter) { return invalid_mir_type() }
+                    arity = arity + 1
+                } else {
+                    after_parameter = true
+                }
+            }
+            scan = scan + slot_stride()
+        }
+        if (arity != functions.get(at + 2)) { return invalid_mir_type() }
+        at = at + function_stride()
+    }
+    at = 0
+    for (at < blocks.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        let owner = blocks.get(at)
+        if (!in_table(functions, function_stride(), owner)) { return invalid_mir_reference() }
+        let term = blocks.get(at + 1)
+        if (term == return_terminator()) {
+            let value = lane_at(slots, owner, blocks.get(at + 2))
+            if (value < 0) { return value }
+            if (value != functions.get(owner * function_stride() + 1)) { return invalid_mir_type() }
+        } else {
+            if (term != 0) {
+                if (!owned_block(blocks, owner, blocks.get(at + 3))) { return invalid_mir_reference() }
+                if (term == branch_terminator()) {
+                    if (!owned_block(blocks, owner, blocks.get(at + 4))) { return invalid_mir_reference() }
+                    let value = lane_at(slots, owner, blocks.get(at + 2))
+                    if (value < 0) { return value }
+                    if (value != boolean_type()) { return invalid_mir_type() }
+                } else {
+                    if (term != jump_terminator()) { return invalid_mir_reference() }
+                }
+            }
+        }
+        at = at + block_stride()
+    }
+    at = 0
+    for (at < instrs.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        let status = check_instruction(functions, slots, blocks, instrs, operands, constants, at, fuel, deadline)
+        if (status != 0) { return status }
+        at = at + instruction_stride()
+    }
+    return 0
+}
+
+fn propagate(destination int, pending List<int>, block_ids List<int>, seen List<int>, matrix List<int>, current List<int>) int {
+    let local = block_ids.get(destination)
+    let base = local * current.len()
+    let initial = seen.get(local) == 0
+    var changed = initial
+    var slot = 0
+    for (slot < current.len()) {
+        let previous = matrix.get(base + slot)
+        var value = current.get(slot)
+        if (!initial) { value = previous & value }
+        if (value != previous) {
+            matrix.set(base + slot, value)
+            changed = true
+        }
+        slot = slot + 1
+    }
+    if (changed) {
+        seen.set(local, 1)
+        pending.push(destination)
+    }
+    return 0
+}
+
+fn read_initialized(slot int, slot_ids List<int>, values List<int>) bool {
+    return values.get(slot_ids.get(slot)) != 0
+}
+
+// Compute must-initialize states to a fixed point before checking reads.
+// A first predecessor establishes the incoming state; every further edge
+// intersects it. This prevents a temporary written only in one lazy/if
+// arm from becoming usable at the join, even when a loop revisits it.
+fn verify_initialization(owner int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, fuel List<int>, deadline i64) int {
+    if (!account(fuel, deadline, slots.len() / slot_stride() + blocks.len() / block_stride())) { return bind_budget() }
+    var slot_ids = List<int>.new()
+    var block_ids = List<int>.new()
+    let locals = number_owned(slots, slot_stride(), owner, slot_ids)
+    let count = number_owned(blocks, block_stride(), owner, block_ids)
+    if (locals == 0 || count > 4194304 / locals) { return bind_budget() }
+    if (!account(fuel, deadline, count * locals + count)) { return bind_budget() }
+    var matrix = List<int>.new()
+    var seen = List<int>.new()
+    var pending = List<int>.new()
+    var at = 0
+    for (at < count * locals) {
+        matrix.push(0)
+        at = at + 1
+    }
+    at = 0
+    for (at < count) {
+        seen.push(0)
+        at = at + 1
+    }
+    let info = owner * function_stride()
+    let first = functions.get(info + 3)
+    let initial = block_ids.get(first)
+    let arity = functions.get(info + 2)
+    at = 0
+    for (at < arity) {
+        matrix.set(initial * locals + at, 1)
+        at = at + 1
+    }
+    seen.set(initial, 1)
+    pending.push(first)
+    for (pending.len() > 0) {
+        let block = pending.remove(pending.len() - 1)
+        let row = block * block_stride()
+        let term = blocks.get(row + 1)
+        if (term == 0) { return invalid_mir_reference() }
+        if (!account(fuel, deadline, instrs.len() / instruction_stride() + locals * 3)) { return bind_budget() }
+        var values = List<int>.new()
+        let start = block_ids.get(block) * locals
+        at = 0
+        for (at < locals) {
+            values.push(matrix.get(start + at))
+            at = at + 1
+        }
+        at = 0
+        for (at < instrs.len()) {
+            if (instrs.get(at) == block) {
+                values.set(slot_ids.get(instrs.get(at + 2)), 1)
+            }
+            at = at + instruction_stride()
+        }
+        if (term != return_terminator()) {
+            propagate(blocks.get(row + 3), pending, block_ids, seen, matrix, values)
+            if (term == branch_terminator()) {
+                propagate(blocks.get(row + 4), pending, block_ids, seen, matrix, values)
+            }
+        }
+    }
+    var block = 0
+    for (block < block_ids.len()) {
+        let local = block_ids.get(block)
+        if (local >= 0 && seen.get(local) != 0) {
+            if (!account(fuel, deadline, locals + instrs.len() / instruction_stride())) { return bind_budget() }
+            var values = List<int>.new()
+            at = 0
+            for (at < locals) {
+                values.push(matrix.get(local * locals + at))
+                at = at + 1
+            }
+            at = 0
+            for (at < instrs.len()) {
+                if (instrs.get(at) == block) {
+                    let op = instrs.get(at + 1)
+                    if (op == copy_instruction() || op == binary_instruction()) {
+                        if (!read_initialized(instrs.get(at + 3), slot_ids, values)) { return uninitialized_mir_slot() }
+                        if (op == binary_instruction() && !read_initialized(instrs.get(at + 4), slot_ids, values)) { return uninitialized_mir_slot() }
+                    }
+                    if (op == call_instruction()) {
+                        let begin = instrs.get(at + 4)
+                        let count_args = instrs.get(at + 5)
+                        if (!account(fuel, deadline, count_args)) { return bind_budget() }
+                        var i = 0
+                        for (i < count_args) {
+                            if (!read_initialized(operands.get(begin + i), slot_ids, values)) { return uninitialized_mir_slot() }
+                            i = i + 1
+                        }
+                    }
+                    values.set(slot_ids.get(instrs.get(at + 2)), 1)
+                }
+                at = at + instruction_stride()
+            }
+            let term = blocks.get(block * block_stride() + 1)
+            if (term != jump_terminator() && !read_initialized(blocks.get(block * block_stride() + 2), slot_ids, values)) {
+                return uninitialized_mir_slot()
+            }
+        }
+        block = block + 1
+    }
+    return 0
+}
+
+pub fn verify_base(entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+    let shape = check_base_shape(entry, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+    if (shape != 0) { return shape }
+    var owner = 0
+    for (owner < functions.len() / function_stride()) {
+        let initialized = verify_initialization(owner, functions, slots, blocks, instrs, operands, fuel, deadline)
+        if (initialized != 0) { return initialized }
+        owner = owner + 1
+    }
+    return 0
+}

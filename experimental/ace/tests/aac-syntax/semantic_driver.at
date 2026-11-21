@@ -14,6 +14,8 @@ use app.binding.bind_private
 use app.binding.bind_source
 use app.binding.bind_unresolved
 use app.binding.take_step
+use app.base_ir.invalid_mir_reference
+use app.base_ir.outside_base_profile
 use app.core_hir.checked_core_atom
 use app.core_hir.hir_owner_error
 use app.core_hir.hir_initialization_error
@@ -81,6 +83,8 @@ use app.typecheck.type_unknown
 use app.typecheck.type_value
 use app.types.f32_type
 use app.types.f64_type
+use app.verify_base.invalid_mir_type
+use app.verify_base.uninitialized_mir_slot
 use std.conv.from_int
 use std.conv.to_int
 use std.env.get
@@ -89,6 +93,7 @@ use std.file.delete
 use std.file.replace_atomic
 use std.file.size
 use std.file.write_text
+use std.file.write_bytes
 use std.path.join
 use std.text.split
 use std.time.mono_ms
@@ -136,6 +141,10 @@ fn diagnostic_name(code int) Str {
     if (code == hir_mutability_error()) { return "hir.mutability" }
     if (code == hir_global_authority_error()) { return "hir.global-authority" }
     if (code == hir_borrow_error()) { return "hir.borrow" }
+    if (code == outside_base_profile()) { return "mir.base-profile" }
+    if (code == invalid_mir_reference()) { return "mir.reference" }
+    if (code == invalid_mir_type()) { return "mir.type" }
+    if (code == uninitialized_mir_slot()) { return "mir.uninitialized" }
     if (code == annotation_owner_error()) { return "type.annotation-owner" }
     return "internal.semantic"
 }
@@ -297,10 +306,18 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             if (hir_mode == "owner") { control = 1 }
             if (hir_mode == "defref") { control = 2 }
             if (hir_mode == "immutable-global") { control = 3 }
-            let document = checked_core_atom(pg, ast, links, src, roots, modules, declarations, uses, mappings, facts, types, layouts, fuel, deadline, errors, control)
+            if (hir_mode == "mir") { control = 4 }
+            if (hir_mode == "mir-defref") { control = 5 }
+            if (hir_mode == "mir-type") { control = 6 }
+            if (hir_mode == "mir-cfg") { control = 7 }
+            if (hir_mode == "mir-change-constant") { control = 8 }
+            if (hir_mode == "mir-uninitialized") { control = 9 }
+            var abc = List<int>.new()
+            let document = checked_core_atom(pg, ast, links, src, roots, modules, declarations, uses, mappings, facts, types, layouts, fuel, deadline, errors, control, abc)
             if (document.len() == 0) {
                 return "ERROR " + diagnostic_name(errors.get(1)) + " " + location(ast, errors.get(0), bases) + "\n"
             }
+            if (control >= 4 && write_bytes(get("AAC1055_ABC"), abc) != 0) { return "ERROR os.write\n" }
             return document
         }
         var literals = List<Str>.new()

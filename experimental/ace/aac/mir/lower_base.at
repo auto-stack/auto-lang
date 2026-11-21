@@ -1,0 +1,332 @@
+use app.base_ir.account
+use app.base_ir.add_block
+use app.base_ir.add_function
+use app.base_ir.add_instruction
+use app.base_ir.add_slot
+use app.base_ir.binary_instruction
+use app.base_ir.block_stride
+use app.base_ir.branch_terminator
+use app.base_ir.call_instruction
+use app.base_ir.constant_instruction
+use app.base_ir.copy_instruction
+use app.base_ir.find_id
+use app.base_ir.finish_block
+use app.base_ir.function_stride
+use app.base_ir.invalid_mir_reference
+use app.base_ir.jump_terminator
+use app.base_ir.local_slot
+use app.base_ir.local_slot_index
+use app.base_ir.outside_base_profile
+use app.base_ir.parameter_slot
+use app.base_ir.return_terminator
+use app.base_ir.temporary_slot
+use app.binding.bind_budget
+use app.core_ops.binary_op
+use app.core_ops.break_exit
+use app.core_ops.call_op
+use app.core_ops.conjunction_op
+use app.core_ops.constant_op
+use app.core_ops.continue_exit
+use app.core_ops.exact_constant_op
+use app.core_ops.fallthrough_exit
+use app.core_ops.if_statement
+use app.core_ops.logical_op
+use app.core_ops.loop_statement
+use app.core_ops.read_op
+use app.core_ops.return_exit
+use app.core_ops.statement_stride
+use app.numeric_literal.exact_literal_stride
+use app.numeric_literal.exact_scalar_word
+use app.types.boolean_type
+use app.types.integer_type
+
+fn scalar(lane int) bool {
+    return lane == integer_type() || lane == boolean_type() || exact_scalar_word(lane).len() > 0
+}
+
+fn add_small_constant(constants List<int>, lane int, value int) int {
+    let index = constants.len() / exact_literal_stride()
+    var magnitude = value.to(i64)
+    var negative = 0
+    if (value < 0) {
+        negative = 1
+        magnitude = 0i64 - magnitude
+    }
+    constants.push(lane)
+    constants.push(negative)
+    constants.push((magnitude % 65536i64).to(int))
+    constants.push((magnitude / 65536i64).to(int))
+    constants.push(0)
+    constants.push(0)
+    return index
+}
+
+fn push_expr(work List<int>, id int, stage int, first int, second int) int {
+    work.push(id)
+    work.push(stage)
+    work.push(first)
+    work.push(second)
+    return 0
+}
+
+// Each expression produces one typed temporary. The stack records postfix
+// work explicitly, including the two continuations of a lazy expression.
+// The current block can change even while evaluating a call argument.
+fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+    var work = List<int>.new()
+    var results = List<int>.new()
+    push_expr(work, id, 0, 0, 0)
+    for (work.len() > 0) {
+        let second = work.remove(work.len() - 1)
+        let first = work.remove(work.len() - 1)
+        let stage = work.remove(work.len() - 1)
+        let expr = work.remove(work.len() - 1)
+        let index = find_id(exprs, 5, 0, expr, fuel, deadline)
+        if (index < 0) { return index }
+        let row = index * 5
+        let op = exprs.get(row + 2)
+        let lane = exprs.get(row + 3)
+        let data = exprs.get(row + 4)
+        let block = current.get(0)
+        if (stage == 0) {
+            if (op == constant_op() || op == exact_constant_op() || op == read_op()) {
+                let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
+                if (op == read_op()) {
+                    let src = local_slot_index(slots, owner, data, fuel, deadline)
+                    if (src < 0) { return src }
+                    add_instruction(instrs, block, copy_instruction(), dst, src, -1, 0, expr)
+                } else {
+                    var literal = data / exact_literal_stride()
+                    if (op == constant_op()) { literal = add_small_constant(constants, lane, data) }
+                    add_instruction(instrs, block, constant_instruction(), dst, literal, -1, 0, expr)
+                }
+                results.push(dst)
+                continue
+            }
+            if (!account(fuel, deadline, args.len() / 3)) { return bind_budget() }
+            if (logical_op(op)) {
+                var lhs = -1
+                var rhs = -1
+                var at = 0
+                for (at < args.len()) {
+                    if (args.get(at) == expr) {
+                        if (args.get(at + 2) == 0) { lhs = args.get(at + 1) } else { rhs = args.get(at + 1) }
+                    }
+                    at = at + 3
+                }
+                if (lhs < 0 || rhs < 0) { return invalid_mir_reference() }
+                push_expr(work, expr, 2, rhs, 0)
+                push_expr(work, lhs, 0, 0, 0)
+                continue
+            }
+            if (op != call_op() && !binary_op(op)) { return outside_base_profile() }
+            push_expr(work, expr, 1, results.len(), 0)
+            var at = args.len() - 3
+            for (at >= 0) {
+                if (args.get(at) == expr) { push_expr(work, args.get(at + 1), 0, 0, 0) }
+                at = at - 3
+            }
+            continue
+        }
+        if (stage == 2) {
+            let lhs = results.remove(results.len() - 1)
+            let dst = add_slot(slots, owner, boolean_type(), temporary_slot(), -1)
+            let right = add_block(blocks, owner, expr)
+            let skipped = add_block(blocks, owner, expr)
+            let join = add_block(blocks, owner, expr)
+            var yes = skipped
+            var no = right
+            var result = 1
+            if (conjunction_op(op)) {
+                yes = right
+                no = skipped
+                result = 0
+            }
+            let finished = finish_block(blocks, block, branch_terminator(), lhs, yes, no)
+            if (finished != 0) { return finished }
+            let literal = add_small_constant(constants, boolean_type(), result)
+            add_instruction(instrs, skipped, constant_instruction(), dst, literal, -1, 0, expr)
+            finish_block(blocks, skipped, jump_terminator(), -1, join, -1)
+            current.set(0, right)
+            push_expr(work, expr, 3, dst, join)
+            push_expr(work, first, 0, 0, 0)
+            continue
+        }
+        if (stage == 3) {
+            let rhs = results.remove(results.len() - 1)
+            add_instruction(instrs, block, copy_instruction(), first, rhs, -1, 0, expr)
+            let finished = finish_block(blocks, block, jump_terminator(), -1, second, -1)
+            if (finished != 0) { return finished }
+            current.set(0, second)
+            results.push(first)
+            continue
+        }
+        let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
+        if (op == call_op()) {
+            let target = find_id(functions, function_stride(), 0, data, fuel, deadline)
+            if (target < 0) { return target }
+            let count = results.len() - first
+            if (!account(fuel, deadline, args.len() / 3 + count)) { return bind_budget() }
+            if (count != functions.get(target * function_stride() + 2)) { return invalid_mir_reference() }
+            let begin = operands.len()
+            var slot = 0
+            for (slot < count) {
+                operands.push(-1)
+                slot = slot + 1
+            }
+            var at = 0
+            var evaluated = first
+            for (at < args.len()) {
+                if (args.get(at) == expr) {
+                    operands.set(begin + args.get(at + 2), results.get(evaluated))
+                    evaluated = evaluated + 1
+                }
+                at = at + 3
+            }
+            add_instruction(instrs, block, call_instruction(), dst, target, begin, count, expr)
+        } else {
+            if (results.len() - first != 2) { return invalid_mir_reference() }
+            add_instruction(instrs, block, binary_instruction(), dst, results.get(first), results.get(first + 1), op, expr)
+        }
+        for (results.len() > first) { results.remove(results.len() - 1) }
+        results.push(dst)
+    }
+    if (results.len() != 1) { return invalid_mir_reference() }
+    return results.get(0)
+}
+
+fn push_body(work List<int>, source int, entry int, next int, stop int, repeat int) int {
+    work.push(source)
+    work.push(entry)
+    work.push(next)
+    work.push(stop)
+    work.push(repeat)
+    return 0
+}
+
+fn lower_body(hir_entry int, owner int, entry int, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+    var work = List<int>.new()
+    var current = List<int>.new()
+    current.push(entry)
+    push_body(work, hir_entry, entry, -1, -1, -1)
+    for (work.len() > 0) {
+        let repeat = work.remove(work.len() - 1)
+        let stop = work.remove(work.len() - 1)
+        let next = work.remove(work.len() - 1)
+        current.set(0, work.remove(work.len() - 1))
+        let source = work.remove(work.len() - 1)
+        let block = find_id(hir_blocks, 6, 0, source, fuel, deadline)
+        if (block < 0) { return block }
+        if (!account(fuel, deadline, statements.len() / statement_stride())) { return bind_budget() }
+        var at = 0
+        for (at < statements.len()) {
+            if (statements.get(at) == source) {
+                let op = statements.get(at + 1)
+                let first = statements.get(at + 2)
+                let second = statements.get(at + 3)
+                let other = statements.get(at + 4)
+                if (op == loop_statement()) {
+                    let body = add_block(blocks, owner, second)
+                    let after = add_block(blocks, owner, source)
+                    let status = finish_block(blocks, current.get(0), jump_terminator(), -1, body, -1)
+                    if (status != 0) { return status }
+                    push_body(work, second, body, body, after, body)
+                    current.set(0, after)
+                } else {
+                    let value = lower_expression(second, owner, current, exprs, args, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+                    if (value < 0) { return value }
+                    if (op == if_statement()) {
+                        let join = add_block(blocks, owner, source)
+                        let yes = add_block(blocks, owner, first)
+                        var no = join
+                        if (other >= 0) {
+                            no = add_block(blocks, owner, other)
+                            push_body(work, other, no, join, stop, repeat)
+                        }
+                        push_body(work, first, yes, join, stop, repeat)
+                        let status = finish_block(blocks, current.get(0), branch_terminator(), value, yes, no)
+                        if (status != 0) { return status }
+                        current.set(0, join)
+                    } else {
+                        let dst = local_slot_index(slots, owner, first, fuel, deadline)
+                        if (dst < 0) { return dst }
+                        add_instruction(instrs, current.get(0), copy_instruction(), dst, value, -1, 0, second)
+                    }
+                }
+            }
+            at = at + statement_stride()
+        }
+        let exit = hir_blocks.get(block * 6 + 2)
+        if (exit == return_exit()) {
+            let result = hir_blocks.get(block * 6 + 5)
+            let value = lower_expression(result, owner, current, exprs, args, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+            if (value < 0) { return value }
+            let status = finish_block(blocks, current.get(0), return_terminator(), value, -1, -1)
+            if (status != 0) { return status }
+        } else {
+            var target = next
+            if (exit == break_exit()) { target = stop }
+            if (exit == continue_exit()) { target = repeat }
+            if (exit != fallthrough_exit() && target < 0) { return invalid_mir_reference() }
+            if (target >= 0) {
+                let status = finish_block(blocks, current.get(0), jump_terminator(), -1, target, -1)
+                if (status != 0) { return status }
+            }
+        }
+    }
+    return 0
+}
+
+pub fn lower_base(defs List<int>, locals List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, constants List<int>, fuel List<int>, deadline i64) int {
+    var definition = 0
+    for (definition < defs.len()) {
+        if (!account(fuel, deadline, locals.len() / 4 * 2)) { return bind_budget() }
+        let def = defs.get(definition)
+        let lane = defs.get(definition + 1)
+        if (!scalar(lane) || defs.get(definition + 2) != def) { return outside_base_profile() }
+        var arity = 0
+        var at = 0
+        for (at < locals.len()) {
+            if (locals.get(at) == def) {
+                if (!scalar(locals.get(at + 2))) { return outside_base_profile() }
+                if (locals.get(at + 3) >= 0) { arity = arity + 1 }
+            }
+            at = at + 4
+        }
+        let function = add_function(functions, def, lane, arity)
+        var formal = 0
+        for (formal < arity) {
+            if (!account(fuel, deadline, locals.len() / 4)) { return bind_budget() }
+            at = 0
+            for (at < locals.len()) {
+                if (locals.get(at) == def && locals.get(at + 3) == formal) {
+                    add_slot(slots, function, locals.get(at + 2), parameter_slot(), locals.get(at + 1))
+                    break
+                }
+                at = at + 4
+            }
+            if (at == locals.len()) { return invalid_mir_reference() }
+            formal = formal + 1
+        }
+        at = 0
+        for (at < locals.len()) {
+            if (locals.get(at) == def && locals.get(at + 3) < 0) {
+                add_slot(slots, function, locals.get(at + 2), local_slot(), locals.get(at + 1))
+            }
+            at = at + 4
+        }
+        definition = definition + 4
+    }
+    definition = 0
+    for (definition < defs.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        let function = definition / 4
+        let hir_entry = defs.get(definition + 3)
+        let entry = add_block(blocks, function, hir_entry)
+        functions.set(function * function_stride() + 3, entry)
+        let status = lower_body(hir_entry, function, entry, exprs, args, hir_blocks, statements, functions, slots, blocks, instrs, operands, constants, fuel, deadline)
+        if (status != 0) { return status }
+        definition = definition + 4
+    }
+    return 0
+}

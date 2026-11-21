@@ -1,0 +1,398 @@
+use app.base_ir.account
+use app.base_ir.binary_instruction
+use app.base_ir.block_stride
+use app.base_ir.branch_terminator
+use app.base_ir.call_instruction
+use app.base_ir.constant_instruction
+use app.base_ir.copy_instruction
+use app.base_ir.function_stride
+use app.base_ir.instruction_stride
+use app.base_ir.invalid_mir_reference
+use app.base_ir.jump_terminator
+use app.base_ir.return_terminator
+use app.base_ir.slot_stride
+use app.binding.bind_budget
+use app.numeric_literal.exact_literal_stride
+use app.semantic_tree.end_of
+use app.semantic_tree.row_count
+use app.semantic_tree.start_of
+use std.conv.from_int
+
+fn word(out List<int>, value int, length int) int {
+    var remainder = value
+    var at = 0
+    for (at < length) {
+        out.push(remainder % 256)
+        remainder = remainder / 256
+        at = at + 1
+    }
+    return 0
+}
+
+fn append_string(out List<int>, text Str) int {
+    word(out, text.len(), 2)
+    var at = 0
+    for (at < text.len()) {
+        out.push(text.char_at(at).to_codepoint())
+        at = at + 1
+    }
+    return 0
+}
+
+fn type_index(lane int) int {
+    if (lane < 3) { return lane - 1 }
+    return lane - 5
+}
+
+fn write_const(out List<int>, exact List<int>, at int) int {
+    let lane = exact.get(at)
+    var wire_tag = 0
+    var width = 4
+    if (lane == 2) {
+        wire_tag = 1
+        width = 1
+    }
+    if (lane == 7) {
+        wire_tag = 8
+        width = 1
+    }
+    if (lane == 8) {
+        wire_tag = 9
+        width = 1
+    }
+    if (lane == 9) { wire_tag = 10 }
+    if (lane == 10) {
+        wire_tag = 2
+        width = 8
+    }
+    if (lane == 11) {
+        wire_tag = 3
+        width = 8
+    }
+    if (lane == 12) { wire_tag = 4 }
+    if (lane == 13) {
+        wire_tag = 5
+        width = 8
+    }
+    out.push(wire_tag)
+    let negative = exact.get(at + 1) == 1
+    var carry = 1
+    var position = 0
+    for (position < width) {
+        let limb = exact.get(at + 2 + position / 2)
+        var value = limb % 256
+        if (position % 2 != 0) { value = limb / 256 }
+        if (negative) {
+            let twos = 255 - value + carry
+            value = twos % 256
+            carry = twos / 256
+        }
+        out.push(value)
+        position = position + 1
+    }
+    return 0
+}
+
+fn binary_tag(op int) int {
+    if (op == 4) { return 6 }
+    if (op == 5) { return 1 }
+    if (op == 6) { return 3 }
+    if (op == 12) { return 2 }
+    if (op == 13) { return 4 }
+    if (op == 14) { return 5 }
+    if (op >= 15 && op <= 19) { return op - 8 }
+    return -1
+}
+
+// Number function-local slots and reachable blocks. Structured lowering can
+// reserve a join before finding that both arms terminate; that unused
+// reservation never acquires an instruction or appears on the wire.
+fn build_indices(functions List<int>, slots List<int>, blocks List<int>, slot_map List<int>, block_map List<int>, fuel List<int>, deadline i64) int {
+    var at = 0
+    for (at < slots.len()) {
+        slot_map.push(-1)
+        at = at + slot_stride()
+    }
+    at = 0
+    for (at < blocks.len()) {
+        block_map.push(-1)
+        at = at + block_stride()
+    }
+    var func = 0
+    let count = functions.len() / function_stride()
+    for (func < count) {
+        if (!account(fuel, deadline, slots.len() / slot_stride() + blocks.len() / block_stride())) { return bind_budget() }
+        at = 0
+        var local = 0
+        for (at < slots.len()) {
+            if (slots.get(at) == func) {
+                slot_map.set(at / slot_stride(), local)
+                local = local + 1
+            }
+            at = at + slot_stride()
+        }
+        var pending = List<int>.new()
+        pending.push(functions.get(func * function_stride() + 3))
+        for (pending.len() > 0) {
+            if (!account(fuel, deadline, 0)) { return bind_budget() }
+            let block = pending.remove(pending.len() - 1)
+            if (block < 0 || block >= block_map.len()) { return invalid_mir_reference() }
+            if (blocks.get(block * block_stride()) != func) { return invalid_mir_reference() }
+            if (block_map.get(block) >= 0) { continue }
+            block_map.set(block, 0)
+            let row = block * block_stride()
+            let term = blocks.get(row + 1)
+            if (term == jump_terminator() || term == branch_terminator()) {
+                pending.push(blocks.get(row + 3))
+                if (term == branch_terminator()) { pending.push(blocks.get(row + 4)) }
+            } else {
+                if (term != return_terminator()) { return invalid_mir_reference() }
+            }
+        }
+        at = 0
+        local = 0
+        for (at < blocks.len()) {
+            let block = at / block_stride()
+            if (blocks.get(at) == func && block_map.get(block) >= 0) {
+                block_map.set(block, local)
+                local = local + 1
+            }
+            at = at + block_stride()
+        }
+        func = func + 1
+    }
+    return 0
+}
+
+fn write_instr(out List<int>, instrs List<int>, at int, slots List<int>, slot_map List<int>, operands List<int>) int {
+    let op = instrs.get(at + 1)
+    let dst = slot_map.get(instrs.get(at + 2))
+    let first = instrs.get(at + 3)
+    let second = instrs.get(at + 4)
+    let detail = instrs.get(at + 5)
+    out.push(op)
+    if (op == constant_instruction()) {
+        word(out, dst, 4)
+        word(out, first, 4)
+        return 0
+    }
+    if (op == copy_instruction()) {
+        word(out, dst, 4)
+        word(out, slot_map.get(first), 4)
+        return 0
+    }
+    if (op == binary_instruction()) {
+        let base = binary_tag(detail)
+        if (base < 0) { return invalid_mir_reference() }
+        let lane = slots.get(first * slot_stride() + 1)
+        if (lane <= 2) {
+            out.push(base)
+        } else {
+            out.push(12)
+            var typed = base
+            if (base >= 6) { typed = base + 5 }
+            out.push(typed)
+            var wire_tag = type_index(lane)
+            if (lane == 7) { wire_tag = 1 }
+            out.push(wire_tag)
+        }
+        word(out, dst, 4)
+        word(out, slot_map.get(first), 4)
+        word(out, slot_map.get(second), 4)
+        return 0
+    }
+    if (op != call_instruction() || detail > 255) { return invalid_mir_reference() }
+    out.push(0)
+    word(out, first, 4)
+    word(out, dst, 4)
+    out.push(detail)
+    var arg = 0
+    for (arg < detail) {
+        word(out, slot_map.get(operands.get(second + arg)), 4)
+        arg = arg + 1
+    }
+    return 0
+}
+
+fn source_row(ast List<int>, origin int) int {
+    let count = row_count(ast)
+    if (origin < count) { return origin }
+    if (origin < count * 3) { return (origin - count) / 2 }
+    if (origin >= count * 8 && origin < count * 9) { return origin - count * 8 }
+    return 0
+}
+
+fn write_function(out List<int>, sidecar List<int>, ast List<int>, function int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, slot_map List<int>, block_map List<int>, fuel List<int>, deadline i64) int {
+    if (!account(fuel, deadline, slots.len() / slot_stride() * 2 + blocks.len() / block_stride() * 2)) { return bind_budget() }
+    let info = function * function_stride()
+    word(out, 9 + function, 4)
+    append_string(out, "d" + from_int(functions.get(info)))
+    var at = 0
+    var local_count = 0
+    for (at < slots.len()) {
+        if (slots.get(at) == function) { local_count = local_count + 1 }
+        at = at + slot_stride()
+    }
+    word(out, local_count, 4)
+    at = 0
+    for (at < slots.len()) {
+        if (slots.get(at) == function) {
+            out.push(slots.get(at + 2))
+            word(out, type_index(slots.get(at + 1)), 4)
+        }
+        at = at + slot_stride()
+    }
+    word(out, block_map.get(functions.get(info + 3)), 4)
+    at = 0
+    var block_count = 0
+    for (at < blocks.len()) {
+        if (blocks.get(at) == function && block_map.get(at / block_stride()) >= 0) { block_count = block_count + 1 }
+        at = at + block_stride()
+    }
+    word(out, block_count, 4)
+    var spans = List<int>.new()
+    var ordinal = 0
+    at = 0
+    for (at < blocks.len()) {
+        let block = at / block_stride()
+        if (blocks.get(at) == function && block_map.get(block) >= 0) {
+            if (!account(fuel, deadline, instrs.len() / instruction_stride() * 2)) { return bind_budget() }
+            var index = 0
+            var instr_count = 0
+            for (index < instrs.len()) {
+                if (instrs.get(index) == block) { instr_count = instr_count + 1 }
+                index = index + instruction_stride()
+            }
+            word(out, instr_count, 4)
+            index = 0
+            for (index < instrs.len()) {
+                if (instrs.get(index) == block) {
+                    if (out.len() > 4194304 - 1032 || !account(fuel, deadline, 0)) { return bind_budget() }
+                    let status = write_instr(out, instrs, index, slots, slot_map, operands)
+                    if (status != 0) { return status }
+                    let row = source_row(ast, instrs.get(index + 6))
+                    word(spans, ordinal, 4)
+                    word(spans, function, 4)
+                    word(spans, start_of(ast, row), 4)
+                    word(spans, end_of(ast, row), 4)
+                    ordinal = ordinal + 1
+                }
+                index = index + instruction_stride()
+            }
+            let term = blocks.get(at + 1)
+            out.push(term)
+            if (term != jump_terminator()) { word(out, slot_map.get(blocks.get(at + 2)), 4) }
+            if (term != return_terminator()) { word(out, block_map.get(blocks.get(at + 3)), 4) }
+            if (term == branch_terminator()) { word(out, block_map.get(blocks.get(at + 4)), 4) }
+        }
+        at = at + block_stride()
+    }
+    word(sidecar, 0, 8)
+    word(sidecar, ordinal, 4)
+    at = 0
+    for (at < spans.len()) {
+        sidecar.push(spans.get(at))
+        at = at + 1
+    }
+    return 0
+}
+
+// FNV-1a-64 of the exact ABC body. Work in two 32-bit limbs so checked
+// Auto arithmetic implements the specified modulo-2^64 multiplication.
+fn checksum(out List<int>, fuel List<int>, deadline i64) int {
+    var lo = 2216829733i64
+    var hi = 3421674724i64
+    let base = 4294967296i64
+    let limit = out.len()
+    var at = 0
+    for (at < limit) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        lo = lo ^ out.get(at).to(i64)
+        let product = lo * 435i64
+        hi = (hi * 435i64 + lo * 256i64 + product / base) % base
+        lo = product % base
+        at = at + 1
+    }
+    at = 0
+    for (at < 4) {
+        out.push((lo % 256i64).to(int))
+        lo = lo / 256i64
+        at = at + 1
+    }
+    at = 0
+    for (at < 4) {
+        out.push((hi % 256i64).to(int))
+        hi = hi / 256i64
+        at = at + 1
+    }
+    return 0
+}
+
+pub fn encode_base_abc(out List<int>, ast List<int>, entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, exact List<int>, fuel List<int>, deadline i64) int {
+    let count = functions.len() / function_stride()
+    let literals = exact.len() / exact_literal_stride()
+    if (count > 65527 || literals > 65536 || slots.len() / slot_stride() > 65536 || blocks.len() / block_stride() > 65536) { return bind_budget() }
+    var slot_indices = List<int>.new()
+    var block_indices = List<int>.new()
+    let indexed = build_indices(functions, slots, blocks, slot_indices, block_indices, fuel, deadline)
+    if (indexed != 0) { return indexed }
+    // AVAD v1, profile 2, diagnostic source sidecar, no imports/capabilities.
+    out.push(65)
+    out.push(86)
+    out.push(65)
+    out.push(68)
+    word(out, 1, 2)
+    word(out, 2, 2)
+    word(out, 1, 2)
+    word(out, 0, 2)
+    word(out, 9 + count, 4)
+    word(out, literals, 4)
+    word(out, 0, 4)
+    word(out, count, 4)
+    word(out, entry, 4)
+    word(out, 0, 2)
+    out.push(0)
+    out.push(1)
+    out.push(19)
+    out.push(20)
+    out.push(21)
+    out.push(3)
+    out.push(4)
+    out.push(5)
+    out.push(6)
+    var func = 0
+    for (func < count) {
+        if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
+        let info = func * function_stride()
+        out.push(2)
+        word(out, functions.get(info + 2), 4)
+        var at = 0
+        for (at < slots.len()) {
+            if (slots.get(at) == func && slots.get(at + 2) == 0) { word(out, type_index(slots.get(at + 1)), 4) }
+            at = at + slot_stride()
+        }
+        word(out, type_index(functions.get(info + 1)), 4)
+        func = func + 1
+    }
+    var at = 0
+    for (at < exact.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        write_const(out, exact, at)
+        at = at + exact_literal_stride()
+    }
+    var sidecar = List<int>.new()
+    func = 0
+    for (func < count) {
+        let status = write_function(out, sidecar, ast, func, functions, slots, blocks, instrs, operands, slot_indices, block_indices, fuel, deadline)
+        if (status != 0) { return status }
+        func = func + 1
+    }
+    if (out.len() > 4194304 - sidecar.len() - 12 || !account(fuel, deadline, sidecar.len())) { return bind_budget() }
+    word(out, sidecar.len(), 4)
+    at = 0
+    for (at < sidecar.len()) {
+        out.push(sidecar.get(at))
+        at = at + 1
+    }
+    return checksum(out, fuel, deadline)
+}

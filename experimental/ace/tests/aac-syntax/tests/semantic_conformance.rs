@@ -2,8 +2,9 @@
 
 use ace_aac_syntax_conformance::run_global_hir_admission;
 use ace_aac_syntax_conformance::{
-    observe_hir_publication, observe_project_inventory, run_core_hir_case, run_core_hir_project,
-    run_semantic_case, run_semantic_project, run_type_case, run_type_project,
+    observe_hir_publication, observe_project_inventory, run_base_mir_case, run_base_mir_control,
+    run_core_hir_case, run_core_hir_project, run_semantic_case, run_semantic_project, run_type_case,
+    run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -1134,6 +1135,62 @@ fn reference_scalar_outcome(atom: &str) -> ace_av_core::ExecOutcome {
     let decoded = ace_av_core::decode_abc(&bytes).unwrap();
     let loaded = ace_av_core::verify_abc(decoded, &mir.owner).expect("reference MIR admission");
     ace_av_core::execute(&loaded, &Default::default(), &Default::default()).0
+}
+
+#[test]
+fn aac1055_auto_mir_runs_in_av_without_reference_lowering() {
+    use ace_av_core::{ExecOutcome, Value};
+    let cases: &[(&[u8], Value)] = &[
+        (
+            b"fn f(x int) int { return 2 * x + 1 }\nfn main() int { return f(3) }",
+            Value::I32(7),
+        ),
+        (b"fn main() bool { return false && 1 / 0 > 0 }", Value::Bool(false)),
+        (
+            include_bytes!(
+                "../../../../../crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/sc-for-loops.at"
+            ),
+            Value::I32(0),
+        ),
+        (
+            b"fn f(x i64) i64 { return x + 1i64 }\nfn main() i64 { return f(9223372036854775806i64) }",
+            Value::I64(i64::MAX),
+        ),
+    ];
+    for (source, expected) in cases {
+        let bytes = run_base_mir_case(source).expect("Auto MIR and ABC production");
+        let decoded = ace_av_core::decode_abc(&bytes).expect("AVAD shape and checksum");
+        let loaded = ace_av_core::verify_abc(
+            decoded,
+            &ace_av_core::mir::OwnerScope {
+                schema: ace_av_core::contract::MIR_DATA_SCHEMA.into(),
+                module: "app.main".into(),
+            },
+        )
+        .expect("independent MIR consumer admission");
+        let (outcome, _) = ace_av_core::execute(&loaded, &Default::default(), &Default::default());
+        assert!(
+            matches!(&outcome, ExecOutcome::Success { value, .. } if value == expected),
+            "expected {expected:?} for {:?}, got {outcome:?}",
+            String::from_utf8_lossy(source)
+        );
+    }
+}
+
+#[test]
+fn aac1055_local_mir_admission_rejects_mutations_without_publication() {
+    let source = b"fn f(value int, enabled bool) int { if enabled { return value }\n return 0 }\nfn main() int { return f(enabled: true, value: 7) }";
+    for (mode, expected) in [
+        ("mir-defref", "ERROR mir.reference "),
+        ("mir-type", "ERROR mir.type "),
+        ("mir-cfg", "ERROR mir.reference "),
+        ("mir-uninitialized", "ERROR mir.uninitialized "),
+    ] {
+        let (report, bytes) = run_base_mir_control(source, mode).expect("Auto MIR control");
+        assert!(report.starts_with(expected), "{mode}: {report}");
+        assert!(bytes.is_none(), "{mode} published unadmitted bytes");
+    }
+    assert!(!run_base_mir_case(source).expect("valid recovery").is_empty());
 }
 
 #[test]

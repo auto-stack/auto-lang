@@ -1,0 +1,106 @@
+use app.binding.bind_budget
+use app.binding.take_step
+
+// The base module is closed. References are dense and carry their owner
+// through the building and verification stages, before ABC remaps them to
+// the function-local slot and block numbers used on the wire.
+pub fn function_stride() int { return 4 }
+pub fn slot_stride() int { return 4 }
+pub fn block_stride() int { return 6 }
+pub fn instruction_stride() int { return 7 }
+
+pub fn parameter_slot() int { return 0 }
+pub fn local_slot() int { return 1 }
+pub fn temporary_slot() int { return 2 }
+pub fn constant_instruction() int { return 1 }
+pub fn copy_instruction() int { return 2 }
+pub fn binary_instruction() int { return 3 }
+pub fn call_instruction() int { return 5 }
+pub fn jump_terminator() int { return 16 }
+pub fn branch_terminator() int { return 17 }
+pub fn return_terminator() int { return 18 }
+
+pub fn outside_base_profile() int { return -60 }
+pub fn invalid_mir_reference() int { return -61 }
+
+pub fn account(fuel List<int>, deadline i64, count int) bool {
+    if (!take_step(fuel, deadline) || count > fuel.get(0)) { return false }
+    fuel.set(0, fuel.get(0) - count)
+    return true
+}
+
+// Function: HIR definition, result lane, arity, entry block.
+pub fn add_function(functions List<int>, definition int, lane int, arity int) int {
+    let index = functions.len() / function_stride()
+    functions.push(definition)
+    functions.push(lane)
+    functions.push(arity)
+    functions.push(-1)
+    return index
+}
+
+// Slot: function, lane, role, HIR local (or -1 for a temporary).
+pub fn add_slot(slots List<int>, owner int, lane int, role int, local int) int {
+    let index = slots.len() / slot_stride()
+    slots.push(owner)
+    slots.push(lane)
+    slots.push(role)
+    slots.push(local)
+    return index
+}
+
+// Block: function, terminator, operand, two targets, original HIR row.
+pub fn add_block(blocks List<int>, owner int, origin int) int {
+    let index = blocks.len() / block_stride()
+    blocks.push(owner)
+    blocks.push(0)
+    blocks.push(-1)
+    blocks.push(-1)
+    blocks.push(-1)
+    blocks.push(origin)
+    return index
+}
+
+pub fn finish_block(blocks List<int>, block int, term int, operand int, target int, alternate int) int {
+    let row = block * block_stride()
+    if (blocks.get(row + 1) != 0) { return invalid_mir_reference() }
+    blocks.set(row + 1, term)
+    blocks.set(row + 2, operand)
+    blocks.set(row + 3, target)
+    blocks.set(row + 4, alternate)
+    return 0
+}
+
+// Instruction: block, operation, destination, two operands, operation
+// detail, original HIR row. Call operands have their own ordered table.
+pub fn add_instruction(instrs List<int>, block int, op int, dst int, first int, second int, detail int, origin int) int {
+    let index = instrs.len() / instruction_stride()
+    instrs.push(block)
+    instrs.push(op)
+    instrs.push(dst)
+    instrs.push(first)
+    instrs.push(second)
+    instrs.push(detail)
+    instrs.push(origin)
+    return index
+}
+
+pub fn find_id(rows List<int>, stride int, field int, identity int, fuel List<int>, deadline i64) int {
+    if (!account(fuel, deadline, rows.len() / stride)) { return bind_budget() }
+    var pos = 0
+    for (pos < rows.len()) {
+        if (rows.get(pos + field) == identity) { return pos / stride }
+        pos = pos + stride
+    }
+    return invalid_mir_reference()
+}
+
+pub fn local_slot_index(slots List<int>, owner int, local int, fuel List<int>, deadline i64) int {
+    if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
+    var pos = 0
+    for (pos < slots.len()) {
+        if (slots.get(pos) == owner && slots.get(pos + 3) == local) { return pos / slot_stride() }
+        pos = pos + slot_stride()
+    }
+    return invalid_mir_reference()
+}
