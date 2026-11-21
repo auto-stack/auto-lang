@@ -378,7 +378,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 ## 9. 复审记录
 
-- 2026-11-22 merge 收据：`stage: merge | plan_id: PLAN-1095 | plan_revision: r3 | outcome: pass | delivery_commit: f70320f5c | archive_commit: 待簿记提交 | next: done`。
+- 2026-11-22 merge 收据：`stage: merge | plan_id: PLAN-1095 | plan_revision: r3 | outcome: pass | delivery_commit: f70320f5c | archive_commit: 65ce06b0e | next: done`。
   - `prepared`：复审基线 580b6d185 + 卫生 f70320f5c（语料尾随空白，语义零改动）；规范增量四份已在 worktree 提交。
   - `landed`：master 未前进（仍 b260b6e65），`git merge --ff-only plan-1095-dev` 线性快进至 f70320f5c（无 merge commit）。
   - `canonical_verified`：四份规范落主，SHA-256 前16：language-parity.md `f81641af…`、m2-facade.md `4fb6836f…`、m2-modules.md `475e7695…`、feature-organized-corpus.md `ae12efb8…`（均含 PLAN-1095 增量节，逐字读回确认）。
