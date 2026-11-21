@@ -5706,6 +5706,7 @@ mod judge_tests {
             capture: None,
             exit_kind: None,
             lifecycle: None,
+            nodes: Vec::new(),
         }
     }
 
@@ -5728,6 +5729,7 @@ mod judge_tests {
             probe: None,
             av_channel: None,
             trace: None,
+            nodes: None,
             oracle_sha256: String::new(),
         }
     }
@@ -6019,6 +6021,7 @@ mod closures_judge_tests {
             capture: None,
             exit_kind: None,
             lifecycle: None,
+            nodes: Vec::new(),
         }
     }
 
@@ -6106,6 +6109,7 @@ mod closures_source_judge_tests {
             capture: None,
             exit_kind: None,
             lifecycle: None,
+            nodes: Vec::new(),
         }
     }
 
@@ -6786,6 +6790,7 @@ mod resource_915_tests {
             place,
             exit_kind: None,
             lifecycle: None,
+            nodes: Vec::new(),
             capture: None,
         }
     }

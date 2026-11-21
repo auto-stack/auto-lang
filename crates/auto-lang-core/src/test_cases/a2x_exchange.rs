@@ -111,6 +111,7 @@ mod emit_only_tests {
             probe: None,
             av_channel: None,
             trace: None,
+            nodes: None,
             oracle_sha256: String::new(),
         }
     }
