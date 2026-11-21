@@ -196,6 +196,60 @@ fn main() int {
     ));
 }
 
+/// T-03 泛型实例：1048 实例展开先重写源（template → id_i32 具体函数），
+/// 之后本包 lowering 处理单态代码；Auto 产 ABC 经独立消费端真实执行。
+/// 独立预期：`id<T>(x T) T` 对 i32 实参实例化后调用得 7。
+#[test]
+fn aac1050_generic_instances_expand_before_lowering_and_run_in_av() {
+    let source = b"fn id<T>(x T) T { return x }
+fn main() int { return id(7) }";
+    // The instance pass rewrites the source; the mir control then lowers
+    // the monomorphic program through the shared Auto builder.
+    let (report, bytes) = run_generic_mir(source).expect("Auto generic instance MIR");
+    assert!(report.starts_with("MIR aac.base-mir/1 "), "{report}");
+    assert!(matches!(
+        execute_auto_mir(&bytes),
+        ExecOutcome::Success { value: Value::I32(7), .. }
+    ));
+}
+
+fn run_generic_mir(source: &[u8]) -> Result<(String, Vec<u8>), String> {
+    let dir = std::env::var_os("AAC1047_NATIVE_DIR").ok_or("set AAC1047_NATIVE_DIR")?;
+    let exe_path = std::path::PathBuf::from(&dir).join("aac1047-driver.exe");
+    if !exe_path.is_file() {
+        return Err(format!("driver exe missing: {}", exe_path.display()));
+    }
+    let root = std::env::temp_dir().join(format!("aac1050-gen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let proj = root.join("proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::write(proj.join("main.at"), source).unwrap();
+    let output = root.join("report.txt");
+    let abc = root.join("out.abc");
+    let worksheet = root.join("worksheet.txt");
+    let status = std::process::Command::new(&exe_path)
+        .env("AAC1047_HIR", "mir")
+        .env("AAC1047_PROJECT", &proj)
+        .env("AAC1047_INVENTORY", "main")
+        .env("AAC1047_PACKAGE", "app")
+        .env("AAC1047_OUTPUT", &output)
+        .env("AAC1047_STEPS", "1000000")
+        .env("AAC1055_ABC", &abc)
+        .env("AAC1048_INSTANCES", "1")
+        .env("AAC1048_WORKSHEET", &worksheet)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("run driver: {e}"))?;
+    if !status.success() {
+        return Err(format!("driver exit {status:?}"));
+    }
+    let report = std::fs::read_to_string(&output).unwrap_or_default();
+    let bytes = std::fs::read(&abc).unwrap_or_default();
+    Ok((report, bytes))
+}
+
 fn run(source: &[u8]) -> Result<Vec<u8>, String> {
     ace_aac_syntax_conformance::run_base_mir_case(source)
 }
