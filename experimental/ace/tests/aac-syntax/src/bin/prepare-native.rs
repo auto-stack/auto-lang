@@ -17,14 +17,21 @@ use ace_source_query::modules::packages::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let root = PathBuf::from(args.next().ok_or("pass a new preparation directory")?);
-    let semantic = match args.next() {
-        None => false,
-        Some(mode) if mode == "semantic" => true,
-        Some(_) => return Err("expected optional semantic driver mode".into()),
-    };
+    let mode = args.next();
     if !root.is_absolute() || args.next().is_some() {
         return Err("expected an absolute preparation directory and optional mode".into());
     }
+    let semantic = match mode.as_deref().and_then(std::ffi::OsStr::to_str) {
+        None if mode.is_none() => false,
+        Some("semantic") => true,
+        #[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+        Some("ct") => {
+            let exe = ace_aac_syntax_conformance::prepare_ct_bootstrap(&root)?;
+            println!("{}", exe.display());
+            return Ok(());
+        }
+        _ => return Err("expected optional semantic or enabled CT driver mode".into()),
+    };
     let (mut files, source, executable, store_key) = if semantic {
         (
             semantic_modules(),

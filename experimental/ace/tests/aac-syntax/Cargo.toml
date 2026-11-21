@@ -9,7 +9,9 @@ description = "PLAN-1046 AAC syntax runtime / source projection / module assembl
 [dependencies]
 ace-a2x-rust = { path = "../../crates/a2x-rust" }
 ace-a2x-store = { path = "../../crates/a2x-store" }
+ace-aac-host-conformance = { path = "../aac-host", optional = true }
 ace-abi = { path = "../../crates/abi", optional = true }
+ace-native = { path = "../../crates/native", optional = true }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1"
 ace-core = { path = "../../crates/core" }
@@ -30,6 +32,7 @@ path = "tests/conformance.rs"
 [features]
 aac-semantics = []
 aac-foreign-semantics = ["aac-semantics", "dep:ace-abi", "dep:serde_json"]
+aac-ct-bootstrap = ["aac-semantics", "dep:ace-aac-host-conformance", "dep:ace-native", "dep:serde_json"]
 
 [[bin]]
 name = "prepare-semantic-foreign"

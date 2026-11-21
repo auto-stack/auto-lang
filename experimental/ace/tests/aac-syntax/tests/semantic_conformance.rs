@@ -3,8 +3,8 @@
 use ace_aac_syntax_conformance::run_global_hir_admission;
 use ace_aac_syntax_conformance::{
     observe_hir_publication, observe_project_inventory, run_base_mir_case, run_base_mir_control,
-    run_core_hir_case, run_core_hir_project, run_semantic_case, run_semantic_project, run_type_case,
-    run_type_project,
+    run_core_hir_case, run_core_hir_project, run_semantic_case, run_semantic_project,
+    run_type_case, run_type_project,
 };
 
 fn observe(source: &str) -> String {
@@ -1090,7 +1090,9 @@ fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
             ..
         }
     ));
-    let eager = std::str::from_utf8(source).unwrap().replacen("false &&", "true &&", 1);
+    let eager = std::str::from_utf8(source)
+        .unwrap()
+        .replacen("false &&", "true &&", 1);
     let eager_atom = run_core_hir_case(eager.as_bytes(), "verify").expect("Auto eager control HIR");
     assert!(matches!(
         reference_scalar_outcome(&eager_atom),
@@ -1099,9 +1101,8 @@ fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
             ..
         }
     ));
-    let read_back = |text: &str| {
-        run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto Atom readback")
-    };
+    let read_back =
+        |text: &str| run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto Atom readback");
     assert_eq!(read_back(&atom), "ADMITTED scalar-i32-draft\n");
 
     let i32_id = atom
@@ -1159,22 +1160,110 @@ fn aac1055_auto_mir_runs_in_av_without_reference_lowering() {
     ];
     for (source, expected) in cases {
         let bytes = run_base_mir_case(source).expect("Auto MIR and ABC production");
-        let decoded = ace_av_core::decode_abc(&bytes).expect("AVAD shape and checksum");
-        let loaded = ace_av_core::verify_abc(
-            decoded,
-            &ace_av_core::mir::OwnerScope {
-                schema: ace_av_core::contract::MIR_DATA_SCHEMA.into(),
-                module: "app.main".into(),
-            },
-        )
-        .expect("independent MIR consumer admission");
-        let (outcome, _) = ace_av_core::execute(&loaded, &Default::default(), &Default::default());
+        let outcome = execute_auto_mir(&bytes);
         assert!(
             matches!(&outcome, ExecOutcome::Success { value, .. } if value == expected),
             "expected {expected:?} for {:?}, got {outcome:?}",
             String::from_utf8_lossy(source)
         );
     }
+}
+
+fn execute_auto_mir(bytes: &[u8]) -> ace_av_core::ExecOutcome {
+    let decoded = ace_av_core::decode_abc(bytes).expect("AVAD shape and checksum");
+    let loaded = ace_av_core::verify_abc(
+        decoded,
+        &ace_av_core::mir::OwnerScope {
+            schema: ace_av_core::contract::MIR_DATA_SCHEMA.into(),
+            module: "app.main".into(),
+        },
+    )
+    .expect("independent MIR consumer admission");
+    ace_av_core::execute(&loaded, &Default::default(), &Default::default()).0
+}
+
+#[test]
+fn aac1055_auto_mir_constant_mutation_changes_the_av_result() {
+    use ace_av_core::{ExecOutcome, Value};
+    let source = b"fn f(x int) int { return 2 * x + 1 }\nfn main() int { return f(3) }";
+    let original = run_base_mir_case(source).expect("original MIR");
+    let (report, mutated) =
+        run_base_mir_control(source, "mir-change-constant").expect("mutated MIR");
+    let mutated = mutated.unwrap_or_else(|| panic!("control failed: {report}"));
+    let result_is = |bytes: &[u8], expected| {
+        matches!(execute_auto_mir(bytes), ExecOutcome::Success { value: Value::I32(actual), .. }
+            if actual == expected)
+    };
+    assert!(result_is(&original, 7));
+    assert!(result_is(&mutated, 8));
+    assert!(!result_is(&mutated, 7));
+}
+
+#[test]
+fn aac1055_unresolved_ct_does_not_publish_base_mir() {
+    let (report, artifact) = run_base_mir_control(b"fn main() int { return #{ 1 } }", "mir")
+        .expect("Auto admission of pending CT source");
+    assert!(
+        report.starts_with("aac.pending-work/1\nPENDING 2 "),
+        "{report}"
+    );
+    assert!(artifact.is_none());
+}
+
+#[cfg(feature = "aac-ct-bootstrap")]
+#[test]
+fn aac1055_ct_executes_literal_arguments_and_lazy_bool_through_bridge() {
+    use ace_aac_syntax_conformance::run_ct_bootstrap_case;
+    use serde_json::json;
+
+    for (source, lane, arguments, expected) in [
+        (
+            "fn f(x int) int { return 2 * x + 1 }",
+            "int",
+            "3",
+            json!({"i32": 7}),
+        ),
+        (
+            "fn f() bool { return false && 1 / 0 > 0 }",
+            "bool",
+            "",
+            json!({"bool": false}),
+        ),
+    ] {
+        let (report, outcome) = run_ct_bootstrap_case(source.as_bytes(), lane, arguments).unwrap();
+        assert_eq!(report, "CT value\n");
+        let outcome = outcome.expect("typed CT outcome");
+        assert_eq!(outcome["status"], "value");
+        assert_eq!(outcome["value"], expected);
+        assert_eq!(outcome["facts"]["foreign_calls"], 0);
+        assert_eq!(outcome["facts"]["live_text"], 0);
+        assert_eq!(outcome["facts"]["read_set"], json!([]));
+    }
+}
+
+#[cfg(feature = "aac-ct-bootstrap")]
+#[test]
+fn aac1055_ct_resource_failure_has_no_value_and_recovers() {
+    use ace_aac_syntax_conformance::run_ct_bootstrap_case;
+    use serde_json::json;
+
+    let (report, outcome) =
+        run_ct_bootstrap_case(b"fn f() int { for true { }\n return 7 }", "int", "").unwrap();
+    assert_eq!(report, "CT failure\n");
+    let outcome = outcome.expect("typed resource failure");
+    assert_eq!(outcome["status"], "failure");
+    assert_eq!(outcome["error"]["kind"], "resource");
+    assert_eq!(outcome["error"]["code"], "av.resource.instr-steps");
+    assert!(outcome.get("value").is_none());
+
+    let input = b"fn f(x int) int { return 2 * x + 1 }";
+    let (report, outcome) = run_ct_bootstrap_case(input, "int", "f(2)").unwrap();
+    assert_eq!(report, "ERROR ct.entry\n");
+    assert!(outcome.is_none());
+
+    let (report, outcome) = run_ct_bootstrap_case(input, "int", "3").unwrap();
+    assert_eq!(report, "CT value\n");
+    assert_eq!(outcome.unwrap()["value"], json!({"i32": 7}));
 }
 
 #[test]
@@ -1190,7 +1279,9 @@ fn aac1055_local_mir_admission_rejects_mutations_without_publication() {
         assert!(report.starts_with(expected), "{mode}: {report}");
         assert!(bytes.is_none(), "{mode} published unadmitted bytes");
     }
-    assert!(!run_base_mir_case(source).expect("valid recovery").is_empty());
+    assert!(!run_base_mir_case(source)
+        .expect("valid recovery")
+        .is_empty());
 }
 
 #[test]
@@ -1266,7 +1357,13 @@ fn aac1055_conditional_loop_preserves_scopes_and_continuations() {
         run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto loop HIR readback")
     };
     assert_eq!(admit(&atom), "ADMITTED scalar-i32-draft\n");
-    let target = atom.split_once("continue(target: \"").unwrap().1.split('"').next().unwrap();
+    let target = atom
+        .split_once("continue(target: \"")
+        .unwrap()
+        .1
+        .split('"')
+        .next()
+        .unwrap();
     let outer = atom
         .split("loop(id: \"")
         .skip(1)

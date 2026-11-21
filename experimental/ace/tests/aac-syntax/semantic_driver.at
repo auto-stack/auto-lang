@@ -16,6 +16,9 @@ use app.binding.bind_unresolved
 use app.binding.take_step
 use app.base_ir.invalid_mir_reference
 use app.base_ir.outside_base_profile
+use app.factory.append_ct_entry
+use app.factory.ct_entry_name
+use app.factory.invalid_ct_entry
 use app.core_hir.checked_core_atom
 use app.core_hir.hir_owner_error
 use app.core_hir.hir_initialization_error
@@ -83,6 +86,7 @@ use app.typecheck.type_unknown
 use app.typecheck.type_value
 use app.types.f32_type
 use app.types.f64_type
+use app.types.primitive
 use app.verify_base.invalid_mir_type
 use app.verify_base.uninitialized_mir_slot
 use std.conv.from_int
@@ -145,6 +149,7 @@ fn diagnostic_name(code int) Str {
     if (code == invalid_mir_reference()) { return "mir.reference" }
     if (code == invalid_mir_type()) { return "mir.type" }
     if (code == uninitialized_mir_slot()) { return "mir.uninitialized" }
+    if (code == invalid_ct_entry()) { return "ct.entry" }
     if (code == annotation_owner_error()) { return "type.annotation-owner" }
     return "internal.semantic"
 }
@@ -239,7 +244,7 @@ fn freeze_report(src List<int>, bases List<int>, modules List<int>, authority St
     return frozen
 }
 
-fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package_source bool, steps int) Str {
+fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots List<int>, modules List<int>, package_source bool, steps int, ct_deadline i64) Str {
     var links = List<int>.new()
     if (!build_child_index(ast, links)) { return "ERROR resource.ast\n" }
     var declarations = List<int>.new()
@@ -250,7 +255,8 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     fuel.push(steps)
     let started = mono_ms()
     if (started < 0i64) { return "ERROR os.clock\n" }
-    let deadline = started + 5000i64
+    var deadline = started + 5000i64
+    if (ct_deadline > 0i64 && ct_deadline < deadline) { deadline = ct_deadline }
     var metadata = List<int>.new()
     var pending = List<int>.new()
     let cataloged = collect_declaration_inputs(pg, ast, links, src, metadata, pending, errors, fuel, deadline)
@@ -307,16 +313,20 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             if (hir_mode == "defref") { control = 2 }
             if (hir_mode == "immutable-global") { control = 3 }
             if (hir_mode == "mir") { control = 4 }
+            if (hir_mode == "ct-mir") { control = 4 }
             if (hir_mode == "mir-defref") { control = 5 }
             if (hir_mode == "mir-type") { control = 6 }
             if (hir_mode == "mir-cfg") { control = 7 }
             if (hir_mode == "mir-change-constant") { control = 8 }
             if (hir_mode == "mir-uninitialized") { control = 9 }
             var abc = List<int>.new()
-            let document = checked_core_atom(pg, ast, links, src, roots, modules, declarations, uses, mappings, facts, types, layouts, fuel, deadline, errors, control, abc)
+            var entry_name = "main"
+            if (ct_deadline > 0i64 && get("AAC1055_CT_TARGET").len() > 0) { entry_name = ct_entry_name() }
+            let document = checked_core_atom(pg, ast, links, src, roots, modules, declarations, uses, mappings, facts, types, layouts, fuel, deadline, errors, control, abc, entry_name)
             if (document.len() == 0) {
                 return "ERROR " + diagnostic_name(errors.get(1)) + " " + location(ast, errors.get(0), bases) + "\n"
             }
+            if (hir_mode == "ct-mir" && write_bytes(get("AAC1055_CT_SOURCE"), src) != 0) { return "ERROR os.write\n" }
             if (control >= 4 && write_bytes(get("AAC1055_ABC"), abc) != 0) { return "ERROR os.write\n" }
             return document
         }
@@ -336,13 +346,25 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
     return report
 }
 
-fn load_source(pg List<int>, path Str, id int, src List<int>, ast List<int>, bases List<int>, roots List<int>) Str {
+fn load_source(pg List<int>, path Str, id int, src List<int>, ast List<int>, bases List<int>, roots List<int>, ct_deadline i64, steps int) Str {
     let length = size(path.clone())
     if (length < 0i64) { return "ERROR os.read\n" }
     if (length > 67108864i64 - src.len().to(i64)) { return "ERROR resource.source\n" }
     let input = read_bytes(path)
     is input {
         Some(bytes) -> {
+            if (ct_deadline > 0i64 && id == 0) {
+                let target = get("AAC1055_CT_TARGET")
+                if (target.len() > 0) {
+                    let raw = get("AAC1055_CT_ARGS")
+                    var arguments = List<Str>.new()
+                    if (raw.len() > 0) { arguments = split(raw.move, "\n") }
+                    var fuel = List<int>.new()
+                    fuel.push(steps)
+                    let prepared = append_ct_entry(bytes, target.move, get("AAC1055_CT_RESULT"), arguments, fuel, ct_deadline)
+                    if (prepared != 0) { return "ERROR " + diagnostic_name(prepared) + "\n" }
+                }
+            }
             var rows = List<int>.new()
             var diagnostic = List<int>.new()
             let parsed = parse_semantic_source(pg, format_mode("aac"), bytes, id, 0, rows, diagnostic)
@@ -374,6 +396,24 @@ fn has_named_inventory(inventory Str) bool {
 }
 
 fn project(steps int) Str {
+    var ct_deadline = 0i64
+    let mode = get("AAC1047_HIR")
+    if (mode == "ct-mir") {
+        if (get("AAC1055_CT_TARGET").len() == 0) { return "ERROR ct.entry\n" }
+        var budget = 10000
+        let override_ms = get("AAC1055_CT_BUDGET_MS")
+        if (override_ms.len() > 0) {
+            let parsed = to_int(override_ms.move)
+            is parsed {
+                Some(value) -> { budget = value }
+                None -> { return "ERROR ct.entry\n" }
+            }
+        }
+        if (budget <= 0 || budget > 10000) { return "ERROR ct.entry\n" }
+        let now = mono_ms()
+        if (now < 0i64) { return "ERROR os.clock\n" }
+        ct_deadline = now + budget.to(i64)
+    }
     let pg = decode_program_parts(fetch_parts("aac"))
     if (!pg_ok(pg)) { return "ERROR internal.grammar\n" }
     let directory = get("AAC1047_PROJECT")
@@ -384,7 +424,7 @@ fn project(steps int) Str {
     var roots = List<int>.new()
     var bases = List<int>.new()
     if (directory.len() == 0) {
-        let result = load_source(pg, get("AAC1047_INPUT"), 0, src, ast, bases, roots)
+        let result = load_source(pg, get("AAC1047_INPUT"), 0, src, ast, bases, roots, ct_deadline, steps)
         if (result.len() > 0) { return result }
         add_module_name(names, "app.main")
     } else {
@@ -404,12 +444,12 @@ fn project(steps int) Str {
             let key = owner + "." + module_name
             if (find_module_name(names, key.clone()) >= 0) { return "ERROR source.module-duplicate\n" }
             let path = join(directory.clone(), name.clone() + ".at")
-            let result = load_source(pg, path, roots.len(), src, ast, bases, roots)
+            let result = load_source(pg, path, roots.len(), src, ast, bases, roots, ct_deadline, steps)
             if (result.len() > 0) { return result }
             add_module_name(names, key)
         }
     }
-    return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps)
+    return observe(pg, src, ast, bases, roots, names, directory.len() > 0, steps, ct_deadline)
 }
 
 fn admit_document(path Str, steps int) Str {

@@ -1697,13 +1697,13 @@ fn mir_control(control int, functions List<int>, blocks List<int>, instrs List<i
     return invalid_mir_reference()
 }
 
-fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int) int {
+fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int, entry_name Str) int {
     var entry = -1
     var at = 0
     for (at < defs.len()) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
         let def = defs.get(at)
-        if (def < row_count(ast) && source_id(ast, def) == 0 && spelling(src, ast, decl_name(declarations, def)) == "main") {
+        if (def < row_count(ast) && source_id(ast, def) == 0 && spelling(src, ast, decl_name(declarations, def)) == entry_name) {
             entry = at / 4
             break
         }
@@ -1724,7 +1724,7 @@ fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<
     return encode_base_abc(out, ast, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
 }
 
-pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int, abc List<int>) Str {
+pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int, abc List<int>, entry_name Str) Str {
     var module_id = 0
     for (module_id < roots.len()) {
         var member = first_child(links, roots.get(module_id))
@@ -1782,7 +1782,7 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
                     failed(errors, 0, outside_base_profile())
                     return ""
                 }
-                let status = emit_base_mir(abc, ast, src, declarations, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control)
+                let status = emit_base_mir(abc, ast, src, declarations, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control, entry_name)
                 if (status != 0) {
                     failed(errors, 0, status)
                     return ""

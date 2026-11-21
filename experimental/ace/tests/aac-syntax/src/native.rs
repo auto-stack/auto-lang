@@ -85,6 +85,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/mir/verify_base.at").into(),
         ),
         (
+            "factory.at".into(),
+            include_str!("../../../aac/host/cte-entry/factory.at").into(),
+        ),
+        (
             "core_globals.at".into(),
             include_str!("../../../aac/hir/core_globals.at").into(),
         ),
@@ -238,7 +242,10 @@ pub fn run_base_mir_case(sample: &[u8]) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-pub fn run_base_mir_control(sample: &[u8], mode: &str) -> Result<(String, Option<Vec<u8>>), String> {
+pub fn run_base_mir_control(
+    sample: &[u8],
+    mode: &str,
+) -> Result<(String, Option<Vec<u8>>), String> {
     let exe = prepared_semantic()?;
     with_fixture("base-mir", |root| {
         let input = root.join("input.at");
@@ -253,6 +260,189 @@ pub fn run_base_mir_control(sample: &[u8], mode: &str) -> Result<(String, Option
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok((report, None)),
             Err(err) => Err(format!("read ABC: {err}")),
         }
+    })
+}
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+const CT_DRIVER_EXE: &str = "aac1055-ct.exe";
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+const CT_DRIVER_SOURCE: &str = include_str!("../ct_driver.at");
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+fn ct_modules() -> Vec<(String, String)> {
+    vec![
+        (
+            "digest.at".into(),
+            ace_aac_host_conformance::DIGEST_SOURCE.into(),
+        ),
+        (
+            "client.at".into(),
+            include_str!("../../../aac/host/bridge/client.at").into(),
+        ),
+        (
+            "invoke.at".into(),
+            include_str!("../../../aac/host/cte-entry/invoke.at").into(),
+        ),
+    ]
+}
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+fn ct_fingerprint() -> blake3::Hash {
+    driver_fingerprint(ct_modules(), CT_DRIVER_SOURCE)
+}
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+pub fn prepare_ct_bootstrap(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    use ace_core::source::packages::AssemblyBackend;
+    use ace_native::{collections_runtime, driver::MnDriver};
+
+    let runtime = std::env::var_os("ACE_AAC_COLLECTIONS_LIB")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_file())
+        .ok_or("set ACE_AAC_COLLECTIONS_LIB to the absolute path of the prepared runtime")?;
+    let runtime_identity = collections_runtime::file_hash(&runtime)?;
+    std::fs::create_dir(root)?;
+    let mut modules = ct_modules();
+    modules.push(("main.at".into(), CT_DRIVER_SOURCE.into()));
+    let product = ace_aac_host_conformance::sys_product_backend(
+        "aac1055-ct-bootstrap",
+        &modules,
+        AssemblyBackend::Ac,
+    )?;
+    let built = MnDriver::ephemeral()
+        .build_hosted_collections_checked(
+            &product.compiled.checked,
+            "d_main",
+            root,
+            &runtime,
+            &runtime_identity,
+            1055,
+        )
+        .map_err(|err| format!("prepare Auto CT client: {err:?}"))?;
+    let exe = root.join(CT_DRIVER_EXE);
+    std::fs::copy(&built.exe_path, &exe)?;
+    let manifest = format!(
+        "{}\n{}\n{}\n",
+        ct_fingerprint(),
+        blake3::hash(&std::fs::read(&exe)?),
+        runtime_identity
+    );
+    std::fs::write(root.join(DRIVER_MANIFEST), manifest)?;
+    Ok(exe)
+}
+
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
+pub fn run_ct_bootstrap_case(
+    sample: &[u8],
+    result: &str,
+    arguments: &str,
+) -> Result<(String, Option<serde_json::Value>), String> {
+    let exe = prepared_semantic()?;
+    static PREPARED_CT: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+    let client = admit_driver(
+        &PREPARED_CT,
+        "AAC1055_CT_NATIVE_DIR",
+        CT_DRIVER_EXE,
+        ct_fingerprint,
+    )?;
+    let bridge = std::env::var_os("ACE_AAC1055_BRIDGE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_file())
+        .ok_or("set ACE_AAC1055_BRIDGE to the absolute path of the prepared ace-aac-bridge.exe")?;
+    with_fixture("ct-bootstrap", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        let request = root.join("request.aq01");
+        let response = root.join("response.ar01");
+        let observation = root.join("observation.ar01");
+        let abc = root.join("closure.abc");
+        let checked_source = root.join("checked-input.at");
+        std::fs::write(&input, sample).map_err(|err| format!("write CT fixture: {err}"))?;
+        let root_budget = Duration::from_secs(7);
+        let started = std::time::Instant::now();
+        let mut cmd = semantic_command(exe, root, &input, &output, None, true, Some("ct-mir"));
+        cmd.env("AAC1055_CT_TARGET", "f")
+            .env("AAC1055_CT_RESULT", result)
+            .env("AAC1055_CT_ARGS", arguments)
+            .env("AAC1055_CT_BUDGET_MS", "7000")
+            .env("AAC1055_ABC", &abc)
+            .env("AAC1055_CT_SOURCE", &checked_source);
+        let report = execute_report(cmd, &output, "ct-mir")?;
+        if !abc.is_file() {
+            return Ok((report, None));
+        }
+        let remaining = root_budget.saturating_sub(started.elapsed());
+        if remaining.as_millis() == 0 {
+            return Err("CT root deadline expired during Auto MIR production".into());
+        }
+        let sdk = std::fs::read(client.with_file_name(DRIVER_MANIFEST))
+            .map_err(|err| format!("read prepared SDK manifest: {err}"))?;
+        let source = std::fs::read(checked_source)
+            .map_err(|err| format!("read checked CT source: {err}"))?;
+        let mut cmd = Command::new(client);
+        cmd.current_dir(root)
+            .env("AAC1047_OUTPUT", &output)
+            .env("AAC1055_ABC", &abc)
+            .env("AAC1055_CT_RESULT", result)
+            .env("AAC1055_CT_BUDGET_MS", remaining.as_millis().to_string())
+            .env(
+                "AAC1055_SOURCE_PIN",
+                blake3::hash(&source).to_hex().as_str(),
+            )
+            .env(
+                "AAC1055_GRAMMAR_PIN",
+                blake3::hash(include_bytes!("../../../grammars/auto-source.at"))
+                    .to_hex()
+                    .as_str(),
+            )
+            .env("AAC1055_BRIDGE", bridge)
+            .env("AAC1055_REQUEST", &request)
+            .env("AAC1055_RESPONSE", &response)
+            .env("AAC1055_FRAME", &observation)
+            .env("AAC1055_SDK_PIN", blake3::hash(&sdk).to_hex().as_str())
+            .env("AAC1055_PASS_PIN", semantic_fingerprint().to_hex().as_str())
+            .env(
+                "AAC1055_DEP_PIN",
+                blake3::hash(include_bytes!("../../../Cargo.lock"))
+                    .to_hex()
+                    .as_str(),
+            );
+        let observed = run_command_capture(cmd, TreeScope::ProcessTree, Some(remaining))
+            .map_err(|err| format!("run Auto CT client: {err}"))?;
+        if observed.kind != ExitKind::Success {
+            return Err(format!(
+                "Auto CT client: {:?} {}",
+                observed.kind,
+                observed.stderr_lossy().unwrap_or_default()
+            ));
+        }
+        let report =
+            std::fs::read_to_string(&output).map_err(|err| format!("read CT result: {err}"))?;
+        if request.exists() || response.exists() {
+            return Err("CT exchange did not clean owned files".into());
+        }
+        let raw = match std::fs::read(observation) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok((report, None)),
+            Err(err) => return Err(format!("read CT outcome: {err}")),
+        };
+        let header = raw.get(..44).ok_or("truncated AR01 header")?;
+        let metadata_len = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+        let metadata = &raw[44..];
+        let mut hash = blake3::Hasher::new();
+        hash.update(&header[4..12]);
+        hash.update(metadata);
+        if &header[..4] != b"AR01"
+            || header[8..12] != [0; 4]
+            || metadata_len != metadata.len()
+            || hash.finalize().as_bytes() != &header[12..44]
+        {
+            return Err("invalid CT response frame or unexpected payload".into());
+        }
+        let metadata: serde_json::Value =
+            serde_json::from_slice(metadata).map_err(|err| format!("read CT metadata: {err}"))?;
+        Ok((report, metadata.get("outcome").cloned()))
     })
 }
 

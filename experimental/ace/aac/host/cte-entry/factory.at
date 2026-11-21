@@ -1,0 +1,56 @@
+use app.binding.bind_budget
+use app.binding.take_step
+use app.numeric_literal.exact_scalar_word
+use app.numeric_literal.numeric_literal_type
+use app.source_catalog.identifier
+use app.syntax_frontend.str_to_bytes
+use app.types.boolean_type
+use app.types.integer_type
+use app.types.primitive
+
+pub fn invalid_ct_entry() int { return -64 }
+pub fn ct_entry_name() Str { return "__aac_ct_entry" }
+
+fn literal_lane(text Str, fuel List<int>, deadline i64) int {
+    if (text == "false" || text == "true") { return boolean_type() }
+    if (text.len_bytes() == 0) { return invalid_ct_entry() }
+    let bytes = str_to_bytes(text)
+    let negative = bytes.get(0) == 45
+    var start = 0
+    if (negative) { start = 1 }
+    if (start == bytes.len()) { return invalid_ct_entry() }
+    return numeric_literal_type(bytes, start, bytes.len(), negative, fuel, deadline)
+}
+
+// Assemble only a direct call and lexical literals. The resulting function
+// goes back through the same Auto parser, binder, type checker and HIR
+// verifier. The service never receives source or an untyped argument.
+pub fn append_ct_entry(source List<int>, target Str, result Str, arguments List<Str>, fuel List<int>, deadline i64) int {
+    if (!identifier(target.clone()) || target == ct_entry_name() || arguments.len() > 255) { return invalid_ct_entry() }
+    let lane = primitive(result.clone())
+    if (lane != integer_type() && lane != boolean_type() && exact_scalar_word(lane).len() == 0) {
+        return invalid_ct_entry()
+    }
+    var wrapper = "\nfn " + ct_entry_name() + "() " + result + " { return " + target + "("
+    var position = 0
+    for (arguments.len() > 0) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let value = arguments.remove(0)
+        let typed = literal_lane(value.clone(), fuel, deadline)
+        if (typed == bind_budget()) { return typed }
+        if (typed <= 0) { return invalid_ct_entry() }
+        if (position > 0) { wrapper = wrapper + ", " }
+        wrapper = wrapper + value
+        position = position + 1
+    }
+    wrapper = wrapper + ") }\n"
+    let bytes = str_to_bytes(wrapper)
+    if (bytes.len() > fuel.get(0) || source.len() > 67108864 - bytes.len()) { return bind_budget() }
+    position = 0
+    for (position < bytes.len()) {
+        source.push(bytes.get(position))
+        position = position + 1
+    }
+    fuel.set(0, fuel.get(0) - bytes.len())
+    return 0
+}

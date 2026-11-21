@@ -1,0 +1,97 @@
+use app.client.exchange
+use app.digest.blake3_bytes
+use app.digest.utf8_bytes
+use std.conv.from_int
+use std.time.mono_ms
+
+type CtResult {
+    status int
+    frame List<int>
+}
+
+fn failed(status int) CtResult {
+    return CtResult { status: status, frame: List<int>.new() }
+}
+
+fn octets(bytes List<int>, count int) Str {
+    var result = "["
+    var at = 0
+    for (at < count) {
+        if (at != 0) { result = result + "," }
+        result = result + from_int(bytes.get(at))
+        at = at + 1
+    }
+    return result + "]"
+}
+
+fn hex_digit(byte_value int) int {
+    if (byte_value >= 48 && byte_value <= 57) { return byte_value - 48 }
+    if (byte_value >= 97 && byte_value <= 102) { return byte_value - 87 }
+    if (byte_value >= 65 && byte_value <= 70) { return byte_value - 55 }
+    return -1
+}
+
+fn pinned_identity(value Str) Str {
+    if (value.len_bytes() != 64) { return "" }
+    let encoded = utf8_bytes(value)
+    let raw = List<int>.new()
+    var at = 0
+    for (at < 64) {
+        let high = hex_digit(encoded.get(at))
+        let low = hex_digit(encoded.get(at + 1))
+        if (high < 0 || low < 0) { return "" }
+        raw.push(high * 16 + low)
+        at = at + 2
+    }
+    return octets(raw, 32)
+}
+
+fn starts_at(frame List<int>, at int, text Str) bool {
+    let prefix = utf8_bytes(text)
+    if (at < 0 || at > frame.len() - prefix.len()) { return false }
+    var i = 0
+    for (i < prefix.len()) {
+        if (frame.get(at + i) != prefix.get(i)) { return false }
+        i = i + 1
+    }
+    return true
+}
+
+fn value_word(lane Str) Str {
+    if (lane == "int") { return "i32" }
+    if (lane == "f32") { return "f32_bits" }
+    if (lane == "f64") { return "f64_bits" }
+    if (lane == "bool" || lane == "i32" || lane == "i8" || lane == "u8" || lane == "i64" || lane == "u32" || lane == "u64") { return lane.clone() }
+    return ""
+}
+
+// Prepared SDK pins identify the host stdlib and other inputs. The actual
+// source and grammar have separate digests. Only the empty capability set
+// is admitted by this closed, pure CT profile.
+pub fn invoke_ct(tool Str, request_path Str, response_path Str, abc List<int>, source_pin Str, grammar_pin Str, sdk_pin Str, pass_pin Str, dep_pin Str, expected Str, deadline i64) CtResult {
+    let result_kind = value_word(expected)
+    let source = pinned_identity(source_pin)
+    let grammar = pinned_identity(grammar_pin)
+    let sdk = pinned_identity(sdk_pin)
+    let passes = pinned_identity(pass_pin)
+    let deps = pinned_identity(dep_pin)
+    if (result_kind.len() == 0 || source.len() == 0 || grammar.len() == 0 || sdk.len() == 0 || passes.len() == 0 || deps.len() == 0) { return failed(-6) }
+    let id = octets(blake3_bytes(utf8_bytes(request_path.clone())), 16)
+    let ids = "\"inputs\":{\"source\":" + source + ",\"grammar\":" + grammar + ",\"passes\":" + passes + ",\"stdlib\":" + sdk + ",\"dependencies\":" + deps + "}"
+    let domains = "\"domains\":{\"build\":\"x86_64-pc-windows-msvc\",\"host\":\"x86_64-pc-windows-msvc\",\"target\":\"x86_64-pc-windows-msvc\",\"abi\":\"av-value/1\",\"execution\":\"hosted-av\"}"
+    let now = mono_ms()
+    let duration = deadline - now
+    if (now < 0i64 || duration <= 0i64 || duration > 10000i64) { return failed(-3) }
+    let remaining = duration.to(int)
+    let metadata = "{\"id\":" + id + ",\"mode\":\"compile_time\"," + domains + "," + ids + ",\"owner\":\"app.main\",\"mir_schema\":\"auto.mir.av-data/1\",\"options\":{\"remaining_ms\":" + from_int(remaining) + "},\"capabilities\":[],\"globals\":[],\"initializers\":[]}"
+    let received = exchange(tool, request_path, response_path, metadata, abc, remaining, 65536)
+    if (received.status != 0) { return failed(received.status) }
+    if (starts_at(received.frame, received.outcome_offset, "{\"status\":\"failure\",")) {
+        let frame = received.frame
+        return CtResult { status: 1, frame: frame.move }
+    }
+    let prefix = "{\"status\":\"value\",\"value\":{\"" + result_kind + "\":"
+    if (!starts_at(received.frame, received.outcome_offset, prefix)) { return failed(-6) }
+    let frame = received.frame
+    return CtResult { status: 0, frame: frame.move }
+}

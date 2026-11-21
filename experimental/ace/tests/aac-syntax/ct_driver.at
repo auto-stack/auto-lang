@@ -1,0 +1,44 @@
+use app.invoke.invoke_ct
+use std.conv.from_int
+use std.conv.to_int
+use std.env.get
+use std.file.read_bytes
+use std.file.write_bytes
+use std.file.write_text
+use std.time.mono_ms
+
+fn run(deadline i64, abc List<int>) Str {
+    let result = invoke_ct(get("AAC1055_BRIDGE"), get("AAC1055_REQUEST"), get("AAC1055_RESPONSE"), abc, get("AAC1055_SOURCE_PIN"), get("AAC1055_GRAMMAR_PIN"), get("AAC1055_SDK_PIN"), get("AAC1055_PASS_PIN"), get("AAC1055_DEP_PIN"), get("AAC1055_CT_RESULT"), deadline)
+    let status = result.status
+    let frame = result.frame
+    if (frame.len() == 0) { return "ERROR ct.transport " + from_int(status) + "\n" }
+    if (write_bytes(get("AAC1055_FRAME"), frame) != 0) { return "ERROR os.write\n" }
+    if (status == 0) { return "CT value\n" }
+    return "CT failure\n"
+}
+
+fn read_inputs(deadline i64) Str {
+    let mir = read_bytes(get("AAC1055_ABC"))
+    is mir {
+        Some(abc) -> { return run(deadline, abc) }
+        None -> {}
+    }
+    return "ERROR os.read\n"
+}
+
+fn evaluate() Str {
+    let now = mono_ms()
+    if (now < 0i64) { return "ERROR os.clock\n" }
+    let requested = to_int(get("AAC1055_CT_BUDGET_MS"))
+    is requested {
+        Some(budget) -> {
+            if (budget <= 0 || budget > 10000) { return "ERROR resource.ct\n" }
+            return read_inputs(now + budget.to(i64))
+        }
+        None -> { return "ERROR resource.ct\n" }
+    }
+}
+
+fn main() int {
+    return write_text(get("AAC1047_OUTPUT"), evaluate())
+}
