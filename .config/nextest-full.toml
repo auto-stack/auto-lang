@@ -168,14 +168,16 @@ threads-required = "num-test-threads"
 # An ad-hoc `cargo nextest run -p ace-aac-support-conformance` WITHOUT
 # `--config-file` uses the default discovery (no `[test-groups]` section at
 # all), so it is NOT group-limited (PLAN-1056 N-8).
+# The two AAC selectors include a member from each workspace so both terms can parse.
+# Subtracting those members selects only the declared conformance package.
 [[profile.default.overrides]]
-filter = "package(ace-aac-support-conformance)"
+filter = "package(/^(ace-aac-support-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
 test-group = "ace-aac"
 
 # PLAN-1045: bind the `ace-aac-host` fixed group's cases to its bounded
 # group (same discipline as ace-aac above; only under THIS config file).
 [[profile.default.overrides]]
-filter = "package(ace-aac-host-conformance)"
+filter = "package(/^(ace-aac-host-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
 test-group = "ace-aac-host"
 
 # PLAN-1016: explicitly selected formal pressure suite prioritizes stable
