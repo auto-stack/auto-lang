@@ -366,3 +366,15 @@ cargo t case-av-language-parity ace-source ace-av ace-abi ace-foreign-contract
 健康与时间表：复审重跑首例 20.8s 为开发者 CLI 的 on-demand release worker 增量重建（`locate_worker` 首次拉取），日测 prepared 流程（`--prepare-only --run-prepared`）工具已钉、运行不构建——真实 case 墙钟 0.60–0.85s（rust-empty 0.85s、explicit-c 0.63s、missing-cap 0.71s、header-rejected 0.60s、rust-length 0.61s，全量 AV 视图 88.2s/510 例均 <10s）。新增回归 `plan1093_c_header_spelling_parses` 0.04s。全量 AV 视图 510 PASS/0 FAIL/0 ERROR 已绑定冻结提交（worker 二进制自上次运行未变；p981 修复仅触及测试文件）。
 
 规范增量四份（language-parity/m2-denominator/auto-bindgen/feature-organized-corpus §PLAN-1093）已在 worktree 提交内，与 `supersedes_spec_components` 一致；merge 落主后按来源核验。遗漏/延后扫描：无未批准缩减；`use.c <string.h>` 草案按受支持注解 provider 形态落地（草案系"拟定合同"，语义守恒：显式真 C 库、头拼写可解析且须匹配已 admit provider），计划内已记录；FFI-LIFETIME 的 967 资源链按 §5 具名边界。
+
+### 2026-11-21 merge 收据
+
+`stage: merge | plan_id: PLAN-1093 | plan_revision: r3 | outcome: pass | delivery_commit: 300d8e585 | archive_commit: fe62fe369 + 后续簿记 | next: done`。
+
+- `prepared`：复审基线 300d8e585（reviewed_commit），规范增量已在 worktree 提交。
+- `landed`：master 未前进（仍 5e5121dac），`git merge --ff-only plan-1093-dev` 线性快进至 300d8e585（无 merge commit）；随后归档簿记提交 fe62fe369（archive 移动 + 旧路径删除 + AC/T-08 勾选）。
+- `canonical_verified`：四份规范落主，SHA-256：language-parity.md `78488296…`、m2-denominator.md `3f718951…`、auto-bindgen/project.md `f744a944…`、feature-organized-corpus.md `fc521089…`（均含 PLAN-1093 增量节）。
+- `archived`：`docs/plans/archive/1093-av-parity-foreign-language-surface.md`，status archived，current_step 7/8（T-01..T-08 全 done；AC 全勾选），delivered。
+- `cleaned`：wt-guard clean 后 `git worktree remove` + `git branch -d plan-1093-dev`；`D:/autostack/plan-artifacts/plan-1093/` 整目录按 delete-at-merge 删除（证据已折入本计划 §9 各收据；构建中间产物随 worktree 删除，不回收）。登记表 `.retention/policy.json` 刷新。
+- 批回归：`.last-batch-regression.json` last_covered_plan_id=1109、时间戳 2026-11-21 04:20Z——本计划 1093 < 1109 且收据 <48h，不触发。
+- 落主后主检出仅存其它会话的 docs 簿记 WIP（未触碰）。
