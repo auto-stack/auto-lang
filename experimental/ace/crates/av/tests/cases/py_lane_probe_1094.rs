@@ -136,23 +136,6 @@ fn main() int {
 }
 
 #[test]
-fn plan1094_dbg_with_exits() {
-    use base64::Engine as _;
-    let cases = [
-        ("break", "use.py io: StringIO\nuse.py contextlib: closing\nfn main() int {\n let buf = StringIO()\n var i = 0\n for i < 3 {\n  with closing(buf) as r { r.write(\"ok\"); break }\n }\n if buf.closed.to(bool) { return 42 }; return 0\n}\n"),
-        ("nested", "use.py io: StringIO\nuse.py contextlib: closing\nfn main() int {\n let buf1 = StringIO()\n let buf2 = StringIO()\n with closing(buf1) as a {\n  with closing(buf2) as b { b.write(\"x\") }\n }\n if buf1.closed.to(bool) && buf2.closed.to(bool) { return 42 }; return 0\n}\n"),
-    ];
-    for (name, src) in cases {
-        let step = serve(&request(src, "main.as")).expect("worker")["steps"][0].clone();
-        let stdout = base64::engine::general_purpose::STANDARD
-            .decode(step["console"]["stdout_b64"].as_str().unwrap_or(""))
-            .map(|b| String::from_utf8_lossy(&b).into_owned())
-            .unwrap_or_default();
-        println!("DBG with-exits {name}: outcome={} value={:?} stdout={:?} diag={:?}", step["outcome"], step["value"], stdout, step["diag"]);
-    }
-}
-
-#[test]
 fn plan1094_py_unicode_nul_roundtrip() {
     let source = r#"use.py builtins: str
 fn main() int {
