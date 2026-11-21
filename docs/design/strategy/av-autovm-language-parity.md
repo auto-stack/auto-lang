@@ -91,7 +91,7 @@ AVP-00新增`SourceProfile::Auto`（拟名）、源码准入键`ac.source.langua
 | AVP-09 | [PLAN-1087](../../plans/archive/1087-av-parity-errors-and-unwinding.md) | AV跨调用语言错误与控制流展开补齐 | AVP-00, AVP-04, AVP-05, AVP-06, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-ERROR` |
 | AVP-10 | [PLAN-1088](../../plans/archive/1088-av-parity-generics-specs-and-methods.md) | AV泛型、spec与方法决议组合补齐 | AVP-00, AVP-02, AVP-03, AVP-05, AVP-07, AVP-08 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERIC` |
 | AVP-11 | [PLAN-1089](../../plans/archive/1089-av-parity-generators-and-stream-lifetimes.md) | AV生成器与迭代生命周期补齐 | AVP-00, AVP-05, AVP-08, AVP-09 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-GENERATOR` |
-| AVP-12 | [PLAN-1090](../../plans/1090-av-parity-tasks-async-and-actors.md) | AV任务、异步块与Actor语言补齐 | AVP-00, AVP-03, AVP-05, AVP-07, AVP-08, AVP-09, AVP-11 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-SCHEDULER` |
+| AVP-12 | [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md) | AV任务、异步块与Actor语言补齐 | AVP-00, AVP-03, AVP-05, AVP-07, AVP-08, AVP-09, AVP-11 | 41 条 AV 检查，含 17 条原源码 | `IF-AV-PARITY-SCHEDULER` |
 | AVP-13 | [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md) | AV编译期执行与宏兼容补齐 | AVP-00, AVP-01, AVP-02, AVP-07, AVP-10 | 4＋全部所属旧行/补充反例 | `IF-AV-PARITY-CT` |
 | AVP-14 | [PLAN-1092](../../plans/1092-av-parity-attributes-and-metadata.md) | AV语言标注、元数据与反射接面补齐 | AVP-00, AVP-10, AVP-13 | 3＋全部所属旧行/补充反例 | `IF-AV-PARITY-METADATA` |
 | AVP-15 | [PLAN-1093](../../plans/1093-av-parity-foreign-language-surface.md) | AV受检FFI语言接面与回调补齐 | AVP-00, AVP-01, AVP-03, AVP-08, AVP-09, AVP-12, AVP-14 | 3＋全部所属旧行/补充反例 | `IF-AV-PARITY-FOREIGN` |

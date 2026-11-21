@@ -114,3 +114,9 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 编译期装配、真实标量执行和宏的唯一公共作者文件为 [evaluation-macros.case.ad](../../../crates/auto-lang/test/cases/language/comptime/evaluation-macros.case.ad)，由 `language.suite.ad` 引用。21 个普通 AV 检查分别固定值、精确双流或具名错误。验证用真实 CT 调用次数和运行期调用次数区分编译期回灌与运行期计算。选择负控覆盖错 AV 预期、零条有效 AV 和重复 ID。非 AV 检查在对应视图按阶段报告 SKIP 或 NOT_RUN。
 
 本包主承接旧 VM 文档为零。`legacy-map.tsv` 记录旧示例、编译器内部断言与 cookbook foreign-provider 文档的独立角色和原预期来源，这些记录不作为 AV 运行结果。源码身份和父侧检查结果见 [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md)。
+
+## PLAN-1090 增量（async 家族）
+
+`language.suite.ad` 引用任务和异步的唯一普通 AV 作者，共 41 条 AV 检查。13 份旧 Actor 文档保持原 Case ID、源码与 stdout，另保留 3 个历史 Rust 内联源码和 1 个纯语言 Cookbook 源码。迁移表区分原 VM ignored、原 A2R 预期角色和 AV 阶段选择。非 AV 原检查保留其原始条件、预期和 owner。[任务和异步语料](../../../crates/auto-lang/test/cases/language/async/tasks-actors.case.ad)
+
+父端按目标独立判定值、双流与异常。控制覆盖改动源身份、故意改错 AV 预期、旧活作者重复、零有效 AV 与非 AV 工具隔离。冻结结果及原文件身份见 [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md)。

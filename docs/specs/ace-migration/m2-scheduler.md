@@ -60,3 +60,9 @@ mailbox (buffered deliveries always precede the stop hook).
 - B-phase consumers and deep incremental editing are not part of the M2-A
   slice. Streams ride the 965 generator ownership rules; no new platform
   promises beyond the frozen D1–D6 table.
+
+## Ordinary Auto on AV (PLAN-1090)
+
+The ordinary Auto source entry supports lazy async blocks and `~T` functions, with prefix and suffix `await` and `go`. A future owns its captured environment across suspension. It can travel through function calls, return values, lists, and records. `TaskRef<T>` checks the mailbox payload type at bind time. Ordinary functions and handlers can spawn tasks, and records can carry task references. An `ask` through a typed handle requires a consistent reply type for actors sharing its mailbox payload type.
+
+A full mailbox parks the sender until capacity is available. Stop drains accepted messages in FIFO order before the stop hook. Closed sends, missing replies, and repeated consumption report named errors. A late reply leaves a consumed port closed. Cancellation releases retained text and futures. `SCHED_FUTURE` and `SCHED_DETACH` extend the fixed ABC instructions, and the ordinary AV MIR lowering identity is 8. The entry and type restrictions above apply to the frozen scheduler profile. [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md)

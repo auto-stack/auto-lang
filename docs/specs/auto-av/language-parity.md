@@ -328,3 +328,11 @@ after`（d01 静默失效债闭） | PASS |
 普通宏调用按函数绑定并丢弃返回值。`#debug/#info/#warn` 经普通控制台写 stdout，`#error` 写 stderr，各带级别前缀和原换行语义。未知名称在绑定期拒绝。装配选择、普通 CT 与运行期日志可出现在同一工程，适用同一套源码跨度和诊断。
 
 `IF-AV-PARITY-CT` 绑定 Auto 源、AV `av.closures/1`、worker `avworker/1`、MIR lowering 7、目标/cap/provider 与实际检查结果。Windows AV 结果、精确诊断、覆盖边界与旧义务映射见 [PLAN-1091](../../plans/archive/1091-av-parity-comptime-and-macros.md) 及其 [canonical 语料](../../../crates/auto-lang/test/cases/language/comptime/evaluation-macros.case.ad)。
+
+## PLAN-1090 增量（AVP-12，任务、异步块与 Actor）
+
+普通单文件 Auto 入口 `ac-av/language-source-run-v1` 支持 `~{}`、返回注解 `~T`、前缀和后缀 `await` / `go`。延迟体在等待或启动时执行，并保存拥有型捕获。Future 可以经函数返回并存入 List 与记录。受检 `TaskRef<T>` 可以跨普通函数、handler、参数、返回值和记录字段传递；`T` 约束邮箱消息类型。
+
+Actor 支持 typed、变体、字符串、guard 和 else handler，以及状态初始化、start、stop、FIFO 与有界背压。L-29 由延迟体、值传播与捕获隔离覆盖，L-31 由 ask/reply、消费、未回复与迟到回包覆盖，L-43 由 handler、生命周期、跨函数与存储覆盖。同一普通源码经共享 CST、Checked HIR、MIR、固定 ABC 与 AV 调度器执行。
+
+`IF-AV-PARITY-SCHEDULER` 绑定 `av.closures/1`、`avworker/1`、MIR lowering 8、当前 host/provider 授权和逐检查结果。41 条普通 AV 源码检查与旧义务身份见 [任务和异步语料](../../../crates/auto-lang/test/cases/language/async/tasks-actors.case.ad) 和 [PLAN-1090](../../plans/archive/1090-av-parity-tasks-async-and-actors.md)。
