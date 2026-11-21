@@ -1,13 +1,12 @@
 ---
 plan_id: PLAN-1048
-status: drafting
+status: archived
+completion_kind: delivered
 feature_name: AAC泛型、meta与编译期执行编排
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-status: archived
-completion_kind: delivered
 current_step: 7
 total_steps: 9
 depends_on: [PLAN-1047, PLAN-1051, PLAN-1055]
