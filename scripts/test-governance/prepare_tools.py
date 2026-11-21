@@ -194,10 +194,11 @@ def prepare(root, names, output, prepared, source_state=None, *, tools=None):
         for path in effective:
             receipts.append({"tool":name,"path":str(path),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
         if tool.get("env"):env[tool["env"]]=str(effective[0])
-        # PLAN-1094: a directory-backed env var (the first artifact's parent
-        # — e.g. the av provider root holding the prepared closures).
+        # PLAN-1094: a directory-backed env var — the tool's BUILD OUTPUT
+        # dir (the profile dir the bin RUNS from and writes closures into),
+        # NOT the pinned copy's parent.
         if tool.get("dir_env"):
-            env[tool["dir_env"]] = str(effective[0].parent)
+            env[tool["dir_env"]] = str(target / tool["profile"])
     return env,receipts
 
 
