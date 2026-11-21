@@ -173,7 +173,8 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-105 W105：generic-atom（`List<T>.member` 原子）alt×2 + 规则
             // 三处 profile 回归 age-component（W38 首开、W85 重建丢失）——
             // 2dfb9edf…→ac48cc92…；13 邻居逐字节不变。
-            // PLAN-1093: angle-bracket C header provider spelling.
+            // PLAN-1093 and AutoUI PLAN-107: freeze the combined angle-bracket
+            // C header provider rule and checked chart syntax.
             // PLAN-114: untyped view data supports nested list fields and optional var.
             // PLAN-114: accept the gallery's empty message block.
             // PLAN-114: view loops can omit the index binding.
@@ -181,7 +182,7 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // AutoUI PLAN-107: parameter-name structure and timer guards.
             // PLAN-114: gallery route targets preserve hyphenated module stems.
             // PLAN-114: a route outlet can carry view properties.
-            "22c9e801e883fba6a99b8352859a874e2edebe19d51c63b5473f12efeceea3e5",
+            "8f3a66cd93035b3d7a2a4d190862f149774c9d50cbc5f10d53711db393f2afe9",
         ),
         (
             SourceProfile::AgeH0,
@@ -298,6 +299,7 @@ fn p981_age_package_grammar_id_is_frozen() {
         // PLAN-114: check widget handler binder annotations against their messages.
         // AutoUI PLAN-107: checked list pop statements and the layout's `take` local.
         // PLAN-114: checked same-widget calls scope to the package grammar.
-        "c581fdc8b44328579e0185ddea2e10a5eddfb4389dcec6870956cedaa382db0a"
+        // PLAN-1093: the C header provider rule is also part of age-package.
+        "74cf9a93fbad632940ef818f9e6f2fcfa2d19fd4572726243d76a437e017eba3"
     );
 }
