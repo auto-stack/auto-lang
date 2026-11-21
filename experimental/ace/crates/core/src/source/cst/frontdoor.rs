@@ -1475,7 +1475,8 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                         ComponentEntryValue::Expr(x) => {
                                             let kind = match en.key.as_str() {
                                                 "key" => ScopedViewCheck::Key(x),
-                                                "text" | "label" if !loops.is_empty() => ScopedViewCheck::Text(x),
+                                                "text" | "label" | "class" | "style" | "d" | "fill" | "stroke"
+                                                    if !loops.is_empty() => ScopedViewCheck::Text(x),
                                                 _ => ScopedViewCheck::Value(x),
                                             };
                                             checks.push(kind, loops);

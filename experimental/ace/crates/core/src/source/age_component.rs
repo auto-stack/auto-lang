@@ -4228,6 +4228,17 @@ fn hook_stmts_lower(
                 out.push(Stmt::While { cond, body: Block { stmts, span: *span }, span: *span });
             }
             ComponentStmt::Effect { value, span } | ComponentStmt::Call { call: value, span } => {
+                if matches!(&value.kind,
+                    ExprKind::MethodCall { recv, .. } | ExprKind::Method { recv, .. }
+                        if matches!(&recv.kind, ExprKind::Var(id) if id.name == "storage"
+                            && !scope.iter().any(|(name, _, _)| name == &id.name)
+                            && !node.fields.iter().any(|field| field.name == id.name)
+                            && !node.params.iter().any(|param| param.name == id.name)))
+                {
+                    return Err(vec![text_diag(
+                        "source.age.handler-effect", "storage calls require the owning host", *span,
+                    )]);
+                }
                 if matches!(st, ComponentStmt::Call { .. }) {
                     let list_method = matches!(&value.kind,
                         ExprKind::MethodCall { name, .. } | ExprKind::Method { name, .. }
@@ -4564,7 +4575,7 @@ pub(crate) fn rename_expr_with_params(
         //（param 与字段同拼写时 param 胜出；未命中两者的保持原样交共享
         // verify 报未绑定名，本层不猜）。
         ExprKind::Var(id) => {
-            if let Some((_, local, _)) = param_locals.iter().find(|(p, _, _)| *p == id.name) {
+            if let Some((_, local, _)) = param_locals.iter().rev().find(|(p, _, _)| *p == id.name) {
                 return Ok(Expr {
                     span: expr.span,
                     kind: ExprKind::Var(Ident {

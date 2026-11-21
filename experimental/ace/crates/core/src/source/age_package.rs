@@ -2197,19 +2197,12 @@ pub(crate) fn check_scoped_view_value(
             let span = expr.span;
             let bound = scope.rename(expr)?;
             let value = match check {
-                ScopedViewCheck::Text(_) => Expr {
-                    span, kind: ExprKind::Method {
-                        recv: Box::new(bound),
-                        name: Ident { name: "clone".into(), span },
-                        args: Vec::new(),
-                    },
-                },
                 ScopedViewCheck::Condition(_) => Expr {
                     span, kind: ExprKind::Unary {
                         op: UnaryOp::Not, operand: Box::new(bound),
                     },
                 },
-                ScopedViewCheck::Key(_) => Expr {
+                ScopedViewCheck::Text(_) | ScopedViewCheck::Key(_) => Expr {
                     span, kind: ExprKind::Call {
                         callee: Ident { name: "__fstr".into(), span },
                         args: vec![Arg::Pos(bound)],
@@ -2549,6 +2542,10 @@ fn walk_widget_sites(
                         )
                     });
                     let Some(target) = matching.next() else {
+                        if !named {
+                            work.extend(children.map(|item| (item, loops.clone())));
+                            continue;
+                        }
                         if let Some(import) = node.package_imports.iter().find(|import| {
                             !supplied.contains_key(import.package.name.as_str())
                         }) {
@@ -2560,10 +2557,6 @@ fn walk_widget_sites(
                                 ),
                                 import.span,
                             )));
-                        }
-                        if !named {
-                            work.extend(children.map(|item| (item, loops.clone())));
-                            continue;
                         }
                         return Err(failure(text_diag(
                             "source.age.widget-unresolved",
