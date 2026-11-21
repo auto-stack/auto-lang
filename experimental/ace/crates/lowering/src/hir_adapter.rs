@@ -5120,7 +5120,9 @@ k 0
                                 if ace_core::foreign_resources::lane_is_callback(
                                     &declaration,
                                     param,
-                                ) {
+                                ) && self.out.profile
+                                    != ace_av_core::contract::AV_CLOSURES_PROFILE
+                                {
                                     return Err(AdapterError::inv(
                                         "mir.foreign-callback",
                                         format!(

@@ -78,6 +78,14 @@ pub struct RustFnEntry {
     /// omit this field and keep their original content identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owned: Option<RustOwnedEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion: Option<RustCompletion>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RustCompletion {
+    Sync,
+    Async,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +126,7 @@ pub enum RustParam {
     I32,
     Bool,
     OwnedHandle,
+    Callback,
     /// `frame: &F0Frame` — the whole call rides the tag frame (the only
     /// parameter a frame-declared fn may take).
     FrameCall,
@@ -201,7 +210,7 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
         // The annotated function must exist in the source with an
         // importable signature: metadata may never invent or widen a
         // provider (params + ret cross-checked against the annotation).
-        let (mut params, ret_kind, owned) = if let Some(type_name) = a.owned_type.as_deref() {
+        let (params, ret_kind, owned) = if let Some(type_name) = a.owned_type.as_deref() {
             let (params, owned) = require_owned_signature(source, &a, type_name)?;
             (params, "i32".to_owned(), Some(owned))
         } else {
@@ -231,13 +240,37 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
                 ),
             ));
         }
-        let _ = &mut params;
+        if params.contains(&RustParam::Callback)
+            && (params.as_slice() != [RustParam::Callback, RustParam::I32, RustParam::I32]
+                || a.form != "pure"
+                || a.ret.as_deref() != Some("i32"))
+        {
+            return Err(err(
+                "rust-import.callback",
+                format!("fn `{}` needs (&F0Callback, i32, i32) -> i32", a.rust_name),
+            ));
+        }
+        let completion = match a.form.as_str() {
+            "complete_sync" => Some(RustCompletion::Sync),
+            "complete_async" => Some(RustCompletion::Async),
+            _ => None,
+        };
+        if completion.is_some() && (params != [RustParam::I32] || ret_kind != "i32") {
+            return Err(err(
+                "rust-import.completion",
+                format!(
+                    "fn `{}` needs (i32) -> i32 for a completion port",
+                    a.rust_name
+                ),
+            ));
+        }
         let form = match (a.form.as_str(), a.ret.as_deref(), ret_kind.as_str()) {
             ("owned_open" | "owned_borrow" | "owned_close", None, _) if owned.is_some() => {
                 RustFnForm::PureI32
             }
             ("pure", Some("i32"), "i32") => RustFnForm::PureI32,
             ("pure", Some("bool"), "bool") => RustFnForm::PureBool,
+            ("complete_sync" | "complete_async", None, "i32") => RustFnForm::PureI32,
             ("fallible", None, "Option<i32>") => RustFnForm::FallibleI32 { errors: a.errors },
             (form, want, got) => {
                 return Err(err(
@@ -267,6 +300,7 @@ pub fn import(source: &str) -> Result<RustProviderManifest, ImportError> {
             params,
             frame: a.frame.clone(),
             owned,
+            completion,
         });
     }
     validate_owned_entries(&functions)?;
@@ -445,6 +479,16 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
                 "rust-import.owned",
                 format!(
                     "{form} needs owned=Type and a matching Rust signature (line {})",
+                    idx + 1
+                ),
+            ));
+        }
+    } else if matches!(form.as_str(), "complete_sync" | "complete_async") {
+        if owned_type.is_some() || frame.is_some() || ret.is_some() || !errors.is_empty() {
+            return Err(err(
+                "rust-import.completion",
+                format!(
+                    "{form} needs a standalone (i32) -> i32 signature (line {})",
                     idx + 1
                 ),
             ));
@@ -671,6 +715,7 @@ fn require_pub_fn_signature(
             match ty {
                 "i32" => params.push(RustParam::I32),
                 "bool" => params.push(RustParam::Bool),
+                "&F0Callback" => params.push(RustParam::Callback),
                 "String" | "&String" => {
                     return Err(err(
                         "rust-import.owned-text",
@@ -818,7 +863,22 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
     if manifest.functions.iter().any(|f| f.frame.is_some()) {
         out.push_str(FRAME_SHIM_PRELUDE);
     }
+    if manifest
+        .functions
+        .iter()
+        .any(|f| f.params.contains(&RustParam::Callback))
+    {
+        out.push_str(CALLBACK_SHIM_PRELUDE);
+    }
     for f in &manifest.functions {
+        if f.completion.is_some() {
+            emit_completion_fn(&mut out, f);
+            continue;
+        }
+        if f.params.contains(&RustParam::Callback) {
+            emit_callback_fn(&mut out, f);
+            continue;
+        }
         if let Some(owned) = &f.owned {
             emit_owned_fn(&mut out, f, owned);
             continue;
@@ -853,7 +913,7 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
                 // frame fns are emitted by emit_frame_fn (they never
                 // reach the general frame loop; import() enforces the
                 // single-parameter shape)
-                RustParam::FrameCall | RustParam::OwnedHandle => {}
+                RustParam::FrameCall | RustParam::OwnedHandle | RustParam::Callback => {}
                 RustParam::I32 => {
                     if !params_c.is_empty() {
                         params_c.push_str(", ");
@@ -912,6 +972,42 @@ pub fn generate_shim(manifest: &RustProviderManifest) -> String {
         }
     }
     out
+}
+
+const CALLBACK_SHIM_PRELUDE: &str = r#"
+mod __f0_callback {
+    pub struct F0Callback {
+        target: extern "C" fn(i64, i64) -> i64,
+        thread: std::marker::PhantomData<std::rc::Rc<()>>,
+    }
+    impl F0Callback {
+        pub(super) fn new(target: extern "C" fn(i64, i64) -> i64) -> Self {
+            Self { target, thread: std::marker::PhantomData }
+        }
+        pub fn call(&self, ctx: i32, item: i32) -> i32 {
+            i32::try_from((self.target)(i64::from(ctx), i64::from(item))).expect("checked callback result")
+        }
+    }
+}
+pub use __f0_callback::F0Callback;
+"#;
+
+fn emit_callback_fn(out: &mut String, f: &RustFnEntry) {
+    out.push_str(&format!(
+        "#[no_mangle]\npub extern \"C\" fn {export}(target: extern \"C\" fn(i64, i64) -> i64, ctx: i64, item: i32) -> i32 {{\n    let callback = F0Callback::new(target);\n    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {name}(&callback, i32::try_from(ctx).expect(\"checked callback context\"), item))) {{\n        Ok(value) => value,\n        Err(_) => {{ __F0_PANIC_FLAG.store(1, std::sync::atomic::Ordering::SeqCst); 0 }}\n    }}\n}}\n\n",
+        export = f.export,
+        name = f.rust_name,
+    ));
+}
+
+fn emit_completion_fn(out: &mut String, f: &RustFnEntry) {
+    // Completion status is per invocation. A late background panic must
+    // never set the DLL-wide panic flag of a different foreground call.
+    out.push_str(&format!(
+        "#[no_mangle]\npub extern \"C\" fn {export}(input: i32, out: *mut i32) -> i32 {{\n    match std::panic::catch_unwind(|| {name}(input)) {{\n        Ok(value) => {{ unsafe {{ *out = value; }} 0 }}\n        Err(_) => 1,\n    }}\n}}\n\n",
+        export = f.export,
+        name = f.rust_name,
+    ));
 }
 
 fn emit_owned_fn(out: &mut String, f: &RustFnEntry, owned: &RustOwnedEntry) {
@@ -1127,6 +1223,7 @@ pub fn to_manual_manifest(
                 RustParam::OwnedHandle => ResKind::Handle {
                     provider: manifest.provider.clone(),
                 },
+                RustParam::Callback => ResKind::Callback { ctx: true },
             })
             .collect();
         let (form, error_model, resource, effect) = match &f.form {

@@ -2039,6 +2039,9 @@ struct LoopState {
     alloc_events: u64,
     /// Step counter at the last cancellation poll.
     last_poll: u64,
+    // A synchronous foreign callback cannot unwind into its caller while
+    // the provider is still on the native stack.
+    foreign_callback: Option<(usize, Instant)>,
     /// PLAN-821 owned-text ledger: every owned Str allocation/free event
     /// (ids in creation order; the LIFO/release oracles read the traces).
     arena: crate::owned_text::StrArena,
@@ -4038,9 +4041,11 @@ fn unwind_to_invoke(
     from_instruction: bool,
 ) -> Result<bool, ExecOutcome> {
     let upper = st.frames.len() - usize::from(!from_instruction);
+    let lower = st.foreign_callback.map_or(0, |(depth, _)| depth);
     let Some((depth, target, destination, result_type, result_slot)) = st.frames[..upper]
         .iter()
         .enumerate()
+        .skip(lower)
         .rev()
         .find_map(|(depth, frame)| {
             let function = v.fn_at(frame.func)?;
@@ -4165,6 +4170,108 @@ fn dispatch<V: ModuleView>(
     )
 }
 
+fn run_foreign_callback<V: ModuleView>(
+    v: &V,
+    st: &mut LoopState,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    started: Instant,
+    closure: crate::contract::ClosureRefV,
+    args: [i32; 2],
+) -> Result<i32, ExecOutcome> {
+    if CancelCheck::poll(cancel) {
+        return Err(ExecOutcome::Cancelled);
+    }
+    if started.elapsed() > limits.wall {
+        return Err(ExecOutcome::Resource {
+            kind: ResourceKind::ExecutionWall,
+            message: "foreign callback exceeded wall budget".into(),
+        });
+    }
+    let callee = v.fn_at(closure.func).expect("verified closure callee");
+    if st.frames.len() >= limits.max_frames {
+        return Err(ExecOutcome::Resource {
+            kind: ResourceKind::Frames,
+            message: format!("guest frames exceeded {}", limits.max_frames),
+        });
+    }
+    let slots_exhausted = || ExecOutcome::Resource {
+        kind: ResourceKind::SlotBytes,
+        message: format!(
+            "foreign callback frame exceeds {} slot bytes",
+            limits.max_slot_bytes
+        ),
+    };
+    if st.slot_bytes + callee.slots.len() * crate::contract::SLOT_CELL_BYTES > limits.max_slot_bytes
+    {
+        return Err(slots_exhausted());
+    }
+    let (mut slots, allocation) = crate::frame_allocation::reserve_slots(callee.slots.len())
+        .map_err(|()| slots_exhausted())?;
+    let mut args = args.into_iter();
+    for slot in &callee.slots {
+        slots.push(if slot.kind == crate::mir::SlotKind::Param {
+            Value::I32(args.next().expect("verified callback arity"))
+        } else {
+            v.zero_of(closure.func, slot.ty)
+        });
+    }
+    let mut visited = 0;
+    let bytes = frame_slots_bytes(&slots, &mut visited);
+    st.steps += visited;
+    if st.slot_bytes.saturating_add(bytes) > limits.max_slot_bytes {
+        return Err(slots_exhausted());
+    }
+    st.slot_bytes += bytes;
+    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+    st.frame_seq += 1;
+    if st.lifecycle_on {
+        st.trace.lifecycle.push_frame_enter(st.frame_seq);
+    }
+    st.foreign_callback = Some((st.frames.len(), started));
+    st.frames.push(Frame {
+        func: closure.func,
+        block: callee.entry,
+        ip: 0,
+        slots,
+        gens: vec![0; callee.slots.len()],
+        seq: st.frame_seq,
+        _allocation: allocation,
+        ret_dst: None,
+        closure_env: Some(closure.env),
+    });
+    let outcome = dispatch(v, limits, cancel, &[], st, None, false);
+    st.foreign_callback = None;
+    match outcome {
+        Some(ExecOutcome::Success {
+            value: Value::I32(value),
+            ..
+        }) => Ok(value),
+        Some(ExecOutcome::Success { .. }) | None => Err(ExecOutcome::Infra(
+            "foreign.callback: callback did not return its verified I32 result".into(),
+        )),
+        Some(failure) => Err(failure),
+    }
+}
+
+fn foreign_error(error: crate::foreign_exec::ForeignExecError) -> ExecOutcome {
+    use crate::foreign_exec::ForeignExecError;
+
+    match error {
+        ForeignExecError::Reject(reject) => {
+            ExecOutcome::Infra(format!("{}: {}", reject.code, reject.message))
+        }
+        ForeignExecError::Panic(message) => ExecOutcome::Infra(format!(
+            "foreign.panic: provider panic contained at the boundary: {message}"
+        )),
+        ForeignExecError::Cancelled => ExecOutcome::Cancelled,
+        ForeignExecError::Wall => ExecOutcome::Resource {
+            kind: ResourceKind::ExecutionWall,
+            message: "foreign completion exceeded wall budget".into(),
+        },
+    }
+}
+
 fn dispatch_with_host<V: ModuleView>(
     v: &V,
     limits: &ExecLimits,
@@ -4180,7 +4287,8 @@ fn dispatch_with_host<V: ModuleView>(
     )>,
     mut foreign: Option<&mut crate::foreign_exec::ForeignStubTable>,
 ) -> Option<ExecOutcome> {
-    if crate::host::inside_provider() {
+    let in_callback = st.foreign_callback.is_some();
+    if crate::host::inside_provider() && !in_callback {
         return Some(ExecOutcome::Infra(
             "host.reentry: guest execution from a host call is forbidden".into(),
         ));
@@ -4197,22 +4305,24 @@ fn dispatch_with_host<V: ModuleView>(
         .host_imports()
         .iter()
         .any(|h| crate::config_document::is_config_symbol(&h.symbol));
-    if needs_config && !crate::config_document::session_is_open() {
+    if !in_callback && needs_config && !crate::config_document::session_is_open() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: explicit configuration document session required".into(),
         ));
     }
-    if needs_console && host.is_none() {
+    if !in_callback && needs_console && host.is_none() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: no console provider".into(),
         ));
     }
-    if needs_platform && platform.is_none() {
+    if !in_callback && needs_platform && platform.is_none() {
         return Some(ExecOutcome::Infra(
             "host.unauthorized: no platform provider".into(),
         ));
     }
-    let started = Instant::now();
+    let started = st
+        .foreign_callback
+        .map_or_else(Instant::now, |(_, started)| started);
     // B2-C04: the step budget is PER SEGMENT (this dispatch call's own
     // budget — `resume(.., Some(n))` grants n MORE steps); the cumulative
     // hard fuel (`limits.max_steps`) below still spans the whole chain.
@@ -4442,6 +4552,17 @@ fn dispatch_with_host<V: ModuleView>(
         };
         if ip < block.instrs.len() {
             let instr = &block.instrs[ip];
+            if in_callback
+                && (is_scheduler_instruction(instr)
+                    || matches!(
+                        instr,
+                        MirInstr::HostCall { .. } | MirInstr::ForeignCall { .. }
+                    ))
+            {
+                return Some(ExecOutcome::Infra(
+                    "foreign.callback: host calls and scheduling are forbidden during a synchronous callback".into(),
+                ));
+            }
             // PLAN-866 safety point: park the chain right BEFORE the next
             // guest call dispatch (direct or closure) — the frozen "one
             // completed call" boundary. Step-neutral by construction:
@@ -4488,7 +4609,7 @@ fn dispatch_with_host<V: ModuleView>(
                     };
                     if !callbacks.is_empty() {
                         return Some(ExecOutcome::Infra(
-                            "foreign.callback-unsupported: the F0 AV domain admits no callback lanes".into(),
+                            "foreign.callback-unsupported: this AV lane requires a verified Rust closure slot".into(),
                         ));
                     }
                     let callable = table.callable_of(declaration);
@@ -4511,6 +4632,76 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     let frame = st.frames.last().expect("frame");
                     let dispatched = match callable {
+                        Some(crate::foreign_exec::ForeignCallable::Completion { .. }) => {
+                            let &[input] = args.as_slice() else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.arity: expected one completion input".into(),
+                                ));
+                            };
+                            let Value::I32(input) = frame.slots[input as usize] else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.lane: completion input must be I32".into(),
+                                ));
+                            };
+                            table.dispatch_completion(
+                                declaration,
+                                input,
+                                cancel,
+                                started,
+                                limits.wall,
+                            )
+                        }
+                        Some(crate::foreign_exec::ForeignCallable::Callback(_)) => {
+                            let &[callback, ctx, item] = args.as_slice() else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.arity: expected callback, context, and item".into(),
+                                ));
+                            };
+                            let (Value::Closure(closure), Value::I32(ctx), Value::I32(item)) = (
+                                &frame.slots[callback as usize],
+                                &frame.slots[ctx as usize],
+                                &frame.slots[item as usize],
+                            ) else {
+                                return Some(ExecOutcome::Infra(
+                                    "foreign.lane: expected closure and two I32 values".into(),
+                                ));
+                            };
+                            let (closure, ctx, item) = (*closure, *ctx, *item);
+                            if !closure_ref_valid(st, closure)
+                                || !closure_borrows_valid(st, closure)
+                            {
+                                return Some(ExecOutcome::Trap {
+                                    kind: TrapKind::InvalidHandle,
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                });
+                            }
+                            let mut failure = None;
+                            let result =
+                                table.dispatch_callback(declaration, ctx, item, |ctx, item| {
+                                    if failure.is_some() {
+                                        return None;
+                                    }
+                                    match run_foreign_callback(
+                                        v,
+                                        st,
+                                        limits,
+                                        cancel,
+                                        started,
+                                        closure,
+                                        [ctx, item],
+                                    ) {
+                                        Ok(value) => Some(value),
+                                        Err(outcome) => {
+                                            failure = Some(outcome);
+                                            None
+                                        }
+                                    }
+                                });
+                            if failure.is_some() {
+                                return failure;
+                            }
+                            result
+                        }
                         Some(crate::foreign_exec::ForeignCallable::Owned(_)) => {
                             use crate::foreign_exec::OwnedArgument;
 
@@ -4647,6 +4838,7 @@ fn dispatch_with_host<V: ModuleView>(
                                             "foreign.panic: {message}"
                                         )));
                                     }
+                                    Err(error) => return Some(foreign_error(error)),
                                 }
                             } else if let Ok(Some((class, message))) =
                                 table.python_exception(declaration, cancel)
@@ -4672,17 +4864,7 @@ fn dispatch_with_host<V: ModuleView>(
                                 span,
                             });
                         }
-                        Err(crate::foreign_exec::ForeignExecError::Reject(r)) => {
-                            return Some(ExecOutcome::Infra(format!("{}: {}", r.code, r.message)));
-                        }
-                        Err(crate::foreign_exec::ForeignExecError::Panic(message)) => {
-                            // Independent HOST failure: the provider panic
-                            // was contained at this boundary; the guest
-                            // never sees a value for it.
-                            return Some(ExecOutcome::Infra(format!(
-                                "foreign.panic: provider panic contained at the boundary: {message}"
-                            )));
-                        }
+                        Err(error) => return Some(foreign_error(error)),
                     }
                 }
                 MirInstr::Const { dst, value } => {
@@ -9125,6 +9307,15 @@ fn dispatch_with_host<V: ModuleView>(
                 if st.lifecycle_on {
                     st.trace.lifecycle.push_frame_leave(left_seq, false);
                 }
+                if st
+                    .foreign_callback
+                    .is_some_and(|(depth, _)| depth == st.frames.len())
+                {
+                    return Some(ExecOutcome::Success {
+                        value: rv,
+                        steps: st.steps,
+                    });
+                }
                 match (st.frames.last_mut(), ret_dst) {
                     (Some(_), Some(dst)) => {
                         if let Err(out) = commit_slot_write(st, dst as usize, rv, limits) {
@@ -9838,24 +10029,26 @@ fn has_scheduler_instructions(module: &LoadedModule) -> bool {
         .iter()
         .flat_map(|function| &function.blocks)
         .flat_map(|block| &block.instrs)
-        .any(|instruction| {
-            matches!(
-                instruction,
-                MirInstr::SchedSpawn { .. }
-                    | MirInstr::SchedSend { .. }
-                    | MirInstr::SchedAsk { .. }
-                    | MirInstr::SchedReply { .. }
-                    | MirInstr::SchedStop { .. }
-                    | MirInstr::SchedSleep { .. }
-                    | MirInstr::SchedAwait { .. }
-                    | MirInstr::SchedFuture { .. }
-                    | MirInstr::SchedDetach { .. }
-                    | MirInstr::SchedGo { .. }
-                    | MirInstr::SchedRecv { .. }
-                    | MirInstr::SchedPort { .. }
-                    | MirInstr::SchedStopping { .. }
-            )
-        })
+        .any(is_scheduler_instruction)
+}
+
+fn is_scheduler_instruction(instruction: &MirInstr) -> bool {
+    matches!(
+        instruction,
+        MirInstr::SchedSpawn { .. }
+            | MirInstr::SchedSend { .. }
+            | MirInstr::SchedAsk { .. }
+            | MirInstr::SchedReply { .. }
+            | MirInstr::SchedStop { .. }
+            | MirInstr::SchedSleep { .. }
+            | MirInstr::SchedAwait { .. }
+            | MirInstr::SchedFuture { .. }
+            | MirInstr::SchedDetach { .. }
+            | MirInstr::SchedGo { .. }
+            | MirInstr::SchedRecv { .. }
+            | MirInstr::SchedPort { .. }
+            | MirInstr::SchedStopping { .. }
+    )
 }
 
 fn execute_sched_with_providers(

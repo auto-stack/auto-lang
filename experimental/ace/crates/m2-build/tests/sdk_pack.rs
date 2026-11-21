@@ -19,6 +19,78 @@ fn run_exit(run: &Result<RunObservation, ace_m2_build::M2Reject>) -> i32 {
         .expect("value observed")
 }
 
+#[cfg(windows)]
+#[test]
+fn p1113_project_and_relocated_sdk_run_captured_callback_and_completion_ports() {
+    use ace_m2_build::driver::{ProjectInputs, RustProjectInputs};
+
+    let source = r#"use.rs callbacks_and_ports
+fn main() int {
+    let base = 7
+    let callback = (ctx int, item int) => base + ctx * item
+    let captured = apply(callback, 2, 3)
+    let foreground = sync_add(4)
+    return captured + foreground + background_double(6)
+}"#;
+    let provider = r#"//! auto-ffi provider callbacks_and_ports/1 target=x86_64-pc-windows-msvc profile=callbacks-and-ports.v1
+use std::{sync::Mutex, thread::{self, ThreadId}};
+static FOREGROUND: Mutex<Option<ThreadId>> = Mutex::new(None);
+
+// auto-ffi fn apply symbol=callbacks.apply.v1 form=pure ret=i32
+pub fn apply(cb: &F0Callback, ctx: i32, item: i32) -> i32 {
+    let first = cb.call(ctx, item);
+    let second = cb.call(ctx, item + 1);
+    assert_eq!((first, second), (13, 15));
+    first + second
+}
+// auto-ffi fn sync_add symbol=ports.sync.v1 form=complete_sync
+pub fn sync_add(input: i32) -> i32 {
+    *FOREGROUND.lock().unwrap() = Some(thread::current().id());
+    input + 1
+}
+// auto-ffi fn background_double symbol=ports.async.v1 form=complete_async
+pub fn background_double(input: i32) -> i32 {
+    let foreground = FOREGROUND.lock().unwrap().expect("sync port ran first");
+    assert_ne!(foreground, thread::current().id());
+    input * 2
+}
+"#;
+    let mut inputs = ProjectInputs::new("rust-lifecycle", "main", "main.at", source);
+    inputs.caps = [
+        "ac.source.language.av/v1",
+        "foreign.scalar",
+        "foreign.resource",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    inputs.rust_provider = Some(RustProjectInputs {
+        source: provider.into(),
+        cargo_lock: None,
+    });
+
+    let root = scratch("rust-lifecycle");
+    let dev = root.join("dev");
+    let sdk = root.join("sdk");
+    let mut driver = M2Build::new(&dev);
+    let project = driver.build(TargetKind::Av, &inputs).expect("run project");
+    assert_eq!(project.run.unwrap().exit_code, Some(45));
+    driver
+        .build_sdk(&inputs, &[TargetKind::Av], &sdk, vec![], "run:rust")
+        .expect("pack SDK");
+    drop(driver);
+    std::fs::rename(&sdk, root.join("moved")).expect("relocate SDK");
+    std::fs::remove_dir_all(&dev).expect("remove development cache");
+    assert_eq!(
+        run_exit(&M2Build::new(&root.join("consumer")).run_sdk(
+            &root.join("moved"),
+            TargetKind::Av,
+            "run:rust",
+        )),
+        45
+    );
+    std::fs::remove_dir_all(root).expect("remove test scratch");
+}
+
 /// V-08 leg 1 + V-ID-PACK: pack av+native, RELOCATE the directory far
 /// from the build root, delete the build root (no dev cache), run both
 /// lanes from the relocated copy — 14 both ways.

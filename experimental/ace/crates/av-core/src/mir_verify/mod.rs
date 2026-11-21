@@ -2625,11 +2625,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     | (Some(MirType::Bool), ace_foreign_contract::LaneKind::Bool) => true,
                     _ => false,
                 };
-                // PLAN-939 S06: every Callback lane carries EXACTLY
-                // ONE named target (a reviewed identifier naming a
-                // free source fn; the backend emits the static
-                // trampoline); its args slot is a placeholder that
-                // no reader may consume.
+                // PLAN-939 named callbacks use placeholder slots.
+                // A scoped Rust callback in AV consumes a closure slot.
+                use ace_foreign_contract::{LaneKind, ResKind, ResOut, ResourceForm};
+                let rust = declaration.logical.starts_with("rust/");
+                let rust_callback = rust
+                    && self.is_closures
+                    && declaration.resource().is_some_and(|r| {
+                        r.noescape
+                            && r.params
+                                == [ResKind::Callback { ctx: true }, ResKind::I32, ResKind::I32]
+                            && r.form == (ResourceForm::Pure { ret: ResOut::I32 })
+                    });
+                let is_i32 = |ty| matches_lane(ty, LaneKind::I32);
                 let res_params = declaration
                     .resource()
                     .map(|r| r.params.as_slice())
@@ -2653,18 +2661,27 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             ));
                         }
                     }
-                    let want = res_params
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, p)| {
-                            matches!(p, ace_foreign_contract::resource::ResKind::Callback { .. })
-                        })
-                        .count();
-                    if callbacks.len() != want {
-                        return Err(err(
-                            "mir.foreign-callback",
-                            "every callback lane needs exactly one named target".into(),
-                        ));
+                    for (lane, param) in res_params.iter().enumerate() {
+                        if !matches!(param, ace_foreign_contract::ResKind::Callback { .. })
+                            || seen.contains(&(lane as u16))
+                        {
+                            continue;
+                        }
+                        let valid = rust_callback
+                            && args.get(lane).is_some_and(|slot| {
+                                f.slots.get(*slot as usize).is_some_and(|slot| {
+                                    matches!(self.module.types.get(slot.ty as usize), Some(MirType::Closure(sig))
+                                        if sig.params.len() == 2
+                                            && sig.params.iter().copied().all(is_i32)
+                                            && is_i32(sig.result))
+                                })
+                            });
+                        if !valid {
+                            return Err(err(
+                                "mir.foreign-callback",
+                                "callback lane needs a named target or a checked Rust callback closure".into(),
+                            ));
+                        }
                     }
                 }
                 if args.len() != declaration.arity() {
@@ -2672,6 +2689,22 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         "mir.foreign-arity",
                         "foreign argument count mismatch".into(),
                     ));
+                }
+                if rust {
+                    for (arg, param) in args.iter().zip(res_params) {
+                        let lane = match param {
+                            ResKind::I32 => LaneKind::I32,
+                            ResKind::Bool => LaneKind::Bool,
+                            _ => continue,
+                        };
+                        let ty = slot_ty_of(f, *arg, sp, "Rust foreign arg")?;
+                        if !matches_lane(ty, lane) {
+                            return Err(err(
+                                "mir.foreign-type",
+                                "Rust foreign scalar type mismatch".into(),
+                            ));
+                        }
+                    }
                 }
                 for (arg, lane) in args.iter().zip(declaration.params()) {
                     let ty = slot_ty_of(f, *arg, sp, "foreign arg")?;

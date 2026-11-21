@@ -255,7 +255,7 @@ fn load_prepared_rust(
         .admit(&authority)
         .map_err(|e| diag("foreign.admit", e))?;
     let library = load_library(&dll).map_err(diag_wrap("foreign.load"))?;
-    let lease = std::rc::Rc::new(PreparedRustLibrary(library));
+    let lease = std::sync::Arc::new(PreparedRustLibrary(library));
     let mut table = ForeignStubTable::new(1);
     table.pin_code_image(lease);
     unsafe { bind_rust_exports(library, &manifest, &manual, 1, &mut table) }
@@ -265,6 +265,12 @@ fn load_prepared_rust(
 
 #[derive(Debug)]
 struct PreparedRustLibrary(windows_sys::Win32::Foundation::HMODULE);
+
+// A LoadLibrary reference may be held and freed on any worker thread.
+#[cfg(windows)]
+unsafe impl Send for PreparedRustLibrary {}
+#[cfg(windows)]
+unsafe impl Sync for PreparedRustLibrary {}
 
 impl Drop for PreparedRustLibrary {
     fn drop(&mut self) {
@@ -305,7 +311,39 @@ pub unsafe fn bind_rust_exports(
             .iter()
             .filter(|p| matches!(p, auto_bindgen::rust_import::RustParam::I32))
             .count();
-        let callable = if let Some(owned) = &f.owned {
+        use auto_bindgen::rust_import::{RustCompletion, RustFnForm, RustParam};
+        let callable = if let Some(mode) = f.completion {
+            if f.params != [RustParam::I32]
+                || f.form != RustFnForm::PureI32
+                || f.owned.is_some()
+                || f.frame.is_some()
+            {
+                return Err(format!(
+                    "foreign.signature: invalid Rust completion export {}",
+                    f.export
+                ));
+            }
+            ace_av_core::foreign_exec::ForeignCallable::Completion {
+                call: unsafe {
+                    std::mem::transmute::<_, ace_av_core::foreign_exec::CompletionI32Fn>(sym)
+                },
+                asynchronous: mode == RustCompletion::Async,
+            }
+        } else if f.params.contains(&RustParam::Callback) {
+            if f.params != [RustParam::Callback, RustParam::I32, RustParam::I32]
+                || f.form != RustFnForm::PureI32
+                || f.owned.is_some()
+                || f.frame.is_some()
+            {
+                return Err(format!(
+                    "foreign.signature: invalid Rust callback export {}",
+                    f.export
+                ));
+            }
+            ace_av_core::foreign_exec::ForeignCallable::Callback(unsafe {
+                std::mem::transmute::<_, ace_av_core::foreign_exec::CallbackI32Fn>(sym)
+            })
+        } else if let Some(owned) = &f.owned {
             use ace_av_core::foreign_exec::{ForeignCallable, OwnedCall, OwnedHandleFn, OwnedOpen};
             use auto_bindgen::rust_import::RustOwnedRole;
 

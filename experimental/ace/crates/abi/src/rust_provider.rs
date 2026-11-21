@@ -1414,11 +1414,16 @@ fn open_session(
 /// built from its exports. Dropping frees the library.
 pub struct LoadedRustProvider {
     pub table: ace_av_core::foreign_exec::ForeignStubTable,
-    _library: std::rc::Rc<RustLibrary>,
+    _library: std::sync::Arc<RustLibrary>,
 }
 
 #[derive(Debug)]
 struct RustLibrary(windows_sys::Win32::Foundation::HMODULE);
+
+// The OS library reference stays live until the last background caller
+// returns, and FreeLibrary accepts that reference on the worker thread.
+unsafe impl Send for RustLibrary {}
+unsafe impl Sync for RustLibrary {}
 
 impl Drop for RustLibrary {
     fn drop(&mut self) {
@@ -1466,7 +1471,7 @@ fn load_provider(
     }
     let mut loaded = LoadedRustProvider {
         table: ace_av_core::foreign_exec::ForeignStubTable::new(generation),
-        _library: std::rc::Rc::new(RustLibrary(library)),
+        _library: std::sync::Arc::new(RustLibrary(library)),
     };
     loaded.table.pin_code_image(loaded._library.clone());
     unsafe {

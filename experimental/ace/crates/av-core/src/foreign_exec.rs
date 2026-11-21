@@ -48,6 +48,9 @@ pub type ViewOutBytesI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, dst: *mut u8, cap: u64) -> i32;
 pub type OutBytesI32Fn = unsafe extern "C" fn(dst: *mut u8, cap: u64) -> i32;
 pub type OwnedHandleFn = unsafe extern "C" fn(handle: i64) -> i32;
+pub type GuestCallbackFn = extern "C" fn(ctx: i64, item: i64) -> i64;
+pub type CallbackI32Fn = unsafe extern "C" fn(GuestCallbackFn, i64, i32) -> i32;
+pub type CompletionI32Fn = unsafe extern "C" fn(i32, *mut i32) -> i32;
 
 #[derive(Clone, Copy, Debug)]
 pub enum OwnedOpen {
@@ -130,6 +133,71 @@ pub enum ForeignCallable {
     ViewOutBytesToI32(ViewOutBytesI32Fn),
     OutBytesToI32(OutBytesI32Fn),
     Owned(OwnedCall),
+    Callback(CallbackI32Fn),
+    Completion {
+        call: CompletionI32Fn,
+        asynchronous: bool,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct CallbackSlot {
+    data: *mut (),
+    invoke: unsafe fn(*mut (), i32, i32) -> Option<i32>,
+}
+
+thread_local! {
+    static SYNC_CALLBACK: std::cell::Cell<Option<CallbackSlot>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+struct CallbackScope<'a>(std::marker::PhantomData<&'a mut ()>);
+
+impl<'a> CallbackScope<'a> {
+    fn enter<F: FnMut(i32, i32) -> Option<i32>>(call: &'a mut F) -> Option<Self> {
+        unsafe fn invoke<F: FnMut(i32, i32) -> Option<i32>>(
+            data: *mut (),
+            ctx: i32,
+            item: i32,
+        ) -> Option<i32> {
+            unsafe { (&mut *data.cast::<F>())(ctx, item) }
+        }
+        SYNC_CALLBACK.with(|active| {
+            if active.get().is_some() {
+                return None;
+            }
+            active.set(Some(CallbackSlot {
+                data: std::ptr::from_mut(call).cast(),
+                invoke: invoke::<F>,
+            }));
+            Some(Self(std::marker::PhantomData))
+        })
+    }
+}
+
+impl Drop for CallbackScope<'_> {
+    fn drop(&mut self) {
+        SYNC_CALLBACK.with(|active| active.set(None));
+    }
+}
+
+extern "C" fn callback_trampoline(ctx: i64, item: i64) -> i64 {
+    let (Ok(ctx), Ok(item)) = (i32::try_from(ctx), i32::try_from(item)) else {
+        return i64::MIN;
+    };
+    SYNC_CALLBACK.with(|active| {
+        let Some(slot) = active.take() else {
+            return i64::MIN;
+        };
+        // The slot borrows the current stack frame, is available on this
+        // thread only, and is unavailable during the callback itself.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            (slot.invoke)(slot.data, ctx, item)
+        }));
+        active.set(Some(slot));
+        result.ok().flatten().map(i64::from).unwrap_or(i64::MIN)
+    })
 }
 
 /// Access rights for a host-managed checked writable output borrow frame.
@@ -499,6 +567,8 @@ pub enum ForeignDispatch {
 pub enum ForeignExecError {
     Reject(ForeignReject),
     Panic(String),
+    Cancelled,
+    Wall,
 }
 
 /// The executor's stub table. One table == one provider session binding:
@@ -522,7 +592,8 @@ pub struct ForeignStubTable {
     python_error_observers: Option<Box<[SourceDecl; 2]>>,
     completion_ports: std::sync::Arc<CompletionPorts>,
     owned_handles: std::collections::BTreeMap<i32, OwnedHandle>,
-    code_lease: Option<std::rc::Rc<dyn std::fmt::Debug>>,
+    code_lease: Option<std::sync::Arc<dyn std::fmt::Debug + Send + Sync>>,
+    completion_worker_busy: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -553,9 +624,13 @@ impl ForeignStubTable {
             out_expected_owner: "av".into(),
             out_expected_origin: "guest".into(),
             python_error_observers: None,
-            completion_ports: std::sync::Arc::new(CompletionPorts::new(current_generation)),
+            completion_ports: std::sync::Arc::new(CompletionPorts::with_observation(
+                current_generation,
+                false,
+            )),
             owned_handles: std::collections::BTreeMap::new(),
             code_lease: None,
+            completion_worker_busy: Default::default(),
         }
     }
 
@@ -746,7 +821,7 @@ impl ForeignStubTable {
 
     /// Keep the original native code image alive as long as its stubs or
     /// resource destructors can still be used.
-    pub fn pin_code_image(&mut self, lease: std::rc::Rc<dyn std::fmt::Debug>) {
+    pub fn pin_code_image(&mut self, lease: std::sync::Arc<dyn std::fmt::Debug + Send + Sync>) {
         assert!(self.entries.is_empty() && self.owned_handles.is_empty());
         self.code_lease = Some(lease);
     }
@@ -851,7 +926,23 @@ impl ForeignStubTable {
                         })
                     )
                 ) || matches!(e.callable, ForeignCallable::Owned(op)
-                    if declaration.resource().is_some_and(|sig| op.matches(sig, provider))))
+                    if declaration.resource().is_some_and(|sig| op.matches(sig, provider)))
+                    || matches!(e.callable, ForeignCallable::Callback(_)
+                    if declaration.logical.starts_with("rust/")
+                        && declaration.resource().is_some_and(|sig| {
+                            use ace_foreign_contract::{ResKind, ResOut, ResourceForm};
+                            sig.noescape
+                                && sig.params == [ResKind::Callback { ctx: true }, ResKind::I32, ResKind::I32]
+                                && sig.form == (ResourceForm::Pure { ret: ResOut::I32 })
+                        }))
+                    || matches!(e.callable, ForeignCallable::Completion { .. }
+                    if declaration.logical.starts_with("rust/")
+                        && declaration.resource().is_some_and(|sig| {
+                            use ace_foreign_contract::{ResKind, ResOut, ResourceForm};
+                            sig.noescape
+                                && sig.params == [ResKind::I32]
+                                && sig.form == (ResourceForm::Pure { ret: ResOut::I32 })
+                        })))
             {
                 return Ok(i);
             }
@@ -989,7 +1080,12 @@ impl ForeignStubTable {
             ));
         }
         let callable = self.entries[idx].callable;
-        if matches!(callable, ForeignCallable::Owned(_)) {
+        if matches!(
+            callable,
+            ForeignCallable::Owned(_)
+                | ForeignCallable::Callback(_)
+                | ForeignCallable::Completion { .. }
+        ) {
             self.rejected_count += 1;
             return Err(reject(
                 "foreign.lane",
@@ -1034,7 +1130,9 @@ impl ForeignStubTable {
                 }
                 ForeignCallable::ViewOutBytesToI32(_)
                 | ForeignCallable::OutBytesToI32(_)
-                | ForeignCallable::Owned(_) => {
+                | ForeignCallable::Owned(_)
+                | ForeignCallable::Callback(_)
+                | ForeignCallable::Completion { .. } => {
                     panic!("out-buffer callable must dispatch via dispatch_view_out_bytes")
                 }
             }))
@@ -1062,6 +1160,204 @@ impl ForeignStubTable {
             ));
         }
         Ok(result)
+    }
+
+    pub fn dispatch_callback(
+        &mut self,
+        declaration: &SourceDecl,
+        ctx: i32,
+        item: i32,
+        mut callback: impl FnMut(i32, i32) -> Option<i32>,
+    ) -> Result<ForeignDispatch, ForeignExecError> {
+        let index = self.lookup(declaration).map_err(|failure| {
+            self.rejected_count += 1;
+            ForeignExecError::Reject(failure)
+        })?;
+        let stub = &self.entries[index];
+        if stub.generation != self.current_generation {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.generation",
+                "callback provider binding is stale",
+            ));
+        }
+        let ForeignCallable::Callback(call) = stub.callable else {
+            return Err(reject("foreign.lane", "expected a Rust callback callable"));
+        };
+        let _provider = crate::host::ProviderScope::enter().ok_or_else(|| {
+            reject(
+                "foreign.reentry",
+                "synchronous provider reentry is forbidden",
+            )
+        })?;
+        let _callback = CallbackScope::enter(&mut callback)
+            .ok_or_else(|| reject("foreign.reentry", "callback scope is already active"))?;
+        let result = unsafe { call(callback_trampoline, i64::from(ctx), item) };
+        self.callee_count += 1;
+        if self.take_panic_flag() {
+            self.rejected_count += 1;
+            return Err(ForeignExecError::Panic(
+                "Rust callback provider panicked".into(),
+            ));
+        }
+        Ok(ForeignDispatch::PureI32(result))
+    }
+
+    pub(crate) fn dispatch_completion(
+        &mut self,
+        declaration: &SourceDecl,
+        input: i32,
+        cancel: &crate::av::CancelFlag,
+        started: std::time::Instant,
+        wall: std::time::Duration,
+    ) -> Result<ForeignDispatch, ForeignExecError> {
+        use std::sync::{atomic::Ordering, mpsc};
+        use std::time::Duration;
+
+        let index = self.lookup(declaration).map_err(|failure| {
+            self.rejected_count += 1;
+            ForeignExecError::Reject(failure)
+        })?;
+        let stub = &self.entries[index];
+        if stub.generation != self.current_generation {
+            self.rejected_count += 1;
+            return Err(reject(
+                "foreign.generation",
+                "completion provider binding is stale",
+            ));
+        }
+        let ForeignCallable::Completion { call, asynchronous } = stub.callable else {
+            return Err(reject(
+                "foreign.lane",
+                "expected a Rust completion callable",
+            ));
+        };
+        let check_stop = || {
+            if crate::av::CancelCheck::poll(cancel) {
+                Err(ForeignExecError::Cancelled)
+            } else if started.elapsed() >= wall {
+                Err(ForeignExecError::Wall)
+            } else {
+                Ok(())
+            }
+        };
+        check_stop()?;
+        let _provider = crate::host::ProviderScope::enter().ok_or_else(|| {
+            reject(
+                "foreign.reentry",
+                "completion provider reentry is forbidden",
+            )
+        })?;
+        let ports = &self.completion_ports;
+        let call_rust = move || {
+            let mut value = 0;
+            let status = unsafe { call(input, &mut value) };
+            (status, value)
+        };
+        let (port, (status, value)) = if asynchronous {
+            let lease = self.code_lease.clone().ok_or_else(|| {
+                reject(
+                    "foreign.completion",
+                    "background work requires a pinned provider image",
+                )
+            })?;
+            let busy = self.completion_worker_busy.clone();
+            if busy.swap(true, Ordering::AcqRel) {
+                return Err(reject(
+                    "foreign.completion-busy",
+                    "previous background provider call has not returned",
+                ));
+            }
+            let port = ports.register(&stub.symbol);
+            let worker_ports = ports.clone();
+            let (result_tx, result_rx) = mpsc::sync_channel(0);
+            let worker = std::thread::Builder::new()
+                .name("av-foreign-completion".into())
+                .spawn(move || {
+                    let _lease = lease;
+                    let _provider =
+                        crate::host::ProviderScope::enter().expect("fresh worker thread");
+                    let result = call_rust();
+                    busy.store(false, Ordering::Release);
+                    // A zero-capacity channel gives the guest exactly one
+                    // consumer. If it has left, the producer owns the late
+                    // arrival and still holds the native image.
+                    if let Err(mpsc::SendError((status, value))) = result_tx.send(result) {
+                        worker_ports.cancel(port);
+                        worker_ports.complete(port, completion_value(status, value));
+                        worker_ports.retire(port);
+                    }
+                })
+                .map_err(|error| {
+                    self.completion_worker_busy.store(false, Ordering::Release);
+                    ports.cancel(port);
+                    ports.retire(port);
+                    reject("foreign.completion-worker", error.to_string())
+                })?;
+            self.callee_count += 1;
+            let result = loop {
+                if let Err(error) = check_stop() {
+                    ports.cancel(port);
+                    return Err(error);
+                }
+                if !ports.is_pending(port) {
+                    return Err(ForeignExecError::Cancelled);
+                }
+                let timeout = wall
+                    .saturating_sub(started.elapsed())
+                    .min(Duration::from_millis(2));
+                match result_rx.recv_timeout(timeout) {
+                    Ok(result) => break result,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        ports.cancel(port);
+                        ports.retire(port);
+                        return Err(reject(
+                            "foreign.completion-worker",
+                            "provider worker ended without a completion",
+                        ));
+                    }
+                }
+            };
+            if worker.join().is_err() {
+                ports.cancel(port);
+                ports.retire(port);
+                return Err(reject(
+                    "foreign.completion-worker",
+                    "provider worker failed after returning a completion",
+                ));
+            }
+            (port, result)
+        } else {
+            let port = ports.register(&stub.symbol);
+            self.callee_count += 1;
+            (port, call_rust())
+        };
+        if let Err(error) = check_stop() {
+            ports.cancel(port);
+            ports.complete(port, completion_value(status, value));
+            ports.retire(port);
+            return Err(error);
+        }
+        if status != 0 {
+            if ports.cancel(port) {
+                ports.retire(port);
+                self.rejected_count += 1;
+                return Err(ForeignExecError::Panic(
+                    "Rust completion provider panicked".into(),
+                ));
+            }
+            ports.complete(port, completion_value(status, value));
+            ports.retire(port);
+            return Err(ForeignExecError::Cancelled);
+        }
+        match ports.complete(port, completion_value(status, value)) {
+            CompletionDisposition::Publish => Ok(ForeignDispatch::PureI32(value)),
+            _ => {
+                ports.retire(port);
+                Err(ForeignExecError::Cancelled)
+            }
+        }
     }
 
     fn take_panic_flag(&self) -> bool {
@@ -1483,9 +1779,10 @@ impl ForeignSession {
         self.table.generation()
     }
 
-    /// The completion registry for this binding. A producer may keep its
-    /// reference through cancellation, rebind, or session close.
+    /// Observe subsequent completion events for this binding. A producer
+    /// may keep the registry through cancellation, rebind, or close.
     pub fn completion_ports(&self) -> std::sync::Arc<CompletionPorts> {
+        self.table.completion_ports.enable_observation();
         self.table.completion_ports.clone()
     }
 
@@ -1551,11 +1848,20 @@ pub struct CompletionPorts {
     inner: std::sync::Mutex<PortRegistryInner>,
 }
 
+fn completion_value(status: i32, value: i32) -> ace_foreign_contract::PortValue {
+    if status == 0 {
+        ace_foreign_contract::PortValue::I32(value)
+    } else {
+        ace_foreign_contract::PortValue::Status(status)
+    }
+}
+
 #[derive(Debug)]
 struct PortRegistryInner {
     generation: u64,
     next_port: u64,
     open: std::collections::BTreeMap<u64, OpenPort>,
+    observe_events: bool,
     events: Vec<ace_foreign_contract::PortEvent>,
 }
 
@@ -1567,14 +1873,23 @@ struct OpenPort {
 
 impl CompletionPorts {
     pub fn new(generation: u64) -> Self {
+        Self::with_observation(generation, true)
+    }
+
+    fn with_observation(generation: u64, observe_events: bool) -> Self {
         Self {
             inner: std::sync::Mutex::new(PortRegistryInner {
                 generation,
                 next_port: 1,
                 open: std::collections::BTreeMap::new(),
+                observe_events,
                 events: Vec::new(),
             }),
         }
+    }
+
+    fn enable_observation(&self) {
+        self.inner.lock().expect("port registry").observe_events = true;
     }
 
     /// Register a port for `symbol` at the CURRENT generation (the port
@@ -1591,12 +1906,10 @@ impl CompletionPorts {
                 pinned_generation,
             },
         );
-        inner
-            .events
-            .push(ace_foreign_contract::PortEvent::Registered {
-                port,
-                symbol: symbol.to_string(),
-            });
+        inner.record(|| ace_foreign_contract::PortEvent::Registered {
+            port,
+            symbol: symbol.to_string(),
+        });
         port
     }
 
@@ -1617,18 +1930,12 @@ impl CompletionPorts {
             ace_foreign_contract::completion_disposition(true, cancelled, pinned, inner.generation);
         match disposition {
             CompletionDisposition::Publish => {
-                inner
-                    .events
-                    .push(ace_foreign_contract::PortEvent::Published { port, value });
+                inner.record(|| ace_foreign_contract::PortEvent::Published { port, value });
                 inner.open.remove(&port);
-                inner
-                    .events
-                    .push(ace_foreign_contract::PortEvent::Released { port });
+                inner.record(|| ace_foreign_contract::PortEvent::Released { port });
             }
             CompletionDisposition::DropLate => {
-                inner
-                    .events
-                    .push(ace_foreign_contract::PortEvent::LateDropped { port, value });
+                inner.record(|| ace_foreign_contract::PortEvent::LateDropped { port, value });
             }
             CompletionDisposition::UnknownPort => {}
         }
@@ -1649,13 +1956,23 @@ impl CompletionPorts {
             return false;
         }
         open.released = true;
-        inner
-            .events
-            .push(ace_foreign_contract::PortEvent::Cancelled { port });
-        inner
-            .events
-            .push(ace_foreign_contract::PortEvent::Released { port });
+        inner.record(|| ace_foreign_contract::PortEvent::Cancelled { port });
+        inner.record(|| ace_foreign_contract::PortEvent::Released { port });
         true
+    }
+
+    fn is_pending(&self, port: u64) -> bool {
+        let inner = self.inner.lock().expect("port registry");
+        inner
+            .open
+            .get(&port)
+            .is_some_and(|entry| !entry.released && entry.pinned_generation == inner.generation)
+    }
+
+    // A Rust completion export has one producer and one return. Once
+    // that producer has stopped, no tombstone is needed for its port.
+    fn retire(&self, port: u64) {
+        self.inner.lock().expect("port registry").open.remove(&port);
     }
 
     /// Session teardown/rebind: every open port dies — late completions
@@ -1695,6 +2012,12 @@ impl CompletionPorts {
 }
 
 impl PortRegistryInner {
+    fn record(&mut self, event: impl FnOnce() -> ace_foreign_contract::PortEvent) {
+        if self.observe_events {
+            self.events.push(event());
+        }
+    }
+
     fn advance_generation(&mut self, generation: u64) {
         if self.generation == generation {
             return;
@@ -1703,8 +2026,10 @@ impl PortRegistryInner {
         for (&port, entry) in &mut self.open {
             if !entry.released {
                 entry.released = true;
-                self.events
-                    .push(ace_foreign_contract::PortEvent::Released { port });
+                if self.observe_events {
+                    self.events
+                        .push(ace_foreign_contract::PortEvent::Released { port });
+                }
             }
         }
     }
@@ -2031,6 +2356,107 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_rust_worker_keeps_its_image_and_drops_its_late_result_once() {
+        use ace_foreign_contract::{PortEvent, PortValue};
+        use std::sync::{atomic::Ordering, mpsc, Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        struct WorkerGate {
+            entered: mpsc::Sender<()>,
+            release: mpsc::Receiver<()>,
+        }
+        static GATE: Mutex<Option<WorkerGate>> = Mutex::new(None);
+        unsafe extern "C" fn double(input: i32, out: *mut i32) -> i32 {
+            let Some(gate) = GATE.lock().ok().and_then(|mut gate| gate.take()) else {
+                return 1;
+            };
+            if gate.entered.send(()).is_err()
+                || gate.release.recv_timeout(Duration::from_secs(3)).is_err()
+            {
+                return 1;
+            }
+            unsafe { *out = input * 2 };
+            0
+        }
+        let mut provider = manifest();
+        provider.facts.functions[0]
+            .resource
+            .as_mut()
+            .unwrap()
+            .params = vec![ResKind::I32];
+        let declaration = decl_of(&provider, "f0_text_byte_len_v1");
+        let mut session = ForeignSession::new();
+        let lease = Arc::new(());
+        let weak = Arc::downgrade(&lease);
+        session.table().pin_code_image(lease);
+        session
+            .bind(vec![ForeignStub {
+                provider: declaration.provider.clone(),
+                symbol: declaration.function.symbol.clone(),
+                content_version: declaration.content_version.clone(),
+                generation: 1,
+                callable: ForeignCallable::Completion {
+                    call: double,
+                    asynchronous: true,
+                },
+                frame: false,
+            }])
+            .unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        *GATE.lock().unwrap() = Some(WorkerGate {
+            entered: entered_tx,
+            release: release_rx,
+        });
+        let ports = session.completion_ports();
+        let cancel = crate::av::CancelFlag::new(false);
+        let timeout = Duration::from_secs(2);
+        std::thread::scope(|scope| {
+            let worker_cancel = &cancel;
+            scope.spawn(move || {
+                entered_rx.recv_timeout(timeout).expect("provider entered");
+                worker_cancel.store(true, Ordering::SeqCst);
+            });
+            assert_eq!(
+                session.table().dispatch_completion(
+                    &declaration,
+                    21,
+                    &cancel,
+                    Instant::now(),
+                    timeout
+                ),
+                Err(ForeignExecError::Cancelled)
+            );
+        });
+        drop(session);
+        assert!(weak.upgrade().is_some(), "worker still holds its image");
+        assert_eq!(
+            ports.take_events(),
+            [
+                PortEvent::Registered {
+                    port: 1,
+                    symbol: declaration.function.symbol
+                },
+                PortEvent::Cancelled { port: 1 },
+                PortEvent::Released { port: 1 },
+            ]
+        );
+        release_tx.send(()).unwrap();
+        let until = Instant::now() + timeout;
+        while weak.upgrade().is_some() {
+            assert!(Instant::now() < until, "worker did not release its image");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            ports.take_events(),
+            [PortEvent::LateDropped {
+                port: 1,
+                value: PortValue::I32(42)
+            }]
+        );
+    }
+
+    #[test]
     fn dispatches_all_frozen_forms_and_counts_callees() {
         let (mut t, m) = table(1);
         let len = decl_of(&m, "f0_text_byte_len_v1");
@@ -2159,6 +2585,8 @@ mod tests {
             match self {
                 ForeignExecError::Reject(r) => r.code,
                 ForeignExecError::Panic(_) => "foreign.panic",
+                ForeignExecError::Cancelled => "foreign.cancelled",
+                ForeignExecError::Wall => "foreign.wall",
             }
         }
     }

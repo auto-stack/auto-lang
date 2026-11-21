@@ -177,7 +177,7 @@ V-03 cancel/late 与回调形态 V-04 全量仍在 939 native 道（callback/txn
 - **物理执行与守卫（`av-core::foreign_exec`）**：新增 `OutBufferFrame` 与 `dispatch_view_out_bytes`，在调用前校验 `owner`/`origin`/session `generation`/可写权限/`0 <= off <= cap` 与 `run_bytes` 预算，分配带前导/尾随 guard bytes 的隔离暂存区并在返回后校验 `0 <= n <= cap` 与 guard bytes 完整性（错写即主机失败、`0` 字节泄露，过期/取消/跨代帧调用前拒、`callee_count = 0`）。
 - **永久证据与 B 分账**：`ace-abi::out_frame_1064`（3 E2E：`v_frame_rust_provider_read_into_and_guards` / `v_frame_c_provider_read_into` / `v_frame_security_lifecycle_and_import_negatives`）+ `auto-bindgen` 10/10；`AC` native 机器代码侧 `OutBytes` 调用与帧守卫校验已依 `SD-AC-STAGED` 移交 `PLAN-1068 T-03`。
 
-## 普通 AV Rust 工程（PLAN-1113）
+## 普通 AV Rust 工程（IF-ACE-AV-RS-PROJECT/1）
 
 Windows/MSVC 的 `ac-build` 从工程声明读取 Rust provider 源与可选锁文件。普通 Auto
 的 `use.rs` 引用该源声明的 provider 身份。967 生成的 C-compatible shim、受检声明和
@@ -195,5 +195,20 @@ Rust 注解的 `owned_open`、`owned_borrow`、`owned_close` 共享 `owned=Type`
 对原 DLL 持有代码租约。显式关闭在调用原方前撤销条目，错误或会话关闭由原方处理剩余条目。
 工程和搬移后的 SDK 均验证恰一次析构，双关闭具名拒绝。
 
-完成端口随 `ForeignSession` 代次同步。重复取消不会多生成一次 release，关闭后的到达
-记录为 late drop。端口宿主证据和普通工程的回调、同步/异步端口组合按 V-02 分项验收。
+Rust 的 `form=pure ret=i32` 可以声明 `(&F0Callback, i32, i32) -> i32`。Auto 参数
+使用同签名的函数值，可捕获 Auto 局部变量。Rust 通过 `cb.call(ctx, item)` 在原 AV 执行
+链内同步调用。回调借用限于本次调用和原线程，共用原执行的指令、栈帧和墙钟预算。回调
+期间禁止再次进入 host、foreign 或调度器，闭包的错误保留原 AV 结果。
+
+`form=complete_sync` 和 `form=complete_async` 接收一个 `i32`，完成值也是 `i32`。
+同步 provider 在调用线程执行，异步 provider 在持有 DLL 租约的后台线程执行，调用方在该
+指令等候端口的值。取消或墙钟耗尽时，调用方先离开，后台线程保持租约直至返回。每次调用
+的状态独立传回，后台 panic 不会污染前台调用。端口绑定到 `ForeignSession` 的代次并
+至多发布一次。取消或关闭只产生一次 release，后续到达记录为 late drop。
+
+工程和 SDK 共用 Windows x64 MSVC C ABI。导入清单为 `auto.bindgen.rust-provider/1`，
+普通闭包产物使用 `auto.abc.av-closures/1`。SDK 使用 `ace-m2-build/sdk-recipe/1`，
+绑定描述为 `ace-m2-build/av-rust-program/1`。输入与交付可从工程标识、Rust 源和 shim
+摘要、锁文件摘要、目标、ABC 与 DLL 摘要及运行授权核对。包内 `targets/av/program.abc`、
+`targets/av/rust-program.json` 与 `providers/rust/provider.dll` 是 AV Rust 运行闭包的
+主要工件。后续工程通过同一个 `ac-build build|sdk|run` 入口消费接口。
