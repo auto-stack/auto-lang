@@ -17008,12 +17008,10 @@ F:{d}
     /// PLAN-105 T-02（U03 真语料 013）：调用实参的 `.move` 标记 → 值上的
     /// `RExprKind::Move`（整局部所有权转移的 sanctioned 形态）。
     fn move_marked_value(&self, arg: ResolvedArg) -> ResolvedExpr {
-        let span = arg.value.span;
-        let vt = arg.value.vt;
-        if arg.moved {
+        if arg.moved && !matches!(arg.value.kind, RExprKind::Move { .. }) {
             ResolvedExpr {
-                span,
-                vt,
+                span: arg.value.span,
+                vt: arg.value.vt,
                 kind: RExprKind::Move {
                     inner: Box::new(arg.value),
                 },
