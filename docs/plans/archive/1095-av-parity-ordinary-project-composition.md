@@ -378,6 +378,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-av ace-l
 
 ## 9. 复审记录
 
+- `stage: goal | plan_id: PLAN-1095 | plan_revision: r3 | round: final | from: merge | to: done | status: archived | outcome: pass | worktree: 已移除 | commit: f70320f5c（delivery）+ 12aeafcd6（goal 收据） | next: done`。用户 `完成计划1995→1095` 全链授权闭环：work（T-01..T-06）→ review（final pass）→ merge（landed/canonical_verified/archived/cleaned）。交付 commit f70320f5c 在主检出默认分支线性快进落主；四份规范增量（language-parity/m2-facade/m2-modules/feature-organized-corpus §PLAN-1095）逐字读回核验；计划归档 `docs/plans/archive/1095-av-parity-ordinary-project-composition.md`（status archived，8/8）；wt-guard clean 后工作树/分支/组目录移除，plan-artifacts/plan-1095 整目录按 delete-at-merge 删除，登记表 `.retention/policy.json` 刷新；批回归不触发（1095<1109 且收据<48h）。
 - 2026-11-22 merge 收据：`stage: merge | plan_id: PLAN-1095 | plan_revision: r3 | outcome: pass | delivery_commit: f70320f5c | archive_commit: 65ce06b0e | next: done`。
   - `prepared`：复审基线 580b6d185 + 卫生 f70320f5c（语料尾随空白，语义零改动）；规范增量四份已在 worktree 提交。
   - `landed`：master 未前进（仍 b260b6e65），`git merge --ff-only plan-1095-dev` 线性快进至 f70320f5c（无 merge commit）。
