@@ -104,6 +104,7 @@ pub fn discover_auto_instance_calls(
         None,
         false,
         Some(&probe),
+        false,
     )
     .err()
     .expect("instance discovery never publishes a resolved program");

@@ -845,7 +845,7 @@ fn rewrite_store_stmts(
 /// `store.<Msg>(args)` 调用识别：返回 (Msg, args)。
 fn store_call_parts(call: &Expr) -> Option<(String, Vec<Expr>)> {
     match &call.kind {
-        ExprKind::MethodCall { recv, name, args } if is_store_base(recv) => {
+        ExprKind::MethodCall { recv, name, args, .. } if is_store_base(recv) => {
             let mut out = Vec::new();
             for a in args {
                 match a {
@@ -1862,6 +1862,7 @@ fn unbound_leaf_var(e: &Expr, fields: &[ComponentField]) -> Option<String> {
 /// 空串占位叶（叶序保持；动态列表展开前的显式占位）。
 fn empty_text_fn(name: &str, span: Span) -> FnItem {
     FnItem {
+        proto: false,
         name: Ident {
             name: name.to_string(),
             span,
@@ -1892,6 +1893,7 @@ fn hidden_fn(name: &str, expr: &Expr, span: Span, display: bool, owned_text: boo
     if owned_text {
         if let ExprKind::StrLit(_) = expr.kind {
             return FnItem {
+                proto: false,
                 name: Ident { name: name.to_string(), span },
                 type_params: Vec::new(),
                 params: Vec::new(),
@@ -3236,6 +3238,7 @@ pub(crate) fn handler_check_fn(
                             span: f.span,
                         },
                         args: vec![crate::source::ast::Arg::Pos(p)],
+                        instance: None,
                     },
                 },
                 span: f.span,
@@ -3422,6 +3425,7 @@ pub(crate) fn lambda_value_fn(
                             span: f.span,
                         },
                         args: vec![crate::source::ast::Arg::Pos(p)],
+                        instance: None,
                     },
                 },
                 span: f.span,
@@ -3794,6 +3798,7 @@ fn hook_stmts_lower(
                                     name: "len".to_string(),
                                     span: *span,
                                 },
+                                instance: None,
                                 args: Vec::new(),
                             },
                         }),
@@ -4470,6 +4475,7 @@ pub(crate) fn instance_stmts(
                             span: f.span,
                         },
                         args: vec![crate::source::ast::Arg::Pos(p)],
+                        instance: None,
                     },
                 },
                 span: f.span,
@@ -4809,6 +4815,7 @@ fn list_new_from_array(value: Expr, elem: &TypeAnn) -> Expr {
                 name: "new".to_string(),
                 span,
             },
+            instance: None,
             args,
         },
     }
@@ -5434,7 +5441,7 @@ pub fn compile_component_event_program(
         for (ti, leaf) in node.view.texts.iter().enumerate() {
             let fn_name = format!("__age_ev_text_{ti}");
             let bound = rename_expr(&leaf.expr, FieldBinding::GlobalCell, &node.fields)?;
-            out_items.push(Item::Fn(hidden_fn(&fn_name, &bound, leaf.expr.span)));
+            out_items.push(Item::Fn(hidden_fn(&fn_name, &bound, leaf.expr.span, false, false)));
             text_def_ids.push(super::adapter::free_fn_def_id(&fn_name));
         }
     }

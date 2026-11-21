@@ -2443,7 +2443,7 @@ fn verify_collection_family_impl_age(
     foreign_allowed: bool,
     age_eq: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, false)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, false, false)
 }
 
 fn verify_collection_family_impl_age_elem(
@@ -2453,7 +2453,7 @@ fn verify_collection_family_impl_age_elem(
     age_eq: bool,
     elem_view_owned: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, elem_view_owned)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, false, elem_view_owned)
 }
 
 fn verify_collection_family_impl(
@@ -2462,7 +2462,7 @@ fn verify_collection_family_impl(
     foreign_allowed: bool,
     ordinary_auto: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, false, false)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, false, ordinary_auto, false)
 }
 
 fn verify_collection_family_inner(
@@ -2470,6 +2470,7 @@ fn verify_collection_family_inner(
     expected: HirDomain,
     foreign_allowed: bool,
     age_eq_flag: bool,
+    ordinary_auto: bool,
     elem_view_owned: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     // PLAN-912 §5.4 whole-axis observation: verifying every body is a

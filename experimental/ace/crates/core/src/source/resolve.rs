@@ -1705,7 +1705,15 @@ pub(crate) fn resolve_with_source_mode(
     )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
-        ..resolve_with_view(program, capabilities, surface, false, script_errors)
+        foreign_slots: Vec::new(),
+        fns,
+        records,
+        lists: coll.lists,
+        tuples: coll.tuples,
+        variants: coll.variants,
+        function_types: coll.function_types,
+        objects: coll.objects,
+        sched_tasks: coll.sched_tasks,
     })
 }
 
@@ -1739,49 +1747,6 @@ pub(crate) fn resolve_with_view_mode(
     )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
-    })
-}
-
-pub fn resolve_with_view(
-    program: &ast::Program,
-    capabilities: &[String],
-    surface: SourceProfile,
-    elem_view: bool,
-) -> Result<ResolvedProgram, Vec<Diagnostic>> {
-    let (fns, records, coll, _) = resolve_detailed_in_mode(
-        program,
-        capabilities,
-        surface,
-        None,
-        None,
-        None,
-        script_errors,
-        None,
-    )?;
-    Ok(ResolvedProgram {
-        foreign: Vec::new(),
-        ..resolve_with_view_inner(program, capabilities, surface, elem_view)
-    })
-}
-
-fn resolve_with_view_inner(
-    program: &ast::Program,
-    capabilities: &[String],
-    surface: SourceProfile,
-    elem_view: bool,
-) -> ResolvedProgram {
-    let (fns, records, coll, _) = resolve_detailed_in_mode(
-        program,
-        capabilities,
-        surface,
-        None,
-        None,
-        None,
-        false,
-        elem_view,
-    )?;
-    Ok(ResolvedProgram {
-        foreign: Vec::new(),
         foreign_slots: Vec::new(),
         fns,
         records,
@@ -1793,7 +1758,6 @@ fn resolve_with_view_inner(
         sched_tasks: coll.sched_tasks,
     })
 }
-
 /// PLAN-968: resolve a desugared scheduler-surface program with its task
 /// side-table (`VT::Task(i)`/`VT::Future(i)` interning, `__sched_*`
 /// intrinsic typing). Every other face keeps [`resolve_with`].
@@ -1927,6 +1891,7 @@ pub(crate) fn resolve_with_foreign_source(
         None,
         script_errors,
         None,
+        false,
     )?;
     Ok(ResolvedProgram {
         foreign_slots: Vec::new(),
@@ -2317,11 +2282,11 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
-    resolve_detailed_inner(program, capabilities, surface, warm, supply, sched, false)
+    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false, None, false)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_detailed_inner(
+pub(crate) fn resolve_detailed_in_mode(
 
     program: &ast::Program,
     capabilities: &[String],
@@ -2331,7 +2296,7 @@ fn resolve_detailed_inner(
     sched: Option<&super::sched_desugar::SchedSurface>,
     script_errors: bool,
     instance_probe: Option<&instances::InstanceProbe<'_>>,
-
+    elem_view: bool,
 ) -> Result<
     (
         Vec<ResolvedFn>,
