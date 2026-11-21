@@ -3300,6 +3300,9 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             // PLAN-964 (L-22/FStr): I32 → decimal owned Str (the mn FStr
             // leg; the general format algorithms belong to 972).
             MirInstr::TextDisplay { dst, src } => {
+                if matches!(self.unit.types.get(self.slot_ty(*src) as usize), Some(MirType::F32)) {
+                    return Err("native f32 text display is unsupported".into());
+                }
                 let v = self.v_scalar(*src)?;
                 let x = self.fb.use_var(v);
                 let (np, nl) = self.abic_call("ac_rt_own_display_i32", &[types::I32], &[x])?;

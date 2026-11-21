@@ -107,6 +107,94 @@ fn p981_event_a_unknown_handler_message_is_rejected() {
     }
 }
 
+#[test]
+fn p107_view_entries_check_loop_value_and_index_types() {
+    let source = r#"
+node Chart {
+    model { values List<int> = [9, 4] }
+    view {
+        for i, value in .values {
+            row (key: i, style: ["gap-1", if value > 4 { "" } else { "opacity-40" }]) {}
+        }
+    }
+}
+"#;
+    compile(source).expect("conditionally styled rows use typed loop values and indices");
+    let invalid = source.replace("value > 4", "value == \"4\"");
+    let diagnostics = compile(&invalid).expect_err("loop values keep their source list type");
+    assert_eq!(diagnostics[0].code, "source.type-mismatch");
+}
+
+#[test]
+fn p107_widget_view_checks_declared_readonly_parameters() {
+    let source = r#"
+widget Chart (legend: bool = true, axis: str = "auto", labels: List<str> = [], selection: int) {
+    msg { Select(int) }
+    view {
+        if .legend && .labels.len() > 0 {
+            row (style: ["gap-1", if .axis == "auto" { "" } else { "opacity-40" }]) {}
+            mouse-area (onclick: .Select(.selection)) {}
+        }
+    }
+}
+"#;
+    let check = |text| compile_age_package(
+        &[input(text)], "app::main", LegacyWidgetAlias::Accept,
+        &[PACKAGES_CAPABILITY.to_string()],
+    );
+    let package = check(source).expect("view checks see declared widget parameters");
+    assert!(package.description.components[0].fields.is_empty());
+    let wrong = source.replace("if .axis == \"auto\"", "if .axis");
+    let diagnostics = check(&wrong).expect_err("a text property is not a boolean class guard");
+    assert_eq!(diagnostics[0].code, "source.type-mismatch");
+    assert_eq!(diagnostics[0].span.slice(&wrong), ".axis");
+    let wrong = source.replace(".Select(.selection)", ".Select(.legend)");
+    let diagnostics = check(&wrong).expect_err("event payload respects the declared property type");
+    assert_eq!(diagnostics[0].code, "source.type-mismatch");
+    assert_eq!(diagnostics[0].span.slice(&wrong), ".legend");
+}
+
+#[test]
+fn p107_legacy_widget_infers_unit_handler_with_existing_messages() {
+    let source = r#"
+widget Chart {
+    msg { Hover(int) }
+    model { var active bool = true }
+    on {
+        .Hover(index) -> { .active = index == 0 }
+        .HoverOut -> { .active = false }
+    }
+    view {
+        mouse-area (onmouseleave: .HoverOut) {}
+    }
+}
+"#;
+    let compile_legacy = |text| {
+        compile_age_package(
+            &[input(text)],
+            "app::main",
+            LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.to_string()],
+        )
+        .map(|compiled| compiled.description)
+    };
+    let description = compile_legacy(source).expect("legacy chart can dispatch a unit handler");
+    let messages = &description.components[0].messages;
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].name, "Hover");
+    assert_eq!(messages[0].payload.len(), 1);
+    assert_eq!(messages[1].name, "HoverOut");
+    assert!(messages[1].payload.is_empty());
+
+    let payload = source.replace(".HoverOut ->", ".HoverOut(index) ->");
+    let diagnostics = compile_legacy(&payload).expect_err("payload handlers require a signature");
+    assert_eq!(diagnostics[0].code, "source.age.msg-unknown");
+
+    let node = source.replace("widget Chart", "node Chart");
+    let diagnostics = compile(&node).expect_err("canonical nodes require a message declaration");
+    assert_eq!(diagnostics[0].code, "source.age.msg-unknown");
+}
+
 /// R65-2/R66-2：同名 unit+payload 变体已被 R65-1 的跨块重复拒拦下；B-W1 起
 /// 向载荷变体投递**空载荷 Send** 是 arity 域错误（`Send` 恒等价空载荷，不再
 /// 是 A 期的具名 unsupported——真实载荷执行见 plan981_event_b）。

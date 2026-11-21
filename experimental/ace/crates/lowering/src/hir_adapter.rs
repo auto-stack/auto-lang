@@ -779,6 +779,7 @@ fn lower_checked_collection_family(
             &ModuleScanFacts,
             None,
             auto_language,
+            false,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -1499,6 +1500,45 @@ pub fn lower_checked_owned(
     entry_name: &str,
     source_snapshot: u64,
 ) -> Result<MirModule, AdapterError> {
+    lower_checked_owned_module(checked, entry_name, source_snapshot, false)
+}
+
+/// Lower an already checked AGE package with its authored text display surface.
+pub fn lower_checked_age_package(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    if checked.domain() == hir::HirDomain::Closures
+        && checked.required_capabilities().iter().any(|cap| cap == "av.aggregates/1")
+    {
+        // The dynamic wire contract supports collection instructions together
+        // with the owned-text result used by the package's view observations.
+        // Its MIR and ABC admission still check the entire result.
+        let mut out = lower_checked_auto_language(checked, entry_name, source_snapshot)?;
+        out.owner.schema = ace_av_core::contract::MIR_DYNAMIC_SCHEMA.to_string();
+        out.profile = ace_av_core::contract::AV_DYNAMIC_PROFILE.to_string();
+        out.capabilities.push(ace_av_core::contract::SHARED_COLLECTION_ARGS_CAPABILITY.into());
+        for function in &mut out.funcs {
+            function.owner.schema.clone_from(&out.owner.schema);
+        }
+        return Ok(out);
+    }
+    if checked.domain() != hir::HirDomain::TextRecord {
+        return Err(AdapterError::uns(
+            "lower.domain",
+            "AGE package lowering requires checked text-record HIR".into(),
+        ));
+    }
+    lower_checked_owned_module(checked, entry_name, source_snapshot, true)
+}
+
+fn lower_checked_owned_module(
+    checked: &CheckedModule,
+    entry_name: &str,
+    source_snapshot: u64,
+    age_text_display: bool,
+) -> Result<MirModule, AdapterError> {
     // This public shared entry also admits console HIR. Keep its source-entry
     // policy here so callers cannot bypass it via the owned/text front door.
     // PLAN-982：配置文档的入口是物化的 `__cfg_document`（不是 main）——该面
@@ -1643,7 +1683,7 @@ pub fn lower_checked_owned(
         if name == entry_name {
             entry_idx = Some(out.funcs.len() as u32);
         }
-        let mir_fn = lower_function(
+        let mir_fn = lower_function_with_emission(
             module,
             &mut out,
             di,
@@ -1655,6 +1695,10 @@ pub fn lower_checked_owned(
             true,
             true,
             &BTreeMap::new(),
+            &ModuleScanFacts,
+            None,
+            false,
+            age_text_display,
         )?;
         out.funcs.push(mir_fn);
     }
@@ -2328,6 +2372,7 @@ fn lower_function_unit_impl(
         &ModuleScanFacts,
         function_port,
         false,
+        false,
     )?;
     drop(reserve_function);
     drop(def_map);
@@ -2971,15 +3016,23 @@ fn collections_type_idx_of(
             if let Some(idx) = memo.get(tid) {
                 return Ok(*idx);
             }
+            let td = m.types.get(tid.0 as usize).ok_or_else(|| {
+                AdapterError::inv("lower.type-ref", format!("type id {} out of range", tid.0))
+            })?;
             if !visiting.insert(*tid) {
+                // When lowering starts at List<Node>, Node reserves its
+                // nominal index before resolving its own List<Node> field.
+                // Complete the list's opaque edge using that index.
+                if let hir::TypeKind::List { elem: hir::TypeUse::Ref(element) } = &td.kind {
+                    if let Some(&elem) = memo.get(element) {
+                        return Ok(out.intern_type(MirType::List(ListTypeRef { elem })));
+                    }
+                }
                 return Err(AdapterError::inv(
                     "mir.type-cycle",
                     format!("type id {} participates in a type cycle", tid.0),
                 ));
             }
-            let td = m.types.get(tid.0 as usize).ok_or_else(|| {
-                AdapterError::inv("lower.type-ref", format!("type id {} out of range", tid.0))
-            })?;
             let mapped = match &td.kind {
                 hir::TypeKind::I32 => Ok(out.intern_type(MirType::I32)),
                 hir::TypeKind::Bool => Ok(out.intern_type(MirType::Bool)),
@@ -3572,6 +3625,7 @@ struct FnLower<'a, 'budget> {
     /// Owned-profile lowering (av.owned/1, PLAN-821): subsumes `data` and
     /// adds the text/ownership surface (str ops, clone/move, borrow views).
     owned: bool,
+    age_text_display: bool,
     ty_memo: BTreeMap<hir::TypeId, TypeIdx>,
     ty_visiting: std::collections::BTreeSet<hir::TypeId>,
     /// 服务级信用计量（差额表 #6a）：本函数已计入的 gfx 调用点信用合计。
@@ -6976,20 +7030,20 @@ k 0
                     if !path.is_empty() && self.hir_elem_owned(list)? {
                         let base = self.eval_expr(list, depth + 1)?;
                         let index = self.eval_expr(index, depth + 1)?;
-                        let elem = self.elem_vt_of(list)?;
-                        let base = self.read_list_place(base, index, elem, sp)?;
-                        let str_ty = self.out.intern_type(MirType::Str);
-                        let field = self.temp_ty(str_ty)?;
+                        let view_ty = self.out.intern_type(MirType::StrView);
+                        let field = self.temp_ty(view_ty)?;
                         self.emit(
-                            MirInstr::FieldGet {
+                            MirInstr::ListFieldView {
                                 dst: field,
                                 base,
+                                index,
                                 path: path.iter().map(|f| f.0 as u16).collect(),
                             },
                             sp,
                         )?;
                         let dst = self.temp_ty(ty)?;
-                        self.emit(MirInstr::Clone { dst, src: field }, sp)?;
+                        self.emit(MirInstr::StrToOwned { dst, view: field }, sp)?;
+                        self.emit(MirInstr::BorrowEnd { token: field }, sp)?;
                         return Ok(dst);
                     }
                 }
@@ -7428,7 +7482,7 @@ k 0
                 // Unit-typed effect statement (like ListPush): no slot.
                 Ok(NO_SLOT)
             }
-            hir::ExprKind::TextDisplay { operand } if self.collections() => {
+            hir::ExprKind::TextDisplay { operand } if self.collections() || self.age_text_display => {
                 let s = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
                 self.display_value(dst, s, sp)?;
@@ -7629,6 +7683,7 @@ fn lower_function_with(
         closure_facts,
         None,
         false,
+        false,
     )
 }
 
@@ -7647,6 +7702,7 @@ fn lower_function_with_emission(
     closure_facts: &dyn ClosureFacts,
     mut emission_reserve: Option<&mut dyn FnMut(usize) -> Result<(), String>>,
     ordinary_auto: bool,
+    age_text_display: bool,
 ) -> Result<MirFunction, AdapterError> {
     let body = hir_module.bodies.get(body_id.0 as usize).ok_or_else(|| {
         AdapterError::inv("lower.body-ref", format!("body {} out of range", body_id.0))
@@ -7801,6 +7857,7 @@ fn lower_function_with_emission(
         t_bool,
         data,
         owned,
+        age_text_display,
         ty_memo,
         ty_visiting,
         gfx_credits: 0,

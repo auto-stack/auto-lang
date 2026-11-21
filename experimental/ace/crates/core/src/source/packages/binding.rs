@@ -146,6 +146,14 @@ fn valid_id(id: &str) -> bool {
         && b.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
+fn valid_module_id(id: &str, face: Faces) -> bool {
+    if face == Faces::Age {
+        id.split('-').all(valid_id)
+    } else {
+        valid_id(id)
+    }
+}
+
 /// 扁平坐标诊断归位到所属模块（用于尚未构造 `BoundPackages` 的收尾遍）。
 fn locate_flat(segments: &[PackageSegment], mut d: Diagnostic) -> PackageDiagnostic {
     let seg = segments.iter().rev().find(|s| d.span.start >= s.start);
@@ -188,6 +196,20 @@ fn sym_part(s: &str) -> String {
     s.replace('-', "_")
 }
 
+fn module_symbol(module: &str) -> String {
+    if !module.contains('-') {
+        return format!("m{}_{}", module.len(), module);
+    }
+    // Route aliases are exact file stems. Keep the escaped namespace distinct
+    // from plain module IDs such as `code_editor`.
+    use std::fmt::Write;
+    let mut escaped = format!("mh{}_", module.len());
+    for byte in module.bytes() {
+        write!(escaped, "{byte:02x}").unwrap();
+    }
+    escaped
+}
+
 /// fn 符号：entry 模块的 `main` 保持 `main`；其余
 /// `p{包长}_{包}m{模块长}_{模块}_{名}`（长度前缀保证无歧义）。
 pub fn fn_symbol(package: &str, module: &str, name: &str, entry: &str) -> String {
@@ -195,11 +217,10 @@ pub fn fn_symbol(package: &str, module: &str, name: &str, entry: &str) -> String
         "main".into()
     } else {
         format!(
-            "p{}_{}m{}_{}_{}",
+            "p{}_{}{}_{}",
             package.len(),
             sym_part(package),
-            module.len(),
-            module,
+            module_symbol(module),
             name
         )
     }
@@ -207,33 +228,30 @@ pub fn fn_symbol(package: &str, module: &str, name: &str, entry: &str) -> String
 /// type 符号：`t{包长}_{包}m{模块长}_{模块}_{名}`。
 pub fn type_symbol(package: &str, module: &str, name: &str) -> String {
     format!(
-        "t{}_{}m{}_{}_{}",
+        "t{}_{}{}_{}",
         package.len(),
         sym_part(package),
-        module.len(),
-        module,
+        module_symbol(module),
         name
     )
 }
 /// global（const/store）符号：`g{包长}_{包}m{模块长}_{模块}_{名}`。
 pub fn global_symbol(package: &str, module: &str, name: &str) -> String {
     format!(
-        "g{}_{}m{}_{}_{}",
+        "g{}_{}{}_{}",
         package.len(),
         sym_part(package),
-        module.len(),
-        module,
+        module_symbol(module),
         name
     )
 }
 /// 模块 init 函数符号：`i{包长}_{包}m{模块长}_{模块}`。
 pub fn init_symbol(package: &str, module: &str) -> String {
     format!(
-        "i{}_{}m{}_{}",
+        "i{}_{}{}",
         package.len(),
         sym_part(package),
-        module.len(),
-        module
+        module_symbol(module)
     )
 }
 
@@ -336,7 +354,20 @@ pub fn bind_packages_age(
     budget: FrontBudget,
     scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<PackagedAge, PackageDiagnostic> {
+    bind_packages_age_mode(inputs, entry, caps, budget, scenario, false)
+}
+
+pub(crate) fn bind_packages_age_mode(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    caps: &[String],
+    budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
+    runtime_state: bool,
+) -> Result<PackagedAge, PackageDiagnostic> {
     let mut collected: Vec<PackagedAgeComponent> = Vec::new();
+    let mut widget_refs = crate::source::age_package::AgeWidgetRefs::new();
+    let mut runtime_components = Vec::new();
     let bound = bind_packages_face_with(
         inputs,
         entry,
@@ -344,7 +375,11 @@ pub fn bind_packages_age(
         budget,
         Faces::Age,
         scenario,
-        Some(&mut collected),
+        Some(AgeBindingOutput {
+            components: &mut collected,
+            widget_refs: &mut widget_refs,
+            runtime_components: runtime_state.then_some(&mut runtime_components),
+        }),
         None,
     )?;
     let sources = bound
@@ -361,6 +396,8 @@ pub fn bind_packages_age(
         bound,
         age_components: collected,
         sources,
+        widget_refs,
+        runtime_components,
     })
 }
 
@@ -370,6 +407,14 @@ pub struct PackagedAge {
     pub age_components: Vec<PackagedAgeComponent>,
     pub sources: Vec<crate::source::age_package::AgeModuleSource>,
     pub grammar_id: String,
+    pub(crate) widget_refs: crate::source::age_package::AgeWidgetRefs,
+    pub(crate) runtime_components: Vec<crate::source::age_package::AgeWidgetRuntimeComponent>,
+}
+
+struct AgeBindingOutput<'a> {
+    components: &'a mut Vec<PackagedAgeComponent>,
+    widget_refs: &'a mut crate::source::age_package::AgeWidgetRefs,
+    runtime_components: Option<&'a mut Vec<crate::source::age_package::AgeWidgetRuntimeComponent>>,
 }
 
 /// PLAN-981：一个模块里的 AGE 组件候选（未受信）+ 其隐藏求值函数名。
@@ -423,7 +468,7 @@ fn bind_packages_face_with(
     budget: FrontBudget,
     face: Faces,
     scenario: &crate::source::age_component::ComponentScenario,
-    mut age_out: Option<&mut Vec<PackagedAgeComponent>>,
+    mut age_out: Option<AgeBindingOutput<'_>>,
     context: Option<&super::PackageAssemblyContext>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
@@ -453,7 +498,7 @@ fn bind_packages_face_with(
         }
         if !valid_package(&input.package)
             || !valid_version(&input.version)
-            || !valid_id(&input.id)
+            || !valid_module_id(&input.id, face)
             || units.contains_key(&key)
         {
             return Err(fail(
@@ -476,14 +521,21 @@ fn bind_packages_face_with(
         }
         // PLAN-981（W1 跨模块实例身份）：本模块在**包级组件声明序**里的起始
         // 下标 = 之前模块已收的候选数（多模块 node 序号不撞号）。
-        let node_base = age_out.as_deref().map(|o| o.len()).unwrap_or(0);
+        let node_base = age_out.as_ref().map_or(0, |out| out.components.len());
         // PLAN-981：AGE 面的解析要带消费者场景（实例数/定向事件），故按面
         // 直接调用而不是取函数指针（其它面的参数面保持不变）。
         let parsed = match face {
             Faces::Aggregates => parse_package_source_aggregates(&input.source, caps, budget),
             Faces::AggregatesCt => parse_package_source_aggregates_ct(&input.source, caps, budget),
             Faces::Age => {
-                parse_package_source_age(&input.source, caps, budget, scenario, node_base)
+                parse_package_source_age_with_style_dependencies(
+                    &input.source,
+                    caps,
+                    budget,
+                    scenario,
+                    node_base,
+                    input.package != split_key(entry).0,
+                )
             }
             Faces::Plain => parse_package_source(&input.source, caps, budget),
             Faces::Auto => crate::source::cst::parse_packages_front_auto(&input.source, budget),
@@ -493,9 +545,9 @@ fn bind_packages_face_with(
             diagnostic: ds.remove(0),
         })?;
         // PLAN-981：本模块的 AGE 候选（未受信）+ 其隐藏函数源名，收进产物。
-        if let Some(out) = age_out.as_deref_mut() {
+        if let Some(out) = age_out.as_mut() {
             for (node, text_fns, scene_fns) in &syntax.age_components {
-                out.push(PackagedAgeComponent {
+                out.components.push(PackagedAgeComponent {
                     module: key.clone(),
                     node: node.clone(),
                     text_fns: text_fns.clone(),
@@ -505,14 +557,41 @@ fn bind_packages_face_with(
         }
         units.insert(key, syntax);
     }
+    let augmented;
+    let inputs = if face == Faces::Age
+        && units.iter().any(|(key, unit)| needs_age_math(key, unit, &units))
+    {
+        let math = super::stdlib::age_math_input();
+        let syntax = parse_package_source_age(&math.source, caps, budget, scenario, 0)
+            .map_err(|mut ds| PackageDiagnostic {
+                module: super::stdlib::AGE_MATH_MODULE.into(),
+                diagnostic: ds.remove(0),
+            })?;
+        units.insert(super::stdlib::AGE_MATH_MODULE.into(), syntax);
+        augmented = inputs.iter().cloned().chain([math]).collect::<Vec<_>>();
+        &augmented
+    } else {
+        inputs
+    };
     // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景 `Send`/`SendArgs`
     // 的**声明级**核对（arity/载荷域）在**包级**一次做——`ForNode{node}` 的
     // 下标是包级组件声明序（`age_out` 的 push 次序 = 输入模块序 × 模块内声明
     // 序）。逐模块做会误拒跨模块定向（UI058 T-05 实测：两模块各一个 node 时
     // `ForNode{1}` 报 "package declares 1 component(s)"）。
-    if let Some(collected) = age_out.as_deref() {
-        if let Some(d) = check_scenario_dispatch_declarations(collected, scenario) {
+    if let Some(out) = age_out.as_mut() {
+        let sites = crate::source::age_package::widget_lists::bind(
+            out.components, &mut units, entry, scenario,
+        )?;
+        if let Some(d) = check_scenario_dispatch_declarations(out.components, scenario) {
             return Err(d);
+        }
+        *out.widget_refs = crate::source::age_package::bind_widget_packages(
+            out.components, &mut units, scenario, &sites,
+        )?;
+        if let Some(runtime) = out.runtime_components.as_mut() {
+            **runtime = crate::source::age_package::add_widget_runtime_state(
+                out.components, &mut units, out.widget_refs, entry,
+            )?;
         }
     }
     if matches!(face, Faces::Aggregates) {
@@ -527,10 +606,64 @@ fn bind_packages_face_with(
             BTreeMap::new(),
             context,
             face,
+            age_out.as_mut().map(|out| &mut *out.components),
         )
     } else {
         bind_package_syntax(inputs, entry, caps, budget, units)
     }
+}
+
+fn age_style_literals(units: &BTreeMap<String, PackageSyntax>) -> BTreeMap<String, String> {
+    let mut styles = BTreeMap::new();
+    for (key, unit) in units {
+        let (package, module) = split_key(key);
+        for (name, literal) in &unit.age_literal_styles {
+            styles.insert(global_symbol(package, module, name), literal.clone());
+        }
+    }
+    styles
+}
+
+fn bind_age_view_styles(
+    components: &mut [PackagedAgeComponent],
+    units: &mut BTreeMap<String, PackageSyntax>,
+    bindings: &BTreeMap<String, BTreeMap<String, BoundImport>>,
+    styles: &BTreeMap<String, String>,
+) -> Result<(), PackageDiagnostic> {
+    for component in components {
+        let module = &component.module;
+        let unit = units.get_mut(module).expect("component module in package");
+        let imports = unit.imports.iter()
+            .map(|import| import.bound_name().to_owned())
+            .collect();
+        let mut literals = BTreeMap::new();
+        for (name, binding) in &bindings[module] {
+            if binding.is_const {
+                if let Some(literal) = styles.get(&binding.symbol) {
+                    literals.insert(name.clone(), literal.clone());
+                }
+            }
+        }
+        crate::source::cst::bind_age_style_imports(&mut component.node, &literals, &imports)
+            .map_err(|diagnostic| PackageDiagnostic { module: module.clone(), diagnostic })?;
+        let (node, _, _) = unit.age_components.iter_mut()
+            .find(|(node, _, _)| node.span == component.node.span)
+            .expect("same projected component in bound package");
+        node.view.tree.clone_from(&component.node.view.tree);
+    }
+    Ok(())
+}
+
+fn needs_age_math(
+    key: &str,
+    unit: &PackageSyntax,
+    units: &BTreeMap<String, PackageSyntax>,
+) -> bool {
+    key != super::stdlib::AGE_MATH_MODULE
+        && unit.referenced.contains("math")
+        && !unit.imports.iter().any(|import| import.bound_name() == "math")
+        && !unit.declarations.contains_key("math")
+        && !units.contains_key(&unit_key(split_key(key).0, "math"))
 }
 
 /// PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景定向事件的**包级**
@@ -615,6 +748,7 @@ pub fn bind_package_syntax(
         BTreeMap::new(),
         None,
         Faces::Plain,
+        None,
     )
 }
 
@@ -636,6 +770,7 @@ pub fn bind_package_syntax_aggregates(
         BTreeMap::new(),
         None,
         Faces::Aggregates,
+        None,
     )
 }
 
@@ -658,6 +793,7 @@ pub fn bind_package_syntax_assembled(
         impls,
         Some(ctx),
         Faces::Plain,
+        None,
     )
 }
 
@@ -678,6 +814,7 @@ fn bind_package_syntax_inner(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: Option<&super::provider_sources::PackageAssemblyContext>,
     face: Faces,
+    age_out: Option<&mut Vec<PackagedAgeComponent>>,
 ) -> Result<BoundPackages, PackageDiagnostic> {
     let zero = Span { start: 0, end: 0 };
     if !caps.iter().any(|c| c == PACKAGES_CAPABILITY)
@@ -734,7 +871,7 @@ fn bind_package_syntax_inner(
         }
         if !valid_package(&input.package)
             || !valid_version(&input.version)
-            || !valid_id(&input.id)
+            || !valid_module_id(&input.id, face)
             || sources.contains_key(&key)
         {
             return Err(fail(
@@ -766,6 +903,7 @@ fn bind_package_syntax_inner(
                 &input.version,
                 &input.source,
             )
+            && !(face == Faces::Age && super::stdlib::is_age_math_input(input))
         {
             return Err(fail(
                 &key,
@@ -872,6 +1010,17 @@ fn bind_package_syntax_inner(
             stores: BTreeMap::new(),
         };
         let mut all: BTreeMap<String, Span> = BTreeMap::new();
+        for (name, diagnostic) in &unit.age_deferred_styles {
+            if unit.imports.iter().any(|import| import.bound_name() == name) {
+                return Err(fail(
+                    key,
+                    "source.module-duplicate-declaration",
+                    format!("duplicate declaration `{name}`"),
+                    diagnostic.span,
+                ));
+            }
+            all.insert(name.clone(), diagnostic.span);
+        }
         for item in &unit.program.items {
             let (name, span) = match item {
                 Item::Fn(f) => {
@@ -937,11 +1086,38 @@ fn bind_package_syntax_inner(
         decls.insert(key.clone(), d);
     }
 
+    // Component projects may spell function imports using the directory
+    // named by their widget package declaration. Scope that spelling to
+    // the declaring module and to siblings within the imported package.
+    let mut directory_packages: BTreeMap<(&str, &str), BTreeSet<&str>> = BTreeMap::new();
+    if face == Faces::Age {
+        for (key, unit) in &units {
+            for (node, _, _) in &unit.age_components {
+                for import in &node.package_imports {
+                    let Some(directory) = import
+                        .directory
+                        .rsplit(['/', '\\'])
+                        .find(|part| !part.is_empty())
+                    else {
+                        continue;
+                    };
+                    let package = import.package.name.as_str();
+                    for scope in [key.as_str(), package] {
+                        directory_packages
+                            .entry((scope, directory))
+                            .or_default()
+                            .insert(package);
+                    }
+                }
+            }
+        }
+    }
+
     // ---- 路径解析与公共可见性（含重导出链；V-02 私有重导出拒绝）----
     let resolve_path =
         |owner: &str, path: &[String], span: Span| -> Result<(String, String), PackageDiagnostic> {
             let (owner_pkg, _) = split_key(owner);
-            let (target_key, item) = match path.len() {
+            let (mut target_key, item) = match path.len() {
                 2 => (unit_key(owner_pkg, &path[0]), path[1].clone()),
                 3 => (unit_key(&path[0], &path[1]), path[2].clone()),
                 _ => {
@@ -953,6 +1129,26 @@ fn bind_package_syntax_inner(
                     ))
                 }
             };
+            if path.len() == 3 && !units.contains_key(&target_key) {
+                let qualifier = path[0].as_str();
+                let local = directory_packages.get(&(owner, qualifier));
+                let siblings = directory_packages.get(&(owner_pkg, qualifier));
+                let mut packages = local
+                    .into_iter()
+                    .flatten()
+                    .chain(siblings.into_iter().flatten());
+                if let Some(package) = packages.next() {
+                    if packages.any(|other| other != package) {
+                        return Err(fail(
+                            owner,
+                            "source.module-path-ambiguous",
+                            format!("component package directory `{qualifier}` has multiple names"),
+                            span,
+                        ));
+                    }
+                    target_key = unit_key(package, &path[1]);
+                }
+            }
             if !units.contains_key(&target_key) {
                 return Err(fail(
                     owner,
@@ -989,6 +1185,12 @@ fn bind_package_syntax_inner(
             } else {
                 "source.module-private"
             };
+            if let Some(diagnostic) = unit.age_deferred_styles.get(&cursor.1) {
+                return Err(PackageDiagnostic {
+                    module: cursor.0.clone(),
+                    diagnostic: diagnostic.clone(),
+                });
+            }
             if d.fns.contains_key(&cursor.1) {
                 return if exported {
                     Ok(Target::Fn(fn_symbol(pkg, module, &cursor.1, entry)))
@@ -1154,8 +1356,45 @@ fn bind_package_syntax_inner(
             binds.insert(i.bound_name().to_string(), b);
             edges.get_mut(key).unwrap().insert(target_key);
         }
+        if face == Faces::Age && needs_age_math(key, unit, &units) {
+            let target = super::stdlib::AGE_MATH_MODULE.to_string();
+            binds.insert(
+                "math".into(),
+                BoundImport {
+                    symbol: target.clone(),
+                    is_type: false,
+                    is_const: false,
+                    is_module: true,
+                },
+            );
+            edges.get_mut(key).unwrap().insert(target);
+        }
         binds_by_unit.insert(key.clone(), binds);
     }
+    for (key, unit) in &units {
+        let mut widget_types = Vec::new();
+        for (alias, (source, name)) in &unit.age_widget_record_types {
+            let (package, module) = split_key(source);
+            let symbol = if decls[source].types.contains_key(&name.name) {
+                type_symbol(package, module, &name.name)
+            } else if let Some(binding) = binds_by_unit[source].get(&name.name).filter(|binding| binding.is_type) {
+                binding.symbol.clone()
+            } else {
+                return Err(fail(source, "source.module-symbol", format!("unknown type `{}`", name.name), name.span));
+            };
+            widget_types.push((alias.clone(), BoundImport {
+                symbol, is_type: true, is_const: false, is_module: false,
+            }));
+        }
+        binds_by_unit.get_mut(key).expect("module imports were bound").extend(widget_types);
+    }
+    let styles = if let Some(components) = age_out {
+        let styles = age_style_literals(&units);
+        bind_age_view_styles(components, &mut units, &binds_by_unit, &styles)?;
+        styles
+    } else {
+        BTreeMap::new()
+    };
     {
         let mut pending = edges;
         while !pending.is_empty() {
@@ -1267,6 +1506,7 @@ fn bind_package_syntax_inner(
             decls: &decls,
             binds: &binds_by_unit[key],
             globals: &globals,
+            styles: &styles,
             current_owner: String::new(),
             refs: &mut references,
             global_reads: &mut global_reads,
@@ -1280,6 +1520,7 @@ fn bind_package_syntax_inner(
             aggregates: aggregates || face == Faces::Auto || face == Faces::Age,
             asm_lane: (in_face && aggregates) || face == Faces::Auto,
             auto_language: face == Faces::Auto,
+            age: face == Faces::Age,
         };
         let mut inits: Vec<String> = Vec::new();
         for item in &unit.program.items {
@@ -2314,6 +2555,7 @@ struct Walker<'a> {
     current_owner: String,
     refs: &'a mut BTreeMap<String, BTreeSet<String>>,
     global_reads: &'a mut BTreeMap<String, BTreeSet<String>>,
+    styles: &'a BTreeMap<String, String>,
     work: usize,
     depth: usize,
     /// 合成 `let __setN` 名计数（每模块单调）。
@@ -2329,6 +2571,7 @@ struct Walker<'a> {
     /// PLAN-964 的具名拒绝）。
     asm_lane: bool,
     auto_language: bool,
+    age: bool,
 }
 
 const WALK_WORK_BUDGET: usize = 1 << 22;
@@ -2486,6 +2729,9 @@ impl<'a> Walker<'a> {
         if (self.aggregates && matches!(name.name.as_str(), "List" | "Result"))
             || (self.auto_language && name.name == "Iter")
         {
+            return Ok(name.name.clone());
+        }
+        if self.age && name.name == "List" {
             return Ok(name.name.clone());
         }
         if self.my_decls().types.contains_key(&name.name) {
@@ -2741,7 +2987,7 @@ impl<'a> Walker<'a> {
                 }
                 Stmt::ForIn {
                     var, iter, body, ..
-                } if self.aggregates => {
+                } if self.aggregates || self.age => {
                     self.walk_expr(iter, &locals)?;
                     stack.push(Frame {
                         stmts: rest,
@@ -2917,6 +3163,12 @@ impl<'a> Walker<'a> {
                     return Ok(());
                 }
                 if let Some(sym) = self.global_of(&v.name) {
+                    // Generated view functions carry the same bound style
+                    // literals as the authored view tree.
+                    if let Some(literal) = self.styles.get(&sym) {
+                        e.kind = ExprKind::StrLit(literal.clone());
+                        return Ok(());
+                    }
                     self.record_read(&sym);
                     let vspan = v.span;
                     e.kind = ExprKind::Call {
@@ -3050,6 +3302,8 @@ impl<'a> Walker<'a> {
                     } else if self.auto_language && matches!(callee.name.as_str(), "fail" | "rethrow") {
                         // The shared resolver owns language-error binding and
                         // checks that rethrow is inside a catch body.
+                    } else if self.age && callee.name == "__fstr" {
+                        // The AGE formatter also uses the shared resolver.
                     } else if self.aggregates
                         && matches!(callee.name.as_str(), "Some" | "None" | "Ok" | "Err")
                     {
@@ -3183,6 +3437,10 @@ impl<'a> Walker<'a> {
                 // `mod.CONST` / `pkg.mod.CONST` 常量读取；局部记录字段保留。
                 if let Some((target_key, head_span)) = self.module_prefix(base, locals) {
                     let sym = self.cross_const(&target_key, &name.name, name.span)?;
+                    if let Some(literal) = self.styles.get(&sym) {
+                        e.kind = ExprKind::StrLit(literal.clone());
+                        return Ok(());
+                    }
                     self.record_read(&sym);
                     e.kind = ExprKind::Call {
                         callee: Ident {
@@ -3221,7 +3479,9 @@ impl<'a> Walker<'a> {
             )),
             // PLAN-946（T-02）：aggregates 面按 962 域放行 `List<T>.member`
             // 接收原子（基名按符号 mangle，实参递归；plain/ct 面保持具名拒）。
-            ExprKind::GenericType { name, args } if self.aggregates => {
+            ExprKind::GenericType { name, args }
+                if self.aggregates || (self.age && name.name == "List") =>
+            {
                 let mangled = self.type_name(name)?;
                 name.name = mangled;
                 for a in args.iter_mut() {
@@ -3333,7 +3593,12 @@ impl<'a> Walker<'a> {
                 {
                     return None;
                 }
-                self.same_package_module(&m.name).map(|k| (k, m.span))
+                self.binds
+                    .get(&m.name)
+                    .filter(|binding| binding.is_module)
+                    .map(|binding| binding.symbol.clone())
+                    .or_else(|| self.same_package_module(&m.name))
+                    .map(|k| (k, m.span))
             }
             ExprKind::Field { base, name: mid } => {
                 let ExprKind::Var(pkg) = &base.kind else {
@@ -4202,6 +4467,7 @@ pub fn bind_package_syntax_assembled_aggregates(
         impls,
         Some(ctx),
         Faces::AggregatesCt,
+        None,
     )
 }
 
@@ -4526,6 +4792,9 @@ fn assemble_unit(
         // PLAN-980 ④-A：装配路径沿用源前门产出的引用集（否则 AGE 面的惰性
         // 导入判定在此被清空——实测 binds 全空、跨模块 helper 变 unknown）。
         referenced: public.referenced.clone(),
+        age_literal_styles: public.age_literal_styles.clone(),
+        age_deferred_styles: public.age_deferred_styles.clone(),
+        age_widget_record_types: public.age_widget_record_types.clone(),
         grammar_id: public.grammar_id.clone(),
         source_hash,
         pieces,

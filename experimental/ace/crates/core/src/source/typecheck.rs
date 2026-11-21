@@ -157,9 +157,18 @@ fn check_block(
             // PLAN-862: the script tail — its assertions live in resolve
             // (position + i32-only); here it is just one more expression
             // whose operators/arguments must typecheck.
-            RStmt::ExprStmt { value, .. } | RStmt::Fail { value, .. } => {
-                check_expr(value, program, f, diags, age_eq)
+            RStmt::ExprStmt { value, span } => {
+                check_expr(value, program, f, diags, age_eq);
+                if age_eq && value.vt != VT::Unit {
+                    diags.push(Diagnostic::new(
+                        Stage::Text,
+                        "source.unsupported",
+                        "AGE expression statements must perform a unit effect. Use a value in an initializer, assignment, condition, or return.",
+                        *span,
+                    ).tagged(crate::atom_text::SurfaceFact::ProfileSurface));
+                }
             }
+            RStmt::Fail { value, .. } => check_expr(value, program, f, diags, age_eq),
             RStmt::Return { value, .. } => {
                 check_expr(value, program, f, diags, age_eq);
                 if value.vt != f.result {

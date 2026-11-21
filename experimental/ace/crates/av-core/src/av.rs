@@ -2291,10 +2291,7 @@ pub(crate) trait ModuleView {
     fn type_is_owned(&self, func: u32, ty: u32) -> bool;
     /// PLAN-964: whether the underlying module is a collections-family
     /// profile (List/Variant params share their cell instead of moving in).
-    fn is_collections_profile(&self) -> bool {
-        false
-    }
-    fn is_closures_profile(&self) -> bool {
+    fn shares_collection_arguments(&self) -> bool {
         false
     }
     fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
@@ -2372,11 +2369,8 @@ impl ModuleView for MergedView<'_> {
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
     }
-    fn is_collections_profile(&self) -> bool {
-        self.0.is_collections_profile()
-    }
-    fn is_closures_profile(&self) -> bool {
-        self.0.is_closures_profile()
+    fn shares_collection_arguments(&self) -> bool {
+        self.0.shares_collection_arguments()
     }
     fn entry(&self) -> u32 {
         self.0.entry
@@ -2422,11 +2416,8 @@ impl ModuleView for LoadedView<'_> {
     fn type_is_owned(&self, _func: u32, ty: u32) -> bool {
         crate::ownership::type_is_owned(self.0, ty)
     }
-    fn is_collections_profile(&self) -> bool {
-        self.0.is_collections_profile()
-    }
-    fn is_closures_profile(&self) -> bool {
-        self.0.is_closures_profile()
+    fn shares_collection_arguments(&self) -> bool {
+        self.0.shares_collection_arguments()
     }
     fn logical_pc(&self, func: u32, block: u32, ip: usize) -> Option<(bool, u32)> {
         self.1.logical_pc(func, block, ip).map(|pc| (true, pc))
@@ -5083,8 +5074,7 @@ fn dispatch_with_host<V: ModuleView>(
                             // a List/Variant param receives a SHARED handle
                             // (Rc alias — callee mutations are visible in
                             // the caller), so the arg does not move in.
-                            let shared_param =
-                                v.is_collections_profile() || v.is_closures_profile();
+                            let shared_param = v.shares_collection_arguments();
                             let param_borrows = callee_sig_ty
                                 .and_then(|t| match t {
                                     crate::mir::MirType::Fn(sig) => sig.params.get(ai).copied(),
@@ -7046,7 +7036,7 @@ fn dispatch_with_host<V: ModuleView>(
                             }
                         }
                     };
-                    let res = match got {
+                    let mut res = match got {
                         Some(x) => x,
                         None => {
                             return Some(ExecOutcome::Infra(format!(
@@ -7055,6 +7045,26 @@ fn dispatch_with_host<V: ModuleView>(
                             )))
                         }
                     };
+                    if v.is_strview_type(func_idx, func.slots[*dst as usize].ty) {
+                        let Value::Str(text) = res else {
+                            return Some(ExecOutcome::Infra("list text field is not Str".into()));
+                        };
+                        let bytes = text.bytes();
+                        if let Err(out) =
+                            charge_exec_work(st, bytes.len() as u64, limits, cancel, started)
+                        {
+                            return Some(out);
+                        }
+                        let Ok(value) = std::str::from_utf8(bytes) else {
+                            return Some(ExecOutcome::Infra("list text field is not UTF-8".into()));
+                        };
+                        let end = value.chars().count() as u32;
+                        res = Value::StrView(crate::contract::StrView {
+                            src: crate::contract::StrViewSrc::Share(text),
+                            start: 0,
+                            end,
+                        });
+                    }
                     if let Err(out) = commit_slot_write(st, *dst as usize, res, limits) {
                         return Some(out);
                     }
@@ -8080,6 +8090,7 @@ fn dispatch_with_host<V: ModuleView>(
                         Value::U32(value) => value.to_string().into_bytes(),
                         Value::I64(value) => value.to_string().into_bytes(),
                         Value::U64(value) => value.to_string().into_bytes(),
+                        Value::F32(value) => value.to_string().into_bytes(),
                         other => {
                             return Some(ExecOutcome::Infra(format!(
                                 "text-display operand holds {} (admission violation)",

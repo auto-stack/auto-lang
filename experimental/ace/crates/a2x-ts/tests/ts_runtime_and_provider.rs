@@ -46,6 +46,102 @@ fn scratch_dir(name: &str) -> PathBuf {
     d
 }
 
+#[test]
+fn scoped_widget_runtime_releases_text_without_disturbing_other_mounts() {
+    let script = format!(r#"
+import assert from 'node:assert/strict';
+function mount() {{
+{}
+return {{
+  text: value => a2x_str_to_owned(a2x_str_lit(value)),
+  read: a2x_str_utf8,
+  keep: a2x_widget_keep_models,
+  snapshot: a2x_rt_snapshot,
+}};
+}}
+const sentinel = {{}};
+globalThis.__a2ts_rt = sentinel;
+const first = mount(), second = mount();
+assert.equal(globalThis.__a2ts_rt, sentinel);
+const retained = first.text('first'), transient = first.text('transient');
+const independent = second.text('second');
+first.keep([{{ list: {{ items: [retained, retained] }} }}]);
+assert.equal(first.snapshot().live_strs.length, 1);
+assert.equal(first.snapshot().double_free_count, 0);
+assert.throws(() => first.read(transient), error => error.code === 'ResourceClosed');
+assert.equal(first.read(retained), 'first');
+first.keep([]);
+assert.equal(first.snapshot().live_strs.length, 0);
+assert.equal(second.read(independent), 'second');
+second.keep([]);
+assert.equal(second.snapshot().live_strs.length, 0);
+"#, ace_a2x_ts::script_widget_runtime_body());
+    let dir = scratch_dir("widget_runtime_scope");
+    let file = dir.join("widget.mjs");
+    std::fs::write(&file, script).unwrap();
+    let result = Command::new(find_node()).arg(&file).output().unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+}
+
+#[test]
+fn checked_widget_numeric_casts_truncate_before_the_range_check() {
+    use ace_a2x_core::SemanticView;
+    use ace_a2x_ts::{emit_function_body_fragment, FragmentProgramContext};
+    use ace_core::atom_text::Span;
+    use ace_core::source::age_component::{state_fn_name_at, ComponentScenario, InitialValue, ScenarioOp};
+    use ace_core::source::age_h0::LegacyWidgetAlias;
+    use ace_core::source::age_package::compile_age_package_with_scenario;
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+
+    let source = r#"
+widget Sample {
+    msg { Convert(float) }
+    model { result int = 0 }
+    on { .Convert(x) -> { .result = x.to_int() } }
+    view { text f"${.result}" {} }
+}
+"#;
+    let values = [-3.75, -0.125, 2147483648.0];
+    let ops = values.iter().enumerate().map(|(instance, value)| {
+        ScenarioOp::send_args_from_values(
+            instance, "Convert", &[InitialValue::Float(*value)], Span { start: 0, end: 0 },
+        )
+    }).collect();
+    let compiled = compile_age_package_with_scenario(
+        &[PackageModuleInput {
+            package: "app".into(), version: "1.0.0".into(), id: "main".into(),
+            source: source.into(), provider: None,
+        }],
+        "app::main",
+        LegacyWidgetAlias::Accept,
+        &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario { instances: values.len(), ops },
+    ).expect("checked cast fixture");
+    let view = SemanticView::from_checked(&compiled.checked).expect("semantic view");
+    let context = FragmentProgramContext::from_view(&view);
+    let mut script = ace_a2x_ts::script_widget_runtime_body();
+    script.push_str("\nimport assert from 'node:assert/strict';\n");
+    for (instance, expected) in [-3, 0, i32::MAX].into_iter().enumerate() {
+        let name = state_fn_name_at(0, instance, "result");
+        let symbol = compiled.symbol_of_in("app::main", &name).expect("projected state symbol");
+        let function = view.functions().iter().find(|function| function.source_name == symbol)
+            .expect("checked state function");
+        let body = emit_function_body_fragment(ScriptLang::JavaScript, &view, function, &context)
+            .expect("JavaScript state function");
+        script.push_str(&format!(
+            "function result{instance}() {{\n{}\n}}\nassert.equal(result{instance}(), {expected});\n",
+            body.text.join("\n"),
+        ));
+    }
+    let dir = scratch_dir("widget_f32_cast");
+    let entry = dir.join("cast.mjs");
+    std::fs::write(&entry, script).unwrap();
+    let output = Command::new(find_node()).arg(entry).output().unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
 /// The in-driver assertion core: every check is counted and any failure is
 /// both printed and flips the process exit code, so the Rust side only has to
 /// observe exit status + the `TSRT_OK` marker line.
@@ -97,6 +193,13 @@ trap("InvalidScalar", () => RT.a2x_char_from_codepoint(0x110000), "codepoint ran
 RT.a2x_rt_reset();
 const ownedA = RT.a2x_str_concat(RT.a2x_str_lit("ab"), RT.a2x_str_lit("\0cd"));
 eq(RT.a2x_str_utf8(ownedA), "ab\0cd", "concat keeps NUL");
+const search = RT.a2x_str_lit("🙂树🙂树");
+const tree = RT.a2x_str_lit("树");
+eq(RT.a2x_str_find(search, tree, 0), 1, "find returns scalar offset");
+eq(RT.a2x_str_find(search, tree, 2), 3, "find starts at scalar offset");
+eq(RT.a2x_str_find(search, tree, -1), -1, "find rejects negative start");
+eq(RT.a2x_str_find(search, RT.a2x_str_lit(""), 4), 4, "empty match at end");
+eq(RT.a2x_str_find(search, RT.a2x_str_lit(""), 5), -1, "no match beyond end");
 const ownedB = RT.a2x_str_clone(uni);
 let snap = RT.a2x_rt_snapshot();
 eq(snap.alloc_count, 2, "alloc_count 2");
@@ -150,6 +253,20 @@ eq(dv.getBigUint64(0, true), 0x7ff8000000000001n, "f64 NaN payload round trip");
 eq(RT.a2x_fdiv(1, 0), Number.POSITIVE_INFINITY, "fdiv 1/0");
 eq(Number.isNaN(RT.a2x_fdiv(0, 0)), true, "fdiv 0/0 NaN");
 eq(RT.a2x_cast_f32(1.1) === Math.fround(1.1), true, "f32 rounding");
+const displayF32 = value => {
+  const text = RT.a2x_str_display_f32(value);
+  const decoded = RT.a2x_str_utf8(text);
+  RT.a2x_str_free(text);
+  return decoded;
+};
+eq(displayF32(Math.fround(1.2)), "1.2", "display omits f64 precision artifacts");
+eq(displayF32(-0), "-0", "display preserves signed zero");
+eq(displayF32(RT.a2x_f32_bits(1)), "0." + "0".repeat(44) + "1", "display handles subnormals");
+eq(displayF32(RT.a2x_f32_bits(0x7f7fffff)), "34028235" + "0".repeat(31), "display handles large floats");
+eq(displayF32(RT.a2x_f32_bits(1795162112)), "15474251" + "0".repeat(19), "display uses the shorter rounding neighbor");
+eq(displayF32(nanVal), "NaN", "display canonicalises NaN");
+eq(displayF32(Infinity), "inf", "display handles positive infinity");
+eq(displayF32(-Infinity), "-inf", "display handles negative infinity");
 
 // --- variants: destructive projection ------------------------------------
 const v = new RT.A2xVariant(3, "payload");

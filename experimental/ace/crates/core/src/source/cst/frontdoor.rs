@@ -123,7 +123,7 @@ pub struct FrontOk {
 
 /// PLAN-979：槽位限定拼写的事实源（真实快照字节；本 crate 不复制源）。
 pub(crate) struct SnapshotTokenText<'s> {
-    snap: &'s Snapshot,
+    pub(super) snap: &'s Snapshot,
 }
 
 impl<'s> ace_syntax_runtime::parse::CtxTokenText for SnapshotTokenText<'s> {
@@ -465,8 +465,9 @@ pub(crate) fn parse_packages_front_age(
     budget: FrontBudget,
     scenario: &crate::source::age_component::ComponentScenario,
     node_base: usize,
+    defer_styles: bool,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Age, src, budget, scenario, node_base)
+    parse_packages_with(PackagesFace::Age { defer_styles }, src, budget, scenario, node_base)
 }
 
 /// PLAN-972（T-02）：packages-aggregates-ct 前门（装配 aggregates 线；
@@ -500,7 +501,7 @@ pub(crate) enum PackagesFace {
     Aggregates,
     /// PLAN-981（IF-981-MODULE）：`age-package` —— 包模块面 ∪ AGE 组件面。
     /// 与其它三面的差别只有两点：解析用该裁剪，且本面额外投影 AGE 候选。
-    Age,
+    Age { defer_styles: bool },
     /// packages-aggregates-ct（PLAN-972；aggregates 全表面 + ct 装配项 +
     /// 闭包类型注解/字面量——std 装配标准库的承载面）。
     AggregatesCt,
@@ -513,7 +514,7 @@ impl PackagesFace {
             PackagesFace::Auto => auto_packages_grammar(),
             PackagesFace::Ct => packages_ct_grammar(),
             PackagesFace::Aggregates => packages_aggregates_grammar(),
-            PackagesFace::Age => packages_age_grammar(),
+            PackagesFace::Age { .. } => packages_age_grammar(),
             PackagesFace::AggregatesCt => packages_aggregates_ct_grammar(),
         }
     }
@@ -561,7 +562,7 @@ fn parse_packages_with(
     // 解析必须拿到**真实快照字节**才能识别限定拼写；其它包面无该表，走原
     // 无上下文入口（字节与诊断面不变）。
     let ctx_text = SnapshotTokenText { snap: &snap };
-    let parsed = if matches!(face, PackagesFace::Age | PackagesFace::Auto) {
+    let parsed = if matches!(face, PackagesFace::Age { .. } | PackagesFace::Auto) {
         parse_snapshot_with_ctx(
             &cached.program,
             &cached.scanner,
@@ -805,6 +806,18 @@ pub(crate) fn project_packages_front(
     // `__age_state_n<k>_…` 与读回/AV 的包级序号对不上，UI058 T-05 实测）。
     node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    project_packages_front_with_widget_lists(src, trees, tokens, face, scenario, node_base, None)
+}
+
+pub(crate) fn project_packages_front_with_widget_lists(
+    src: &str,
+    trees: Vec<CstTree>,
+    tokens: Option<Vec<ace_syntax_runtime::lexer::Token>>,
+    face: PackagesFace,
+    scenario: &crate::source::age_component::ComponentScenario,
+    node_base: usize,
+    widget_lists: Option<&crate::source::age_package::widget_lists::WidgetListProjection>,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
@@ -894,6 +907,7 @@ pub(crate) fn project_packages_front(
     let mut style_lits: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
     let mut style_copies: Vec<(String, String, Span, bool)> = Vec::new();
+    let mut age_deferred_styles = std::collections::BTreeMap::new();
     let mut requires = Vec::new();
     let mut ct_items = Vec::new();
     // PLAN-981：本模块的 AGE 领域候选（仅 age-package 面有内容）。
@@ -929,7 +943,7 @@ pub(crate) fn project_packages_front(
             &snap,
             proj_profile,
             // PLAN-981：AGE 作者面（age-package 裁剪）——浮点字面量等合法。
-            matches!(face, PackagesFace::Age),
+            matches!(face, PackagesFace::Age { .. }),
         )?;
         source_metadata
             .pragmas
@@ -944,7 +958,7 @@ pub(crate) fn project_packages_front(
         // 每条文本叶随即脱糖成**普通隐藏函数**并进本模块 items —— 这样共享
         // 绑定器会像对待普通函数一样给它 mangle 符号/平移 span/走唯一 verify，
         // 领域层不另建求值路径。
-        if matches!(face, PackagesFace::Age) {
+        if matches!(face, PackagesFace::Age { .. }) {
             // PLAN-980 P3（981 (d)）：`style: <name>(…)` 调用形在投影**之前**具名拒——
             // 组件投影会把文本属性脱糖成隐藏值函数，事后无法区分"用户调用"与普通调用。
             if let Some(sk) = style_item {
@@ -1000,6 +1014,7 @@ pub(crate) fn project_packages_front(
                 tree,
                 &snap,
                 SourceProfile::AgePackage,
+                widget_lists,
             )?;
             // PLAN-105 T-02（U03 真语料 013/015，S1）：**同源 store 声明 → 组件内联**
             // ——字段加前缀、`.store.<f>` 改写为前缀字段、`store.<Msg>()` → 前缀消息
@@ -1030,8 +1045,42 @@ pub(crate) fn project_packages_front(
             // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
             // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
             for node in nodes {
+                items.extend(node.inferred_records.iter().cloned().map(crate::source::ast::Item::Type));
+                for param in &node.params {
+                    use crate::source::ast::{ExprKind, TypeRef, TypeWord};
+
+                    let Some(default) = &param.default else {
+                        continue;
+                    };
+                    let supported = node.legacy_widget
+                        && match param.ty.as_str() {
+                            "List" => {
+                                let text_list = param.collection_type.as_ref().is_none_or(|ann| {
+                                    matches!(&ann.kind, TypeRef::Generic { args, .. }
+                                        if args.len() == 1 && matches!(args[0].kind,
+                                            TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned)))
+                                });
+                                text_list && matches!(&default.kind, ExprKind::ArrayLit(items)
+                                    if items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_))))
+                            }
+                            "str" | "Str" => matches!(default.kind, ExprKind::StrLit(_)),
+                            "bool" => matches!(default.kind, ExprKind::BoolLit(_)),
+                            _ => false,
+                        };
+                    if !supported {
+                        return Err(err(
+                            "source.age.widget-param-default",
+                            format!(
+                                "unsupported default for widget parameter `{}` of type `{}`",
+                                param.name, param.ty
+                            ),
+                            default.span,
+                        ));
+                    }
+                }
                 // R64-4：包内节点下标——多 node 同名字段的状态函数需要它消歧。
                 let node_index = node_base + age_components.len();
+                let behavior_start = items.len();
                 let mut text_fns = Vec::new();
                 // PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的登记事实
                 //（AV 观察通道的入口；与发射的 `{prefix}scene_*` 函数同序）。
@@ -1054,18 +1103,19 @@ pub(crate) fn project_packages_front(
                 };
                 for inst in 0..state_instances {
                     for f in &node.fields {
-                        // PLAN-105 T-02（S1 首片）：状态函数只承载标量/文本字段
-                        // （`int/i32/bool/str/Str/f32`）；列表字段的状态函数需要
-                        // AGE 包面走 collections HIR 域（下一里程碑），此处跳过。
-                        let Some(state_word) = crate::source::age_component::field_type(f) else {
+                        // Bracket-annotated component lists are internal to the
+                        // view and handlers. Explicit package List types also have
+                        // checked state functions for view expressions and loops.
+                        if f.ty.trim_start().starts_with('[') {
                             continue;
-                        };
+                        }
                         let mut stmts = match crate::source::age_component::instance_stmts(
                             inst,
                             node_index,
                             &node,
                             &node_scenario,
                             &std::collections::HashMap::new(),
+                            true,
                         ) {
                             Ok(s) => s,
                             Err(ds) => return Err(ds),
@@ -1093,14 +1143,7 @@ pub(crate) fn project_packages_front(
                             },
                             type_params: Vec::new(),
                             params: Vec::new(),
-                            ret: crate::source::ast::TypeAnn {
-                                // 状态函数返回**字段自己的类型**（int/i32/bool）——
-                                // 原先硬编码 i32，于是 `flag bool = true` 被共享
-                                // 检查判成 `expected i32, found bool`（轮 48 R47-3）。
-                                // 不支持的类型已由上面的 `instance_stmts` 具名拒绝。
-                                kind: crate::source::ast::TypeRef::Builtin(state_word),
-                                span: f.ty_span,
-                            },
+                            ret: crate::source::age_component::model_type(f, true)?,
                             body: crate::source::ast::Block {
                                 stmts,
                                 span: node.span,
@@ -1117,8 +1160,19 @@ pub(crate) fn project_packages_front(
                 // 文本叶：每个实例一份求值函数（字段引用 → 该实例状态函数调用）。
                 // 静态面同样按实例 0 生成（与上面的状态函数一致：有 model 就有状态，
                 // "静态"只表示不复制实例，不表示叶可以无绑定地脱离 model）。
-                let insts: Vec<usize> = (0..state_instances).collect();
-                for inst in insts {
+                for inst in 0..state_instances {
+                    let binding = crate::source::age_component::FieldBinding::state_at(
+                        node_index, inst, &node,
+                    );
+                    for member in node.members.iter().filter(|member| member.role == "computed") {
+                        if let Some(value) = &member.value {
+                            let bound = crate::source::age_component::rename_expr(value, binding, &node.fields)?;
+                            let name = crate::source::age_package::computed_fn_name_at(
+                                node_index, inst, &member.name,
+                            );
+                            items.push(crate::source::age_package::computed_fn(name, bound));
+                        }
+                    }
                     for leaf in &node.view.texts {
                         let name = format!(
                             "{}{}_{}",
@@ -1128,10 +1182,7 @@ pub(crate) fn project_packages_front(
                         );
                         let bound = match crate::source::age_component::rename_expr(
                             &leaf.expr,
-                            crate::source::age_component::FieldBinding::StateFnAt {
-                                node: node_index,
-                                inst,
-                            },
+                            binding,
                             &node.fields,
                         ) {
                             Ok(b) => b,
@@ -1158,20 +1209,10 @@ pub(crate) fn project_packages_front(
                 // 现在按文本叶同一机制生成检查函数（`let` 绑定 + 定值返回），
                 // 名字解析/类型/可见性都由共享检查判定，诊断落回作者 span。
                 {
+                    use crate::source::age_component::ComponentViewFor;
                     let component_index = age_components.len();
                     let mut value_fns = 0usize;
-                    let mut check_value = |expr: &crate::source::ast::Expr| {
-                        let bound = match crate::source::age_component::rename_expr(
-                            expr,
-                            crate::source::age_component::FieldBinding::StateFnAt {
-                                node: node_index,
-                                inst: 0,
-                            },
-                            &node.fields,
-                        ) {
-                            Ok(b) => b,
-                            Err(ds) => return Err(ds),
-                        };
+                    let mut check_value = |expr: &crate::source::ast::Expr, loops: &[&ComponentViewFor]| -> Result<(), Vec<Diagnostic>> {
                         let name = format!(
                             "{}val_{}_{}",
                             crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
@@ -1180,20 +1221,22 @@ pub(crate) fn project_packages_front(
                         );
                         value_fns += 1;
                         items.push(crate::source::ast::Item::Fn(
-                            crate::source::age_package::hidden_value_fn(&name, &bound, expr.span),
+                            crate::source::age_package::hidden_value_fn(
+                                &name, &node, node_index, expr, loops,
+                            )?,
                         ));
                         Ok(())
                     };
                     for d in &node.design {
                         if let Some(v) = &d.value {
-                            check_value(v)?;
+                            check_value(v, &[])?;
                         }
                     }
                     // R60-4：`if` 形态的条件/分支同样进唯一 verify。
                     for d in &node.design {
                         for part in [&d.then_value, &d.else_value] {
                             if let Some(v) = part {
-                                check_value(v)?;
+                                check_value(v, &[])?;
                             }
                         }
                         // R61-3：条件必须能当 bool 用——用 `!cond` 把它放进布尔
@@ -1206,12 +1249,24 @@ pub(crate) fn project_packages_front(
                                     operand: Box::new(cond.clone()),
                                 },
                             };
-                            check_value(&neg)?;
+                            check_value(&neg, &[])?;
                         }
                     }
                     for m in &node.members {
                         if let Some(v) = &m.value {
-                            check_value(v)?;
+                            if m.role == "timer" {
+                                use crate::source::ast::{BinOp, Expr, ExprKind};
+                                check_value(&Expr {
+                                    kind: ExprKind::Binary {
+                                        op: BinOp::And,
+                                        lhs: Box::new(v.clone()),
+                                        rhs: Box::new(Expr { kind: ExprKind::BoolLit(true), span: v.span }),
+                                    },
+                                    span: v.span,
+                                }, &[])?;
+                            } else {
+                                check_value(v, &[])?;
+                            }
                         }
                     }
                     // R61-4：view 元素/属性行里的表达式（属性值、内联 lambda 赋值）
@@ -1250,7 +1305,7 @@ pub(crate) fn project_packages_front(
                     // 由深平铺 assigns 覆盖）。
                     fn push_stmt_conds<'a>(
                         stmts: &'a [crate::source::age_component::ComponentStmt],
-                        out: &mut Vec<&'a crate::source::ast::Expr>,
+                        emit: &mut impl FnMut(&'a crate::source::ast::Expr),
                     ) {
                         use crate::source::age_component::ComponentStmt;
                         for st in stmts {
@@ -1258,71 +1313,176 @@ pub(crate) fn project_packages_front(
                                 cond, then, els, ..
                             } = st
                             {
-                                out.push(cond);
-                                push_stmt_conds(then, out);
+                                emit(cond);
+                                push_stmt_conds(then, emit);
                                 if let Some(e) = els {
-                                    push_stmt_conds(e, out);
+                                    push_stmt_conds(e, emit);
                                 }
                             }
                         }
                     }
+                    type ScopedViewExpr<'a> = (&'a crate::source::ast::Expr, Vec<&'a ComponentViewFor>, bool);
                     fn collect_item_exprs<'a>(
                         items: &'a [crate::source::age_component::ComponentViewItem],
                         msgs: &[String],
-                        out: &mut Vec<&'a crate::source::ast::Expr>,
-                    ) {
-                        use crate::source::age_component::ComponentEntryValue;
+                        out: &mut Vec<ScopedViewExpr<'a>>,
+                        class_conditions: &mut Vec<ScopedViewExpr<'a>>,
+                        loops: &mut Vec<&'a ComponentViewFor>,
+                    ) -> Result<(), Vec<Diagnostic>> {
+                        use crate::source::age_component::{ComponentClassPart, ComponentEntryValue};
                         use crate::source::age_component::ComponentViewItem;
+                        use crate::source::ast::{Expr, ExprKind};
                         for it in items {
                             match it {
-                                ComponentViewItem::Text(_) => {}
+                                ComponentViewItem::Text(text) => {
+                                        out.push((&text.expr, loops.clone(), true));
+                                }
                                 ComponentViewItem::Element(e) => {
                                     if let Some(l) = &e.label {
-                                        out.push(l);
+                                        out.push((l, loops.clone(), !loops.is_empty()));
                                     }
-                                    collect_item_exprs(&e.items, msgs, out);
+                                    collect_item_exprs(&e.items, msgs, out, class_conditions, loops)?;
                                 }
-                                // PLAN-1072 刀B：迭代式不入绑定验证（视图数据
-                                // 字段无绑定域——惰性），子树照走。
                                 ComponentViewItem::For(f) => {
-                                    collect_item_exprs(&f.items, msgs, out);
+                                    loops.push(f);
+                                    collect_item_exprs(&f.items, msgs, out, class_conditions, loops)?;
+                                    loops.pop();
                                 }
                                 // PLAN-980 view-if：条件表达式入绑定验证 +
                                 // 双子树照走。
                                 ComponentViewItem::Cond(c) => {
-                                    out.push(&c.cond);
-                                    collect_item_exprs(&c.then_items, msgs, out);
-                                    collect_item_exprs(&c.else_items, msgs, out);
+                                    out.push((&c.cond, loops.clone(), false));
+                                    collect_item_exprs(&c.then_items, msgs, out, class_conditions, loops)?;
+                                    collect_item_exprs(&c.else_items, msgs, out, class_conditions, loops)?;
                                 }
                                 ComponentViewItem::Entry(en) => {
-                                    if event_binding_msg(en, msgs).is_some() {
+                                    if event_binding_msg(en, msgs).is_some() || en.message_call().is_some() {
                                         continue;
                                     }
                                     match &en.value {
-                                        ComponentEntryValue::Expr(x) => out.push(x),
+                                        // A text-list prop carries authored text values. Check
+                                        // those values without lowering the list as a scalar.
+                                        ComponentEntryValue::Expr(Expr {
+                                            kind: ExprKind::ArrayLit(items),
+                                            ..
+                                        }) if !en.is_event => {
+                                            if let Some(item) = items.iter().find(|item| {
+                                                !matches!(item.kind, ExprKind::StrLit(_))
+                                            }) {
+                                                return Err(vec![crate::source::age_h0::text_diag(
+                                                    "source.age.view-list",
+                                                    "a literal view property list requires quoted text values",
+                                                    item.span,
+                                                )]);
+                                            }
+                                            out.extend(items.iter().map(|item| (item, loops.clone(), false)));
+                                        }
+                                        ComponentEntryValue::Expr(x) => {
+                                            let render_text = !loops.is_empty() && matches!(
+                                                en.key.as_str(), "key" | "text" | "label" | "class" | "style"
+                                            );
+                                            out.push((x, loops.clone(), render_text));
+                                        }
                                         ComponentEntryValue::Lambda { assigns, stmts, .. } => {
                                             for a in assigns {
-                                                out.push(&a.rhs);
+                                                out.push((&a.rhs, loops.clone(), false));
                                             }
-                                            push_stmt_conds(stmts, out);
+                                            push_stmt_conds(stmts, &mut |cond| out.push((cond, loops.clone(), false)));
                                         }
                                         // PLAN-1072 刀B：条件样式 cond 入绑定
                                         // 验证（两臂为字面量/替换后字面量）。
-                                        ComponentEntryValue::If { cond, .. } => out.push(cond),
+                                        ComponentEntryValue::If { cond, .. } => out.push((cond, loops.clone(), false)),
+                                        ComponentEntryValue::ClassList(parts) => {
+                                            if !matches!(en.key.as_str(), "style" | "class") {
+                                                return Err(vec![crate::source::age_h0::text_diag(
+                                                    "source.age.class-list",
+                                                    "a conditional class list requires a style or class property",
+                                                    en.span,
+                                                )]);
+                                            }
+                                            let first_value = out.len();
+                                            for part in parts {
+                                                match part {
+                                                    ComponentClassPart::Value(value) => out.push((value, loops.clone(), false)),
+                                                    ComponentClassPart::If { cond, then_value, else_value } => {
+                                                        class_conditions.push((cond, loops.clone(), false));
+                                                        out.extend([(then_value, loops.clone(), false), (else_value, loops.clone(), false)]);
+                                                    }
+                                                }
+                                            }
+                                            if let Some((value, _, _)) = out[first_value..].iter().find(|(value, _, _)| {
+                                                !matches!(value.kind, ExprKind::StrLit(_))
+                                            }) {
+                                                return Err(vec![crate::source::age_h0::text_diag(
+                                                    "source.age.class-list",
+                                                    "a conditional class list requires quoted text values",
+                                                    value.span,
+                                                )]);
+                                            }
+                                        }
+                                        ComponentEntryValue::ChildEvent(_) => {}
                                     }
                                 }
                             }
                         }
+                        Ok(())
                     }
                     let declared_msgs: Vec<String> =
                         node.messages.iter().map(|m| m.name.clone()).collect();
                     let mut entry_exprs = Vec::new();
-                    collect_item_exprs(&node.view.tree, &declared_msgs, &mut entry_exprs);
+                    let mut class_conditions = Vec::new();
+                    collect_item_exprs(&node.view.tree, &declared_msgs, &mut entry_exprs, &mut class_conditions, &mut Vec::new())?;
                     for (_, items) in &node.view.named_trees {
-                        collect_item_exprs(items, &declared_msgs, &mut entry_exprs);
+                        collect_item_exprs(items, &declared_msgs, &mut entry_exprs, &mut class_conditions, &mut Vec::new())?;
                     }
-                    for e in entry_exprs {
-                        check_value(e)?;
+                    for (expr, loops, render_text) in entry_exprs {
+                        if render_text {
+                            use crate::source::ast::{Arg, Expr, ExprKind, Ident};
+                            check_value(&Expr {
+                                span: expr.span,
+                                kind: ExprKind::Call {
+                                    callee: Ident { name: "__fstr".into(), span: expr.span },
+                                    args: vec![Arg::Pos(expr.clone())],
+                                },
+                            }, &loops)?;
+                        } else {
+                            check_value(expr, &loops)?;
+                        }
+                    }
+                    for (cond, loops, _) in class_conditions {
+                        use crate::source::ast::{Expr, ExprKind, UnaryOp};
+                        check_value(&Expr {
+                            span: cond.span,
+                            kind: ExprKind::Unary {
+                                op: UnaryOp::Not,
+                                operand: Box::new(cond.clone()),
+                            },
+                        }, &loops)?;
+                    }
+                    let mut event_items = Vec::new();
+                    let mut event_index = 0;
+                    for tree in std::iter::once(node.view.tree.as_slice())
+                        .chain(node.view.named_trees.iter().map(|(_, items)| items.as_slice()))
+                    {
+                        crate::source::age_package::walk_view_message_calls(
+                            tree,
+                            &mut Vec::new(),
+                            &mut |entry, loops| {
+                                let symbol = format!(
+                                    "{}event_{}_{}",
+                                    crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
+                                    component_index,
+                                    event_index,
+                                );
+                                event_index += 1;
+                                if let Some(item) = crate::source::age_package::check_view_message_call(
+                                    symbol, &node, node_index, entry, loops,
+                                )? {
+                                    event_items.push(item);
+                                }
+                                Ok(())
+                            },
+                        )?;
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
@@ -1353,7 +1513,8 @@ pub(crate) fn project_packages_front(
                             &node,
                             node_index,
                             hi,
-                            "__age_p_hidden_hv_",
+                            crate::source::age_package::AGE_PACKAGE_HANDLER_PREFIX,
+                            true,
                         ) {
                             Some(Ok(item)) => handler_check_items.push(item),
                             Some(Err(ds)) => return Err(ds),
@@ -1391,13 +1552,20 @@ pub(crate) fn project_packages_front(
                                     rhs.span,
                                 )]);
                             }
-                            check_value(rhs)?;
+                            check_value(rhs, &[])?;
                         }
                     }
                     items.extend(handler_check_items);
+                    items.extend(event_items);
                 } // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                   // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                   // 不另建求值器，也不把手写数值当常量。
+                let widget_inputs = crate::source::age_package::widget_input_params(&node);
+                for item in &mut items[behavior_start..] {
+                    if let crate::source::ast::Item::Fn(function) = item {
+                        function.params.splice(..0, widget_inputs.iter().cloned());
+                    }
+                }
                 for (si, scene) in node.view.scene_components.iter().enumerate() {
                     // PLAN-981：属性名在**一行内必须唯一**。此前重复键被静默接受，
                     // 后值覆盖前值、零诊断——写两遍 `kind:` 的作者得不到任何反馈。
@@ -1686,6 +1854,7 @@ pub(crate) fn project_packages_front(
                     value_node,
                 );
                 let mut params: Vec<crate::source::ast::Param> = Vec::new();
+                let mut recipe_problem = None;
                 if let Some(pnode) = field(tree, st, "params") {
                     let mut found: Vec<u32> = Vec::new();
                     let mut stack = vec![pnode];
@@ -1708,13 +1877,18 @@ pub(crate) fn project_packages_front(
                             .and_then(|d| field(tree, d, "default"));
                         if let Some(def) = default_node {
                             let dspan = node_span(tree, def);
-                            return Err(err(
+                            let diagnostic = Diagnostic::new(
+                                Stage::Text,
                                 "source.age.style-defaults",
                                 format!(
-                                    "style recipe `{name}` declares a default value for parameter                                      `{pname}`; default parameters are a named pending surface in                                      this slice"
+                                    "style recipe `{name}` declares an unsupported default value for parameter `{pname}`"
                                 ),
                                 dspan,
-                            ));
+                            );
+                            if !is_pub || !matches!(face, PackagesFace::Age { defer_styles: true }) {
+                                return Err(vec![diagnostic]);
+                            }
+                            recipe_problem.get_or_insert(diagnostic);
                         }
                         let ty_word = tree
                             .children(sp)
@@ -1749,6 +1923,32 @@ pub(crate) fn project_packages_front(
                             span: pspan,
                         });
                     }
+                }
+                if !params.is_empty() && matches!(&value.kind,
+                    crate::source::ast::ExprKind::StrLit(lit) if lit.contains('{'))
+                {
+                    let diagnostic = Diagnostic::new(
+                        Stage::Text,
+                        "source.age.style-interp",
+                        format!("style recipe `{name}` uses unsupported parameter interpolation"),
+                        value_span,
+                    );
+                    if !is_pub || !matches!(face, PackagesFace::Age { defer_styles: true }) {
+                        return Err(vec![diagnostic]);
+                    }
+                    recipe_problem.get_or_insert(diagnostic);
+                }
+                if let Some(diagnostic) = recipe_problem {
+                    declarations.insert(name.clone(), item_span);
+                    exports.insert(name.clone());
+                    if age_deferred_styles.insert(name.clone(), diagnostic).is_some() {
+                        return Err(err(
+                            "source.module-duplicate-declaration",
+                            format!("duplicate declaration `{name}`"),
+                            name_span,
+                        ));
+                    }
+                    continue;
                 }
                 // 零参 ident 复制（引用另一条本地 style 字面量）——延后解析，允许前向。
                 if params.is_empty() {
@@ -1787,17 +1987,6 @@ pub(crate) fn project_packages_front(
                         },
                     ));
                 } else {
-                    if let crate::source::ast::ExprKind::StrLit(lit) = &value.kind {
-                        if lit.contains('{') {
-                            return Err(err(
-                                "source.age.style-interp",
-                                format!(
-                                    "style recipe `{name}` interpolates parameters (`{{…}}`);                                      parameter interpolation is a named pending surface in this slice"
-                                ),
-                                value_span,
-                            ));
-                        }
-                    }
                     items.push(crate::source::ast::Item::Fn(crate::source::ast::FnItem {
                         name: crate::source::ast::Ident {
                             name: name.clone(),
@@ -2165,13 +2354,13 @@ pub(crate) fn project_packages_front(
             exports.insert(name);
         }
     }
-    // PLAN-980 P3：用法投影期替换（`style: NAME` → 字面量；981 回签 (c)3）。
-    // 导入的 style 引用与带参调用一律 `style-call` 具名拒（不折叠、不留 global 读）。
+    // Resolve local style declarations now. Package imports are resolved after
+    // the shared binder has checked their targets and visibility.
     let import_names: std::collections::BTreeSet<String> =
         imports.iter().map(|i| i.bound_name().to_string()).collect();
     for (node, _texts, _scene) in &mut age_components {
         if let Err(d) =
-            replace_style_in_items(&mut node.view.tree, &style_lits, &import_names, false)
+            replace_style_in_items(&mut node.view.tree, &style_lits, &import_names, StyleScope::PackageModule)
         {
             return Err(vec![d]);
         }
@@ -2219,6 +2408,9 @@ pub(crate) fn project_packages_front(
         const_exports,
         imports,
         referenced,
+        age_literal_styles: style_lits,
+        age_deferred_styles,
+        age_widget_record_types: Default::default(),
         grammar_id: format!("{}", cached.program.identity.grammar_id.0),
         source_hash: crate::runtime_contract::sha256_hex(src.as_bytes()),
         pieces: trees
@@ -3084,32 +3276,43 @@ pub fn parse_front_with_caps(req: FrontRequest, capabilities: &[String]) -> Fron
     }
 }
 
-/// PLAN-980 P3 / PLAN-1072：对单个 view 条目表达式执行本地 style 字面量替换，
-/// 并统一对导入引用、未声明名引用及带参调用形执行 `source.age.style-call` fail-closed 检查。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StyleScope {
+    Component,
+    PackageModule,
+    PackageClosure,
+}
+
+pub(crate) fn bind_age_style_imports(
+    node: &mut crate::source::age_component::ComponentNode,
+    literals: &std::collections::BTreeMap<String, String>,
+    imports: &std::collections::BTreeSet<String>,
+) -> Result<(), Diagnostic> {
+    replace_style_in_items(&mut node.view.tree, literals, imports, StyleScope::PackageClosure)
+}
+
 fn replace_style_in_entry_expr(
     e: &mut crate::source::ast::Expr,
     entry_key: &str,
     lits: &std::collections::BTreeMap<String, String>,
     imports: &std::collections::BTreeSet<String>,
-    reject_unknown: bool,
+    scope: StyleScope,
 ) -> Result<(), crate::atom_text::Diagnostic> {
     match &e.kind {
         crate::source::ast::ExprKind::Var(id) => {
             if let Some(lit) = lits.get(&id.name) {
                 e.kind = crate::source::ast::ExprKind::StrLit(lit.clone());
-            } else if imports.contains(&id.name) {
+            } else if imports.contains(&id.name) && scope != StyleScope::PackageModule {
                 return Err(crate::atom_text::Diagnostic::new(
                     crate::atom_text::Stage::Text,
                     "source.age.style-call",
                     format!(
-                        "style reference `{}` resolves to an imported style; \
-                         imported style references are a named pending surface in \
-                         this slice",
+                        "style reference `{}` does not resolve to a public literal style",
                         id.name
                     ),
                     e.span,
                 ));
-            } else if reject_unknown && entry_key == "style" {
+            } else if scope == StyleScope::Component && entry_key == "style" {
                 // PLAN-1072 刀A：组件面具名拒（fail-closed——
                 // 条目值惰性，但不留静默未解析 ident；限定
                 // `style` 键——其它键的裸 ident 值不属 style 面）。
@@ -3129,7 +3332,7 @@ fn replace_style_in_entry_expr(
         crate::source::ast::ExprKind::Call { callee, .. } => {
             if lits.contains_key(&callee.name)
                 || imports.contains(&callee.name)
-                || (reject_unknown && entry_key == "style")
+                || (scope == StyleScope::Component && entry_key == "style")
             {
                 return Err(crate::atom_text::Diagnostic::new(
                     crate::atom_text::Stage::Text,
@@ -3148,29 +3351,27 @@ fn replace_style_in_entry_expr(
     Ok(())
 }
 
-/// PLAN-980 P3：把 view 条目里的本地 style 名替换为其字面量（投影期解析；
-/// 981 回签 (c)3——不引入 module-global 读，下游车道只见到普通字符串字面量）。
-/// 导入的 style 引用与带参调用 = `style-call` 具名拒（本刀不折叠）。
+/// Carry literal style values into the view without introducing a runtime read.
 fn replace_style_in_items(
-    items: &mut Vec<crate::source::age_component::ComponentViewItem>,
+    items: &mut [crate::source::age_component::ComponentViewItem],
     lits: &std::collections::BTreeMap<String, String>,
     imports: &std::collections::BTreeSet<String>,
-    reject_unknown: bool,
+    scope: StyleScope,
 ) -> Result<(), crate::atom_text::Diagnostic> {
     use crate::source::age_component::{ComponentEntryValue, ComponentViewItem};
     for it in items.iter_mut() {
         match it {
             // PLAN-1072 刀B：style 字面量替换进循环子树。
             ComponentViewItem::For(f) => {
-                replace_style_in_items(&mut f.items, lits, imports, reject_unknown)?
+                replace_style_in_items(&mut f.items, lits, imports, scope)?
             }
             // PLAN-980 view-if：style 字面量替换进条件双子树。
             ComponentViewItem::Cond(c) => {
-                replace_style_in_items(&mut c.then_items, lits, imports, reject_unknown)?;
-                replace_style_in_items(&mut c.else_items, lits, imports, reject_unknown)?;
+                replace_style_in_items(&mut c.then_items, lits, imports, scope)?;
+                replace_style_in_items(&mut c.else_items, lits, imports, scope)?;
             }
             ComponentViewItem::Element(el) => {
-                replace_style_in_items(&mut el.items, lits, imports, reject_unknown)?
+                replace_style_in_items(&mut el.items, lits, imports, scope)?
             }
             ComponentViewItem::Entry(en) => match &mut en.value {
                 ComponentEntryValue::If {
@@ -3184,20 +3385,22 @@ fn replace_style_in_items(
                         &en.key,
                         lits,
                         imports,
-                        reject_unknown,
+                        scope,
                     )?;
                     replace_style_in_entry_expr(
                         else_value,
                         &en.key,
                         lits,
                         imports,
-                        reject_unknown,
+                        scope,
                     )?;
                 }
                 ComponentEntryValue::Expr(e) => {
-                    replace_style_in_entry_expr(e, &en.key, lits, imports, reject_unknown)?;
+                    replace_style_in_entry_expr(e, &en.key, lits, imports, scope)?;
                 }
-                ComponentEntryValue::Lambda { .. } => {}
+                ComponentEntryValue::Lambda { .. }
+                | ComponentEntryValue::ClassList(_)
+                | ComponentEntryValue::ChildEvent(_) => {}
             },
             ComponentViewItem::Text(_) => {}
         }
@@ -3282,7 +3485,7 @@ fn apply_component_face_styles(
                 &mut node.view.tree,
                 &std::collections::BTreeMap::new(),
                 &imports,
-                true,
+                StyleScope::Component,
             ) {
                 return Err(vec![d]);
             }
@@ -3378,7 +3581,7 @@ fn apply_component_face_styles(
         }
     }
     for node in nodes.iter_mut() {
-        if let Err(d) = replace_style_in_items(&mut node.view.tree, &lits, &imports, true) {
+        if let Err(d) = replace_style_in_items(&mut node.view.tree, &lits, &imports, StyleScope::Component) {
             return Err(vec![d]);
         }
     }
@@ -3493,7 +3696,9 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
                 // profile 上优先报它，保原 span；但**不吞更早的错误**（F6：
                 // 只有 hint 不晚于共享投影的最早诊断时才取代它）。普通 profile
                 // 的既有首诊断序不变。
-                if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent) {
+                if matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent)
+                    && !diags.iter().any(|d| d.code == super::lex::UNTERMINATED_BLOCK_COMMENT)
+                {
                     let hint = tree
                         .diags
                         .iter()
@@ -3612,6 +3817,7 @@ fn parse_whole_module(src: &str, profile: SourceProfile, budget: FrontBudget) ->
             &tree,
             &snap,
             profile,
+            None,
         ) {
             Ok(mut nodes) => {
                 // PLAN-1072 刀A：组件面 style 惰性视图数据 + 投影期字面量

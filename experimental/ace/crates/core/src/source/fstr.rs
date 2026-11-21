@@ -19,6 +19,8 @@
 //! quoted literals inside `${...}` interpolation expressions. `\$` is a
 //! literal dollar.
 
+use std::ops::Range;
+
 use super::SourceProfile;
 
 fn is_ident_start(c: u8) -> bool {
@@ -30,10 +32,14 @@ fn is_ident_char(c: u8) -> bool {
 
 /// One split part of an f-string: literal text (raw bytes) or an
 /// interpolation source fragment.
-enum Part {
-    Text(String),
-    Ident(String),
-    Expr(String),
+pub(crate) enum Part {
+    Text(String, Range<usize>),
+    Expr(Range<usize>),
+}
+
+/// Split one inline formatted literal while retaining its original byte ranges.
+pub(crate) fn split_fstring(src: &str) -> Result<Vec<Part>, String> {
+    split_fstring_dialect(src, 0, false, false).map(|(parts, _)| parts)
 }
 
 /// Scan an f-string starting at `f"` in `src[i..]`; return the split parts
@@ -72,6 +78,7 @@ fn split_quoted_dialect(
     let mut j = start;
     let mut parts: Vec<Part> = Vec::new();
     let mut text = String::new();
+    let mut text_start = start;
     let mut closed = false;
     while j < bytes.len() {
         let c = bytes[j];
@@ -95,7 +102,7 @@ fn split_quoted_dialect(
             }
             b'$' => {
                 if !text.is_empty() {
-                    parts.push(Part::Text(std::mem::take(&mut text)));
+                    parts.push(Part::Text(std::mem::take(&mut text), text_start..j));
                 }
                 // `$ident`
                 if let Some(n) = bytes.get(j + 1) {
@@ -104,8 +111,9 @@ fn split_quoted_dialect(
                         while k < bytes.len() && is_ident_char(bytes[k]) {
                             k += 1;
                         }
-                        parts.push(Part::Ident(src[j + 1..k].to_string()));
+                        parts.push(Part::Expr(j + 1..k));
                         j = k;
+                        text_start = j;
                         continue;
                     }
                 }
@@ -113,7 +121,6 @@ fn split_quoted_dialect(
                 if bytes.get(j + 1) == Some(&b'{') {
                     let mut depth = 1u32;
                     let mut k = j + 2;
-                    let mut expr = String::new();
                     while k < bytes.len() {
                         match bytes[k] {
                             b'{' => depth += 1,
@@ -127,7 +134,6 @@ fn split_quoted_dialect(
                                 let end = quoted_end(src, k, q).ok_or_else(|| {
                                     "unterminated quoted literal in an FStr interpolation".to_owned()
                                 })?;
-                                expr.push_str(&src[k..end]);
                                 k = end;
                                 continue;
                             }
@@ -143,23 +149,24 @@ fn split_quoted_dialect(
                             _ => {}
                         }
                         let ch = src[k..].chars().next().unwrap();
-                        expr.push(ch);
                         k += ch.len_utf8();
                     }
                     if depth != 0 || k >= bytes.len() {
                         return Err("unterminated `${` interpolation in an FStr".to_string());
                     }
-                    parts.push(Part::Expr(expr));
+                    parts.push(Part::Expr(j + 2..k));
                     j = k + 1;
+                    text_start = j;
                     continue;
                 }
                 // a bare `$` not followed by ident or `{` is a literal.
+                text_start = j;
                 text.push('$');
                 j += 1;
             }
             c if c == quote => {
                 if !text.is_empty() {
-                    parts.push(Part::Text(std::mem::take(&mut text)));
+                    parts.push(Part::Text(std::mem::take(&mut text), text_start..j));
                 }
                 closed = true;
                 j += 1;
@@ -173,10 +180,11 @@ fn split_quoted_dialect(
                 }
                 if bytes.get(k) == Some(&b'}') {
                     if !text.is_empty() {
-                        parts.push(Part::Text(std::mem::take(&mut text)));
+                        parts.push(Part::Text(std::mem::take(&mut text), text_start..j));
                     }
-                    parts.push(Part::Ident(src[j + 1..k].to_string()));
+                    parts.push(Part::Expr(j + 1..k));
                     j = k + 1;
+                    text_start = j;
                     continue;
                 }
                 text.push('{');
@@ -194,7 +202,7 @@ fn split_quoted_dialect(
     }
     if parts.is_empty() {
         // An empty f-string `f""` still yields one empty literal part.
-        parts.push(Part::Text(String::new()));
+        parts.push(Part::Text(String::new(), start..start));
     }
     Ok((parts, j - origin))
 }
@@ -341,7 +349,7 @@ pub fn desugar_fstrings_widget(src: &str) -> Result<String, String> {
                 }
                 first = false;
                 match p {
-                    Part::Text(t) => {
+                    Part::Text(t, _) => {
                         out.push('"');
                         for ch in t.chars() {
                             if ch == '"' || ch == '\\' {
@@ -351,8 +359,7 @@ pub fn desugar_fstrings_widget(src: &str) -> Result<String, String> {
                         }
                         out.push('"');
                     }
-                    Part::Ident(name) => out.push_str(&name),
-                    Part::Expr(e) => out.push_str(&e),
+                    Part::Expr(range) => out.push_str(&src[range]),
                 }
             }
             out.push(')');
@@ -434,13 +441,12 @@ fn desugar_fstrings_dialect(
                 }
                 first = false;
                 match p {
-                    Part::Text(t) => {
+                    Part::Text(t, _) => {
                         out.push('"');
                         out.push_str(&t);
                         out.push('"');
                     }
-                    Part::Ident(name) => out.push_str(&name),
-                    Part::Expr(e) => out.push_str(&e),
+                    Part::Expr(range) => out.push_str(&src[range]),
                 }
             }
             if first {
@@ -580,9 +586,8 @@ pub fn desugar_config_templates(src: &str) -> Result<String, String> {
                 }
                 first = false;
                 match p {
-                    Part::Text(t) => part_text(&mut out, &t),
-                    Part::Ident(name) => out.push_str(&name),
-                    Part::Expr(e) => out.push_str(&e),
+                    Part::Text(t, _) => part_text(&mut out, &t),
+                    Part::Expr(range) => out.push_str(&src[range]),
                 }
             }
             if first {

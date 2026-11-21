@@ -2415,7 +2415,12 @@ pub fn verify_closures(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnos
 /// Ordinary Auto extends the closures surface with an immediate owned
 /// copy of a text element read through a checked list place.
 pub fn verify_auto_language(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_impl(bundle, HirDomain::Closures, false, true)
+    verify_collection_family_impl(bundle, HirDomain::Closures, false, true, false)
+}
+
+/// AGE package helpers use the Auto collection domain and AGE text equality.
+pub(crate) fn verify_auto_language_age(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_impl(bundle, HirDomain::Closures, false, true, true)
 }
 
 /// PLAN-1026: the closures family WITH foreign declarations (the py
@@ -2427,14 +2432,14 @@ pub fn verify_foreign_closures(
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
-    verify_collection_family_impl(bundle, HirDomain::Closures, true, false)
+    verify_collection_family_impl(bundle, HirDomain::Closures, true, false, false)
 }
 
 fn verify_collection_family(
     bundle: hir::Bundle,
     expected: HirDomain,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_impl(bundle, expected, false, false)
+    verify_collection_family_impl(bundle, expected, false, false, false)
 }
 
 fn verify_collection_family_impl_age(
@@ -2461,8 +2466,9 @@ fn verify_collection_family_impl(
     expected: HirDomain,
     foreign_allowed: bool,
     ordinary_auto: bool,
+    age_eq: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_collection_family_inner(bundle, expected, foreign_allowed, false, ordinary_auto, false)
+    verify_collection_family_inner(bundle, expected, foreign_allowed, age_eq, ordinary_auto, false)
 }
 
 fn verify_collection_family_inner(
@@ -3199,6 +3205,7 @@ impl Verifier {
         selected: Option<BodyId>,
         ordinary_auto: bool,
     ) {
+        let text_types = self.age_eq.then(|| Self::build_type_map(m));
         let clone_types = std::cell::OnceCell::new();
         for (index, body) in m.bodies.iter().enumerate() {
             if selected.is_some_and(|id| id.0 as usize != index) {
@@ -3210,7 +3217,7 @@ impl Verifier {
             }
             // projection/consumption marks (expr indices)
             let mut projected: BTreeSet<u32> = BTreeSet::new();
-            let mut len_consumed: BTreeSet<u32> = BTreeSet::new();
+            let mut text_consumed: BTreeSet<u32> = BTreeSet::new();
             // PLAN-105 W108: text-concat operand marks — a whole owned TEXT
             // element feeding `.. + ..` is a VIEW-SAFE read (StrConcat takes
             // views by contract); the AGE component face admits it (the
@@ -3222,10 +3229,29 @@ impl Verifier {
                         projected.insert(base.0);
                     }
                     hir::ExprKind::TextLen { operand } => {
-                        len_consumed.insert(operand.0);
+                        text_consumed.insert(operand.0);
                     }
-                    hir::ExprKind::TextClone { operand } if ordinary_auto => {
-                        len_consumed.insert(operand.0);
+                    hir::ExprKind::TextClone { operand } if ordinary_auto || self.age_eq => {
+                        text_consumed.insert(operand.0);
+                    }
+                    hir::ExprKind::Binary {
+                        op: hir::BinOp::Eq | hir::BinOp::Ne,
+                        lhs,
+                        rhs,
+                        ..
+                    } => {
+                        if text_types.as_ref().is_some_and(|types| {
+                            [lhs, rhs].iter().all(|operand| {
+                                body.exprs.get(operand.0 as usize).is_some_and(|expr| {
+                                    matches!(
+                                        self.value_of(&expr.ty, types),
+                                        ValueType::Str | ValueType::StrOwned
+                                    )
+                                })
+                            })
+                        }) {
+                            text_consumed.extend([lhs.0, rhs.0]);
+                        }
                     }
                     hir::ExprKind::TextConcat { lhs, rhs } => {
                         text_concat_used.insert(lhs.0);
@@ -3276,7 +3302,7 @@ impl Verifier {
                         if Self::list_elem_owned(m, &body.exprs[list.0 as usize].ty, self)
                             && !elem_text_concat_ok
                             && !projected.contains(&(ei as u32))
-                            && !len_consumed.contains(&(ei as u32))
+                            && !text_consumed.contains(&(ei as u32))
                         {
                             self.error(
                                 "verify.view-escape",
@@ -3312,11 +3338,18 @@ impl Verifier {
                                     Some(hir::TypeUse::Ref(t)) => self.type_reaches_resource(m, t),
                                     _ => false,
                                 };
+                                // Ordinary Auto shares List handles. Reading a
+                                // nested List from a row keeps the same cell,
+                                // as a List field on a named record local does.
+                                let shared_list = ordinary_auto
+                                    && matches!(term, Some(hir::TypeUse::Ref(t))
+                                        if matches!(m.types.get(t.0 as usize).map(|ty| &ty.kind),
+                                            Some(hir::TypeKind::List { .. })));
                                 // PLAN-105 T-02（U03 真语料 013）：AGE 组件面
                                 // （`age_eq` 车道）允许把 owned 文本字段投影读成值
                                 // （`preview = .todos[i].text`）；冻结 profile 保持
                                 // 「只许 `.len()` 消费」。
-                                if owned_term && !len_consumed.contains(&(ei as u32)) && !self.elem_view_owned {
+                                if owned_term && !shared_list && !text_consumed.contains(&(ei as u32)) && !self.elem_view_owned {
                                     self.error(
                                         "verify.view-escape",
                                         format!(

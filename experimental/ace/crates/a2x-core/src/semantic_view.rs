@@ -229,6 +229,7 @@ pub struct SemanticView<'a> {
     pub domain: hir::HirDomain,
     /// The source profile identity this domain corresponds to.
     pub profile: &'static str,
+    age_text_display: bool,
     functions: Vec<FnFacts<'a>>,
     /// Signature-only functions (single-body fragments; see `ExternalFn`).
     externals: Vec<ExternalFn>,
@@ -305,6 +306,27 @@ impl<'a> SemanticView<'a> {
     /// since PLAN-902). `CheckedModule` construction is private to the
     /// verifier — a view can only be built over genuinely verified content.
     pub fn from_checked(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
+        Self::from_checked_module(checked, false)
+    }
+
+    /// Admit the checked AGE package's text-display expressions when
+    /// constructing the package fragment view.
+    pub fn from_checked_age_package(checked: &'a CheckedModule) -> Result<Self, A2xReject> {
+        if checked.domain() == hir::HirDomain::Closures
+            && checked.required_capabilities().iter().any(|cap| cap == "av.aggregates/1")
+        {
+            return Self::from_checked(checked);
+        }
+        if checked.domain() != hir::HirDomain::TextRecord {
+            return Err(A2xReject::domain("AGE package view requires checked text-record HIR"));
+        }
+        Self::from_checked_module(checked, true)
+    }
+
+    fn from_checked_module(
+        checked: &'a CheckedModule,
+        age_text_display: bool,
+    ) -> Result<Self, A2xReject> {
         let domain = checked.domain();
         // PLAN-962: the aggregates surface binds under the closures domain
         // — the document capability distinguishes it from numeric.
@@ -346,6 +368,7 @@ impl<'a> SemanticView<'a> {
             module,
             domain,
             profile,
+            age_text_display,
             functions,
             externals: Vec::new(),
             records,
@@ -466,6 +489,7 @@ impl<'a> SemanticView<'a> {
             module,
             domain,
             profile,
+            age_text_display: false,
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
             records: collect_records(module)?,
@@ -692,6 +716,11 @@ impl<'a> SemanticView<'a> {
             .iter()
             .find(|(d, _)| *d == def_index)
             .map(|(_, s)| *s)
+    }
+
+    pub fn is_text_find(&self, def_index: usize) -> bool {
+        matches!(self.module.defs.get(def_index).map(|def| &def.kind),
+            Some(hir::DefKind::Intrinsic { symbol, .. }) if symbol == "__ace_text_find")
     }
 
     /// PLAN-981：`def_index` 是否是 module.global.get/set 访问器；是则返回
@@ -1151,6 +1180,7 @@ impl<'a> SemanticView<'a> {
                 let target = callee.0 as usize;
                 if self.fn_by_def(target).is_some()
                     || self.trace_symbol(target).is_some()
+                    || self.is_text_find(target)
                     || self.external_by_def(target).is_some()
                     || self.foreign_by_def(target).is_some()
                     // PLAN-981: module.global accessors reach the targets'
@@ -1183,7 +1213,9 @@ impl<'a> SemanticView<'a> {
                 // PLAN-902: the record/text/text-record node surfaces.
                 // PLAN-904: the collections node surface.
                 if let Some(family) = self.text_record_family(self.domain) {
-                    if kind_in_family(other, family) {
+                    if kind_in_family(other, family)
+                        || (self.age_text_display && matches!(other, hir::ExprKind::TextDisplay { .. }))
+                    {
                         return Ok(());
                     }
                     return Err(A2xReject::unsupported_expr(format!(
@@ -1241,6 +1273,7 @@ impl<'a> SemanticView<'a> {
             {
                 Ok(())
             }
+            hir::Stmt::Drop { .. } if self.profile == "auto.source.aggregates.draft" => Ok(()),
             other => Err(A2xReject::unsupported_stmt(format!(
                 "in `{}`: statement kind `{}` is outside the compute surface",
                 f.name,
@@ -1339,6 +1372,7 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     | hir::ExprKind::TextClone { .. }
                     | hir::ExprKind::TextConcat { .. }
                     | hir::ExprKind::TextDisplay { .. }
+                    | hir::ExprKind::RecordClone { .. }
                     | hir::ExprKind::Move { .. }
                     // PLAN-968: the scheduler face's f-string chain
                     // borrows owned parts (the legacy brace dialect's
@@ -1662,6 +1696,9 @@ fn collect_trace_defs(
     let mut global_defs: Vec<(usize, String, bool)> = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
+            if symbol == "__ace_text_find" && bundle.domain == hir::HirDomain::Closures {
+                continue;
+            }
             if let Some(rest) = symbol.strip_prefix("module.global.get:") {
                 global_defs.push((def_index, rest.to_string(), false));
                 continue;

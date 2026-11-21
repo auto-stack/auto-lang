@@ -115,7 +115,8 @@ impl LowerFamily {
         match profile {
             "auto.source.text.draft" | "auto.source.record.draft" => LowerFamily::RecordText,
             "auto.source.text-record.draft" => LowerFamily::RecordText,
-            "auto.source.collections.draft" | "auto.source.numeric.draft" => {
+            "auto.source.collections.draft" | "auto.source.numeric.draft"
+            | "auto.source.aggregates.draft" => {
                 LowerFamily::Collections
             }
             _ => LowerFamily::Scalar,
@@ -332,6 +333,13 @@ impl<'v, 'a> Cx<'v, 'a> {
         self.local_tys.get(&id).copied().unwrap_or(Ty::I32)
     }
 
+    fn list_elem_ty(&self, list: hir::ExprId) -> Result<Ty, A2xReject> {
+        match self.expr_ty(list)? {
+            Ty::List(index) => self.view.list_elem(index),
+            _ => Err(A2xReject::new("a2x.internal", "expected a checked list operand")),
+        }
+    }
+
     /// The free statement for one owned local, if the target has an explicit
     /// release operation for its type.
     fn free_stmt(&self, name: &str, ty: Ty) -> Option<String> {
@@ -494,10 +502,12 @@ impl<'v, 'a> Cx<'v, 'a> {
                 self.assert_nearest(target.0, "continue")?;
                 self.emit("continue;");
             }
-            hir::Stmt::Drop { .. } => {
-                return Err(A2xReject::unsupported_stmt(
-                    "explicit Drop is outside the script lowering domain (plan-driven cleanup)",
-                ));
+            hir::Stmt::Drop { local } => {
+                let name = self.local_name(local.0)?;
+                if let Some(free) = self.free_stmt(&name, self.local_ty(local.0)) {
+                    self.emit(&free);
+                }
+                self.emit(&format!("{name} = null;"));
             }
             hir::Stmt::Eval { value } => {
                 let v = self.lower_expr(*value)?;
@@ -813,13 +823,13 @@ impl<'v, 'a> Cx<'v, 'a> {
             }
             hir::ExprKind::ListPush { list, value } => {
                 let l = self.lower_expr(list)?;
-                let v = self.lower_expr(value)?;
+                let v = self.lower_into(value, self.list_elem_ty(list)?)?;
                 Ok(m(self, format!("a2x_list_push({l}, {v})")))
             }
             hir::ExprKind::ListInsert { list, index, value } => {
                 let l = self.lower_expr(list)?;
                 let i = self.lower_expr(index)?;
-                let v = self.lower_expr(value)?;
+                let v = self.lower_into(value, self.list_elem_ty(list)?)?;
                 Ok(m(self, format!("a2x_list_insert({l}, {i}, {v})")))
             }
             hir::ExprKind::ListGet { list, index } => {
@@ -830,7 +840,7 @@ impl<'v, 'a> Cx<'v, 'a> {
             hir::ExprKind::ListSet { list, index, value } => {
                 let l = self.lower_expr(list)?;
                 let i = self.lower_expr(index)?;
-                let v = self.lower_expr(value)?;
+                let v = self.lower_into(value, self.list_elem_ty(list)?)?;
                 Ok(m(self, format!("a2x_list_set({l}, {i}, {v})")))
             }
             hir::ExprKind::ListRemove { list, index } => {
@@ -916,13 +926,12 @@ impl<'v, 'a> Cx<'v, 'a> {
             }
             hir::ExprKind::TextDisplay { operand } => {
                 let o = self.lower_expr(operand)?;
-                let ity = self.expr_ty(operand)?;
-                if ity != Ty::I32 {
-                    return Err(A2xReject::unsupported_expr(format!(
-                        "TextDisplay of {ity:?} (the M2-A display domain is i32)"
-                    )));
-                }
-                Ok(m(self, format!("a2x_str_display_i32({o})")))
+                let display = match self.expr_ty(operand)? {
+                    Ty::I32 => "a2x_str_display_i32",
+                    Ty::F32 => "a2x_str_display_f32",
+                    ty => return Err(A2xReject::unsupported_expr(format!("TextDisplay of {ty:?}"))),
+                };
+                Ok(m(self, format!("{display}({o})")))
             }
             other => Err(A2xReject::unsupported_expr(format!(
                 "the TypeScript/JavaScript lowering does not serve expression `{other:?}` in {:?}",
@@ -977,6 +986,10 @@ impl<'v, 'a> Cx<'v, 'a> {
                 };
                 if src_big {
                     format!("a2x_cast_num_from_big({v}, {lo}, {hi})")
+                } else if matches!(src, Ty::F32 | Ty::F64) {
+                    // Integer casts truncate before checking the target range.
+                    // Adding zero canonicalizes JavaScript's negative zero.
+                    format!("a2x_cast_num((Math.trunc({v}) + 0), {lo}, {hi})")
                 } else {
                     format!("a2x_cast_num({v}, {lo}, {hi})")
                 }
@@ -1070,7 +1083,7 @@ impl<'v, 'a> Cx<'v, 'a> {
             }
             N::Div => {
                 if float {
-                    format!("a2x_fdiv({l}, {r})")
+                    round(format!("a2x_fdiv({l}, {r})"))
                 } else if big {
                     format!("a2x_bdiv({l}, {r}, {lo}, {hi})")
                 } else {
@@ -1140,6 +1153,14 @@ impl<'v, 'a> Cx<'v, 'a> {
                 self.lower_expr(*a)?;
             }
             return Ok(format!("a2x_mark_{suffix}()"));
+        }
+        if self.view.is_text_find(target) {
+            let mut slots = Vec::with_capacity(eval_args.len());
+            for arg in eval_args {
+                slots.push(self.lower_expr(*arg)?);
+            }
+            let args = place_args(&slots, bindings, 3);
+            return Ok(format!("a2x_str_find({})", args.join(", ")));
         }
         // 2) scheduler intrinsics are a named rejection (no silent async)
         if let Some(sym) = self.view.sched_symbol(target) {
@@ -1288,6 +1309,7 @@ fn list_elem_tag(view: &SemanticView<'_>, elem: Ty) -> String {
             .variant(i)
             .map(|v| ts_variant_name(&v.name))
             .unwrap_or_else(|| "var_".to_string()),
+        Ty::List(index) => format!("list_{index}"),
         _ => "any".to_string(),
     }
 }
@@ -1456,7 +1478,7 @@ pub(crate) fn prepare_body_cx<'v, 'a>(
     })
 }
 
-fn lower_single_fn(
+pub(crate) fn lower_single_fn(
     lang: ScriptLang,
     view: &SemanticView<'_>,
     facts: &FnFacts<'_>,

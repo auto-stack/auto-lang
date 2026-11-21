@@ -40,8 +40,8 @@ pub use cert::{
     ScriptRuntimeIdentity, TS_CERT_SCHEMA, TS_COLL_CERT_SCHEMA, TS_RT_CERT_SCHEMA,
 };
 pub use fragment::{
-    emit_expr_fragment, emit_stmt_fragment, innermost_expr_in_span, FragmentLocal, FragmentOut,
-    FragmentProgramContext,
+    emit_expr_fragment, emit_function_body_fragment, emit_stmt_fragment, innermost_expr_in_span,
+    FragmentLocal, FragmentOut, FragmentProgramContext,
 };
 pub use lower::{
     lower_collections_fn, lower_functions, lower_rt_fn, print_fragment, sanitize, ts_fn_name,
@@ -54,6 +54,7 @@ pub use print::{print_program, SourceMapEntry, TS_PRINT_VERSION};
 pub use provider::{JavaScriptTargetProvider, ScriptProvider, TypeScriptTargetProvider};
 pub use runtime::{
     runtime_body_sha256, runtime_export_names, script_runtime_body, script_runtime_declaration,
+    script_widget_runtime_body,
     A2TS_RUNTIME_VERSION,
 };
 pub use target::{

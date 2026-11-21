@@ -2,7 +2,10 @@
 //! `sep`/`outlet`）——闭集 keyword token，只有标签名、无 label、无体块。
 //! 判据：①四拼写都能投影为元素；②裸标签后的条目（`style:`）不被跨行吞成
 //! label（007 原始失败形态）；③未知裸拼写仍具名结构拒（fail-closed）。
-use ace_core::source::age_component::{project_component_candidates, ComponentViewItem};
+use ace_core::source::{
+    age_component::{project_component_candidates, ComponentEntryValue, ComponentViewItem},
+    ast::{Expr, ExprKind},
+};
 
 fn project(src: &str) -> Result<Vec<ace_core::source::age_component::ComponentNode>, Vec<String>> {
     project_component_candidates(src).map_err(|ds| {
@@ -48,6 +51,34 @@ fn p104_bare_tags_project_as_elements() {
             "`{tag}` must project as an element: {out:?}"
         );
     }
+}
+
+#[test]
+fn route_outlet_retains_its_properties() {
+    let source =
+        "widget App {\n    view { col {\n        outlet (memo: true)\n        spacer\n    } }\n}\n";
+    let nodes = project(source).expect("outlet with properties must project");
+    let [ComponentViewItem::Element(column)] = nodes[0].view.tree.as_slice() else {
+        panic!("expected a column");
+    };
+    let [ComponentViewItem::Element(outlet), ComponentViewItem::Element(spacer)] =
+        column.items.as_slice()
+    else {
+        panic!("expected an outlet followed by a spacer");
+    };
+    assert_eq!(outlet.tag, "outlet");
+    assert_eq!(spacer.tag, "spacer");
+    let [ComponentViewItem::Entry(memo)] = outlet.items.as_slice() else {
+        panic!("expected the outlet's memo property");
+    };
+    assert_eq!(memo.key, "memo");
+    assert!(matches!(
+        &memo.value,
+        ComponentEntryValue::Expr(Expr {
+            kind: ExprKind::BoolLit(true),
+            ..
+        })
+    ));
 }
 
 /// 007 原始失败形态：裸标签后接 `style:` 条目——条目必须仍归属父元素，

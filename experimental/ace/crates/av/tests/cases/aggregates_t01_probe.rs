@@ -377,6 +377,26 @@ fn main() int {
     assert_eq!(run.allocs, run.frees);
 }
 
+#[test]
+fn recursive_list_record_lowers_from_list_and_frees() {
+    let src = r#"type Node { id int; children List<Node> }
+fn main() int {
+    var children = List<Node>.new()
+    let leaf = Node { id: 41, children: List<Node>.new() }
+    children.push(leaf.move)
+    var roots = List<Node>.new()
+    let root = Node { id: 1, children: children.move }
+    roots.push(root.move)
+    var first = roots.remove(0)
+    return first.id + first.children.get(0).id
+}"#;
+    let run = ace_av::collections_864_support::compile_and_execute_aggregates(src, "d_main")
+        .expect("List<Node> links a recursive node with its children");
+    assert_eq!(run.value, 42);
+    assert_eq!(run.live_after, 0);
+    assert_eq!(run.allocs, run.frees);
+}
+
 /// PLAN-962 unit-10 (T-08, L-07): `let hold x as v { }` — the whole-local
 /// hold. The binder aliases the held local for the block (>= the old
 /// engine's MVP semantics — its own source notes Hold carried no borrow

@@ -902,8 +902,9 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
 
     /// 名字形 token（`ident` 或保留字词面）——仅供上下文槽诊断使用。
     fn token_is_name_like(&self, token: TokenId) -> bool {
-        let name = self.p.token_name(token);
-        name == "ident" || name.starts_with("r-")
+        self.p.tokens.get(token as usize).is_some_and(|spec| {
+            spec.name == "ident" || spec.name.starts_with("r-")
+        })
     }
 
     fn hint(&mut self, d: SynDiag) {

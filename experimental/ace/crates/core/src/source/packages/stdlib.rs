@@ -13,6 +13,26 @@ pub const STDLIB_RESERVED: &str = "ace.stdlib-reserved";
 const MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/math.at");
 const TEXT_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/text.at");
 const LIST_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/list.at");
+const AGE_MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/age/math.at");
+pub(super) const AGE_MATH_MODULE: &str = "std::age_math";
+
+pub(super) fn age_math_input() -> PackageModuleInput {
+    PackageModuleInput {
+        package: STDLIB_PACKAGE.into(),
+        version: STDLIB_VERSION.into(),
+        id: "age_math".into(),
+        source: AGE_MATH_SOURCE.into(),
+        provider: None,
+    }
+}
+
+pub(super) fn is_age_math_input(input: &PackageModuleInput) -> bool {
+    input.package == STDLIB_PACKAGE
+        && input.id == "age_math"
+        && input.version == STDLIB_VERSION
+        && input.source == AGE_MATH_SOURCE
+        && input.provider.is_none()
+}
 
 /// 冻结 stdlib 输入（math/text 两模块，plain packages 面的原契约——
 /// PLAN-946 加入 `std.list` 后本函数**不变**，math/text 消费者逐字节稳定）。

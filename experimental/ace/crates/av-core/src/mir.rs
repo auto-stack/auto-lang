@@ -958,9 +958,7 @@ pub enum MirInstr {
         value: SlotId,
     },
     // -- PLAN-964 FStr display (L-22; format algorithms belong to 972) --
-    /// TEXT_DISPLAY (opcode 0x3F): render the I32 in `src` as a decimal
-    /// owned Str into `dst` (Str). The M2-A display domain is I32 only;
-    /// other source types are named rejects at the source front.
+    /// TEXT_DISPLAY (opcode 0x3F): render an I32 or F32 as an owned decimal Str.
     TextDisplay {
         dst: SlotId,
         src: SlotId,
@@ -1337,6 +1335,13 @@ impl MirModule {
     /// dynamic profile SUBSUMES the collections feature set.
     pub fn is_dynamic_profile(&self) -> bool {
         self.profile == crate::contract::AV_DYNAMIC_PROFILE
+    }
+
+    pub fn shares_collection_arguments(&self) -> bool {
+        self.is_collections_profile()
+            || self.is_closures_profile()
+            || (self.is_dynamic_profile()
+                && self.capabilities.iter().any(|cap| cap == crate::contract::SHARED_COLLECTION_ARGS_CAPABILITY))
     }
 
     /// Resolve a type to its scalar shape for verification (`None` = Fn,

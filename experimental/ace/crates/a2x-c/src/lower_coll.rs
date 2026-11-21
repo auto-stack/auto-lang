@@ -1437,6 +1437,10 @@ impl<'a, 'v> CollLowerC<'a, 'v> {
                 Ok(format!("{name}.value"))
             }
             hir::ExprKind::TextDisplay { operand } => {
+                let ty = self.view.resolve_use_ty(self.f.body.exprs[operand.0 as usize].ty)?;
+                if ty == Ty::F32 {
+                    return Err(A2xReject::unsupported_expr("C f32 text display"));
+                }
                 let o = self.expr(operand)?;
                 let name = self.fall_out_pre(id, "a2x_stro_result");
                 self.wrapper_temps.insert(id.0);

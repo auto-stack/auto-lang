@@ -1369,6 +1369,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 Ok(o)
             }
             hir::ExprKind::TextDisplay { operand } => {
+                if root_ty_of(self, operand)? == Ty::F32 {
+                    return Err(A2xReject::unsupported_expr("Rust f32 text display"));
+                }
                 // PLAN-968: the scheduler f-string chain renders an i32
                 // into an owned buffer.
                 let o = self.expr(operand, out)?;

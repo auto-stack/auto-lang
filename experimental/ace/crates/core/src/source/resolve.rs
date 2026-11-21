@@ -1116,6 +1116,9 @@ pub struct SchedTaskType {
 pub struct CollTables {
     ordinary_auto: bool,
     legacy_text_records: BTreeSet<usize>,
+    age_package: bool,
+    legacy_age_widgets: Vec<Span>,
+    age_widget_numeric_casts: std::cell::Cell<bool>,
     script_errors: bool,
     /// PLAN-968: the scheduler task type table (scheduler face only).
     pub sched_tasks: Vec<SchedTaskType>,
@@ -1160,6 +1163,27 @@ pub struct CollTables {
 }
 
 impl CollTables {
+    fn legacy_age_widget_at(&self, span: Span) -> bool {
+        let index = self
+            .legacy_age_widgets
+            .partition_point(|widget| widget.start <= span.start);
+        index > 0 && span.end <= self.legacy_age_widgets[index - 1].end
+    }
+
+    fn age_widget_numeric_cast(&self, value: ResolvedExpr, to: VT) -> ResolvedExpr {
+        self.age_widget_numeric_casts.set(true);
+        ResolvedExpr {
+            span: value.span,
+            vt: to,
+            kind: RExprKind::Method {
+                recv: Box::new(value),
+                method: BuiltinMethod::NumTo,
+                to: Some(to),
+                args: Vec::new(),
+            },
+        }
+    }
+
     fn intern_task_message(&mut self, message: VT) -> usize {
         if let Some(index) = self.task_messages.iter().position(|ty| *ty == message) {
             return index;
@@ -1692,6 +1716,26 @@ pub(crate) fn resolve_with_source_mode(
     surface: SourceProfile,
     script_errors: bool,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    resolve_source_program(program, capabilities, surface, script_errors, None)
+        .map(|(program, _)| program)
+}
+
+pub(crate) fn resolve_age_package(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    legacy_widgets: &[Span],
+) -> Result<(ResolvedProgram, bool), Vec<Diagnostic>> {
+    resolve_source_program(program, capabilities, surface, false, Some(legacy_widgets))
+}
+
+fn resolve_source_program(
+    program: &ast::Program,
+    capabilities: &[String],
+    surface: SourceProfile,
+    script_errors: bool,
+    legacy_widgets: Option<&[Span]>,
+) -> Result<(ResolvedProgram, bool), Vec<Diagnostic>> {
     let (fns, records, coll, _) = resolve_detailed_in_mode(
         program,
         capabilities,
@@ -1702,19 +1746,24 @@ pub(crate) fn resolve_with_source_mode(
         script_errors,
         None,
         false,
+        legacy_widgets,
     )?;
-    Ok(ResolvedProgram {
-        foreign: Vec::new(),
-        foreign_slots: Vec::new(),
-        fns,
-        records,
-        lists: coll.lists,
-        tuples: coll.tuples,
-        variants: coll.variants,
-        function_types: coll.function_types,
-        objects: coll.objects,
-        sched_tasks: coll.sched_tasks,
-    })
+    let numeric_casts = coll.age_widget_numeric_casts.get();
+    Ok((
+        ResolvedProgram {
+            foreign: Vec::new(),
+            foreign_slots: Vec::new(),
+            fns,
+            records,
+            lists: coll.lists,
+            tuples: coll.tuples,
+            variants: coll.variants,
+            function_types: coll.function_types,
+            objects: coll.objects,
+            sched_tasks: coll.sched_tasks,
+        },
+        numeric_casts,
+    ))
 }
 
 /// PLAN-105 T-02（U03 真语料 013）：带**元素视图**开关的解析入口。
@@ -1744,6 +1793,7 @@ pub(crate) fn resolve_with_view_mode(
         script_errors,
         None,
         elem_view,
+        None,
     )?;
     Ok(ResolvedProgram {
         foreign: Vec::new(),
@@ -1892,6 +1942,7 @@ pub(crate) fn resolve_with_foreign_source(
         script_errors,
         None,
         false,
+        None,
     )?;
     Ok(ResolvedProgram {
         foreign_slots: Vec::new(),
@@ -2282,7 +2333,7 @@ fn resolve_detailed(
     ),
     Vec<Diagnostic>,
 > {
-    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false, None, false)
+    resolve_detailed_in_mode(program, capabilities, surface, warm, supply, sched, false, None, false, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2297,6 +2348,7 @@ pub(crate) fn resolve_detailed_in_mode(
     script_errors: bool,
     instance_probe: Option<&instances::InstanceProbe<'_>>,
     elem_view: bool,
+    legacy_widgets: Option<&[Span]>,
 ) -> Result<
     (
         Vec<ResolvedFn>,
@@ -2341,6 +2393,8 @@ pub(crate) fn resolve_detailed_in_mode(
     let mut diags = Vec::new();
     let mut coll = CollTables::default();
     coll.script_errors = script_errors;
+    coll.age_package = legacy_widgets.is_some();
+    coll.legacy_age_widgets = legacy_widgets.unwrap_or_default().to_vec();
     if let Some(probe) = instance_probe {
         probe.register_enum_types(&mut coll);
     }
@@ -11046,6 +11100,14 @@ F:{d}
             if let Some((rl, rv)) = res_local {
                 if let Some(mut ev) = ca.expr_val.take() {
                     retag_literal(&mut ev, rv);
+                    if expect == Some(VT::F32)
+                        && ev.vt == VT::I32
+                        && self.coll.legacy_age_widget_at(ev.span)
+                    {
+                        // An authored float destination widens each selected
+                        // numeric row field before the branches join.
+                        ev = self.coll.age_widget_numeric_cast(ev, VT::F32);
+                    }
                     if ev.vt != rv {
                         self.bind_err(
                             "source.type-mismatch",
@@ -11925,7 +11987,12 @@ F:{d}
     }
 
     fn clone_text_element(value: ResolvedExpr) -> ResolvedExpr {
-        if value.vt == VT::StrOwned && Self::is_whole_elem_view(&value) {
+        let view = match &value.kind {
+            RExprKind::ElemView { .. } | RExprKind::ListFieldGet { .. } => true,
+            RExprKind::FieldGet { base, .. } => Self::is_whole_elem_view(base),
+            _ => false,
+        };
+        if value.vt == VT::StrOwned && view {
             return Self::clone_owned_text(value);
         }
         value
@@ -11942,6 +12009,18 @@ F:{d}
                 args: Vec::new(),
             },
         }
+    }
+
+    fn copy_legacy_text_local(value: ResolvedExpr, expected: Option<VT>) -> ResolvedExpr {
+        if value.vt == VT::StrOwned
+            && matches!(value.kind, RExprKind::ReadLocal(_) | RExprKind::FieldGet { .. })
+        {
+            return Self::clone_owned_text(value);
+        }
+        if expected == Some(VT::StrOwned) && value.vt == VT::Str {
+            return Self::own_dynamic_text(value);
+        }
+        Self::clone_text_element(value)
     }
 
     fn reject_elem_view_use(&mut self, e: &ResolvedExpr, what: &str) {
@@ -12385,6 +12464,11 @@ F:{d}
                     self.adapt_spec_value(&mut value, expected);
                 }
                 match expect {
+                    Some(VT::F32)
+                        if value.vt == VT::I32 && self.coll.legacy_age_widget_at(v.span) =>
+                    {
+                        self.coll.age_widget_numeric_cast(value, VT::F32)
+                    }
                     Some(expected)
                         if recover_dynamic
                             && self.profile == SourceProfile::Auto
@@ -12504,6 +12588,19 @@ F:{d}
                         VT::StrOwned if matches!(value.kind, RExprKind::ReadLocal(_)) => {
                             Self::clone_owned_text(value)
                         }
+                        _ => Self::clone_text_element(value),
+                    };
+                }
+                // AGE list iteration borrows owned rows. Appending that row to
+                // another list constructs a fresh value and keeps the source intact.
+                if self.coll.age_package && value.vt == elem && Self::is_whole_elem_view(&value) {
+                    value = match elem {
+                        VT::StrOwned => Self::clone_owned_text(value),
+                        VT::Rec(_) => ResolvedExpr {
+                            span: value.span,
+                            vt: value.vt,
+                            kind: RExprKind::RecordClone { base: Box::new(value) },
+                        },
                         _ => value,
                     };
                 }
@@ -13150,6 +13247,7 @@ F:{d}
         }
         match &value.kind {
             RExprKind::Move { .. } => {}
+            RExprKind::RecordClone { .. } if self.coll.age_package => {}
             RExprKind::CtorPos { .. } | RExprKind::CtorNamed { .. } => {
                 // a fresh rvalue transfers at commit; its Str-typed literal
                 // fields retag to the record's owned field types (AP-4 —
@@ -13172,6 +13270,8 @@ F:{d}
                 to: Some(VT::StrOwned),
                 ..
             } if value.vt == VT::StrOwned => {}
+            RExprKind::FStr { .. }
+                if value.vt == VT::StrOwned && self.coll.legacy_age_widget_at(value.span) => {}
             // PLAN-105 T-02（U03 真语料 012）：**文本拼接/计算出的 owned 文本**
             // 也是新值（`push(a + " " + b)` 不该要求 `.move`）。
             RExprKind::Binary { .. }
@@ -14244,7 +14344,8 @@ F:{d}
                     // the collections surface an annotation is also the
                     // bare-constructor context (`var r Result<int, Str> =
                     // Err("old")`).
-                    let ann_vt: Option<VT> = match ann {
+                    let legacy_widget = self.coll.legacy_age_widget_at(value.span);
+                    let mut ann_vt: Option<VT> = match ann {
                         Some(a) => {
                             if self.profile.is_collections() {
                                 let mut discarded = Vec::new();
@@ -14268,16 +14369,24 @@ F:{d}
                         }
                         None => None,
                     };
+                    if legacy_widget && *mutable && ann_vt == Some(VT::Str) {
+                        ann_vt = Some(VT::StrOwned);
+                    }
                     let mut value = self.expr_with_expect(value, ann_vt);
                     if self.coll.script_errors && self.expr_diverged {
                         let frame = stack.last_mut().expect("resolve frame");
                         frame.idx = frame.src.stmts.len();
                         continue;
                     }
-                    if !*mutable
-                        && ann.is_none()
+                    if legacy_widget {
+                        value = Self::copy_legacy_text_local(value, ann_vt);
+                    }
+                    if ann.is_none()
                         && Self::is_whole_elem_view(&value)
-                        && matches!(value.vt, VT::Rec(ri) if self.coll.legacy_text_records.contains(&ri))
+                        && matches!(value.vt, VT::Rec(ri) if
+                            (!*mutable && self.coll.legacy_text_records.contains(&ri))
+                            || (legacy_widget && self.records[ri].fields.iter().all(|field|
+                                field.vt.is_text() || field.vt == VT::Bool || vt_is_numeric(field.vt))))
                     {
                         value = ResolvedExpr {
                             span: value.span,
@@ -14433,6 +14542,9 @@ F:{d}
                     }
                     let expect = self.lookup(&target.base.name).map(|l| self.locals[l.0].vt);
                     let mut value = self.expr_with_expect(value, expect);
+                    if self.coll.legacy_age_widget_at(value.span) {
+                        value = Self::copy_legacy_text_local(value, expect);
+                    }
                     // PLAN-962: storing a whole-element view into a local
                     // is a view escape (the alias must not materialize).
                     self.reject_elem_view_use(&value, "the assigned value");
@@ -15714,6 +15826,38 @@ F:{d}
             // owned element = the tainted whole-element view). PLAN-964:
             // an object receiver `obj[k]` reads by Str key (ObjectGet).
             ExprKind::Index { base, index } => {
+                // A literal key on a named record uses the same path and
+                // borrow rules as its dot spelling, including loop views.
+                if self.coll.age_package {
+                    if let (ExprKind::Var(receiver), ExprKind::StrLit(key)) =
+                        (&base.kind, &index.kind)
+                    {
+                        let receiver_type = self.lookup_view(&receiver.name).map(|view| view.elem)
+                            .or_else(|| self.lookup(&receiver.name).map(|local| self.locals[local.0].vt));
+                        if let Some(VT::Rec(ri)) = receiver_type {
+                            let ty = &self.records[ri];
+                            if self.coll.legacy_age_widget_at(e.span)
+                                && super::age_package::widget_lists::is_sparse_record(&ty.name)
+                                && !ty.fields.iter().any(|field| field.name == *key)
+                            {
+                                // The old widget map read supplies zero for
+                                // a key absent from the entire literal shape.
+                                return ResolvedExpr {
+                                    span: e.span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::IntLit(0),
+                                };
+                            }
+                            return self.expr_iterative(&Expr {
+                                span: e.span,
+                                kind: ExprKind::Field {
+                                    base: base.clone(),
+                                    name: ast::Ident { name: key.clone(), span: index.span },
+                                },
+                            });
+                        }
+                    }
+                }
                 let recv = self.expr_iterative(base);
                 let idx = self.expr_iterative(index);
                 if self.coll.script_errors && recv.vt == VT::Nil {
@@ -16504,6 +16648,9 @@ F:{d}
                         && matches!(v.kind, RExprKind::StrLit(_))
                     {
                         v.vt = VT::StrOwned;
+                    }
+                    if want == VT::StrOwned && self.coll.legacy_age_widget_at(v.span) {
+                        v = Self::clone_text_element(v);
                     }
                     if v.vt != want {
                         // nominal records name both sides (identical shapes
@@ -18913,15 +19060,55 @@ F:{d}
                             );
                         }
                     }
+                    if op == BinOp::Add && self.coll.legacy_age_widget_at(span) {
+                        let display_int = |operand: ResolvedExpr| ResolvedExpr {
+                            span: operand.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::TextDisplay { operand: Box::new(operand) },
+                        };
+                        if l.vt.is_text() && r.vt == VT::I32 {
+                            r = display_int(r);
+                        } else if r.vt.is_text() && l.vt == VT::I32 {
+                            l = display_int(l);
+                        }
+                    }
                     if self.profile.is_auto_language()
-                        && op == BinOp::Add
+                        && matches!(op, BinOp::Add | BinOp::Eq | BinOp::Ne)
                         && l.vt.is_text()
                         && r.vt.is_text()
                     {
                         l = Self::clone_text_element(l);
                         r = Self::clone_text_element(r);
                     }
+                    if matches!(op, BinOp::Eq | BinOp::Ne)
+                        && self.coll.legacy_age_widget_at(span)
+                        && ((l.vt == VT::I32 && matches!(r.kind, RExprKind::StrLit(_)))
+                            || (r.vt == VT::I32 && matches!(l.kind, RExprKind::StrLit(_))))
+                    {
+                        self.eval_for_effect(l);
+                        self.eval_for_effect(r);
+                        out[dest] = ResolvedExpr {
+                            span,
+                            vt: VT::Bool,
+                            kind: RExprKind::BoolLit(op == BinOp::Ne),
+                        };
+                        continue;
+                    }
                     let vt = bin_op_vt(op);
+                    if matches!((l.vt, r.vt), (VT::I32, VT::F32) | (VT::F32, VT::I32))
+                        && matches!(
+                            op,
+                            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
+                                | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Ne
+                        )
+                        && self.coll.legacy_age_widget_at(span)
+                    {
+                        if l.vt == VT::I32 {
+                            l = self.coll.age_widget_numeric_cast(l, VT::F32);
+                        } else {
+                            r = self.coll.age_widget_numeric_cast(r, VT::F32);
+                        }
+                    }
                     // PLAN-961: the typed numeric surface — same-type
                     // operands (no implicit promotion), comparisons → bool,
                     // bit ops int-only; the result carries the operand type.
@@ -19336,6 +19523,118 @@ F:{d}
         }
     }
 
+    fn resolve_text_contains(
+        &mut self,
+        text: ResolvedExpr,
+        mut args: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        if args.len() != 1 || args[0].name.is_some() || args[0].moved || !args[0].value.vt.is_text() {
+            self.bind_err("source.type-mismatch", "text `contains` expects one positional text argument", span);
+            return ResolvedExpr { span, vt: VT::Bool, kind: RExprKind::BoolLit(false) };
+        }
+        let text_view = |value: ResolvedExpr| {
+            if value.vt == VT::StrOwned {
+                ResolvedExpr {
+                    span: value.span,
+                    vt: VT::Str,
+                    kind: RExprKind::Method {
+                        recv: Box::new(Self::clone_text_element(value)),
+                        method: BuiltinMethod::To,
+                        to: Some(VT::Str),
+                        args: Vec::new(),
+                    },
+                }
+            } else {
+                value
+            }
+        };
+        self.used_intrinsics.insert("__ace_text_find");
+        let zero = ResolvedExpr { span, vt: VT::I32, kind: RExprKind::IntLit(0) };
+        ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::Binary {
+                op: BinOp::Ge,
+                lhs: Box::new(ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: "__ace_text_find",
+                        args: vec![text_view(text), text_view(args.remove(0).value), zero.clone()],
+                    },
+                }),
+                rhs: Box::new(zero),
+            },
+        }
+    }
+
+    fn age_widget_to_int(&mut self, recv: ResolvedExpr, span: Span) -> ResolvedExpr {
+        // The authored VM conversion truncates and clamps to i32, with NaN
+        // giving zero. Guard the existing checked cast with those bounds.
+        let value = self.eval_once(recv);
+        let result = self.agg_temp("legacy_to_int", VT::I32, true, span);
+        let integer = |n| ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::IntLit(n),
+        };
+        let compare = |op, rhs| ResolvedExpr {
+            span,
+            vt: VT::Bool,
+            kind: RExprKind::Binary {
+                op,
+                lhs: Box::new(value.clone()),
+                rhs: Box::new(rhs),
+            },
+        };
+        let float = |n: f32| ResolvedExpr {
+            span,
+            vt: VT::F32,
+            kind: RExprKind::TypedLit {
+                vt: VT::F32,
+                bits: u64::from(n.to_bits()),
+            },
+        };
+        let assign = |value| RStmt::Assign {
+            local: result,
+            path: Vec::new(),
+            value,
+            span,
+        };
+        let body = |stmt| RBlock {
+            stmts: vec![stmt],
+            span,
+        };
+        let converted = self.coll.age_widget_numeric_cast(value.clone(), VT::I32);
+        self.emit_stmt(RStmt::Let {
+            local: result,
+            value: integer(0),
+            span,
+        });
+        self.emit_stmt(RStmt::If {
+            cond: compare(BinOp::Eq, value.clone()),
+            then: body(RStmt::If {
+                cond: compare(BinOp::Ge, float(2147483648.0)),
+                then: body(assign(integer(i32::MAX))),
+                els: Some(body(RStmt::If {
+                    cond: compare(BinOp::Le, float(-2147483648.0)),
+                    then: body(assign(integer(i32::MIN))),
+                    els: Some(body(assign(converted))),
+                    span,
+                })),
+                span,
+            }),
+            els: None,
+            span,
+        });
+        ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::ReadLocal(result),
+        }
+    }
+
     fn resolve_method(
         &mut self,
         name: &ast::Ident,
@@ -19376,7 +19675,12 @@ F:{d}
                         },
                     };
                 }
-                if matches!(name.name.as_str(), "find" | "trim" | "split" | "substr") {
+                if name.name == "contains" {
+                    return self.resolve_text_contains(recv, args, span);
+                }
+                if matches!(
+                    name.name.as_str(), "find" | "trim" | "split" | "substr" | "ends_with",
+                ) {
                     return self.resolve_std_text_method(name, recv, args, span);
                 }
                 let suffix = name.name == "slice" && args.len() == 1;
@@ -19653,6 +19957,14 @@ F:{d}
         // target word (frozen matrix; checked narrowing at runtime).
         if vt_is_numeric(recv.vt) {
             match name.name.as_str() {
+                "to_int"
+                    if recv.vt == VT::F32
+                        && args.is_empty()
+                        && to_word.is_none()
+                        && self.coll.legacy_age_widget_at(span) =>
+                {
+                    return self.age_widget_to_int(recv, span);
+                }
                 "shl" | "shr" => {
                     if args.len() != 1 {
                         self.bind_err(
@@ -20194,18 +20506,24 @@ F:{d}
         // display via TextDisplay, all concatenated in source order.
         if callee.name == "__fstr" && !self.sigs.contains_key("__fstr") {
             let mut parts: Vec<FStrPart> = Vec::new();
+            let display_float = self.coll.age_package;
             for a in rargs.iter() {
                 match (&a.value.kind, a.value.vt) {
                     // PLAN-964: any Str/StrOwned-typed part passes through
                     // as text (literals AND reads of Str locals).
                     (_, VT::Str | VT::StrOwned) => {
-                        parts.push(FStrPart::Text(a.value.clone()));
+                        let value = a.value.clone();
+                        parts.push(FStrPart::Text(if self.profile.is_auto_language() {
+                            Self::clone_text_element(value)
+                        } else {
+                            value
+                        }));
                     }
                     (_, VT::Dyn) if self.profile.is_auto_language() => {
                         let text = Self::coerce_dynamic(a.value.clone(), VT::StrOwned);
                         parts.push(FStrPart::Text(text));
                     }
-                    (_, VT::I32) => {
+                    (_, ty) if ty == VT::I32 || (display_float && ty == VT::F32) => {
                         let operand = a.value.clone();
                         let display = ResolvedExpr {
                             span: operand.span,
@@ -20244,10 +20562,11 @@ F:{d}
                         }));
                     }
                     (_, other_vt) => {
+                        let admitted = if display_float { "`Str`/`int`/`float`" } else { "`Str`/`int`" };
                         self.bind_err(
                             "source.fstr-arg",
                             format!(
-                                "FStr interpolation admits `Str`/`int` parts, found `{}`",
+                                "FStr interpolation admits {admitted} parts, found `{}`",
                                 other_vt.as_str()
                             ),
                             a.span,

@@ -27,7 +27,9 @@ use crate::contract::MAX_TABLE_ENTRIES;
 use crate::mir::{CalleeRef, MirInstr, MirModule, MirType, SlotKind, Terminator};
 use crate::mir_verify::MirVerifyError;
 use crate::SpanInfo;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
+use std::ops::{Index, IndexMut};
+use std::sync::Arc;
 
 /// The sentinel root bit (one past the last slot): a token whose roots
 /// include it flows from a StrView PARAM (the caller's frame — the callee
@@ -119,7 +121,7 @@ pub fn variant_payload_is_owned(
         .map_or(false, |pt| type_is_owned(m, pt))
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct Bitsets {
     words: Vec<u64>,
     n_bits: usize,
@@ -145,6 +147,22 @@ impl Bitsets {
     fn get(&self, i: usize) -> bool {
         i < self.n_bits && (self.words[i / 64] >> (i % 64)) & 1 == 1
     }
+    fn set_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.words
+            .iter()
+            .copied()
+            .enumerate()
+            .flat_map(|(word, mut bits)| {
+                std::iter::from_fn(move || {
+                    if bits == 0 {
+                        return None;
+                    }
+                    let bit = bits.trailing_zeros() as usize;
+                    bits &= bits - 1;
+                    Some(word * 64 + bit)
+                })
+            })
+    }
     fn union_with(&mut self, o: &Bitsets) {
         for (a, b) in self.words.iter_mut().zip(o.words.iter()) {
             *a |= *b;
@@ -160,6 +178,176 @@ impl Bitsets {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum TokenRoots {
+    One(usize),
+    Many(Bitsets),
+}
+
+impl TokenRoots {
+    fn get(&self, root: usize) -> bool {
+        match self {
+            Self::One(index) => *index == root,
+            Self::Many(bits) => bits.get(root),
+        }
+    }
+
+    fn union_with(&mut self, other: &Self, root_bits: usize) {
+        match (&mut *self, other) {
+            (Self::One(a), Self::One(b)) if a == b => {}
+            (Self::One(a), Self::One(b)) => {
+                let mut bits = Bitsets::new(root_bits);
+                bits.set(*a);
+                bits.set(*b);
+                *self = Self::Many(bits);
+            }
+            (Self::One(a), Self::Many(bits)) => {
+                let mut bits = bits.clone();
+                bits.set(*a);
+                *self = Self::Many(bits);
+            }
+            (Self::Many(bits), Self::One(root)) => bits.set(*root),
+            (Self::Many(a), Self::Many(b)) => a.union_with(b),
+        }
+    }
+}
+
+/// Shared slot indices with compact, separately cloned facts for each block.
+#[derive(Clone)]
+struct SlotFacts<T> {
+    indices: Arc<[usize]>,
+    values: Vec<Option<T>>,
+}
+
+impl<T: Clone> SlotFacts<T> {
+    fn new(n: usize, slots: impl IntoIterator<Item = usize>) -> Self {
+        let mut slots = slots.into_iter().peekable();
+        if slots.peek().is_none() {
+            return Self {
+                indices: Arc::from([]),
+                values: Vec::new(),
+            };
+        }
+        let mut indices = vec![usize::MAX; n];
+        let mut count = 0;
+        for slot in slots {
+            indices[slot] = count;
+            count += 1;
+        }
+        Self {
+            indices: indices.into(),
+            values: vec![None; count],
+        }
+    }
+
+    fn empty_like(&self) -> Self {
+        Self {
+            indices: Arc::clone(&self.indices),
+            values: vec![None; self.values.len()],
+        }
+    }
+
+    fn get(&self, slot: usize) -> Option<&Option<T>> {
+        self.values.get(*self.indices.get(slot)?)
+    }
+
+    fn get_mut(&mut self, slot: usize) -> Option<&mut Option<T>> {
+        self.values.get_mut(*self.indices.get(slot)?)
+    }
+}
+
+impl<T> Index<usize> for SlotFacts<T> {
+    type Output = Option<T>;
+    fn index(&self, slot: usize) -> &Self::Output {
+        &self.values[self.indices[slot]]
+    }
+}
+
+impl<T> IndexMut<usize> for SlotFacts<T> {
+    fn index_mut(&mut self, slot: usize) -> &mut Self::Output {
+        &mut self.values[self.indices[slot]]
+    }
+}
+
+/// An over-approximation used only to charge the worst-case memory.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RootSource {
+    None,
+    Direct(usize),
+    Alias(usize),
+    Resolving,
+    Single,
+    Many,
+}
+
+fn count_multi_root_tokens(f: &crate::mir::MirFunction, tokens: &[bool]) -> usize {
+    let n = f.slots.len();
+    let mut sources = vec![RootSource::None; n];
+    let mut add = |slot: usize, source| {
+        if tokens[slot] {
+            let old = &mut sources[slot];
+            *old = if *old == RootSource::None || *old == source {
+                source
+            } else {
+                RootSource::Many
+            };
+        }
+    };
+    for (slot, shape) in f.slots.iter().enumerate() {
+        if shape.kind == SlotKind::Param {
+            add(slot, RootSource::Direct(n));
+        }
+    }
+    for instr in f.blocks.iter().flat_map(|block| &block.instrs) {
+        match instr {
+            MirInstr::View { dst, src } | MirInstr::MutRef { dst, src } => {
+                add(*dst as usize, RootSource::Direct(*src as usize));
+            }
+            MirInstr::FieldGet { dst, base, .. }
+            | MirInstr::ListFieldGet { dst, base, .. }
+            | MirInstr::ListFieldView { dst, base, .. }
+            | MirInstr::ListPlace { dst, base, .. } => {
+                add(*dst as usize, RootSource::Direct(*base as usize));
+            }
+            MirInstr::Copy { dst, src } | MirInstr::StrSlice { dst, view: src, .. } => {
+                add(*dst as usize, RootSource::Alias(*src as usize));
+            }
+            MirInstr::Call { dst, args, .. } if tokens[*dst as usize] => {
+                let source = if args.iter().any(|arg| tokens[*arg as usize]) {
+                    RootSource::Many
+                } else {
+                    RootSource::Direct(n)
+                };
+                add(*dst as usize, source);
+            }
+            _ => {}
+        }
+    }
+    // A slot with only one alias follows that source. A cycle consisting
+    // solely of aliases has no defining root. Resolve each chain once.
+    let mut chain = Vec::new();
+    for first in 0..n {
+        let mut slot = first;
+        while let RootSource::Alias(source) = sources[slot] {
+            sources[slot] = RootSource::Resolving;
+            chain.push(slot);
+            slot = source;
+        }
+        let resolved = if sources[slot] == RootSource::Many {
+            RootSource::Many
+        } else {
+            RootSource::Single
+        };
+        for alias in chain.drain(..) {
+            sources[alias] = resolved;
+        }
+    }
+    sources
+        .iter()
+        .filter(|&&source| source == RootSource::Many)
+        .count()
+}
+
 /// One program-point ownership state.
 #[derive(Clone)]
 struct OwnState {
@@ -167,13 +355,9 @@ struct OwnState {
     moved: Bitsets,   // may
     dropped: Bitsets, // may
     tokens_live: Bitsets,
-    /// Per-slot root-set, valid where `tokens_live`. Bit domain: slots +
-    /// one EXTERNAL sentinel at index `n_slots`. SPARSE (F821-R1-05): a
-    /// slot that has never been a token carries `None` — the frozen
-    /// contract interns only USED roots; the old all-slots matrix both
-    /// blew the verify-memory budget unaccounted (n x (n+1) bits x
-    /// states) and contradicted "只 intern 实际使用根".
-    token_roots: Vec<Option<Bitsets>>,
+    /// Provenance for active borrows and retained places. Only token slots
+    /// have entries. Roots are slot indices plus the EXTERNAL sentinel.
+    token_roots: SlotFacts<TokenRoots>,
     /// R3-F08 per-field consumption: the set of field paths already MOVED
     /// OUT of a root via FIELD_MOVE. SPARSE — only roots that saw a
     /// FIELD_MOVE carry `Some`. A recorded path may not be extracted (or
@@ -183,7 +367,7 @@ struct OwnState {
     /// of a partially-consumed root is a use-after-move (the language
     /// keeps rejecting partial moves of source values; FIELD_MOVE is the
     /// adapter's internal channel).
-    moved_fields: Vec<Option<std::collections::BTreeSet<Vec<u16>>>>,
+    moved_fields: SlotFacts<BTreeSet<Vec<u16>>>,
     /// PLAN-822 variant guard facts — MUST facts (intersected at joins):
     /// the (root slot, disc) pairs proven by a VARIANT_GUARD since the
     /// root's last (re)definition. Facts die on the root's redefinition,
@@ -202,8 +386,8 @@ impl OwnState {
             moved: Bitsets::new(self.moved.n_bits),
             dropped: Bitsets::new(self.dropped.n_bits),
             tokens_live: Bitsets::new(self.tokens_live.n_bits),
-            token_roots: vec![None; self.token_roots.len()],
-            moved_fields: vec![None; self.moved_fields.len()],
+            token_roots: self.token_roots.empty_like(),
+            moved_fields: self.moved_fields.empty_like(),
             guards: std::collections::BTreeSet::new(),
             variant_moved: std::collections::BTreeMap::new(),
         }
@@ -267,14 +451,11 @@ fn verify_owned_function_impl(
     steps: &mut u64,
     analysis_bytes: &mut u64,
     span_of: &dyn Fn(u32) -> Option<SpanInfo>,
-    omit_empty_scalar_tables: bool,
+    compact_side_tables: bool,
 ) -> Result<(), MirVerifyError> {
     let n = f.slots.len();
     let blocks = f.blocks.len();
     let root_bits = n + 1; // + EXTERNAL sentinel
-                           // Composite-analysis memory guard (same shape as check_init's):
-                           // init/moved/dropped/tokens matrices are blocks × slot-words; the
-                           // per-token root matrices are tokens × (slots+1)-words.
     let token_slots: Vec<usize> = f
         .slots
         .iter()
@@ -295,43 +476,80 @@ fn verify_owned_function_impl(
         .collect();
     let sw = words_of(n);
     let rw = words_of(root_bits);
-    // The real peak layout (F821-R1-05): per block the state vectors
-    // (in_state + out_state + the transient new_in and st) hold the 4
-    // plain bitsets (sw words each) and the SPARSE root vector — an
-    // Option<Bitsets> header per slot for ALL n slots plus rw words per
-    // token-capable slot. The x6 factor covers the up-to-4 live copies
-    // and Vec-growth transients (realloc old+new) — measured against the
-    // probe's allocator peak (8192-slot fn: ~1.37MB real vs this bound).
-    let sparse_header = std::mem::size_of::<Option<Bitsets>>() as u64;
-    // R3-F08: the per-root moved-field sets are equally sparse — only
-    // RECORD-typed slots can ever be FIELD_MOVE roots (i32/bool/Str
-    // slots pay nothing); a t_MutRet wrapper carries one field per mut
-    // param, so the 64B per-root constant covers realistic shapes.
-    let record_slots: usize = f
+    let record_count = f
         .slots
         .iter()
         .filter(|s| matches!(m.types.get(s.ty as usize), Some(MirType::Record(_))))
         .count();
-    let mf_header = std::mem::size_of::<Option<std::collections::BTreeSet<Vec<u16>>>>() as u64;
-    let bound = (blocks as u64)
-        .saturating_mul(
-            (sw as u64 * 8 * 4
-                + n as u64 * sparse_header
-                + record_slots as u64 * (mf_header + 64)
-                + token_slots.len() as u64 * rw as u64 * 8)
-                .saturating_mul(6),
+    let mut field_roots = vec![false; n];
+    for instr in f.blocks.iter().flat_map(|block| &block.instrs) {
+        if let MirInstr::FieldMove { root, .. } = instr {
+            field_roots[*root as usize] = true;
+        }
+    }
+    let field_slots: Vec<_> = field_roots
+        .iter()
+        .enumerate()
+        .filter_map(|(index, root)| root.then_some(index))
+        .collect();
+    let mut is_token = vec![false; n];
+    for &slot in &token_slots {
+        is_token[slot] = true;
+    }
+    // Six copies cover the block in/out states, worklist temporaries and
+    // allocation growth. Two slot maps are shared by every state.
+    let field_bytes = std::mem::size_of::<Option<BTreeSet<Vec<u16>>>>() + 64;
+    let bitset_bytes = sw * 8 * 4;
+    let block_bytes = |state_bytes: usize| {
+        blocks.saturating_mul(state_bytes.saturating_mul(6).saturating_add(64))
+    };
+    let legacy_bound = block_bytes(
+        bitset_bytes
+            + record_count * field_bytes
+            + n * std::mem::size_of::<Option<Bitsets>>()
+            + token_slots.len() * rw * 8,
+    );
+    let indices = usize::from(!token_slots.is_empty()) + usize::from(!field_slots.is_empty());
+    let shared_bytes =
+        indices * (n * std::mem::size_of::<usize>() + 2 * std::mem::size_of::<usize>());
+    let compact_bound = |many: usize| {
+        block_bytes(
+            bitset_bytes
+                + field_slots.len() * field_bytes
+                + token_slots.len() * std::mem::size_of::<Option<TokenRoots>>()
+                + many * rw * 8,
         )
-        .saturating_add(blocks as u64 * 64);
-    let bound = bound as usize;
+        .saturating_add(shared_bytes)
+    };
+    let limit = m.verify_analysis_budget();
+    let pessimistic = compact_bound(token_slots.len());
+    let compact = if pessimistic > limit && !token_slots.is_empty() {
+        // The provenance prepass finishes before state allocation. Account
+        // for its source table and its longest possible alias traversal.
+        let prepass_bytes =
+            n * (std::mem::size_of::<RootSource>() + 2 * std::mem::size_of::<usize>());
+        compact_bound(count_multi_root_tokens(f, &is_token)).max(prepass_bytes)
+    } else {
+        pessimistic
+    };
+    // Checked AGE packages can benefit from single-root accounting. Keep
+    // the original admission bound on the other faces, including oversized
+    // retained places in the collections profile.
+    let use_package_bound = m.capabilities.iter().any(|cap| {
+        cap == crate::contract::SHARED_COLLECTION_ARGS_CAPABILITY
+    });
+    let bound = if use_package_bound && legacy_bound > limit {
+        compact
+    } else {
+        compact.max(legacy_bound)
+    };
     *analysis_bytes = (*analysis_bytes).max(bound as u64);
-    // PLAN-105 W110（D-105-预算裁定 a）：预算按面分档（AGE 组件面 64MB 档）。
-    let budget = m.verify_analysis_budget();
-    if bound > budget {
+    if bound > limit {
         return Err(MirVerifyError::Resource {
             kind: crate::contract::ResourceKind::VerifyMemory,
             message: format!(
                 "ownership analysis for `{}` needs ~{} bytes, above the frozen {} budget",
-                f.name, bound, budget
+                f.name, bound, limit
             ),
         });
     }
@@ -379,16 +597,6 @@ fn verify_owned_function_impl(
 
     // Slot facts.
     let is_owned: Vec<bool> = f.slots.iter().map(|s| type_is_owned(m, s.ty)).collect();
-    let is_token: Vec<bool> = f
-        .slots
-        .iter()
-        .map(|s| {
-            matches!(
-                m.types.get(s.ty as usize),
-                Some(MirType::StrView) | Some(MirType::MutRef) | Some(MirType::Place(_))
-            )
-        })
-        .collect();
     let is_rootable: Vec<bool> = f.slots.iter().map(|s| type_is_rootable(m, s.ty)).collect();
     let is_mutref: Vec<bool> = f
         .slots
@@ -418,19 +626,14 @@ fn verify_owned_function_impl(
         })
         .collect();
 
-    // Scalar slots cannot carry borrow provenance or partially moved fields.
-    // Keep the exact same lattice/transfer/worklist and conservative admission
-    // bound above; only omit the provably all-None side-table headers.
-    let sparse_slots = if omit_empty_scalar_tables
-        && f.slots.iter().all(|slot| {
-            matches!(
-                m.types.get(slot.ty as usize),
-                Some(MirType::I32 | MirType::Bool)
-            )
-        }) {
-        0
+    let (token_roots, moved_fields) = if compact_side_tables {
+        (
+            SlotFacts::new(n, token_slots),
+            SlotFacts::new(n, field_slots),
+        )
     } else {
-        n
+        // Dense comparison for the regression test.
+        (SlotFacts::new(n, 0..n), SlotFacts::new(n, 0..n))
     };
 
     let entry_state = || -> OwnState {
@@ -439,8 +642,8 @@ fn verify_owned_function_impl(
             moved: Bitsets::new(n),
             dropped: Bitsets::new(n),
             tokens_live: Bitsets::new(n),
-            token_roots: vec![None; sparse_slots],
-            moved_fields: vec![None; sparse_slots],
+            token_roots: token_roots.empty_like(),
+            moved_fields: moved_fields.empty_like(),
             guards: std::collections::BTreeSet::new(),
             variant_moved: std::collections::BTreeMap::new(),
         };
@@ -454,9 +657,7 @@ fn verify_owned_function_impl(
                 if is_token[si] && !matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))) {
                     // A view param flows in LIVE, rooted EXTERNALLY.
                     st.tokens_live.set(si);
-                    let mut roots = Bitsets::new(root_bits);
-                    roots.set(n); // sentinel index
-                    st.token_roots[si] = Some(roots);
+                    st.token_roots[si] = Some(TokenRoots::One(n));
                 }
                 if matches!(m.types.get(s.ty as usize), Some(MirType::Place(_))) {
                     // A PLACE param references the CALLER's frame — the
@@ -464,9 +665,7 @@ fn verify_owned_function_impl(
                     // caller lives), and a place is a retained reference,
                     // NOT an exclusive borrow (structural changes retire
                     // places via epoch, not via a live-borrow conflict).
-                    let mut roots = Bitsets::new(root_bits);
-                    roots.set(n); // sentinel index
-                    st.token_roots[si] = Some(roots);
+                    st.token_roots[si] = Some(TokenRoots::One(n));
                 }
             }
         }
@@ -587,17 +786,25 @@ fn verify_owned_function_impl(
                     .or_default()
                     .extend(arms.iter().copied());
             }
-            // Iterate the stored side tables. Scalar-only functions have
-            // no entries; general functions retain the original n slots.
-            for (roots, prior) in new_in.token_roots.iter_mut().zip(&po.token_roots) {
+            for (roots, prior) in new_in
+                .token_roots
+                .values
+                .iter_mut()
+                .zip(&po.token_roots.values)
+            {
                 // Provenance is a may-fact even for retained, non-live places.
                 match (roots.as_mut(), prior.as_ref()) {
-                    (Some(r), Some(pr)) => r.union_with(pr),
+                    (Some(r), Some(pr)) => r.union_with(pr, root_bits),
                     (None, Some(pr)) => *roots = Some(pr.clone()),
                     _ => {}
                 }
             }
-            for (fields, prior) in new_in.moved_fields.iter_mut().zip(&po.moved_fields) {
+            for (fields, prior) in new_in
+                .moved_fields
+                .values
+                .iter_mut()
+                .zip(&po.moved_fields.values)
+            {
                 match (fields.as_mut(), prior.as_ref()) {
                     (Some(a), Some(b)) => a.extend(b.iter().cloned()),
                     (None, Some(b)) => *fields = Some(b.clone()),
@@ -852,7 +1059,7 @@ fn verify_owned_function_impl(
                         // List/Variant param receives a SHARED handle (Rc
                         // alias — mutations in the callee are visible in
                         // the caller), so the arg does not move in.
-                        let shared_param = m.is_collections_profile() || m.is_closures_profile();
+                        let shared_param = m.shares_collection_arguments();
                         let param_borrows = callee_sig
                             .and_then(|t| match t {
                                 MirType::Fn(sig) => sig.params.get(ai).copied(),
@@ -895,15 +1102,11 @@ fn verify_owned_function_impl(
                     // legal return). Roots at move-in params are rejected
                     // callee-side, so they never appear here.
                     if is_token[*dst as usize] {
-                        let mut roots = Bitsets::new(root_bits);
-                        roots.set(n); // static/external possibility
+                        let mut roots = TokenRoots::One(n); // static/external possibility
                         for a in args {
                             if is_token[*a as usize] {
                                 if let Some(ar) = st.token_roots[*a as usize].as_ref() {
-                                    let mut merged =
-                                        std::mem::replace(&mut roots, Bitsets::new(root_bits));
-                                    merged.union_with(ar);
-                                    roots = merged;
+                                    roots.union_with(ar, root_bits);
                                 }
                             }
                         }
@@ -982,9 +1185,7 @@ fn verify_owned_function_impl(
                             ));
                             break 'blk;
                         }
-                        let mut roots = Bitsets::new(root_bits);
-                        roots.set(*base as usize);
-                        st.token_roots[*dst as usize] = Some(roots);
+                        st.token_roots[*dst as usize] = Some(TokenRoots::One(*base as usize));
                         st.tokens_live.set(*dst as usize);
                     }
                     st.define_slot(*dst as usize);
@@ -1270,9 +1471,7 @@ fn verify_owned_function_impl(
                         ));
                         break 'blk;
                     }
-                    let mut roots = Bitsets::new(root_bits);
-                    roots.set(*src as usize);
-                    st.token_roots[*dst as usize] = Some(roots);
+                    st.token_roots[*dst as usize] = Some(TokenRoots::One(*src as usize));
                     st.tokens_live.set(*dst as usize);
                     st.define_slot(*dst as usize);
                 }
@@ -1292,9 +1491,7 @@ fn verify_owned_function_impl(
                         ));
                         break 'blk;
                     }
-                    let mut roots = Bitsets::new(root_bits);
-                    roots.set(*src as usize);
-                    st.token_roots[*dst as usize] = Some(roots);
+                    st.token_roots[*dst as usize] = Some(TokenRoots::One(*src as usize));
                     st.tokens_live.set(*dst as usize);
                     st.define_slot(*dst as usize);
                 }
@@ -1608,6 +1805,13 @@ fn verify_owned_function_impl(
                 } => {
                     check_read!(base, "list base");
                     check_read!(index, "list index");
+                    if is_rootable[*dst as usize] {
+                        check_def_conflict!(dst, "list-field-get destination");
+                    }
+                    if is_token[*dst as usize] {
+                        st.token_roots[*dst as usize] = Some(TokenRoots::One(*base as usize));
+                        st.tokens_live.set(*dst as usize);
+                    }
                     st.define_slot(*dst as usize);
                 }
                 MirInstr::ListFieldView {
@@ -1729,9 +1933,7 @@ fn verify_owned_function_impl(
                     // base slot — a returned local-root place is a borrow
                     // escape (the root dies with the frame). Recorded as
                     // provenance only; a place is not an exclusive borrow.
-                    let mut roots = Bitsets::new(root_bits);
-                    roots.set(*base as usize);
-                    st.token_roots[*dst as usize] = Some(roots);
+                    st.token_roots[*dst as usize] = Some(TokenRoots::One(*base as usize));
                     st.define_slot(*dst as usize);
                 }
                 MirInstr::PlaceGet { dst, src } => {
@@ -2023,52 +2225,45 @@ impl OwnState {
             && self.moved.eq(&o.moved)
             && self.dropped.eq(&o.dropped)
             && self.tokens_live.eq(&o.tokens_live)
-            && self.roots_eq(o)
-            && self.moved_fields == o.moved_fields
+            // Retained places participate in the comparison even though
+            // they are never live borrow tokens.
+            && self.token_roots.values == o.token_roots.values
+            && self.moved_fields.values == o.moved_fields.values
     }
     /// out vs the stored (in, out) pair — a may-set growth with an equal
     /// in-state still needs the stored out refreshed for later merges.
     fn out_eq(&self, pin: &OwnState, prev_out: &OwnState) -> bool {
         let _ = pin;
-        self.init.eq(&prev_out.init)
-            && self.moved.eq(&prev_out.moved)
-            && self.dropped.eq(&prev_out.dropped)
-            && self.tokens_live.eq(&prev_out.tokens_live)
-            && self.roots_eq(prev_out)
-            && self.moved_fields == prev_out.moved_fields
-    }
-    /// Root sets of LIVE tokens participate in equality: a root growth
-    /// must keep the worklist converging (F821-R1-05 hardening).
-    fn roots_eq(&self, o: &OwnState) -> bool {
-        (0..self.token_roots.len()).all(|t| {
-            // F822-R6-01: provenance participates in equality whenever
-            // EITHER side carries roots (a retained place is never live
-            // but its roots must still drive the worklist).
-            if self.token_roots[t].is_none() && o.token_roots[t].is_none() {
-                return true;
-            }
-            match (&self.token_roots[t], &o.token_roots[t]) {
-                (Some(a), Some(b)) => a.eq(b),
-                (None, None) => true,
-                _ => false,
-            }
-        })
+        self.eq_of(prev_out)
     }
 }
 
 fn root_has_live_token(st: &OwnState, root: usize) -> bool {
-    (0..st.tokens_live.n_bits)
-        .any(|t| st.tokens_live.get(t) && st.token_roots[t].as_ref().is_some_and(|r| r.get(root)))
+    st.tokens_live
+        .set_indices()
+        .any(|token| st.token_roots[token].as_ref().is_some_and(|r| r.get(root)))
 }
 
 /// F821-R1-02b: a live EXCLUSIVE (MutRef) borrow on the root — blocks
 /// every access to it, shared reads included (782 mut semantics).
 fn root_has_live_exclusive(st: &OwnState, is_mutref: &[bool], root: usize) -> bool {
-    (0..st.tokens_live.n_bits).any(|t| {
-        st.tokens_live.get(t)
-            && is_mutref.get(t).copied().unwrap_or(false)
-            && st.token_roots[t].as_ref().is_some_and(|r| r.get(root))
+    st.tokens_live.set_indices().any(|token| {
+        is_mutref.get(token).copied().unwrap_or(false)
+            && st.token_roots[token].as_ref().is_some_and(|r| r.get(root))
     })
+}
+
+#[cfg(test)]
+#[test]
+fn live_tokens_iterate_across_sparse_words() {
+    let mut live = Bitsets::new(141);
+    for index in [0, 2, 11, 63, 129, 140] {
+        live.set(index);
+    }
+    live.clear(0);
+    live.clear(11);
+
+    assert_eq!(live.set_indices().collect::<Vec<_>>(), [2, 63, 129, 140]);
 }
 
 fn slot_name(f: &crate::mir::MirFunction, s: usize) -> String {

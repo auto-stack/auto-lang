@@ -745,3 +745,24 @@ alt 的 age-component profile 在案（W85 手工重建时曾丢失，回归修�
 AV 桥六 app 装载+交互（012 ADnH×2 a_h 7→6→5、013 ToggleAll、016
 PrevMonth，frames≥1 errors=0）；浏览器腿五 app 门 failures=0（012/013/
 015/016/022）。逐例证据与复跑命令见归档 PLAN-105 收据（§9 W111/T-06）。
+
+## 17. Checked chart widgets
+
+An AGE package specializes a legacy widget's bare list parameter at each
+static call site. The checked model uses that site's record type and field
+keys, so sibling chart instances can accept different nominal records. A
+literal key outside a typed record is diagnosed at its source span. A sparse
+anonymous row inferred for a legacy widget uses an empty string for a missing
+optional text field and the legacy zero value for a literal key absent from
+the entire sparse shape.
+
+Widget state handlers check indexed updates, iteration and typed message
+arguments before execution. Pointer messages use the declared f32 payload and
+preserve fractional values in AV and A2TS. Assigning a record's text field to
+an independently owned handler local copies the text, allowing both values to
+be released separately.
+
+A live view call materializes its checked widget model at most once and reuses
+it for model reads within that call. Widget inputs and state dispatch remain
+scoped to their instance, and replay uses the ordinary verification and
+resource limits.

@@ -102,6 +102,7 @@ pub const EXPORT_NAMES: &[&str] = &[
     "a2x_str_clone",
     "a2x_str_concat",
     "a2x_str_display_i32",
+    "a2x_str_display_f32",
     "a2x_str_eq",
     "a2x_str_free",
     "a2x_str_from_char",
@@ -111,6 +112,7 @@ pub const EXPORT_NAMES: &[&str] = &[
     "a2x_str_ne",
     "a2x_str_slice",
     "a2x_str_utf8",
+    "a2x_str_find",
     "a2x_sub",
     "a2x_str_to_borrowed",
     "a2x_str_to_owned",
@@ -143,6 +145,26 @@ pub fn script_runtime_body(lang: ScriptLang, marks: &[&'static str]) -> String {
         lang.lang_name()
     ));
     out.push_str(RUNTIME_BODY);
+    out
+}
+
+/// Embed an isolated copy of the JavaScript runtime inside a widget factory.
+/// Each factory owns its text ledger and publishes no runtime globals.
+pub fn script_widget_runtime_body() -> String {
+    use std::fmt::Write;
+
+    let mut out = String::with_capacity(RUNTIME_BODY.len() + 1024);
+    writeln!(out, "const _widgetRuntimeIdentity = {{ __a2ts_runtime_version: {:?}, __a2ts_runtime_body_sha256: {:?}, __a2ts_target_lang: \"javascript\" }};",
+        A2TS_RUNTIME_VERSION, sha256_hex(RUNTIME_BODY.as_bytes())).unwrap();
+    for line in RUNTIME_BODY.lines() {
+        match line {
+            "globalThis.__a2ts_rt = _RT;" => continue,
+            "    const g = globalThis;" => out.push_str("    const g = _widgetRuntimeIdentity;"),
+            _ => out.push_str(line.strip_prefix("export ").unwrap_or(line)),
+        }
+        out.push('\n');
+    }
+    out.push_str(include_str!("widget_scope.js"));
     out
 }
 

@@ -147,8 +147,19 @@ fn p981_model_float_and_f32_fields_are_supported_in_both_faces() {
 fn p981_package_f32_annotation_positions_parse_and_type() {
     let ok = "node M {\n    model {\n        x f32 = 0.0\n    }\n    view { text \"t\" {} }\n}\n\npub fn step(x f32, vx f32, dt f32) f32 {\n    return x + vx * dt\n}\n\npub fn scaled() f32 {\n    let k f32 = 2.0\n    return k * 0.5\n}\n";
     compile_pkg(ok).expect("f32 annotations in fn params/return/let verify");
+    compile_pkg(&ok.replace(" f32", " float"))
+        .expect("float aliases f32 in model, parameter, result and local annotations");
+    let tail = ok.replace("return k * 0.5", "k * 0.5");
+    compile_pkg(&tail).expect("the function tail is checked as the declared result");
+    let wrong_tail = tail.replace("k * 0.5", "true");
+    let ds = compile_pkg(&wrong_tail).expect_err("a tail value must match the declared result");
+    assert!(ds.iter().any(|d| d.code == "source.type-mismatch"), "{ds:?}");
+    let discarded = tail.replace("let k f32 = 2.0", "step(0.0, 0.0, 0.0)\n    let k f32 = 2.0");
+    let ds = compile_pkg(&discarded).expect_err("only the root tail can be a return");
+    assert!(ds.iter().any(|d| d.message.contains("expression statements")), "{ds:?}");
 
-    let mixed = ok.replace("return x + vx * dt", "return x + 1");
+    let mixed = ok.replace("x f32, vx", "x float, vx")
+        .replace("return x + vx * dt", "return x + 1");
     let ds = compile_pkg(&mixed).expect_err("mixed f32/int must be a named type mismatch");
     assert!(
         ds.iter().any(|d| d.code == "source.type-mismatch"),

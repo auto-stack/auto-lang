@@ -173,7 +173,15 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-105 W105：generic-atom（`List<T>.member` 原子）alt×2 + 规则
             // 三处 profile 回归 age-component（W38 首开、W85 重建丢失）——
             // 2dfb9edf…→ac48cc92…；13 邻居逐字节不变。
-            "4327bdb16dfdbf252bb0f1f01a0f2aa1a6bb32d835ac11687bcc1094b69cc825",
+            // PLAN-1093: angle-bracket C header provider spelling.
+            // PLAN-114: untyped view data supports nested list fields and optional var.
+            // PLAN-114: accept the gallery's empty message block.
+            // PLAN-114: view loops can omit the index binding.
+            // AutoUI PLAN-107: AGE block comments.
+            // AutoUI PLAN-107: parameter-name structure and timer guards.
+            // PLAN-114: gallery route targets preserve hyphenated module stems.
+            // PLAN-114: a route outlet can carry view properties.
+            "22c9e801e883fba6a99b8352859a874e2edebe19d51c63b5473f12efeceea3e5",
         ),
         (
             SourceProfile::AgeH0,
@@ -269,6 +277,27 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 91c53cde…→06809c84…。
         // PLAN-124: route links and structural projection of package host commands.
         // PLAN-125: retain a text literal followed by parenthesized view properties.
-        "0d016cd528fc40adfb88969aa51be45e095abb6cdb730af3562c2859f5fd73c3"
+        // PLAN-114: untyped view data supports nested list fields and optional var.
+        // PLAN-114: project widget component imports and empty message blocks.
+        // PLAN-114: retain the ordered text IDs from gallery list properties.
+        // PLAN-114: view-loop value bindings and widget parameter defaults use the
+        // same text-list expressions as properties and model initializers.
+        // PLAN-114: parse formatted string expressions at their original spans.
+        // PLAN-114: helper while statements, indexing and object expressions.
+        // PLAN-114: typed collection models and shared list literals.
+        // AutoUI PLAN-107: AGE block comments.
+        // AutoUI PLAN-107: use float in AGE helper annotations.
+        // Consume PLAN-114 component package declarations and list projection.
+        // AutoUI PLAN-107: package handler var bindings and checked bare writes.
+        // AutoUI PLAN-107: chart list parameters, indexed handlers, and timer guards.
+        // PLAN-114: explicit generic collection types on widget parameters.
+        // PLAN-114: gallery route targets preserve hyphenated module stems.
+        // PLAN-114: a route outlet can carry view properties.
+        // AutoUI PLAN-107: a model record can spell its graph destination `to`.
+        // PLAN-114: scope `$event` to checked child bindings and retain named events.
+        // PLAN-114: check widget handler binder annotations against their messages.
+        // AutoUI PLAN-107: checked list pop statements and the layout's `take` local.
+        // PLAN-114: checked same-widget calls scope to the package grammar.
+        "c581fdc8b44328579e0185ddea2e10a5eddfb4389dcec6870956cedaa382db0a"
     );
 }

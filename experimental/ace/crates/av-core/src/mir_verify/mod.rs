@@ -862,9 +862,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // PLAN-962: the aggregates admission capability (keys the
                 // widened composite element domain in this verifier).
                 || c == "av.aggregates/1"
+                || (self.is_dynamic && c == crate::contract::SHARED_COLLECTION_ARGS_CAPABILITY)
                 || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
                 || (self.is_closures && c == crate::contract::GLOBAL_TAKE_CAPABILITY)
-                || (self.is_closures && c == crate::contract::TEXT_SCAN_CAPABILITY)
+                || ((self.is_closures || (self.is_dynamic && self.module.shares_collection_arguments()))
+                    && c == crate::contract::TEXT_SCAN_CAPABILITY)
                 || (self.is_closures && c == crate::contract::TEXT_CASE_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
@@ -3503,13 +3505,20 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 };
                 let dt = slot_ty_of(f, *dst, sp, "list-field-get dst")?;
-                if !self.ty_equiv(dt, final_ty) {
+                let ordinary_values = self.language_values()
+                    || (self.is_dynamic && self.module.shares_collection_arguments());
+                let text_view = ordinary_values
+                    && matches!(self.module.types.get(final_ty as usize), Some(MirType::Str))
+                    && matches!(self.module.types.get(dt as usize), Some(MirType::StrView));
+                if !text_view && !self.ty_equiv(dt, final_ty) {
                     return Err(err(
                         "mir.field-type",
                         format!("list-field-get dst {} != field type {}", dt, final_ty),
                     ));
                 }
-                if crate::ownership::type_is_owned(self.module, final_ty) {
+                let shared_list = ordinary_values
+                    && matches!(self.module.types.get(final_ty as usize), Some(MirType::List(_)));
+                if crate::ownership::type_is_owned(self.module, final_ty) && !shared_list && !text_view {
                     return Err(err(
                                 "mir.field-type",
                                 format!(
@@ -4162,6 +4171,18 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
+            MirInstr::TextDisplay { dst, src } => {
+                let source = slot_ty_of(f, *src, sp, "text-display source")?;
+                let result = slot_ty_of(f, *dst, sp, "text-display result")?;
+                if !matches!(self.module.types.get(source as usize), Some(MirType::I32 | MirType::F32))
+                    || !matches!(self.module.types.get(result as usize), Some(MirType::Str))
+                {
+                    return Err(err(
+                        "mir.text-display-type",
+                        "text display requires an i32 or f32 source and an owned Str result".into(),
+                    ));
+                }
+            }
             // -- PLAN-824 dynamic surface (typing arms) ----------
             MirInstr::DynPack { dst, src } => {
                 if !self.dynamic_values() {
@@ -4296,7 +4317,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 pattern,
                 start,
             } => {
-                if !self.is_closures
+                if !(self.is_closures || (self.is_dynamic && self.module.shares_collection_arguments()))
                     || !self
                         .module
                         .capabilities

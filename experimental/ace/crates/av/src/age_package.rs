@@ -10,11 +10,22 @@
 //! helper 的返回值必须改变观察结果。
 
 use ace_av_core::abc::{decode_abc, encode_abc};
-use ace_av_core::av::{execute, CancelFlag, ExecLimits};
+use ace_av_core::av::{execute, CancelFlag};
+pub use ace_av_core::av::ExecLimits;
 use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::{abc_verify, mir_verify};
-use ace_core::source::age_package::AgePackageCompilation;
-use ace_lowering::lower_checked_owned;
+use ace_av_core::mir::{
+    CalleeRef, FnSig, MirBlock, MirFieldDef, MirFunction, MirInstr, MirModule, MirSlot,
+    MirConst, MirType, RecordTypeRef, SlotKind, Terminator,
+};
+use ace_core::source::age_package::{
+    computed_fn_name_at, widget_view_fn_name_at, AgePackageCompilation, AgeWidgetProperty, AgeWidgetRef,
+};
+
+mod live_view;
+pub use live_view::{WidgetElement, WidgetEvent, WidgetTimer, WidgetViewItem};
+use ace_lowering::lower_checked_age_package;
+use crate::age_component::ComponentFieldValue;
 
 /// 一次 AGE 包运行的真实观察。
 #[derive(Debug, Clone)]
@@ -32,6 +43,8 @@ pub struct ObservedAgeComponent {
     pub instance_texts: Vec<Vec<String>>,
     /// 逐实例的 `model` int 字段值：`[实例][字段声明序]`。
     pub instance_states: Vec<Vec<i32>>,
+    /// The scalar model snapshot, with field names in declaration order.
+    pub instance_scalar_states: Vec<Vec<(String, ComponentFieldValue)>>,
     /// 逐实例的 `on` 消息名（作者拼写，含 `Life.Tick` 这类限定名）。
     pub handler_msgs: Vec<String>,
     /// PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的 AV 真值（按
@@ -72,6 +85,12 @@ pub fn observe_age_package(
     compiled: &AgePackageCompilation,
     instances: usize,
 ) -> Result<ObservedAgePackage, String> {
+    if let Some(widget) = compiled.first_widget_ref() {
+        return Err(format!(
+            "source.age.av-widget-unsupported: cannot observe checked widget `{}` from `{}`",
+            widget.node, widget.module
+        ));
+    }
     // PLAN-981（view-if 第二片）：包观察按平铺文本行逐叶取值——含条件分支
     // 时两支会被当作同时可见。包编译/绑定检查保持通过（平铺进 texts 是主线
     // 设计）；观察入口见描述面 `cond_spans` 非空即具名拒（锚作者最前 `if`）。
@@ -85,6 +104,24 @@ pub fn observe_age_package(
         return Err(format!(
             "{} @{}..{}: {}",
             d.code, d.span.start, d.span.end, d.message
+        ));
+    }
+    observe_age_package_layout_inputs(compiled, instances)
+}
+
+/// Evaluate checked state and text slots for a renderer that applies branch visibility.
+///
+/// The returned text rows contain every declared slot in source order, including
+/// inactive branches. They are layout inputs and must be filtered using the view
+/// tree and corresponding instance state before presentation.
+pub fn observe_age_package_layout_inputs(
+    compiled: &AgePackageCompilation,
+    instances: usize,
+) -> Result<ObservedAgePackage, String> {
+    if let Some(widget) = compiled.first_widget_ref() {
+        return Err(format!(
+            "source.age.av-widget-unsupported: cannot observe checked widget `{}` from `{}`",
+            widget.node, widget.module
         ));
     }
     let mut components = Vec::new();
@@ -109,6 +146,7 @@ pub fn observe_age_package(
                 module: c.module.clone(),
                 instance_texts: Vec::new(),
                 instance_states: Vec::new(),
+                instance_scalar_states: Vec::new(),
                 handler_msgs: c.handler_msgs.clone(),
                 scene_values,
             });
@@ -124,28 +162,25 @@ pub fn observe_age_package(
                 per_instance
             ));
         }
-        let mut instance_texts: Vec<Vec<String>> = vec![Vec::new(); per_instance];
-        for (i, t) in c.texts.iter().enumerate() {
-            let inst = i % per_instance;
-            instance_texts[inst].push(execute_text(&compiled.checked, &t.def_id)?);
-        }
-        // 实例状态：按实例取每个 `int` 字段的状态函数值。
-        let mut instance_states: Vec<Vec<i32>> = vec![Vec::new(); per_instance];
-        let int_fields: Vec<&str> = c
-            .fields
-            .iter()
-            .filter(|(_, ty)| ty == "int" || ty == "i32")
-            .map(|(n, _)| n.as_str())
-            .collect();
+        let instance_texts = c
+            .texts
+            .chunks_exact(c.texts.len() / per_instance)
+            .map(|row| {
+                row.iter()
+                    .map(|text| execute_text(&compiled.checked, &text.def_id))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut instance_scalar_states = Vec::with_capacity(per_instance);
         for inst in 0..per_instance {
-            for f in &int_fields {
-                // R64-4：与包前门同一套多 node 消歧命名。
-                let name =
-                    ace_core::source::age_component::state_fn_name_at(component_index, inst, f);
-                let symbol = resolve_symbol(compiled, &c.module, &name)?;
-                instance_states[inst].push(execute_i32(&compiled.checked, &symbol)?);
-            }
+            instance_scalar_states.push(observe_package_scalar_states(compiled, component_index, inst)?);
         }
+        let instance_states = instance_scalar_states.iter().map(|row| {
+            row.iter().filter_map(|(_, value)| match value {
+                ComponentFieldValue::Int(value) => Some(*value),
+                _ => None,
+            }).collect()
+        }).collect();
         // PLAN-981 B-W1（IF-981-PROOF-AV）：混合包的 2D/3D 场景值与 UI 文本/
         // 状态同一次观察（同一 AV 车道，不再整模块拒 F32）。
         let scene_values = observe_scene_values(compiled, c)?;
@@ -154,11 +189,61 @@ pub fn observe_age_package(
             module: c.module.clone(),
             instance_texts,
             instance_states,
+            instance_scalar_states,
             handler_msgs: c.handler_msgs.clone(),
             scene_values,
         });
     }
     Ok(ObservedAgePackage { components })
+}
+
+/// Read a component's scalar model without running its view or observing child
+/// views. An input-bound component still needs its checked property arguments.
+pub fn observe_package_scalar_states(
+    compiled: &AgePackageCompilation,
+    index: usize,
+    instance: usize,
+) -> Result<Vec<(String, ComponentFieldValue)>, String> {
+    let component = compiled.description.components.get(index)
+        .ok_or("unknown package component")?;
+    let mut row = Vec::new();
+    let linked = compiled.first_widget_ref().is_some();
+    let mut lowered: Option<MirModule> = None;
+    for (field, ty) in &component.fields {
+        if !matches!(ty.as_str(), "int" | "i32" | "str" | "Str" | "bool" | "f32" | "float") {
+            continue;
+        }
+        let name = ace_core::source::age_component::state_fn_name_at(index, instance, field);
+        let symbol = resolve_symbol(compiled, &component.module, &name)?;
+        let def_id = format!("d_{symbol}");
+        let value = if linked {
+            // Checked widget views already slice the MIR to the entry and
+            // its dependencies. Read a model field with the same scope so
+            // unrelated widgets do not consume its verification budget.
+            if lowered.is_none() {
+                lowered = Some(lower_checked_age_package(&compiled.checked, &def_id, 0x981)
+                    .map_err(|err| format!("lower `{def_id}`: {err:?}"))?);
+            }
+            let mut mir = lowered.as_ref().expect("lowered state module").clone();
+            mir.entry = mir.funcs.iter().position(|function| function.name == def_id)
+                .ok_or_else(|| format!("missing lowered state function `{def_id}`"))? as u32;
+            live_view::retain_entry_closure(&mut mir)?;
+            execute_value_module(&mir, &def_id, &ExecLimits::default())?
+        } else {
+            execute_value(&compiled.checked, &def_id)?
+        };
+        let value = match (ty.as_str(), value) {
+            ("int" | "i32", Value::I32(value)) => ComponentFieldValue::Int(value),
+            ("bool", Value::Bool(value)) => ComponentFieldValue::Bool(value),
+            ("f32" | "float", Value::F32(value)) => ComponentFieldValue::F32(value),
+            ("str" | "Str", Value::Str(value)) => String::from_utf8(value.bytes().to_vec())
+                .map(ComponentFieldValue::Str)
+                .map_err(|error| format!("state `{field}` text is not UTF-8: {error}"))?,
+            (_, other) => return Err(format!("state `{field}` declared `{ty}` but produced {other:?}")),
+        };
+        row.push((field.clone(), value));
+    }
+    Ok(row)
 }
 
 /// PLAN-981 B-W1（IF-981-PROOF-AV）：逐条执行场景属性值函数（登记序对位）。
@@ -173,7 +258,7 @@ fn observe_scene_values(
             SceneObserved::Parametric
         } else {
             let symbol = resolve_symbol(compiled, &c.module, &f.fn_name)?;
-            match execute_scene_scalar(&compiled.checked, &symbol)? {
+            match execute_value(&compiled.checked, &format!("d_{symbol}"))? {
                 Value::F32(v) => SceneObserved::F32(v),
                 Value::I32(v) => SceneObserved::I32(v),
                 Value::Bool(v) => SceneObserved::Bool(v),
@@ -195,24 +280,316 @@ fn observe_scene_values(
     Ok(out)
 }
 
-/// 场景标量值函数：lower→verify→ABC→AV（与状态/文本函数同一条链）。
-fn execute_scene_scalar(
+/// Execute a checked scene, text or state value function.
+fn execute_value(
     checked: &ace_core::verify::CheckedModule,
-    symbol: &str,
+    def_id: &str,
 ) -> Result<Value, String> {
-    let def_id = format!("d_{symbol}");
-    let mir = lower_checked_owned(checked, &def_id, 0x981)
+    let mir = lower_checked_age_package(checked, def_id, 0x981)
         .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
-    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
+    execute_value_module(&mir, def_id, &ExecLimits::default())
+}
+
+/// Read a checked non-loop widget argument or its authored default.
+pub fn evaluate_widget_property(
+    compiled: &AgePackageCompilation,
+    property: &AgeWidgetProperty,
+    instance: usize,
+) -> Result<Value, String> {
+    let def_id = widget_property_def(compiled, property, instance)?;
+    let mir = lower_checked_age_package(&compiled.checked, &def_id, 0x981)
+        .map_err(|err| format!("lower `{def_id}`: {err:?}"))?;
+    execute_widget_value(mir, &def_id, &ExecLimits::default())
+}
+
+fn widget_property_def(
+    compiled: &AgePackageCompilation,
+    property: &AgeWidgetProperty,
+    instance: usize,
+) -> Result<String, String> {
+    let AgeWidgetProperty::Value { module, evaluators, .. } = property else {
+        return Err("source.age.av-widget-property: this binding needs the view or event scope".into());
+    };
+    let evaluator = evaluators.get(instance).ok_or_else(|| {
+        format!("source.age.av-widget-property: unknown property instance {instance}")
+    })?;
+    Ok(format!("d_{}", resolve_symbol(compiled, module, evaluator)?))
+}
+
+/// Evaluate a computed value against one parent instance and its bound child site.
+pub fn evaluate_widget_computed(
+    compiled: &AgePackageCompilation,
+    widget: &AgeWidgetRef,
+    instance: usize,
+    field: &str,
+    limits: &ExecLimits,
+) -> Result<Value, String> {
+    let (node, component) = widget_component(compiled, widget)?;
+    if !component.members.iter().any(|member| member.role == "computed" && member.name == field) {
+        return Err(format!("source.age.av-widget-property: unknown computed field `{field}`"));
+    }
+    evaluate_widget_function(compiled, widget, instance, &computed_fn_name_at(node, instance, field), &[], limits)
+}
+
+/// Materialize the authored widget view using verified package execution.
+pub fn evaluate_widget_view(
+    compiled: &AgePackageCompilation,
+    widget: &AgeWidgetRef,
+    instance: usize,
+    limits: &ExecLimits,
+) -> Result<Vec<WidgetViewItem>, String> {
+    let (node, _) = widget_component(compiled, widget)?;
+    let name = widget_view_fn_name_at(node, instance);
+    let result = evaluate_widget_function(compiled, widget, instance, &name, &[], limits)?;
+    live_view::decode_view(result)
+}
+
+/// Execute a child site whose scalar values were emitted by the parent's
+/// checked view at this occurrence of its enclosing loop.
+pub fn evaluate_scoped_widget_view(
+    compiled: &AgePackageCompilation,
+    widget: &AgeWidgetRef,
+    instance: usize,
+    properties: &[(String, String)],
+    limits: &ExecLimits,
+) -> Result<Vec<WidgetViewItem>, String> {
+    let (node, _) = widget_component(compiled, widget)?;
+    let name = widget_view_fn_name_at(node, instance);
+    let result = evaluate_widget_function(compiled, widget, instance, &name, properties, limits)?;
+    live_view::decode_view(result)
+}
+
+/// Materialize the entry view. Its child sites retain their checked package
+/// bindings so the host can assemble them with their own instance state.
+pub fn evaluate_package_entry_view(
+    compiled: &AgePackageCompilation,
+    instance: usize,
+    limits: &ExecLimits,
+) -> Result<Vec<WidgetViewItem>, String> {
+    let (mir, def_id) = lower_package_entry_view(compiled, instance)?;
+    live_view::decode_view(execute_widget_value(mir, &def_id, limits)?)
+}
+
+fn lower_package_entry_view(
+    compiled: &AgePackageCompilation,
+    instance: usize,
+) -> Result<(MirModule, String), String> {
+    let (index, root) = compiled.description.components.iter().enumerate()
+        .find(|(_, component)| component.module == compiled.description.entry)
+        .ok_or("source.age.widget-view-output: the entry module has no component")?;
+    let name = widget_view_fn_name_at(index, instance);
+    let symbol = compiled.symbol_of_in(&root.module, &name)
+        .ok_or("source.age.widget-view-output: the entry component has no checked view")?;
+    let def_id = format!("d_{symbol}");
+    let mir = lower_checked_age_package(&compiled.checked, &def_id, 0x981)
+        .map_err(|err| format!("lower `{def_id}`: {err:?}"))?;
+    Ok((mir, def_id))
+}
+
+/// Assemble the entry and its checked child views for one package instance.
+pub fn evaluate_package_view(
+    compiled: &AgePackageCompilation,
+    instance: usize,
+    limits: &ExecLimits,
+) -> Result<Vec<WidgetViewItem>, String> {
+    let (mir, def_id) = lower_package_entry_view(compiled, instance)?;
+    let items = live_view::decode_view(execute_widget_value(mir.clone(), &def_id, limits)?)?;
+    live_view::compose(compiled, &mir, instance, limits, items)
+}
+
+fn widget_component<'a>(
+    compiled: &'a AgePackageCompilation,
+    widget: &AgeWidgetRef,
+) -> Result<(usize, &'a ace_core::source::age_package::AgePackageComponent), String> {
+    compiled.description.components.iter().enumerate()
+        .find(|(_, component)| component.module == widget.module && component.name == widget.node)
+        .ok_or_else(|| format!("source.age.av-widget-property: unknown widget `{}`", widget.node))
+}
+
+fn evaluate_widget_function(
+    compiled: &AgePackageCompilation,
+    widget: &AgeWidgetRef,
+    instance: usize,
+    name: &str,
+    scoped: &[(String, String)],
+    limits: &ExecLimits,
+) -> Result<Value, String> {
+    let symbol = compiled.symbol_of_in(&widget.module, name)
+        .ok_or_else(|| format!("source.age.av-widget-property: missing checked widget function `{name}`"))?;
+    let def_id = format!("d_{symbol}");
+    let mir = lower_checked_age_package(&compiled.checked, &def_id, 0x981)
+        .map_err(|err| format!("lower `{def_id}`: {err:?}"))?;
+    execute_bound_widget(compiled, widget, instance, scoped, limits, mir, &def_id)
+}
+
+fn execute_bound_widget(
+    compiled: &AgePackageCompilation,
+    widget: &AgeWidgetRef,
+    instance: usize,
+    scoped: &[(String, String)],
+    limits: &ExecLimits,
+    mut mir: MirModule,
+    def_id: &str,
+) -> Result<Value, String> {
+    let mut inputs = Vec::new();
+    for binding in &widget.properties {
+        match binding {
+            AgeWidgetProperty::Message { .. } => {}
+            AgeWidgetProperty::Value { .. } => {
+                let getter = widget_property_def(compiled, binding, instance)?;
+                let slot = mir.funcs.iter().position(|f| f.name == getter)
+                    .ok_or_else(|| format!("missing checked widget property `{getter}`"))?;
+                inputs.push(WidgetInput::Getter(slot as u32));
+            }
+            AgeWidgetProperty::ScopedValue { name, .. } => {
+                let (_, value) = scoped.iter().find(|(key, _)| key == name)
+                    .ok_or_else(|| format!("source.age.av-widget-property: missing scoped property `{name}`"))?;
+                inputs.push(WidgetInput::Scoped(value));
+            }
+        }
+    }
+    bind_widget_inputs(&mut mir, &inputs)?;
+    execute_widget_value(mir, def_id, limits)
+}
+
+enum WidgetInput<'a> {
+    Getter(u32),
+    Scoped(&'a str),
+}
+
+fn bind_widget_inputs(mir: &mut MirModule, inputs: &[WidgetInput<'_>]) -> Result<(), String> {
+    let entry = mir.entry;
+    let target = &mir.funcs[entry as usize];
+    let sig = mir.sig_of(target.sig).ok_or("missing checked widget signature")?.clone();
+    if sig.params.len() != inputs.len() {
+        return Err("widget input bindings do not match the checked signature".into());
+    }
+    let result = sig.result;
+    let owner = target.owner.clone();
+    let source_snapshot = target.source_snapshot;
+    let mut slots = Vec::with_capacity(inputs.len() + 1);
+    let mut instrs = Vec::with_capacity(inputs.len() + 1);
+    for (input, &param) in inputs.iter().zip(&sig.params) {
+        let dst = slots.len() as u32;
+        let ty = match *input {
+            WidgetInput::Getter(getter) => {
+                let sig = mir.sig_of(mir.funcs[getter as usize].sig)
+                    .ok_or("missing checked property signature")?;
+                if !sig.params.is_empty() {
+                    return Err("source.age.av-widget-property: this binding needs ancestor widget inputs".into());
+                }
+                instrs.push(MirInstr::Call { dst, callee: CalleeRef::Func(getter), args: Vec::new() });
+                sig.result
+            }
+            WidgetInput::Scoped(text) => {
+                let invalid = || format!("source.age.av-widget-property: invalid scoped property for param {dst}");
+                let value = match &mir.types[param as usize] {
+                    MirType::Str => MirConst::Str(text.as_bytes().into()),
+                    MirType::I32 => MirConst::I32(text.parse().map_err(|_| invalid())?),
+                    MirType::Bool => MirConst::Bool(text.parse().map_err(|_| invalid())?),
+                    _ => return Err(invalid()),
+                };
+                instrs.push(MirInstr::Const { dst, value: mir.intern_const(value) });
+                param
+            }
+        };
+        slots.push(MirSlot { kind: SlotKind::Temp, ty, name: None });
+    }
+    let output = slots.len() as u32;
+    instrs.push(MirInstr::Call { dst: output, callee: CalleeRef::Func(entry), args: (0..output).collect() });
+    slots.push(MirSlot { kind: SlotKind::Temp, ty: result, name: None });
+    let sig = mir.intern_type(MirType::Fn(FnSig { params: Vec::new(), result }));
+    mir.entry = mir.funcs.len() as u32;
+    mir.funcs.push(MirFunction {
+        owner,
+        name: format!("d___age_p_hidden_widget_inputs_{entry}"),
+        sig,
+        slots,
+        blocks: vec![MirBlock { instrs, term: Terminator::Return { value: output } }],
+        entry: 0,
+        source_snapshot,
+        spans: Vec::new(),
+        env: None,
+    });
+    Ok(())
+}
+
+fn execute_widget_value(mut mir: MirModule, def_id: &str, limits: &ExecLimits) -> Result<Value, String> {
+    let transport = wrap_list_result(&mut mir)?;
+    live_view::retain_entry_closure(&mut mir)?;
+    let value = execute_value_module(&mir, def_id, limits)?;
+    if transport {
+        match value {
+            Value::Record(record) => match record.fields.as_slice() {
+                [Value::List(value)] => Ok(Value::List(value.clone())),
+                _ => Err("widget property did not return its checked list".into()),
+            },
+            _ => Err("widget property did not return a record result".into()),
+        }
+    } else {
+        Ok(value)
+    }
+}
+
+fn wrap_list_result(mir: &mut MirModule) -> Result<bool, String> {
+    let entry = mir.entry;
+    let function = &mir.funcs[entry as usize];
+    let MirType::Fn(signature) = &mir.types[function.sig as usize] else {
+        return Err("widget property has no function signature".into());
+    };
+    if !signature.params.is_empty() {
+        return Err("widget property evaluation requires a closed value function".into());
+    }
+    let list = signature.result;
+    if !matches!(mir.types[list as usize], MirType::List(_)) {
+        return Ok(false);
+    }
+    // The dynamic module ABI carries aggregate results in a nominal record.
+    // Keep the authored getter's exact list type and verify the adapter too.
+    let owner = function.owner.clone();
+    let source_snapshot = function.source_snapshot;
+    let name = format!("__age_property_result_{entry}");
+    let record = mir.intern_type(MirType::Record(RecordTypeRef {
+        owner_module: owner.module.clone(),
+        name: name.clone(),
+        fields: vec![MirFieldDef { name: "value".into(), ty: list }],
+    }));
+    let sig = mir.intern_type(MirType::Fn(FnSig { params: Vec::new(), result: record }));
+    mir.entry = mir.funcs.len() as u32;
+    mir.funcs.push(MirFunction {
+        owner,
+        name: format!("d_{name}"),
+        sig,
+        slots: vec![
+            MirSlot { kind: SlotKind::Temp, ty: list, name: None },
+            MirSlot { kind: SlotKind::Temp, ty: record, name: None },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![
+                MirInstr::Call { dst: 0, callee: CalleeRef::Func(entry), args: Vec::new() },
+                MirInstr::Aggregate { dst: 1, record_ty: record, operands: vec![0] },
+            ],
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot,
+        spans: Vec::new(),
+        env: None,
+    });
+    Ok(true)
+}
+
+fn execute_value_module(mir: &MirModule, def_id: &str, limits: &ExecLimits) -> Result<Value, String> {
+    mir_verify::verify_mir(mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
+    let wire = encode_abc(mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
     let flat = wire.to_flat();
     let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
     let loaded = abc_verify::verify_abc(decoded, &mir.owner)
         .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
-    let (outcome, _trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    let (outcome, _trace) = execute(&loaded, limits, &CancelFlag::new(false));
     match outcome {
         ExecOutcome::Success { value, .. } => Ok(value),
-        other => Err(format!("scene value function did not succeed: {other:?}")),
+        other => Err(format!("value function `{def_id}` did not succeed: {other:?}")),
     }
 }
 
@@ -236,41 +613,9 @@ fn resolve_symbol(
         })
 }
 
-fn execute_i32(checked: &ace_core::verify::CheckedModule, symbol: &str) -> Result<i32, String> {
-    let def_id = format!("d_{symbol}");
-    let mir = lower_checked_owned(checked, &def_id, 0x981)
-        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
-    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
-    let flat = wire.to_flat();
-    let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
-    let loaded = abc_verify::verify_abc(decoded, &mir.owner)
-        .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
-    let (outcome, _trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
-    match outcome {
-        ExecOutcome::Success {
-            value: Value::I32(v),
-            ..
-        } => Ok(v),
-        other => Err(format!("state function did not produce i32: {other:?}")),
-    }
-}
-
 fn execute_text(checked: &ace_core::verify::CheckedModule, def_id: &str) -> Result<String, String> {
-    let mir = lower_checked_owned(checked, def_id, 0x981)
-        .map_err(|e| format!("lower `{def_id}`: {e:?}"))?;
-    mir_verify::verify_mir(&mir).map_err(|e| format!("verify MIR `{def_id}`: {e:?}"))?;
-    let wire = encode_abc(&mir).map_err(|e| format!("encode `{def_id}`: {e:?}"))?;
-    let flat = wire.to_flat();
-    let decoded = decode_abc(&flat).map_err(|e| format!("decode `{def_id}`: {e:?}"))?;
-    let loaded = abc_verify::verify_abc(decoded, &mir.owner)
-        .map_err(|e| format!("admit `{def_id}`: {e:?}"))?;
-    let (outcome, _trace) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
-    match outcome {
-        ExecOutcome::Success {
-            value: Value::Str(h),
-            ..
-        } => String::from_utf8(h.bytes().to_vec()).map_err(|e| format!("text not UTF-8: {e}")),
+    match execute_value(checked, def_id)? {
+        Value::Str(h) => String::from_utf8(h.bytes().to_vec()).map_err(|e| format!("text not UTF-8: {e}")),
         other => Err(format!("value function did not produce a Str: {other:?}")),
     }
 }

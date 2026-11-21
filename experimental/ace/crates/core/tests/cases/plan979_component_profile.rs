@@ -77,6 +77,114 @@ use ace_core::source::age_h0::LegacyWidgetAlias;
 const VIEW_ONLY: &str = "node Hello {\n    view {\n        text \"Hello\" {}\n    }\n}\n";
 
 #[test]
+fn p107_age_views_preserve_labels_across_block_comments() {
+    use ace_core::source::age_component::ComponentScenario;
+    use ace_core::source::ast::ExprKind;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    let source = r#"widget Legend {
+    view {
+        text "first /* literal */" {}
+        /* 图例淡入。
+           text "ignored" {} $event
+        */
+        text "second" {}
+    }
+}"#;
+    let component = project_component_candidates(source).expect("component view comment");
+    let package = parse_package_source_age(
+        source,
+        &[PACKAGES_CAPABILITY.to_string()],
+        FrontBudget::WORK_OWNED_64MIB,
+        &ComponentScenario { instances: 0, ops: Vec::new() },
+        0,
+    )
+    .expect("package view comment");
+    for node in [&component[0], &package.age_components[0].0] {
+        assert_eq!(node.view.texts.len(), 2);
+        for (leaf, expected) in node.view.texts.iter().zip(["first /* literal */", "second"]) {
+            assert!(matches!(&leaf.expr.kind, ExprKind::StrLit(text) if text == expected));
+            assert_eq!(
+                &source[leaf.expr.span.start as usize..leaf.expr.span.end as usize],
+                format!("\"{expected}\"")
+            );
+        }
+    }
+}
+
+#[test]
+fn p107_age_views_reject_unterminated_block_comments() {
+    use ace_core::source::age_component::ComponentScenario;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    for source in ["node Legend { view { /* 未闭合", "node Legend { view {} } /* 未闭合"] {
+        let opener = source.find("/*").unwrap();
+        let component = project_component_candidates(source).map(|_| ());
+        let package = parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.to_string()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+        .map(|_| ());
+        for result in [component, package] {
+            let diagnostics = result.expect_err("unclosed comments are invalid at both doors");
+            let diagnostic = &diagnostics[0];
+            assert_eq!(diagnostic.code, "source.lex.block-comment", "{diagnostics:?}");
+            assert_eq!(diagnostic.message, "unterminated block comment");
+            assert_eq!(diagnostic.span.start as usize, opener);
+            assert_eq!(diagnostic.span.end as usize, source.len());
+        }
+    }
+}
+
+#[test]
+fn p107_age_view_quoted_property_keys_preserve_checked_attributes() {
+    use ace_core::source::age_component::{ComponentEntryValue, ComponentScenario, ComponentViewItem};
+    use ace_core::source::ast::ExprKind;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    let project_package = |src: &str| {
+        parse_package_source_age(
+            src,
+            &[PACKAGES_CAPABILITY.to_string()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+    };
+    let source = r#"widget Carousel {
+        view { div { role: "region", "aria-roledescription": "carousel" } }
+    }"#;
+    let component = project_component_candidates(source).expect("component attributes");
+    let package = project_package(source).expect("package attributes");
+    for node in [&component[0], &package.age_components[0].0] {
+        let [ComponentViewItem::Element(div)] = node.view.tree.as_slice() else {
+            panic!("expected a div");
+        };
+        let [_, ComponentViewItem::Entry(aria)] = div.items.as_slice() else {
+            panic!("expected role and ARIA attributes");
+        };
+        assert_eq!(aria.key, "aria-roledescription");
+        assert!(!aria.is_event);
+        assert!(matches!(&aria.value, ComponentEntryValue::Expr(expr)
+            if matches!(&expr.kind, ExprKind::StrLit(value) if value == "carousel")));
+    }
+
+    for invalid_name in ["aria-label something", "onClick", r#"aria-\"label"#] {
+        let src = format!(r#"node Carousel {{ view {{ div {{ "{invalid_name}": "x" }} }} }}"#);
+        let component = project_component_candidates(&src).map(|_| ());
+        let package = project_package(&src).map(|_| ());
+        for result in [component, package] {
+            let ds = result.expect_err("invalid quoted property name");
+            assert_eq!(ds[0].code, "source.age.view-key", "{ds:?}");
+            assert_eq!(&src[ds[0].span.start..ds[0].span.end], format!("\"{invalid_name}\""));
+        }
+    }
+}
+
+#[test]
 fn p979_component_projection_yields_typed_candidates() {
     let nodes = project_component_candidates(VIEW_ONLY).expect("projection");
     assert_eq!(nodes.len(), 1);

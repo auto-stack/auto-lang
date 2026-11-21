@@ -15,6 +15,71 @@ use ace_core::source::age_component::{
 };
 use ace_core::source::age_h0::LegacyWidgetAlias;
 
+#[test]
+fn p107_chart_package_import_binds_a_lowercase_widget_alias() {
+    use ace_core::source::{
+        age_component::{ComponentEntryValue, ComponentViewItem},
+        age_package::compile_age_package,
+        ast::ExprKind,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"widget Charts {
+    use { package: official from "components" }
+    msg {}
+    model { monthly = [{ m: "Jan", desktop: 186 }] }
+    view {
+        line-chart (fields: ["desktop", "mobile"]) {}
+    }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario { instances: 0, ops: Vec::new() };
+    let parsed = parse_package_source_age(source, &caps, FrontBudget::WORK_OWNED_64MIB, &scenario, 0)
+        .expect("source package declaration and chart collection projection");
+    let node = &parsed.age_components[0].0;
+    assert_eq!(node.package_imports[0].package.name, "official");
+    assert_eq!(node.package_imports[0].directory, "components");
+    assert_eq!(node.view_data[0].name, "monthly");
+    let [ComponentViewItem::Element(chart)] = node.view.tree.as_slice() else {
+        panic!("expected the authored chart");
+    };
+    let [ComponentViewItem::Entry(fields)] = chart.items.as_slice() else {
+        panic!("expected the authored fields property");
+    };
+    let ComponentEntryValue::Expr(expr) = &fields.value else {
+        panic!("expected a list expression");
+    };
+    let ExprKind::ArrayLit(values) = &expr.kind else {
+        panic!("expected the projected fields list");
+    };
+    assert!(matches!(&values[0].kind, ExprKind::StrLit(value) if value == "desktop"));
+    assert!(matches!(&values[1].kind, ExprKind::StrLit(value) if value == "mobile"));
+
+    let unit = |package: &str, id: &str, source: &str| PackageModuleInput {
+        package: package.into(), id: id.into(), version: "1.0.0".into(),
+        source: source.into(), provider: None,
+    };
+    let root = unit("app", "main", source);
+    let implementation = "widget LineChart (fields: List<str>) { view { text \"curve\" {} } }";
+    let chart = unit("official", "line_chart", implementation);
+    let compile = |units: &[PackageModuleInput]| {
+        compile_age_package(units, "app::main", LegacyWidgetAlias::Accept, &caps)
+    };
+    let bound = compile(&[root.clone(), chart.clone(), unit("other", "line_chart", implementation)])
+        .expect("only the declared component package participates in alias lookup");
+    let reference = bound.first_widget_ref().expect("resolved chart site");
+    assert_eq!(reference.module, "official::line_chart");
+    assert_eq!(reference.node, "LineChart");
+    assert_eq!(reference.span.slice(source), r#"line-chart (fields: ["desktop", "mobile"]) {}"#);
+    let missing = compile(&[root.clone()]).err().expect("the declared package is required");
+    assert_eq!(missing[0].code, "source.age.component-package-unresolved");
+    let ambiguous = compile(&[root, chart, unit("official", "second_chart", implementation)])
+        .err().expect("alias collisions are rejected");
+    assert_eq!(ambiguous[0].code, "source.age.widget-ambiguous");
+}
+
 fn compile(src: &str) -> Result<(), Vec<ace_core::atom_text::Diagnostic>> {
     let caps = vec!["ac.runtime.text.v1".to_string()];
     compile_component_scenario_states(
@@ -186,6 +251,605 @@ fn p1072_view_data_field_carries_literal() {
         vd.literal
     );
     compile(src).expect("whole source compiles with the view-data field");
+}
+
+#[test]
+fn p114_nested_tree_literal_is_preserved_as_read_only_view_data() {
+    use ace_core::source::{
+        age_component::project_component_candidates,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+
+    let nodes = r#"[
+            { id: "docs", children: [
+                { id: "docs/plans", children: [
+                    { id: "docs/plans/INDEX.md", children: [] },
+                ] },
+            ] },
+            { id: "README.md", children: [] },
+        ]"#;
+    let src = format!(
+        r#"widget App {{
+    msg {{ Submit }}
+    model {{
+        var count int = 0
+        nodes = {nodes}
+    }}
+    view {{
+        col {{ text "tree" {{}} }}
+    }}
+    on {{
+        .Submit -> {{ .count = 1 }}
+    }}
+}}
+"#
+    );
+    let component = project_component_candidates(&src).expect("component source parses");
+    let package = parse_package_source_age(
+        &src,
+        &[PACKAGES_CAPABILITY.to_string()],
+        FrontBudget::WORK_OWNED_64MIB,
+        &ComponentScenario {
+            instances: 0,
+            ops: Vec::new(),
+        },
+        0,
+    )
+    .expect("package source parses");
+
+    for widget in [&component[0], &package.age_components[0].0] {
+        assert_eq!(widget.fields.len(), 1);
+        assert_eq!(widget.fields[0].name, "count");
+        assert_eq!(widget.view_data.len(), 1);
+        assert_eq!(widget.view_data[0].name, "nodes");
+        assert_eq!(widget.view_data[0].literal, nodes);
+    }
+    compile(&src).expect("unrelated scalar handler remains executable");
+
+    let writes_to_view_data = src.replace(".count = 1", ".nodes = 1");
+    let diagnostics = compile(&writes_to_view_data).expect_err("view data is not mutable state");
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("assigns undeclared model field `nodes`")));
+    let malformed = src.replace("children: []", "children: [");
+    assert!(project_component_candidates(&malformed).is_err());
+}
+
+#[test]
+fn p114_package_imports_preserve_the_authored_name_and_directory() {
+    use ace_core::source::{
+        age_package::compile_age_package,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let src = r#"widget FileTreePage {
+    use { package: official from "../components" }
+    use {
+        package: secondary from "../shared"
+    }
+    msg {}
+    model {
+        nodes = [{ id: "docs", children: [] }]
+    }
+    view {
+        col { FileTree {} }
+    }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let parse = |source| {
+        parse_package_source_age(
+            source,
+            &caps,
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario {
+                instances: 0,
+                ops: Vec::new(),
+            },
+            0,
+        )
+    };
+    let package = parse(src).expect("original import and empty message syntax");
+    let widget = &package.age_components[0].0;
+    assert!(widget.messages.is_empty());
+    let imports: Vec<_> = widget
+        .package_imports
+        .iter()
+        .map(|import| {
+            assert_eq!(import.package.span.slice(src), import.package.name);
+            (import.package.name.as_str(), import.directory.as_str())
+        })
+        .collect();
+    assert_eq!(imports, [("official", "../components"), ("secondary", "../shared")]);
+    assert!(parse(&src.replace("from \"../components\"", "from components")).is_err());
+
+    let units = [PackageModuleInput {
+        package: "app".into(),
+        version: "1.0.0".into(),
+        id: "main".into(),
+        source: src.into(),
+        provider: None,
+    }];
+    let diagnostics = match compile_age_package(&units, "app::main", LegacyWidgetAlias::Accept, &caps) {
+        Err(diagnostics) => diagnostics,
+        Ok(_) => panic!("unresolved component packages must not reach a renderer"),
+    };
+    assert_eq!(diagnostics[0].code, "source.age.component-package-unresolved");
+    assert!(diagnostics[0].message.contains("official"));
+    assert_eq!(
+        diagnostics[0].span.slice(src),
+        r#"package: official from "../components""#
+    );
+}
+
+#[test]
+fn p114_package_view_preserves_expanded_node_ids_in_source_order() {
+    use ace_core::source::{
+        age_component::{ComponentEntryValue, ComponentViewItem},
+        ast::ExprKind,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+
+    let src = r#"widget FileTreePage {
+    use { package: official from "../components" }
+    msg {}
+    model {
+        nodes = [{ id: "docs", children: [] }]
+    }
+    view {
+        FileTree (nodes: .nodes, default_expanded: ["docs", "docs/plans", "docs/\"draft\"",]) {}
+        FileTree (nodes: .nodes, default_expanded: []) {}
+    }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario {
+        instances: 0,
+        ops: Vec::new(),
+    };
+    let parse = |source| {
+        parse_package_source_age(
+            source,
+            &caps,
+            FrontBudget::WORK_OWNED_64MIB,
+            &scenario,
+            0,
+        )
+    };
+    let syntax = parse(src).expect("file tree view properties parse");
+    let tree = &syntax.age_components[0].0.view.tree;
+    let expanded: Vec<Vec<&str>> = tree
+        .iter()
+        .map(|item| {
+            let ComponentViewItem::Element(element) = item else {
+                panic!("expected a FileTree element");
+            };
+            assert_eq!(element.tag, "FileTree");
+            let value = element.items.iter().find_map(|item| match item {
+                ComponentViewItem::Entry(entry) if entry.key == "default_expanded" => {
+                    Some(&entry.value)
+                }
+                _ => None,
+            });
+            let Some(ComponentEntryValue::Expr(expr)) = value else {
+                panic!("missing list property");
+            };
+            let ExprKind::ArrayLit(ids) = &expr.kind else {
+                panic!("list property must retain its values");
+            };
+            ids.iter()
+                .map(|id| match &id.kind {
+                    ExprKind::StrLit(text) => text.as_str(),
+                    _ => panic!("expected a text ID"),
+                })
+                .collect()
+        })
+        .collect();
+    assert_eq!(expanded, [vec!["docs", "docs/plans", "docs/\"draft\""], vec![]]);
+    assert!(parse(&src.replace("\"docs\", \"docs/plans\"", "\"docs\", 42")).is_err());
+}
+
+#[test]
+fn p114_package_projects_deep_typed_tree_data_with_the_standard_worker_stack() {
+    use ace_core::source::{
+        ast::ExprKind,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+    std::thread::Builder::new().stack_size(2 * 1024 * 1024).spawn(|| {
+        let mut literal = "[{ id: \"leaf\", children: [] }]".to_string();
+        for _ in 0..11 {
+            literal = format!("[{{ id: \"branch\", children: {literal} }}]");
+        }
+        let source = format!(
+            "widget Tree {{\n model {{ nodes List<TreeNode> = {literal} }}\n view {{ text \"Tree\" {{}} }}\n}}",
+        );
+        let syntax = parse_package_source_age(
+            &source,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        ).expect("project a deep tree's typed model on the standard stack");
+        let mut array = &syntax.age_components[0].0.fields[0].init;
+        for level in 0..12 {
+            let ExprKind::ArrayLit(nodes) = &array.kind else { panic!("level {level}") };
+            assert_eq!(nodes.len(), 1);
+            let ExprKind::ObjectLit { fields } = &nodes[0].kind else { panic!("level {level}") };
+            assert_eq!(fields.len(), 2);
+            assert_eq!(
+                fields[0].value.span.slice(&source), if level == 11 { "\"leaf\"" } else { "\"branch\"" }
+            );
+            array = &fields[1].value;
+        }
+        assert!(matches!(&array.kind, ExprKind::ArrayLit(nodes) if nodes.is_empty()));
+    }).unwrap().join().unwrap();
+}
+
+#[test]
+fn p107_chart_list_parameters_keep_the_element_type_and_authored_default() {
+    use ace_core::source::{
+        ast::{ExprKind, TypeRef, TypeWord},
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"widget Chart (data: List, fields: List<str> = ["desktop", "mobile"], labels: List<str> = [], type: str = "grouped") {
+    view { text "Chart" {} }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario { instances: 0, ops: Vec::new() };
+    let parse = |source| parse_package_source_age(
+        source, &caps, FrontBudget::WORK_OWNED_64MIB, &scenario, 0,
+    );
+    let parsed = parse(source).unwrap();
+    let params = &parsed.age_components[0].0.params;
+    assert!(params[0].collection_type.is_none());
+    let declared = params[1].collection_type.as_ref().unwrap();
+    assert_eq!(declared.span.slice(source), "List<str>");
+    assert!(matches!(&declared.kind, TypeRef::Generic { name, args }
+        if name.name == "List" && matches!(args[0].kind, TypeRef::Builtin(TypeWord::Str))));
+    let ExprKind::ArrayLit(values) = &params[1].default.as_ref().unwrap().kind
+        else { panic!("expected an array default") };
+    assert_eq!(values.iter().map(|value| value.span.slice(source)).collect::<Vec<_>>(),
+        ["\"desktop\"", "\"mobile\""]);
+    assert!(matches!(&params[2].default.as_ref().unwrap().kind,
+        ExprKind::ArrayLit(values) if values.is_empty()));
+    assert_eq!(params[3].name, "type");
+
+    let invalid = source.replace("\"desktop\"", "42");
+    let errors = parse(&invalid).err().expect("the list default must be text");
+    assert_eq!(errors[0].code, "source.age.widget-param-default");
+}
+
+#[test]
+fn p114_widget_defaults_and_nested_view_loop_bindings_keep_source_values() {
+    use ace_core::source::{
+        age_component::ComponentViewItem,
+        ast::ExprKind,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+
+    let src = r#"widget Tree (nodes: List, expanded: List = ["project", "src"], selected: str = "", directory: bool = false) {
+    view {
+        for item in .nodes {
+            for position, guide in item.guides {
+                text guide {}
+            }
+        }
+    }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string()];
+    let scenario = ComponentScenario {
+        instances: 0,
+        ops: Vec::new(),
+    };
+    let parse = |source| {
+        parse_package_source_age(
+            source,
+            &caps,
+            FrontBudget::WORK_OWNED_64MIB,
+            &scenario,
+            0,
+        )
+    };
+    let syntax = parse(src).expect("widget parameter defaults and nested view loops");
+    let node = &syntax.age_components[0].0;
+    assert!(node.params[0].default.is_none());
+    let expanded = node.params[1].default.as_ref().expect("expanded default");
+    let ExprKind::ArrayLit(items) = &expanded.kind else {
+        panic!("expected a list default");
+    };
+    assert_eq!(expanded.span.slice(src), r#"["project", "src"]"#);
+    assert_eq!(items.len(), 2);
+    assert!(matches!(&items[0].kind, ExprKind::StrLit(id) if id == "project"));
+    assert!(matches!(&items[1].kind, ExprKind::StrLit(id) if id == "src"));
+    let [ComponentViewItem::For(outer)] = node.view.tree.as_slice() else {
+        panic!("expected the outer loop");
+    };
+    assert_eq!(outer.index, None);
+    assert_eq!(outer.value, "item");
+    let [ComponentViewItem::For(inner)] = outer.items.as_slice() else {
+        panic!("expected the nested loop");
+    };
+    assert_eq!(inner.index.as_deref(), Some("position"));
+    assert_eq!(inner.value, "guide");
+    assert_eq!(inner.iter.span.slice(src), "item.guides");
+
+    let bad = src.replace("directory: bool = false", "directory: bool = \"false\"");
+    let Err(diags) = parse(&bad) else {
+        panic!("rejected a calculated or mismatched default");
+    };
+    assert_eq!(diags[0].code, "source.age.widget-param-default");
+    assert_eq!(diags[0].span.slice(&bad), r#""false""#);
+}
+
+#[test]
+fn p114_age_package_format_strings_preserve_their_parts_and_source_spans() {
+    use ace_core::source::{
+        age_package::compile_age_package,
+        ast::{Arg, ExprKind},
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let src = r#"widget TreeStatus {
+    model {
+        count int = 2
+        selected str = "src"
+    }
+    view {
+        text (text: f"目录 ${.count + 1} · 选中 ${.selected}") { style: "text-sm" }
+    }
+}
+"#;
+    let caps = [PACKAGES_CAPABILITY.to_string(), "ac.runtime.text.v1".to_string()];
+    let compile = |src: &str| {
+        compile_age_package(
+            &[PackageModuleInput {
+                package: "gallery".into(),
+                version: "1.0.0".into(),
+                id: "status".into(),
+                source: src.into(),
+                provider: None,
+            }],
+            "gallery::status",
+            LegacyWidgetAlias::Accept,
+            &caps,
+        )
+    };
+    let compiled = compile(src).expect("formatted text goes through the checked package");
+    assert_eq!(compiled.description.components[0].texts.len(), 1);
+    let syntax = parse_package_source_age(
+        src,
+        &caps,
+        FrontBudget::WORK_OWNED_64MIB,
+        &ComponentScenario { instances: 0, ops: Vec::new() },
+        0,
+    ).expect("source view retains its authored expression");
+    let text = &syntax.age_components[0].0.view.texts[0].expr;
+    let ExprKind::Call { callee, args } = &text.kind else { panic!("format call") };
+    assert_eq!(callee.name, "__fstr");
+    assert_eq!(callee.span.slice(src), "f");
+    let [Arg::Pos(prefix), Arg::Pos(count), Arg::Pos(separator), Arg::Pos(selected)] =
+        args.as_slice() else { panic!("expected two text and two expression parts") };
+    assert_eq!(prefix.span.slice(src), "目录 ");
+    assert!(matches!(&prefix.kind, ExprKind::StrLit(value) if value == "目录 "));
+    assert_eq!(count.span.slice(src), ".count + 1");
+    assert_eq!(separator.span.slice(src), " · 选中 ");
+    assert_eq!(selected.span.slice(src), ".selected");
+
+    let bad = src.replace(".count + 1", ".count +");
+    let Err(diags) = compile(&bad) else { panic!("malformed interpolation was accepted") };
+    assert_eq!(diags[0].code, "source.fstr-syntax");
+    assert_eq!(diags[0].span.slice(&bad), ".count +");
+
+    let bad = src.replace(".count + 1", "missing");
+    let Err(diags) = compile(&bad) else { panic!("unknown model field was accepted") };
+    assert!(diags[0].message.contains("missing"));
+    assert!(diags[0].span.slice(&bad).contains("missing"));
+}
+
+#[test]
+fn p114_age_package_checks_expanded_ids_as_owned_lists() {
+    use ace_core::source::{
+        age_package::compile_age_package_with_scenario,
+        age_component::ScenarioOp,
+        packages::{PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"widget TreePage {
+    msg { Expand, Collapse }
+    model {
+        expanded List = ["docs", "src"]
+    }
+    on {
+        .Expand -> {
+            .expanded = ["docs", "docs/plans", "src"]
+        }
+        .Collapse -> {
+            .expanded = []
+        }
+    }
+    view {
+        text f"expanded: ${.expanded.len()}" {}
+    }
+}
+"#;
+    let compile = |source: &str| {
+        compile_age_package_with_scenario(
+            &[PackageModuleInput {
+                package: "gallery".into(),
+                version: "1.0.0".into(),
+                id: "tree".into(),
+                source: source.into(),
+                provider: None,
+            }],
+            "gallery::tree",
+            LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.into()],
+            &ComponentScenario {
+                instances: 1,
+                ops: ["Expand", "Collapse"].into_iter().map(|msg| ScenarioOp::Send {
+                    instance: 0,
+                    msg: msg.into(),
+                }).collect(),
+            },
+        )
+    };
+    let compiled = compile(source).expect("checked model list initial, assignment and reset");
+    assert_eq!(compiled.checked.domain(), ace_core::hir::HirDomain::Closures);
+    assert!(compiled.atom_text.contains("list_new"));
+    assert!(compiled.atom_text.contains("list_len"));
+    let bad = source.replace(".expanded = []", ".expanded = 42");
+    let Err(diagnostics) = compile(&bad) else { panic!("expected a list type error") };
+    assert_eq!(diagnostics[0].code, "source.type-mismatch");
+    assert_eq!(diagnostics[0].span.slice(&bad), "42");
+}
+
+#[test]
+fn p114_package_view_binds_widget_sites_to_the_declared_module_closure() {
+    use ace_core::source::{
+        age_package::compile_age_package,
+        packages::{PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let unit = |package: &str, id: &str, source: &str| PackageModuleInput {
+        package: package.into(),
+        version: "1.0.0".into(),
+        id: id.into(),
+        source: source.into(),
+        provider: None,
+    };
+    let page = r#"use components.labels: default_label
+widget GalleryPage {
+    use { package: official from "../components" }
+    view {
+        col {
+            text default_label() {}
+            FileTree {}
+        }
+    }
+}
+"#;
+    let entry = unit("gallery", "filetree_page", page);
+    let filetree = unit(
+        "official",
+        "filetree",
+        "use components.labels: default_label\nwidget FileTree {\n    view {\n        text default_label() {}\n        TreeIcon {}\n    }\n}\n",
+    );
+    let helper = unit(
+        "official",
+        "labels",
+        "pub fn default_label() str { return \"File tree\" }\n",
+    );
+    let icon = unit(
+        "official",
+        "tree_icon",
+        "widget TreeIcon {\n    view { text \"Icon\" {} }\n}\n",
+    );
+    let unrelated = unit(
+        "other",
+        "filetree",
+        "widget FileTree {\n    view { text \"Different\" {} }\n}\n",
+    );
+    let compile = |units: &[PackageModuleInput]| {
+        compile_age_package(
+            units,
+            "gallery::filetree_page",
+            LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.to_string()],
+        )
+    };
+    let compiled = compile(&[
+        entry.clone(), filetree.clone(), icon.clone(), helper.clone(), unrelated,
+    ]).expect("widget closure and both directory-qualified imports bind");
+    let root_refs = &compiled.widget_refs[&("gallery::filetree_page".into(), "GalleryPage".into())];
+    assert_eq!(root_refs.len(), 1);
+    assert_eq!(root_refs[0].module, "official::filetree");
+    assert_eq!(root_refs[0].node, "FileTree");
+    assert_eq!(root_refs[0].span.slice(page), "FileTree {}");
+    let child_refs = &compiled.widget_refs[&("official::filetree".into(), "FileTree".into())];
+    assert_eq!(child_refs.len(), 1);
+    assert_eq!(child_refs[0].module, "official::tree_icon");
+
+    let diagnostics_for = |units: &[PackageModuleInput]| match compile(units) {
+        Ok(_) => panic!("incorrect widget closure was accepted"),
+        Err(diagnostics) => diagnostics,
+    };
+    let hiding = unit(
+        "gallery", "filetree_page", &page.replace("    use { package: official from \"../components\" }\n", ""),
+    );
+    let undeclared = diagnostics_for(&[hiding, helper.clone()]);
+    assert_eq!(undeclared[0].code, "source.module-missing");
+    let missing = diagnostics_for(&[entry.clone(), filetree.clone(), helper.clone()]);
+    assert_eq!(missing[0].code, "source.age.widget-unresolved");
+    assert!(missing[0].message.contains("TreeIcon"));
+    let duplicate = unit("official", "other_icon", &icon.source);
+    let ambiguous = diagnostics_for(&[entry, filetree, icon, helper, duplicate]);
+    assert_eq!(ambiguous[0].code, "source.age.widget-ambiguous");
+    assert!(ambiguous[0].message.contains("official::tree_icon"));
+    assert!(ambiguous[0].message.contains("official::other_icon"));
+}
+
+#[test]
+fn p114_view_message_calls_check_arity_and_lexical_payloads() {
+    use ace_core::source::{
+        age_package::compile_age_package,
+        packages::{PackageModuleInput, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"widget Tree {
+    msg { Pick(str, int) }
+    model {
+        ids List = ["docs", "docs/计划"]
+        selected str = ""
+    }
+    on {
+        .Pick(id, position) -> { .selected = id }
+    }
+    view {
+        for pos, row in .ids {
+            button "Select" { onclick: .Pick(row, pos) }
+        }
+        button "Default" { onclick: .Pick(.selected, 0) }
+    }
+}
+"#;
+    let compile = |source: &str| compile_age_package(
+        &[PackageModuleInput {
+            package: "gallery".into(),
+            version: "1.0.0".into(),
+            id: "tree".into(),
+            source: source.into(),
+            provider: None,
+        }],
+        "gallery::tree",
+        LegacyWidgetAlias::Accept,
+        &[PACKAGES_CAPABILITY.into()],
+    );
+    let result = compile(source).expect("the current row and index satisfy Pick(str, int)");
+    let events = &result.description.components[0].view_events;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].1, "Pick");
+    assert_eq!(events[0].2.slice(source), "onclick: .Pick(row, pos)");
+    for (invalid, code) in [
+        (".Pick(row)", "source.age.event-payload-arity"),
+        (".Pick(row, \"wrong\")", "source.type-mismatch"),
+        (".Pick(other, pos)", "source.undefined"),
+        (".Pik(row, pos)", "source.age.msg-unknown"),
+    ] {
+        let source = source.replace(".Pick(row, pos)", invalid);
+        let diagnostics = compile(&source).err()
+            .unwrap_or_else(|| panic!("invalid event `{invalid}` was accepted"));
+        assert!(diagnostics.iter().any(|d| d.code == code), "{invalid}: {diagnostics:?}");
+    }
 }
 
 /// ⑫view `for <i>, <v> in .field` 结构承载——For 项进树（index/value/iter/

@@ -177,6 +177,7 @@ export declare function a2x_char_from_codepoint(n: number): number;
 export declare function a2x_str_lit(s: string | Uint8Array): A2xBorrowedText;
 /** Decode a text value to a JS string (diagnostics / trap details). */
 export declare function a2x_str_utf8(x: A2xText): string;
+export declare function a2x_str_find(text: A2xText, pattern: A2xText, start: number): number;
 /** Unicode scalar (code point) count. */
 export declare function a2x_str_len(x: A2xText): number;
 /** UTF-8 byte count. */
@@ -207,6 +208,7 @@ export declare function a2x_str_eq(l: A2xText, r: A2xText): boolean;
 export declare function a2x_str_ne(l: A2xText, r: A2xText): boolean;
 /** Owned `Str` of the decimal representation of a checked i32. */
 export declare function a2x_str_display_i32(v: number): A2xOwnedStr;
+export declare function a2x_str_display_f32(v: number): A2xOwnedStr;
 
 // --- collections -----------------------------------------------------------
 

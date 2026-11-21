@@ -462,7 +462,7 @@ impl ProgramSnapshot {
                 .map_err(|e| format!("loaded-program preparation: {e}"))?;
         let collections_family = code.iter().all(|c| {
             let m = c.unit().module();
-            m.is_collections_profile() || m.is_closures_profile()
+            m.shares_collection_arguments()
         });
         Ok(ProgramSnapshot {
             revision,
@@ -871,13 +871,8 @@ impl crate::av::ModuleView for UnitView<'_> {
     }
 
     /// PLAN-946 (T-02): the linked-program answer for the collections
-    /// family — List/Variant params share their cell across unit calls
-    /// (see `ProgramSnapshot::collections_family`). Both flavors answer
-    /// the combined flag: the only executor consumer ORs them.
-    fn is_collections_profile(&self) -> bool {
-        self.snap.collections_family
-    }
-    fn is_closures_profile(&self) -> bool {
+    /// family — List/Variant params share their cell across unit calls.
+    fn shares_collection_arguments(&self) -> bool {
         self.snap.collections_family
     }
     fn fn_at(&self, idx: u32) -> Option<&crate::mir::MirFunction> {

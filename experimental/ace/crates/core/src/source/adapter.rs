@@ -393,6 +393,37 @@ fn graft_stdlib_list(src: &str) -> String {
 const STDLIB_ASM_TEXT_AT: &str = include_str!("../../../../../../stdlib/ace/asm/text.at");
 pub(super) const STDLIB_TEXT_MANGLE: &str = "__std_text_";
 pub(super) const STDLIB_TEXT_FIND: &str = "__std_text_find";
+const TEXT_PREDICATE_FNS: &[&str] = &["ends_with", "eq_at"];
+
+pub(super) fn needs_text_predicates(src: &str) -> bool {
+    src.contains(".ends_with") || src.contains(".contains")
+}
+
+/// AGE uses the ordinary text predicates with the package binder's source
+/// coordinates. Keep the frozen implementation and its private callees.
+pub(super) fn graft_package_text_predicates(
+    bound: &mut super::packages::BoundPackages,
+) -> Result<super::age_package::AgeModuleSource, Diagnostic> {
+    let source = mangle_stdlib_functions(STDLIB_ASM_TEXT_AT, TEXT_PREDICATE_FNS, STDLIB_TEXT_MANGLE);
+    let mut helpers = super::parse_program_with(&source, SourceProfile::Auto)?;
+    let flat_start = bound.source_len() + 1;
+    for item in &mut helpers.items {
+        if let super::ast::Item::Fn(function) = item {
+            if function.name.name.starts_with(STDLIB_TEXT_MANGLE) {
+                super::cst::shift_fn_item(function, flat_start);
+            }
+        }
+    }
+    bound.program.items.extend(helpers.items.into_iter().filter(|item| {
+        matches!(item, super::ast::Item::Fn(function) if function.name.name.starts_with(STDLIB_TEXT_MANGLE))
+    }));
+    let source_len = source.len();
+    let package = "__ace".to_string();
+    let module = "text_predicates".to_string();
+    let key = super::packages::unit_key(&package, &module);
+    bound.segments.push(super::packages::PackageSegment { package, module, source, start: flat_start });
+    Ok(super::age_package::AgeModuleSource { key, source_len, flat_start })
+}
 
 // The assembly helpers use exact checked intrinsic signatures. Portable
 // stdlib consumers still compile the shared source implementations.
@@ -487,7 +518,7 @@ fn __std_conv_bad_int() int {
 }
 
 fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
-    if [".find(", ".trim(", ".split(", ".substr("]
+    if needs_text_predicates(user_source) || [".find(", ".trim(", ".split(", ".substr("]
         .iter()
         .any(|name| user_source.contains(name))
     {

@@ -78,6 +78,142 @@ fn run_driver(dir: &PathBuf, lang: ScriptLang, driver: &str) -> (i32, String, St
 }
 
 #[test]
+fn checked_widget_view_and_child_property_follow_the_current_model() {
+    use ace_a2x_ts::seed::{decode_coll_seed, encode_coll_seed, render_coll_seed_helpers};
+    use ace_a2x_ts::{emit_function_body_fragment, runtime_export_names, ts_fn_name};
+    use ace_core::source::age_h0::LegacyWidgetAlias;
+    use ace_core::source::age_package::{compile_age_package_widget_runtime, AgeWidgetProperty};
+    use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+
+    let source = r#"
+widget Parent {
+    use { package: support from "../components" }
+    msg { Add(int), Rename(str) }
+    model {
+        count int = 3
+        label str = "initial"
+        ids List = []
+        rows List = []
+    }
+    on {
+        .Add(step) -> {
+            .count = .count + step
+        }
+        .Rename(value) -> {
+            var rows List = []
+            rows.push({ title: f"${value}" })
+            .rows = rows
+            var selected = .rows[0]
+            var title = selected.title
+            .label = title
+        }
+    }
+    view {
+        text f"Count ${.count}" {}
+        CaptionWidget (caption: .label) {}
+    }
+}
+"#;
+    let child_source = r#"
+widget CaptionWidget (caption: str) {
+    msg {}
+    model {}
+    view { text .caption {} }
+}
+"#;
+    let entry = "app::main";
+    let child_module = "support::caption";
+    let compiled = compile_age_package_widget_runtime(
+        &[
+            PackageModuleInput {
+                package: "app".into(),
+                version: "1.0.0".into(),
+                id: "main".into(),
+                source: source.into(),
+                provider: None,
+            },
+            PackageModuleInput {
+                package: "support".into(),
+                version: "1.0.0".into(),
+                id: "caption".into(),
+                source: child_source.into(),
+                provider: None,
+            },
+        ],
+        entry,
+        LegacyWidgetAlias::Accept,
+        &[PACKAGES_CAPABILITY.into()],
+    )
+    .expect("checked widget closure");
+    let [parent, child] = compiled.widget_runtime.as_slice() else {
+        panic!(
+            "expected two widgets, got {:?} with bindings {:?}",
+            compiled.widget_runtime, compiled.widget_refs
+        );
+    };
+    let symbol = |name: &str| ts_fn_name(&compiled.symbol_of_in(entry, name).unwrap());
+    let prop = &compiled.first_widget_ref().unwrap().properties[0];
+    let AgeWidgetProperty::Value {
+        runtime_evaluator: Some(caption),
+        ..
+    } = prop
+    else {
+        panic!("expected an evaluator for the controlled child property");
+    };
+    let view = ace_a2x_core::SemanticView::from_checked_age_package(&compiled.checked).unwrap();
+    let context = FragmentProgramContext::from_view(&view);
+    let seed = decode_coll_seed(&encode_coll_seed(&view).unwrap()).unwrap();
+    let mut driver = format!(
+        "import {{ {} }} from './a2x_rt.mjs';\n",
+        runtime_export_names().join(", ")
+    );
+    driver.push_str(&render_coll_seed_helpers(&seed, false));
+    for function in view.functions() {
+        let fragment =
+            emit_function_body_fragment(ScriptLang::JavaScript, &view, function, &context).unwrap();
+        let args = fragment
+            .locals
+            .iter()
+            .filter(|item| item.role == "param")
+            .map(|item| item.emitted_name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        driver.push_str(&format!(
+            "function {}({args}) {{\n{}\n}}\n",
+            ts_fn_name(&function.source_name),
+            fragment.text.join("\n")
+        ));
+    }
+    driver.push_str(&format!(
+        r#"
+import assert from 'node:assert/strict';
+const seed = {init};
+const initial = seed();
+const independent = seed();
+const added = {add}(initial, 7);
+const renamed = {rename}(added, a2x_str_to_owned(a2x_str_lit('updated')));
+const cells = result => result.items.map(a2x_str_utf8);
+assert.ok(cells({parent_view}(initial)).includes('Count 3'));
+assert.ok(cells({parent_view}(renamed)).includes('Count 10'));
+assert.ok(cells({parent_view}(independent)).includes('Count 3'));
+assert.ok(cells({child_view}({caption}(renamed))).includes('updated'));
+assert.ok(cells({child_view}({caption}(added))).includes('initial'));
+console.log('WIDGET_OK');
+"#,
+        init = symbol(parent.initialize.as_ref().unwrap()),
+        add = symbol(&parent.handlers[0].function),
+        rename = symbol(&parent.handlers[1].function),
+        parent_view = symbol(&parent.view),
+        child_view = ts_fn_name(&compiled.symbol_of_in(child_module, &child.view).unwrap()),
+        caption = symbol(caption),
+    ));
+    let dir = scratch_dir("tsfrag_widget_current_model");
+    let (code, stdout, stderr) = run_driver(&dir, ScriptLang::JavaScript, &driver);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!((code, stdout.as_str()), (0, "WIDGET_OK\n"), "{stderr}");
+}
+
+#[test]
 fn tsfrag_01_expr_fragment_runs_on_both_legs() {
     // The expression `count + 1` inside `handler`, plus a checked-mul host
     // expression `total * 7` — the classic UI binding shapes.

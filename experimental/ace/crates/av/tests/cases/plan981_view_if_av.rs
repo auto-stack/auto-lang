@@ -19,7 +19,7 @@ use ace_av::age_component::{
 use ace_av::age_package::observe_age_package;
 use ace_core::source::age_component::ComponentScenario;
 use ace_core::source::age_h0::LegacyWidgetAlias;
-use ace_core::source::age_package::compile_age_package;
+use ace_core::source::age_package::{compile_age_package, compile_age_package_with_scenario};
 use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
 
 /// 场景观察腿（需 int 观测字段）。
@@ -72,7 +72,7 @@ fn p981_observe_component_scenario_rejects_conditional_named() {
 /// 包观察：编译保持通过（绑定检查），观察入口具名拒且非解析墙。
 #[test]
 fn p981_observe_age_package_rejects_conditional_named() {
-    let compiled = compile_age_package(
+    let compiled = compile_age_package_with_scenario(
         &[PackageModuleInput {
             package: "app".into(),
             version: "1.0.0".into(),
@@ -83,13 +83,24 @@ fn p981_observe_age_package_rejects_conditional_named() {
         "app::main",
         LegacyWidgetAlias::Reject,
         &[PACKAGES_CAPABILITY.to_string()],
+        &ComponentScenario {
+            instances: 2,
+            ops: Vec::new(),
+        },
     )
     .expect("package compile passes; only observation fails closed");
-    let err = observe_age_package(&compiled, 1)
+    let err = observe_age_package(&compiled, 2)
         .expect_err("package observation must fail closed on conditionals");
     assert!(
         err.contains("source.age.view-conditional") && err.contains(&format!("@{}..", if_at())),
         "named code + author-if anchor, got: {err}"
+    );
+    let layout = ace_av::age_package::observe_age_package_layout_inputs(&compiled, 2)
+        .expect("renderer receives the checked state and every declared text slot");
+    assert_eq!(layout.components[0].instance_states, [vec![0], vec![0]]);
+    assert_eq!(
+        layout.components[0].instance_texts,
+        [vec!["on", "off"], vec!["on", "off"]]
     );
 }
 

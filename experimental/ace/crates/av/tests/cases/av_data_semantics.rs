@@ -984,7 +984,9 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
         assert!(all_mnemonics.contains(&mnemonic));
     }
     // PLAN-1088: Unicode uppercase conversion gated by av.text.case/1.
-    assert_eq!(all_mnemonics.len(), 65);
+    // PLAN-105: LIST_FIELD_VIEW keeps an owned text field borrowed in place.
+    assert_eq!(all_mnemonics.len(), 66);
+    assert!(all_mnemonics.contains(&"LIST_FIELD_VIEW"));
     assert!(all_mnemonics.contains(&"GLOBAL_TAKE"));
     assert!(all_mnemonics.contains(&"STR_FIND"));
     assert!(all_mnemonics.contains(&"STR_TRIM"));

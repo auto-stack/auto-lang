@@ -188,6 +188,12 @@ pub struct PackageSyntax {
     /// 导入项自身不计）。AGE 面用它做引用驱动（惰性）导入：未被引用的导入不解析、
     /// 不建模块边、不要求目标模块在场；其它面恒空并保持 eager 语义。
     pub referenced: BTreeSet<String>,
+    /// Literal style declarations projected from the AGE package source.
+    pub(crate) age_literal_styles: BTreeMap<String, String>,
+    /// Public dependency recipes whose unsupported form is diagnosed when imported.
+    pub(crate) age_deferred_styles: BTreeMap<String, Diagnostic>,
+    /// Type-only references generated for a widget's inferred caller-side record.
+    pub(crate) age_widget_record_types: BTreeMap<String, (String, super::ast::Ident)>,
     pub grammar_id: String,
     /// 存储准入的源绑定；不是地址或授权。
     pub source_hash: String,
@@ -438,14 +444,25 @@ pub fn parse_package_source_age(
     scenario: &super::age_component::ComponentScenario,
     node_base: usize,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
+    parse_package_source_age_with_style_dependencies(src, capabilities, budget, scenario, node_base, false)
+}
+
+pub(crate) fn parse_package_source_age_with_style_dependencies(
+    src: &str,
+    capabilities: &[String],
+    budget: FrontBudget,
+    scenario: &super::age_component::ComponentScenario,
+    node_base: usize,
+    defer_styles: bool,
+) -> Result<PackageSyntax, Vec<Diagnostic>> {
     if let Err(ds) = require_packages_capabilities(capabilities) {
         return Err(ds);
     }
-    super::cst::parse_packages_front_age(src, budget, scenario, node_base)
+    super::cst::parse_packages_front_age(src, budget, scenario, node_base, defer_styles)
 }
 
 mod binding;
-pub(crate) use binding::assemble_standalone_auto;
+pub(crate) use binding::{assemble_standalone_auto, bind_packages_age_mode};
 pub use binding::{
     bind_package_syntax, bind_package_syntax_aggregates, bind_package_syntax_assembled,
     bind_package_syntax_assembled_aggregates, bind_packages, bind_packages_age,

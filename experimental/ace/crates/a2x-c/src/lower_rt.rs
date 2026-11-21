@@ -1663,7 +1663,10 @@ impl<'v, 'a> FnLoweringRt<'v, 'a> {
             // PLAN-964 (L-22/FStr): I32 → decimal owned Str.
             hir::ExprKind::TextDisplay { operand } => {
                 let mark = self.pending_frees.len();
-                let (v, _) = self.lower_pure(*operand)?;
+                let (v, ty) = self.lower_pure(*operand)?;
+                if ty == Ty::F32 {
+                    return Err(A2xReject::unsupported_expr("C f32 text display"));
+                }
                 self.one_arg_result(
                     mark,
                     "a2x_str_display_i32",

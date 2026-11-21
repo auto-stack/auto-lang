@@ -1654,7 +1654,10 @@ impl<'v, 'a> FnLowering<'v, 'a> {
             }
             // PLAN-964 (L-22/FStr): I32 → decimal owned Str.
             hir::ExprKind::TextDisplay { operand } => {
-                let (v, _) = self.lower_pure(*operand, out)?;
+                let (v, ty) = self.lower_pure(*operand, out)?;
+                if ty == Ty::F32 {
+                    return Err(A2xReject::unsupported_expr("Rust f32 text display"));
+                }
                 Ok((
                     RExpr::StrFn {
                         func: "a2x_str_display_i32".to_string(),

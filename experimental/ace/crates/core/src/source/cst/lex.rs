@@ -19,6 +19,8 @@ use ace_syntax_runtime::cst::{CstTree, FLAG_ERROR, FLAG_TRIVIA};
 use ace_syntax_runtime::program::KIND_ERROR;
 use ace_syntax_runtime::snapshot::Snapshot;
 
+pub(crate) const UNTERMINATED_BLOCK_COMMENT: &str = "source.lex.block-comment";
+
 pub(crate) struct LeafInfo {
     pub kind: u32,
     pub start: u64,
@@ -26,7 +28,7 @@ pub(crate) struct LeafInfo {
     pub error: bool,
 }
 
-/// 文档序收集全部非 trivia 叶（含 error 叶）。
+/// Collect semantic leaves and lexical errors in document order.
 pub(crate) fn collect_leaves(tree: &CstTree) -> Vec<LeafInfo> {
     let mut out = Vec::new();
     // 根的孩子在树级 root_edges 目录（根节点 child_count==0）——从根的孩子
@@ -34,7 +36,7 @@ pub(crate) fn collect_leaves(tree: &CstTree) -> Vec<LeafInfo> {
     let mut stack = tree.children(tree.root);
     while let Some(n) = stack.pop() {
         let nd = tree.node(n);
-        if nd.flags & FLAG_TRIVIA != 0 {
+        if nd.flags & FLAG_TRIVIA != 0 && nd.flags & FLAG_ERROR == 0 {
             continue;
         }
         if nd.child_count == 0 {
@@ -82,6 +84,7 @@ fn string_token_fact(
     end: u64,
     is_char: bool,
     admits_text: bool,
+    formatted: bool,
 ) -> Option<Diagnostic> {
     let raw = snap.read_str(start, end).ok()?;
     let bytes = raw.as_bytes();
@@ -124,7 +127,7 @@ fn string_token_fact(
                 // 旧：体 None → unterminated [start, pos)。
                 return Some(unterminated(start, start + 1, true));
             }
-            return decode_text_fact(start, inner, true);
+            return decode_text_fact(start, inner, true, false);
         }
         return Some(unterminated(start, end, is_char));
     }
@@ -132,11 +135,11 @@ fn string_token_fact(
         // 非 text 族：raw token 不是词法错误（旧 parser 在使用处拒绝）。
         return None;
     }
-    decode_text_fact(start, &bytes[1..bytes.len() - 1], is_char)
+    decode_text_fact(start, &bytes[1..bytes.len() - 1], is_char, formatted)
 }
 
 /// 旧 text 解码分支（lexer.rs 文本臂的逐字节镜像；span 全部按旧终点）。
-fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool) -> Option<Diagnostic> {
+fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool, formatted: bool) -> Option<Diagnostic> {
     // inner 的 inner[i] 字节源码位置 = tok_start + 1 + i。
     let pos = |i: usize| tok_start + 1 + i as u64;
     if is_char {
@@ -262,6 +265,7 @@ fn decode_text_fact(tok_start: u64, inner: &[u8], is_char: bool) -> Option<Diagn
                         | Some(b'"') => {
                             i += 1;
                         }
+                        Some(b'$') if formatted => i += 1,
                         Some(b'u') => {
                             i += 1;
                             if inner.get(i) != Some(&b'{') {
@@ -381,12 +385,26 @@ pub(crate) fn first_lex_fact_ct(
 ) -> Option<Diagnostic> {
     let admits_text = profile.admits_text_literals() || ct_face;
     let mut facts: Vec<(u64, Diagnostic)> = Vec::new();
+    let mut format_quote = None;
     for leaf in collect_leaves(tree) {
         if leaf.kind == k.tok_str_lit || leaf.kind == k.tok_char_lit {
             let is_char = leaf.kind == k.tok_char_lit;
-            if let Some(d) = string_token_fact(snap, leaf.start, leaf.end, is_char, admits_text) {
+            let formatted = !is_char && format_quote == Some(leaf.start);
+            if let Some(d) =
+                string_token_fact(snap, leaf.start, leaf.end, is_char, admits_text, formatted)
+            {
                 facts.push((leaf.start, d));
             }
+        } else if leaf.error && Some(leaf.kind) == k.tok_age_block_comment {
+            facts.push((
+                leaf.start,
+                Diagnostic::new(
+                    Stage::Text,
+                    UNTERMINATED_BLOCK_COMMENT,
+                    "unterminated block comment",
+                    sp(leaf.start, leaf.end),
+                ),
+            ));
         } else if leaf.kind == KIND_ERROR && leaf.error && leaf.end == leaf.start + 1 {
             // 扫描器无匹配的单字节 error 叶：ASCII = 旧 unknown character
             // （source.lex）；非 ASCII = 旧 Raw(NonAscii) 使用位拒绝面
@@ -404,6 +422,11 @@ pub(crate) fn first_lex_fact_ct(
                 facts.push((leaf.start, non_ascii_diag(snap, leaf.start)));
             }
         }
+        format_quote = (k.age_format_string.is_some()
+            && leaf.kind == k.tok_ident
+            && leaf.end == leaf.start + 1
+            && snap.read_bytes(leaf.start, leaf.end).is_ok_and(|bytes| bytes == b"f"))
+        .then_some(leaf.end);
     }
     facts.sort_by_key(|(s, _)| *s);
     facts.into_iter().next().map(|(_, d)| d)

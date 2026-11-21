@@ -17,16 +17,28 @@
 //!   RUST 批具名关闭（本模块不假装已支持）；
 //! - 任一模块拒绝即整包拒绝，且诊断归位到**原文件** span（不是合成偏移）。
 
-use super::age_component::{ComponentNode, ComponentText, ComponentViewOut};
+use super::age_component::{
+    ComponentNode, ComponentText, ComponentViewEntry, ComponentViewFor, ComponentViewItem,
+    ComponentViewOut,
+};
 use super::age_h0::{text_diag, LegacyWidgetAlias, TextKind};
 use super::ast::{
-    Block, Expr, ExprKind, FnItem, Ident, Item, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
+    Arg, BinOp, Block, Expr, ExprKind, FieldDecl, FnItem, Ident, Item, NamedCtorField, Receiver,
+    Stmt, TypeAnn, TypeRef, TypeWord, UnaryOp,
 };
 use super::cst::FrontBudget;
-use super::packages::{bind_packages_age, PackageModuleInput, PackagedAgeComponent};
+use super::packages::{bind_packages_age_mode, PackageModuleInput, PackagedAgeComponent};
 use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span};
 use crate::verify::CheckedModule;
+
+mod live_view;
+pub(crate) mod widget_lists;
+mod widget_runtime;
+pub(crate) use widget_runtime::add_widget_runtime_state;
+pub(crate) use widget_runtime::runtime_computed_name;
+pub use widget_runtime::{AgeWidgetRuntimeComponent, AgeWidgetRuntimeHandler};
+pub use live_view::widget_view_fn_name_at;
 
 /// PLAN-981：包面的**消费者配置**（不是源语言的一部分）——实例数与定向事件
 /// 序列。与 979 组件场景是**同一个类型**（同一套脱糖口径，不复制一份）。
@@ -36,6 +48,7 @@ pub use super::age_component::ComponentScenario as AgePackageScenario;
 pub const AGE_PACKAGE_DOMAIN: &str = "ace.age.package/v1";
 /// 隐藏求值函数前缀（用户顶层名含此前缀 = 具名冲突）。
 pub const AGE_PACKAGE_HIDDEN_PREFIX: &str = "__age_p_hidden_";
+pub(crate) const AGE_PACKAGE_HANDLER_PREFIX: &str = "__age_p_hidden_hv_";
 /// 脱糖生成的保留名族（隐藏求值函数；用户顶层名不得占用）。
 const RESERVED: [&str; 1] = [AGE_PACKAGE_HIDDEN_PREFIX];
 
@@ -130,6 +143,10 @@ pub struct AgePackageComponent {
     pub fields: Vec<(String, String)>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
+    /// Bound declaration-check functions for payload or structured model handlers.
+    pub checked_handler_symbols: std::collections::BTreeMap<String, String>,
+    /// Unit messages whose entire handler forwards to an exact message parameter.
+    pub handler_forwards: std::collections::BTreeMap<String, String>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L01）：`msg` 变体（名字 + payload 类型拼写，按声明序）。
     pub messages: Vec<AgeMessageVariant>,
     /// PLAN-981（B-LANGUAGE-I / AGE-L02）：其余成员槽位的结构化行（按声明序）。
@@ -143,8 +160,7 @@ pub struct AgePackageComponent {
     /// 知道每个 handler 的行为。
     pub handler_assigns: Vec<(String, Vec<(String, Expr)>)>,
     /// PLAN-981（G2）：每 handler 的**完整语句面**（msg → 源序语句）。
-    /// `handler_assigns` 只是其中赋值子集。TS/WEB 复放车道（980）只复放赋值——
-    /// 消费方见 Let/If 时必须具名拒（部分复放 = 错状态值，禁止）。
+    /// `handler_assigns` 只是其中赋值子集。使用平铺复放的消费方必须拒绝 Let/If。
     pub handler_stmts: Vec<(String, Vec<crate::source::age_component::ComponentStmt>)>,
     /// PLAN-981：`model` 字段的初值表达式（按声明序）。
     ///
@@ -188,7 +204,7 @@ pub struct AgePackageComponent {
     /// PLAN-981（IF-981-EVENT-A）：`msg Msg { … }` 的具名段（匿名 msg 为 None）。
     pub message_set_name: Option<String>,
     /// PLAN-981（B-LANGUAGE-V，980/A 真实源）：view 属性里的**事件绑定**
-    /// `(属性键, 消息名, span)`（如 `onclick: .Inc`）。绑定是事实；点击→dispatch
+    /// `(属性键, 消息名, span)`（如 `onclick: .Inc` / `onclick: .Pick(id)`）。绑定是事实；点击→dispatch
     /// 的宿主行为归 AV/SESSION。
     pub view_events: Vec<(String, String, Span)>,
     /// PLAN-981（IF-981-EVENT-A）：每个 handler 的参数名（按声明序；空 = unit handler）。
@@ -609,6 +625,11 @@ pub enum AgeResourceArg {
 pub struct AgePackageCompilation {
     pub description: AgePackageDescription,
     pub checked: CheckedModule,
+    /// Widget uses resolved to the exact supplied component module, keyed by
+    /// the declaring module and widget. Paths are discovered by the host.
+    pub widget_refs: std::collections::BTreeMap<(String, String), Vec<AgeWidgetRef>>,
+    /// State entry points emitted only by the interactive widget front door.
+    pub widget_runtime: Vec<AgeWidgetRuntimeComponent>,
     /// 源函数名 → 绑定器 HIR 符号（脱糖函数与普通函数都在内）。
     ///
     /// **多模块下是有损的**：两个模块各有一个同名 helper 时，本表只留得下一条
@@ -629,7 +650,53 @@ pub struct AgePackageCompilation {
     pub bound: super::packages::BoundPackages,
 }
 
+#[derive(Clone, Debug)]
+pub struct AgeWidgetRef {
+    pub module: String,
+    pub node: String,
+    pub span: Span,
+    /// Bindings in the child's declaration order, including authored defaults.
+    pub properties: Vec<AgeWidgetProperty>,
+    /// Checked connections from the child's declared events to parent messages.
+    pub events: Vec<AgeWidgetEvent>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AgeWidgetEvent {
+    pub name: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum AgeWidgetProperty {
+    /// A checked evaluator in the parent (argument) or child (default) module.
+    Value {
+        name: String,
+        module: String,
+        evaluators: Vec<String>,
+        authored_default: bool,
+        /// The evaluator accepting the current parent model in interactive packages.
+        runtime_evaluator: Option<String>,
+    },
+    /// A scoped argument checked inside the enclosing authored view loops.
+    ScopedValue { name: String, checker: String, span: Span },
+    /// A child message channel bound to a declared parent message.
+    Message { name: String, target: String, payload: Vec<String> },
+}
+
+pub(crate) type AgeWidgetRefs =
+    std::collections::BTreeMap<(String, String), Vec<AgeWidgetRef>>;
+
 impl AgePackageCompilation {
+    pub fn entry_node(&self) -> Option<&ComponentNode> {
+        let unit = self.bound.units.get(&self.description.entry)?;
+        unit.age_components.first().map(|(node, _, _)| node)
+    }
+
+    pub fn first_widget_ref(&self) -> Option<&AgeWidgetRef> {
+        self.widget_refs.values().find_map(|refs| refs.first())
+    }
+
     /// 源名 → 绑定器给出的 HIR 符号（`sf_<mangled>`），供 AV/A2R 消费者按
     /// 同一事实取函数；查不到返回 None（不猜命名规则）。
     pub fn symbol_of(&self, source_name: &str) -> Option<String> {
@@ -711,20 +778,32 @@ pub fn compile_age_package_with_scenario(
     capabilities: &[String],
     scenario: &crate::source::age_component::ComponentScenario,
 ) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
-    // PLAN-105 T-02（U03 真语料 012）：包面与组件面同律——源在**解析前**统一
-    // 脱糖 f-string（`f"…"` → `__fstr(…)`，含 handler 体）；调用方不必先脱糖
-    // （auto-ui 的 prep 因此幂等）。脱糖失败保持原源，交给后续阶段具名诊断。
-    let desugared: Vec<PackageModuleInput> = inputs
-        .iter()
-        .map(|u| match crate::source::fstr::desugar_widget_source(&u.source) {
-            Ok(s) if s != u.source => PackageModuleInput {
-                source: s,
-                ..u.clone()
-            },
-            _ => u.clone(),
-        })
-        .collect();
-    let inputs: &[PackageModuleInput] = &desugared;
+    compile_age_package_mode(inputs, entry, alias, capabilities, scenario, false)
+}
+
+/// Compile the widget closure with reusable initialization and event functions.
+/// Each handler accepts the previous model and returns the entire updated model.
+pub fn compile_age_package_widget_runtime(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
+    let scenario = super::age_component::ComponentScenario {
+        instances: 1,
+        ops: Vec::new(),
+    };
+    compile_age_package_mode(inputs, entry, alias, capabilities, &scenario, true)
+}
+
+fn compile_age_package_mode(
+    inputs: &[PackageModuleInput],
+    entry: &str,
+    alias: LegacyWidgetAlias,
+    capabilities: &[String],
+    scenario: &crate::source::age_component::ComponentScenario,
+    runtime_state: bool,
+) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
     // PLAN-105 T-02（U03 真语料 013/016）：包内 `store` 声明——结构已可投影
     // （`ComponentStore`），共享实例语义未接线 → **具名拒**（store 单元常带
     // `use` 行，这里按源准备同律先把 `use` 行空白化再投影）。
@@ -753,14 +832,21 @@ pub fn compile_age_package_with_scenario(
     }
     // 1) 共享包绑定：包模块面 ∪ AGE 面**一次**解析；可见性/导入/初始化序/
     //    mangle 全部由 960 的绑定器裁定（本模块不重做任何一项）。
-    let product = bind_packages_age(
+    let mut product = bind_packages_age_mode(
         inputs,
         entry,
         capabilities,
         FrontBudget::WORK_OWNED_64MIB,
         scenario,
+        runtime_state,
     )
-    .map_err(|d| vec![d.diagnostic])?;
+    .map_err(|failure| {
+        let mut diagnostic = failure.diagnostic;
+        if failure.module != entry {
+            diagnostic.message = format!("module `{}`: {}", failure.module, diagnostic.message);
+        }
+        vec![diagnostic]
+    })?;
 
     // 2) 兼容闸：旧 `widget` 声明头只在显式开启时准入（同 979 口径）。
     if !alias.is_accept() {
@@ -800,30 +886,81 @@ pub fn compile_age_package_with_scenario(
     let resolved_resource_refs =
         check_scene_resource_refs(&product.bound, &product.age_components)?;
 
+    finish_widget_properties(&mut product.bound, &product.widget_refs)
+        .map_err(|d| vec![product.bound.locate(d).diagnostic])?;
+    expand_model_record_literals(&mut product.bound.program)
+        .map_err(|d| vec![product.bound.locate(d).diagnostic])?;
+    let uses_text_predicates = inputs
+        .iter()
+        .any(|unit| super::adapter::needs_text_predicates(&unit.source));
+    if inputs.iter().any(|unit| unit.source.contains(".ends_with")) {
+        let source = super::adapter::graft_package_text_predicates(&mut product.bound)
+            .map_err(|d| vec![d])?;
+        product.sources.push(source);
+    }
+
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
     // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、
     // f32 类型表、参数模式等规则都以它为准。此前传 TextRecord 导致"门说 TextRecord、
     // 面规则永不触发"这一类缺陷（端口/ f32 / move 各一次）。
-    let resolved = crate::source::resolve_with(
+    super::infer::complete(&mut product.bound.program)
+        .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
+    // List inputs, outputs, and handler locals share the collection verifier.
+    let profile = if uses_text_predicates
+        || product.bound.program.items.iter().any(|item| {
+            matches!(item, Item::Fn(function) if function_has_typed_list(function))
+        })
+    {
+        SourceProfile::Auto
+    } else {
+        SourceProfile::AgePackage
+    };
+    let mut legacy_widgets = product
+        .age_components
+        .iter()
+        .filter(|component| component.node.legacy_widget)
+        .filter_map(|component| {
+            let offset = product.bound.segment_start(&component.module)?;
+            let span = component.node.span;
+            Some(Span {
+                start: offset + span.start,
+                end: offset + span.end,
+            })
+        })
+        .collect::<Vec<_>>();
+    legacy_widgets.sort_unstable_by_key(|span| span.start);
+    let (resolved, legacy_numeric_casts) = crate::source::resolve::resolve_age_package(
         &product.bound.program,
         capabilities,
-        SourceProfile::AgePackage,
+        profile,
+        &legacy_widgets,
     )
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     crate::source::typecheck_with(&resolved, SourceProfile::AgePackage)
         .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
+    // The scalar AGE descriptor has no cast expression. The existing
+    // collection descriptor verifies that numeric operation as well.
+    let profile = if legacy_numeric_casts {
+        SourceProfile::Auto
+    } else {
+        profile
+    };
     // PLAN-981：AGE 作者面发射（f32 类型表等按本面发射；协议身份仍是包文档）。
     let parts = crate::source::adapter::emit_resolved_packages_parts_profile(
         &resolved,
         &product.bound,
         "packages",
-        SourceProfile::AgePackage,
+        profile,
     )
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     let input_hash = parts.input_hash.clone();
     let desugar_hash = crate::source::cst::content_sha(parts.atom_text.as_bytes());
-    let mut checked = crate::verify::verify_text_record(parts.bundle)
-        .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
+    let mut checked = if profile == SourceProfile::Auto {
+        crate::verify::verify_auto_language_age(parts.bundle)
+    } else {
+        crate::verify::verify_text_record(parts.bundle)
+    }
+    .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     // 4a-bis) PLAN-981（D-981-MODULE-GLOBAL-A2R）：把绑定器的模块全局事实钉进
     //        CheckedModule——A2R 后端按表消费（符号/可变性/init 链），不从 HIR 猜。
     {
@@ -866,6 +1003,8 @@ pub fn compile_age_package_with_scenario(
     )?;
 
     Ok(AgePackageCompilation {
+        widget_refs: product.widget_refs,
+        widget_runtime: product.runtime_components,
         description: AgePackageDescription {
             domain: AGE_PACKAGE_DOMAIN,
             grammar_id: product.grammar_id.clone(),
@@ -920,6 +1059,307 @@ fn relabel_package_diags(mut diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
 /// 扁平坐标的诊断归位到所属模块（保模块内偏移）——跨模块错误不报合成偏移。
 fn locate_all(bound: &super::packages::BoundPackages, ds: Vec<Diagnostic>) -> Vec<Diagnostic> {
     ds.into_iter().map(|d| bound.locate(d).diagnostic).collect()
+}
+
+fn list_element(ann: &TypeAnn) -> Option<&TypeAnn> {
+    match &ann.kind {
+        TypeRef::Generic { name, args } if name.name == "List" => match args.as_slice() {
+            [element] => Some(element),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub(crate) fn is_model_record_list(ann: &TypeAnn, value: &Expr) -> bool {
+    matches!(list_element(ann).map(|elem| &elem.kind), Some(TypeRef::Record(_)))
+        && matches!(&value.kind, ExprKind::ArrayLit(items)
+            if items.iter().any(|item| matches!(&item.kind, ExprKind::ObjectLit { .. })))
+}
+
+fn function_has_typed_list(function: &FnItem) -> bool {
+    if list_element(&function.ret).is_some()
+        || function.params.iter().any(|param| list_element(&param.ty).is_some())
+    {
+        return true;
+    }
+    let mut pending = vec![&function.body];
+    while let Some(block) = pending.pop() {
+        for statement in &block.stmts {
+            match statement {
+                Stmt::Let { ann: Some(ty), .. } if list_element(ty).is_some() => return true,
+                Stmt::If { then, els, .. } => {
+                    pending.push(then);
+                    pending.extend(els.iter());
+                }
+                Stmt::ForIn { body, .. } | Stmt::While { body, .. } | Stmt::Loop { body, .. } => {
+                    pending.push(body);
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn expand_model_record_literals(program: &mut super::ast::Program) -> Result<(), Diagnostic> {
+    let model_literal = |stmt: &Stmt| {
+        matches!(stmt, Stmt::Let { name, span, ann: Some(ann), value, .. }
+            // Generated model bindings use the whole declaration as the name span.
+            if name.span == *span && is_model_record_list(ann, value))
+    };
+    let records: std::collections::HashMap<_, _> = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Type(record) => Some((record.name.name.clone(), record.fields.clone())),
+            _ => None,
+        })
+        .collect();
+    for item in &mut program.items {
+        let Item::Fn(function) = item else { continue };
+        bind_handler_list_context(&mut function.body)?;
+        if !function.body.stmts.iter().any(model_literal) {
+            continue;
+        }
+
+        let mut literal = ModelRecordLiteral {
+            records: &records,
+            stmts: Vec::new(),
+            next: 0,
+        };
+        for mut stmt in std::mem::take(&mut function.body.stmts) {
+            if model_literal(&stmt) {
+                if let Stmt::Let { ann: Some(ann), value, .. } = &mut stmt {
+                    literal.expand(value, Some(ann), false)?;
+                }
+            }
+            literal.stmts.push(stmt);
+        }
+        function.body.stmts = literal.stmts;
+    }
+    Ok(())
+}
+
+/// Generated handler locals have unique names across branches. An empty
+/// list can take its type from the model slot that receives the whole value.
+fn bind_handler_list_context(body: &mut Block) -> Result<(), Diagnostic> {
+    use std::collections::BTreeMap;
+
+    let model_lists: BTreeMap<_, _> = body.stmts.iter().filter_map(|stmt| match stmt {
+        Stmt::Let { name, ann: Some(ann), span, .. }
+            if name.span == *span && name.name.starts_with("__age_s_") && list_element(ann).is_some() =>
+        {
+            Some((name.name.clone(), ann.clone()))
+        }
+        _ => None,
+    }).collect();
+    if model_lists.is_empty() {
+        return Ok(());
+    }
+
+    let mut local_lists = BTreeMap::new();
+    let mut hints = BTreeMap::new();
+    let mut pending = vec![&*body];
+    while let Some(block) = pending.pop() {
+        for stmt in &block.stmts {
+            match stmt {
+                Stmt::Let { name, ann: Some(ann), .. } if list_element(ann).is_some() => {
+                    local_lists.insert(name.name.clone(), ann.clone());
+                }
+                Stmt::Assign { target, value, .. } if target.path.is_empty() => {
+                    if let (Some(ann), ExprKind::Var(local)) =
+                        (model_lists.get(&target.base.name), &value.kind)
+                    {
+                        if local.name.starts_with("__age_hl_") {
+                            // The shared checker also checks any later store,
+                            // including an incompatible destination type.
+                            hints.entry(local.name.clone()).or_insert_with(|| ann.clone());
+                        }
+                    }
+                }
+                Stmt::If { then, els, .. } => {
+                    pending.extend(els.iter());
+                    pending.push(then);
+                }
+                Stmt::ForIn { body, .. } | Stmt::While { body, .. } => pending.push(body),
+                _ => {}
+            }
+        }
+    }
+
+    let mut pending = vec![body];
+    while let Some(block) = pending.pop() {
+        for stmt in &mut block.stmts {
+            match stmt {
+                Stmt::Let { name, ann, value, .. } if ann.is_none()
+                    && matches!(&value.kind, ExprKind::ArrayLit(items) if items.is_empty()) =>
+                {
+                    if let Some(hint) = hints.remove(&name.name) {
+                        let hint = TypeAnn { kind: hint.kind, span: value.span };
+                        local_lists.insert(name.name.clone(), hint.clone());
+                        *ann = Some(hint);
+                    }
+                }
+                Stmt::ExprStmt { value, .. } => bind_handler_record_append(value, &local_lists)?,
+                Stmt::If { then, els, .. } => {
+                    pending.extend(els.iter_mut());
+                    pending.push(then);
+                }
+                Stmt::ForIn { body, .. } | Stmt::While { body, .. } => pending.push(body),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn bind_handler_record_append(
+    expr: &mut Expr,
+    lists: &std::collections::BTreeMap<String, TypeAnn>,
+) -> Result<(), Diagnostic> {
+    let ExprKind::Method { recv, name, args } = &mut expr.kind else { return Ok(()) };
+    let ("push", ExprKind::Var(local), [Arg::Pos(value)]) =
+        (name.name.as_str(), &recv.kind, args.as_mut_slice())
+    else { return Ok(()) };
+    let Some(TypeAnn { kind: TypeRef::Record(ty), .. }) =
+        lists.get(&local.name).and_then(list_element)
+    else { return Ok(()) };
+    let ExprKind::ObjectLit { fields } = &mut value.kind else { return Ok(()) };
+    let fields = std::mem::take(fields).into_iter().map(|field| {
+        let crate::hir::ObjectKey::Text(name) = field.key else {
+            return Err(text_diag("source.argument", "a record field name must be text", field.span));
+        };
+        Ok(NamedCtorField {
+            name: Ident { name, span: field.span },
+            value: field.value,
+            span: field.span,
+        })
+    }).collect::<Result<Vec<_>, Diagnostic>>()?;
+    value.kind = ExprKind::CtorNamed {
+        ty: Ident { name: ty.name.clone(), span: value.span },
+        args: Vec::new(),
+        fields,
+    };
+    Ok(())
+}
+
+struct ModelRecordLiteral<'a> {
+    records: &'a std::collections::HashMap<String, Vec<FieldDecl>>,
+    stmts: Vec<Stmt>,
+    next: usize,
+}
+
+impl ModelRecordLiteral<'_> {
+    /// Keep object shorthand confined to literal data. Hoisting its nested
+    /// lists into owned temporaries therefore cannot reorder authored calls.
+    fn expand(
+        &mut self,
+        expr: &mut Expr,
+        ty: Option<&TypeAnn>,
+        nested: bool,
+    ) -> Result<(), Diagnostic> {
+        let span = expr.span;
+        match &mut expr.kind {
+            ExprKind::ArrayLit(items) => {
+                let Some((ann, element)) = ty.and_then(|ann| Some((ann, list_element(ann)?))) else {
+                    return Err(text_diag(
+                        "source.type-mismatch",
+                        "this array requires a List field",
+                        span,
+                    ));
+                };
+                for item in items {
+                    self.expand(item, Some(element), true)?;
+                }
+                if nested {
+                    let name = Ident {
+                        name: format!("{AGE_PACKAGE_HIDDEN_PREFIX}model_data_{}", self.next),
+                        span,
+                    };
+                    self.next += 1;
+                    let replacement = ExprKind::Method {
+                        recv: Box::new(Expr {
+                            kind: ExprKind::Var(name.clone()),
+                            span,
+                        }),
+                        name: Ident {
+                            name: "move".into(),
+                            span,
+                        },
+                        args: Vec::new(),
+                    };
+                    let kind = std::mem::replace(&mut expr.kind, replacement);
+                    self.stmts.push(Stmt::Let {
+                        kw: span,
+                        name,
+                        ann: Some(ann.clone()),
+                        mutable: false,
+                        value: Expr { kind, span },
+                        span,
+                    });
+                }
+            }
+            ExprKind::ObjectLit { fields } => {
+                let Some(TypeRef::Record(ty)) = ty.map(|ann| &ann.kind) else {
+                    return Err(text_diag(
+                        "source.type-mismatch",
+                        "this object requires a record field",
+                        span,
+                    ));
+                };
+                let schema = self.records.get(&ty.name);
+                let mut entries = Vec::with_capacity(fields.len());
+                for field in std::mem::take(fields) {
+                    let crate::hir::ObjectKey::Text(name) = field.key else {
+                        return Err(text_diag(
+                            "source.argument",
+                            "a record field name must be text",
+                            field.span,
+                        ));
+                    };
+                    let field_ty = schema
+                        .and_then(|fields| fields.iter().find(|f| f.name.name == name))
+                        .map(|field| &field.ty);
+                    let mut value = field.value;
+                    self.expand(&mut value, field_ty, true)?;
+                    entries.push(NamedCtorField {
+                        name: Ident {
+                            name,
+                            span: field.span,
+                        },
+                        value,
+                        span: field.span,
+                    });
+                }
+                let ty = Ident {
+                    name: ty.name.clone(),
+                    span,
+                };
+                expr.kind = ExprKind::CtorNamed {
+                    ty,
+                    args: Vec::new(),
+                    fields: entries,
+                };
+            }
+            ExprKind::IntLit(_)
+            | ExprKind::TypedLit { .. }
+            | ExprKind::StrLit(_)
+            | ExprKind::BoolLit(_)
+            | ExprKind::CharLit(_)
+            | ExprKind::NilLit => {}
+            ExprKind::Unary { op: UnaryOp::Neg, operand }
+                if matches!(operand.kind, ExprKind::IntLit(_)) => {}
+            _ => {
+                return Err(text_diag(
+                    "source.age.model-record-literal",
+                    "record shorthand in a model list only accepts literal field values",
+                    span,
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 把 AGE 领域候选里的 span 交回诊断：**原样返回，不做换算**。
@@ -1103,6 +1543,30 @@ fn read_back_components(
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect(),
             handler_msgs: p.node.handlers.iter().map(|h| h.msg.clone()).collect(),
+            checked_handler_symbols: p
+                .node
+                .handlers
+                .iter()
+                .enumerate()
+                .filter(|(_, handler)| {
+                    (!handler.params.is_empty() || handler.stmts.iter().any(|stmt| {
+                        !matches!(stmt, crate::source::age_component::ComponentStmt::Assign(_))
+                    }))
+                        && !handler.body_foreign
+                        && handler.channel_calls.is_empty()
+                })
+                .filter_map(|(handler_index, handler)| {
+                    let name = format!("{AGE_PACKAGE_HANDLER_PREFIX}{node_index}_{handler_index}");
+                    bound.origins.iter().find_map(|(symbol, (pkg, module, original))| {
+                        (original == &name && super::packages::unit_key(pkg, module) == p.module)
+                            .then(|| (handler.msg.clone(), symbol.clone()))
+                    })
+                })
+                .collect(),
+            handler_forwards: p.node.handlers.iter().filter_map(|handler| {
+                widget_runtime::unit_callback(&p.node, handler)
+                    .map(|channel| (handler.msg.clone(), channel.into()))
+            }).collect(),
             handler_assigns: p
                 .node
                 .handlers
@@ -1117,8 +1581,7 @@ fn read_back_components(
                     )
                 })
                 .collect(),
-            // PLAN-981（G2）：完整语句面（msg → 源序）——AV/A2R 同一份受检描述；
-            // TS/WEB 复放车道（980）见 Let/If 必须具名拒，不得部分复放。
+            // PLAN-981（G2）：完整语句面（msg → 源序），供各目标核对处理器边界。
             handler_stmts: p
                 .node
                 .handlers
@@ -1333,7 +1796,20 @@ fn read_back_components(
 /// 形状：`fn <name>() int { let __v = (<expr>); return 0 }`——返回值固定 int，
 /// 让任意类型的表达式都能被**唯一 verify** 检查（名字解析/类型/可见性），
 /// 同时不引入第二套判据。表达式 span 原样保留，诊断落回作者源。
-pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
+pub(crate) fn hidden_value_fn(
+    name: &str,
+    node: &ComponentNode,
+    node_index: usize,
+    expr: &Expr,
+    loops: &[&ComponentViewFor],
+) -> Result<FnItem, Vec<Diagnostic>> {
+    use super::age_component::{rename_expr_with_params, FieldBinding};
+
+    let binding = FieldBinding::state_at(node_index, 0, node);
+    let loops = if view_expr_uses_loop(expr, loops) { loops } else { &[] };
+    let (loop_sources, visible) = view_check_loop_sources(name, node, binding, loops)?;
+    let bound = rename_expr_with_params(expr, binding, &node.fields, &visible)?;
+    let span = expr.span;
     let let_stmt = Stmt::Let {
         kw: span,
         name: Ident {
@@ -1342,14 +1818,16 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         },
         ann: None,
         mutable: false,
-        value: expr.clone(),
+        value: bound,
         span,
     };
     let zero = Expr {
         span,
         kind: ExprKind::IntLit(0),
     };
-    FnItem {
+    let mut stmts = wrap_view_check_loops(vec![let_stmt], loop_sources);
+    stmts.push(Stmt::Return { value: zero, span });
+    Ok(FnItem {
         name: Ident {
             name: name.to_string(),
             span,
@@ -1361,7 +1839,7 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
             span,
         },
         body: Block {
-            stmts: vec![let_stmt, Stmt::Return { value: zero, span }],
+            stmts,
             span,
         },
         span,
@@ -1370,8 +1848,289 @@ pub(crate) fn hidden_value_fn(name: &str, expr: &Expr, span: Span) -> FnItem {
         script: false,
         proto: false,
         test_attribute: None,
+    })
+}
+
+fn view_expr_uses_loop(expr: &Expr, loops: &[&ComponentViewFor]) -> bool {
+    if loops.is_empty() {
+        return false;
+    }
+    let names = loops.iter().flat_map(|loop_| {
+        std::iter::once(loop_.value.clone()).chain(loop_.index.clone())
+    }).collect();
+    !super::closure_capture::analyze_capture_uses(
+        &[],
+        &super::ast::ClosureBody::Expr(expr.clone()),
+        &names,
+    ).is_empty()
+}
+
+/// Check a view-message invocation with the same expression and List rules as
+/// the rest of the package. This function is never invoked by the host.
+pub(crate) fn check_view_message_call(
+    symbol: String,
+    node: &ComponentNode,
+    node_index: usize,
+    entry: &ComponentViewEntry,
+    loops: &[&ComponentViewFor],
+) -> Result<Option<Item>, Vec<Diagnostic>> {
+    use super::age_component::{payload_type, rename_expr_with_params, FieldBinding};
+
+    let Some((name, args)) = entry.message_call() else { return Ok(None) };
+    let Some(variant) = node.messages.iter().find(|variant| variant.name == name.name) else {
+        return Err(vec![text_diag(
+            "source.age.msg-unknown",
+            format!("view event names undeclared message `{}`", name.name),
+            name.span,
+        )]);
+    };
+    if args.len() != variant.payload.len() {
+        return Err(vec![text_diag(
+            "source.age.event-payload-arity",
+            format!("message `{}` expects {} arguments, got {}", name.name, variant.payload.len(), args.len()),
+            entry.span,
+        )]);
+    }
+    if args.is_empty() {
+        return Ok(None);
+    }
+
+    let binding = FieldBinding::state_at(node_index, 0, node);
+    let (loop_sources, visible) = view_check_loop_sources(&symbol, node, binding, loops)?;
+
+    let span = entry.span;
+    let zero = Expr { kind: ExprKind::IntLit(0), span };
+    let mut body = Vec::new();
+    for (i, (arg, spelling)) in args.iter().zip(&variant.payload).enumerate() {
+        let Arg::Pos(expr) = arg else {
+            return Err(vec![text_diag(
+                "source.age.event-payload-argument",
+                format!("message `{}` takes positional event arguments", name.name),
+                span,
+            )]);
+        };
+        let Some(ty) = payload_type(spelling) else {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!("message `{}` has unsupported event payload type `{spelling}`", name.name),
+                expr.span,
+            )]);
+        };
+        let value = rename_expr_with_params(expr, binding, &node.fields, &visible)?;
+        let span = expr.span;
+        // Operations must distinguish the payload types even where legacy
+        // authored expressions allow mixed text and integer equality or +.
+        let (kind, result) = if ty == TypeWord::StrOwned {
+            (ExprKind::Method {
+                recv: Box::new(value),
+                name: Ident { name: "len".into(), span },
+                args: Vec::new(),
+            }, TypeWord::Int)
+        } else {
+            let (op, witness) = if ty == TypeWord::Bool {
+                (BinOp::Eq, ExprKind::BoolLit(false))
+            } else {
+                (BinOp::Sub, ExprKind::IntLit(0))
+            };
+            (ExprKind::Binary {
+                op,
+                lhs: Box::new(value),
+                rhs: Box::new(Expr { kind: witness, span }),
+            }, ty)
+        };
+        body.push(Stmt::Let {
+            kw: span,
+            name: Ident { name: format!("{symbol}_arg_{i}"), span },
+            ann: Some(TypeAnn { kind: TypeRef::Builtin(result), span }),
+            mutable: false,
+            value: Expr { kind, span },
+            span,
+        });
+    }
+    let mut body = wrap_view_check_loops(body, loop_sources);
+    body.push(Stmt::Return { value: zero, span });
+    Ok(Some(Item::Fn(FnItem {
+        name: Ident { name: symbol, span },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn { kind: TypeRef::Builtin(TypeWord::Int), span },
+        body: Block { stmts: body, span },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+        proto: false,
+        test_attribute: None,
+    })))
+}
+
+struct ViewCheckLoop {
+    source: Ident,
+    iter: Expr,
+    value: Ident,
+    index: Option<Ident>,
+}
+
+type ViewCheckLocals = Vec<(String, String, Span)>;
+
+fn view_check_loop_sources(
+    symbol: &str,
+    node: &ComponentNode,
+    binding: super::age_component::FieldBinding<'_>,
+    loops: &[&ComponentViewFor],
+) -> Result<(Vec<ViewCheckLoop>, ViewCheckLocals), Vec<Diagnostic>> {
+    let mut visible = Vec::new();
+    let mut loop_sources = Vec::new();
+    for (depth, view_loop) in loops.iter().enumerate() {
+        let iter = super::age_component::rename_expr_with_params(
+            &view_loop.iter, binding, &node.fields, &visible,
+        )?;
+        let span = view_loop.span;
+        let value = Ident { name: format!("{symbol}_value_{depth}"), span };
+        visible.insert(0, (view_loop.value.clone(), value.name.clone(), span));
+        let index = view_loop.index.as_ref().map(|name| {
+            let index = Ident { name: format!("{symbol}_index_{depth}"), span };
+            visible.insert(0, (name.clone(), index.name.clone(), span));
+            index
+        });
+        let source = Ident { name: format!("{symbol}_source_{depth}"), span };
+        loop_sources.push(ViewCheckLoop { source, iter, value, index });
+    }
+    Ok((loop_sources, visible))
+}
+
+fn wrap_view_check_loops(mut body: Vec<Stmt>, loops: Vec<ViewCheckLoop>) -> Vec<Stmt> {
+    for ViewCheckLoop { source, iter, value, index } in loops.into_iter().rev() {
+        let span = source.span;
+        if let Some(index) = index {
+            // The checker needs the index type and scope only. Runtime
+            // iteration supplies the actual index to the event.
+            body.insert(0, Stmt::Let {
+                kw: span, name: index, ann: None, mutable: false,
+                value: Expr { kind: ExprKind::IntLit(0), span }, span,
+            });
+        }
+        body = vec![
+            Stmt::Let { kw: span, name: source.clone(), ann: None, mutable: false, value: iter, span },
+            Stmt::ForIn {
+                var: value,
+                iter: Expr { kind: ExprKind::Var(source), span },
+                body: Block { stmts: body, span },
+                span,
+            },
+        ];
+    }
+    body
+}
+
+/// Source symbol of a checked per-instance computed value.
+pub fn computed_fn_name_at(node: usize, instance: usize, field: &str) -> String {
+    format!("{AGE_PACKAGE_HIDDEN_PREFIX}computed_{node}_{instance}_{field}")
+}
+
+pub(crate) fn computed_fn(name: String, value: Expr) -> Item {
+    let span = value.span;
+    Item::Fn(FnItem {
+        name: Ident { name, span },
+        type_params: Vec::new(),
+        params: Vec::new(),
+        ret: TypeAnn { kind: TypeRef::Inferred, span },
+        body: Block { stmts: vec![Stmt::Return { value, span }], span },
+        span,
+        receiver: Receiver::Free,
+        owner: None,
+        script: false,
+        proto: false,
+        test_attribute: None,
+    })
+}
+
+#[derive(Clone)]
+struct ViewScope<'a> {
+    node: &'a ComponentNode,
+    binding: super::age_component::FieldBinding<'a>,
+    visible: Vec<(String, String, Span)>,
+    loops: Vec<(Ident, Expr, Ident, Option<Ident>)>,
+}
+
+impl<'a> ViewScope<'a> {
+    fn new(
+        symbol: &str,
+        node: &'a ComponentNode,
+        node_index: usize,
+        instance: usize,
+        loops: &[&ComponentViewFor],
+    ) -> Result<Self, Vec<Diagnostic>> {
+        Self::with_binding(
+            symbol, node, super::age_component::FieldBinding::state_at(node_index, instance, node), loops,
+        )
+    }
+
+    fn with_binding(
+        symbol: &str,
+        node: &'a ComponentNode,
+        binding: super::age_component::FieldBinding<'a>,
+        loops: &[&ComponentViewFor],
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let mut scope = Self {
+            node,
+            binding,
+            visible: Vec::new(),
+            loops: Vec::new(),
+        };
+        for (depth, view_loop) in loops.iter().enumerate() {
+            let iter = scope.rename(&view_loop.iter)?;
+            let span = view_loop.span;
+            let (value, index) = scope.bind_loop_names(symbol, view_loop, depth);
+            let source = Ident { name: format!("{symbol}_source_{depth}"), span };
+            scope.loops.push((source, iter, value, index));
+        }
+        Ok(scope)
+    }
+
+    fn rename(&self, expr: &Expr) -> Result<Expr, Vec<Diagnostic>> {
+        super::age_component::rename_expr_with_params(
+            expr, self.binding, &self.node.fields, &self.visible,
+        )
+    }
+
+    fn bind_loop_names(&mut self, symbol: &str, iteration: &ComponentViewFor, depth: usize) -> (Ident, Option<Ident>) {
+        let span = iteration.span;
+        let value = Ident { name: format!("{symbol}_value_{depth}"), span };
+        self.visible.insert(0, (iteration.value.clone(), value.name.clone(), span));
+        let index = iteration.index.as_ref().map(|name| {
+            let index = Ident { name: format!("{symbol}_index_{depth}"), span };
+            self.visible.insert(0, (name.clone(), index.name.clone(), span));
+            index
+        });
+        (value, index)
+    }
+
+    fn wrap(self, mut body: Vec<Stmt>) -> Vec<Stmt> {
+        for (source, iter, value, index) in self.loops.into_iter().rev() {
+            let span = source.span;
+            if let Some(index) = index {
+                // Runtime iteration supplies the actual position. This body
+                // checks the position's type and scope.
+                body.insert(0, Stmt::Let {
+                    kw: span, name: index, ann: None, mutable: false,
+                    value: Expr { kind: ExprKind::IntLit(0), span }, span,
+                });
+            }
+            body = vec![
+                Stmt::Let { kw: span, name: source.clone(), ann: None, mutable: false, value: iter, span },
+                Stmt::ForIn {
+                    var: value,
+                    iter: Expr { kind: ExprKind::Var(source), span },
+                    body: Block { stmts: body, span },
+                    span,
+                },
+            ];
+        }
+        body
     }
 }
+
 /// 隐藏求值函数的**源形状**：`fn <prefix><n>() Str { return (<expr>).clone() }`。
 ///
 /// 这是普通 Auto 源，交给唯一 verify；本函数不改判据、不建第二套检查。
@@ -1547,6 +2306,608 @@ enum RefFailure {
     NotANode,
     /// 名字在**多个**模块里都是 node，而本模块一个都没导入——必须显式选一个。
     Ambiguous,
+}
+
+/// Resolve widget tags and lower their arguments in the declaring modules.
+pub(crate) fn bind_widget_packages(
+    components: &[super::packages::PackagedAgeComponent],
+    units: &mut std::collections::BTreeMap<String, super::packages::PackageSyntax>,
+    scenario: &super::age_component::ComponentScenario,
+    sites: &WidgetSiteTargets,
+) -> Result<AgeWidgetRefs, super::packages::PackageDiagnostic> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut resolved: AgeWidgetRefs = BTreeMap::new();
+    let mut signatures = BTreeSet::new();
+    walk_widget_sites(components, scenario.instances.max(1), sites, |site, target| {
+        let properties = site.bind(target, units, &mut signatures)?;
+        let events = site.bind_events(target)?;
+        resolved.entry((site.component.module.clone(), site.component.node.name.name.clone()))
+            .or_default().push(AgeWidgetRef {
+                module: target.module.clone(),
+                node: target.node.name.name.clone(),
+                span: site.element.span,
+                properties,
+                events,
+            });
+        Ok(())
+    })?;
+    for ((module, _), refs) in &resolved {
+        // A bound child parameter supplies the context for its value
+        // (for instance, copying an owned text field out of a row view).
+        // The untyped view-expression check at that same site is redundant.
+        let checked_spans: BTreeSet<_> = refs.iter().flat_map(|widget| &widget.properties)
+            .filter_map(|prop| match prop {
+                AgeWidgetProperty::ScopedValue { span, .. } => Some((span.start, span.end)),
+                _ => None,
+            }).collect();
+        let view_prefix = format!("{AGE_PACKAGE_HIDDEN_PREFIX}val_");
+        if !checked_spans.is_empty() {
+            units.get_mut(module).expect("parent module was parsed")
+                .program.items.retain(|item| !matches!(item, Item::Fn(function)
+                    if function.name.name.starts_with(&view_prefix)
+                        && checked_spans.contains(&(function.span.start, function.span.end))));
+        }
+    }
+    live_view::add_widget_views(components, units, &resolved, scenario)?;
+    Ok(resolved)
+}
+
+pub(crate) type WidgetSiteTargets = std::collections::BTreeMap<(String, usize), usize>;
+
+fn walk_widget_sites(
+    components: &[PackagedAgeComponent],
+    instances: usize,
+    sites: &WidgetSiteTargets,
+    mut visit: impl FnMut(WidgetArgumentSite<'_>, &PackagedAgeComponent)
+        -> Result<(), super::packages::PackageDiagnostic>,
+) -> Result<(), super::packages::PackageDiagnostic> {
+    use super::age_component::{ComponentEntryValue, ComponentViewItem};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let mut supplied = BTreeMap::<&str, Vec<_>>::new();
+    for component in components {
+        let (package, _) = component.module.split_once("::").expect("bound module key");
+        supplied.entry(package).or_default().push(component);
+    }
+    let imported: BTreeSet<_> = components
+        .iter()
+        .flat_map(|component| &component.node.package_imports)
+        .map(|import| import.package.name.as_str())
+        .collect();
+    for (node_index, component) in components.iter().enumerate() {
+        let node = &component.node;
+        let failure = |diagnostic| super::packages::PackageDiagnostic {
+            module: component.module.clone(),
+            diagnostic,
+        };
+        let (own_package, _) = component.module.split_once("::").expect("bound module key");
+        let has_widget_scope = !node.package_imports.is_empty() || imported.contains(own_package);
+
+        let mut directories = BTreeMap::new();
+        for declaration in &node.package_imports {
+            let name = declaration.package.name.as_str();
+            let directory = declaration.directory.as_str();
+            if directory.is_empty() {
+                return Err(failure(text_diag(
+                    "source.age.component-package-unresolved",
+                    format!("widget `{}` requires project component package `{name}` from {directory:?}", node.name.name),
+                    declaration.span,
+                )));
+            }
+            if directories.insert(name, directory).is_some_and(|earlier| earlier != directory) {
+                return Err(failure(text_diag(
+                    "source.age.component-package-ambiguous",
+                    format!("widget `{}` declares different directories for package `{name}`", node.name.name),
+                    declaration.span,
+                )));
+            }
+        }
+        let scope: BTreeSet<_> = directories.keys().copied().chain([own_package]).collect();
+        let widgets: Vec<_> = scope
+            .iter()
+            .filter_map(|name| supplied.get(name))
+            .flatten()
+            .filter(|target| target.node.legacy_widget || target.node.public || target.module == component.module)
+            .collect();
+        let mut use_index = 0;
+        let mut work: Vec<_> = node
+            .view
+            .named_trees
+            .iter()
+            .rev()
+            .flat_map(|(_, items)| items.iter().rev().map(|item| (item, Vec::new())))
+            .collect();
+        work.extend(node.view.tree.iter().rev().map(|item| (item, Vec::new())));
+        while let Some((item, loops)) = work.pop() {
+            match item {
+                ComponentViewItem::Element(element) => {
+                    let named = element.tag.starts_with(|letter: char| letter.is_ascii_uppercase());
+                    let children = element.items.iter().rev();
+                    if !has_widget_scope || (!named && !element.tag.contains(['-', '_'])) {
+                        work.extend(children.map(|item| (item, loops.clone())));
+                        continue;
+                    }
+                    let specialized = sites
+                        .get(&(component.module.clone(), element.span.start))
+                        .map(|&index| &components[index]);
+                    let mut matching = widgets.iter().filter(|target| {
+                        specialized.map_or_else(
+                            || widget_tag_matches(&element.tag, &target.node.name.name),
+                            |selected| selected.module == target.module && selected.node.name.name == target.node.name.name,
+                        )
+                    });
+                    let Some(target) = matching.next() else {
+                        if let Some(import) = node.package_imports.iter().find(|import| {
+                            !supplied.contains_key(import.package.name.as_str())
+                        }) {
+                            return Err(failure(text_diag(
+                                "source.age.component-package-unresolved",
+                                format!(
+                                    "missing project component package `{}` from {:?} while resolving `{}`",
+                                    import.package.name, import.directory, element.tag
+                                ),
+                                import.span,
+                            )));
+                        }
+                        if !named {
+                            work.extend(children.map(|item| (item, loops.clone())));
+                            continue;
+                        }
+                        return Err(failure(text_diag(
+                            "source.age.widget-unresolved",
+                            format!("widget `{}` is absent from the declared component packages", element.tag),
+                            element.span,
+                        )));
+                    };
+                    if let Some(other) = matching.next() {
+                        return Err(failure(text_diag(
+                            "source.age.widget-ambiguous",
+                            format!("widget `{}` is declared in `{}` and `{}`", element.tag, target.module, other.module),
+                            element.span,
+                        )));
+                    }
+                    work.extend(children.filter(|item| {
+                        !matches!(item, ComponentViewItem::Entry(entry)
+                            if matches!(entry.value, ComponentEntryValue::ChildEvent(_)))
+                    }).map(|item| (item, loops.clone())));
+                    visit(WidgetArgumentSite {
+                        component, node_index, use_index, element, loops: &loops, instances,
+                    }, target)?;
+                    use_index += 1;
+                }
+                ComponentViewItem::For(iteration) => {
+                    let mut loops = loops;
+                    loops.push(iteration);
+                    work.extend(iteration.items.iter().rev().map(|item| (item, loops.clone())));
+                }
+                ComponentViewItem::Cond(branch) => {
+                    work.extend(branch.else_items.iter().rev().map(|item| (item, loops.clone())));
+                    work.extend(branch.then_items.iter().rev().map(|item| (item, loops.clone())));
+                }
+                ComponentViewItem::Entry(entry) if matches!(entry.value, ComponentEntryValue::ChildEvent(_)) => {
+                    return Err(failure(text_diag(
+                        "source.age.child-event-site",
+                        "`$event` requires an event binding on a declared child widget",
+                        entry.span,
+                    )));
+                }
+                ComponentViewItem::Text(_) | ComponentViewItem::Entry(_) => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn fold_widget_tag(tag: &str) -> String {
+    tag.chars().filter(|ch| !matches!(ch, '-' | '_')).collect::<String>().to_lowercase()
+}
+
+/// Match the authored tag and declared name of a package widget.
+pub fn widget_tag_matches(tag: &str, name: &str) -> bool {
+    tag == name || (tag.contains(['-', '_']) && fold_widget_tag(tag) == fold_widget_tag(name))
+}
+
+fn widget_prop_name(kind: &str, widget: &str, property: &str) -> String {
+    format!("{AGE_PACKAGE_HIDDEN_PREFIX}prop_{kind}_{}_{widget}_{property}", widget.len())
+}
+
+pub(crate) fn widget_prop_type(param: &super::age_component::ComponentParam) -> Option<TypeAnn> {
+    if let Some(ann) = &param.collection_type {
+        return list_element(ann).map(|_| ann.clone());
+    }
+    // An authored legacy default establishes the known text-list shape.
+    let span = param.ty_span;
+    let kind = if param.ty == "List" && param.default.is_some() {
+        TypeRef::Generic {
+            name: Ident { name: "List".into(), span },
+            args: vec![TypeAnn { kind: TypeRef::Builtin(TypeWord::StrOwned), span }],
+        }
+    } else {
+        TypeRef::Builtin(super::age_component::payload_type(&param.ty)?)
+    };
+    Some(TypeAnn { kind, span })
+}
+
+pub(crate) fn widget_value_params(node: &ComponentNode) -> &[super::age_component::ComponentParam] {
+    if node.legacy_widget { &node.params } else { &[] }
+}
+
+pub(crate) fn widget_input_name(property: &str) -> String {
+    format!("{AGE_PACKAGE_HIDDEN_PREFIX}input_{property}")
+}
+
+pub(crate) fn widget_input_params(node: &ComponentNode) -> Vec<super::ast::Param> {
+    widget_value_params(node).iter().filter_map(|property| {
+        let ty = widget_prop_type(property)?;
+        let span = property.ty_span;
+        Some(super::ast::Param {
+            name: Ident { name: widget_input_name(&property.name), span },
+            mode: if ty.kind == TypeRef::Builtin(TypeWord::StrOwned) {
+                super::ast::ParamMode::Move
+            } else {
+                super::ast::ParamMode::Default
+            },
+            ty,
+            default: None,
+            span,
+        })
+    }).collect()
+}
+
+struct WidgetArgumentSite<'a> {
+    component: &'a PackagedAgeComponent,
+    node_index: usize,
+    use_index: usize,
+    element: &'a super::age_component::ComponentViewElement,
+    loops: &'a [&'a ComponentViewFor],
+    instances: usize,
+}
+
+impl WidgetArgumentSite<'_> {
+    fn bind_events(
+        &self,
+        child: &PackagedAgeComponent,
+    ) -> Result<Vec<AgeWidgetEvent>, super::packages::PackageDiagnostic> {
+        use super::age_component::{payload_type, ComponentEntryValue, ComponentViewItem};
+        let mut events = Vec::<AgeWidgetEvent>::new();
+        for item in &self.element.items {
+            let ComponentViewItem::Entry(entry) = item else {
+                continue;
+            };
+            let ComponentEntryValue::ChildEvent(target) = &entry.value else {
+                continue;
+            };
+            let error = |code, message| super::packages::PackageDiagnostic {
+                module: self.component.module.clone(),
+                diagnostic: text_diag(code, message, entry.span),
+            };
+            let Some(event) = entry.key.strip_prefix("on").and_then(|name| {
+                child.node.messages.iter().find(|message| message.outbound && message.name == name)
+            }) else {
+                return Err(error("source.age.child-event-unknown", format!(
+                    "widget `{}` has no declared outbound event for `{}`", child.node.name.name, entry.key,
+                )));
+            };
+            let matches_attached_key = |item: &&ComponentViewItem| {
+                matches!(item, ComponentViewItem::Entry(other) if other.key == entry.key)
+            };
+            if self.element.items.iter().filter(matches_attached_key).nth(1).is_some() {
+                return Err(error("source.age.child-event-duplicate", format!(
+                    "widget `{}` binds event `{}` more than once", child.node.name.name, event.name,
+                )));
+            }
+            let Some(parent) = self.component.node.messages.iter().find(|message| message.name == target.name) else {
+                return Err(error("source.age.child-event-target", format!(
+                    "event `{}` targets undeclared parent message `{}`", event.name, target.name,
+                )));
+            };
+            let same_payload = matches!((event.payload.as_slice(), parent.payload.as_slice()),
+                ([source], [target]) if payload_type(source).is_some_and(|ty| Some(ty) == payload_type(target)));
+            if !same_payload {
+                return Err(error("source.age.child-event-payload", format!(
+                    "event `{}` ({}) and parent message `{}` ({}) must carry the same scalar payload",
+                    event.name, event.payload.join(", "), parent.name, parent.payload.join(", "),
+                )));
+            }
+            events.push(AgeWidgetEvent {
+                name: event.name.clone(),
+                target: parent.name.clone(),
+            });
+        }
+        Ok(events)
+    }
+
+    fn bind(
+        &self,
+        target: &PackagedAgeComponent,
+        units: &mut std::collections::BTreeMap<String, super::packages::PackageSyntax>,
+        signatures: &mut std::collections::BTreeSet<(String, String)>,
+    ) -> Result<Vec<AgeWidgetProperty>, super::packages::PackageDiagnostic> {
+        use super::age_component::{ComponentEntryValue, ComponentViewItem};
+
+        let mut props = Vec::new();
+        let parent = &self.component.module;
+        let child = &target.module;
+        let widget = &target.node.name.name;
+        let error = |code, message, span| super::packages::PackageDiagnostic {
+            module: parent.clone(),
+            diagnostic: text_diag(code, message, span),
+        };
+        for (index, param) in target.node.params.iter().enumerate() {
+            let mut args = self.element.items.iter().filter_map(|item| match item {
+                ComponentViewItem::Entry(entry) if entry.key == param.name => Some(entry),
+                _ => None,
+            });
+            let arg = args.next();
+            if let Some(duplicate) = args.next() {
+                return Err(error(
+                    "source.age.widget-prop-duplicate",
+                    format!("widget `{widget}` receives property `{}` twice", param.name),
+                    duplicate.span,
+                ));
+            }
+            let provided = match arg {
+                Some(entry) => {
+                    let ComponentEntryValue::Expr(value) = &entry.value else {
+                        return Err(error(
+                            "source.age.widget-prop-value",
+                            format!("widget property `{}` requires a value expression", param.name),
+                            entry.span,
+                        ));
+                    };
+                    Some(value)
+                }
+                None if param.default.is_some() => None,
+                None => return Err(error(
+                    "source.age.widget-prop-required",
+                    format!("widget `{widget}` requires property `{}`", param.name),
+                    self.element.span,
+                )),
+            };
+            if param.ty == "msg" {
+                let value = provided.expect("msg has no default");
+                let ExprKind::Field { base, name } = &value.kind else {
+                    return Err(error(
+                        "source.age.widget-prop-message",
+                        format!("widget channel `{}` requires a declared parent message", param.name),
+                        value.span,
+                    ));
+                };
+                let variant = self.component.node.messages.iter().find(|m| {
+                    m.name == name.name && matches!(&base.kind, ExprKind::Var(id) if id.name == "self")
+                }).ok_or_else(|| error(
+                    "source.age.widget-prop-message",
+                    format!("widget channel `{}` requires a declared parent message", param.name),
+                    value.span,
+                ))?;
+                if !variant.payload.is_empty() && target.node.handlers.iter().any(|handler| {
+                    widget_runtime::unit_callback(&target.node, handler) == Some(param.name.as_str())
+                }) {
+                    return Err(error(
+                        "source.age.widget-prop-message",
+                        format!("widget channel `{}` forwards without a payload", param.name),
+                        value.span,
+                    ));
+                }
+                props.push(AgeWidgetProperty::Message {
+                    name: param.name.clone(),
+                    target: variant.name.clone(),
+                    payload: variant.payload.clone(),
+                });
+                continue;
+            }
+            let Some(ty) = widget_prop_type(param) else {
+                return Err(super::packages::PackageDiagnostic {
+                    module: child.clone(),
+                    diagnostic: text_diag(
+                        "source.age.widget-prop-type",
+                        format!("widget property `{}` requires a scalar or explicit List<T> type", param.name),
+                        param.ty_span,
+                    ),
+                });
+            };
+            let sig = widget_prop_name("type", widget, &param.name);
+            let default_name = widget_prop_name("default", widget, &param.name);
+            if signatures.insert((child.clone(), sig.clone())) {
+                let items = &mut units.get_mut(child).expect("widget module was parsed").program.items;
+                items.push(widget_prop_signature(sig, ty.clone()));
+                if let Some(value) = &param.default {
+                    let default = widget_prop_evaluator(
+                        default_name.clone(), value.clone(), &ty, true,
+                    );
+                    items.push(Item::Fn(default));
+                }
+            }
+
+            let Some(expr) = provided else {
+                props.push(AgeWidgetProperty::Value {
+                    name: param.name.clone(),
+                    module: child.clone(),
+                    evaluators: vec![default_name; self.instances],
+                    authored_default: true,
+                    runtime_evaluator: None,
+                });
+                continue;
+            };
+            let base = format!(
+                "{AGE_PACKAGE_HIDDEN_PREFIX}prop_value_{}_{}_{index}",
+                self.node_index, self.use_index,
+            );
+            let translate = |mut ds: Vec<Diagnostic>| super::packages::PackageDiagnostic {
+                    module: parent.clone(), diagnostic: ds.remove(0),
+            };
+            let make_value = |symbol: String, instance: usize| -> Result<_, super::packages::PackageDiagnostic> {
+                let scope = ViewScope::new(
+                    &symbol, &self.component.node, self.node_index, instance, self.loops,
+                ).map_err(translate)?;
+                let value = if is_model_record_list(&ty, expr) {
+                    expr.clone()
+                } else {
+                    scope.rename(expr).map_err(translate)?
+                };
+                let mut function = widget_prop_evaluator(symbol, value, &ty, false);
+                function.params = widget_input_params(&self.component.node);
+                Ok((function, scope))
+            };
+            let items = &mut units.get_mut(parent).expect("parent module was parsed").program.items;
+            if self.loops.is_empty() {
+                let mut evaluators = Vec::new();
+                for instance in 0..self.instances {
+                    let symbol = format!("{base}_{instance}");
+                    let (function, _) = make_value(symbol.clone(), instance)?;
+                    items.push(Item::Fn(function));
+                    evaluators.push(symbol);
+                }
+                props.push(AgeWidgetProperty::Value {
+                    name: param.name.clone(), module: parent.clone(), evaluators, authored_default: false,
+                    runtime_evaluator: None,
+                });
+            } else {
+                let (mut function, scope) = make_value(base.clone(), 0)?;
+                let span = expr.span;
+                let Some(Stmt::Return { value, .. }) = function.body.stmts.pop() else {
+                    unreachable!("widget property evaluator must return its value");
+                };
+                function.body.stmts.push(Stmt::ExprStmt { value, span });
+                function.body.stmts = scope.wrap(std::mem::take(&mut function.body.stmts));
+                function.body.stmts.push(Stmt::Return {
+                    value: Expr { kind: ExprKind::IntLit(0), span }, span,
+                });
+                function.ret = TypeAnn { kind: TypeRef::Builtin(TypeWord::Int), span };
+                props.push(AgeWidgetProperty::ScopedValue {
+                    name: param.name.clone(), checker: base, span,
+                });
+                items.push(Item::Fn(function));
+            }
+        }
+        Ok(props)
+    }
+}
+
+fn widget_prop_signature(name: String, ty: TypeAnn) -> Item {
+    let span = ty.span;
+    let value = Expr { kind: ExprKind::IntLit(0), span };
+    let Item::Fn(mut function) = computed_fn(name, value) else { unreachable!() };
+    function.ret = TypeAnn { kind: TypeRef::Builtin(TypeWord::Int), span };
+    function.params.push(super::ast::Param {
+        name: Ident { name: "__age_value".into(), span },
+        mode: if ty.kind == TypeRef::Builtin(TypeWord::StrOwned) {
+            super::ast::ParamMode::Move
+        } else {
+            super::ast::ParamMode::Default
+        },
+        ty,
+        default: None,
+        span,
+    });
+    Item::Fn(function)
+}
+
+fn widget_prop_evaluator(name: String, mut value: Expr, ty: &TypeAnn, default: bool) -> FnItem {
+    let span = value.span;
+    if ty.kind == TypeRef::Builtin(TypeWord::StrOwned) {
+        value = Expr {
+            span,
+            kind: ExprKind::Method {
+                recv: Box::new(value),
+                name: Ident { name: "clone".into(), span },
+                args: Vec::new(),
+            },
+        };
+    }
+    let local = Ident { name: "__age_value".into(), span };
+    let returned = Expr { kind: ExprKind::Var(local.clone()), span };
+    let Item::Fn(mut function) = computed_fn(name, returned) else { unreachable!() };
+    // A default lives in the declaration's module. The caller's type is
+    // filled in after both modules' names have been bound.
+    let annotation = default.then(|| TypeAnn { kind: ty.kind.clone(), span });
+    if let Some(ty) = &annotation {
+        function.ret = ty.clone();
+    }
+    function.body.stmts.insert(0, Stmt::Let {
+        kw: span, name: local, ann: annotation, mutable: false, value, span,
+    });
+    function
+}
+
+fn finish_widget_properties(
+    bound: &mut super::packages::BoundPackages,
+    refs: &AgeWidgetRefs,
+) -> Result<(), Diagnostic> {
+    use std::collections::BTreeMap;
+    if refs.is_empty() {
+        return Ok(());
+    }
+    let symbol = |module: &str, name: &str| {
+        let (package, id) = module.split_once("::").expect("bound module key");
+        super::packages::fn_symbol(package, id, name, &bound.entry)
+    };
+    let mut types = BTreeMap::new();
+    let mut pending = BTreeMap::new();
+    for ((parent, _), widgets) in refs {
+        for widget in widgets {
+            for prop in &widget.properties {
+                let (name, evaluators, scoped) = match prop {
+                    AgeWidgetProperty::Value { name, module, evaluators, runtime_evaluator, authored_default: false } =>
+                            (name, evaluators.iter().chain(runtime_evaluator).map(|evaluator| symbol(module, evaluator)).collect(), false),
+                    AgeWidgetProperty::ScopedValue { name, checker, .. } =>
+                        (name, vec![symbol(parent, checker)], true),
+                    _ => continue,
+                };
+                let sig = symbol(&widget.module, &widget_prop_name("type", &widget.node, name));
+                types.insert(sig.clone(), None);
+                for evaluator in evaluators {
+                    pending.insert(evaluator, (sig.clone(), scoped));
+                }
+            }
+        }
+    }
+    for item in &bound.program.items {
+        if let Item::Fn(function) = item {
+            if let Some(ty) = types.get_mut(&function.name.name) {
+                *ty = Some(function.params[0].ty.clone());
+            }
+        }
+    }
+    for item in &mut bound.program.items {
+        let Item::Fn(function) = item else { continue };
+        let Some((signature, scoped)) = pending.remove(&function.name.name) else { continue };
+        let Some(Some(ty)) = types.get(&signature) else {
+            return Err(text_diag("source.age.widget-prop-type", "missing bound widget property type", function.span));
+        };
+        let ann = TypeAnn { kind: ty.kind.clone(), span: function.span };
+        if scoped {
+            let mut block = &mut function.body;
+            while let Some(index) = block.stmts.iter().position(|stmt| matches!(stmt, Stmt::ForIn { .. })) {
+                let Stmt::ForIn { body, .. } = &mut block.stmts[index] else { unreachable!() };
+                block = body;
+            }
+            if let [.., Stmt::Let { ann: binding, .. }, Stmt::ExprStmt { value, span }] = block.stmts.as_mut_slice() {
+                *binding = Some(ann);
+                let arg = if ty.kind == TypeRef::Builtin(TypeWord::StrOwned) {
+                    Arg::MovePos(value.clone())
+                } else {
+                    Arg::Pos(value.clone())
+                };
+                *value = Expr {
+                    span: *span,
+                    kind: ExprKind::Call {
+                        callee: Ident { name: signature.clone(), span: *span },
+                        args: vec![arg],
+                    },
+                };
+                bound.references.entry(function.name.name.clone()).or_default().insert(signature);
+            }
+        } else {
+            let Some(Stmt::Let { ann: binding, .. }) = function.body.stmts.first_mut() else {
+                unreachable!("widget value getter has a binding");
+            };
+            *binding = Some(ann.clone());
+            function.ret = ann;
+        }
+    }
+    Ok(())
 }
 
 /// 解析一个模块里的全部实例引用（IF-981-REF 的核心判据）。
@@ -1758,6 +3119,10 @@ fn collect_view_event_bindings(
                 if !en.is_event {
                     continue;
                 }
+                if let Some((name, _)) = en.message_call() {
+                    out.push((en.key.clone(), name.name.clone(), en.span));
+                    continue;
+                }
                 if let ComponentEntryValue::Expr(Expr {
                     kind: crate::source::ast::ExprKind::Field { base, name },
                     ..
@@ -1772,6 +3137,32 @@ fn collect_view_event_bindings(
             }
         }
     }
+}
+
+pub(crate) fn walk_view_message_calls<'a>(
+    items: &'a [ComponentViewItem],
+    loops: &mut Vec<&'a ComponentViewFor>,
+    visit: &mut impl FnMut(&'a ComponentViewEntry, &[&'a ComponentViewFor]) -> Result<(), Vec<Diagnostic>>,
+) -> Result<(), Vec<Diagnostic>> {
+    for item in items {
+        match item {
+            ComponentViewItem::Element(element) => {
+                walk_view_message_calls(&element.items, loops, visit)?;
+            }
+            ComponentViewItem::For(view_loop) => {
+                loops.push(view_loop);
+                walk_view_message_calls(&view_loop.items, loops, visit)?;
+                loops.pop();
+            }
+            ComponentViewItem::Cond(cond) => {
+                walk_view_message_calls(&cond.then_items, loops, visit)?;
+                walk_view_message_calls(&cond.else_items, loops, visit)?;
+            }
+            ComponentViewItem::Entry(entry) if entry.message_call().is_some() => visit(entry, loops)?,
+            ComponentViewItem::Entry(_) | ComponentViewItem::Text(_) => {}
+        }
+    }
+    Ok(())
 }
 fn state_functions_present(
     bound: &super::packages::BoundPackages,

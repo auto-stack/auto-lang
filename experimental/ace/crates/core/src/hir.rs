@@ -767,9 +767,7 @@ pub enum ExprKind {
         key: ExprId,
         value: ExprId,
     },
-    /// PLAN-964 (L-22/FStr): display an I32 as a decimal owned Str. The
-    /// M2-A display domain is I32 only; the general format algorithms
-    /// belong to 972.
+    /// Display a checked i32 or f32 as a decimal owned Str.
     TextDisplay {
         operand: ExprId,
     },

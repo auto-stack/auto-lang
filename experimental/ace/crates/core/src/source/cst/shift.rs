@@ -76,7 +76,7 @@ fn shift_named_ctor_field(f: &mut NamedCtorField, delta: i64) {
     shift_span(&mut f.span, delta);
 }
 
-fn shift_expr(e: &mut Expr, delta: i64) {
+pub(super) fn shift_expr(e: &mut Expr, delta: i64) {
     shift_span(&mut e.span, delta);
     match &mut e.kind {
         // PLAN-936（T-04）：CT 需求原子——inner span 同步平移。

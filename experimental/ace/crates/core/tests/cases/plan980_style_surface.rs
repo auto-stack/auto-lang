@@ -2,7 +2,7 @@
 //!
 //! 语义=str const/fn 糖。判据按回签逐点：
 //! - 零参字面量 → const `Str`；`pub style` → 公共面；
-//! - 本地 ident 复制 → 解析为字面量拷贝；导入的 style 引用/带参调用 → `style-call` 具名拒；
+//! - 本地 ident 复制及导入的公共字面量 style 可折叠，带参调用仍报 `style-call`；
 //! - 参数化（无默认、无插值）→ fn 返回 `Str`；默认值 → `style-defaults`；插值 → `style-interp`；
 //! - 重名 → `source.module-duplicate-declaration`；`style` 作普通标识符仍合法；
 //! - 用法 `style: NAME` 在投影期替换为字面量（981 (c)3：不引入 module-global 读）。
@@ -122,21 +122,64 @@ widget App {
     compile(source).expect("the same form verifies on the package path");
 }
 
-/// ⑥导入的 style 引用 → `style-call` 具名拒（本刀不折叠、无 global 读）。
+/// ⑥公共字面量样式以受检包导入的身份绑定。
 #[test]
-fn p980_style_imported_reference_is_named() {
+fn p980_style_imported_reference_is_literal() {
+    use ace_core::source::age_component::{ComponentEntryValue, ComponentViewItem};
+    use ace_core::source::ast::ExprKind;
     let utils =
         "pub style base = \"bg-base\"\nnode U {\n    view {\n        text \"u\" {}\n    }\n}\n";
     let main =
         "use utils: base\n\nnode App {\n    view {\n        text \"x\" { style: base }\n    }\n}\n";
-    let err = compile_age_package(
+    let package = compile_age_package(
         &[unit("app", "main", main), unit("app", "utils", utils)],
         "app::main",
         LegacyWidgetAlias::Accept,
         &caps(),
     )
-    .expect_err("imported style references are a named pending surface");
-    assert_eq!(err[0].code, "source.age.style-call", "{err:?}");
+    .expect("checked public style import");
+    let node = &package.bound.units["app::main"].age_components[0].0;
+    let [ComponentViewItem::Element(element)] = node.view.tree.as_slice() else {
+        panic!("expected a styled text element");
+    };
+    assert!(matches!(&element.items[..], [ComponentViewItem::Entry(entry)]
+        if entry.key == "style" && matches!(&entry.value, ComponentEntryValue::Expr(expr)
+            if matches!(&expr.kind, ExprKind::StrLit(text) if text == "bg-base"))));
+
+    let private = utils.replace("pub style", "style");
+    let diagnostic = compile_age_package(
+        &[unit("app", "main", main), unit("app", "utils", &private)],
+        "app::main",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+    ).expect_err("styles use package export visibility");
+    assert_eq!(diagnostic[0].code, "source.module-private");
+}
+
+#[test]
+fn p107_public_style_dependencies_only_require_referenced_recipes() {
+    let styles = r#"
+pub style gap = "gap-1"
+pub style fancy(bg: str = "blue") = "bg-{bg}"
+"#;
+    let main = r#"
+use stylekit.styles: gap, fancy
+node App {
+    view { text "Chart" { style: gap } }
+}
+"#;
+    let import = |src| compile_age_package(
+        &[unit("app", "main", src), unit("stylekit", "styles", styles)],
+        "app::main",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+    );
+    let package = import(main).expect("unused dependency recipe does not block a literal");
+    assert!(package.description.components.iter().any(|component| component.name == "App"));
+    let used = main.replace("style: gap", "style: fancy");
+    let diagnostic = import(&used).expect_err("referenced unsupported recipe is rejected");
+    assert_eq!(diagnostic[0].code, "source.age.style-defaults");
+    assert!(diagnostic[0].message.contains("module `stylekit::styles`"));
 }
 
 /// ⑦带参调用形 → `style-call` 具名拒（不折叠）。

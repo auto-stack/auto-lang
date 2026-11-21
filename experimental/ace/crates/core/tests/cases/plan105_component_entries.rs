@@ -380,7 +380,7 @@ fn p105_view_for_single_and_indexed_variables() {
         for it in items {
             match it {
                 ace_core::source::age_component::ComponentViewItem::For(f) => {
-                    out.push((f.index.clone(), f.value.clone()));
+                    out.push((f.index.clone().unwrap_or_default(), f.value.clone()));
                     walk(&f.items, out);
                 }
                 ace_core::source::age_component::ComponentViewItem::Element(e) => {
@@ -662,8 +662,8 @@ fn p105_handler_for_structure_and_named_reject() {
         .expect("handler-level for projects");
     let handler = &nodes[0].handlers[0];
     let for_stmt = handler.stmts.iter().find_map(|s| match s {
-        ace_core::source::age_component::ComponentStmt::For { value, body, .. } => {
-            Some((value.name.clone(), body.len()))
+        ace_core::source::age_component::ComponentStmt::For { name, body, .. } => {
+            Some((name.name.clone(), body.len()))
         }
         _ => None,
     });
@@ -690,6 +690,7 @@ fn p105_handler_for_structure_and_named_reject() {
         err.iter().any(|d| {
             d.code == "source.age.component-unsupported"
                 || d.code.starts_with("source.index")
+                || d.code == "source.iterate-scrutinee"
                 || d.code == "source.undefined"
                 || d.code == "source.type-mismatch"
                 || d.code == "source.unsupported"

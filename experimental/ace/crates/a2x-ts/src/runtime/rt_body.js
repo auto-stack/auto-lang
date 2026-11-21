@@ -792,6 +792,21 @@ export function a2x_str_utf8(x) {
   return _decodeUtf8Strict(_asBytes(x));
 }
 
+/** Find a text sequence from a Unicode scalar offset. */
+export function a2x_str_find(text, pattern, start) {
+  const haystack = Array.from(a2x_str_utf8(text));
+  const needle = a2x_str_utf8(pattern);
+  const offset = _intArg(start, "text search start");
+  if (offset < 0 || offset > haystack.length) {
+    return -1;
+  }
+  const tail = haystack.slice(offset).join("");
+  const utf16Index = tail.indexOf(needle);
+  return utf16Index < 0
+    ? -1
+    : _checkedI32(offset + Array.from(tail.slice(0, utf16Index)).length, "text search index overflow");
+}
+
 /** Unicode scalar (code point) count. */
 export function a2x_str_len(x) {
   const s = _decodeUtf8Strict(_asBytes(x));
@@ -890,6 +905,50 @@ export function a2x_str_ne(l, r) {
 /** Owned `Str` of the decimal representation of a checked i32. */
 export function a2x_str_display_i32(v) {
   return new A2xOwnedStr(_encoder.encode(String(_checkedI32(v, "i32 display"))));
+}
+
+function _displayF32(value) {
+  if (Number.isNaN(value)) return "NaN";
+  if (value === Infinity) return "inf";
+  if (value === -Infinity) return "-inf";
+
+  const sign = value < 0 || Object.is(value, -0) ? "-" : "";
+  const magnitude = Math.abs(value);
+  // JavaScript prints an f64 shortest decimal. Keep only the precision
+  // needed to round-trip to the checked f32, then write fixed notation.
+  let candidate;
+  for (let precision = 1; precision <= 9; precision += 1) {
+    candidate = magnitude.toExponential(precision - 1);
+    const rounded = Number(candidate);
+    if (Math.fround(rounded) === magnitude) break;
+
+    // At a binary power the rounding interval can be wider on one
+    // side. Check the adjacent decimal towards the original value too.
+    const [coefficient, exponent] = candidate.split("e");
+    const digits = Number(coefficient.replace(".", ""));
+    const place = Number(exponent) - precision + 1;
+    const neighbor = rounded < magnitude
+      ? `${digits + 1}e${place}`
+      : digits === 10 ** (precision - 1)
+        ? `${digits * 10 - 1}e${place - 1}`
+        : `${digits - 1}e${place}`;
+    if (Math.fround(Number(neighbor)) === magnitude) {
+      candidate = neighbor;
+      break;
+    }
+  }
+  const [mantissa, exponent] = candidate.split("e");
+  const separator = mantissa.indexOf(".");
+  const position = (separator < 0 ? mantissa.length : separator) + Number(exponent ?? 0);
+  const digits = mantissa.replace(".", "").replace(/0+$/, "") || "0";
+  if (position <= 0) return sign + "0." + "0".repeat(-position) + digits;
+  if (position >= digits.length) return sign + digits + "0".repeat(position - digits.length);
+  return sign + digits.slice(0, position) + "." + digits.slice(position);
+}
+
+/** Owned Str of the decimal representation of a checked f32. */
+export function a2x_str_display_f32(v) {
+  return new A2xOwnedStr(_encoder.encode(_displayF32(a2x_f32_round(v))));
 }
 
 function _charValue(c) {

@@ -6,7 +6,7 @@
 //!   重名/未知变体/引用错误与恢复；
 //! - **V-EVT-B-PAYLOAD**：`Send` = 空载荷（向载荷变体 Send 是 arity 域错误）；
 //!   `SendArgs` 的 arity/类型在**效果前**拒（类型错由唯一 verify 在原 span 报）；
-//!   本切片不可承载的载荷拼写（float）具名拒（fail-closed）；
+//!   本切片不可承载的载荷拼写具名拒（fail-closed）；
 //! - **V-EVT-B-BIND**：handler 形参 ↔ 载荷槽**声明级**一致（未派发也核对）、
 //!   重复 binder 拒、param 与 model 同拼写时裸名归 param、未绑定名拒、
 //!   未调用 handler 亦按声明语义 verify。
@@ -244,25 +244,22 @@ fn p981_evt_b_payload_swapped_multi_args_are_rejected() {
     dispatch(src, good, 1).expect("the correctly ordered payload dispatches");
 }
 
-/// V-EVT-B-PAYLOAD：本切片不可承载的载荷拼写（`float`，age-package 面合法
+/// V-EVT-B-PAYLOAD：本切片不可承载的载荷拼写（`Opaque`，age-package 面合法
 /// 声明）在**派发时**具名拒（`source.age.component-unsupported`，指向原
 /// 声明），零效果——fail-closed，不静默丢值执行。
 #[test]
 fn p981_evt_b_unsupported_payload_lane_is_named_refused() {
-    let src = "node P {\n    msg Msg {\n        SetRatio(float)\n    }\n    on {\n        .SetRatio(v) -> {\n            .ratio = 0.5\n        }\n    }\n    model {\n        ratio float = 0.0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n";
-    // 声明合法（float 拼写/字段在 age-package 面允许；ratio 字段本身走既有
-    // unsupported 域，换一个 int 观测字段保证被拒点是**载荷执行**）。
-    let src = "node P {\n    msg Msg {\n        SetRatio(float),\n        Bump(int)\n    }\n    on {\n        .SetRatio(v) -> {\n            .hits += 1\n        }\n        .Bump(n) -> {\n            .hits += n\n        }\n    }\n    model {\n        hits int = 0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n";
-    let anchor = anchor_of(src, "SetRatio(float)");
-    compile(src).expect("declaring a float payload variant stays legal");
+    let src = "node P {\n    msg Msg {\n        Receive(Opaque),\n        Bump(int)\n    }\n    on {\n        .Receive(v) -> {\n            .hits += 1\n        }\n        .Bump(n) -> {\n            .hits += n\n        }\n    }\n    model {\n        hits int = 0\n    }\n    view {\n        text \"p\" {}\n    }\n}\n";
+    let anchor = anchor_of(src, "Receive(Opaque)");
+    compile(src).expect("declaration can retain an unsupported payload type");
     let ops = vec![ScenarioOp::send_args_from_values(
         0,
-        "SetRatio",
+        "Receive",
         &[InitialValue::Int(1)],
         anchor,
     )];
     match dispatch(src, ops, 1) {
-        Ok(_) => panic!("dispatching a float payload must be named-refused"),
+        Ok(_) => panic!("dispatching an unsupported payload must be named-refused"),
         Err(ds) => {
             assert_eq!(ds[0].code, "source.age.component-unsupported", "{ds:?}");
             assert_eq!(ds[0].span.start, anchor.start);

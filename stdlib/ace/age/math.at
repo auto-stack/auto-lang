@@ -1,0 +1,111 @@
+// Pure Auto f32 geometry operations for the AGE package surface.
+// The sin/cos reduction is intended for chart angles, before loss of f32
+// phase precision for large arguments. Both hosts execute the same f32 steps.
+
+pub fn sin(x float) float {
+    let r float = principal_angle(x)
+    if r > 1.5707963267948966 {
+        return sin_series(3.141592653589793 - r)
+    }
+    if r < -1.5707963267948966 {
+        return sin_series(-3.141592653589793 - r)
+    }
+    return sin_series(r)
+}
+
+pub fn cos(x float) float {
+    let r float = principal_angle(x)
+    if r > 1.5707963267948966 {
+        return -cos_series(3.141592653589793 - r)
+    }
+    if r < -1.5707963267948966 {
+        return -cos_series(-3.141592653589793 - r)
+    }
+    return cos_series(r)
+}
+
+fn principal_angle(x float) float {
+    let r float = x % 6.283185307179586
+    if r < -3.141592653589793 { return r + 6.283185307179586 }
+    if r > 3.141592653589793 { return r - 6.283185307179586 }
+    return r
+}
+
+// The same Maclaurin recurrence as the assembled std math's sin/cos, on
+// the closer half turn to reduce cancellation at f32 precision.
+fn sin_series(x float) float {
+    return trig_series(x * x, x, 2.0, x, 6)
+}
+
+fn cos_series(x float) float {
+    return trig_series(x * x, 1.0, 1.0, 1.0, 6)
+}
+
+fn trig_series(x2 float, term float, order float, sum float, left int) float {
+    if left == 0 { return sum }
+    let next float = term * (-x2 / (order * (order + 1.0)))
+    return trig_series(x2, next, order + 2.0, sum + next, left - 1)
+}
+
+pub fn atan2(y float, x float) float {
+    let ax float = abs_coordinate(x)
+    let ay float = abs_coordinate(y)
+    if ax == 0.0 {
+        if ay == 0.0 { return y }
+        if y < 0.0 { return -1.5707963267948966 }
+        return 1.5707963267948966
+    }
+    if ay > ax {
+        return signed_angle(y, x, 1.5707963267948966 - atan_unit(ax / ay))
+    }
+    return signed_angle(y, x, atan_unit(ay / ax))
+}
+
+fn abs_coordinate(x float) float {
+    if x < 0.0 { return -x }
+    return x
+}
+
+fn signed_angle(y float, x float, acute float) float {
+    if x < 0.0 {
+        if y < 0.0 { return acute - 3.141592653589793 }
+        return 3.141592653589793 - acute
+    }
+    if y < 0.0 { return -acute }
+    return acute
+}
+
+fn atan_unit(x float) float {
+    // Reduces the series argument to magnitude <= tan(pi / 8).
+    if x > 0.4142135623730951 {
+        let r float = (x - 1.0) / (x + 1.0)
+        return 0.7853981633974483 + atan_series(r * r, r, 3.0, r, 9)
+    }
+    return atan_series(x * x, x, 3.0, x, 9)
+}
+
+fn atan_series(x2 float, power float, order float, sum float, left int) float {
+    if left == 0 { return sum }
+    let next float = -power * x2
+    return atan_series(x2, next, order + 2.0, sum + next / order, left - 1)
+}
+
+// Binary normalization and Newton iteration, as in assembled std math.
+// Keep the iterate in [0.5, 1] so squares of finite f32 coordinates work
+// without overflow or a seed-dependent convergence budget.
+pub fn sqrt(x float) float {
+    if x <= 0.0 { return 0.0 }
+    if x - x != 0.0 { return x }
+    return sqrt_normalize(x, 1.0)
+}
+
+fn sqrt_normalize(x float, scale float) float {
+    if x >= 1.0 { return sqrt_normalize(x * 0.25, scale * 2.0) }
+    if x < 0.25 { return sqrt_normalize(x * 4.0, scale * 0.5) }
+    return scale * sqrt_newton(x, 0.5, 6)
+}
+
+fn sqrt_newton(x float, guess float, left int) float {
+    if left == 0 { return guess }
+    return sqrt_newton(x, (guess + x / guess) * 0.5, left - 1)
+}

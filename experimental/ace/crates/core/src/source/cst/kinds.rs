@@ -140,6 +140,7 @@ pub struct SourceKinds {
     pub array_lit: Option<u32>,
     /// PLAN-982（CONFIG）：配置文档面的空列表 `[]`（独立规则，不动 `array-lit`）。
     pub cfg_empty_array_lit: Option<u32>,
+    pub age_format_string: Option<u32>,
     pub array_elems: Option<u32>,
     pub index_assign_stmt: Option<u32>,
     /// PLAN-1082: the unified place-chain assignment/compound-assign
@@ -191,6 +192,7 @@ pub struct SourceKinds {
     pub tok_char_lit: u32,
     pub tok_affix_num: u32,
     pub tok_block_open: u32,
+    pub tok_age_block_comment: Option<u32>,
     pub tok_minus: u32,
     pub tok_bang: u32,
     /// PLAN-968: scheduler prefix operators and the `Task.spawn` member.
@@ -522,6 +524,7 @@ impl SourceKinds {
             range_iter: rk_opt(p, "range-iter"),
             array_lit: rk_opt(p, "array-lit"),
             cfg_empty_array_lit: rk_opt(p, "cfg-empty-array-lit"),
+            age_format_string: rk_opt(p, "age-format-string"),
             array_elems: rk_opt(p, "array-elems"),
             object_lit: rk_opt(p, "object-lit"),
             object_fields: rk_opt(p, "object-fields"),
@@ -569,6 +572,7 @@ impl SourceKinds {
             tok_char_lit: tk("char-lit"),
             tok_affix_num: tk("affix-num"),
             tok_block_open: tk("block-open"),
+            tok_age_block_comment: token_kind(p, "age-block-comment"),
             tok_minus: tk("minus"),
             tok_bang: tk("bang"),
             tok_r_await: tk("r-await"),

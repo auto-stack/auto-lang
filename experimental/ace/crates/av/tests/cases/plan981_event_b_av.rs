@@ -323,8 +323,7 @@ fn p981_evt_b_bind_multi_payload_positional_binding() {
     assert_eq!(widths2, vec![9]);
 }
 
-/// V-EVT-B-PAYLOAD（review-B1）：bool 载荷的正例（cap_event_arg_bool_and_float_literals
-/// 的 bool 半边——float 半边是具名拒车道，见 core 侧 plan981_event_b）。
+/// V-EVT-B-PAYLOAD（review-B1）：bool 载荷的实际 AV 回放正例。
 /// `.Toggle(on) -> { .flag = on }` 两实例分别 true/false，经状态通道取回。
 #[test]
 fn p981_evt_b_bool_payload_binds_positively() {
