@@ -40,4 +40,3 @@ Final acceptance case: the same fn-value mechanism as the 1095 module-closure
 case but a DIFFERENT function body must actually produce 63 — the oracle is
 source-bound (a meta-control still expecting 42 is red, never part of the
 green suite).
-
