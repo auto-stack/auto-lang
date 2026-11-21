@@ -3,6 +3,11 @@
 > **Status**: experimental（PLAN-935 冻结；实现 = `experimental/ace/crates/source-query/`
 > 的 `instances`/`instance_host` 模块 + core `scalar-instances` 语法面）。
 > 934 SQ-A 事实层不变；本层是**并行新命名域**，不占用也不改写 934/796 字节含义。
+> **PLAN-1048 增补**：AAC 自举路线的实例化/身份由 Auto 侧
+> `aac/semantics/instances/*.at` 承担（逻辑实例与 Rust `sq_hash` 字节一致，
+> 具体名/实参区分/跨模块身份同源），见
+> [aac-instantiation-and-cte](../auto-ac/aac-instantiation-and-cte.md)；本文件
+> 继续描述 Rust SQ-B 面的冻结事实，两者按各自 profile 并行。
 
 ## 定位与边界
 
