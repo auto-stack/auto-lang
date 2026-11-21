@@ -1,0 +1,46 @@
+# Composition control and effect combinations (PLAN-1096)
+
+The canonical author of the final acceptance composition family. Every case
+carries ONE Auto source; the `av` check runs the ordinary AV language chain
+(`ac-av/language-source-run-v1`).
+
+## Case: combined-acceptance
+id: "av.parity.1096.combined-acceptance"
+tags: ["av-language-parity", "plan-1096", "composition"]
+links: ["PLAN-1096"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice(x int) int { return x * 2 }
+fn main() int {
+ let f = twice
+ let xs = [19, 23]
+ let state = { title: "ready", total: f(xs[0]) + f(xs[1]) }
+ try { if state.title == "ready" && state.total == 84 { return 42 }; return 0 } finally { }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Final acceptance case: a named fn value, a list literal, an anonymous record
+with a text and an int field, field projection, a boolean conjunction and
+try/finally all compose in one ordinary source. CPU-only; no renderer.

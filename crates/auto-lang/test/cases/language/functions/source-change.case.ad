@@ -1,0 +1,42 @@
+# Function source mutation sensitivity (PLAN-1096)
+
+The canonical author of the source-change sensitivity family. Every case
+carries ONE Auto source; the `av` check runs the ordinary AV language chain
+(`ac-av/language-source-run-v1`).
+
+## Case: source-mutation-sensitive
+id: "av.parity.1096.source-mutation-sensitive"
+tags: ["av-language-parity", "plan-1096", "functions"]
+links: ["PLAN-1096"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn twice(x int) int { return x * 3 }
+fn main() int { return twice(21) }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 63
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Final acceptance case: the same fn-value mechanism as the 1095 module-closure
+case but a DIFFERENT function body must actually produce 63 — the oracle is
+source-bound (a meta-control still expecting 42 is red, never part of the
+green suite).

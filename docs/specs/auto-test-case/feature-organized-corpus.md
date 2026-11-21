@@ -167,3 +167,15 @@ module-closure-generic / task-language-composition / cte-and-ordinary-library）
 （owner=PLAN-1095，原 case/check/条件/oracle/SHA16 保留，canonical 按语言族
 映射）。非 AV 检查在本包保持 AV-ONLY `#ignore`/未选，不 prepare、不 dispatch、
 不计 PASS；后端任务逐 check 打开后按同一源真实运行。
+
+
+## PLAN-1096 增量（final acceptance 家族）
+
+新增 canonical 作者 `language/composition/control-effects.case.ad`（
+combined-acceptance）、`language/functions/source-change.case.ad`（
+source-mutation-sensitive，oracle 源绑定——改错必红，2026-11-22 故意红实测
+`exit[exit] mismatch: expected 42 actual 63`）、
+`language/errors/uncaught.case.ad`（uncaught-not-success，run 阶段 lang.error
+消息保留），均加入 `language.suite.ad`。三条均真实 AV 执行；非 AV 检查在本包
+保持 AV-ONLY `#ignore`/未选。0 份旧 VM 文档迁移行（§PLAN-1096 清单为 0），
+全路线 required 并集由既有 canonical 语料承接。

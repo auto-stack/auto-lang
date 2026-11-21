@@ -1,0 +1,42 @@
+# Uncaught error is not a success (PLAN-1096)
+
+The canonical author of the uncaught-error family. Every case carries ONE Auto
+source; the `av` check runs the ordinary AV language chain
+(`ac-av/language-source-run-v1`).
+
+## Case: uncaught-not-success
+id: "av.parity.1096.uncaught-not-success"
+tags: ["av-language-parity", "plan-1096", "errors"]
+links: ["PLAN-1096"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int { fail("final-parity-uncaught") }
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "lang.error"
+message-contains: "final-parity-uncaught"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+Final acceptance case: an uncaught `fail` terminates with a run-stage
+language error whose message survives — never a silent success, never a
+generic trap without the original text.

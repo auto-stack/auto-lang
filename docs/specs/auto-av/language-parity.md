@@ -447,3 +447,25 @@ generic / task-language-composition / cte-and-ordinary-library）、
 绑定普通源/工程、node CPU 观察（979 producer）、`avworker/1.0`、`av.closures/1`、
 MIR lowering 9 与逐 case 真实结果；129 份旧 VM 文档义务行（legacy-map.tsv
 owner=PLAN-1095）映射到对应 canonical 面，原 oracle/条件/SHA16 保留。
+
+
+## PLAN-1096 增量（AVP-18，AV 语言齐平完整验收）
+
+`ac-av/language-source-run-v1` 作为本路线 **AV 语言出口的最终验收入口**：全路线
+required 语言义务的并集以唯一 canonical 语料（`language.suite.ad` AV 视图，
+case-av-language-parity 固定组）真实执行并核逐行身份。本包新增三条收口 case：
+`composition/control-effects.case.ad`（combined-acceptance：fn 值 + 列表 +
+匿名 record 文本/整数字段 + 布尔合取 + try/finally 同源组合 = 42）、
+`functions/source-change.case.ad`（source-mutation-sensitive：同一 fn 值机制下
+函数体 x*3 必须真得 63——oracle 源绑定，改错必红）、
+`errors/uncaught.case.ad`（uncaught-not-success：未捕获 `fail` 以 run 阶段
+`lang.error` 终态结束且消息保留，绝不静默成功）。
+
+- **FINAL-COVERAGE/FINAL-CONTROLS**：逐 required 行的源码/工具/ABI/provider/
+  平台/entry/profile/oracle 身份与当前实际结果齐；删行/改 oracle/错源/零选中
+  等控制必须可区分失败。非 AV 目标检查（AC/A2R/legacy）保 `#ignore`/未选与
+  后续 owner（1068/985），不计 PASS、不阻本包 AV 证书。legacy dispatch=0，
+  旧 VM 不因本包启动。
+- 交付接口 `IF-AV-LANGUAGE-PARITY/1` 绑定普通源/工程、avworker/1.0、
+  av.closures/1、MIR lowering 9 与逐 case 真实结果；1068/985 消费本 AV 来源
+  补其它端，不新增 M2-A 已签出口硬门。

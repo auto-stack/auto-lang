@@ -391,3 +391,13 @@ oracle 全数复现（006 `double`→`twice` 具名审计改名——保留词�
 libc 依赖（显式 `use.c` 是用户外库选择，测试走 SDK include 闭包预构建）。
 旧 FFI 义务族（json/path/env/process 等）保持原 VM 身份与后续 owner，不缩
 分母。已验证事实仅登记，冻结历史收据不改。
+
+
+## PLAN-1096 增量（AV 语言齐平完整验收）
+
+在已交 M2 基线上，本包把 AV 语言出口的 required 分母以唯一 canonical 语料
+（AV 视图）逐行真实执行并核身份；新增三条收口 case（control-effects /
+source-change / uncaught），全路线 required 并集均有归属与实际结果。
+FINAL-COVERAGE/FINAL-CONTROLS 的可区分失败控制齐备；非 AV 检查保 `#ignore`
+与后续 owner（1068/985），不计 PASS、不阻 AV 证书。历史收据不改。来源与
+逐 case 结果见 [PLAN-1096](../../plans/1096-av-parity-full-language-certification.md)。

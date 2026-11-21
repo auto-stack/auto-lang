@@ -85,3 +85,13 @@ KNOWN-DEBT 台账为索引，关闭以各自原 owner 收据为准。
 [PLAN-985](../../plans/985-ace-m2-certification.md)（r29 A批 work/review/fold
 收据链）、[Design55](../../design/55-ace-m2-complete-language-and-product-replacement.md)、
 各 owner 归档计划与 `docs/specs/ace-migration/m2-*.md` 已沉淀规范。
+
+
+## PLAN-1096 增量（AV 语言齐平完整验收）
+
+AV 语言出口证书（`IF-AV-LANGUAGE-PARITY/1`）本包落地：唯一 canonical 语料
+AV 视图逐 required 行真实执行，新增 control-effects / source-change / uncaught
+三条收口 case；FINAL-COVERAGE（逐行身份+实际结果）与 FINAL-CONTROLS（删行/
+改 oracle/错源/零选中可区分失败）齐备。AC/A2R 未交执行行保持 pending 给
+1068，不在迁移表消失、不冒多端 PASS；非 AV 检查不计入本 AV 证书。历史收据
+不改，来源见 [PLAN-1096](../../plans/1096-av-parity-full-language-certification.md)。
