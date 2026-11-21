@@ -95,6 +95,7 @@ dependencies = [
  "ace-a2x-core",
  "ace-a2x-store",
  "ace-artifacts",
+ "ace-av",
  "ace-av-core",
  "ace-core",
  "ace-foreign-contract",
