@@ -7059,6 +7059,73 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
+                MirInstr::ListFieldView {
+                    dst,
+                    base,
+                    index,
+                    path,
+                } => {
+                    // PLAN-105 W105: NON-destructive element text view. The
+                    // list is read-only here (no epoch bump, no element
+                    // generation change); the view shares the field's text
+                    // buffer — the standard borrowed-read guard (buffer
+                    // identity + epoch at every view use) covers staleness.
+                    let iv = {
+                        let fr = st.frames.last().expect("frame present");
+                        fr.slots[*index as usize].clone()
+                    };
+                    let idx = match list_index_of(&iv) {
+                        Some(i) => i,
+                        None => return Some(list_index_trap(v, func_idx, func, flat)),
+                    };
+                    let got = {
+                        let fr = st.frames.last().expect("frame present");
+                        match &fr.slots[*base as usize] {
+                            Value::List(h) => {
+                                let buf = h.rc.borrow();
+                                match buf.elems.get(idx) {
+                                    Some(e) => field_get_val(e, path),
+                                    None => {
+                                        drop(buf);
+                                        return Some(list_index_trap(v, func_idx, func, flat));
+                                    }
+                                }
+                            }
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "list operand holds {} (admission violation)",
+                                    other.type_name()
+                                )))
+                            }
+                        }
+                    };
+                    let view = match got {
+                        Some(Value::Str(h)) => {
+                            let n = crate::owned_text::scalars(h.bytes()).len() as u32;
+                            Value::StrView(crate::contract::StrView {
+                                src: crate::contract::StrViewSrc::Share(h),
+                                start: 0,
+                                end: n,
+                            })
+                        }
+                        Some(other) => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "list-field-view path {:?} holds {} (admission violation: owned Str only)",
+                                path,
+                                other.type_name()
+                            )))
+                        }
+                        None => {
+                            return Some(ExecOutcome::Infra(format!(
+                                "list-field-view path {:?} does not resolve (admission violation)",
+                                path
+                            )))
+                        }
+                    };
+                    if let Err(out) = commit_slot_write(st, *dst as usize, view, limits) {
+                        return Some(out);
+                    }
+                }
                 MirInstr::ListFieldSet {
                     root,
                     index,

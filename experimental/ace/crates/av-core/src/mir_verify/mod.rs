@@ -3507,6 +3507,54 @@ impl<'a, 'r> Verifier<'a, 'r> {
                             ));
                 }
             }
+            MirInstr::ListFieldView {
+                dst,
+                base,
+                index,
+                path,
+            } => {
+                // PLAN-105 W105: the non-destructive element TEXT view —
+                // `LIST_FIELD_GET`'s owned-Str arm without the remove dance.
+                if !self.collections_surface() {
+                    return Err(err(
+                        "mir.profile-instr",
+                        "LIST_FIELD_VIEW exists only in the collections profile".to_string(),
+                    ));
+                }
+                let elem = self.list_elem_of(f, *base, sp)?;
+                self.check_list_index_slot(f, *index, sp)?;
+                let Some((final_ty, _owner)) = self.module.resolve_field_path(elem, path) else {
+                    return Err(err(
+                        "mir.field-path",
+                        format!(
+                            "field path {:?} does not resolve from element type {}",
+                            path, elem
+                        ),
+                    ));
+                };
+                // The viewed field must be the OWNED text carrier (a view of
+                // a borrow is meaningless and a record/Copy field has its own
+                // Copy read).
+                if !matches!(
+                    self.module.types.get(final_ty as usize),
+                    Some(MirType::Str)
+                ) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!(
+                            "list-field-view final field type {} is not owned Str",
+                            final_ty
+                        ),
+                    ));
+                }
+                let dt = slot_ty_of(f, *dst, sp, "list-field-view dst")?;
+                if !matches!(self.module.types.get(dt as usize), Some(MirType::StrView)) {
+                    return Err(err(
+                        "mir.field-type",
+                        format!("list-field-view dst {} is not StrView", dt),
+                    ));
+                }
+            }
             MirInstr::ListFieldSet {
                 root,
                 index,
@@ -4942,6 +4990,7 @@ impl MirInstr {
             | MirInstr::ListGet { dst, .. }
             | MirInstr::ListRemove { dst, .. }
             | MirInstr::ListFieldGet { dst, .. }
+            | MirInstr::ListFieldView { dst, .. }
             | MirInstr::VariantPack { dst, .. }
             | MirInstr::VariantDisc { dst, .. }
             | MirInstr::VariantGuard { dst, .. }
@@ -5081,6 +5130,7 @@ impl MirInstr {
             } => vec![*root, *index, *value],
             MirInstr::ListRemove { root, index, .. } => vec![*root, *index],
             MirInstr::ListFieldGet { base, index, .. } => vec![*base, *index],
+            MirInstr::ListFieldView { base, index, .. } => vec![*base, *index],
             MirInstr::ListFieldSet {
                 root, index, value, ..
             } => vec![*root, *index, *value],

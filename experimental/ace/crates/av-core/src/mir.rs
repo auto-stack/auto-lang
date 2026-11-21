@@ -764,6 +764,21 @@ pub enum MirInstr {
         index: SlotId,
         path: Vec<u16>,
     },
+    /// LIST_FIELD_VIEW (PLAN-105 W105): NON-destructive borrowed view of an
+    /// owned-`Str` field of element `index`'s record along `path` — the
+    /// element text read (`xs.get(i).text`, view-loop `text t.text` value
+    /// reads) that places cannot serve (places read Copy elements only) and
+    /// LIST_REMOVE would mutate. The view borrows the element's text buffer
+    /// (`StrViewSrc::Share`); the list buffer identity/epoch guard applies
+    /// at the use of the view like every borrowed read. Out-of-range index
+    /// traps `av.trap.list-index` BEFORE any access; a non-owned-Str final
+    /// field is `mir.field-type` at verification.
+    ListFieldView {
+        dst: SlotId,
+        base: SlotId,
+        index: SlotId,
+        path: Vec<u16>,
+    },
     /// LIST_FIELD_SET: write `value` into a field of element `index`'s
     /// record along `path` (the first-case core: `list[i].inner.text`
     /// replace). RHS is pre-materialized; the old field value is dropped

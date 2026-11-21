@@ -1610,6 +1610,16 @@ fn verify_owned_function_impl(
                     check_read!(index, "list index");
                     st.define_slot(*dst as usize);
                 }
+                MirInstr::ListFieldView {
+                    dst, base, index, ..
+                } => {
+                    // PLAN-105 W105: same read shape as LIST_FIELD_GET — the
+                    // view borrows the element's text (no list mutation, no
+                    // transfer); the view slot is defined fresh.
+                    check_read!(base, "list base");
+                    check_read!(index, "list index");
+                    st.define_slot(*dst as usize);
+                }
                 MirInstr::ListFieldSet {
                     root, index, value, ..
                 } => {

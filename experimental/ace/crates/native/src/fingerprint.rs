@@ -390,6 +390,12 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
             index,
             path,
         } => format!("listfieldget {dst} {base} {index} {:?}", path),
+        MirInstr::ListFieldView {
+            dst,
+            base,
+            index,
+            path,
+        } => format!("listfieldview {dst} {base} {index} {:?}", path),
         MirInstr::ListFieldSet {
             root,
             index,

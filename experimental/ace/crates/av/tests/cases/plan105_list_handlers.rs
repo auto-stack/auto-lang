@@ -76,3 +76,37 @@ fn p105_list_set_element_replaces_value() {
     let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
     println!("[set] n={n}");
 }
+// ---- PLAN-105 W105：owned 元素文本视图（record 字段落 owned Str +
+// LIST_FIELD_VIEW 非破坏读）——013 的 `for t in .todos { text t.text }` 与
+// `.todos.get(0).text` 值读形。 ----
+
+/// 视图循环里读 record 元素的 text 字段（013 todo_list 真形）：字段位
+/// plain `str` 落 owned Str（`mir.field-borrow` 的 view-kind 字段禁令不再
+/// 触发），文本叶经元素视图链执行。
+#[test]
+fn p105_elem_field_text_leaf_in_view_loop() {
+    let src = "type Todo {\n    id: int\n    text: str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var n int = 0 }\n    view {\n        text \"plain\" {}\n        for t in .todos {\n            text t.text\n        }\n    }\n    on {\n        .M -> { .todos.push(Todo { id: 1, text: \"a\", done: false })\n .n = .todos.len() }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(n.contains('1'), "record list push + view loop text leaf: {n}");
+}
+
+/// handler 里的字段值读（`.todos.get(i).text`）：LIST_FIELD_VIEW 非破坏读——
+/// place 不读 owned 元素（mir.list-type），LIST_REMOVE 的破坏形不再需要。
+#[test]
+fn p105_elem_field_text_view_value_read() {
+    let src = "type Todo {\n    id: int\n    text: str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var out str = \"\" }\n    view { text .out {} }\n    on {\n        .M -> {\n            .todos.push(Todo { id: 1, text: \"a\", done: false })\n            .out = .todos.get(0).text\n        }\n    }\n}\n";
+    let fields = run(src);
+    let out = fields.iter().find(|(k, _)| k == "out").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(out.contains("\"a\"") || out.contains("a"), "LIST_FIELD_VIEW value read: {out}");
+}
+
+/// owned Str 字段的**字面量收敛**：record ctor 的 StrView 文本实参经
+/// StrToOwned 进入 Aggregate（视图值永不进记录字段）。
+#[test]
+fn p105_record_ctor_str_literal_lands_owned() {
+    let src = "type Todo {\n    id: int\n    text: str\n    done: bool\n}\nwidget App {\n    msg { M }\n    model { var todos []Todo = []\n var n int = 0 }\n    view { text \"x\" {} }\n    on {\n        .M -> {\n            .todos.push(Todo { id: 1, text: \"hello\", done: false })\n            .n = .todos.get(0).text.len()\n        }\n    }\n}\n";
+    let fields = run(src);
+    let n = fields.iter().find(|(k, _)| k == "n").map(|(_, v)| v.clone()).unwrap_or_default();
+    assert!(n.contains('5'), "ctor literal -> owned field -> len 5: {n}");
+}

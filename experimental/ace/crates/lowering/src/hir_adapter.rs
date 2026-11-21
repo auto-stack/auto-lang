@@ -2897,6 +2897,32 @@ fn record_reaches_self_through_opaque(m: &hir::Module, tid: hir::TypeId) -> bool
     false
 }
 
+/// PLAN-105 W105：RECORD FIELD 位的 plain `str` 落 **owned Str**——MIR 契约
+/// 禁 view-kind 记录字段（`mir.field-borrow`；owned Str 字段合法），表达式
+/// 位读取时由 `View{src}` 出借视图。仅覆盖字段位（表达式位 str 仍映射
+/// StrView——AGE 文本叶的视图语义不变）；嵌套记录经 Record 臂递归自然生效。
+fn collections_record_field_type_idx(
+    u: &hir::TypeUse,
+    m: &hir::Module,
+    out: &mut MirModule,
+    memo: &mut std::collections::BTreeMap<hir::TypeId, TypeIdx>,
+    visiting: &mut std::collections::BTreeSet<hir::TypeId>,
+) -> Result<TypeIdx, AdapterError> {
+    let plain_str = match u {
+        hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => true,
+        hir::TypeUse::Ref(tid) => matches!(
+            m.types.get(tid.0 as usize).map(|t| &t.kind),
+            Some(hir::TypeKind::Str)
+        ),
+        _ => false,
+    };
+    let idx = collections_type_idx_of(u, m, out, memo, visiting)?;
+    if plain_str {
+        return Ok(out.intern_type(MirType::Str));
+    }
+    Ok(idx)
+}
+
 fn collections_type_idx_of(
     u: &hir::TypeUse,
     m: &hir::Module,
@@ -3006,7 +3032,7 @@ fn collections_type_idx_of(
                         let mut fields = Vec::with_capacity(shape.fields.len());
                         let mut err = None;
                         for f in &shape.fields {
-                            match collections_type_idx_of(
+                            match collections_record_field_type_idx(
                                 &f.ty,
                                 m,
                                 out,
@@ -3039,7 +3065,7 @@ fn collections_type_idx_of(
                     let mut fields = Vec::with_capacity(shape.fields.len());
                     let mut err = None;
                     for f in &shape.fields {
-                        match collections_type_idx_of(&f.ty, m, out, memo, visiting) {
+                        match collections_record_field_type_idx(&f.ty, m, out, memo, visiting) {
                             Ok(t) => fields.push(MirFieldDef {
                                 name: f.name.clone(),
                                 ty: t,
@@ -6499,6 +6525,32 @@ k 0
                     }
                     operands[b.field as usize] = arg_slots[b.arg as usize];
                 }
+                // PLAN-105 W105：AGE 文本字面量实参是 StrView 值；owned-Str
+                // 字段位在此收敛为 owned（StrToOwned）——borrowed 视图永不进
+                // 记录字段（`mir.field-borrow` 的镜像约束）。
+                if let Some(MirType::Record(rec)) = self.out.types.get(rec_ty as usize).cloned() {
+                    for (fi, f) in rec.fields.iter().enumerate() {
+                        if !matches!(self.out.types.get(f.ty as usize), Some(MirType::Str)) {
+                            continue;
+                        }
+                        if let Some(&op) = operands.get(fi) {
+                            if matches!(
+                                self.out.types.get(self.slot_ty_all(op) as usize),
+                                Some(MirType::StrView)
+                            ) {
+                                let owned = self.temp_ty(f.ty)?;
+                                self.emit(
+                                    MirInstr::StrToOwned {
+                                        dst: owned,
+                                        view: op,
+                                    },
+                                    sp,
+                                )?;
+                                operands[fi] = owned;
+                            }
+                        }
+                    }
+                }
                 let dst = self.temp_ty(rec_ty)?;
                 self.emit(
                     MirInstr::Aggregate {
@@ -6954,6 +7006,51 @@ k 0
                         )?;
                         let _ = root;
                         return Ok(dst);
+                    }
+                    // PLAN-105 W105：owned 元素的**文本字段值读**（表达式位
+                    // plain str → StrView）走非破坏视图 LIST_FIELD_VIEW——
+                    // place 不读 owned 元素（mir.list-type），LIST_REMOVE 会
+                    // 改列表。终字段必须是 owned Str；列表不动、视图共享缓冲。
+                    {
+                        let view_ty = self.out.intern_type(MirType::StrView);
+                        if ty == view_ty {
+                            let elem = self.elem_vt_of(list)?;
+                            let segs: Vec<u16> = path.iter().map(|f| f.0 as u16).collect();
+                            let mut cur = elem;
+                            let mut steps_ok = true;
+                            for seg in &segs {
+                                match self.out.types.get(cur as usize).cloned() {
+                                    Some(MirType::Record(r)) => {
+                                        match r.fields.get(*seg as usize) {
+                                            Some(f) => cur = f.ty,
+                                            None => steps_ok = false,
+                                        }
+                                    }
+                                    _ => steps_ok = false,
+                                }
+                                if !steps_ok {
+                                    break;
+                                }
+                            }
+                            if steps_ok
+                                && matches!(self.out.types.get(cur as usize), Some(MirType::Str))
+                            {
+                                let l = self.eval_expr(list, depth + 1)?;
+                                let i = self.eval_expr(index, depth + 1)?;
+                                let dst = self.temp_ty(view_ty)?;
+                                self.emit(
+                                    MirInstr::ListFieldView {
+                                        dst,
+                                        base: l,
+                                        index: i,
+                                        path: segs,
+                                    },
+                                    sp,
+                                )?;
+                                let _ = root;
+                                return Ok(dst);
+                            }
+                        }
                     }
                 }
                 let b = self.eval_expr(*base, depth + 1)?;

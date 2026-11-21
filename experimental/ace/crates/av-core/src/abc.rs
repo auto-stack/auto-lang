@@ -106,6 +106,8 @@ pub const OP_LIST_SET: u8 = 0x23;
 pub const OP_LIST_REMOVE: u8 = 0x24;
 pub const OP_LIST_FIELD_GET: u8 = 0x25;
 pub const OP_LIST_FIELD_SET: u8 = 0x26;
+/// PLAN-105 W105: non-destructive owned-Str element field view.
+pub const OP_LIST_FIELD_VIEW: u8 = 0x37;
 pub const OP_VARIANT_PACK: u8 = 0x27;
 pub const OP_VARIANT_DISC: u8 = 0x28;
 pub const OP_VARIANT_GUARD: u8 = 0x29;
@@ -2091,6 +2093,27 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                             put_u16(&mut w, *seg);
                         }
                     }
+                    MirInstr::ListFieldView {
+                        dst,
+                        base,
+                        index,
+                        path,
+                    } => {
+                        if !family.allows_collections_tags() {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.profile",
+                                "list operations in a non-collections-profile module".to_string(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_LIST_FIELD_VIEW);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *base);
+                        put_u32(&mut w, *index);
+                        put_u16(&mut w, path.len() as u16);
+                        for seg in path {
+                            put_u16(&mut w, *seg);
+                        }
+                    }
                     MirInstr::ListFieldSet {
                         root,
                         index,
@@ -4001,6 +4024,23 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             path.push(c.u16()?);
                         }
                         MirInstr::ListFieldGet {
+                            dst,
+                            base,
+                            index,
+                            path,
+                        }
+                    }
+                    OP_LIST_FIELD_VIEW if family.allows_collections_tags() => {
+                        let dst = c.u32()?;
+                        let base = c.u32()?;
+                        let index = c.u32()?;
+                        let n = c.u16()? as usize;
+                        decode_mem!(n * 2 + 12, "a list-field-view path");
+                        let mut path = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            path.push(c.u16()?);
+                        }
+                        MirInstr::ListFieldView {
                             dst,
                             base,
                             index,

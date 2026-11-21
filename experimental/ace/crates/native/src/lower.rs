@@ -3346,6 +3346,7 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             | MirInstr::ListRemove { .. }
             | MirInstr::ListFieldGet { .. }
             | MirInstr::ListFieldSet { .. }
+            | MirInstr::ListFieldView { .. }
             | MirInstr::VariantPack { .. }
             | MirInstr::VariantDisc { .. }
             | MirInstr::VariantGuard { .. }
