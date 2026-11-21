@@ -145,3 +145,33 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
    仍未交：容器/记录跨边界、动态浮点实参、属性派生值。
 5. **AV 帧 helper 不再被源生成目标发射**：`__py_dlen`/`__py_chunk_*` 只服务 AV 帧文本，
    A2PY 与 978 组装按 `is_py_lane_helper` 过滤，避免为生成目标引入不可 lower 的帧构造。
+
+## 附：PLAN-1094 追加（普通 AV 脚本面，不改写 v1/1107 冻结事实）
+
+> 本节追加到 `docs/specs/auto-av/python-interop.md`，1026 的 v1 冻结事实与 1107 附录
+> 保持原样；1094 交付的是**普通 AV 语言入口**（`ac-av/language-source-run-v1` 带
+> `foreign: {kind, provider: "py"}`）的脚本/Python 对象协议，供 1110 A2PY 按同源
+> 事实接续。
+
+1. **普通入口接线**：带 `use.py` 的 auto-script/.as 源经 `compile_language_source_with_foreign`
+   的 front_door（helper 注入＋hoisted `var <member> = py_import(frame)`）编译，随后
+   `verify_foreign_closures` → ABC → `execute_console_foreign`（`bind_python_error_observers`
+   附加）。多成员 `use.py builtins: int, str` 按源序形准入。无 `use.py` 的纯 Auto 源
+   走既有普通链，**不加载 CPython**。
+2. **py 对象分派**：`.len()` 在 py 对象上路由 `__len__`（numpy 首轴 6 等），纯 Auto
+   str/List `.len()` 保持原生计数（6/4/7）——旧 obj_call 对 Auto 值的假阳性**不复制**。
+3. **异常分类**：失败 py 操作按 provider class 映射 `LanguageErrorKind::Python(class)`
+   （1..=10 语义类别），worker 渲染 `python.{class}`；未捕获 = 语言错误运行终态
+   （`lang.error`＋原 `source_span`），**取代** 1107 附录 §3 的 `Trap{ForeignStatus}`
+   仅适用于该冻结的 aggregates/A2PY 面——普通 AV 入口按本节。捕获时 handler 恰一次。
+4. **文本通道升级**：`py_stage_str`/`py_str_word`/`py_error_stage` 从 v1 ASCII 字节
+   升级为 codepoint-wise UTF-32-LE word（一 word 一 Unicode 标量；ASCII 输入数值
+   等价），中文与内嵌 NUL 逐字节往返（`\u{0}` 规范拼写）。1026 测试 word oracle
+   随通道升级同步（同 p981 grammar id 重冻结惯例）。
+5. **缺解释器**：`prepare-av-providers` 写 `py-unavailable` 标记时父侧显式
+   `Status::NotRun`（"never PASS"）；不因缺 CPython 把语言判红或充绿。
+6. **with 语句**：`with <expr> as <name> { body }`（Python 上下文管理器）——
+   `__enter__` 绑定、`__exit__` 每条出口（normal/return/break/continue/语言错误）
+   恰一次、truthy `__exit__` 抑制错误、enter 失败不 exit。
+
+来源：[PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。

@@ -137,3 +137,19 @@ canonical 作者 `crates/auto-lang/test/cases/language/types/variants.case.ad`�
 核验并在 `ACE_AV_PROVIDER_ROOT` 缺省时具名失败（不静默 SKIP）。本包主承接 70 份旧
 VM FFI 文档：迁移表逐行保留原身份与 owner，AV 阶段 `#ignore`。父端反控覆盖选错
 oracle（必红）、缺 provider 闭包（必失败）与源身份失效。
+
+## PLAN-1094 增量（script/Python 家族）
+
+脚本模式与 Python 对象协议的唯一公共作者为
+[python-context.case.ad](../../../crates/auto-lang/test/cases/language/script/python-context.case.ad)，
+由 `language.suite.ad` 引用。12 条普通 AV 检查真实运行：嵌套 py 调用、ValueError
+捕获/未捕获对（`python.5` 分类＋原始 span oracle）、context-manager `__exit__` 恰一次、
+Unicode/NUL 往返、py `.len()` 分派与纯 Auto 原生不变、错误消息原文、py
+TypeError 可捕获、WITH-EXITS（break/嵌套）关闭计数。case 携带声明性 `foreign:
+{kind, provider: "py"}`，父端在 `py-unavailable` 标记存在时显式 NOT_RUN（"never
+PASS"）。本包主承接 7 份旧 VM 文档（99_py_dispatch×2、99_script_err×5）：迁移表 7
+行保原 ID/check/oracle/SHA16 与 owner=PLAN-1094，AV 阶段 `#ignore`（非 AV 目标
+pending 交原 owner）；旧 obj_call 对 Auto 值的假阳性不复制。父端反控覆盖选错 oracle
+（必红）、重复 Case ID（必红）与源身份失效。
+
+来源 [PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。

@@ -375,3 +375,40 @@ provider：worker 请求携带声明性 `foreign: {kind, provider}`，从
 已注册 provider（f0_text/parity1093_c）与逐检查真实结果。canonical 语料与迁移行见
 [FFI 作者文件](../../../crates/auto-lang/test/cases/language/ffi/imports-callbacks.case.ad)、
 [PLAN-1093](../../plans/1093-av-parity-foreign-language-surface.md)。
+
+## PLAN-1094 增量（AVP-16，脚本模式与 Python 对象协议）
+
+普通 `ac-av/language-source-run-v1` 现在对**带 `foreign: {kind, provider: "py"}` 的
+`auto-script`/.as 源**经 py-bridge provider 闭包（`prepare-av-providers` 构建，
+`ACE_AV_PROVIDER_ROOT` 定位）真实执行 Python：`use.py <module>: <member>, …`
+（多成员按源序形）、动态参数/属性/索引/调用、py 对象 `.len()`→`__len__` 协议分派
+（纯 Auto str/List `.len()` 保持原生计数）、Unicode/NUL 文本往返。链路：
+`compile_language_source_with_foreign`（`use.py` 前门注入 helper＋hoisted 成员
+import）→ `verify_foreign_closures` → ABC → `execute_console_foreign`（带
+`bind_python_error_observers`）。
+
+- **`with <expr> as <name> { body }`**：Python 上下文管理器语句面（grammar
+  `with-stmt`/`with-resource`/`with-tail`＋CST＋resolve＋AV runtime）。manager
+  求值一次；`__enter__` 绑定 `name`；body 在保护体循环内执行；normal / return /
+  break / continue / 语言错误每条出口运行 `__exit__` **恰一次**（normal 传 None
+  参数，语言错误传错误文本）；truthy `__exit__` 结果按 Python 协议**抑制**错误，
+  控制流继续。`__enter__` 失败不运行 `__exit__`（Python 语义）。
+- **Python 异常 → 可捕获语言错误**：失败的 py 操作按 provider class 映射为
+  `LanguageErrorKind::Python(class)`（1..=10 语义类别；class 5=`value` 等），
+  worker 渲染 `python.{class}` 分类与 `PyException {msg}` 消息；未捕获时以
+  `lang.error` 运行终态结束（带失败操作的原始 `source_span`），绝不静默
+  foreign-status trap；捕获时 handler 恰一次接收。宿主撤权/resource/cancel
+  分类不变。
+- **文本通道**：`py_stage_str`/`py_str_word`/`py_error_stage` 升级为
+  **codepoint-wise UTF-32-LE word**（每 word 一个 Unicode 标量，ASCII 输入在
+  数值上等价），支持中文与内嵌 NUL 逐字节往返；1026 冻结测试 word oracle 随
+  通道升级同步（通道/语法扩后同步冻结契约测试的既有惯例，非改语义收据）。
+- **缺解释器 = NOT_RUN**：`prepare-av-providers` 无法构建 py 适配器时写
+  `py-unavailable` 标记，父侧对带 `foreign: py` 的检查显式 `Status::NotRun`
+  （"never PASS"）；无 `use.py` 的纯 Auto 源不加载 CPython（零 py 依赖）。
+
+`IF-AV-PARITY-SCRIPT` 绑定普通源 auto-script/.as、py-bridge provider（kind rust/
+provider py）、`avworker/1.0`、`av.closures/1`、MIR lowering 9 与 12 条 canonical
+case（ID 族 `av.parity.1094.*`）的真实逐 case 结果。canonical 语料与迁移行见
+[脚本/Python 作者文件](../../../crates/auto-lang/test/cases/language/script/python-context.case.ad)、
+[PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。

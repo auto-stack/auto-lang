@@ -85,3 +85,17 @@ AutoVM 对 null 家族（`null`/`nil`/`None` 三拼写）在算术、拼接、�
 ## 普通 AV 跨调用（PLAN-1087）
 
 `.as` 产生的语言 TypeError 可随调用展开进入上层的 catch，保留原始文本和字节位置。普通 AV 列表的读下标越界在受保护的路径上生成 `IndexError: index N out of range`，其中 N 为原下标。无参重抛继续携带原诊断位置。宿主取消和资源拒绝仍保留各自的执行终态。见 [PLAN-1087](../../../../plans/archive/1087-av-parity-errors-and-unwinding.md)。
+
+## 普通 AV 脚本/Python（PLAN-1094）
+
+带 `foreign: {kind, provider: "py"}` 的普通 auto-script/.as 源经 py-bridge provider
+闭包执行真实 Python（无 `use.py` 的纯 Auto 源不加载 CPython）。失败的 py 操作按
+provider class 映射为可捕获语言错误 `python.{class}`（1..=10 语义类别；class 5=
+`value`），worker 渲染 `PyException {msg}`；未捕获时以 `lang.error` 运行终态结束并
+携带失败操作的原始 `source_span`（如 `int("abc")` 的 [45,55)），绝不静默
+foreign-status trap；捕获时 handler 恰一次接收。宿主撤权/resource/cancel 分类不变。
+
+`with <expr> as <name> { body }`（Python 上下文管理器）中，body 内语言错误沿保护体
+展开运行 `__exit__` 恰一次后到达外层 catch；truthy `__exit__` 结果按 Python 协议
+抑制错误。`__enter__` 失败不运行 `__exit__`。见
+[PLAN-1094](../../../../plans/1094-av-parity-script-and-python-protocols.md)。
