@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-21
 plan_revision: 5
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1044, PLAN-1045, PLAN-1047, PLAN-1051]
 supersedes_spec_components: [docs/specs/auto-ac/aac-source-frontend.md, docs/specs/auto-ac/aac-semantic-authority.md, docs/specs/auto-hir/stage-contract.md, docs/specs/auto-mir/architecture.md]
@@ -156,7 +156,7 @@ CS只表示本编译器源码需要什么，CL必须保最终M2的AV/AC/A2R完�
 | [x] T-05 真实闭环与兼容交接 | work | T-04 | 同一 Auto producer 的实际 AVAD 交 1051 CT 和 native，独立值、准入错误、资源耗尽、pending 与改常量对照均实跑。 | V-01..05 结果见 §9。1050 扩同一 `aac/mir` 实现并保最终兼容复验。 |
 | [x] T-06 定向验证与交review | work | T-02..05 | Windows 职责组、全部 V 行、真实阶段驱动及 1044 来源门复验。对照基线既有红，修复新增 AGE 身份漂移。 | 冻结候选 `8483384ce`，实际终态、排除、身份、时间及审核的 Spec delta 见 §9。 |
 | [x] T-07 独立复审 | review | T-06 | 同一树冻结 `8483384ce` 按实际数据流、独立反例、基础合同、存量红和规范源复验。 | AC-05 pass。merge 复核落主、归档与清理。 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、沉淀已验Spec并归档；所有输出路径对账，证据折入计划后清scope，wt-guard clean再移树/分支 | 独立交付/后继版本与清理摘要；AC-06 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | `8483384ce` 快进合入，五处规范验证，归档入库，校验并移除双树、临时分支和材料 scope。 | AC-06 pass。验收结论与清理收据见 §9。 |
 
 ## 9. 复审记录
 
@@ -325,6 +325,10 @@ T-06 上一冻结候选（基面 `9ae4956fe`）已实际运行 `ace-syntax`、`a
 - `ace-native::conformance source_diagnostics_911::mn_sd911_worker_incremental_warmup_reject_shapes`
 
 </details>
+
+2026-11-21 `stage: merge | PLAN-1055:r5 | outcome: pass | delivery_commit: 8483384ce2dee99eb4a11e518d23e9421d321d7f | archive_commit: 19b2f9f6f54226e825c0e12c9466ee82e24df2ae | completion_kind: delivered`。两棵 checkout 实际 `wt-guard` 均 clean，`git worktree remove` 均 exit 0；`git branch -d plan-1055-dev` exit 0，空组已清除。输出路径逐项对账为两个 checkout（AutoLang 下有正常 Windows runtime target）及唯一材料 `D:/autostack/plan-artifacts/plan-1055/`，无外部安装。材料扫描无重解析点、无本计划占用，折入证据后用 PowerShell `Remove-Item -LiteralPath ... -Recurse` exit 0，目录不存在。删除前 224,259 个文件、逻辑 22,487,931,240 B，压缩容量独立记录。临时树、分支、组和材料目录无残留。主检出只有并行的其他计划/设计簿记 WIP。
+
+`stage: goal | plan_id: PLAN-1055 | plan_revision: r5 | round: 6 | from: merge | to: regress | status: archived | outcome: pass | worktree: removed | commit: 8483384ce | next: due batch`。1055 为上一实际覆盖提交 `b99fc0ff3` 后归档的五倍计划号，依整五规则到期；单实例在主检出等待其他重门结束。
 
 ## 10. 待澄清事项
 
