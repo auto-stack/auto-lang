@@ -1071,6 +1071,41 @@ fn emits_core_arithmetic_traps_and_rejects_an_erased_overflow_policy() {
 }
 
 #[test]
+fn aac1055_admits_lazy_logic_and_rechecks_operand_types() {
+    let source = include_bytes!(
+        "../../../../../crates/auto-lang/test/cases/ace-m1-expanded/scalar-src/ace-B04-shortcircuit.at"
+    );
+    let atom = run_core_hir_case(source, "verify").expect("Auto HIR production");
+    let logical = atom
+        .lines()
+        .find(|line| line.contains(" logical {"))
+        .unwrap_or_else(|| panic!("missing logical expression: {atom}"));
+    assert!(logical.contains("op: and;"), "{logical}");
+    assert!(atom.contains("op: div_i32;"), "{atom}");
+    let bound = ace_core::descriptor::bind(ace_core::scalar_descriptor(), &atom)
+        .unwrap_or_else(|error| panic!("{error:?}\n{atom}"));
+    ace_core::verify::verify_scalar(bound).expect("independent typed HIR verification");
+    let read_back = |text: &str| {
+        run_core_hir_case(text.as_bytes(), "descriptor").expect("Auto Atom readback")
+    };
+    assert_eq!(read_back(&atom), "ADMITTED scalar-i32-draft\n");
+
+    let i32_id = atom
+        .lines()
+        .find(|line| line.contains(" constant { type: \"t1\""))
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap();
+    let (prefix, _) = logical.split_once("rhs: ").unwrap();
+    let wrong_lane = atom.replacen(logical, &format!("{prefix}rhs: \"{i32_id}\" }}"), 1);
+    assert_eq!(read_back(&wrong_lane), "ERROR hir.type\n");
+
+    let wrong_profile = atom
+        .replace("auto.hir.scalar.draft", "auto.hir.core.draft")
+        .replace("scalar-i32-draft", "core-i32-draft");
+    assert_eq!(read_back(&wrong_profile), "ERROR hir.unsupported\n");
+}
+
+#[test]
 fn verifies_terminating_branches_and_rejects_a_back_edge() {
     let source = b"fn choose(flag bool) int { if flag { return 13 } else { return 7 } }";
     let atom = run_core_hir_case(source, "verify").expect("Auto HIR driver");

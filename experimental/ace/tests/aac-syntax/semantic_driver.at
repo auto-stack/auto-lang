@@ -409,6 +409,7 @@ fn admit_document(path Str, steps int) Str {
             let result = verify_core_document(bytes, fuel, started + 5000i64)
             if (result == 0) { return "ADMITTED core-i32-draft\n" }
             if (result == 1) { return "ADMITTED text-record-i32-draft\n" }
+            if (result == 2) { return "ADMITTED scalar-i32-draft\n" }
             return "ERROR " + diagnostic_name(result) + "\n"
         }
         None -> {}
@@ -425,6 +426,10 @@ fn publish_verified(report Str, artifact Str) Str {
     let global_prefix = "hir(schema: \"auto.hir.text-record.draft\""
     if (report.len() > global_prefix.len() && report.slice(0, global_prefix.len()).clone() == global_prefix) {
         profile = "text-record-i32-draft"
+    }
+    let scalar_prefix = "hir(schema: \"auto.hir.scalar.draft\""
+    if (report.len() > scalar_prefix.len() && report.slice(0, scalar_prefix.len()).clone() == scalar_prefix) {
+        profile = "scalar-i32-draft"
     }
     if (write_text(staged.clone(), report) != 0) {
         delete(staged)

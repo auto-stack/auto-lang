@@ -4,6 +4,10 @@ use app.core_globals.global_mode
 use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.setter_mode
+use app.core_ops.binary_code
+use app.core_ops.extended_binary
+use app.core_ops.logical_op
+use app.core_ops.overflow_op
 use app.semantic_tree.span_text
 use app.types.text_view_type
 use std.conv.from_int
@@ -364,7 +368,7 @@ fn validate_places(bytes List<int>, tokens List<int>, values List<int>, nodes Li
     return 0
 }
 
-fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, rows int, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
+fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, declaration_group int, type_group int, body int, owner int, signature int, rows int, extended bool, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>) int {
     let local_group = child(bytes, tokens, nodes, items, body, "locals")
     let expr_group = child(bytes, tokens, nodes, items, body, "expressions")
     let block_group = child(bytes, tokens, nodes, items, body, "blocks")
@@ -490,14 +494,16 @@ fn bind_body(bytes List<int>, tokens List<int>, values List<int>, nodes List<int
                 payload = definition_id(bytes, tokens, values, nodes, sequence, reference, rows)
                 if (!bind_arguments(bytes, tokens, values, nodes, sequence, fields, items, expr_group, expression, "eval_args", "bindings", "param", args)) { return -32 }
             }
-            if (form == "binary") {
+            if (form == "binary" || form == "logical") {
                 let op_field = field(bytes, tokens, nodes, fields, expression, "op")
-                let op = value_text(bytes, tokens, values, op_field, 0)
-                if (op == "lt_i32" && field_count == 4) { operation = 4 }
-                if (op == "add_i32" || op == "mul_i32") {
+                operation = binary_code(value_text(bytes, tokens, values, op_field, 0))
+                if (operation == 0 || logical_op(operation) != (form == "logical")) { return -30 }
+                if (!extended && extended_binary(operation)) { return -30 }
+                if (overflow_op(operation)) {
                     let overflow = field(bytes, tokens, nodes, fields, expression, "overflow")
                     if (field_count != 5 || value_text(bytes, tokens, values, overflow, 0) != "trap") { return -30 }
-                    if (op == "add_i32") { operation = 5 } else { operation = 6 }
+                } else {
+                    if (field_count != 4) { return -30 }
                 }
                 let left_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "lhs"), 1)
                 let right_name = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, expression, "rhs"), 1)
@@ -607,7 +613,12 @@ pub fn text_record_transport(bytes List<int>, tokens List<int>, values List<int>
     return value_text(bytes, tokens, values, profile, 1) == "text-record-i32-draft"
 }
 
-pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, text_record bool, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>) int {
+pub fn scalar_transport(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, fields List<int>, root int) bool {
+    let profile = field(bytes, tokens, nodes, fields, root, "profile")
+    return value_text(bytes, tokens, values, profile, 1) == "scalar-i32-draft"
+}
+
+pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes List<int>, sequence List<int>, fields List<int>, items List<int>, root int, rows int, text_record bool, scalar bool, global_names List<int>, module_path Str, defs List<int>, params List<int>, expressions List<int>, args List<int>, blocks List<int>, statements List<int>, records List<int>) int {
     let schema = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "schema"), 1)
     let profile = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "profile"), 1)
     let revision = value_text(bytes, tokens, values, field(bytes, tokens, nodes, fields, root, "revision"), 2)
@@ -616,6 +627,10 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
     if (text_record) {
         expected_schema = "auto.hir.text-record.draft"
         expected_profile = "text-record-i32-draft"
+    }
+    if (scalar) {
+        expected_schema = "auto.hir.scalar.draft"
+        expected_profile = "scalar-i32-draft"
     }
     if (schema != expected_schema || profile != expected_profile || revision != "1u32") { return -34 }
     let capabilities = field(bytes, tokens, nodes, fields, root, "requires")
@@ -681,7 +696,7 @@ pub fn bind_core_atom(bytes List<int>, tokens List<int>, values List<int>, nodes
                 i = i + 1
             }
             claimed.push(body)
-            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, identity, signature, rows, defs, params, expressions, args, blocks, statements)
+            let status = bind_body(bytes, tokens, values, nodes, sequence, fields, items, declarations, types, body, identity, signature, rows, text_record || scalar, defs, params, expressions, args, blocks, statements)
             if (status != 0) { return status }
         }
         at = at + 1

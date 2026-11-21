@@ -17,6 +17,7 @@ use app.binding.resolved_function
 use app.binding.take_step
 use app.binding.type_decl
 use app.core_atom_bound.bind_core_atom
+use app.core_atom_bound.scalar_transport
 use app.core_atom_bound.text_record_transport
 use app.core_globals.add_global_intrinsics
 use app.core_globals.build_global_names
@@ -28,6 +29,15 @@ use app.core_globals.global_source
 use app.core_globals.initializer_mode
 use app.core_globals.layout_offset
 use app.core_globals.setter_mode
+use app.core_ops.binary_op
+use app.core_ops.binary_word
+use app.core_ops.comparison_op
+use app.core_ops.equality_op
+use app.core_ops.extended_binary
+use app.core_ops.less_than_op
+use app.core_ops.logical_op
+use app.core_ops.overflow_op
+use app.core_ops.source_binary
 use app.core_records.core_value_type
 use app.core_records.record_at
 use app.core_records.record_field_number
@@ -37,6 +47,7 @@ use app.core_records.source_record_shapes
 use app.core_records.verify_record_shapes
 use app.hir_schema_data.core_schema
 use app.hir_schema_data.global_schema
+use app.hir_schema_data.scalar_schema
 use app.initializers.global_layout_stride
 use app.initializers.global_symbol
 use app.numeric_literal.decode_i32_literal
@@ -77,9 +88,6 @@ pub fn hir_borrow_error() int { return -47 }
 fn constant_op() int { return 1 }
 fn read_op() int { return 2 }
 fn call_op() int { return 3 }
-fn less_than_op() int { return 4 }
-fn add_op() int { return 5 }
-fn multiply_op() int { return 6 }
 fn text_literal_op() int { return 7 }
 fn text_length_op() int { return 8 }
 fn record_constructor_op() int { return 9 }
@@ -166,13 +174,6 @@ fn binary_inputs(args List<int>, expression int, lhs int, rhs int) int {
     args.push(expression)
     args.push(rhs)
     args.push(1)
-    return 0
-}
-
-fn source_binary(node_kind Str) int {
-    if (node_kind == "lt") { return less_than_op() }
-    if (node_kind == "plus") { return add_op() }
-    if (node_kind == "star") { return multiply_op() }
     return 0
 }
 
@@ -615,14 +616,12 @@ fn verify_call(defs List<int>, parameters List<int>, exprs List<int>, args List<
 }
 
 fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel List<int>, deadline i64) int {
-    var result = integer_type()
-    if (op == less_than_op()) { result = boolean_type() }
-    if (exprs.get(position + 3) != result) { return hir_type_error() }
     let expression = exprs.get(position)
     let owner = exprs.get(position + 1)
     var at = 0
     var left = false
     var right = false
+    var operands = 0
     for (at < args.len()) {
         if (!take_step(fuel, deadline)) { return bind_budget() }
         if (args.get(at) == expression) {
@@ -632,12 +631,22 @@ fn verify_binary(exprs List<int>, args List<int>, position int, op int, fuel Lis
             let operand = find_row(exprs, 5, args.get(at + 1), 0)
             if (operand < 0 || operand >= position) { return hir_reference_error() }
             if (exprs.get(operand + 1) != owner) { return hir_owner_error() }
-            if (exprs.get(operand + 3) != integer_type()) { return hir_type_error() }
+            let lane = exprs.get(operand + 3)
+            if (operands != 0 && lane != operands) { return hir_type_error() }
+            operands = lane
             if (slot == 0) { left = true } else { right = true }
         }
         at = at + 3
     }
     if (!left || !right) { return hir_reference_error() }
+    if (logical_op(op)) {
+        if (operands != boolean_type()) { return hir_type_error() }
+    } else {
+        if (operands != integer_type() && !(equality_op(op) && operands == boolean_type())) { return hir_type_error() }
+    }
+    var result = operands
+    if (comparison_op(op) || logical_op(op)) { result = boolean_type() }
+    if (exprs.get(position + 3) != result) { return hir_type_error() }
     return 0
 }
 
@@ -1098,7 +1107,7 @@ fn verify(defs List<int>, parameters List<int>, exprs List<int>, args List<int>,
         if (op == record_field_op()) { status = verify_record_field(records, exprs, args, position, fuel, deadline) }
         if (op == record_view_op()) { status = verify_record_view(records, exprs, args, position, fuel, deadline) }
         if (op == call_op()) { status = verify_call(defs, parameters, exprs, args, position, records, layouts, rows, fuel, deadline) }
-        if (op == less_than_op() || op == add_op() || op == multiply_op()) {
+        if (binary_op(op)) {
             status = verify_binary(exprs, args, position, op, fuel, deadline)
         }
         if (status != 0) {
@@ -1183,10 +1192,9 @@ fn write_binary(args List<int>, expression int, op int) Str {
         }
         at = at + 3
     }
-    var operation = "lt_i32; "
-    if (op == add_op()) { operation = "add_i32; overflow: trap; " }
-    if (op == multiply_op()) { operation = "mul_i32; overflow: trap; " }
-    return "op: " + operation + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
+    var policy = ""
+    if (overflow_op(op)) { policy = "overflow: trap; " }
+    return "op: " + binary_word(op) + "; " + policy + "lhs: " + ref_text("e", lhs) + "; rhs: " + ref_text("e", rhs)
 }
 
 fn assigned(statements List<int>, local int) bool {
@@ -1263,6 +1271,16 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
     if (has_globals || text_domain || records.len() > 0) {
         schema = "auto.hir.text-record.draft"
         profile = "text-record-i32-draft"
+    } else {
+        var at = 0
+        for (at < exprs.len()) {
+            if (extended_binary(exprs.get(at + 2))) {
+                schema = "auto.hir.scalar.draft"
+                profile = "scalar-i32-draft"
+                break
+            }
+            at = at + 5
+        }
     }
     var capabilities = ""
     if (text_domain) { capabilities = " requires: [\"ac.runtime.text.v1\"]\n" }
@@ -1344,8 +1362,9 @@ fn emit(checked VerifiedCore, defs List<int>, parameters List<int>, exprs List<i
                     form = "call"
                     fields = write_call(args, expr, data)
                 }
-                if (op == less_than_op() || op == add_op() || op == multiply_op()) {
+                if (binary_op(op)) {
                     form = "binary"
+                    if (logical_op(op)) { form = "logical" }
                     fields = write_binary(args, expr, op)
                 }
                 if (op == text_literal_op()) {
@@ -1508,6 +1527,7 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (root < 0) { return hir_shape_error() }
     let text_record = text_record_transport(bytes, tokens, values, nodes, fields, root)
+    let scalar = scalar_transport(bytes, tokens, values, nodes, fields, root)
     if (rows > 0 && !text_record) { return hir_shape_error() }
     var definitions = List<int>.new()
     var parameters = List<int>.new()
@@ -1516,7 +1536,7 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     var blocks = List<int>.new()
     var statements = List<int>.new()
     var records = List<int>.new()
-    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records)
+    let status = bind_core_atom(bytes, tokens, values, nodes, sequence, fields, items, root, rows, text_record, scalar, names, module_path, definitions, parameters, expressions, arguments, blocks, statements, records)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (status == hir_global_authority_error()) { return status }
     if (status == 0) {
@@ -1529,11 +1549,13 @@ fn verify_transport(bytes List<int>, layouts List<int>, names List<int>, rows in
     }
     var schema = core_schema()
     if (text_record) { schema = global_schema() }
+    if (scalar) { schema = scalar_schema() }
     let shaped = validate_transport_arena(str_to_bytes(schema), bytes, parser_error, tokens, nodes, fields, items, root)
     if (!take_step(fuel, deadline)) { return bind_budget() }
     if (!shaped) { return hir_shape_error() }
     if (status != 0) { return status }
     if (text_record) { return 1 }
+    if (scalar) { return 2 }
     return 0
 }
 

@@ -1,0 +1,61 @@
+// Operation identities shared by source HIR and the Atom binder. The
+// original core operations retain their identities.
+pub fn less_than_op() int { return 4 }
+
+pub fn binary_code(name Str) int {
+    if (name == "lt_i32") { return less_than_op() }
+    if (name == "add_i32") { return 5 }
+    if (name == "mul_i32") { return 6 }
+    if (name == "sub_i32") { return 12 }
+    if (name == "div_i32") { return 13 }
+    if (name == "rem_i32") { return 14 }
+    if (name == "le_i32") { return 15 }
+    if (name == "gt_i32") { return 16 }
+    if (name == "ge_i32") { return 17 }
+    if (name == "eq") { return 18 }
+    if (name == "ne") { return 19 }
+    if (name == "and") { return 20 }
+    if (name == "or") { return 21 }
+    return 0
+}
+
+pub fn source_binary(kind Str) int {
+    if (kind == "lt") { return less_than_op() }
+    if (kind == "plus") { return 5 }
+    if (kind == "star") { return 6 }
+    if (kind == "minus") { return 12 }
+    if (kind == "slash") { return 13 }
+    if (kind == "percent") { return 14 }
+    if (kind == "le") { return 15 }
+    if (kind == "gt") { return 16 }
+    if (kind == "ge") { return 17 }
+    if (kind == "eq") { return 18 }
+    if (kind == "ne") { return 19 }
+    if (kind == "andand") { return 20 }
+    if (kind == "oror") { return 21 }
+    return 0
+}
+
+pub fn binary_word(op int) Str {
+    if (op == less_than_op()) { return "lt_i32" }
+    if (op == 5) { return "add_i32" }
+    if (op == 6) { return "mul_i32" }
+    if (op == 12) { return "sub_i32" }
+    if (op == 13) { return "div_i32" }
+    if (op == 14) { return "rem_i32" }
+    if (op == 15) { return "le_i32" }
+    if (op == 16) { return "gt_i32" }
+    if (op == 17) { return "ge_i32" }
+    if (op == 18) { return "eq" }
+    if (op == 19) { return "ne" }
+    if (op == 20) { return "and" }
+    if (op == 21) { return "or" }
+    return ""
+}
+
+pub fn binary_op(op int) bool { return (op >= 4 && op <= 6) || (op >= 12 && op <= 21) }
+pub fn extended_binary(op int) bool { return op >= 12 && op <= 21 }
+pub fn comparison_op(op int) bool { return op == less_than_op() || (op >= 15 && op <= 19) }
+pub fn equality_op(op int) bool { return op == 18 || op == 19 }
+pub fn logical_op(op int) bool { return op == 20 || op == 21 }
+pub fn overflow_op(op int) bool { return op == 5 || op == 6 || op == 12 }

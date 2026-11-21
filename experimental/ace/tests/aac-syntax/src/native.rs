@@ -65,6 +65,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/hir/core_hir.at").into(),
         ),
         (
+            "core_ops.at".into(),
+            include_str!("../../../aac/hir/core_ops.at").into(),
+        ),
+        (
             "core_globals.at".into(),
             include_str!("../../../aac/hir/core_globals.at").into(),
         ),
@@ -96,8 +100,9 @@ pub fn semantic_modules() -> Vec<(String, String)> {
     files.push((
         "hir_schema_data.at".into(),
         format!(
-            "pub fn core_schema() Str {{ return {:?} }}\npub fn global_schema() Str {{ return {:?} }}\n",
+            "pub fn core_schema() Str {{ return {:?} }}\npub fn scalar_schema() Str {{ return {:?} }}\npub fn global_schema() Str {{ return {:?} }}\n",
             include_str!("../../../crates/core/schema/core-i32.atom"),
+            include_str!("../../../crates/core/schema/scalar-i32.atom"),
             include_str!("../../../crates/core/schema/text-record.atom")
         ),
     ));
