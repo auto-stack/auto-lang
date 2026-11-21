@@ -1,0 +1,78 @@
+// AAC cte module (PLAN-1048 T-04/T-05): compile-time requirement read sets
+// and the freeze decision surface in Auto. The schedule's execution tail is
+// the 1055 client lane (checked closure → base MIR → AV via the bridge);
+// this module owns the read-set projection (which constants a CT closure
+// reads) so an invalidation decision can be made before any bridge call,
+// and so static projections are never counted as AV execution (V-05).
+//
+// Bounded profile: the CT target is the named function; its read set is the
+// module constants (const-item names) referenced by calls inside the body.
+// A changed constant value changes the closure body version, so the driver
+// re-produces the ABC and the client re-executes; a stale frozen value is
+// never reused (V-04: K=3 -> 4 must recompute).
+
+use app.binding.direct_callee
+use app.binding.take_step
+use app.semantic_tree.child_with_role
+use app.semantic_tree.end_of
+use app.semantic_tree.first_child
+use app.semantic_tree.kind
+use app.semantic_tree.next_sibling
+use app.semantic_tree.row_count
+use app.semantic_tree.spelling
+use app.semantic_tree.start_of
+
+// Collect the name tokens of all module constants.
+fn collect_const_names(pg List<int>, ast List<int>, links List<int>, src List<int>, out List<int>, fuel List<int>, deadline i64) int {
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        if (kind(pg, ast, row) == "const-item") {
+            let name = child_with_role(pg, ast, links, row, "name")
+            if (name >= 0) { out.push(name) }
+        }
+        row = row + 1
+    }
+    return 0
+}
+
+fn name_matches(pg List<int>, ast List<int>, src List<int>, a int, b int) bool {
+    return spelling(src, ast, a) == spelling(src, ast, b)
+}
+
+// The read set of one function body: identifiers (and call callees) whose
+// spelling matches a module constant. Out carries the reference TOKENS.
+pub fn ct_read_tokens(pg List<int>, ast List<int>, links List<int>, src List<int>, fn_row int, out List<int>, fuel List<int>, deadline i64) int {
+    var consts = List<int>.new()
+    let collected = collect_const_names(pg, ast, links, src, consts, fuel, deadline)
+    if (collected != 0) { return collected }
+    let body_start = start_of(ast, fn_row)
+    let body_end = end_of(ast, fn_row)
+    var row = 0
+    for (row < row_count(ast)) {
+        if (!take_step(fuel, deadline)) { return -1 }
+        let start = start_of(ast, row)
+        if (start >= body_start && start <= body_end) {
+            var reference = -1
+            let node_kind = kind(pg, ast, row)
+            if (node_kind == "call") {
+                reference = direct_callee(pg, ast, links, row)
+            }
+            if (node_kind == "ident") {
+                reference = row
+            }
+            if (reference >= 0) {
+                var c = 0
+                for (c < consts.len()) {
+                    if (name_matches(pg, ast, src, reference, consts.get(c))) {
+                        out.push(reference)
+                        break
+                    }
+                    c = c + 1
+                }
+            }
+        }
+        row = row + 1
+    }
+    return 0
+}

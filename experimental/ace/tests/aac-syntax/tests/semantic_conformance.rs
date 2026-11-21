@@ -1854,3 +1854,65 @@ fn aac1048_meta_resolves_required_labels_on_owners() {
     assert!(report.contains("META-REQUIRED prepare host = \"x86_64\", mode = \"aac\""), "{report}");
     assert!(!report.contains("META-REQUIRED setup"), "unannotated owner leaked: {report}");
 }
+
+#[test]
+fn aac1048_ct_read_set_projection_is_static_and_names_constants() {
+    use ace_aac_syntax_conformance::run_ct_report_case;
+
+    // The read-set projection is in-process: it names the module constants
+    // the CT target reads and never touches the AV bridge.
+    let source = concat!(
+        "const K int = 3\n",
+        "fn f(x int) int { return K + x }\n",
+        "fn plain(x int) int { return x + 1 }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let report = run_ct_report_case(source.as_bytes(), "f").expect("CT read set");
+    assert!(report.starts_with("aac.ct-report/1\n"), "{report}");
+    assert!(report.contains("CT-READ K"), "{report}");
+    assert!(!report.contains("CT-READ plain"), "{report}");
+
+    let plain = run_ct_report_case(source.as_bytes(), "plain").expect("plain read set");
+    assert!(plain.starts_with("aac.ct-report/1\n"), "{plain}");
+    assert!(!plain.contains("CT-READ"), "plain reads nothing: {plain}");
+}
+
+#[cfg(feature = "aac-ct-bootstrap")]
+#[test]
+fn aac1048_ct_executes_instanced_generic_closure_through_bridge() {
+    use ace_aac_syntax_conformance::run_instance_ct_case;
+    use serde_json::json;
+
+    // V-04 CT tail: the generic call is instantiated (id_i32) and the CT
+    // closure executes through the 1055 client lane with the concrete
+    // function as the target.
+    let source = concat!(
+        "fn id<T>(x T) T { return x }\n",
+        "fn main() int { return id(7) }\n",
+    );
+    let (report, outcome) =
+        run_instance_ct_case(source.as_bytes(), "id_i32", "int", "7", true).expect("instanced CT");
+    assert_eq!(report, "CT value\n", "{report}");
+    let outcome = outcome.expect("typed CT outcome");
+    assert_eq!(outcome["status"], "value");
+    assert_eq!(outcome["value"], json!({"i32": 7}));
+}
+
+#[cfg(feature = "aac-ct-bootstrap")]
+#[test]
+fn aac1048_ct_constant_change_recomputes_no_stale_freeze() {
+    use ace_aac_syntax_conformance::run_instance_ct_case;
+    use serde_json::json;
+
+    // V-04/V-05: the CT closure binds local constant K; changing its value
+    // must recompute (the frozen 3 is never reused by the new query).
+    let k3 = concat!(
+        "fn f(x int) int { let K = 3\n return K + x }\n",
+        "fn main() int { return 7 }\n",
+    );
+    let k4 = k3.replace("let K = 3", "let K = 4");
+    let (_, outcome3) = run_instance_ct_case(k3.as_bytes(), "f", "int", "4", false).expect("K=3");
+    assert_eq!(outcome3.unwrap()["value"], json!({"i32": 7}));
+    let (_, outcome4) = run_instance_ct_case(k4.as_bytes(), "f", "int", "4", false).expect("K=4");
+    assert_eq!(outcome4.unwrap()["value"], json!({"i32": 8}));
+}

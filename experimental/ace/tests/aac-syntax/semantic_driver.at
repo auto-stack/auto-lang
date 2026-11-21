@@ -52,6 +52,7 @@ use app.instances_expand.run_instance_pass
 use app.meta.fn_signature_line
 use app.meta.record_shape_line
 use app.meta.required_line
+use app.cte.ct_read_tokens
 use app.nominal_layout.type_recursive_layout_error
 use app.patterns.type_exhaustive_error
 use app.patterns.type_match_branch_error
@@ -68,6 +69,7 @@ use app.numeric_literal.negative_source_literal
 use app.semantic_tree.add_module_name
 use app.semantic_tree.append_source
 use app.semantic_tree.build_child_index
+use app.semantic_tree.child_with_kind
 use app.semantic_tree.child_with_role
 use app.semantic_tree.end_of
 use app.semantic_tree.find_module_name
@@ -586,6 +588,40 @@ fn project(steps int) Str {
             row2 = row2 + 1
         }
         return meta_report
+    }
+    let ct_on = get("AAC1048_CT")
+    if (ct_on == "1") {
+        let target = get("AAC1055_CT_TARGET")
+        if (target.len() == 0) { return "ERROR ct.entry\n" }
+        var links3 = List<int>.new()
+        if (!build_child_index(ast, links3)) { return "ERROR resource.ast\n" }
+        var fuel3 = List<int>.new()
+        fuel3.push(steps)
+        let now3 = mono_ms()
+        if (now3 < 0i64) { return "ERROR os.clock\n" }
+        var ct_report = "aac.ct-report/1\n"
+        var row3 = 0
+        for (row3 < row_count(ast)) {
+            if (kind(pg, ast, row3) == "fn-item") {
+                var sig = row3
+                let tail = child_with_kind(pg, ast, links3, row3, "fn-tail")
+                if (tail >= 0) { sig = tail }
+                let name = child_with_role(pg, ast, links3, sig, "name")
+                if (name >= 0 && spelling(src, ast, name) == target) {
+                    var reads = List<int>.new()
+                    let status = ct_read_tokens(pg, ast, links3, src, row3, reads, fuel3, now3 + 5000i64)
+                    if (status != 0) { return "ERROR resource.semantic\n" }
+                    var r = 0
+                    for (r < reads.len()) {
+                        ct_report = ct_report + "CT-READ " + spelling(src, ast, reads.get(r)) + "\n"
+                        r = r + 1
+                    }
+                    return ct_report
+                }
+            }
+            row3 = row3 + 1
+        }
+        return "ERROR ct.entry\n"
     }
     let instances_on = get("AAC1048_INSTANCES")
     if (instances_on.len() > 0 && roots.len() > 0) {

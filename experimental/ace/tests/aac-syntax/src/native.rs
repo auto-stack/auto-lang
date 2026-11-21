@@ -129,6 +129,10 @@ pub fn semantic_modules() -> Vec<(String, String)> {
             include_str!("../../../aac/semantics/meta/meta.at").into(),
         ),
         (
+            "cte.at".into(),
+            include_str!("../../../aac/semantics/cte/cte.at").into(),
+        ),
+        (
             "core_atom_bound.at".into(),
             include_str!("../../../aac/hir/core_atom_bound.at").into(),
         ),
@@ -354,6 +358,19 @@ pub fn run_ct_bootstrap_case(
     result: &str,
     arguments: &str,
 ) -> Result<(String, Option<serde_json::Value>), String> {
+    run_instance_ct_case(sample, "f", result, arguments, false)
+}
+
+/// PLAN-1048: CT execution through the 1055 client lane over the INSTANCE-
+/// EXPANDED program (the generic call is rewritten to its concrete function
+/// before the closure is lowered). The worksheet records the instance table.
+pub fn run_instance_ct_case(
+    sample: &[u8],
+    target: &str,
+    result: &str,
+    arguments: &str,
+    instances: bool,
+) -> Result<(String, Option<serde_json::Value>), String> {
     let exe = prepared_semantic()?;
     static PREPARED_CT: OnceLock<Result<PathBuf, String>> = OnceLock::new();
     let client = admit_driver(
@@ -366,7 +383,7 @@ pub fn run_ct_bootstrap_case(
         .map(PathBuf::from)
         .filter(|path| path.is_absolute() && path.is_file())
         .ok_or("set ACE_AAC1055_BRIDGE to the absolute path of the prepared ace-aac-bridge.exe")?;
-    with_fixture("ct-bootstrap", |root| {
+    with_fixture("instance-ct", |root| {
         let input = root.join("input.at");
         let output = root.join("report.txt");
         let request = root.join("request.aq01");
@@ -378,7 +395,11 @@ pub fn run_ct_bootstrap_case(
         let root_budget = Duration::from_secs(7);
         let started = std::time::Instant::now();
         let mut cmd = semantic_command(exe, root, &input, &output, None, true, Some("ct-mir"));
-        cmd.env("AAC1055_CT_TARGET", "f")
+        if instances {
+            cmd.env("AAC1048_INSTANCES", "1")
+                .env("AAC1048_WORKSHEET", root.join("worksheet.txt"));
+        }
+        cmd.env("AAC1055_CT_TARGET", target)
             .env("AAC1055_CT_RESULT", result)
             .env("AAC1055_CT_ARGS", arguments)
             .env("AAC1055_CT_BUDGET_MS", "7000")
@@ -669,6 +690,19 @@ pub fn run_instance_case(sample: &[u8]) -> Result<(String, String), String> {
         let report = execute_report(cmd, &output, "instance")?;
         let sheet = std::fs::read_to_string(&worksheet).unwrap_or_default();
         Ok((report, sheet))
+    })
+}
+
+/// PLAN-1048: pure static CT read-set projection (no bridge invocation).
+pub fn run_ct_report_case(sample: &[u8], target: &str) -> Result<String, String> {
+    let exe = prepared_semantic()?;
+    with_fixture("ct-report", |root| {
+        let input = root.join("input.at");
+        let output = root.join("report.txt");
+        std::fs::write(&input, sample).map_err(|err| format!("write CT report input: {err}"))?;
+        let mut cmd = semantic_command(exe, root, &input, &output, None, false, None);
+        cmd.env("AAC1048_CT", "1").env("AAC1055_CT_TARGET", target);
+        execute_report(cmd, &output, "ct-report")
     })
 }
 
