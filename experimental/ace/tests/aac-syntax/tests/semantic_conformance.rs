@@ -1741,8 +1741,6 @@ fn aac1048_instances_id_distinguishes_int_and_bool_instances() {
         "ac935/instance-logical/v1",
         &[b"app.main", b"tpl", b"id"],
     );
-    eprintln!("rust logical: {logical}");
-    eprintln!("auto sheet: {sheet}");
     assert!(
         sheet.contains(&format!(" {logical} app.main id ")),
         "logical mismatch: {sheet}"
