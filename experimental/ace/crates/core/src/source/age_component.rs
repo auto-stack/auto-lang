@@ -4263,7 +4263,7 @@ pub(crate) fn rename_expr_with_params(
                             args: Vec::new(),
                         },
                     },
-                    FieldBinding::StateFnAt { .. } => binding.package_field(f, name.span, expr.span),
+                    FieldBinding::StateFnAt { .. } => binding.package_field(f, name.span, expr.span)?,
                     FieldBinding::GlobalCell => Expr {
                         span: expr.span,
                         kind: ExprKind::Call {
@@ -4342,7 +4342,7 @@ pub(crate) fn rename_expr_with_params(
                             args: Vec::new(),
                         },
                     },
-                    FieldBinding::StateFnAt { .. } => binding.package_field(f, id.span, expr.span),
+                    FieldBinding::StateFnAt { .. } => binding.package_field(f, id.span, expr.span)?,
                     FieldBinding::GlobalCell => Expr {
                         span: expr.span,
                         kind: ExprKind::Call {
@@ -4902,18 +4902,33 @@ impl<'a> FieldBinding<'a> {
         }
     }
 
-    fn package_field(self, field: &ComponentField, name_span: Span, span: Span) -> Expr {
+    fn package_field(
+        self,
+        field: &ComponentField,
+        name_span: Span,
+        span: Span,
+    ) -> Result<Expr, Vec<Diagnostic>> {
         let Self::StateFnAt { node, inst, model, .. } = self else { unreachable!() };
         if let Some(model) = model {
-            return widget_model_field(model, &field.name, span, name_span, field_type(field) == Some(TypeWord::StrOwned));
+            return Ok(widget_model_field(
+                model, &field.name, span, name_span,
+                field_type(field) == Some(TypeWord::StrOwned),
+            ));
         }
-        Expr {
+        if field.ty.trim_start().starts_with('[') {
+            return Err(vec![text_diag(
+                "source.age.component-unsupported",
+                format!("package view cannot observe bracket list model field `{}`", field.name),
+                name_span,
+            )]);
+        }
+        Ok(Expr {
             span,
             kind: ExprKind::Call {
                 callee: Ident { name: state_fn_name_at(node, inst, &field.name), span: name_span },
                 args: self.widget_args(span),
             },
-        }
+        })
     }
 
     fn widget_properties(self) -> &'a [ComponentParam] {
