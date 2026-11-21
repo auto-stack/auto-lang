@@ -67,6 +67,7 @@ fn p1107_t05_ac_build_a2py_use_py_project_runs_native_python() {
         ],
         sources: vec![("main.at".to_string(), section_5_1())],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let outcome = m2
@@ -201,6 +202,7 @@ fn p1107_t05_sdk_use_py_project_runs_relocates_and_refuses_missing_artifact() {
         ],
         sources: vec![("main.at".to_string(), section_5_1())],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let sdk = root.join("sdk");
@@ -264,6 +266,7 @@ fn p1107_t05_sdk_missing_python_package_is_named_at_run_not_emit() {
         ],
         sources: vec![("main.at".to_string(), src.to_string())],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let sdk = root.join("sdk");
@@ -299,6 +302,7 @@ fn p1107_v04_sdk_run_of_an_uncaught_python_error_is_not_a_pass() {
         caps: vec![],
         sources: vec![("main.at".to_string(), corpus_file("error_uncaught_1107.at"))],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let sdk = root.join("sdk");
@@ -334,6 +338,7 @@ fn p1107_v08_plain_auto_project_on_the_a2py_lane_is_unaffected() {
             "fn main() int {\n    var a = 14\n    return a\n}".to_string(),
         )],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let outcome = m2
@@ -377,6 +382,7 @@ fn p1107_v05_emitted_fileset_carries_no_legacy_python_engine() {
         caps: vec![],
         sources: vec![("main.at".to_string(), corpus_file("protocol_1107.at"))],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let outcome = m2
@@ -433,6 +439,7 @@ fn p1107_v07_missing_interpreter_is_named_not_a_pass() {
         caps: vec![],
         sources: vec![("main.at".to_string(), corpus_file("protocol_1107.at"))],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let sdk = root.join("sdk");
@@ -468,6 +475,7 @@ fn p1107_v06_cold_warm_and_body_edit_are_counted_and_invalidated() {
         caps: vec![],
         sources: vec![("main.at".to_string(), body.to_string())],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
 
@@ -546,6 +554,7 @@ fn p1107_v06_identity_axes_and_provider_participation() {
         caps,
         sources: vec![("main.at".to_string(), src.clone())],
         stdlib: Vec::new(),
+        rust_provider: None,
     };
     let mut m2 = M2Build::new(&root.join("store"));
     let base = m2

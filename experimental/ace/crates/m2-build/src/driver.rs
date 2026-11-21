@@ -45,6 +45,14 @@ pub struct ProjectInputs {
     pub sources: Vec<(String, String)>,
     /// Declared stdlib closure members (path under `stdlib/auto`, text).
     pub stdlib: Vec<(String, String)>,
+    /// An explicitly declared AV Rust provider.
+    pub rust_provider: Option<RustProjectInputs>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RustProjectInputs {
+    pub source: String,
+    pub cargo_lock: Option<String>,
 }
 
 impl ProjectInputs {
@@ -55,6 +63,7 @@ impl ProjectInputs {
             caps: vec![],
             sources: vec![(source_path.into(), source_text.into())],
             stdlib: vec![],
+            rust_provider: None,
         }
     }
 
@@ -95,6 +104,8 @@ pub struct BuildCounts {
     /// Child processes THIS driver spawned, by seam name (the independent
     /// machine-level oracle is crate::probe).
     pub tool_spawns: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rust_provider_rebuilt: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -183,7 +194,7 @@ fn generator_identity() -> String {
 /// the same mapping `ace_native::entry::resolve` freezes (source mode
 /// takes the declared name; the id is never the lookup key for
 /// hand-authored HIR, so both spellings pass through).
-fn lane_entry(entry: &str) -> String {
+pub(crate) fn lane_entry(entry: &str) -> String {
     if entry.starts_with("d_") || entry.starts_with("sf_") {
         entry.to_string()
     } else {
@@ -228,8 +239,33 @@ impl M2Build {
         inputs: &ProjectInputs,
     ) -> Result<BuildOutcome, M2Reject> {
         let src = inputs.entry_source()?;
-        let identity =
+        #[allow(unused_mut)]
+        let mut identity =
             ProjectBuildIdentity::of(inputs, target, &grammar_identity(target), tool_axes(target));
+        let rust_inputs = inputs
+            .rust_provider
+            .as_ref()
+            .filter(|_| target == TargetKind::Av);
+        #[cfg(windows)]
+        let provider = rust_inputs
+            .map(|provider| crate::rust_project::prepare(&self.scratch, inputs, provider))
+            .transpose()?;
+        #[cfg(windows)]
+        if let Some(provider) = &provider {
+            identity.grammar_identity = format!(
+                "av.closures/1 abc/{} foreign-project/1",
+                ace_av_core::abc::ABC_VERSION
+            );
+            identity.provider_build = Some(provider.identity.clone());
+            identity.provider_artifact_sha256 = Some(provider.artifact_sha256.clone());
+        }
+        #[cfg(not(windows))]
+        if rust_inputs.is_some() {
+            return Err(M2Reject::new(
+                "m2build.rust-target",
+                "this Rust shim ABI requires Windows/MSVC",
+            ));
+        }
         let key = ace_artifacts::identity::QueryKey {
             layer: M978B_LAYER,
             components: vec![("identity".into(), identity.key())],
@@ -263,6 +299,30 @@ impl M2Build {
         }
         // MISS: real producer work per lane.
         let (products, run, mut counts) = match target {
+            #[cfg(windows)]
+            TargetKind::Av if provider.is_some() => {
+                let provider = provider.as_ref().expect("guarded provider");
+                let run = crate::rust_project::build_and_run(inputs, src, provider)?;
+                let receipt = serde_json::json!({
+                    "schema": BUILD_RECEIPT_SCHEMA,
+                    "target": "av",
+                    "observed": run.exit_code,
+                    "channel": run.channel,
+                    "provider_artifact_sha256": provider.artifact_sha256,
+                });
+                (
+                    vec![(
+                        "targets/av/build-receipt.json".into(),
+                        serde_json::to_vec_pretty(&receipt).unwrap(),
+                    )],
+                    Some(run),
+                    BuildCounts {
+                        lane: "av".into(),
+                        rust_provider_rebuilt: provider.rebuilt,
+                        ..Default::default()
+                    },
+                )
+            }
             TargetKind::Av => self.lane_av(inputs, src)?,
             TargetKind::Native => self.lane_native(inputs, src)?,
             TargetKind::A2r => self.lane_a2x(inputs, src, "a2r")?,
@@ -541,7 +601,7 @@ impl M2Build {
             fragments_produced: stats.fragments_produced,
             store_hit_fragment: stats.store_hit_fragment,
             store_hit_semantic: stats.store_hit_semantic,
-            tool_spawns: BTreeMap::new(),
+            ..Default::default()
         };
         let mut products = Vec::new();
         for (name, text) in &assembly.files {

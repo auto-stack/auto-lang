@@ -12,11 +12,13 @@
 //! (`{"name","entry","caps":[],"stdlib":[]}`) plus one `src/*.at` public
 //! source. Every command prints a JSON receipt to stdout and exits
 //! 0 (ok) / 1 (named rejection) / 2 (usage).
+//! An AV Rust project declares `"rust_provider":{"source":"provider.rs"}`
+//! and may supply `"cargo_lock":"Cargo.lock"` for an annotated dependency.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use ace_m2_build::driver::{M2Build, ProjectInputs};
+use ace_m2_build::driver::{M2Build, ProjectInputs, RustProjectInputs};
 use ace_m2_build::identity::TargetKind;
 
 const EXIT_OK: u8 = 0;
@@ -117,6 +119,29 @@ fn parse_targets(raw: &str) -> Result<Vec<TargetKind>, ace_m2_build::M2Reject> {
     Ok(out)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RustInputPaths {
+    source: String,
+    cargo_lock: Option<String>,
+}
+
+fn read_rust_input(dir: &Path, rel: &str) -> Result<String, ace_m2_build::M2Reject> {
+    ace_m2_build::SdkRecipe::safe_rel(rel)?;
+    let io_error = |e: std::io::Error| {
+        ace_m2_build::M2Reject::new("m2build.rust-input", format!("read {rel}: {e}"))
+    };
+    let root = dir.canonicalize().map_err(io_error)?;
+    let path = dir.join(rel).canonicalize().map_err(io_error)?;
+    if !path.starts_with(root) {
+        return Err(ace_m2_build::M2Reject::new(
+            "m2build.rust-input",
+            format!("{rel} resolves outside the declared project"),
+        ));
+    }
+    std::fs::read_to_string(path).map_err(io_error)
+}
+
 fn load_project(dir: &Path) -> Result<ProjectInputs, ace_m2_build::M2Reject> {
     let doc = std::fs::read_to_string(dir.join("project.json")).map_err(|e| {
         ace_m2_build::M2Reject::new(
@@ -177,12 +202,28 @@ fn load_project(dir: &Path) -> Result<ProjectInputs, ace_m2_build::M2Reject> {
             }
         }
     }
+    let rust_provider = if let Some(value) = spec.get("rust_provider") {
+        let paths: RustInputPaths = serde_json::from_value(value.clone()).map_err(|e| {
+            ace_m2_build::M2Reject::new("m2build.rust-input", format!("rust_provider: {e}"))
+        })?;
+        Some(RustProjectInputs {
+            source: read_rust_input(dir, &paths.source)?,
+            cargo_lock: paths
+                .cargo_lock
+                .as_deref()
+                .map(|path| read_rust_input(dir, path))
+                .transpose()?,
+        })
+    } else {
+        None
+    };
     Ok(ProjectInputs {
         name,
         entry,
         caps,
         sources,
         stdlib,
+        rust_provider,
     })
 }
 

@@ -76,6 +76,7 @@ fn p978_b0_illegal_neighbor_and_recovery() {
             ("b.at".into(), "fn main() int { return 2 }".into()),
         ],
         stdlib: vec![],
+        rust_provider: None,
     };
     let err = M2Build::new(&root)
         .build(TargetKind::Av, &multi)

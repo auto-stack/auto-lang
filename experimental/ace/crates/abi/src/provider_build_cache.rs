@@ -57,6 +57,8 @@ pub struct BuildIdentity {
     pub generator_identity: String,
     pub target: String,
     pub crate_types: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_lock_sha256: Option<String>,
 }
 
 /// The cached product set of one identity.
@@ -95,13 +97,14 @@ impl BuildIdentity {
             ),
             target: build.manifest.target.clone(),
             crate_types: vec!["cdylib".into(), "staticlib".into()],
+            dependency_lock_sha256: None,
         }
     }
 
     /// The canonical store key of this identity (a QueryKey component
     /// string — sorted axes, version-tagged).
     pub fn key(&self) -> String {
-        format!(
+        let mut key = format!(
             "S967B/v1 provider={} shim={} rustc={} gen={} target={} types={}",
             self.provider_sha256,
             self.shim_sha256,
@@ -109,7 +112,12 @@ impl BuildIdentity {
             self.generator_identity,
             self.target,
             self.crate_types.join("+")
-        )
+        );
+        if let Some(lock) = &self.dependency_lock_sha256 {
+            key.push_str(" lock=");
+            key.push_str(lock);
+        }
+        key
     }
 }
 

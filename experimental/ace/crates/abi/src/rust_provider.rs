@@ -32,6 +32,43 @@ pub struct RustProviderBuild {
     pub rustc_identity: String,
 }
 
+/// Reconstruct the source-bound description of an existing provider artifact.
+/// The consumer verifies the artifact against its selected digest before load.
+pub fn describe_rust_provider(
+    source: &str,
+    rustc_identity: String,
+    cdylib: PathBuf,
+    staticlib: PathBuf,
+) -> Result<RustProviderBuild, String> {
+    let manifest = auto_bindgen::rust_import::import(source)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+    let provider_digest = auto_bindgen::rust_import::provider_digest(source);
+    let manual = auto_bindgen::rust_import::to_manual_manifest(
+        &manifest,
+        "f0-rust-provider/1",
+        &provider_digest,
+        &auto_bindgen::rust_import::shim_digest(&shim_source),
+    )?;
+    Ok(RustProviderBuild {
+        cdylib,
+        staticlib,
+        manifest,
+        shim_source,
+        manual,
+        provider_digest,
+        rustc_identity,
+    })
+}
+
+pub fn rustc_identity(cwd: &Path) -> Result<String, String> {
+    let (code, stdout, stderr) = run_rustc(&["--version"], cwd)?;
+    if code != 0 {
+        return Err(format!("rustc --version failed: {stderr}"));
+    }
+    Ok(stdout.trim().to_owned())
+}
+
 fn run_rustc(args: &[&str], cwd: &Path) -> Result<(i32, String, String), String> {
     // PLAN-967 T-11 (V-ABI-CROSS): an explicit second-toolchain override;
     // the default stays the ambient rustc; identity is recorded per build.
@@ -82,27 +119,20 @@ fn source_provider(
     source: &str,
     prepared_rustc: Option<&str>,
 ) -> Result<RustProviderBuild, String> {
-    let manifest = auto_bindgen::rust_import::import(source)
-        .map_err(|e| format!("{}: {}", e.code, e.message))?;
-    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
-    let provider_digest = auto_bindgen::rust_import::provider_digest(source);
-    let manual = auto_bindgen::rust_import::to_manual_manifest(
-        &manifest,
-        "f0-rust-provider/1",
-        &provider_digest,
-        &auto_bindgen::rust_import::shim_digest(&shim_source),
-    )?;
-
     let crate_dir = root.join("f0-provider-crate");
     let out = root.join("out");
-    let rustc_identity = if let Some(identity) = prepared_rustc {
-        identity.to_owned()
-    } else {
+    let mut build = describe_rust_provider(
+        source,
+        prepared_rustc.unwrap_or_default().to_owned(),
+        out.join("f0_text_provider.dll"),
+        out.join("f0_text_provider.lib"),
+    )?;
+    if prepared_rustc.is_none() {
         let src = crate_dir.join("src");
         std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
         std::fs::write(src.join("provider.rs"), source).map_err(|e| e.to_string())?;
-        std::fs::write(src.join("shim.rs"), &shim_source).map_err(|e| e.to_string())?;
+        std::fs::write(src.join("shim.rs"), &build.shim_source).map_err(|e| e.to_string())?;
         // The crate root is the FLAT concatenation of the provider source and
         // the generated shim (inner doc comments and items splice legally;
         // `--cap-lints allow` covers the mixed-use lint surface).
@@ -110,30 +140,29 @@ fn source_provider(
             src.join("lib.rs"),
             format!(
                 "{}\n// PLAN-967 F0 build unit: provider + generated shim, one closure.\n{}",
-                source, shim_source
+                source, build.shim_source
             ),
         )
         .map_err(|e| e.to_string())?;
 
-        let (code, out_text, err) = run_rustc(&["--version"], &crate_dir)?;
-        if code != 0 {
-            return Err(format!("rustc --version failed: {err}"));
-        }
-        out_text.trim().to_string()
-    };
+        build.rustc_identity = rustc_identity(&crate_dir)?;
+    }
     // PLAN-980 HELLO：新鲜度缓存——同 (provider digest, shim digest, rustc
     // identity) 且 cdylib/staticlib 在位时跳过两次 rustc 编译（显式预构建
     // 阶段的测试纪律：测试及其子进程不编译前置）。缓存只认输入身份，不认
     // 时间戳；编辑源（identity/rebind 腿）digest 变化即自然重建。
-    let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
-    let stamp = format!("{provider_digest}\n{shim_digest}\n{rustc_identity}\n");
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&build.shim_source);
+    let stamp = format!(
+        "{}\n{shim_digest}\n{}\n",
+        build.provider_digest, build.rustc_identity
+    );
     let stamp_path = out.join("f0-build-stamp.txt");
     let cached = stamp_path.is_file()
         && std::fs::read_to_string(&stamp_path)
             .map(|s| s == stamp)
             .unwrap_or(false)
-        && out.join("f0_text_provider.dll").is_file()
-        && out.join("f0_text_provider.lib").is_file();
+        && build.cdylib.is_file()
+        && build.staticlib.is_file();
     if !cached {
         if prepared_rustc.is_some() {
             return Err(format!(
@@ -185,23 +214,16 @@ fn source_provider(
         }
         std::fs::write(&stamp_path, &stamp).map_err(|e| e.to_string())?;
     }
-    let cdylib = out.join("f0_text_provider.dll");
-    if !cdylib.is_file() {
-        return Err(format!("cdylib not produced at {}", cdylib.display()));
+    if !build.cdylib.is_file() {
+        return Err(format!("cdylib not produced at {}", build.cdylib.display()));
     }
-    let staticlib = out.join("f0_text_provider.lib");
-    if !staticlib.is_file() {
-        return Err(format!("staticlib not produced at {}", staticlib.display()));
+    if !build.staticlib.is_file() {
+        return Err(format!(
+            "staticlib not produced at {}",
+            build.staticlib.display()
+        ));
     }
-    Ok(RustProviderBuild {
-        cdylib,
-        staticlib,
-        manifest,
-        shim_source,
-        manual,
-        provider_digest,
-        rustc_identity,
-    })
+    Ok(build)
 }
 
 /// The controlled async provider fixture (PLAN-967 T-08).
@@ -614,6 +636,23 @@ pub fn build_cargo_provider(
     root: &Path,
     provider_source: &str,
 ) -> Result<RustProviderBuild, String> {
+    build_cargo_provider_with_lock(root, provider_source, None)
+}
+
+/// Build the same Cargo unit against an explicit, immutable resolution.
+pub fn build_locked_cargo_provider(
+    root: &Path,
+    provider_source: &str,
+    lock: &str,
+) -> Result<RustProviderBuild, String> {
+    build_cargo_provider_with_lock(root, provider_source, Some(lock))
+}
+
+fn build_cargo_provider_with_lock(
+    root: &Path,
+    provider_source: &str,
+    lock: Option<&str>,
+) -> Result<RustProviderBuild, String> {
     let manifest = auto_bindgen::rust_import::import(provider_source)
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
     let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
@@ -643,9 +682,23 @@ path = \"src/lib.rs\"
 ",
     );
     for (name, spec) in provider_deps(provider_source) {
+        if lock.is_some()
+            && (name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                || spec.contains(['"', '\\', '\n', '\r']))
+        {
+            return Err(format!(
+                "invalid locked Rust dependency declaration: {name} {spec}"
+            ));
+        }
         toml.push_str(&format!("{name} = \"{spec}\"\n"));
     }
     std::fs::write(dir.join("Cargo.toml"), toml).map_err(|e| e.to_string())?;
+    if let Some(lock) = lock {
+        std::fs::write(dir.join("Cargo.lock"), lock).map_err(|e| e.to_string())?;
+    }
     std::fs::write(
         src.join("lib.rs"),
         format!(
@@ -666,6 +719,12 @@ path = \"src/lib.rs\"
     cmd.args(["build", "--offline"])
         .current_dir(&dir)
         .env_remove("CARGO_TARGET_DIR");
+    if lock.is_some() {
+        cmd.arg("--locked");
+        if let Some(compiler) = std::env::var_os("AC741_RUSTC") {
+            cmd.env("RUSTC", compiler);
+        }
+    }
     let run = ace_core::link::run_deadlined_typed(
         &mut cmd,
         std::time::Duration::from_secs(300),

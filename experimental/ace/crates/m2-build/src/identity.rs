@@ -113,6 +113,8 @@ pub struct ProjectBuildIdentity {
     /// The 967 S967B provider build identity when a provider artifact
     /// participated in this build node (consumed as-is, never re-derived).
     pub provider_build: Option<ace_abi::provider_build_cache::BuildIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_artifact_sha256: Option<String>,
 }
 
 impl ProjectBuildIdentity {
@@ -161,6 +163,7 @@ impl ProjectBuildIdentity {
                 axes
             },
             provider_build: None,
+            provider_artifact_sha256: None,
         }
     }
 
@@ -190,7 +193,7 @@ impl ProjectBuildIdentity {
             .as_ref()
             .map(|b| b.key())
             .unwrap_or_else(|| "none".into());
-        format!(
+        let mut key = format!(
             "M978B/v1 project={} target={} entry={} caps={} sources=[{}] stdlib=[{}] grammar={} tools=[{}] provider={}",
             self.project,
             self.target.name(),
@@ -201,7 +204,12 @@ impl ProjectBuildIdentity {
             self.grammar_identity,
             tools,
             provider
-        )
+        );
+        if let Some(artifact) = &self.provider_artifact_sha256 {
+            key.push_str(" provider-artifact=");
+            key.push_str(artifact);
+        }
+        key
     }
 
     /// The target axis this build node produced for (runtime-compat seed).

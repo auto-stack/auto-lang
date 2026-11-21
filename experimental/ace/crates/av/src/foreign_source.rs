@@ -507,8 +507,25 @@ pub fn run_foreign_chain(
             .bind_python_error_observers(&admitted)
             .map_err(|e| diag("foreign.py-observer", format!("{}: {}", e.code, e.message)))?;
     }
-    let compiled = compile_language_source_with_foreign(source, path, caps, &admitted)
-        .map_err(|ds| {
+    let program = compile_foreign_program(source, path, "d_main", caps, &admitted)?;
+    execute_foreign_program(&program, caps, &CancelFlag::new(false), capture, &mut table)
+}
+
+/// Portable output of the ordinary foreign front door.
+pub struct ForeignProgram {
+    pub owner: ace_av_core::mir::OwnerScope,
+    pub abc: Vec<u8>,
+}
+
+pub fn compile_foreign_program(
+    source: &str,
+    path: &str,
+    entry: &str,
+    caps: &[String],
+    admitted: &ace_foreign_contract::manual::AdmittedForeign,
+) -> Result<ForeignProgram, Json> {
+    let compiled =
+        compile_language_source_with_foreign(source, path, caps, admitted).map_err(|ds| {
             let d = &ds[0];
             json!({
                 "stage": format!("{:?}", d.stage).to_lowercase(),
@@ -516,7 +533,7 @@ pub fn run_foreign_chain(
                 "path": path, "span": {"start": d.span.start, "end": d.span.end}
             })
         })?;
-    let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
+    let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, entry, 0)
         .map_err(|e| json!({"stage":"lower","code":"lower","message":format!("{e:?}")}))?;
     verify_mir(&mir).map_err(|error| {
         let mut diagnostic = json!({
@@ -539,10 +556,23 @@ pub fn run_foreign_chain(
     super::language_source_worker::authorize_console_calls(&mir, caps, path)?;
     let abc = encode_abc(&mir)
         .map_err(|e| json!({"stage":"encode","code":"abc","message":format!("{e:?}")}))?;
-    let flat = abc.to_flat();
-    let decoded = ace_av_core::abc::decode_abc(&flat)
+    Ok(ForeignProgram {
+        owner: mir.owner,
+        abc: abc.to_flat(),
+    })
+}
+
+/// Re-admit the portable program against the current session and grants.
+pub fn execute_foreign_program(
+    program: &ForeignProgram,
+    caps: &[String],
+    cancel: &CancelFlag,
+    capture: &mut ConsoleCapture,
+    table: &mut ForeignStubTable,
+) -> Result<(ExecOutcome, ExecTrace), Json> {
+    let decoded = ace_av_core::abc::decode_abc(&program.abc)
         .map_err(|e| json!({"stage":"admit","code":"abc","message":format!("{e:?}")}))?;
-    let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &mir.owner, &table)
+    let loaded = ace_av_core::abc_verify::verify_abc_foreign(decoded, &program.owner, table)
         .map_err(|e| json!({"stage":"admit","code":"abc","message":e.to_string()}))?;
     let grants: Vec<_> = caps
         .iter()
@@ -557,10 +587,10 @@ pub fn run_foreign_chain(
     execute_console_foreign(
         &loaded,
         &ExecLimits::default(),
-        &CancelFlag::new(false),
+        cancel,
         &grants,
         capture,
-        &mut table,
+        table,
     )
     .map_err(|e| json!({"stage":"run","code":e.code,"message":e.message}))
 }

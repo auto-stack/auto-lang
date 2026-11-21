@@ -30,6 +30,8 @@ pub mod identity;
 pub mod load;
 pub mod probe;
 pub mod recipe;
+#[cfg(windows)]
+mod rust_project;
 pub mod selection;
 
 pub use compat::{
