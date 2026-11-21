@@ -1357,10 +1357,10 @@ void ace_foreign_fail(int status) { (void)status; ExitProcess(70); }
 pub struct F0Session {
     pub build: RustProviderBuild,
     pub admitted: ace_foreign_contract::manual::AdmittedForeign,
+    pub session: ace_av_core::foreign_exec::ForeignSession,
     /// Keeps the cdylib (and its exports) alive for the session's life;
     /// dropping the session drops it exactly once (原方 destroy 一次).
     pub provider: LoadedRustProvider,
-    pub session: ace_av_core::foreign_exec::ForeignSession,
 }
 
 /// Open the frozen F0 provider as a session at generation 1.

@@ -451,6 +451,7 @@ pub struct ForeignStubTable {
     out_expected_owner: String,
     out_expected_origin: String,
     python_error_observers: Option<Box<[SourceDecl; 2]>>,
+    completion_ports: std::sync::Arc<CompletionPorts>,
 }
 
 impl ForeignStubTable {
@@ -466,6 +467,7 @@ impl ForeignStubTable {
             out_expected_owner: "av".into(),
             out_expected_origin: "guest".into(),
             python_error_observers: None,
+            completion_ports: std::sync::Arc::new(CompletionPorts::new(current_generation)),
         }
     }
 
@@ -649,6 +651,8 @@ impl ForeignStubTable {
     /// Session teardown / provider rebind: stale entries stop admitting.
     pub fn bump_generation(&mut self) {
         self.current_generation += 1;
+        self.completion_ports
+            .bind_session_generation(self.current_generation);
     }
 
     pub fn generation(&self) -> u64 {
@@ -1217,6 +1221,12 @@ impl Default for ForeignSession {
     }
 }
 
+impl Drop for ForeignSession {
+    fn drop(&mut self) {
+        self.teardown();
+    }
+}
+
 impl ForeignSession {
     /// A fresh session at generation 1.
     pub fn new() -> Self {
@@ -1227,6 +1237,12 @@ impl ForeignSession {
 
     pub fn generation(&self) -> u64 {
         self.table.generation()
+    }
+
+    /// The completion registry for this binding. A producer may keep its
+    /// reference through cancellation, rebind, or session close.
+    pub fn completion_ports(&self) -> std::sync::Arc<CompletionPorts> {
+        self.table.completion_ports.clone()
     }
 
     /// Bind admitted stubs at the CURRENT generation. The caller owns
@@ -1275,6 +1291,7 @@ impl ForeignSession {
     /// Adopt a fully-loaded table (a loader-built table at the session's
     /// generation); the session takes over its counters and flag.
     pub fn adopt(&mut self, table: ForeignStubTable) {
+        self.teardown();
         self.table = table;
     }
 }
@@ -1287,29 +1304,29 @@ impl ForeignSession {
 /// and never touch a closed session.
 #[derive(Debug)]
 pub struct CompletionPorts {
-    generation: u64,
-    next_port: u64,
     inner: std::sync::Mutex<PortRegistryInner>,
 }
 
 #[derive(Debug)]
 struct PortRegistryInner {
+    generation: u64,
+    next_port: u64,
     open: std::collections::BTreeMap<u64, OpenPort>,
     events: Vec<ace_foreign_contract::PortEvent>,
 }
 
 #[derive(Debug)]
 struct OpenPort {
-    cancelled: bool,
+    released: bool,
     pinned_generation: u64,
 }
 
 impl CompletionPorts {
     pub fn new(generation: u64) -> Self {
         Self {
-            generation,
-            next_port: 1,
             inner: std::sync::Mutex::new(PortRegistryInner {
+                generation,
+                next_port: 1,
                 open: std::collections::BTreeMap::new(),
                 events: Vec::new(),
             }),
@@ -1318,15 +1335,16 @@ impl CompletionPorts {
 
     /// Register a port for `symbol` at the CURRENT generation (the port
     /// pins the generation; a later teardown/rebind drops its lateness).
-    pub fn register(&mut self, symbol: &str) -> u64 {
-        let port = self.next_port;
-        self.next_port += 1;
+    pub fn register(&self, symbol: &str) -> u64 {
         let mut inner = self.inner.lock().expect("port registry");
+        let port = inner.next_port;
+        inner.next_port += 1;
+        let pinned_generation = inner.generation;
         inner.open.insert(
             port,
             OpenPort {
-                cancelled: false,
-                pinned_generation: self.generation,
+                released: false,
+                pinned_generation,
             },
         );
         inner
@@ -1350,9 +1368,9 @@ impl CompletionPorts {
             return CompletionDisposition::UnknownPort;
         };
         let pinned = open.pinned_generation;
-        let cancelled = open.cancelled;
+        let cancelled = open.released;
         let disposition =
-            ace_foreign_contract::completion_disposition(true, cancelled, pinned, self.generation);
+            ace_foreign_contract::completion_disposition(true, cancelled, pinned, inner.generation);
         match disposition {
             CompletionDisposition::Publish => {
                 inner
@@ -1380,24 +1398,27 @@ impl CompletionPorts {
     /// facts for the consumer.
     pub fn cancel(&self, port: u64) -> bool {
         let mut inner = self.inner.lock().expect("port registry");
-        if let Some(open) = inner.open.get_mut(&port) {
-            open.cancelled = true;
-            inner
-                .events
-                .push(ace_foreign_contract::PortEvent::Cancelled { port });
-            inner
-                .events
-                .push(ace_foreign_contract::PortEvent::Released { port });
-            true
-        } else {
-            false
+        let Some(open) = inner.open.get_mut(&port) else {
+            return false;
+        };
+        if open.released {
+            return false;
         }
+        open.released = true;
+        inner
+            .events
+            .push(ace_foreign_contract::PortEvent::Cancelled { port });
+        inner
+            .events
+            .push(ace_foreign_contract::PortEvent::Released { port });
+        true
     }
 
     /// Session teardown/rebind: every open port dies — late completions
     /// observe the moved generation and drop.
     pub fn teardown(&mut self) {
-        self.generation += 1;
+        let inner = self.inner.get_mut().expect("port registry");
+        inner.advance_generation(inner.generation + 1);
     }
 
     /// PLAN-967 T-13: FUTURE-PORT WIRING — bind the port registry to a
@@ -1406,23 +1427,42 @@ impl CompletionPorts {
     /// rebind starts from a fresh generation. The consumer (968's await)
     /// drives register/complete/cancel; the SESSION owns the generation
     /// axis.
-    pub fn bind_session_generation(&mut self, session_generation: u64) {
-        self.generation = session_generation;
+    pub fn bind_session_generation(&self, session_generation: u64) {
+        self.inner
+            .lock()
+            .expect("port registry")
+            .advance_generation(session_generation);
     }
 
     /// PLAN-967 T-13: the current binding generation (the session's).
     pub fn session_generation(&self) -> u64 {
-        self.generation
+        self.generation()
     }
 
     pub fn generation(&self) -> u64 {
-        self.generation
+        self.inner.lock().expect("port registry").generation
     }
 
     /// Drain the observable event stream (the consumer's only oracle).
     pub fn take_events(&self) -> Vec<ace_foreign_contract::PortEvent> {
         let mut inner = self.inner.lock().expect("port registry");
         std::mem::take(&mut inner.events)
+    }
+}
+
+impl PortRegistryInner {
+    fn advance_generation(&mut self, generation: u64) {
+        if self.generation == generation {
+            return;
+        }
+        self.generation = generation;
+        for (&port, entry) in &mut self.open {
+            if !entry.released {
+                entry.released = true;
+                self.events
+                    .push(ace_foreign_contract::PortEvent::Released { port });
+            }
+        }
     }
 }
 
@@ -1659,6 +1699,7 @@ mod tests {
         // cancel: a later completion drops late, value never published
         let b = ports.register("f0.async");
         assert!(ports.cancel(b));
+        assert!(!ports.cancel(b));
         assert_eq!(
             ports.complete(b, PortValue::I32(7)),
             ace_foreign_contract::CompletionDisposition::DropLate
@@ -1667,6 +1708,7 @@ mod tests {
         // teardown: a completion racing in after the session moved drops
         let c = ports.register("f0.async");
         ports.teardown();
+        assert!(!ports.cancel(c));
         assert_eq!(
             ports.complete(c, PortValue::Status(-1)),
             ace_foreign_contract::CompletionDisposition::DropLate
@@ -1706,12 +1748,42 @@ mod tests {
                 "rel:2",
                 "late:2:i32:7",
                 "reg:3",
+                "rel:3",
                 "late:3:status:-1",
             ],
             "causal event order is the consumer's only oracle"
         );
         // cancel of an unknown/settled port is a named false
         assert!(!ports.cancel(a));
+    }
+
+    #[test]
+    fn closing_foreign_session_releases_port_once_and_rejects_late_completion() {
+        use ace_foreign_contract::{CompletionDisposition, PortEvent, PortValue};
+
+        let mut session = ForeignSession::new();
+        let ports = session.completion_ports();
+        let port = ports.register("test.provider");
+        session.teardown();
+        drop(session);
+        assert_eq!(
+            ports.complete(port, PortValue::I32(4)),
+            CompletionDisposition::DropLate
+        );
+        assert_eq!(
+            ports.take_events(),
+            vec![
+                PortEvent::Registered {
+                    port,
+                    symbol: "test.provider".into(),
+                },
+                PortEvent::Released { port },
+                PortEvent::LateDropped {
+                    port,
+                    value: PortValue::I32(4),
+                },
+            ]
+        );
     }
 
     #[test]

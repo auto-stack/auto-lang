@@ -19,13 +19,12 @@ use std::path::PathBuf;
 
 #[test]
 fn t13_future_ports_bind_the_session_generation() {
-    use ace_av_core::foreign_exec::{CompletionPorts, ForeignSession};
+    use ace_av_core::foreign_exec::ForeignSession;
     use ace_foreign_contract::PortValue;
 
     // a session + its port registry move together
     let session = ForeignSession::new();
-    let mut ports = CompletionPorts::new(session.generation());
-    ports.bind_session_generation(session.generation());
+    let ports = session.completion_ports();
     assert_eq!(ports.session_generation(), session.generation());
 
     let a = ports.register("f0.async");
@@ -37,11 +36,10 @@ fn t13_future_ports_bind_the_session_generation() {
     // session teardown moves the generation — the port registry bound to
     // the OLD generation drops every in-flight completion
     let mut session = ForeignSession::new();
-    let mut ports = CompletionPorts::new(session.generation());
-    ports.bind_session_generation(session.generation());
+    let ports = session.completion_ports();
     let b = ports.register("f0.async");
     session.teardown();
-    ports.bind_session_generation(session.generation());
+    assert_eq!(ports.session_generation(), session.generation());
     assert_eq!(
         ports.complete(b, PortValue::I32(2)),
         ace_foreign_contract::CompletionDisposition::DropLate,

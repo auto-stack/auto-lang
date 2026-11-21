@@ -98,7 +98,7 @@ fn f0_async_ports_publish_with_a_real_threaded_provider() {
         unsafe { std::mem::transmute(library.symbol("f0_async_double").expect("export present")) };
 
     // publish: register -> real off-thread completion -> published+released
-    let mut ports = CompletionPorts::new(1);
+    let ports = CompletionPorts::new(1);
     let port = ports.register("f0.async.double");
     let ctx = TrampolineCtx {
         registry: &ports,
@@ -135,7 +135,7 @@ fn f0_async_cancel_and_teardown_drop_late_completions_from_the_real_provider() {
     // cancel: the provider declines to complete on the literal input;
     // the host cancels and a LATE completion (forced through the same
     // trampoline afterwards) drops, never publishes.
-    let mut ports = CompletionPorts::new(1);
+    let ports = CompletionPorts::new(1);
     let port = ports.register("f0.async.double");
     let ctx = TrampolineCtx {
         registry: &ports,
