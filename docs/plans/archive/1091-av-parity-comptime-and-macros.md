@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-19
 updated_at: 2026-11-21
 plan_revision: 3
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1078, PLAN-1079, PLAN-1080, PLAN-1085, PLAN-1088]
 supersedes_spec_components: [docs/specs/ace-migration/m2-metaprogramming.md, docs/specs/auto-lang/comptime/overview.md, docs/specs/auto-av/language-parity.md, docs/specs/auto-test-case/feature-organized-corpus.md]
@@ -326,7 +326,7 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-comptime
 - [x] **AC-05｜owner_stage: work**：走共享受检前门与AV执行，legacy dispatch=0；无case名特判/第二parser/临时registry；跨仓依赖与其它路线未重复实现。
 - [x] **AC-06｜owner_stage: work**：受影响完整固定组及必要下游在冻结提交有有效证据；实际case/check数、排除/未跑/原红、准备/运行/清理时间分别记录，无新增未处理告警/调试输出。
 - [x] **AC-07｜owner_stage: review**：T-07独立逐AC核验源码/diff/实际消费者与规范增量，遗漏/延后/workaround具名处理，通过后status reviewed；不得仅复述自检收据。
-- [ ] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
+- [x] **AC-08｜owner_stage: merge**：真实落主后沉淀已审Spec/接口、归档并核来源身份；证据折Plan后材料/树guard与路径对账完成，未关闭named hold保owner/关闭条件。
 
 ## 8. 执行步骤
 
@@ -350,9 +350,9 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-comptime
 - [x] **T-05** work：20 条 canonical AV 检查全绿，七种语料负控和源身份对账完成；旧义务见 31 行映射。
 - [x] **T-06** work：冻结并集完成并归因两项首红，余项无失败，见 §9。
 - [x] **T-07** review：独立冻结复审通过，见 §9；待 T-08。
-- [ ] **T-08** merge：见上表唯一任务合同。
+- [x] **T-08** merge：已快进落主、核验四份规范和实际 AV 结果，完成归档及受控清理。
 
-实现与最终复审通过，代码和规范已落主。T-08 的受控清理待回证。
+代码与规范已落主，复审、归档及受控清理完成。8/8 项任务和 10/10 项验收已核验。
 
 ## 9. 复审记录
 
@@ -459,6 +459,15 @@ cargo t case-av-language-parity ace-source ace-syntax ace-semantics ace-comptime
 - [公开套件](../../../crates/auto-lang/test/cases/language.suite.ad) 引用唯一 [编译期与宏作者](../../../crates/auto-lang/test/cases/language/comptime/evaluation-macros.case.ad)。[旧义务映射](../../../crates/auto-lang/test/cases/language/migration/legacy-map.tsv) 记录 31 项的原角色、预期与 owner。
 - 输出对账。开发探针、准备归档、测试输出、子进程临时根、复审与落主报告均在 `D:/autostack/plan-artifacts/plan-1091`，清点 9025 文件、306198968 字节。调试 target 在专属 auto-lang 检出的 `target` 与 `experimental/ace/target`，含检出共 89126 文件、15834983487 字节。组内只另有无本计划改动的 detached auto-down，1318 文件、27021855 字节。逐轮输出未发现外置 target、安装根或其它证据目录。主检出中既有父工具仅作只读兼容检查，输出均显式指向本计划 scope。清点时无指向本组或本 scope 的活动构建/测试进程。
 - 归档路径为 `docs/plans/archive/1091-av-parity-comptime-and-macros.md`，当前 7/8 项任务、9/10 项验收。清理前保留 T-08 与 AC-08 待办。实际归档、引用与受控清理结果见下一个收据。
+
+### 归档与清理回证
+
+- `archived`。归档提交 `a74ef71c2e31b0bb47ba3058fd50188c364a90f9` 的唯一父提交为交付提交。实际归档已核 `status: archived`、`completion_kind: delivered`、任务表与勾选、22 个出站链接及锚点、7 个入站链接（四份规范、两张设计导航、债务登记）、唯一 canonical 作者和四份提交源。主检出并行簿记由各会话持有。
+- `cleaned`。临移除对 `D:/autostack/.wt/lang-1091/auto-lang` 及同组 `auto-down` 分别重跑 PowerShell reparse 闸门，均 clean。两个干净检出分别 22.156s、0.183s 移除，随后删除已合入的 `plan-1091-dev` 与仅有的空组目录。两仓 Git 注册与磁盘路径均核为空。
+- 归档提交后，核对唯一材料目录的索引 owner、实际绝对路径、无活动占用和 reparse clean。PowerShell 字面路径删除 `D:/autostack/plan-artifacts/plan-1091` 1.843s，复核目录不存在。常规构建产物随树清除。已折叠材料 9025 文件、306198968 字节。共享索引 `D:/autostack/plan-artifacts/.retention/policy.json` 该属主条目在 2026-11-21T01:53:58Z 更新为 `deleted-at-merge`，无具名材料持有。
+- 交付范围为源码和规范。主检出现有 release `av-worker.exe` 构建于 2026-11-19T03:10:13Z，早于本交付。批量回归收据 2026-11-20T00:00:00Z，覆盖号 1098，核验时约 33.9 小时，无超过覆盖号的 %5 归档，未到期。
+- `stage: merge | plan_id: PLAN-1091 | plan_revision: r3 | outcome: pass | checkpoints: prepared, landed, canonical_verified, archived, cleaned | delivery_commit: 2ee399ed0ce78e8b5fb520572f5edc57aa59babf | archive_commit: a74ef71c2e31b0bb47ba3058fd50188c364a90f9 | archive: docs/plans/archive/1091-av-parity-comptime-and-macros.md | tasks: 8/8 | acceptance: 10/10 | cleanup: verified | next: done`。
+- `stage: goal | plan_id: PLAN-1091 | plan_revision: r3 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 2ee399ed0ce78e8b5fb520572f5edc57aa59babf | next: done`。
 
 ## 10. 待澄清事项
 
