@@ -364,6 +364,7 @@ pub fn run_ct_bootstrap_case(
 /// PLAN-1048: CT execution through the 1055 client lane over the INSTANCE-
 /// EXPANDED program (the generic call is rewritten to its concrete function
 /// before the closure is lowered). The worksheet records the instance table.
+#[cfg(all(windows, feature = "aac-ct-bootstrap"))]
 pub fn run_instance_ct_case(
     sample: &[u8],
     target: &str,
