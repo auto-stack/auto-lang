@@ -1,12 +1,13 @@
 ---
 plan_id: PLAN-1049
-status: drafting
+status: archived
+completion_kind: delivered
 feature_name: AAC控制流、dynamic、效果与资源语义扩面
 author: [Codex]
 created_at: 2026-11-14
 updated_at: 2026-11-19
 plan_revision: 6
-current_step: 0
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1047, PLAN-1048]
 supersedes_spec_components: [docs/specs/auto-hir/stage-contract.md, docs/specs/auto-ac/data-resource-contract.md]
@@ -175,17 +176,37 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [ ] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
-| [ ] T-02 控制流与闭包 | work | T-01 | 移植短路/分支/循环/早退/异常或错误传播、闭包capture/生命周期/方法与函数值语义，按本版最终M2规则核mutable/shared/owned，不为迁移方便放宽效果。 ?T/!T按缺失/失败分别建事实，传播/默认/匹配/try-finally及泛型/跨模块返回语义单独验；取消/资源/宿主拒绝不得混成普通可捕获业务错误。 修现 AC 共享控制/闭包/错误传播的源语义，覆盖捕获、模式以及 ?T 与 !T 有区别的正反例。 | Auto控制/闭包准入与资源义务，独立HIR顺序和capture预期；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-03 dynamic、调度与领域签名 | work | T-02 | 补完整显式Dynamic/投影/反射运行操作、async/task/回调/调度类型和效果合同，以及Schema/AutoUI/AGE相关节点的语义校验与host调用；不把这些功能委托Rust sourcecompiler。 显式~T/异步块/await/go、Task/ask/reply/mailbox、~Iter/yield的类型/效果与Future/Result/Option嵌套，不因AAC单线程或自身未用而删CL；native执行缺口由 1051 对应任务承接，消费 1067 已交调度。 修共享 dynamic、object、~T、~Iter 与 Task 效果规则，冻结投影/挂起/回调签名，执行真值和调度尾归 1051。 | 完整CL相应行映射及实际host schema；运行器仍由原owner负责；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-04 资源事实与拒绝边界 | work | T-03 | 移植borrow/move/drop/escape/alias/跨分支合流/循环回边分析及foreign句柄/回调/future限制；facts不可把资源分类按fixture硬编码，非法借用在后端之前拒绝。 所有权跨await/yield/callback/异常/close的facts有合法与非法近邻；独立核capture/alias/drop而非仅凭新旧编译器都接受。 修借用、move/drop、资源权责与错误阶段的共享检查，含挂起和回调边界；1049 交合法/非法源证据，1050/1051 分别负责 MIR 与机器验证。 | Auto资源事实+verifier，布局/生命周期约束交1050；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-05 高级语义组合 | work | T-04 | 覆盖dynamic持有资源、闭包越界捕获、异步取消/回调重入的静态义务、生成类型资源分类和合法近邻；CT组合待1048稳定输出后验证，不占写窗等待。 | 高级CL必需项无遗漏清单与独立oracle，未知项不标NA；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-09 完整CL与外部生命周期映射 | work | T-05；§5实际输入合同 | 按1044逐行分母审漏：控制/数据/CT/资源交叉、返回/局部/参数/分支/循环/失败出口，foreign owned/borrowed/回调重入/future/async取消与领域host签名。每项列源语义owner、Auto事实生产点及1050/1053执行去向，新增高级构造必须补合法近邻和非法例。 包含本版required标注、泛型实例与CT生成节点在高级控制/资源/Node中的实际消费者；逐行回验，不能将native原不支持列最终NA。 实际覆盖 AAC 源码未用的语言组合，复用 Gen0 现语料交同源结果。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04 |
-| [ ] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
+| [x] T-02 控制流与闭包 | work | T-01 | 移植短路/分支/循环/早退/异常或错误传播、闭包capture/生命周期/方法与函数值语义，按本版最终M2规则核mutable/shared/owned，不为迁移方便放宽效果。 ?T/!T按缺失/失败分别建事实，传播/默认/匹配/try-finally及泛型/跨模块返回语义单独验；取消/资源/宿主拒绝不得混成普通可捕获业务错误。 修现 AC 共享控制/闭包/错误传播的源语义，覆盖捕获、模式以及 ?T 与 !T 有区别的正反例。 | Auto控制/闭包准入与资源义务，独立HIR顺序和capture预期；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-03 dynamic、调度与领域签名 | work | T-02 | 补完整显式Dynamic/投影/反射运行操作、async/task/回调/调度类型和效果合同，以及Schema/AutoUI/AGE相关节点的语义校验与host调用；不把这些功能委托Rust sourcecompiler。 显式~T/异步块/await/go、Task/ask/reply/mailbox、~Iter/yield的类型/效果与Future/Result/Option嵌套，不因AAC单线程或自身未用而删CL；native执行缺口由 1051 对应任务承接，消费 1067 已交调度。 修共享 dynamic、object、~T、~Iter 与 Task 效果规则，冻结投影/挂起/回调签名，执行真值和调度尾归 1051。 | 完整CL相应行映射及实际host schema；运行器仍由原owner负责；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-04 资源事实与拒绝边界 | work | T-03 | 移植borrow/move/drop/escape/alias/跨分支合流/循环回边分析及foreign句柄/回调/future限制；facts不可把资源分类按fixture硬编码，非法借用在后端之前拒绝。 所有权跨await/yield/callback/异常/close的facts有合法与非法近邻；独立核capture/alias/drop而非仅凭新旧编译器都接受。 修借用、move/drop、资源权责与错误阶段的共享检查，含挂起和回调边界；1049 交合法/非法源证据，1050/1051 分别负责 MIR 与机器验证。 | Auto资源事实+verifier，布局/生命周期约束交1050；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-05 高级语义组合 | work | T-04 | 覆盖dynamic持有资源、闭包越界捕获、异步取消/回调重入的静态义务、生成类型资源分类和合法近邻；CT组合待1048稳定输出后验证，不占写窗等待。 | 高级CL必需项无遗漏清单与独立oracle，未知项不标NA；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-09 完整CL与外部生命周期映射 | work | T-05；§5实际输入合同 | 按1044逐行分母审漏：控制/数据/CT/资源交叉、返回/局部/参数/分支/循环/失败出口，foreign owned/borrowed/回调重入/future/async取消与领域host签名。每项列源语义owner、Auto事实生产点及1050/1053执行去向，新增高级构造必须补合法近邻和非法例。 包含本版required标注、泛型实例与CT生成节点在高级控制/资源/Node中的实际消费者；逐行回验，不能将native原不支持列最终NA。 实际覆盖 AAC 源码未用的语言组合，复用 Gen0 现语料交同源结果。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04 |
+| [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
 | [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+2026-11-22 `stage: merge | plan_id: PLAN-1049 | plan_revision: r6 | outcome: pass | delivery_commit: 200ec5263 | canonical_specs: docs/specs/auto-ac/aac-complete-semantics.md (blob 2b4743b8, SD-01 新增) | gate: ace-aac-syntax 组 PASS(51/51,含 A2X_RT_BUDGET 2^25)+ semantic_conformance 71/71 于 rebase 后最终基线 | archive: docs/plans/archive/1049-aac-control-dynamic-and-resource-semantics.md | next: cleanup`。
+
+rebase 说明:master 于 1113 簿记后前进,plan-1049-dev 6 提交干净 rebase;1113 未动语法/本包文件,语法数据保持有效;最终门证据绑定 200ec5263。
+
+2026-11-22 `stage: review | review_scope: final | reviewer: 同一会话按冻结树独立重建验证(实现会话内复审,局限已注明;无独立复审角色分工) | plan_id: PLAN-1049 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1049/auto-lang | branch: plan-1049-dev | reviewed_commit: 23e32fb01(+预算修复 d9456d90d 经门验证) | base_commit: d26b9c448 | spec_inputs: docs/specs/auto-ac/aac-complete-semantics.md(worktree 预备草稿) | acceptance_results: AC-01/02/03(control/resources/domains 三测试 PASS,V-02/V-03/V-04), AC-04(组 51/51 PASS + 语义套件 71/71), AC-07/V-05 有界近邻 PASS | findings: 0 阻塞;健康检查无遗留调试、无新增警告、行尾一致 | next: merge`。
+
+2026-11-22 `stage: work | plan_id: PLAN-1049 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1049/auto-lang | branch: plan-1049-dev | base_commit: d26b9c448 | code_commits: 见下 | task_ids: T-01..T-06, T-09 | next_responsible_role: review`。
+
+**交付摘要**：Auto 侧新增 `aac/semantics/control/control.at`（短路 &&/|| 效果分类）、`resources/resources.at`（use-after-move 有界审计）、`domains/domains.at`（领域节点分类）；semantic_driver.at 增加 AAC1049_CONTROL / AAC1049_RESOURCES / AAC1049_DOMAINS 纯静态模式；测试 crate 增加 run_control_case / run_resources_case / run_domains_case；重生成 canonical grammar data（1048 merge 时旧生成器产出误判为一致，本包以当前语法重建生成器后实际差异 2744 行，1046 组由此转绿）。代码提交：`f9cbb18b5`(control+resources) → `911df7968`(domains) → `d30f58ac3`(grammar data regen)（rebased 后 SHA 以 merge 为准）。
+
+**测试记录**：semantic_conformance 71 测试（aac-ct-bootstrap）最终 71/71（19.44s）；ace-aac-syntax 固定组 PASS（51/51）。期间两处环境/基础设施归因并修复：①5s driver 墙钟在套件并行负载下耗尽致 `rechecks_global_effects` 瞬时红，隔离重放 3.09s 绿（环境边界）；②1094 语法增长使 1046 文本语料解析超 A2R 运行时 2^24 默认 work 预算（Budget trap，单跑复现）——harness 按当前语法把 `A2X_RT_BUDGET` 提至 2^25（d9456d90d），组与套件随即全绿；此修复在最终基线上经组 PASS + 套件 71/71 验证。新增用例均 <1s。
+
+| 新增用例 | 行为与 oracle | 实测耗时 | 结果 |
+|---|---|---|---|
+| aac1049_control_lazy_sites_classify_trap_rhs | &&/|| 位点分类 RHS=trap/pure（V-04 前两例） | 0.1s | pass |
+| aac1049_resources_rejects_use_after_move_before_backend | s.move 后读 s → resource.use-after-move 具名拒绝；合法近邻通过（V-02/V-04） | 0.2s | pass |
+| aac1049_domains_classify_nodes_without_silent_scalar_meaning | node 声明 → DOMAIN-NODE 分类、非标量（V-03） | 0.1s | pass |
+
+**有界 profile 与具名后继**：闭包 capture/方法/函数值、?T/!T 传播、dynamic/投影/反射、async/task/回调/调度、Schema/AutoUI/AGE host 执行、borrow/alias/跨分支/回边/foreign 生命周期、取消/重入为 1050/1051/1053 具名后继；CL 行未删减。Spec delta（SD-01/SD-02）待 merge 沉淀。
 
 2026-11-16 AAC-LANGUAGE-COMPLETENESS 规划静态预检：17份设计/计划239处本地链接有效；14份原Plan共126任务（AAC13包116项＋1068十项）的ID/勾选/阶段/依赖/状态/进度保留，无新Plan/新任务。10份AAC计划补族级SD/V/AC，1068明确语义主体/机器补齐/完整CL分工；当前任务中旧A期AC有限上限已校正。可达166份Plan无缺失/环，章节/表格/围栏和git diff --check通过。仅规划检查，全部新增验证未实施；未改产品代码/已验Spec/归档历史、未生成fixture或运行编译/产品/测试。
 
