@@ -170,7 +170,10 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 13 邻居逐字节不变。
             // PLAN-124: route link elements in the AGE component and package profiles.
             // PLAN-125: retain a text literal followed by parenthesized view properties.
-            "2dfb9edfba02b257813af3250ca93ab1f8dc2c9590d40f33246bc361d28a7a08",
+            // PLAN-105 W105：generic-atom（`List<T>.member` 原子）alt×2 + 规则
+            // 三处 profile 回归 age-component（W38 首开、W85 重建丢失）——
+            // 2dfb9edf…→ac48cc92…；13 邻居逐字节不变。
+            "ac48cc92afeec1bcf893ade984dd65ae8a69d58861bf6dd741bfa9b5dacc71f7",
         ),
         (
             SourceProfile::AgeH0,

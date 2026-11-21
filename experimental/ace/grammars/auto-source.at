@@ -3102,7 +3102,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
-            alt(profiles: [collections, closures, aggregates, auto, scheduler, auto-packages]) { generic-atom() {} }
+            alt(profiles: [collections, closures, aggregates, auto, scheduler, auto-packages, age-component]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
             alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
@@ -3148,7 +3148,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
-            alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { generic-atom() {} }
+            alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages, age-component]) { generic-atom() {} }
             // PLAN-963（T-04）：显式值实参调用 `rep<2>(21)`（实例面）。
             alt(profiles: [scalar-instances, record-instances, text-record-instances, aac]) { generic-call() {} }
             // lambda 先于括号组备选：`( 参数 ) =>` 形状提交后不回退（ordered
@@ -3186,7 +3186,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         const-arg-tail(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) { comma() {} const-arg() {} }
         const-arg(profiles: [scalar-instances, record-instances, text-record-instances, age-component]) { int-lit(field: "lit") }
         // PLAN-928（T-03）：`List<T>.member` 原子（GenericType 接收位）。
-        generic-atom(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) {
+        // PLAN-105 W105：age-component 回归（W38 首开，W85 手工重建文法时丢失）——
+        // 012/013 的 `List<T>.new()` 组件面 handler/初值形。
+        generic-atom(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages, age-component]) {
             ident(field: "name")
             lt() {}
             type-args(field: "args")
