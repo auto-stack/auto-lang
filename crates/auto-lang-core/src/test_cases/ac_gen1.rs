@@ -140,7 +140,10 @@ pub fn run_check(
     }
     materialize::materialize_project(case, project_dir)?;
     let entry = project_dir.join(&case.entry_path);
-    let worker = worker_binary()?;
+    // Tool identity (V-03): the spawned worker is the digest-pinned
+    // preparation copy, never an arbitrary path — a substituted or
+    // tampered worker is a named admission error, not a run.
+    let worker = pinned_worker(Path::new(&prep_dir))?;
     let request = serde_json::json!({
         "schema": "gen1worker/1",
         "nonce": format!("{}:{}", case.spec.id, check.id),
@@ -263,5 +266,77 @@ pub fn run_check(
         other => Ok(Verdict::error(format!(
             "gen1 worker returned an unknown outcome: {other:?}"
         ))),
+    }
+}
+
+/// Resolve the digest-pinned worker from the preparation directory and
+/// verify it against `tools.manifest` (the parent-side fake-worker
+/// control). `AC_GEN1_WORKER` remains the prepare/locate-time aid only.
+fn pinned_worker(prep: &Path) -> Result<PathBuf, String> {
+    let manifest = std::fs::read_to_string(prep.join("tools.manifest"))
+        .map_err(|e| format!("read the Gen1 tools manifest: {e}"))?;
+    let mut fields = manifest.lines();
+    if fields.next() != Some("ace-aac-bridge") {
+        return Err("the Gen1 tools manifest does not declare ace-aac-bridge".into());
+    }
+    let _ = fields.next();
+    let _ = fields.next();
+    if fields.next() != Some("gen1-worker") {
+        return Err("the Gen1 tools manifest does not declare gen1-worker".into());
+    }
+    let worker = prep.join("gen1-worker.exe");
+    let bytes =
+        std::fs::read(&worker).map_err(|e| format!("read the pinned gen1 worker: {e}"))?;
+    if fields.next() != Some(blake3::hash(&bytes).to_hex().as_str()) {
+        return Err(
+            "the gen1 worker digest differs from the preparation (refusing a substituted worker)"
+                .into(),
+        );
+    }
+    Ok(worker)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pinned_worker;
+
+    fn fake_prep(worker_bytes: &[u8]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "aac1053-pin-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("gen1-worker.exe"), worker_bytes).unwrap();
+        let manifest = format!(
+            "ace-aac-bridge\n{0}\nignored\ngen1-worker\n{0}\nignored",
+            blake3::hash(worker_bytes).to_hex()
+        );
+        std::fs::write(dir.join("tools.manifest"), manifest).unwrap();
+        dir
+    }
+
+    #[test]
+    fn pinned_worker_accepts_the_prepared_copy() {
+        let dir = fake_prep(b"the real worker bytes");
+        let worker = pinned_worker(&dir).expect("the prepared worker is admitted");
+        assert!(worker.is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pinned_worker_refuses_a_substituted_copy() {
+        let dir = fake_prep(b"the real worker bytes");
+        // A fake worker that an attacker (or a stale checkout) dropped in.
+        std::fs::write(dir.join("gen1-worker.exe"), b"a fake always-pass worker").unwrap();
+        let err = pinned_worker(&dir).expect_err("a substituted worker must be refused");
+        assert!(
+            err.contains("digest differs"),
+            "the refusal must name the digest mismatch: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

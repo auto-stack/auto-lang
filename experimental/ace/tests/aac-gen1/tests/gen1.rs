@@ -20,8 +20,8 @@ use std::process::Command;
 use std::time::Instant;
 
 use ace_aac_gen1_conformance::{
-    gen1_fingerprint, prepared_bridge, prepared_compile, prepared_gen1, run_compile_case,
-    run_gen1_boot, scratch, DRIVER_MANIFEST, GEN1_EXE,
+    gen1_fingerprint, prepared_bridge, prepared_compile, prepared_gen1, prepared_worker,
+    run_compile_case, run_gen1_boot, scratch, DRIVER_MANIFEST, GEN1_EXE,
 };
 use sha2::Digest;
 
@@ -604,7 +604,12 @@ fn gen1_corpus_sweep_ac_native_probes() {
             )
             .unwrap_or_else(|e| panic!("{rel}: resolve {}: {e}", authored.spec.id));
             for check in &authored.spec.checks {
-                if check.options.probe_recipe.as_deref() != Some("ac/mir-native-scalar-v1") {
+                // Both the legacy Gen0 id and the PLAN-1053 Gen1 takeover id
+                // declare the same corpus AC obligation.
+                if !matches!(
+                    check.options.probe_recipe.as_deref(),
+                    Some("ac/mir-native-scalar-v1") | Some("ac-aac-gen1/native-run-v1")
+                ) {
                     continue;
                 }
                 let Some(expected) = check.expect.exit else {
@@ -909,6 +914,64 @@ fn gen1_cl_matrix_replay() {
         "exit mismatches (a real Gen1/AV semantic divergence): {mismatches:?}"
     );
     assert!(ran >= 1, "the matrix must ride at least one case end-to-end");
+}
+
+#[test]
+fn gen1_worker_identity_pin_refuses_tampering() {
+    let started = Instant::now();
+    // V-03 fake-worker control at the admission layer: the pinned worker
+    // copy must match the tools manifest digest; a substituted
+    // always-pass worker is a named refusal.
+    let _ = prepared_worker().expect("prepared pinned worker");
+    let root: std::path::PathBuf = std::env::var_os("AAC1053_GEN1_DIR")
+        .expect("AAC1053_GEN1_DIR")
+        .into();
+    let tampered = scratch("tampered-worker");
+    for name in [
+        ace_aac_gen1_conformance::WORKER_EXE,
+        ace_aac_gen1_conformance::BRIDGE_EXE,
+        ace_aac_gen1_conformance::COMPILE_EXE,
+        ace_aac_gen1_conformance::GEN1_EXE,
+    ] {
+        std::fs::copy(root.join(name), tampered.join(name)).expect("copy tool");
+    }
+    std::fs::copy(root.join("driver.manifest"), tampered.join("driver.manifest")).ok();
+    std::fs::copy(root.join("compile.manifest"), tampered.join("compile.manifest")).ok();
+    std::fs::copy(root.join("tools.manifest"), tampered.join("tools.manifest")).ok();
+    std::fs::write(tampered.join(ace_aac_gen1_conformance::WORKER_EXE), b"fake always-pass")
+        .expect("write fake worker");
+    let err = prepared_worker_at(&tampered).expect_err("a substituted worker must be refused");
+    assert!(
+        err.contains("digest differs"),
+        "the refusal must name the digest mismatch: {err}"
+    );
+    eprintln!("gen1 worker pin ok in {:?}", started.elapsed());
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "worker-pin case exceeded the 10-second gate"
+    );
+}
+
+/// Admission against an explicit preparation directory (the tampered
+/// control cannot reuse the process-wide cache).
+fn prepared_worker_at(root: &std::path::Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(root.join(ace_aac_gen1_conformance::TOOLS_MANIFEST))
+        .map_err(|err| format!("read tools manifest: {err}"))?;
+    let mut fields = text.lines();
+    if fields.next() != Some("ace-aac-bridge") {
+        return Err("tools manifest does not declare ace-aac-bridge".into());
+    }
+    let _ = fields.next();
+    let _ = fields.next();
+    if fields.next() != Some("gen1-worker") {
+        return Err("tools manifest does not declare gen1-worker".into());
+    }
+    let bytes = std::fs::read(root.join(ace_aac_gen1_conformance::WORKER_EXE))
+        .map_err(|err| format!("read worker executable: {err}"))?;
+    if fields.next() != Some(blake3::hash(&bytes).to_hex().as_str()) {
+        return Err("worker executable digest differs from preparation".into());
+    }
+    Ok(())
 }
 
 #[test]

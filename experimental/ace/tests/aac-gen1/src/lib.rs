@@ -42,6 +42,7 @@ pub const COMPILE_DRIVER_SOURCE: &str = include_str!("../../aac-syntax/semantic_
 /// remap the test binaries away from the target dir) admit the same
 /// service identity.
 pub const BRIDGE_EXE: &str = "ace-aac-bridge.exe";
+pub const WORKER_EXE: &str = "gen1-worker.exe";
 pub const TOOLS_MANIFEST: &str = "tools.manifest";
 
 /// The whole subject tree S: (module stem, source bytes). `main.at` is
@@ -359,10 +360,26 @@ pub fn prepare_gen1(
         })
         .ok_or("set ACE_AAC1053_BRIDGE to the built ace-aac-bridge.exe (or build it in this target dir)")?;
     std::fs::copy(&bridge_src, root.join(BRIDGE_EXE))?;
+    // The bounded corpus worker is part of the declared tool set: pin its
+    // digest too so a parent-side adapter can refuse a substituted or
+    // tampered worker (the fake-pass control).
+    let worker_src = std::env::var_os("ACE_AAC1053_WORKER")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p.is_file())
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join(WORKER_EXE)))
+                .filter(|p| p.is_file())
+        })
+        .ok_or("build gen1-worker and set ACE_AAC1053_WORKER (or keep it in this target dir)")?;
+    std::fs::copy(&worker_src, root.join(WORKER_EXE))?;
     let tools_manifest = format!(
-        "ace-aac-bridge\n{}\n{}",
+        "ace-aac-bridge\n{}\n{}\ngen1-worker\n{}\n{}",
         blake3::hash(&std::fs::read(root.join(BRIDGE_EXE))?),
         bridge_src.display(),
+        blake3::hash(&std::fs::read(root.join(WORKER_EXE))?),
+        worker_src.display(),
     );
     std::fs::write(root.join(TOOLS_MANIFEST), tools_manifest)?;
     Ok(())
@@ -410,6 +427,43 @@ fn admit(
         .as_deref()
         .map_err(Clone::clone)
 }
+
+/// Admit the prepared bounded corpus worker (digest-pinned in
+/// `TOOLS_MANIFEST`) — the parent-side fake-worker control.
+pub fn prepared_worker() -> Result<&'static Path, String> {
+    PREPARED_WORKER
+        .get_or_init(|| {
+            let root = PathBuf::from(
+                std::env::var_os("AAC1053_GEN1_DIR")
+                    .ok_or("prepare the Gen1 exe (prepare-gen1) and set AAC1053_GEN1_DIR")?,
+            );
+            if !root.is_absolute() {
+                return Err("AAC1053_GEN1_DIR must be an absolute preparation directory".into());
+            }
+            let text = std::fs::read_to_string(root.join(TOOLS_MANIFEST))
+                .map_err(|err| format!("read tools manifest: {err}"))?;
+            let mut fields = text.lines();
+            if fields.next() != Some("ace-aac-bridge") {
+                return Err("tools manifest does not declare ace-aac-bridge".into());
+            }
+            let _bridge_digest = fields.next();
+            let _bridge_src = fields.next();
+            if fields.next() != Some("gen1-worker") {
+                return Err("tools manifest does not declare gen1-worker".into());
+            }
+            let exe = root.join(WORKER_EXE);
+            let bytes =
+                std::fs::read(&exe).map_err(|err| format!("read worker executable: {err}"))?;
+            if fields.next() != Some(blake3::hash(&bytes).to_hex().as_str()) {
+                return Err("worker executable digest differs from preparation".into());
+            }
+            Ok(exe)
+        })
+        .as_deref()
+        .map_err(Clone::clone)
+}
+
+static PREPARED_WORKER: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 
 static PREPARED_COMPILE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 static PREPARED_BRIDGE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
