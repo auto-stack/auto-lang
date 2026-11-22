@@ -180,22 +180,26 @@ threads-required = "num-test-threads"
 # `--config-file` uses the default discovery (no `[test-groups]` section at
 # all), so it is NOT group-limited (PLAN-1056 N-8).
 # The two AAC selectors include a member from each workspace so both terms can parse.
+# PLAN-1119 gate repair: ase-m0 added to both terms so the selectors also parse
+# inside the standalone ase-m0 workspace (pre-existing red: cargo t ase-m0 failed
+# on master with "no packages matched"; ase-m0 is subtracted so group binding is
+# unchanged everywhere it parses).
 # Subtracting those members selects only the declared conformance package.
 [[profile.default.overrides]]
-filter = "package(/^(ace-aac-support-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
+filter = "package(/^(ace-aac-support-conformance|auto-lang|ace-core|ase-m0)$/) and not package(/^(auto-lang|ace-core|ase-m0)$/)"
 test-group = "ace-aac"
 
 # PLAN-1045: bind the `ace-aac-host` fixed group's cases to its bounded
 # group (same discipline as ace-aac above; only under THIS config file).
 [[profile.default.overrides]]
-filter = "package(/^(ace-aac-host-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
+filter = "package(/^(ace-aac-host-conformance|auto-lang|ace-core|ase-m0)$/) and not package(/^(auto-lang|ace-core|ase-m0)$/)"
 test-group = "ace-aac-host"
 
 # PLAN-1052: bind the `ace-aac-incremental` fixed group's cases to its
 # bounded group (same discipline as ace-aac/ace-aac-host above; only under
 # THIS config file).
 [[profile.default.overrides]]
-filter = "package(/^(ace-aac-incremental-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
+filter = "package(/^(ace-aac-incremental-conformance|auto-lang|ace-core|ase-m0)$/) and not package(/^(auto-lang|ace-core|ase-m0)$/)"
 test-group = "ace-aac-incremental"
 
 # PLAN-1053: bind the `ace-aac-gen1` fixed group's cases to its bounded

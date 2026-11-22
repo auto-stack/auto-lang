@@ -7,6 +7,7 @@
 //! The URI is not authorization to execute arbitrary files — only the two
 //! explicitly registered local trusted programs are loadable.
 
+pub mod autoweb;
 pub mod error;
 pub mod registry;
 pub mod run;
