@@ -1,0 +1,131 @@
+// PLAN-1053 T-02 (AC-01): the Gen1 whole-subject boot entry.
+//
+// This is the `app::main` of the native Gen1 AAC executable built from the
+// ENTIRE subject tree S (`experimental/ace/aac/**/*.at`, 60 modules). The
+// boot calls one frozen exported entry of every subsystem of S — support
+// digests/codecs, syntax front end, source positions/catalog, semantics,
+// checked HIR, typed MIR base, driver/store/query/package, host client —
+// and folds the observables with the same wrap32 FNV-1a reduction the
+// hosted client uses. The exit code is that reduction (never a self-
+// verdict): the conformance crate derives the SAME reduction on the
+// independent AV lane over identical source, so any byte of drift in any
+// subsystem changes the exit code.
+//
+// Modules whose public entry points take only complex pipeline state
+// (parse tables, lowering arenas, CT envelopes, bridge exchanges) are not
+// directly called here; they are still fully assembled, bound and
+// type-checked by the whole-package compile, and their algorithms are
+// exercised by the per-stage drivers each producing package delivered.
+
+use app.digest.sha256_hex
+use app.codec.code_names
+use app.support_driver.sha256_case
+use app.atom_data.atom_profile
+use app.syntax_frontend.str_to_bytes
+use app.syntax_grammar_data.auto_parts
+use app.syntax_cst.flag_missing
+use app.syntax_incremental.rescan_window
+use app.syntax_snapshot.page_size
+use app.syntax_lexer.st_new
+use app.syntax_program.mtag_lit
+use app.syntax_fstr.fstr_default
+use app.source_ast.ast_stride
+use app.source_position.byte_offset_utf8
+use app.semantic_tree.row_count
+use app.binding.function_decl
+use app.types.integer_type
+use app.typecheck.type_unknown
+use app.declarations.pending_templates
+use app.initializers.initializer_cycle
+use app.patterns.type_pattern_error
+use app.choices.choice_argument_error
+use app.nominal_layout.type_recursive_layout_error
+use app.foreign_contract.foreign_authority_error
+use app.foreign_json.foreign_field_kind
+use app.instances_core.instance_unsupported
+use app.core_hir.hir_unsupported
+use app.hir_schema_data.core_schema
+use app.core_ops.constant_op
+use app.core_globals.getter_mode
+use app.base_ir.function_stride
+use app.verify_base.invalid_mir_type
+use app.store.six_axis_key
+use app.query.fact_key
+use app.driver.stage_key
+use app.package.lock_closure_key
+use app.host_client.join_bytes
+use app.host_client.fnv32_bytes
+use app.host_diag.argv_shape
+use app.host_files.nul_count
+use app.factory.ct_entry_name
+use std.conv.from_int
+
+fn wrap32(x i64) i64 {
+    return x % 4294967296i64
+}
+
+fn mix(c i64, s Str) i64 {
+    return wrap32(c * 31i64 + fnv32_bytes(s))
+}
+
+fn mix_int(c i64, v int) i64 {
+    return mix(c, from_int(v))
+}
+
+fn main() int {
+    var c = 0i64
+    // support digests / codecs / identity
+    c = mix(c, sha256_hex("abc"))
+    c = mix(c, code_names())
+    c = mix(c, sha256_case("abc"))
+    c = mix(c, atom_profile())
+    // syntax front end + grammar data
+    c = mix_int(c, str_to_bytes("gen1").len())
+    c = mix_int(c, auto_parts().len())
+    c = mix_int(c, flag_missing())
+    c = mix_int(c, rescan_window())
+    c = mix_int(c, page_size())
+    c = mix_int(c, st_new().len())
+    c = mix_int(c, mtag_lit())
+    c = mix_int(c, fstr_default())
+    // source projection
+    c = mix_int(c, ast_stride())
+    c = mix_int(c, byte_offset_utf8([], 0, 0, 0))
+    // semantics
+    c = mix_int(c, row_count([]))
+    c = mix_int(c, function_decl())
+    c = mix_int(c, integer_type())
+    c = mix_int(c, type_unknown())
+    c = mix_int(c, pending_templates())
+    c = mix_int(c, initializer_cycle())
+    c = mix_int(c, type_pattern_error())
+    c = mix_int(c, choice_argument_error())
+    c = mix_int(c, type_recursive_layout_error())
+    c = mix_int(c, foreign_authority_error())
+    c = mix_int(c, foreign_field_kind([], "x"))
+    c = mix_int(c, instance_unsupported())
+    // checked HIR (through the synthesized frozen schema module)
+    c = mix(c, core_schema())
+    c = mix_int(c, hir_unsupported())
+    c = mix_int(c, constant_op())
+    c = mix_int(c, getter_mode())
+    // typed MIR base
+    c = mix_int(c, function_stride())
+    c = mix_int(c, invalid_mir_type())
+    // driver / store / query / package identity axes
+    c = mix(c, six_axis_key("s", "t", "l", "g", "p", "b"))
+    c = mix(c, fact_key("k", "l", "a", "b", "c"))
+    c = mix(c, stage_key("s", "p", "v", "g"))
+    c = mix(c, lock_closure_key("d", "p", "r", "t", "c"))
+    // host client surface
+    c = mix(c, join_bytes([]))
+    c = mix_int(c, argv_shape([]))
+    var nul_probe = List<int>.new()
+    nul_probe.push(0)
+    nul_probe.push(0)
+    nul_probe.push(1)
+    c = mix_int(c, nul_count(nul_probe))
+    c = mix(c, ct_entry_name())
+    let exit = c % 2147483648i64
+    return exit.to(i32)
+}

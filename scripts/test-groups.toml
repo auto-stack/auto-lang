@@ -1799,6 +1799,17 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "ace-aac-gen1"
+title = "PLAN-1053 AAC Gen1整机：全主体S真编native（Gen0工具链+mn链接真实PE，身份manifest准入；Windows，须先运行 prepare-gen1 并设置 AAC1053_GEN1_DIR 与 ACE_AAC_COLLECTIONS_LIB）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-gen1-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"

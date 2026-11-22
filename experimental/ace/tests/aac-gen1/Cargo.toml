@@ -1,0 +1,25 @@
+[package]
+name = "ace-aac-gen1-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "PLAN-1053 T-02: the whole AAC subject tree S (experimental/ace/aac/**/*.at, 60 modules) compiled by the bound Gen0 toolchain into one real native AC (mn) Gen1 executable, with source-bound identity manifest admission and an AV-lane independent oracle for the whole-subject boot reduction"
+
+[dependencies]
+ace-aac-host-conformance = { path = "../aac-host" }
+ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
+ace-core = { path = "../../crates/core" }
+ace-native = { path = "../../crates/native" }
+ace-source-query = { path = "../../crates/source-query" }
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+blake3 = "1"
+
+[[test]]
+name = "gen1"
+path = "tests/gen1.rs"
+
+[[bin]]
+name = "prepare-gen1"
+path = "src/bin/prepare-gen1.rs"

@@ -57,6 +57,11 @@ ace-aac-host = { max-threads = 4 }
 # 同族自争抢（实测无外部负载下逐例 5.6-9.4 s，距 10 s 门有余量），
 # 输入/断言/预算零变化。
 ace-aac-incremental = { max-threads = 4 }
+# PLAN-1053 N-4 同先例：`ace-aac-gen1` 的日常用例消费已备 Gen1 exe
+# （身份manifest准入，零构建），但 boot parity 用例在同进程做整树 AV
+# 参考执行，成本形态与 ace-aac 家族相同。组级 bound=4，输入/断言/预算
+# 零变化。
+ace-aac-gen1 = { max-threads = 4 }
 # PLAN-983 r27：UI rq/headless 媒体渲染族（rq_wire/rq_probe/rq_matrix/
 # rq_repair/rq_media/rq_cells/rqhost）在 full 池并发下互相竞争崩溃/假红
 # （0xc0000005 ABORT 与吞吐断言红，失败集合逐轮漂移；族内 68 例单独并发
@@ -192,6 +197,13 @@ test-group = "ace-aac-host"
 [[profile.default.overrides]]
 filter = "package(/^(ace-aac-incremental-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
 test-group = "ace-aac-incremental"
+
+# PLAN-1053: bind the `ace-aac-gen1` fixed group's cases to its bounded
+# group (same discipline as ace-aac/ace-aac-host above; only under THIS
+# config file).
+[[profile.default.overrides]]
+filter = "package(/^(ace-aac-gen1-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
+test-group = "ace-aac-gen1"
 
 # PLAN-1016: explicitly selected formal pressure suite prioritizes stable
 # measurements over throughput. Concurrency inside a test's own protocol
