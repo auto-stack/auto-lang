@@ -66,8 +66,36 @@
    py 操作事实由该次受检记录；未知成员/未声明模块在前门具名拒绝
    （`a2py_contract_rejects_unrelated_sources_through_the_same_front_door`）。
 3. **运行**：生成的 runner 由声明的 OS 解释器执行（`-B`），观测通道为 `value:<i32>`
-   运行标记（不属于程序 stdout）；未捕获 Python 异常 = 非零退出 + 异常类，绝不充 PASS。
+   运行标记（不属于程序 stdout）；未捕获 Python 异常 = 非零退出 + 异常类，绝不充 PASS
+   （PLAN-1110 起另附结构化 `language_error` 观察，见下节）。
 4. **不参与 AV 帧**：`__py_dlen`/`__py_chunk_*` 是 AV 帧文本 helper，A2PY 不发射
    （`ace_a2x_python::provider::is_py_lane_helper`），因此目标侧不存在帧构造节点。
 5. **证据**：`py_lane_1107`（编译/视图）、`py_native_run_1107`（原生运行 + 独立 Python
    oracle）、`py_project_1107`（978 工程/SDK/失败面）、`py_ops_1107`（17 操作/声明一致性）。
+
+## 附：PLAN-1110 追加（python-script 运行 profile 与异常观察合同）
+
+> 本节追加到 `docs/specs/auto-a2x/python-stdlib-readiness.md`，异常语义细节见
+> [python-ecosystem-integration.md](python-ecosystem-integration.md) §6。
+
+1. **准入**：`ac-a2py/hir-stdlib-run-v1` 新增 profile `python-script`——worker 仅在
+   `run-py` op、该 recipe 且逻辑源以 `.as` 结尾时受理，经
+   `compile_language_source_with_foreign`（共享语言前门 + py 声明契约）编译；作者源语法
+   必须为 `auto-script`，adapter 按 `entry_path` 定位入口文件（不再取首个文件）。
+   emit-only / 非 run recipe / 非 `.as` 逻辑路径一律具名拒绝。
+2. **源身份回验**：run-py 响应携带 `logical_path`（原样回显）与 `source_syntax`
+   （`auto-script`）；父侧按作者源字节 SHA256 与响应 `source_sha256` 比对，任一不符判
+   身份错误——位置断言只在身份核对通过后进行。
+3. **异常观察通道**：profile 为 `python-script` 时，worker 在输出目录建临时观察目录并
+   设 `ACE_A2PY_ERROR_OBSERVATION`；程序侧仅在实际发生 Python 异常时**独占创建**（`x`
+   模式）写出 ≤4096 字节的 JSON（`name`/`kind`/`start`/`end`/`escaped`/`handled`），
+   worker 读回后作为响应 `language_error` 字段返回；无异常则字段缺席。期望缺席而出现
+   （`unexpected-exception`）或有期望而类型/类别/范围/escaped/handled 任一不符，均判
+   FAIL。捕获判定：oracle `exit` 为 0 ⇔ `escaped=false` 且 `handled=1`；未捕获 ⇔
+   `escaped=true` 且 `handled=0`，进程实际非零。
+4. **固定组**：语料 A2PY 视图走 `case-a2py-language-parity` 固定组（runner `case`、
+   check `a2py`、tools `case-parent` + `a2x-python-debug`——后者为 debug profile 的
+   `a2x-worker` 显式准备通道，日常准备不用 release；见 `scripts/test-governance/`）。
+   作者属性 `error-type`（A2PY python-script 专属）与 `error-kind`/`error-span` 组成
+   `python-error` 期望，经 contract/author 双侧解码并计入 check 身份（改期望使旧 PASS
+   失效）。

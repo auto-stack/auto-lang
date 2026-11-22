@@ -36,7 +36,7 @@ main.at (use.py …)
 | 运行体 | 进程内 CPython（967 provider，pinned PyO3） | 生成的纯 Python 3，声明解释器直接执行 |
 | 外部运行依赖 | 无（随 AV 宿主） | OS 解释器 + 项目声明的第三方包 |
 | Python 侧入口 | `p967.frame/1` 帧 → provider 成员表 | `import` + 直接调用（无 ctypes、无 PyO3） |
-| 失败 | `Trap{ForeignStatus, span}`（span 指向失败调用） | 非零退出 + Python 异常类（stderr）+ 无成功标记 |
+| 失败 | `Trap{ForeignStatus, span}`（span 指向失败调用） | 捕获：进入 Auto `catch`（kind=4 + 消息）；未捕获：结构化语言错误（原类名 + `python.N` 类别 + 原始 span）+ 非零退出 + stderr `PyException <类>: <消息>`（PLAN-1110） |
 | 资源 | AV 侧资源账/生命周期（alive/release/close） | 解释器自身生命周期；运行观测为退出码/`value:` |
 
 - 共享用例 `crates/auto-lang/test/cases/ace-m2/python-1107/`：`pytorch_train.as`（60 步
@@ -54,7 +54,7 @@ main.at (use.py …)
 | 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、标准库（list/len/repr/round） | 共享用例 | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
 | 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法 | 端到端 | 容器/记录跨边界、动态浮点实参（仅字面量编码） |
 | 目标 | AV（in-process）、A2PY（原生 Python 文件集）、978 SDK A2py | T-01/T-03/T-05 | 其他 978 目标不变 |
-| 失败 | 缺解释器/包/工件/授权 → 具名 `m2build.*`；未捕获异常 → 两端非 PASS | V-04/V-07 | A2PY 错误类映射到 Auto 错误类型（未交） |
+| 失败 | 缺解释器/包/工件/授权 → 具名 `m2build.*`；未捕获异常 → 两端非 PASS；A2PY Python 异常 → Auto 错误类型 + 原始位置（`ValueError`→`python.5`、`IndexError`→`python.4`，PLAN-1110） | V-04/V-07；1110 语料 V-01..04 | 其余异常类按 `A2xPythonError` 类别表归 `python.10`（other），映射矩阵未逐类实测验交 |
 
 ## 4. 工程集成（978）
 
@@ -66,6 +66,36 @@ main.at (use.py …)
 
 ## 5. 未交与边界
 
-- A2PY 侧 Python 异常尚未映射成 Auto 错误类型/用户位置（当前为退出码+异常类）。
 - 不支持：容器/记录跨边界、动态浮点实参、属性派生值、CPython 版本矩阵、Linux 腿。
+- 异常映射仅覆盖受检 py 操作运行中实际抛出的普通 `Exception`；`A2xTrap`、进程级中断
+  （`KeyboardInterrupt`/`SystemExit` 等 `BaseException`）与解释器/包准入失败（具名
+  `m2build.*`）维持各自路径，不进入 Auto 错误映射。
 - AV 的通用源面/协议最小切片仍属 PLAN-1094 范围；本文不扩张 AV 语言面。
+
+## 6. A2PY 异常映射与原始位置（PLAN-1110，已交并实测）
+
+- **包装与位置**：每个受检 py 操作发射为 `a2x_py_op(start, end, helper, args)`——helper
+  真实执行，普通 `Exception` 被包成 `A2xPythonError`，携带原类名、消息、类别
+  （`ImportError/ModuleNotFoundError→1`、`AttributeError→2`、`TypeError→3`、
+  `IndexError→4`、`ValueError→5`、`OverflowError→6`、`KeyError→7`、
+  `ZeroDivisionError→8`、`RuntimeError→9`、其余→10，观测 kind 为 `python.<N>`）与
+  **原 Auto 源半开字节范围**（来自 `PyOpFact.span`，随事实 lowering 内联，不依赖生成
+  行号映射）。
+- **捕获**：Auto `try/catch` 经 HIR `LoopUnwind` 生成 `except A2xPythonError` 拦截，
+  错误消息进 handler（kind=4 语言错误通道常量，与 a2x-rust 1115 约定一致），
+  `a2x_py_intercept` 记录观察并计 handled 次数；求值次数与源序由既有单次求值规则保证
+  （嵌套 `pop()` 副作用用例钉住）。
+- **未捕获**：`a2x_run_main` 捕获逃逸的 `A2xPythonError`，stderr 输出
+  `PyException <类名>: <消息>`，进程退出 1；观察 JSON（name/kind/start/end/escaped/
+  handled）经 `ACE_A2PY_ERROR_OBSERVATION` 指定路径**独占创建**写出，上限 4096 字节。
+- **同源验收**：语料 `python-context.case.ad` 四 Case（1094 捕获/未捕获 + 1110 嵌套
+  索引/嵌套成功对照），每 Case 一份 `### Auto` 作者源、av/a2py 两个真实执行 check，
+  父侧断言同一次执行的源 SHA256、类型、结果与位置；错类型/错位置/缺观察负控均判 FAIL。
+- **缓存身份**：`ace-a2x-store` 对含 py 操作的片段附加位置事实上下文哈希（语义指纹
+  忽略位置，位移原源后缓存片段不再复用旧 span）；`ace-m2-build` 的 A2PY 构建身份在源
+  含 `use.py` 时加入实际 Python helper 内容哈希轴（`python-object-runtime`）。
+- **文本边界**：py 字面量在边界按 Python `str` 表示编码（非 bytes），含 BMP 外字符的
+  `\U` 八位转义；AV 数字表示与 A2PY 本地表示按语义归一比较。
+- **证据**：`py_native_run_1107` 新增原生捕获/未捕获观察（含缓存前缀位移重跑）、
+  `py_project_1107` 工程腿、语料固定组 `case-a2py-language-parity`（Windows x64 /
+  CPython 3.14.2）。
