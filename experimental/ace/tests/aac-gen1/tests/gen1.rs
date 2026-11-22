@@ -210,7 +210,6 @@ fn gen1_exe_is_a_pe_with_manifest_identity() {
 }
 
 #[test]
-#[ignore = "named external blocker: A2R emit rejects the AAC driver sets with a2x.unsupported-expr use-after-move (moved_locals kill is control-flow-insensitive; false positive on the AAC .move idiom). Repro on master: prepare-native native+semantic modes both fail (predates 9a34e2eee). Owner: shared-interface repair (AAC duty per Design59) or a2x-rust owner; see PLAN-1053 §10. Un-ignore when the emitter is repaired."]
 fn gen1_compile_entry_runs_pipeline_and_reports_stages() {
     let started = Instant::now();
     let exe = prepared_compile()
