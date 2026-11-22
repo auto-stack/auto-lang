@@ -167,3 +167,42 @@ g02 model3d 行+Model3D 资源+GLB 路径符号实参、坏编辑保旧/热更�
 视图属性中的 `for` 与 `to` 按键名投影，因而标签关联和导航目标保留原拼写及值。
 `link` 支持原有路由形以及 `href` 属性形。上述词在其它语法位置的用途保持原合同。
 两条前门共用语法，标准 AAC 文法数据以同一共享源生成。
+
+## 6. 026 原样源双端写面（PLAN-113，2026-11-22）
+
+用户 2026-11-22 授权计划内实现（106 B2 先例；写面 owner=本仓 AGE 组件/包面，
+106/114 已归档无在途）。两面（age-component + age-package） enduring 行为：
+
+- **组件面 CST**：「标量字段 + 行尾注释」后接裸 `List` 嵌套 children 记录
+  列表的组合接纳（026 `dbNodesFull` 真语料首错；去注释/单 Lista 负正例在案）。
+- **model `List` 裸写惰性化**：model 时点按元素记录型定型；显式 `List<T>`
+  保持状态语义；view 迭代契约（p114 `ids`/`expanded`）保持；`[]T`/`[N]T`
+  原合同不变。
+- **记录元素 CtorNamed 改写**：异构记录字段过共享 resolver（object-elem
+  消除）。
+- **事件面**：handler 参数注解、`$event` 归一化（宿主占位具名）、注入
+  helper 的 owned `Str` 形参。
+- **包面补充**：widget lambda 与视图事件绑定引用未声明消息变体的合成
+  （投影时按组件面同律）；legacy widget 回调 handler 体非纯透传时按参数
+  拼写合成载荷槽（注解优先、缺省 `str`）；裸 `List` 参数默认与文字列表
+  属性收**同质整数**元素（`pageSizes: List = [10, 25, 50]`），混合
+  str/int 仍拒（p114 同质字面量契约不变）。
+- **组件车道**：引用惰性列表的 handler fail-closed 跳过（检查函数 None +
+  事件程序 retain；包面 p105 list-iteration pending surface 契约不变）；
+  整模块投影 AGE 面 age_face 开（内联 helper fn 调用语句可过）。
+
+**正式 grammar id**（PLAN-113 重基线后；`plan981_grammar_scope.rs` 逐行冻结，
+13 邻居逐字节不变由该测试自证）：age-component `817d81cf…`、age-package
+`2308100f…`（= 本计划 9bd00590… 叠加主线 106/107/114/123/1093/1095 后续刀后
+的实测值；取值以该测试冻结行为准）。
+
+**永久用例**：core `plan981_event_a`（p107_ legacy 回调/参数注解负正例）+
+`plan981_grammar_scope`（id 冻结）；av `plan981_age_package_av`
+（p107_/p114_/p981_ 包面消费面）；auto-ui 双端验收
+`plan113_026_sqlite_bridge`（AV 真实库宿主桥，契约见
+`auto-ui:docs/specs/runtime/ace-sqlite-host-bridge.md`）与
+`plan113_026_vue_browser`（A2Vue lane 全链）。
+
+**配套 additive 辅助**：`a2r_std::sqlite::clear_error()`（op 前清粘性
+`LAST_ERROR`、op 后读——既有 op 成功不清错的 by-design 行为不变；宿主桥
+per-op 诊断消费）。
