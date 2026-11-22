@@ -47,6 +47,14 @@ pub fn last_error() -> String {
     LAST_ERROR.lock().unwrap().clone()
 }
 
+/// Clear the most recent error back to the "" state. a2r-std ops never clear
+/// `LAST_ERROR` on success (sticky by design); host bridges that need per-op
+/// diagnostics (PLAN-113 sqlite host bridge) call this before an operation
+/// and read [`last_error`] after it.
+pub fn clear_error() {
+    *LAST_ERROR.lock().unwrap() = String::new();
+}
+
 fn cell_to_string(value: rusqlite::types::ValueRef<'_>) -> String {
     use rusqlite::types::ValueRef::*;
     match value {
