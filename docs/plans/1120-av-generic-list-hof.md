@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1120
-status: drafting
+status: execution_done
 feature_name: "AV 泛型 List 高阶方法补齐"
 author: [Codex]
 created_at: 2026-11-22
-updated_at: 2026-11-22
+updated_at: 2026-11-23
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1082, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/auto-av/language-parity.md, docs/specs/ace-migration/m2-stdlib-core.md]
@@ -66,8 +66,8 @@ affects: [auto-av, auto-semantics, stdlib]
 
 ## 7. 验收标准
 
-- [ ] AC-01 · owner_stage=work。普通入口非整数 List 的五项操作都完成真实执行，V-01/02 独立判值。
-- [ ] AC-02 · owner_stage=work。V-01–03 覆盖所有权、空表、短路和拒绝。旧 ID、源码、旧 oracle 和新证据可逐项追溯。
+- [x] AC-01 · owner_stage=work。普通入口非整数 List 的五项操作都完成真实执行，V-01/02 独立判值。
+- [x] AC-02 · owner_stage=work。V-01–03 覆盖所有权、空表、短路和拒绝。旧 ID、源码、旧 oracle 和新证据可逐项追溯。
 - [ ] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
 - [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
 
@@ -75,11 +75,11 @@ affects: [auto-av, auto-semantics, stdlib]
 
 实施前于可用的现有任务跟踪入口登记任务 ID。T-01 可在已归档依赖上先核实基线和公开合同。
 
-- [ ] T-01 核定方法签名与迁移行
+- [x] T-01 核定方法签名与迁移行
   - owner_stage=work。绑定旧 012、1082/1088 正负例和 `std_list_hof`。先用非整数 map/find 复现现状，确认实例化、闭包和资源通路以及旧 find 口形处置。
-- [ ] T-02 补齐泛型方法与普通源码用例
+- [x] T-02 补齐泛型方法与普通源码用例
   - owner_stage=work。依赖 T-01。在共享绑定与库体实现五项方法，运行 V-01/02，保留实测源序和短路。
-- [ ] T-03 验证资源与原整数近邻
+- [x] T-03 验证资源与原整数近邻
   - owner_stage=work。依赖 T-02。执行 V-03，沉淀唯一 canonical 用例与迁移映射。
 - [ ] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
@@ -90,6 +90,20 @@ affects: [auto-av, auto-semantics, stdlib]
 
 2026-11-22 · stage: new · PLAN-1120 r1 · outcome: pass（草案结构与交接）。next: 计划确认后进入 work/T-01。
 
+2026-11-23 · stage: work | PLAN-1120 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | branch: plan-1120-dev | base_commit: d4bc60a89 | code_commit: d47bd50dc | dependency_revisions: 无跨仓改动 | task_ids: T-01/T-02/T-03 | blockers: 无 | next_responsible_role: review。
+
+work 证据（原始日志：D:/autostack/plan-artifacts/plan-1120/，合并收尾时随目录删除）：
+
+- **T-01 基线复现**：主检出 `std_list_hof` 对非 I32 元素报 `bind/source.hof-elem-domain`（resolve.rs:13508 旧行；plan1082 `hof_non_int_elements_reject` 负控钉住）。旧 `find` 直接取字段（`found.id`）在 Option 合同下为 `bind/source.type-mismatch`，V-01 迁移为显式 `is` 处理（保留原源与诊断）。
+- **红相**（red-phase3.log）：新增 8 例全部以 `source.hof-elem-domain` 失败，int 近邻 1 例通过——旧合同钉住后才动实现。
+- **实现**：`resolve.rs` 新增 `hof_typed_callback`（共享回调准入）与 `map_typed_list`/`find_typed_list`/`any_all_typed_list`/`reduce_typed_list` 四个内联脱糖（snapshot 克隆隔离、源序访问、`find` 绑 `?T` Option、`any/all` 短路带具名 `Break{target: Some(..)}`、`reduce` 累加类型取自 init）；`resolve_list_method` 在非 I32 + auto_language 面分派到新车道，`List<int>` 冻结 graft 不动。修复过程中发现并规避两个陷阱：脱糖 break 必须带具名 LoopRef（`target: None` 走 phantom-loop 具名拒车道，adapter.rs phantom_target）；`all` 的停止条件为谓词取反。
+- **绿相**（green-phase7/8）：plan1120 族 9/9 通过（V-01 独立预期 stdout `2 2 world true true 3 1 3 6`；V-02 空表零回调/未命中/短路计数 p×1 q×1 r×2 与绑定拒绝；V-03 全所有者释放、fail-Nth 分配故障重放、回调 `fail` 经 try/catch 后输入续用返回 61；int 近邻 42）。
+- **近邻族**（scoped-2/3.log）：plan1082 17/17（含迁移后的 `hof_non_int_callback_type_rejects`）、plan1088 3/3、plan1086 10/10、plan1083 3/3、plan1081 21/21。`cargo check -p ace-core` 零错误、无新增警告。
+- **迁移与规范**：legacy-map.tsv `012_list_hof_value` 行归本计划（canonical `av.parity.1120.generic-list-hof`）；SD-01/SD-02 增量已写入 `docs/specs/auto-av/language-parity.md`（PLAN-1120 增量节）与 `docs/specs/ace-migration/m2-stdlib-core.md`（PLAN-1120 增量节 + 1082 边界行修订）。
+- **待办（merge 所有）**：§6 冻结固定组并集（`cargo t ace-source ace-semantics ace-lowering ace-av ace-stdlib case-av-language-parity`）在冻结提交上执行；本阶段未跑全量，按纪律记为 pending。
+
+2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: d47bd50dc | next: review
+
 ## 10. 待澄清事项
 
-T-01 核旧 `find` 直接取字段和列表构造拼写的兼容处置；未经裁定的语义变化保留具体诊断及待决记录。
+（2026-11-23 T-01 已决，无待澄清）旧 `find` 直接取字段的处置：AV `find` 绑定 `?T` Option 合同，`found.id` 直取 = `bind/source.type-mismatch` 具名拒；迁移行保留原源与诊断，canonical 用例改用显式 `is` 处理（见 §9 work 证据与 legacy-map.tsv 012 行）。
