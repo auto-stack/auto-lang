@@ -333,7 +333,10 @@ fn render_param(ctx: &PrintCtx<'_>, p: &RustParam) -> String {
     // PLAN-1115 (T-05): a by-value owned record param may be exclusively
     // borrowed in its body (1086 consume shapes) — a mut BINDING name
     // (unused-mut is a benign generated-code warning otherwise).
-    if matches!(p.mode, ParamMode::MoveOwn) && matches!(p.ty, Ty::Record(_)) {
+    if matches!(p.mode, ParamMode::MoveOwn)
+        && matches!(p.ty, Ty::Record(_))
+        && !p.name.trim_start().starts_with("mut ")
+    {
         format!("mut {}: {}", p.name, ty)
     } else {
         format!("{}: {}", p.name, ty)
