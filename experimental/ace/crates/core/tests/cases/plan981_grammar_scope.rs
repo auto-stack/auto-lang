@@ -194,7 +194,9 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 按 profile 选 pratt（wide-ops vs auto 的 aggregates-ops）——
             // **三个 AGE 面逐字节漂移**（本行 AgeComponent 为变后值）；其余
             // 邻居（age-h0 见下、12 个非 AGE 面）不受影响。
-            "e310202bbefcf034efdc742e8873f589ee1d51cea6e27d7d4669eaefb7efc128",
+            // AutoUI PLAN-123: the two AGE view profiles admit spacer/divider
+            // blocks, authored href links and contextual for/to property keys.
+            "b9d1d2d892cf70a63e90cd4c96f9050b017e6ade7e09a9ab46da6d202e12372f",
         ),
         (
             SourceProfile::AgeH0,
@@ -320,6 +322,7 @@ fn p981_age_package_grammar_id_is_frozen() {
         // PLAN-114: same-widget message calls in handler branches.
         // PLAN-114: explicit .to(int) in AGE package directory metadata helpers.
         // PLAN-114: package watches and the scoped ui.focus statement.
-        "04f644c886e303914b5f93b637f7b79f22cee67abd32d4f0a06e91156d5bb1be"
+        // AutoUI PLAN-123: the same authored Gallery view forms as AgeComponent.
+        "363fd950c81824d010f776c8b9a877548b59943b95dd70404dcc8a75be8879ff"
     );
 }
