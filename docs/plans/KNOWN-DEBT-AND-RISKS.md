@@ -1,3 +1,7 @@
+## D-1075-GALLERY-AV-01 — Gallery 50 闭包的受检前门能力边界（OPEN，2026-11-22）
+
+PLAN-1075 普查：age-examples 56 个 generated 闭包中 50 个（g03 层级嵌套、g04 player3d、g05 查询/character2d、g06 角色、g07/g08 相机、g09 solid2d、g10 纹理/动画、g11 触发、g12 服务）超出受检前门现形状（平面行；45 嵌套语法 + 5 元素种类具名诊断，见 PLAN-1075 §9 T-02）。owner=AutoUI 099–102 MAP/ASSET/PBR/CLIP 及后续 AGE 场景扩展计划；关闭条件=对应能力计划交付元素/嵌套/服务面后，其 Gallery 闭包过门并在本台账销项。1075 已交面（g01 全变体+g02）与永久 oracle 见 m2-age §5。
+
 ## D-1055-BASE-01 — PLAN-105 交付基面的下游回归（OPEN，2026-11-21）
 
 1055 在 Windows 下游联合验证中，用同一工作树、工具和固定用例 ID 比较候选与父提交 `0b754af59`。49 个持续失败中的 48 个在父提交同样失败。分布为 `ace-av` 5、其 conformance 26、`ace-av-core` 1、`ace-core` conformance 5、`ace-native` conformance 11。覆盖普通 AV 编译时宏与调度、记录所有权及方法、动态对象、资源 oracle、native worker 诊断等现有合同。空记录旧 oracle 沿 D-1088-LAYOUT-01。唯一候选新增的 AGE grammar ID 漂移由 1055 修复并复验。
