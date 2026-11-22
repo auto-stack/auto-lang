@@ -263,7 +263,7 @@ pub const OP_SCHED_FUTURE: u8 = 0x54;
 pub const OP_SCHED_DETACH: u8 = 0x55;
 pub const OP_SCHED_SINGLETON: u8 = 0x56;
 /// PLAN-108（T-03b M1）：组件面 Http 效应调用（`http.client/1`）。
-pub const OP_HTTP_CALL: u8 = 0x57;
+pub const OP_HTTP_CALL: u8 = 0x58;
 
 // sub-ops
 pub const BIN_ADD: u8 = 1;
