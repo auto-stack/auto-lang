@@ -1995,7 +1995,6 @@ fn kind_name(k: &hir::ExprKind) -> &'static str {
         hir::ExprKind::ObjectGet { .. } => "ObjectGet",
         hir::ExprKind::ObjectSet { .. } => "ObjectSet",
         hir::ExprKind::OwnedClone { .. } => "OwnedClone",
-        hir::ExprKind::ClosureClone { .. } => "ClosureClone",
         _ => "non-core-scalar",
     }
 }
@@ -2031,9 +2030,6 @@ fn type_kind_name(k: &hir::TypeKind) -> &'static str {
         hir::TypeKind::U64 => "u64",
         hir::TypeKind::F32 => "f32",
         hir::TypeKind::F64 => "f64",
-        hir::TypeKind::Nil => "nil",
-        hir::TypeKind::Dyn => "Dyn",
-        hir::TypeKind::Object { .. } => "object",
     }
 }
 
