@@ -29,6 +29,8 @@ mod audit1033_axtx;
 #[path = "cases/sched_m2_968.rs"]
 mod sched_m2_968;
 
+#[path = "cases/lang_a2r_1115.rs"]
+mod lang_a2r_1115;
 #[path = "cases/aggregates_semantics.rs"]
 mod aggregates_semantics;
 #[path = "cases/boundaries.rs"]

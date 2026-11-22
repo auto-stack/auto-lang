@@ -228,7 +228,26 @@ pub fn print_fn_records(records: &[crate::lower::RustRecord], f: &RustFn) -> Str
 fn print_record(ctx: &PrintCtx<'_>, r: &RustRecord) -> String {
     // Copy records clone/move by value; resource records (transitive owned
     // Str) derive nothing — clone and cleanup are explicit typed helpers.
-    let derive = if r.resource {
+    // PLAN-1115 (T-02): container-carrying records (List/Variant/owned
+    // text fields) derive nothing either — moves stay by value, clones
+    // ride the explicit deep-clone helpers.
+    let all_copy = r.fields.iter().all(|(_, ty)| {
+        matches!(
+            ty,
+            Ty::I32
+                | Ty::I8
+                | Ty::U8
+                | Ty::U32
+                | Ty::I64
+                | Ty::U64
+                | Ty::F32
+                | Ty::F64
+                | Ty::Bool
+                | Ty::Char
+                | Ty::Str
+        )
+    });
+    let derive = if r.resource || !all_copy {
         ""
     } else {
         "#[derive(Clone, Copy)]\n"
@@ -552,12 +571,19 @@ fn render_expr(e: &RExpr) -> String {
             format!("{}({})", func, args.join(", "))
         }
         // PLAN-972 (T-03): capture-free closure literal over the body fn.
-        RExpr::ClosureLit { func, params } => {
+        // PLAN-1115 (T-02): env args (captures) lead the body call.
+        RExpr::ClosureLit(data) => {
+            let crate::lower::ClosureLitData {
+                func,
+                params,
+                env_args,
+            } = &**data;
             let ps: Vec<String> = params
                 .iter()
                 .map(|(n, t)| format!("{}: {}", n, t))
                 .collect();
-            let pas: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+            let mut pas: Vec<String> = env_args.iter().map(render_val).collect();
+            pas.extend(params.iter().map(|(n, _)| n.clone()));
             format!("move |{}| {}({})", ps.join(", "), func, pas.join(", "))
         }
         // PLAN-972 (T-03): indirect call through a closure value.
@@ -806,7 +832,27 @@ fn coll_record_helpers(
     p: &RustProgram,
 ) -> String {
     let _ = ctx;
-    if !r.resource {
+    // PLAN-1115 (T-02): the Copy fast path requires EVERY field Copy —
+    // container/owned fields (List/Variant/StrOwned/nested records) ride
+    // the resource-style sequential deep-clone body regardless of the
+    // resource flag.
+    let all_copy = r.fields.iter().all(|(_, ty)| {
+        matches!(
+            ty,
+            Ty::I32
+                | Ty::I8
+                | Ty::U8
+                | Ty::U32
+                | Ty::I64
+                | Ty::U64
+                | Ty::F32
+                | Ty::F64
+                | Ty::Bool
+                | Ty::Char
+                | Ty::Str
+        )
+    });
+    if !r.resource && all_copy {
         // Copy records hold no resources: free is a no-op, clone is a value
         // copy with the ctor charge only.
         return format!(

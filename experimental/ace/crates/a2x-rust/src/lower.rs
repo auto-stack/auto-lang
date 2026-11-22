@@ -145,6 +145,15 @@ pub struct RBlock {
     pub value: RExpr,
 }
 
+/// PLAN-1115 (T-02): the closure-literal payload (boxed inside
+/// [`RExpr::ClosureLit`] to keep the enum at its frozen width).
+#[derive(Clone, Debug)]
+pub struct ClosureLitData {
+    pub func: String,
+    pub params: Vec<(String, String)>,
+    pub env_args: Vec<RExpr>,
+}
+
 /// One emitted Rust expression. Rendering (print.rs) appends `?` where a
 /// fallible root is consumed as a value (`render_val`); nested fallible
 /// operands are pinned into temporaries by the lowering, so call/checked
@@ -197,11 +206,12 @@ pub enum RExpr {
     },
     /// PLAN-972 (T-03): capture-free closure literal — `move |p: t, ...|
     /// func(p, ...)` over the closure body fn (fallible call deferred to
-    /// the invocation).
-    ClosureLit {
-        func: String,
-        params: Vec<(String, String)>,
-    },
+    /// the invocation). PLAN-1115 (T-02): the capture bindings (the body
+    /// fn's LEADING arguments; Move = by-value transfer, Borrow =
+    /// copy/view of the immutable source) ride the boxed payload — the
+    /// enum must NOT grow (its width sizes the depth-guarded lowering
+    /// recursion's debug frames; see `p10_rexpr_width_frozen`).
+    ClosureLit(Box<ClosureLitData>),
     /// PLAN-972 (T-03): indirect call through a closure value — fallible.
     IndirectCall {
         func: Box<RExpr>,

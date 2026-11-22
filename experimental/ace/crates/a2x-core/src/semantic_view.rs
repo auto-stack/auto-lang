@@ -1388,6 +1388,12 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     // borrows owned parts (the legacy brace dialect's
                     // interpolation reads state locals).
                     | hir::ExprKind::TextToBorrowed { .. }
+                    // PLAN-1115 (T-02): the zero-width unit value of a
+                    // Unit-result function body (the ordinary language
+                    // face emits it as the implicit/explicit return
+                    // operand). The 904/962 frozen goldens never carry a
+                    // standalone Unit expr, so their channels are inert.
+                    | hir::ExprKind::Unit
             ) || record_kinds
                 || collections_kinds
                 // PLAN-972 (T-03): the assembled stdlib's text/char

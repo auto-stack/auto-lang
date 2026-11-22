@@ -91,12 +91,31 @@ pub fn lower_collections_program(
     Ok(p)
 }
 
+/// PLAN-1115 (T-02): lower a whole ORDINARY-language module (profile
+/// `auto.source.language.av/v1`, aggregates/closures superset) and select
+/// its entry. The ordinary face rides the collections-family lowerer —
+/// the unified surface (numerics + text + records + lists/variants +
+/// capture-free closures) — under the LANGUAGE channel identity.
+pub fn lower_language_program(
+    view: &SemanticView<'_>,
+    entry_name: &str,
+) -> Result<RustProgram, A2xReject> {
+    lower_collections_program(view, entry_name)
+}
+
 /// Lower every function of a collections view WITHOUT entry selection
 /// (the store's per-fragment produce path needs the function table only).
 pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xReject> {
     let mut functions = Vec::new();
+    let mut clones: Vec<u32> = Vec::new();
     for f in view.functions() {
-        functions.push(lower_coll_fn(view, f)?);
+        let (rf, used) = lower_coll_fn(view, f)?;
+        for c in used {
+            if !clones.contains(&c) {
+                clones.push(c);
+            }
+        }
+        functions.push(rf);
     }
     let mut marks: Vec<&'static str> = view.trace_symbols().into_iter().collect();
     marks.sort_unstable();
@@ -109,6 +128,14 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
             collect_list_elems(view, a.payload, &mut list_elems);
         }
     }
+    // PLAN-1115 (T-02): record FIELDS with list types join the element
+    // table too — the ordinary face carries `type Row { xs List<int> }`
+    // shapes (nested containers), not only variant payloads.
+    for r in &records {
+        for (_, ty) in &r.fields {
+            collect_list_elems(view, Some(*ty), &mut list_elems);
+        }
+    }
     Ok(RustProgram {
         statics: Vec::new(),
         init_fns: Vec::new(),
@@ -116,7 +143,7 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
         entry: String::new(),
         marks,
         records,
-        clones: Vec::new(),
+        clones,
         borrowed: false,
         variants,
         coll: true,
@@ -124,8 +151,12 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
     })
 }
 
-/// Lower one function of the collections channel.
-pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn, A2xReject> {
+/// Lower one function of the collections channel (PLAN-1115: also returns
+/// the record ids whose deep-clone helpers the body referenced).
+pub fn lower_coll_fn(
+    view: &SemanticView<'_>,
+    f: &FnFacts<'_>,
+) -> Result<(RustFn, Vec<u32>), A2xReject> {
     let facts = view.body_facts(f).ok_or_else(|| {
         A2xReject::new(
             "a2x.internal",
@@ -142,6 +173,9 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         facts,
         locals: Vec::new(),
         loop_stack: Vec::new(),
+        clones: Vec::new(),
+        borrow_list_locals: std::collections::HashSet::new(),
+        moved_locals: std::collections::HashSet::new(),
     };
     // param names follow the HIR local table (l<LocalId>_<name>) so body
     // references and the signature agree on one naming
@@ -155,6 +189,29 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         .map(|(i, l)| (i as u32, l))
         .collect();
     param_locals.sort_by_key(|(_, l)| l.index.unwrap_or(u32::MAX));
+    // PLAN-1115 (T-02): Capture-role locals become the body fn's LEADING
+    // params — the CreateClosure literal binds them from the enclosing
+    // scope (Move transfers by value; Borrow copies/views the immutable
+    // source). Names follow the HIR local table so body references and
+    // the signature agree, exactly like declared params.
+    let mut capture_locals: Vec<(u32, &hir::LocalDef)> = f
+        .body
+        .locals
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.role, hir::LocalRole::Capture))
+        .map(|(i, l)| (i as u32, l))
+        .collect();
+    capture_locals.sort_by_key(|(_, l)| l.index.unwrap_or(u32::MAX));
+    for (idx, l) in &capture_locals {
+        let ty = view.resolve_use_ty(l.ty)?;
+        named_params.push(RustParam {
+            name: local_name(&l.name, *idx),
+            ty,
+            mode: hir::ParamMode::View,
+            ty_text: Some(rust_ty_str(view, ty)),
+        });
+    }
     for (p, (idx, l)) in f.params.iter().zip(param_locals.iter()) {
         if p.mode == hir::ParamMode::View && matches!(p.ty, Ty::List(_)) {
             w.shared_list_params.insert(local_name(&l.name, *idx));
@@ -190,14 +247,17 @@ pub fn lower_coll_fn(view: &SemanticView<'_>, f: &FnFacts<'_>) -> Result<RustFn,
         Ty::List(_) | Ty::Closure(_) => Some(rust_ty_str(view, f.result)),
         _ => None,
     };
-    Ok(RustFn {
-        name: rust_fn_name(f.source_name),
-        params: named_params,
-        result: f.result,
-        origin: f.origin,
-        body,
-        result_text,
-    })
+    Ok((
+        RustFn {
+            name: rust_fn_name(f.source_name),
+            params: named_params,
+            result: f.result,
+            origin: f.origin,
+            body,
+            result_text,
+        },
+        std::mem::take(&mut w.clones),
+    ))
 }
 
 fn local_name(name: &str, id: u32) -> String {
@@ -216,6 +276,18 @@ struct CollLower<'a, 'v> {
     /// PLAN-1036 (AUDIT-1024 F35): the enclosing loops' (id, body block) —
     /// a `continue` must pay the same back-edge poll as the fall-through.
     loop_stack: Vec<(hir::LoopId, hir::BlockId)>,
+    /// PLAN-1115 (T-02): record ids whose `a2x_rt_clone_*` deep-clone
+    /// helpers this body referenced (threaded to the program's clone set).
+    clones: Vec<u32>,
+    /// PLAN-1115 (T-02): locals bound to an ALIAS of a container (List)
+    /// field — rendered as `&mut A2xList<E>` bindings (the ordinary face
+    /// shares container handles; writes flow through). They never free
+    /// (the owning record does) and list operands pass them bare.
+    borrow_list_locals: std::collections::HashSet<u32>,
+    /// PLAN-1115 (T-02): locals whose owned value already MOVED into a
+    /// record construction (or another consumer) — later error-path and
+    /// exit frees of these names are stale (the consumer owns them now).
+    moved_locals: std::collections::HashSet<u32>,
 }
 
 impl<'a, 'v> CollLower<'a, 'v> {
@@ -332,22 +404,28 @@ impl<'a, 'v> CollLower<'a, 'v> {
     fn free_stmts(&self, frees: &[FreeRef]) -> Vec<RStmt> {
         frees
             .iter()
-            .map(|r| match r {
+            .filter_map(|r| match r {
                 FreeRef::Local(l) => {
+                    // PLAN-1115 (T-02): alias bindings borrow — the owning
+                    // record frees; skip (a free would double-free). Moved
+                    // locals are the consumer's responsibility.
+                    if self.borrow_list_locals.contains(l) || self.moved_locals.contains(l) {
+                        return None;
+                    }
                     let ty = self.local_ty(hir::LocalId(*l)).ok();
                     let call = ty
                         .and_then(|t| self.owned_kind_of_ty(t))
                         .map(|k| self.free_call(k))
                         .unwrap_or_else(|| "a2x_str_free".into());
-                    RStmt::FreeSlot {
+                    Some(RStmt::FreeSlot {
                         name: self.local_name_of(hir::LocalId(*l)),
                         call,
-                    }
+                    })
                 }
-                FreeRef::Temp(e, kind) => RStmt::FreeSlot {
+                FreeRef::Temp(e, kind) => Some(RStmt::FreeSlot {
                     name: format!("e{}", e),
                     call: self.free_call(*kind),
-                },
+                }),
             })
             .collect()
     }
@@ -386,16 +464,25 @@ impl<'a, 'v> CollLower<'a, 'v> {
             .get(&expr_id)
             .map(|set| {
                 set.iter()
-                    .map(|r| match r {
+                    .filter_map(|r| match r {
                         FreeRef::Local(l) => {
+                            // PLAN-1115 (T-02): an alias binding borrows —
+                            // the owning record frees; a free here would
+                            // double-free through the borrow. A local whose
+                            // value already MOVED into a consumer is the
+                            // consumer's responsibility from the move on.
+                            if self.borrow_list_locals.contains(l) || self.moved_locals.contains(l)
+                            {
+                                return None;
+                            }
                             let ty = self.local_ty(hir::LocalId(*l)).ok();
                             let call = ty
                                 .and_then(|t| self.owned_kind_of_ty(t))
                                 .map(|k| self.free_call(k))
                                 .unwrap_or_else(|| "a2x_str_free".into());
-                            (self.local_name_of(hir::LocalId(*l)), call)
+                            Some((self.local_name_of(hir::LocalId(*l)), call))
                         }
-                        FreeRef::Temp(e, kind) => (format!("e{}", e), self.free_call(*kind)),
+                        FreeRef::Temp(e, kind) => Some((format!("e{}", e), self.free_call(*kind))),
                     })
                     .collect()
             })
@@ -476,12 +563,30 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         A2xReject::new("a2x.internal", "local index out of range")
                     })?;
                     let ty = self.view.resolve_use_ty(l.ty)?;
-                    out.push(RStmt::CollLet {
-                        name: self.local_name_of(*local),
-                        ty_str: rust_ty_str(self.view, ty),
-                        mutable: self.local_needs_mut(local.0),
-                        init: v,
-                    });
+                    // PLAN-1115 (T-02): a let bound to a container-field
+                    // ALIAS renders as an exclusive borrow binding — the
+                    // local table keeps the LIST type (the facts address
+                    // it as a list operand), the Rust binding borrows.
+                    if matches!(
+                        &v,
+                        RExpr::RefMut { inner }
+                            if matches!(inner.as_ref(), RExpr::FieldPath { .. })
+                    ) {
+                        self.borrow_list_locals.insert(local.0);
+                        out.push(RStmt::CollLet {
+                            name: self.local_name_of(*local),
+                            ty_str: format!("&mut {}", rust_ty_str(self.view, ty)),
+                            mutable: false,
+                            init: v,
+                        });
+                    } else {
+                        out.push(RStmt::CollLet {
+                            name: self.local_name_of(*local),
+                            ty_str: rust_ty_str(self.view, ty),
+                            mutable: self.local_needs_mut(local.0),
+                            init: v,
+                        });
+                    }
                 }
                 hir::Stmt::Return { value } => {
                     // an owned-result literal promotes at the return slot
@@ -674,7 +779,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 let n = self.local_name_of(*local);
                 // PLAN-946: a `&'a mut A2xList` param place passes the name
                 // bare (Rust reborrows at the argument position).
-                if self.shared_list_params.contains(&n) {
+                // PLAN-1115 (T-02): an ALIAS binding (a `&mut A2xList`
+                // local) passes bare too — Rust reborrows/derefs at the
+                // operand position for both & and &mut consumers.
+                if self.shared_list_params.contains(&n)
+                    || self.borrow_list_locals.contains(&local.0)
+                {
                     return Ok(RExpr::Local(n));
                 }
                 RExpr::Local(n)
@@ -729,6 +839,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
         match kind {
             hir::ExprKind::ReadLocal { local } => Ok(RExpr::Local(self.local_name_of(local))),
             hir::ExprKind::Constant { value } => Ok(RExpr::I32Lit(value)),
+            // PLAN-1115 (T-02): the zero-width unit value — the return
+            // operand of a Unit-result function on the ordinary face.
+            hir::ExprKind::Unit => Ok(RExpr::UnitExpr),
             // PLAN-972 (T-03): typed numeric constants ride the shared
             // numeric-surface literal forms in the collections family too
             // (the typed binops already ride the num_bin matrix above).
@@ -754,17 +867,58 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 })
             }
             // PLAN-972 (T-03): capture-free closure values — the literal is
-            // a `move` closure over the (already emitted) body fn. Capturing
-            // closures await the a2x closure-env unit (named rejection).
+            // a `move` closure over the (already emitted) body fn.
+            // PLAN-1115 (T-02): capturing closures ride the same shape —
+            // each CaptureBinding becomes the body fn's LEADING argument
+            // (the body declares matching Capture-role locals as leading
+            // params). Move = by-value transfer (the Rust `move` closure
+            // owns it); Borrow = copy/view of the IMMUTABLE source (exact
+            // for the Copy-scalar and borrowed-str view domain; owned
+            // borrows stay the named closure-env debt); Shared (var cell
+            // write-through) stays the named closure-env debt.
             hir::ExprKind::CreateClosure { callee, captures } => {
-                if !captures.is_empty() {
-                    return Err(A2xReject::unsupported_op(
-                        "capturing closures await the a2x closure-env unit (PLAN-972)",
-                    ));
-                }
                 let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
                     A2xReject::new("a2x.internal", "closure callee def not in view")
                 })?;
+                let mut env_args: Vec<RExpr> = Vec::new();
+                for c in &captures {
+                    match c.mode {
+                        hir::CaptureMode::Move => {
+                            env_args.push(RExpr::Local(self.local_name_of(c.local)));
+                        }
+                        hir::CaptureMode::Borrow => {
+                            let ty = self.local_ty(c.local)?;
+                            match ty {
+                                Ty::I32
+                                | Ty::I8
+                                | Ty::U8
+                                | Ty::U32
+                                | Ty::I64
+                                | Ty::U64
+                                | Ty::F32
+                                | Ty::F64
+                                | Ty::Bool
+                                | Ty::Char
+                                | Ty::Str => {
+                                    env_args.push(RExpr::Local(self.local_name_of(c.local)));
+                                }
+                                other => {
+                                    return Err(A2xReject::unsupported_op(format!(
+                                        "borrow capture of `{}` awaits the closure-env unit \
+                                         (PLAN-1115 debt: immutable Copy/str-view domain only)",
+                                        other.as_str()
+                                    )));
+                                }
+                            }
+                        }
+                        hir::CaptureMode::Shared => {
+                            return Err(A2xReject::unsupported_op(
+                                "shared (var-cell write-through) captures await the \
+                                 closure-env unit (PLAN-1115 debt)",
+                            ));
+                        }
+                    }
+                }
                 let func = crate::lower::rust_fn_name(f.source_name);
                 let params: Vec<(String, String)> = f
                     .params
@@ -772,7 +926,13 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     .enumerate()
                     .map(|(i, p)| (format!("p{}", i), rust_ty_str(self.view, p.ty)))
                     .collect();
-                Ok(RExpr::ClosureLit { func, params })
+                Ok(RExpr::ClosureLit(Box::new(
+                    crate::lower::ClosureLitData {
+                        func,
+                        params,
+                        env_args,
+                    },
+                )))
             }
             // PLAN-972 (T-03): the char expression surface (scalar-indexed
             // codepoints; invalid scalars are the typed trap).
@@ -1220,7 +1380,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 })
             }
             hir::ExprKind::Call {
-                callee, eval_args, ..
+                callee,
+                eval_args,
+                bindings,
             } => {
                 let target = callee.0 as usize;
                 // PLAN-968: scheduler-surface intrinsics map to the
@@ -1230,10 +1392,20 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     let ty = self.view.resolve_use_ty(e.ty)?;
                     return self.lower_sched_call_coll(sym, target, id, ty, &eval_args, out);
                 }
+                let mut trace_name: Option<&'static str> = None;
+                let mut fn_call = false;
                 let func = if let Some(sym) = self.view.trace_symbol(target) {
-                    let suffix = if sym == "hir.test.mark_a" { "a" } else { "b" };
-                    format!("a2x_mark_{}", suffix)
+                    // PLAN-1115 (T-02): the authorized trace marks are
+                    // INFALLIBLE i32 runtime fns on this lane — a plain
+                    // temp, never the fallible `?` wrap.
+                    trace_name = Some(if sym == "hir.test.mark_a" {
+                        "a2x_mark_a"
+                    } else {
+                        "a2x_mark_b"
+                    });
+                    String::new()
                 } else if let Some(t) = self.view.fn_by_def(target) {
+                    fn_call = true;
                     rust_fn_name(t.source_name)
                 } else if let Some(x) = self.view.external_by_def(target) {
                     rust_fn_name(&x.source_name)
@@ -1319,8 +1491,14 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         // in `&mut` would borrow the binding itself
                         // (E0596), not the list — the same discipline the
                         // BorrowMut arm below applies to place refs.
-                        let bare_param =
-                            matches!(&v, RExpr::Local(n) if self.shared_list_params.contains(n));
+                        // PLAN-1115 (T-02): an ALIAS binding (a
+                        // `&mut A2xList` local) passes bare the same way.
+                        let bare_param = matches!(&v, RExpr::Local(n) if self.shared_list_params.contains(n))
+                            || matches!(
+                                &self.f.body.exprs[a.0 as usize].kind,
+                                hir::ExprKind::ReadLocal { local }
+                                    if self.borrow_list_locals.contains(&local.0)
+                            );
                         if !bare_param {
                             args.push(RExpr::RefMut { inner: Box::new(v) });
                         } else {
@@ -1330,9 +1508,38 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         args.push(v);
                     }
                 }
-                let call = RExpr::Call { func, args };
                 let ty = self.view.resolve_use_ty(e.ty)?;
-                self.coll_temp(id, rust_ty_str(self.view, ty), call, out)
+                let mut args = args;
+                if fn_call && !bindings.is_empty() {
+                    // PLAN-1115 (T-02): named/reordered calls place by the
+                    // HIR binding map — `sub(b: f(), a: g())` evaluates in
+                    // source order (the temps above) but binds by NAME.
+                    let n = bindings.iter().map(|b| b.param as usize + 1).max().unwrap_or(0);
+                    let mut placed: Vec<Option<RExpr>> = (0..n).map(|_| None).collect();
+                    for b in bindings {
+                        let v = args.get(b.arg as usize).cloned().ok_or_else(|| {
+                            A2xReject::new("a2x.internal", "call binding arg out of range")
+                        })?;
+                        placed[b.param as usize] = Some(v);
+                    }
+                    args = placed.into_iter().collect::<Option<Vec<_>>>().ok_or_else(|| {
+                        A2xReject::new("a2x.internal", "call binding missing a param slot")
+                    })?;
+                }
+                if let Some(name) = trace_name {
+                    // PLAN-1115 (T-02): the authorized trace marks are the
+                    // INFALLIBLE effect node (`RExpr::Trace`) — `RExpr::Call`
+                    // is a fallible root by contract and would grow a `?`.
+                    self.coll_temp_plain(
+                        id,
+                        rust_ty_str(self.view, ty),
+                        RExpr::Trace { func: name },
+                        out,
+                    )
+                } else {
+                    let call = RExpr::Call { func, args };
+                    self.coll_temp(id, rust_ty_str(self.view, ty), call, out)
+                }
             }
             hir::ExprKind::StrLit { value } => {
                 // borrowed literal; owned positions promote via the parent
@@ -1441,6 +1648,28 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     .record(record.0)
                     .ok_or_else(|| A2xReject::new("a2x.internal", "record out of range"))?;
                 let rname = rust_record_name(&rec.name);
+                // PLAN-1115 (T-02): a whole owned LOCAL moved into a field
+                // dies here — later error-path/exit frees of its name are
+                // stale (the record owns the value from this point on).
+                for b in &bindings {
+                    let field_owned = rec
+                        .fields
+                        .get(b.field as usize)
+                        .map(|f| f.ty)
+                        .is_some_and(|t| self.owned_kind_of_ty(t).is_some());
+                    if !field_owned {
+                        continue;
+                    }
+                    if let (
+                        Some(hir::ExprKind::ReadLocal { local }),
+                        Some(RExpr::Local(_)),
+                    ) = (
+                        eval_args.get(b.arg as usize).map(|a| &self.f.body.exprs[a.0 as usize].kind),
+                        arg_vals.get(b.arg as usize),
+                    ) {
+                        self.moved_locals.insert(local.0);
+                    }
+                }
                 let mut fields = Vec::new();
                 for b in &bindings {
                     let fname = rec
@@ -1470,7 +1699,21 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 let base_ty = self
                     .view
                     .resolve_use_ty(self.f.body.exprs[base.0 as usize].ty)?;
-                let (names, _) = self.resolve_field_names(base_ty, &path)?;
+                let (names, fty) = self.resolve_field_names(base_ty, &path)?;
+                // PLAN-1115 (T-02): a container (List) field READ is an
+                // ALIAS on the ordinary face (AV handles share; the
+                // resolver's place hoists rely on write-through). The Rust
+                // representation is an exclusive mutable borrow of the
+                // field path — never a copy (independence needs an
+                // explicit `.clone()`).
+                if matches!(fty, Ty::List(_)) {
+                    return Ok(RExpr::RefMut {
+                        inner: Box::new(RExpr::FieldPath {
+                            base: Box::new(b),
+                            path: names,
+                        }),
+                    });
+                }
                 Ok(RExpr::FieldPath {
                     base: Box::new(b),
                     path: names,
@@ -1497,6 +1740,26 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 })
             }
             hir::ExprKind::Move { inner } => self.expr(inner, out),
+            // PLAN-1115 (T-02): explicit deep clone (PLAN-782) rides the
+            // collections family — the same per-record generated helper
+            // set as the record-text lane (one allocation per non-empty
+            // owned Str field; fallible: Resource).
+            hir::ExprKind::RecordClone { record, base } => {
+                let rec = self.view.record(record.0).ok_or_else(|| {
+                    A2xReject::new("a2x.internal", "unknown record type in RecordClone")
+                })?;
+                if !self.clones.contains(&record.0) {
+                    self.clones.push(record.0);
+                }
+                let b = self.expr(base, out)?;
+                Ok(self.wrap(
+                    id,
+                    RExpr::StrFn {
+                        func: format!("a2x_rt_clone_{}", rust_record_name(&rec.name)),
+                        args: vec![RExpr::Ref { inner: Box::new(b) }],
+                    },
+                ))
+            }
             hir::ExprKind::ListNew { list } => {
                 let elem = self.view.list_elem(list.0)?;
                 let call = RExpr::CollCall {

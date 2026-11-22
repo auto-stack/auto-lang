@@ -28,12 +28,13 @@ use std::process::Command;
 use ace_a2x_core::sha256::sha256_hex;
 use ace_a2x_core::SemanticView;
 use ace_a2x_rust::{
-    assemble_collections_file_set, assemble_file_set, assemble_record_text_file_set,
-    canonical_execution_config, lower_collections_program, lower_program,
+    assemble_collections_file_set, assemble_file_set, assemble_language_file_set,
+    assemble_record_text_file_set, canonical_execution_config, lower_collections_program,
+    lower_language_program, lower_program, LANG_RECIPE,
 };
 use ace_core::source::{
-    compile_collections_source, compile_record_source, compile_source, compile_text_record_source,
-    compile_text_source,
+    compile_collections_source, compile_language_source, compile_record_source, compile_source,
+    compile_text_record_source, compile_text_source,
 };
 
 /// PLAN-934 T-08: ordinary scalar source rides the SQ-A fact entry (the
@@ -510,6 +511,10 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         "text" => compile_text_source(&src, "a2x-worker", &caps),
         "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
         "collections" => compile_collections_source(&src, "a2x-worker", &caps),
+        // PLAN-1115 T-02: the ordinary language face — its own front door
+        // (the caps carry the admission capability, e.g. the corpus rows'
+        // `ac.source.language.av/v1`).
+        "language" => compile_language_source(&src, "a2x-worker", &caps),
         other => fail(&format!("unknown source profile `{}`", other)),
     };
     let compiled = match compiled {
@@ -534,7 +539,15 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         Ok(view) => view,
         Err(r) => fail(&format!("view admission: {}", r)),
     };
-    let (program, entry_fn) = if is_coll_profile(&profile) {
+    let (program, entry_fn) = if is_language_profile(&profile) {
+        match lower_language_program(&view, &entry) {
+            Ok(p) => {
+                let e = p.entry.clone();
+                (p, e)
+            }
+            Err(r) => fail(&format!("lowering: {}", r)),
+        }
+    } else if is_coll_profile(&profile) {
         match lower_collections_program(&view, &entry) {
             Ok(p) => {
                 let e = p.entry.clone();
@@ -551,7 +564,21 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
             Err(r) => fail(&format!("lowering: {}", r)),
         }
     };
-    let (files, manifest) = if is_coll_profile(&profile) {
+    let (files, manifest) = if is_language_profile(&profile) {
+        // PLAN-1115 T-02: the LANGUAGE channel manifest — same full-source
+        // sha256 + execution-config binding discipline as the collections
+        // channel, under its own fileset schema.
+        let cfg = execution_config_of(v);
+        let fs = assemble_language_file_set(
+            &view,
+            &program,
+            &compiled.input_hash,
+            &source_sha256,
+            &cfg,
+            &entry,
+        );
+        (fs.files, fs.manifest)
+    } else if is_coll_profile(&profile) {
         // the collections manifest binds the REPLACED FULL SOURCE sha256
         // and the execution-config identity (never a fragment-only hash)
         let cfg = execution_config_of(v);
@@ -593,6 +620,11 @@ fn is_coll_profile(profile: &str) -> bool {
     profile == "collections"
 }
 
+/// Whether the profile rides the PLAN-1115 ordinary-language channel.
+fn is_language_profile(profile: &str) -> bool {
+    profile == "language"
+}
+
 /// The canonical execution-config identity of a request (PLAN-904 §5.6:
 /// fixed key order; any field difference is a different identity).
 fn execution_config_of(v: &serde_json::Value) -> String {
@@ -607,7 +639,9 @@ fn execution_config_of(v: &serde_json::Value) -> String {
 
 /// The recipe this profile's responses must echo.
 fn recipe_of_profile(profile: &str) -> &'static str {
-    if is_coll_profile(profile) {
+    if is_language_profile(profile) {
+        LANG_RECIPE
+    } else if is_coll_profile(profile) {
         COLL_RECIPE
     } else if is_rt_profile(profile) {
         RT_RECIPE
@@ -1096,7 +1130,9 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     // reference bytes and the OBSERVED toolchain identity (schema/recipe
     // follow the profile's channel)
     let vv = toolchain_vv();
-    let (cert_schema, cert_recipe) = if is_coll_profile(&profile) {
+    let (cert_schema, cert_recipe) = if is_language_profile(&profile) {
+        (ace_a2x_rust::LANG_CERT_SCHEMA, LANG_RECIPE)
+    } else if is_coll_profile(&profile) {
         (ace_a2x_rust::COLL_CERT_SCHEMA, COLL_RECIPE)
     } else if rt {
         (ace_a2x_rust::RT_CERT_SCHEMA, ace_a2x_rust::RT_RECIPE)

@@ -39,14 +39,15 @@ pub use cert::{
     BoundFile, CertDraft, ToolchainIdentity, CERT_SCHEMA, RECIPE, RT_CERT_SCHEMA, RT_RECIPE,
 };
 pub use coll::{
-    assemble_collections_file_set, canonical_execution_config, collections_runtime_source,
-    CollFileSet, COLL_CERT_SCHEMA, COLL_FILESET_SCHEMA, COLL_RECIPE,
+    assemble_collections_file_set, assemble_language_file_set, canonical_execution_config,
+    collections_runtime_source, CollFileSet, COLL_CERT_SCHEMA, COLL_FILESET_SCHEMA, COLL_RECIPE,
+    LANG_CERT_SCHEMA, LANG_FILESET_SCHEMA, LANG_RECIPE,
 };
 pub use lower::{
     lower_functions, lower_program, CmpOp, RBlock, RExpr, RStmt, RustFn, RustParam, RustProgram,
     RustRecord,
 };
-pub use lower_coll::{lower_collections_program, rust_ty_str};
+pub use lower_coll::{lower_collections_program, lower_language_program, rust_ty_str};
 pub use print::print_program;
 pub use provider::{RustTargetProvider, RUST_PRINT_VERSION};
 pub use rt::{

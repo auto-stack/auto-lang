@@ -94,24 +94,111 @@ fn p3_supported_subset_through_ordinary_entry_lowers() {
     }
 }
 
-/// P5（T-02 反例 oracle，现状冻结）：`.to(int)` 转换走嫁接的真 stdlib
-/// 函数 `__std_conv_to_int`（公共 Auto 体），其 body 含 `VariantCtor`
-/// （错误路径 `Err` 构造）；`lower_program` 的 compute 面今天具名拒它。
-/// T-02 统一普通面降落后本断言翻绿（换 view+lower OK）。
+/// P5（通道边界钉）：`.to(int)` 转换走嫁接的真 stdlib 函数
+/// `__std_conv_to_int`（公共 Auto 体，body 含 `VariantCtor` 错误路径）；
+/// compute 通道（`lower_program`，892/902 冻结面）**仍然具名拒**它——
+/// 双通道边界不静默加宽。
 #[test]
-fn p5_conversion_graft_currently_named_rejected_at_lowering() {
+fn p5_conversion_graft_still_named_rejected_on_the_compute_channel() {
     let src = "fn main() int { let wide = 40i64\n return (wide + 2i64).to(int) }";
     let compiled = compile_ordinary(src, "main.at");
     let checked = Box::leak(Box::new(compiled.checked));
     let view = SemanticView::from_checked(checked)
         .expect("bind+view hold: the graft is ordinary HIR");
     let err = ace_a2x_rust::lower_program(&view, "main")
-        .expect_err("the compute surface must reject VariantCtor today");
+        .expect_err("the compute channel must keep rejecting VariantCtor");
     let text = format!("{err:?}");
     assert!(
         text.contains("VariantCtor") && text.contains("compute surface"),
-        "frozen gap shape: {text}"
+        "channel boundary shape: {text}"
     );
+}
+
+/// P6（T-02 翻绿点）：同一源在**language 通道**（collections 族统一
+/// 降落）整链绿——数值/转换/嫁接 stdlib/变体构造同链。
+#[test]
+fn p6_conversion_graft_lowers_on_the_language_channel() {
+    let src = "fn main() int { let wide = 40i64\n return (wide + 2i64).to(int) }";
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the unified ordinary-face lowering must cover the graft");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
+}
+
+/// P7（T-02 闭包/HOF 试点，1081 规范式）：捕获闭包经 HOF 参数传递并
+/// 调用（`fn(int)int` 参数 + for-in 列表迭代 + 不可变捕获）。
+/// 记录 language 通道当前对该面的实际降落结论。
+#[test]
+fn p7_hof_capturing_closure_language_channel() {
+    let src = r#"fn each_count(f fn(int)int, xs List<int>) int {
+    var n = 0
+    for x in xs {
+        let y = f(x)
+        n = n + 1
+    }
+    return n
+}
+fn main() int {
+    let factor = 3
+    let nums = [1, 2, 3]
+    return each_count((x int) => x * factor, nums)
+}"#;
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits the HOF face");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel must lower the capturing-closure HOF face");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
+}
+
+/// P8（T-02 插值试点，1079 规范式）：f-string（`${}`→TextDisplay+TextConcat
+/// 链）+ char_at/to_codepoint 的 Unicode 精确窗口。
+#[test]
+fn p8_fstring_interpolation_language_channel() {
+    let src = r#"fn main() int {
+ let s = "A中😀\u{0}".clone()
+ if s.char_at(2).to_codepoint() != 128512 { return 4 }
+ let f = f"v=${20 + 22}"
+ if f.len() != 4 { return 6 }
+ return 42
+}"#;
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits the fstr face");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel must lower the f-string chain");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
+}
+
+/// P9（T-02 模式试点，1083 规范式原文）：`!?int`（Result<Option<int>>）
+/// 嵌套 `is` 解构（`->` 臂），经 Variant guard/project 链。
+#[test]
+fn p9_nested_is_destructuring_language_channel() {
+    let src = r#"fn obtain(ok bool) !?int {
+    if ok {
+        return Ok(Some(42))
+    }
+    return Err("bad")
+}
+fn main() int {
+ is obtain(true) {
+  Ok(v) -> {
+   is v {
+    Some(n) -> { return n }
+    None -> { return 0 }
+   }
+  }
+  Err(e) -> { return 0 }
+ }
+}"#;
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits the is-destructuring face");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel must lower nested is destructuring");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
 }
 
 /// P4（模块/全局试点，正例）：1085 module-global-once 的两文件包闭包沿
@@ -184,14 +271,47 @@ fn p4_module_globals_package_chain_admits_scalar_globals() {
     };
     checked.set_module_globals(plan);
     let checked = Box::leak(Box::new(checked));
-    // 现状冻结（T-03 翻绿点）：整链到 view 体内准入，仅剩 `Unit` 表达式
-    // （无返回值 fn 的 return unit）在 aggregates 面被具名拒。绑定器全局
-    // 事实已到位——模块表示冻结为扁平化单模块+ModuleGlobalsPlan（981 链）。
-    let err = SemanticView::from_checked(checked)
-        .expect_err("the Unit expr is the frozen T-03 admission gap");
-    let text = format!("{err:?}");
-    assert!(
-        text.contains("Unit") && text.contains("aggregates"),
-        "frozen gap shape: {text}"
+    // T-02 起（Unit 准入落地）：整链绿 —— 模块表示冻结为扁平化单模块
+    // 程序+ModuleGlobalsPlan（981 已验模式，零新表示）。
+    let view = SemanticView::from_checked(checked)
+        .expect("scalar globals with the binder plan must admit (981 pattern)");
+    let model = view
+        .globals_model()
+        .expect("globals model over the binder plan");
+    assert_eq!(model.len(), 1, "one global in the view model");
+    assert!(model[0].mutable, "module var n is mutable");
+    assert!(!view.global_init_fns().is_empty(), "init chain present");
+}
+
+/// P-DIAG（临时）：分段定位 500 深嵌套的栈溢出阶段。
+#[test]
+fn p11_depth_budget_named_rejection() {
+    let mut body = String::from("fn deep(x int) int { return ");
+    body.push_str(&"(x + ".repeat(500));
+    body.push('1');
+    body.push_str(&")".repeat(500));
+    body.push_str(" }");
+    body.push_str("fn main() int { return deep(1) }");
+    eprintln!("stage: bind");
+    let compiled = ace_core::source::compile_scalar_source(&body, "diag", &[]).unwrap();
+    eprintln!("stage: view");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).unwrap();
+    eprintln!("stage: lower");
+    let r = ace_a2x_rust::lower_program(&view, "main");
+    eprintln!("stage: done -> {r:?}");
+}
+
+
+
+/// P10（宽度守卫）：RExpr 的宽度冻结——深度守卫递归的 debug 帧由其槽位
+/// 尺寸决定，枚举意外增长会在 400 层预算测试上翻成栈溢出（2026-11-22
+/// 实测：+24B/槽即翻）。
+#[test]
+fn p10_rexpr_width_frozen() {
+    assert_eq!(
+        std::mem::size_of::<ace_a2x_rust::RExpr>(),
+        72,
+        "RExpr width is frozen for the depth-budgeted lowering recursion"
     );
 }
