@@ -239,6 +239,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
+2026-11-22 具名外部阻塞（T-03 发现，owner：a2x-rust 共享接面修复——按 Design59"AAC 阶段任务负责其共享接面上的现有 Gen0 AC 修复"属本路线债务，修复任务具名挂起）：**A2R 发射器对 AAC 驱动模块集误拒 `a2x.unsupported-expr / use-after-move: the root moved at its `.move` site and is dead here`**（`a2x-rust/src/lower_coll.rs` ReadLocal 检查 vs `moved_locals` 集合；疑为控制流不敏感误杀——move-kill 标记在单分支、跨分支/循环复读时无复活路径即拒，待修复方确诊）。复现（master 与 1053 基面 `9a34e2eee` 均失败，非本批引入）：`experimental/ace` 下 `cargo build -p ace-aac-syntax-conformance --bin prepare-native` 后 `prepare-native.exe <abs-dir>`（native 模式）及 `prepare-native.exe <abs-dir> semantic`（semantic 模式）均于 emit 步拒绝。受影响：1046/1047 prepare-native 车道（master 当前不可用）、本包 `aac1053-compile` 整机编译入口（prepare-gen1 已具名跳过该 exe 并仍交 boot exe+manifest；compile-entry 测试 #[ignore] 具名原因，修复后取消 ignore 重备即验）。关闭条件：发射器修复后 `prepare-native` 两模式恢复 + `ace-aac-gen1` compile-entry 取消 ignore PASS。
+
 2026-11-22 更正与关闭：T-01 初判"985/A 开工门未闭"系误判——完整核对 985 §9 后确认 T-A04 phase复审 pass（r29/ecc282df1，独立子代理）＋T-A05 fold pass，**M2A-08 已成立并落主 `95c7fbad8`**（985 目标会话 round3 done）。开工门实已闭合，无须用户在 §10 二选一；用户已授权的实施指令有效，T-02 启动。下列更正前的问题记录作废保留备查：
 ~~2026-11-22（T-01 核得，需用户决定）：本包开工门为 985/A 正式来源（§5"985/A正式来源仍为开工门"），但 PLAN-985 当前 status executing 6/14——A批 work 已收口（r29，ecc282df1）而 **T-A04 独立复审未执行、T-A05 未落 M2A-08**，A基线未正式冻结落主。按 T-01 合同"未就绪停在具名依赖不消费WIP"，T-02 及以下未启动、零代码改动、专树与材料scope保留待续。 unblock 二选一：（1）先完成 985/A（用户授权跑 985 的 T-A04→T-A05，落 M2A-08 后本目标自动续跑 T-02）；（2）用户裁定本包可针对 985/A 未落主的 work 批次基线先行开工（等于修订开工门合同，属用户决定，须显式授权）。~~
 
