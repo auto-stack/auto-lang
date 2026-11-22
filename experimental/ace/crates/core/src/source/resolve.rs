@@ -9263,6 +9263,117 @@ F:{d}
     /// PLAN-1082 (T-03, D-1082-05): the legacy `List.new(e1, ..., en)`
     /// checked compat sugar on the ordinary (auto) face. Element VT comes
     /// from the first argument with the array-literal homogeneous rule and
+    /// PLAN-108（T-03b M1）：组件面 Http 效应族（`http.client/1`）——
+    /// `Http.<verb>(...)` 方法调用在 AGE component/package/h0 profile 内经
+    /// `http_ops` 目录解析为受检 host 原语（`CallIntrinsic` + 固定符号）；
+    /// receiver 被用户局部/record/variant 遮蔽时让位（不抢用户名）。未知
+    /// verb / 参数不匹配 = 具名拒绝（不静默退回普通解析——那只会产出
+    /// `no local named Http` 噪音诊断）。`get_msg` 不在闭合族（消息桥语义
+    /// 需 http_msg_subscription 机械，另案）。
+    fn try_resolve_http_effect(&mut self, e: &ast::Expr) -> Option<ResolvedExpr> {
+        if !matches!(
+            self.profile,
+            SourceProfile::TextRecord
+                | SourceProfile::Collections
+                | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
+                | SourceProfile::AgeH0
+        ) {
+            return None;
+        }
+        let ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance: None,
+        } = &e.kind
+        else {
+            return None;
+        };
+        let ExprKind::Var(id) = &recv.kind else {
+            return None;
+        };
+        if id.name != "Http" {
+            return None;
+        }
+        // 用户遮蔽让位：同名局部/record/variant 存在时走普通解析。
+        if self.lookup("Http").is_some()
+            || self.rec_index.contains_key("Http")
+            || self.coll.variant_by_name("Http").is_some()
+        {
+            return None;
+        }
+        let dotted = super::http_ops::dotted(&id.name, &name.name);
+        if !super::http_ops::is_callee(&dotted) {
+            self.bind_err(
+                "source.http-unsupported",
+                format!(
+                    "unsupported Http effect `{dotted}` (closed set:                      get/get_json/post/post_json/put/put_json/patch/patch_json/delete)"
+                ),
+                e.span,
+            );
+            return Some(ResolvedExpr {
+                span: e.span,
+                vt: VT::StrOwned,
+                kind: RExprKind::Unit,
+            });
+        }
+        if args
+            .iter()
+            .any(|a| !matches!(a, ast::Arg::Pos(_) | ast::Arg::MovePos(_)))
+        {
+            self.bind_err(
+                "source.http-argument",
+                format!("Http effect `{dotted}` takes positional arguments only"),
+                e.span,
+            );
+            return Some(ResolvedExpr {
+                span: e.span,
+                vt: VT::StrOwned,
+                kind: RExprKind::Unit,
+            });
+        }
+        let mut rargs = Vec::with_capacity(args.len());
+        for a in args {
+            let x = match a {
+                ast::Arg::Pos(x) | ast::Arg::MovePos(x) => x,
+                _ => unreachable!("positional checked above"),
+            };
+            rargs.push(self.expr_iterative(x));
+        }
+        let vts: Vec<VT> = rargs.iter().map(|r| r.vt).collect();
+        match super::http_ops::lookup_callee(&dotted, &vts) {
+            Some(op) => {
+                self.used_intrinsics.insert(op.symbol);
+                Some(ResolvedExpr {
+                    span: e.span,
+                    vt: op.result,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: op.symbol,
+                        args: rargs,
+                    },
+                })
+            }
+            None => {
+                let got = vts
+                    .iter()
+                    .map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.bind_err(
+                    "source.http-argument",
+                    format!("Http effect `{dotted}` has no overload for ({got})"),
+                    e.span,
+                );
+                Some(ResolvedExpr {
+                    span: e.span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::Unit,
+                })
+            }
+        }
+    }
+
     /// the same push admission; desugars to ListNew + push (hoisted via
     /// the statement sink). Zero args is a NAMED rejection (no element
     /// type is inferable; the explicit `List<T>.new()` carries the empty
@@ -12856,6 +12967,10 @@ F:{d}
         // same bare-ctor interception shape as May.
         if let Some(list) = self.try_resolve_legacy_list_new(v, expect) {
             return list;
+        }
+        // PLAN-108（T-03b M1）：组件面 Http 效应族拦截（`Http.<verb>(…)`）。
+        if let Some(http) = self.try_resolve_http_effect(v) {
+            return http;
         }
         if self.profile.is_aggregates() {
             match &v.kind {
@@ -18253,6 +18368,103 @@ F:{d}
                                 args,
                                 node.span,
                             );
+                            continue;
+                        }
+                        // PLAN-108（T-03b M1）：组件面 Http 效应族——
+                        // `Http.<verb>(...)` 在 AGE component/package/h0
+                        // profile 内经 http_ops 目录解析为受检 host 原语
+                        // （CallIntrinsic + 固定符号；receiver 被用户遮蔽时
+                        // 让位）。未知 verb/参数不匹配=具名拒绝。get_msg 不在族。
+                        if matches!(
+                            self.profile,
+                            SourceProfile::TextRecord
+                                | SourceProfile::Collections
+                                | SourceProfile::AgeComponent
+                                | SourceProfile::AgePackage
+                                | SourceProfile::AgeH0
+                        ) && instance.is_none()
+                            && matches!(&recv.kind, ExprKind::Var(id) if id.name == "Http"
+                                && self.lookup(&id.name).is_none()
+                                && !self.rec_index.contains_key(&id.name)
+                                && self.coll.variant_by_name(&id.name).is_none())
+                        {
+                            let dotted = super::http_ops::dotted("Http", &name.name);
+                            let mut rargs: Vec<ResolvedExpr> = Vec::with_capacity(args.len());
+                            let mut positional = true;
+                            for a in args {
+                                match a {
+                                    ast::Arg::Pos(x) | ast::Arg::MovePos(x) => {
+                                        rargs.push(self.expr_iterative(x));
+                                    }
+                                    _ => {
+                                        positional = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if !positional {
+                                self.bind_err(
+                                    "source.http-argument",
+                                    format!(
+                                        "Http effect `{dotted}` takes positional arguments only"
+                                    ),
+                                    node.span,
+                                );
+                                out[slot] = ResolvedExpr {
+                                    span: node.span,
+                                    vt: VT::StrOwned,
+                                    kind: RExprKind::Unit,
+                                };
+                                continue;
+                            }
+                            if !super::http_ops::is_callee(&dotted) {
+                                self.bind_err(
+                                    "source.http-unsupported",
+                                    format!(
+                                        "unsupported Http effect `{dotted}` (closed set:                                          get/get_json/post/post_json/put/put_json/                                         patch/patch_json/delete)"
+                                    ),
+                                    node.span,
+                                );
+                                out[slot] = ResolvedExpr {
+                                    span: node.span,
+                                    vt: VT::StrOwned,
+                                    kind: RExprKind::Unit,
+                                };
+                                continue;
+                            }
+                            let vts: Vec<VT> = rargs.iter().map(|r| r.vt).collect();
+                            match super::http_ops::lookup_callee(&dotted, &vts) {
+                                Some(op) => {
+                                    self.used_intrinsics.insert(op.symbol);
+                                    out[slot] = ResolvedExpr {
+                                        span: node.span,
+                                        vt: op.result,
+                                        kind: RExprKind::CallIntrinsic {
+                                            symbol: op.symbol,
+                                            args: rargs,
+                                        },
+                                    };
+                                }
+                                None => {
+                                    let got = vts
+                                        .iter()
+                                        .map(|v| v.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    self.bind_err(
+                                        "source.http-argument",
+                                        format!(
+                                            "Http effect `{dotted}` has no overload for ({got})"
+                                        ),
+                                        node.span,
+                                    );
+                                    out[slot] = ResolvedExpr {
+                                        span: node.span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::Unit,
+                                    };
+                                }
+                            }
                             continue;
                         }
                         if self.profile.is_auto_language() && instance.is_none() {
