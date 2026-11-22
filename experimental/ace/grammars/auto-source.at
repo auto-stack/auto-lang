@@ -1565,6 +1565,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 tok(of: "type-kw", field: "base") {}
                 many { age-event-key-mod() {} }
             }
+            // Label association and link destinations use these spellings
+            // as keys. Their keyword meaning outside the view is unchanged.
+            alt { for(field: "base") {} }
+            alt { r-to(field: "base") {} }
             alt {
                 ident(field: "base") {}
                 // PLAN-105 T-02（U03 真语料 012）：连字符键（SVG 属性
@@ -1710,7 +1714,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             rbrace() {}
         }
         age-element-block(profiles: [age-component, age-package]) {
-            age-element-tag(field: "tag")
+            age-element-block-tag(field: "tag")
             lbrace(same-line: true, cut: true) {}
             many { age-view-item() {} }
             rbrace() {}
@@ -1719,7 +1723,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //——真语料主导形态（vue_capabilities）：标签后属性括号对，再可
         // 选体块。属性=同一 age-view-entry 形。
         age-element-props-block(profiles: [age-component, age-package]) {
-            age-element-tag(field: "tag")
+            age-element-block-tag(field: "tag")
             lparen(same-line: true, cut: true) {}
             list-nl { age-view-entry() {} }
             rparen() {}
@@ -1731,6 +1735,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             lbrace(same-line: true) {}
             many { age-view-item() {} }
             rbrace() {}
+        }
+        // Reserved tags may introduce a body or attributes. With neither,
+        // only the existing closed set of bare tags is accepted.
+        age-element-block-tag(profiles: [age-component, age-package]) {
+            alt { age-element-tag() {} }
+            alt { spacer-tok() {} }
+            alt { divider-tok() {} }
+            alt { sep-tok() {} }
+            alt { r-link() {} }
         }
         // PLAN-105 T-02（U03 真语料 016）：**连字符标签**（`grid-item` 这类
         // 自定义元素名）——标签位收 `ident ('-' ident)*`；投影按键节点源文本

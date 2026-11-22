@@ -116,3 +116,61 @@ fn p104_unknown_bare_tag_is_named_rejected() {
         "named source diagnostic expected: {err:?}"
     );
 }
+
+#[test]
+fn p123_gallery_tags_project_blocks_and_reserved_properties() {
+    use ace_core::source::{
+        age_component::ComponentScenario,
+        cst::FrontBudget,
+        packages::{parse_package_source_age, PACKAGES_CAPABILITY},
+    };
+
+    let source = r#"widget Gallery {
+    view {
+        divider {}
+        divider (direction: "horizontal") {}
+        label (for: "example") {}
+        link (text: "Read", href: "/button") {}
+        nav-item (to: "/button") {}
+        spacer (size: 16) {}
+        spacer
+        text "After" {}
+    }
+}"#;
+    let nodes = project(source).expect("component front door");
+    let scenario = ComponentScenario { instances: 0, ops: Vec::new() };
+    let packages = parse_package_source_age(
+        source,
+        &[PACKAGES_CAPABILITY.into()],
+        FrontBudget::WORK_OWNED_64MIB,
+        &scenario,
+        0,
+    ).expect("package front door");
+    for node in [&nodes[0], &packages.age_components[0].0] {
+        let expected: [(&str, &[&str]); 7] = [
+            ("divider", &[]),
+            ("divider", &["direction"]),
+            ("label", &["for"]),
+            ("link", &["text", "href"]),
+            ("nav-item", &["to"]),
+            ("spacer", &["size"]),
+            ("spacer", &[]),
+        ];
+        assert_eq!(node.view.tree.len(), expected.len() + 1);
+        for (item, (tag, keys)) in node.view.tree.iter().zip(expected) {
+            let ComponentViewItem::Element(element) = item else {
+                panic!("expected {tag}, found {item:?}");
+            };
+            assert_eq!(element.tag, tag);
+            let actual: Vec<_> = element.items.iter().map(|item| {
+                let ComponentViewItem::Entry(entry) = item else {
+                    panic!("expected a property, found {item:?}");
+                };
+                assert!(!entry.is_event);
+                entry.key.as_str()
+            }).collect();
+            assert_eq!(actual, keys, "{tag}");
+        }
+        assert!(matches!(node.view.tree.last(), Some(ComponentViewItem::Text(_))));
+    }
+}
