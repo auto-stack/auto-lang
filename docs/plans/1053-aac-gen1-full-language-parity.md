@@ -211,6 +211,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 9. 复审记录
 
+- 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 3 | from: work | to: work | status: executing | outcome: waiting（连续第 3 轮，转 blocked） | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user
+
 - 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 2 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user（§10 无新答复；连续 waiting 第 2 轮）
 
 - 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 1 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user（985/A 开工门闭合后再入 work T-02）
