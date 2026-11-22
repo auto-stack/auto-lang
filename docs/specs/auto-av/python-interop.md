@@ -198,4 +198,4 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
 5. **证据**：`crates/auto-lang/test/cases/language/script/python-libraries.case.ad` 的 3 条 AV
    检查，由 `case-av-language-parity` 运行（Windows x64 / CPython 3.14.2 / NumPy 2.5.1）。
 
-来源：PLAN-1126。
+来源：[PLAN-1126](../../plans/archive/1126-ace-python-numpy-json-parity.md)。

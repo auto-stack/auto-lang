@@ -129,6 +129,7 @@ main.at (use.py …)
   运行，不加载用户 site，所以其声明解释器（`A2PY_PYTHON`；缺省依次探测 `python3`/`python`/
   `py -3`）必须在自身的 site-packages 里带 NumPy；否则 NumPy 用例以真实
   `ModuleNotFoundError`（`python.1`）失败，不跳过、不通过。`run_sdk` 腿不带 `-I`，不受此限。
+  本次 A2PY 的 Unicode stdout 实测使用 Windows ANSI 代码页 cp65001。
 - **持久安排（Windows x64 冻结环境）**：A2PY 隔离腿的声明解释器是一个只装 `numpy==2.5.1` 的专用
   venv（基座 CPython 3.14.2），经**用户级**环境变量 `A2PY_PYTHON` 声明；AV 腿不需要它（进程内
   CPython 可见用户 site）。该变量只被 `a2x-worker` 的 `resolve_python`（及沿用它的测试）读取，
