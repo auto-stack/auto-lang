@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1120
-status: execution_done
+status: executing
 feature_name: "AV 泛型 List 高阶方法补齐"
 author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 3
+current_step: 1
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1082, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/auto-av/language-parity.md, docs/specs/ace-migration/m2-stdlib-core.md]
@@ -77,9 +77,9 @@ affects: [auto-av, auto-semantics, stdlib]
 
 - [x] T-01 核定方法签名与迁移行
   - owner_stage=work。绑定旧 012、1082/1088 正负例和 `std_list_hof`。先用非整数 map/find 复现现状，确认实例化、闭包和资源通路以及旧 find 口形处置。
-- [x] T-02 补齐泛型方法与普通源码用例
+- [ ] T-02 补齐泛型方法与普通源码用例（2026-11-23 复审 F1/F2 重开）
   - owner_stage=work。依赖 T-01。在共享绑定与库体实现五项方法，运行 V-01/02，保留实测源序和短路。
-- [x] T-03 验证资源与原整数近邻
+- [ ] T-03 验证资源与原整数近邻（2026-11-23 复审 F1 文本域资源断言重开）
   - owner_stage=work。依赖 T-02。执行 V-03，沉淀唯一 canonical 用例与迁移映射。
 - [ ] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
@@ -103,6 +103,19 @@ work 证据（原始日志：D:/autostack/plan-artifacts/plan-1120/，合并收�
 - **待办（merge 所有）**：§6 冻结固定组并集（`cargo t ace-source ace-semantics ace-lowering ace-av ace-stdlib case-av-language-parity`）在冻结提交上执行；本阶段未跑全量，按纪律记为 pending。
 
 2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 1 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: d47bd50dc | next: review
+
+2026-11-23 · stage: review | review_scope: final（本计划无分立终审角色；实现会话内自复审，局限已记——结论以制品重放重建，未采信执行者摘要） | reviewer: goal-session main agent（同 work 会话，独立性受限） | PLAN-1120 r1 | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1120/auto-lang | branch: plan-1120-dev | reviewed_commit: d47bd50dc | base_commit: d4bc60a89 | dependency_revisions: 无 | spec_inputs: docs/specs/auto-av/language-parity.md（worktree 副本，PLAN-1120 增量节）、docs/specs/ace-migration/m2-stdlib-core.md（同） | acceptance_results: AC-01 partial（记录域五项真实执行+V-01 独立判值 PASS；文本域仅空表路径，非空 StrOwned 循环体零执行）/AC-02 partial（所有权/短路/拒绝/迁移在记录域闭合；文本域资源断言缺失；谓词返回类型拒绝退到 verify 阶段）/AC-03..04 review/merge 所有未评 | pending_closeout_gates: §6 冻结固定组并集（merge 执行） | findings: F1 major（AC-01/02，T-02/T-03）/F2 minor（V-02，T-02） | evidence: 见下 | next: work（修复范围限 F1/F2 受影响项；近邻族证据复用）
+
+复审证据（本会话重放，基线 d47bd50dc 工作树干净、无未提交实现）：
+
+- 行为重放：nextest `test(plan1120_generic_list_hof)` 9/9 PASS（run c20be340），逐例计时 0.081s–0.175s（gate ≤10s 全过；最慢 hof_short_circuit 0.175s）。测试目录盘点：唯一触及 List<Str> 的用例是 `hof_empty_list_zero_callbacks_and_reduce_keeps_init`，且表为空——脱糖循环体（StrOwned 每访问克隆 / `fn(Str)` 借用视图 / `?Str` Option 槽）零执行、无文本元素 assert_released。
+- 代码审查：`hof_typed_callback` 只校验回调参数形（单参 + 元素类型/Str 借用视图），不校验返回类型；`map` 的 U 与 `reduce` 的 acc 分别有取结果/校验，但 `find/any/all` 的谓词结果类型未在校准入校验。非 Bool 谓词当前的拒绝来自 typecheck.rs:190 While 条件检查（Stage::Verify 的 `source.type-mismatch`，落在生成代码上），而非 V-02 约定的绑定时具名拒；filter_typed_list 的先例在准入即查 `result == VT::Bool`。
+- 其余审查面干净：分派门（非 I32 + auto_language）不触冻结面；`List<int>` graft 与字节稳定单测未动；`pop/to_array/filter` 原行为保留；调试构建、无隐式日构建路径；规范增量内容与实现一致、frontmatter 影响字段已填；legacy-map 012 行迁移正确。时机表/会话表：准备 0s（复用已构建产物），发现 0.19s，执行 0.179s，无清理；占用观察：运行时另有他计划 cargo/rustc 进程（PID 84804/92584/40248，03:24:57 起），本重放为缓存快run、无资源争用。
+- 发现 F1（major，AC-01/AC-02，T-02/T-03）：目标域含「文本与记录」（§1），文本元素的非空执行路径无任何真实执行证据。纠正：新增一例永久用例（建议名 `hof_text_family_real_execution`），非空 `List<Str>`/`List<StrOwned>` 上跑 map/reduce/find/any/all 五项，`assert_released` 钉文本所有者账目，独立预期值（如 `["a","bb","ccc"].map((s Str) => s.len()) = [1,2,3]`、`reduce(0,...) = 6`、`find( len==2 )` 命中、`any/all` 短路计数）。
+- 发现 F2（minor，V-02/AC-02，T-02）：谓词返回类型非 Bool 时拒绝退至 verify 阶段生成代码（typecheck.rs While 条件检查），不满足「绑定时具名拒」与 filter 先例。纠正：`hof_typed_callback` 为 find/any/all 准入加 `signature.result == VT::Bool`（map 保持任意 U；reduce 维持现有 acc 校验），具名拒沿用 `source.type-mismatch`。
+- 重审范围：仅重放 F1/F2 受影响用例与新用例 + 复用未变近邻证据（plan1082/1086/1088 族）；§6 冻结并集仍归 merge，不随本轮重复。
+
+2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: d47bd50dc | next: work
 
 ## 10. 待澄清事项
 
