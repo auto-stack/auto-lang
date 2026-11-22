@@ -23,7 +23,7 @@ SD-01（入口 → producer → consumer 双向可追溯）。
 | E-03 | `auto build` / `auto gen` / `auto run --render rust` | 单文件 `transpile_rust`（target.rs:161→`rust/src/<name>.rs`）；多文件 `transpile_rust_project`（target.rs:775，Cargo.toml+main.rs+模块树）；CargoBuilder 写真实 manifest | auto-man（跨仓） |
 | E-04 | `auto run/service --server rust` | 生成的 axum 后端（http_service.rs:84） | auto-man（跨仓） |
 | E-05 | `auto watch` 重建 | `trans_rust`（cmd_watch.rs:430） | auto-man（跨仓） |
-| E-06 | 库 API：`auto_lang::{trans_rust, trans_rust_with_session, trans_rust_merged}`、`trans::rust::transpile_rust*`（12 个自由函数）、`RustTrans::{new, code_region_mask}`、`a2r_std` | `auto-lang-core::trans::rust`（rust.rs）；`a2r-std` crate v0.1.0（21 模块）+ 内嵌镜像 `auto_lang::a2r_std` | 本仓（公开 API） |
+| E-06 | 库 API：`auto_lang::{trans_rust, trans_rust_with_session, trans_rust_merged}`、`trans::rust::transpile_rust*`（12 个自由函数）、`RustTrans::{new, code_region_mask}`、`a2r_std` | `auto-lang-core::trans::rust`（rust.rs）；`a2r-std` crate v0.1.0（19 个 pub mod）+ 内嵌镜像 `auto_lang::a2r_std` | 本仓（公开 API） |
 | E-07 | AutoGen stdlib back module | `transpile_rust_full_with_options` + `code_region_mask`（auto-generation-core/shared_generation.rs:106,160） | 本仓（内部生产者） |
 | E-08 | Playground trans 路由 | `transpile_rust_project` / `transpile_rust`（auto-playground/routes/trans.rs:91,336） | 本仓（971 已迁 ACE 诊断，trans 面留旧） |
 | E-09 | auto-web api_gen / auto-ui tauri_backend | `RustTrans::new` / `code_region_mask`（跨仓） | auto-web 983（ACE 生成腿并行）、auto-ui owner |
