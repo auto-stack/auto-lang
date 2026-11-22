@@ -419,18 +419,35 @@ fn gen1_end_to_end_source_to_real_pe_exit() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Run one single-file source through the whole Gen1 chain and return the
-/// real PE's exit code: Gen1 compile (mir) -> bridge service -> link -> run.
-fn gen1_chain_exit(compile: &std::path::Path, source: &[u8], tag: &str) -> Result<i32, String> {
+/// Outcome of one Gen1 chain ride for a corpus probe.
+enum ChainOutcome {
+    /// The real PE ran; carries its exit code.
+    Ran(i32),
+    /// The Auto pipeline refused BEFORE the backend (a language/lower
+    /// diagnostic report, never a silent empty success) or produced no
+    /// ABC closure; carries the refusal head for named-gap accounting.
+    Refused(String),
+}
+
+/// Run one single-file source through the whole Gen1 chain.
+fn gen1_chain_exit(
+    compile: &std::path::Path,
+    source: &[u8],
+    tag: &str,
+) -> Result<ChainOutcome, String> {
     use auto_tool_execution::{BoundedPolicy, ExecutionSpec, ExitKind, TreeScope};
     let root = scratch(tag);
     let input = root.join("main.at");
     let output = root.join("report.txt");
     let abc_path = root.join("closure.abc");
     std::fs::write(&input, source).map_err(|e| format!("write pilot input: {e}"))?;
-    let (_report, abc) = run_compile_case(compile, &input, &output, "mir", Some(&abc_path))
+    let (report, abc) = run_compile_case(compile, &input, &output, "mir", Some(&abc_path))
         .map_err(|e| format!("Gen1 compile: {e}"))?;
-    let abc = abc.ok_or("mir mode emitted no ABC")?;
+    let Some(abc) = abc else {
+        // No ABC closure: classify the refusal from the frozen report
+        // (a named stage diagnostic, never a silent empty success).
+        return Ok(ChainOutcome::Refused(report.trim_end().to_string()));
+    };
     let decoded = ace_av_core::abc::decode_abc(&abc).map_err(|e| format!("decode ABC: {e:?}"))?;
     let module = decoded.module;
     use ace_av_core::contract::*;
@@ -529,84 +546,133 @@ fn gen1_chain_exit(compile: &std::path::Path, source: &[u8], tag: &str) -> Resul
     .map_err(|e| format!("run PE: {e}"))?;
     let _ = std::fs::remove_dir_all(&root);
     match result.kind {
-        ExitKind::Success => Ok(0),
-        ExitKind::Failure(code) => Ok(code),
+        ExitKind::Success => Ok(ChainOutcome::Ran(0)),
+        ExitKind::Failure(code) => Ok(ChainOutcome::Ran(code)),
         other => Err(format!("unexpected exit kind {other:?}")),
     }
 }
 
 #[test]
-fn gen1_corpus_pilot_basics_expressions_takeover() {
+fn gen1_corpus_sweep_ac_native_probes() {
     let started = Instant::now();
     let compile = prepared_compile()
         .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
-    // The 1078 shared corpus: the `ac-native` probes carry the AV-phase
-    // #ignore marker; this pilot executes them through the Gen1 chain and
-    // compares the real PE exit codes against the corpus' frozen oracles
-    // (the same bytes the AV and A2R checks consume).
-    let case_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../crates/auto-lang/test/cases/language/basics/expressions.case.ad");
-    let bytes = std::fs::read(&case_file).expect("read the corpus case file");
-    let doc = auto_test_case::document::CaseDocument::parse(&bytes)
-        .expect("the corpus document parses under the sanctioned loader");
-    let limits = auto_test_case::admission::Limits::defaults();
-    let cases = auto_test_case::author::decode_document(
-        &doc,
-        "language/basics/expressions.case.ad",
-        &limits,
-    )
-    .expect("the corpus cases decode under the authoring contract");
-    let mut ran = 0usize;
-    let mut skipped = 0usize;
-    let mut failures: Vec<String> = Vec::new();
-    for authored in &cases {
-        let resolved = auto_test_case::ir::resolve_case(
-            authored.spec.clone(),
-            &doc,
-            case_file.parent().expect("case dir"),
-            &limits,
-        )
-        .expect("resolve the case files");
-        for check in &authored.spec.checks {
-            if check.options.probe_recipe.as_deref() != Some("ac/mir-native-scalar-v1") {
-                continue;
-            }
-            let Some(expected) = check.expect.exit else {
-                skipped += 1;
-                continue;
-            };
-            if resolved.files.len() != 1 {
-                skipped += 1;
-                continue;
-            }
-            let was_ignored = check.skip.is_some();
-            let observed = gen1_chain_exit(
-                compile,
-                &resolved.files[0].bytes,
-                &format!("aac1053-pilot-{}", authored.spec.id),
-            )
-            .unwrap_or_else(|e| panic!("Gen1 chain failed for {}: {e}", authored.spec.id));
-            ran += 1;
-            if observed != expected {
-                failures.push(format!(
-                    "{} (was AV-#ignore: {}): exit {} != corpus oracle {}",
-                    authored.spec.id, was_ignored, observed, expected
-                ));
+    // The 1078 shared language corpus: every declared `ac-native` probe
+    // (AV-ONLY-1078-1096 #ignore markers) executes through the Gen1 chain
+    // and must match the corpus' frozen exit oracle on the SAME source
+    // bytes the AV/A2R checks consume. Coverage grows by corpus authoring
+    // (new probes are picked up by the sweep automatically).
+    let corpus_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/language");
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read corpus dir") {
+            let path = entry.expect("corpus entry").path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|e| e == "ad") {
+                out.push(path);
             }
         }
     }
+    walk(&corpus_root, &mut files);
+    files.sort();
+    let limits = auto_test_case::admission::Limits::defaults();
+    let mut ran = 0usize;
+    let mut skipped = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    let mut blocked: Vec<(String, String)> = Vec::new();
+    let mut per_file: Vec<String> = Vec::new();
+    for case_file in &files {
+        let rel = case_file
+            .strip_prefix(&corpus_root)
+            .expect("corpus-relative path")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bytes = std::fs::read(case_file).expect("read the corpus case file");
+        let doc = auto_test_case::document::CaseDocument::parse(&bytes)
+            .unwrap_or_else(|e| panic!("{rel}: the corpus document must parse: {e:?}"));
+        let cases = auto_test_case::author::decode_document(&doc, &rel, &limits)
+            .unwrap_or_else(|e| panic!("{rel}: the corpus cases must decode: {e}"));
+        let mut file_ran = 0usize;
+        for authored in &cases {
+            let resolved = auto_test_case::ir::resolve_case(
+                authored.spec.clone(),
+                &doc,
+                case_file.parent().expect("case dir"),
+                &limits,
+            )
+            .unwrap_or_else(|e| panic!("{rel}: resolve {}: {e}", authored.spec.id));
+            for check in &authored.spec.checks {
+                if check.options.probe_recipe.as_deref() != Some("ac/mir-native-scalar-v1") {
+                    continue;
+                }
+                let Some(expected) = check.expect.exit else {
+                    skipped += 1;
+                    continue;
+                };
+                if resolved.files.len() != 1 {
+                    skipped += 1;
+                    continue;
+                }
+                let was_ignored = check.skip.is_some();
+                match gen1_chain_exit(
+                    compile,
+                    &resolved.files[0].bytes,
+                    &format!("aac1053-sweep-{}", authored.spec.id),
+                )
+                .unwrap_or_else(|e| panic!("Gen1 chain failed for {}: {e}", authored.spec.id))
+                {
+                    ChainOutcome::Ran(observed) => {
+                        ran += 1;
+                        file_ran += 1;
+                        if observed != expected {
+                            failures.push(format!(
+                                "{} (AV-#ignore: {}): exit {} != corpus oracle {}",
+                                authored.spec.id, was_ignored, observed, expected
+                            ));
+                        }
+                    }
+                    ChainOutcome::Refused(report) => {
+                        blocked.push((authored.spec.id.clone(), report.clone()));
+                        eprintln!("  BLOCKED {}: {}", authored.spec.id, report);
+                    }
+                }
+            }
+        }
+        per_file.push(format!("{rel}: {file_ran}"));
+    }
     eprintln!(
-        "gen1 corpus pilot: ran={ran} skipped={skipped} failures={} in {:?}",
+        "gen1 corpus sweep: files={} probes ran={ran} skipped={skipped} failures={} in {:?}\n  {}",
+        files.len(),
         failures.len(),
-        started.elapsed()
+        started.elapsed(),
+        per_file.join("\n")
     );
-    // This file currently declares exactly one ac-native probe (the corpus
-    // grows them in later batches; the pilot executes EVERY declared one).
-    assert!(ran >= 1, "pilot must execute every declared ac-native probe (ran={ran})");
+    // Probes the Auto pipeline refuses BEFORE the backend are named gaps,
+    // not passes and not silent skips: the frozen list names each known
+    // open gap (owner in PLAN-1053 §10/T-04); a NEW blocked probe turns
+    // this assertion RED until it is named there.
+    let blocked_ids: Vec<String> = blocked.iter().map(|(id, _)| id.clone()).collect();
+    // Frozen named-gap register (owners recorded in PLAN-1053 §10):
+    // - pipe-method-and-field: `hir.unsupported` at the pipe-method call —
+    //   the lower.method gap already open in PLAN-1047's archive.
+    // - with-unconstrained-type-parameter: `type.unresolved` on the
+    //   unconstrained parameter — named AC deficit of the 985/A baseline
+    //   (instance-demand resolution gap, 1048/1050 follow-up).
+    assert_eq!(
+        blocked_ids,
+        vec![
+            "av.parity.1080.pipe-method-and-field".to_string(),
+            "av.parity.1092.with-unconstrained-type-parameter".to_string(),
+        ],
+        "new blocked corpus probes must be named in PLAN-1053 before they may stay blocked"
+    );
+    assert!(ran >= 1, "sweep must execute every runnable ac-native probe (ran={ran})");
     assert!(failures.is_empty(), "exit oracle mismatches: {failures:?}");
     assert!(
         started.elapsed().as_secs_f64() <= 10.0,
-        "corpus pilot exceeded the 10-second gate: {:?}",
+        "corpus sweep exceeded the 10-second gate: {:?}",
         started.elapsed()
     );
 }

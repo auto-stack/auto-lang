@@ -496,10 +496,16 @@ pub fn run_compile_case(
     }
     let report = std::fs::read_to_string(output)
         .map_err(|err| format!("read compile report: {err}"))?;
+    // A missing ABC closure is a first-class observation (the pipeline
+    // refused before the backend, report in hand), not an IO error.
     let abc = abc_path
-        .map(std::fs::read)
-        .transpose()
-        .map_err(|err| format!("read ABC bytes: {err}"))?;
+        .map(|path| match std::fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(format!("read ABC bytes: {err}")),
+        })
+        .transpose()?
+        .flatten();
     Ok((report, abc))
 }
 
