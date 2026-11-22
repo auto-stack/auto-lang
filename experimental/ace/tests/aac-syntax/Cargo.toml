@@ -24,6 +24,7 @@ serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
 ace-lowering = { path = "../../crates/lowering" }
+ace-aac-bridge = { path = "../../crates/aac-bridge" }
 
 [[test]]
 name = "conformance"
@@ -52,6 +53,11 @@ required-features = ["aac-foreign-semantics"]
 [[test]]
 name = "aac1050_mir"
 path = "tests/aac1050_mir.rs"
+required-features = ["aac-semantics"]
+
+[[test]]
+name = "aac1050_bridge"
+path = "tests/aac1050_bridge.rs"
 required-features = ["aac-semantics"]
 
 

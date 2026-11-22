@@ -159,6 +159,7 @@ version = "0.1.0"
 dependencies = [
  "ace-a2x-rust",
  "ace-a2x-store",
+ "ace-aac-bridge",
  "ace-aac-host-conformance",
  "ace-abi",
  "ace-av",
