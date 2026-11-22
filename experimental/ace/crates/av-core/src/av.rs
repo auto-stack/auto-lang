@@ -720,6 +720,10 @@ fn execute_module_impl_with_host(
     let needs_console = m.host_imports.iter().any(|h| {
         !crate::platform_io::is_platform_symbol(&h.symbol)
             && !crate::config_document::is_config_symbol(&h.symbol)
+            // PLAN-108：http 效应 import 不在 console/provider 准入门——
+            // 其缺席在 HttpCall 执行点具名 fail-closed（会话 provider 注
+            // 入面在组件事件会话，无 console host 语义）。
+            && !crate::http_client::is_http_symbol(&h.symbol)
     });
     let needs_platform = m
         .host_imports
