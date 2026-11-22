@@ -724,9 +724,16 @@ impl<'a, 'v> CollLower<'a, 'v> {
                             init: v,
                         });
                     } else {
+                        // closure-typed locals infer at their binding
+                        // (annotation-free — `impl Trait` is not a binding
+                        // type; the compute lane's rule).
+                        let ty_str = match ty {
+                            Ty::Closure(_) => String::new(),
+                            _ => rust_ty_str(self.view, ty),
+                        };
                         out.push(RStmt::CollLet {
                             name: self.local_name_of(*local),
-                            ty_str: rust_ty_str(self.view, ty),
+                            ty_str,
                             mutable: self.local_needs_mut(local.0),
                             init: v,
                         });

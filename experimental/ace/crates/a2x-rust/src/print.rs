@@ -427,14 +427,20 @@ fn render_stmt(ctx: &PrintCtx<'_>, s: &RStmt, ind: usize) -> String {
             init,
         } => {
             let m = if *mutable { "mut " } else { "" };
-            format!(
-                "{}let {}{}: {} = {};\n",
-                pad,
-                m,
-                name,
-                ty_str,
-                render_val(init)
-            )
+            // PLAN-1115 (T-05): an empty type text (closure-typed locals
+            // infer at their binding) renders the annotation-free form.
+            if ty_str.is_empty() {
+                format!("{}let {}{} = {};\n", pad, m, name, render_val(init))
+            } else {
+                format!(
+                    "{}let {}{}: {} = {};\n",
+                    pad,
+                    m,
+                    name,
+                    ty_str,
+                    render_val(init)
+                )
+            }
         }
         RStmt::EvalExpr { expr } => format!("{}{};\n", pad, render_val(expr)),
         // PLAN-968: verbatim nested fn item (scheduler driver adapters).

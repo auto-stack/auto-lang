@@ -164,7 +164,15 @@ pub fn run_language_check(
     }
     let resp: serde_json::Value = serde_json::from_str(stdout.trim())
         .map_err(|e| format!("worker response json: {e}"))?;
-    let got_stdout = resp["stdout"].as_str().unwrap_or("");
+    // the worker trims the observed streams; the corpus rows' stdout
+    // convention carries the trailing newline — restore it for judging.
+    let got_stdout_raw = resp["stdout"].as_str().unwrap_or("");
+    let got_stdout = if got_stdout_raw.is_empty() {
+        got_stdout_raw.to_string()
+    } else {
+        format!("{got_stdout_raw}
+")
+    };
     let got_stderr = resp["stderr"].as_str().unwrap_or("");
     let mut mismatches: Vec<auto_test_case::compare::Mismatch> = Vec::new();
     match oracle.completion {
@@ -192,7 +200,7 @@ pub fn run_language_check(
             }
             if let Some(expect) = &oracle.stdout {
                 if let Some(bad) =
-                    auto_test_case::compare::compare_text_exact(&expect.text, got_stdout, "stdout")
+                    auto_test_case::compare::compare_text_exact(&expect.text, &got_stdout, "stdout")
                 {
                     mismatches.push(bad);
                 }
