@@ -199,6 +199,10 @@ mod plan104_bare_tags;
 // PLAN-105 T-02（U03 W1）：组件面 entry 值解析边界（比较/逻辑绑定 vs 事件绑定）。
 #[path = "cases/plan105_component_entries.rs"]
 mod plan105_component_entries;
+#[path = "cases/plan106_entry_if_chain.rs"]
+mod plan106_entry_if_chain;
+#[path = "cases/plan106_viewdata_writes.rs"]
+mod plan106_viewdata_writes;
 
 #[path = "cases/plan980_style_surface.rs"]
 mod plan980_style_surface;

@@ -174,10 +174,16 @@ impl ListEscapes {
                         ComponentEntryValue::If {
                             cond,
                             then_value,
+                            else_chain,
                             else_value,
                         } => {
                             for value in [cond, then_value, else_value] {
                                 self.expression(value, false);
+                            }
+                            // PLAN-106：else-if 链臂 cond/value 一并走查。
+                            for (c, v) in else_chain {
+                                self.expression(c, false);
+                                self.expression(v, false);
                             }
                         }
                         ComponentEntryValue::ClassList(parts) => {

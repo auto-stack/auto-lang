@@ -458,13 +458,28 @@ impl ViewBody<'_> {
             ComponentEntryValue::If {
                 cond,
                 then_value,
+                else_chain,
                 else_value,
             } => {
                 let mut then = Vec::new();
                 let mut els = Vec::new();
                 self.value_property(entry, then_value, scope, &mut then, boolean)?;
                 self.value_property(entry, else_value, scope, &mut els, boolean)?;
-                stmts.push(if_stmt(scope.rename(cond)?, then, els, span));
+                // PLAN-106：else-if 链臂——从后往前构建嵌套 if（末臂 else=
+                // 主 else_value；链臂 else=下一臂整条 if），主 if 的 else 侧
+                // 挂到首链臂，保持源序。
+                let mut chain_tail = els;
+                for (chain_cond, chain_value) in else_chain.iter().rev() {
+                    let mut chain_then = Vec::new();
+                    self.value_property(entry, chain_value, scope, &mut chain_then, boolean)?;
+                    chain_tail = vec![if_stmt(
+                        scope.rename(chain_cond)?,
+                        chain_then,
+                        chain_tail,
+                        span,
+                    )];
+                }
+                stmts.push(if_stmt(scope.rename(cond)?, then, chain_tail, span));
             }
             ComponentEntryValue::ClassList(parts) => {
                 let classes = ident(&format!("{}_classes_{}", self.symbol, self.cells), span);

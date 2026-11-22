@@ -987,7 +987,8 @@ fn compile_age_package_mode(
     let mut checked = if profile == SourceProfile::Auto {
         crate::verify::verify_auto_language_age(parts.bundle)
     } else {
-        crate::verify::verify_text_record(parts.bundle)
+        // PLAN-106（B3）：包面 AGE 走 age verify（Str==str 与组件面同旗）。
+        crate::verify::verify_text_record_age(parts.bundle)
     }
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     // 4a-bis) PLAN-981（D-981-MODULE-GLOBAL-A2R）：把绑定器的模块全局事实钉进

@@ -196,7 +196,10 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 邻居（age-h0 见下、12 个非 AGE 面）不受影响。
             // AutoUI PLAN-123: the two AGE view profiles admit spacer/divider
             // blocks, authored href links and contextual for/to property keys.
-            "b9d1d2d892cf70a63e90cd4c96f9050b017e6ade7e09a9ab46da6d202e12372f",
+            // PLAN-106（014 真语料，交付刀）：条件条目值 else-if 链臂（age-if-else
+            // chain）+ handler 多行 view-data 列表重写语句（age-view-assign-
+            // viewdata-stmt）+ 对象字面量开 age-component——b9d1d2d8…→456a54b4…。
+            "456a54b4b18cac169e4f3c8c1149da056123e0b72abf9d84bd89c36f214efd80",
         ),
         (
             SourceProfile::AgeH0,
@@ -323,6 +326,9 @@ fn p981_age_package_grammar_id_is_frozen() {
         // PLAN-114: explicit .to(int) in AGE package directory metadata helpers.
         // PLAN-114: package watches and the scoped ui.focus statement.
         // AutoUI PLAN-123: the same authored Gallery view forms as AgeComponent.
-        "363fd950c81824d010f776c8b9a877548b59943b95dd70404dcc8a75be8879ff"
+        // PLAN-106（014 真语料，交付刀）：else-if 链臂 + handler 多行 view-data
+        // 列表重写语句 + 对象字面量开 age-component（同 AgeComponent 行）——
+        // 363fd950…→6d2df8f9…。
+        "6d2df8f9b1cf3df435d08c0b1e8a297f865c04ead9ff02890c6b1784befe7315"
     );
 }

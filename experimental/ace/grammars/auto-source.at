@@ -748,11 +748,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             pratt(of: "wide-ops", field: "value")
             rbrace() {}
         }
+        // PLAN-106（014 真语料）：条件条目值的 **else-if 链**——`else if <cond>`
+        // 再跟 then 臂（可再带 else/else-if，链式递归）。镜像
+        // `age-view-if-else` 的链形（view 语句面已是 else-if 链递归；条目值面
+        // 此前只收单 else，014 hero 渐变的 6 分支被整段回滚）。
         age-if-else(profiles: [age-component, age-package]) {
-            else(field: "kw")
-            lbrace(same-line: true) {}
-            pratt(of: "wide-ops", field: "value")
-            rbrace() {}
+            alt { else(field: "kw") age-if-expr(field: "chain") }
+            alt {
+                else(field: "kw")
+                lbrace(same-line: true) {}
+                pratt(of: "wide-ops", field: "value")
+                rbrace() {}
+            }
         }
         // PLAN-980：`on { .Msg -> { <stmts> } … }`——传统 widget on 块形态
         //（与 979 的 `on <Msg> { assigns }` 并存，投影为同一 handler 结构）。
@@ -786,6 +793,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `let`/`if`（与直接形 age-on-stmt 同两条规则）。投影进
         // handler.stmts（Let/If 全深度），执行/校验走共享 hook_stmts_lower。
         age-on-widget-stmt(profiles: [age-component, age-package], expect: "a handler statement (`<field> = <expr>` / a channel call / hook-local `let` / `if-else`)") {
+            // PLAN-106（014 真语料）：handler 重写无类型记录列表（`.hourly = [
+            // { time: "现在", … } ]`）——专用语句面：RHS 走 view-data 多行
+            // 列表字面量（与 model 无类型字段声明同构），不经 pratt（pratt 的
+            // array 元素不支持换行起始的对象字面量）。置于通用赋值之前。
+            alt { age-view-assign-viewdata-stmt() {} }
             alt { age-view-assign-stmt() {} }
             alt(profiles: [age-package]) { age-on-assign() {} }
             alt(profiles: [age-package]) { age-on-var() {} }
@@ -868,6 +880,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         age-view-for-index(profiles: [age-component, age-package]) {
             ident(field: "name") comma() {}
+        }
+        // PLAN-106（014 真语料）：handler 重写无类型记录列表的专用语句——
+        // `.field = [ { … }, … ]`。**仅多行**列表字面量（`[\n {…},\n …]`，
+        // pratt 的 array 元素不支持换行起始的对象字面量）；内联列表
+        // （`["a", "b"]`）仍走 age-view-assign-stmt 的 pratt——类型化
+        // List 字段（114 expanded）保持真实列表表达式。
+        age-view-assign-viewdata-stmt(profiles: [age-component, age-package], expect: "a handler `<field> = [ … ]` view-data list assignment") {
+            dot(field: "dot") {}
+            ident(field: "field")
+            assign(field: "op") {}
+            age-view-data-lit-multiline(field: "rhs") {}
+            opt { age-stmt-semi() {} }
         }
         age-view-assign-stmt(profiles: [age-component, age-package]) {
             opt { dot(field: "dot") {} }
@@ -3597,7 +3621,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-package]) { age-format-string() {} }
             // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`——无其他
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
-            alt(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) { object-lit() {} }
+            alt(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) { object-lit() {} }
             // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
             alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { nil-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
@@ -3761,27 +3785,27 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // PLAN-964（L-16/L-20）：裸对象字面量 `{ k: v, ... }`。键为 ident
         // 或字符串字面量（首 token 互异，规则级 alt 可分派）；值同型冻结
         // 于 resolve。空字面量 `{}` 由 obj-fields(repeat: "opt") 承载。
-        object-lit(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) {
+        object-lit(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) {
             lbrace() {}
             opt { object-fields(field: "fields") {} }
             rbrace() {}
         }
-        object-fields(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) {
+        object-fields(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) {
             object-field() {}
             many { object-field-tail() {} }
         }
-        object-field-tail(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) {
+        object-field-tail(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) {
             comma() {}
             object-field() {}
         }
-        object-field(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) {
+        object-field(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) {
             object-key(field: "key") {}
             colon() {}
             expr(field: "value")
         }
         // PLAN-964：对象字面量键两形（ident 名或字符串字面量）——首 token
         // 互异，独立子规则承载（规则级不允许 alt 与非 alt 子节点混排）。
-        object-key(profiles: [aggregates, auto, closures, scheduler, age-package, config-document, auto-packages]) {
+        object-key(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) {
             alt { ident(field: "key") }
             alt { str-lit(field: "key") }
             alt(profiles: [auto, auto-packages]) { int-lit(field: "key") }

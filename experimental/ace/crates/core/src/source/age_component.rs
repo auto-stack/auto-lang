@@ -575,9 +575,12 @@ pub enum ComponentEntryValue {
     },
     /// PLAN-1072 刀B（010 真语料）：条件样式值 `style: if <cond> { <then> }
     /// else { <else> }`——结构承载（design 三段同形；惰性不求值）。
+    /// PLAN-106（014 真语料）：`else if` 链臂（`else_chain`，源序；
+    /// 每臂 = (cond, value)；末臂由 `else_value` 承载）。
     If {
         cond: Expr,
         then_value: Expr,
+        else_chain: Vec<(Expr, Expr)>,
         else_value: Expr,
     },
     ClassList(Vec<ComponentClassPart>),
@@ -3221,7 +3224,13 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
             if locals.iter().any(|l| l == field) {
                 continue;
             }
-            if !node.fields.iter().any(|f| &f.name == field) {
+            // PLAN-106（014 真语料）：handler 重写无类型 view-data 记录列表
+            // （`.hourly = [ … ]`）——只读展示数据的**惰性收据**写。事件车道
+            // 不落 state cell（展示读 view_data 初值）；赋值得 bind，发射侧
+            // 跳过（hook_stmts_lower 同判定）。仍拒真正的未知字段。
+            if !node.fields.iter().any(|f| &f.name == field)
+                && !node.view_data.iter().any(|f| &f.name == field)
+            {
                 bad = Some((field.clone(), *span));
                 break;
             }
@@ -4104,6 +4113,11 @@ fn hook_stmts_lower(
                     }
                 }
                 let Some(field) = node.fields.iter().find(|f| f.name == assign.field) else {
+                    // PLAN-106（014 真语料）：view-data 字段写=惰性收据（展示读
+                    // view_data 初值，不落 state cell）——bind 已核，这里跳过发射。
+                    if node.view_data.iter().any(|f| f.name == assign.field) {
+                        continue;
+                    }
                     return Err(vec![text_diag(
                         "source.age.component-event",
                         format!(

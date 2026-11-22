@@ -6852,17 +6852,48 @@ impl<'a> Engine<'a> {
                         .and_then(|w| self.cx.field_child(w, "value"))
                         .map(|v| self.project_expr_sync(v))
                         .expect("if-expr then");
-                    let else_value = self
-                        .cx
-                        .children(inner)
-                        .into_iter()
-                        .find(|&w| Some(self.cx.tree.kind(w)) == if_else_kind)
-                        .and_then(|w| self.cx.field_child(w, "value"))
-                        .map(|v| self.project_expr_sync(v))
-                        .expect("if-expr else");
+                    // PLAN-106（014 真语料）：else-if 链——`age-if-else` 的
+                    // `chain` 臂是**嵌套 age-if-expr**（递归投影；源序收集
+                    // (cond, value) 对），最终 `value` 臂是末 else。
+                    let mut else_chain: Vec<(Expr, Expr)> = Vec::new();
+                    let mut else_value: Option<Expr> = None;
+                    let mut cursor = inner;
+                    loop {
+                        let Some(els) = self
+                            .cx
+                            .children(cursor)
+                            .into_iter()
+                            .find(|&w| Some(self.cx.tree.kind(w)) == if_else_kind)
+                        else {
+                            break;
+                        };
+                        if let Some(chain) = self.cx.field_child(els, "chain") {
+                            let chain_cond = self
+                                .cx
+                                .field_child(chain, "cond")
+                                .map(|w| self.project_expr_sync(self.unwrap_child(w)))
+                                .expect("if-expr chain cond");
+                            let chain_then = self
+                                .cx
+                                .field_child(chain, "then")
+                                .and_then(|w| self.cx.field_child(w, "value"))
+                                .map(|v| self.project_expr_sync(v))
+                                .expect("if-expr chain then");
+                            else_chain.push((chain_cond, chain_then));
+                            cursor = chain;
+                        } else {
+                            else_value = self
+                                .cx
+                                .field_child(els, "value")
+                                .map(|v| self.project_expr_sync(v));
+                            break;
+                        }
+                    }
+                    let else_value = else_value.expect("if-expr else");
                     ComponentEntryValue::If {
                         cond,
                         then_value,
+                        else_chain,
                         else_value,
                     }
                 } else if Some(inner_kind) == lambda_kind {
@@ -6892,20 +6923,41 @@ impl<'a> Engine<'a> {
                         span: self.cx.span_of(msg),
                     })
                 } else if Some(inner_kind) == event_binding_kind {
-                    // PLAN-980 WEB #6m：事件绑定调用形 `.Msg($event, …)`——
-                    // 投影为**裸 `.Msg` 字段引用**（既有 event_binding_msg 识
-                    // 别/跳过通道）；实参是宿主（DOM 事件）通道，本面不验证
-                    // 不求值（模板发射由方言侧方言 AST 承担，此投影无消费
-                    // 方——丢弃无损失，具名边界）。
+                    // PLAN-980 WEB #6m：事件绑定调用形 `.Msg(args)`。旧行为把
+                    // 实参一律当宿主（DOM `$event`）通道丢弃为裸 `.Msg` Field
+                    // ——014 真语料的**作者载荷**（`SelectCity("beijing")`）也
+                    // 被吞，AV 桥按钮载荷无法提取。PLAN-106 改判：与包面同形
+                    // 投影为 MethodCall（recv=self、args 保留），事件宿主按
+                    // 参数形消费；`$event` 通道形在消费侧 fail-closed（点击时
+                    // 读状态拒），本面不求值。
                     let msg = self
                         .cx
                         .field_child(inner, "msg")
                         .expect("event binding msg ident");
                     let msg_span = self.cx.span_of(msg);
+                    let span = self.cx.span_of(inner);
+                    let arg_kind = self.rule_kind_of("age-event-arg");
+                    let args = self
+                        .cx
+                        .field_child(inner, "args")
+                        .map(|args_node| {
+                            self.cx
+                                .children(args_node)
+                                .into_iter()
+                                // age-event-binding-args 的子节点含 lparen/
+                                // rparen 叶子——只收 age-event-arg 规则项。
+                                .filter(|&c| Some(self.cx.tree.kind(c)) == arg_kind)
+                                .map(|arg| {
+                                    let expr = self.project_expr_sync(self.unwrap_child(arg));
+                                    crate::source::ast::Arg::Pos(expr)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
                     ComponentEntryValue::Expr(Expr {
-                        span: msg_span,
-                        kind: ExprKind::Field {
-                            base: Box::new(Expr {
+                        span,
+                        kind: ExprKind::MethodCall {
+                            recv: Box::new(Expr {
                                 span: msg_span,
                                 kind: ExprKind::Var(Ident {
                                     name: "self".to_string(),
@@ -6916,6 +6968,8 @@ impl<'a> Engine<'a> {
                                 name: self.cx.spelling(msg),
                                 span: msg_span,
                             },
+                            args,
+                            instance: None,
                         },
                     })
                 } else {
@@ -7273,7 +7327,43 @@ impl<'a> Engine<'a> {
             .field_child(stmt, "field")
             .expect("stmt field ident");
         let rhs_node = self.cx.field_child(stmt, "rhs").expect("stmt rhs");
-        let mut rhs = self.project_expr_sync(rhs_node);
+        let rhs_kind = self.cx.tree.kind(rhs_node);
+        let rhs_name = self.rule_name_of_kind(rhs_kind);
+        // PLAN-106（014 真语料）：handler 重写无类型记录列表（`.hourly = [\n
+        // { … },\n ]`）——RHS 是 view-data 列表字面量（惰性数据）。model 无
+        // 类型字段同律用原始 span 文本承载（不经 project_expr_sync——该入口
+        // 无 view-data 臂会失败）；这里包成惰性 StrLit 占位，赋值可投影、
+        // 体不再 foreign。
+        let viewdata_rhs = matches!(
+            rhs_name.as_str(),
+            "age-view-data-lit"
+                | "age-view-data-lit-inline"
+                | "age-view-data-lit-multiline"
+        );
+        let mut rhs = if viewdata_rhs {
+            let entry_kind = self.rule_kind_of("age-view-data-entry");
+            let empty = self
+                .cx
+                .children(rhs_node)
+                .into_iter()
+                .all(|c| Some(self.cx.tree.kind(c)) != entry_kind);
+            if empty {
+                // 空列表 `[]` 是真实空数组（类型化 List 字段的 reset 合法）。
+                Expr {
+                    span: self.cx.span_of(rhs_node),
+                    kind: ExprKind::ArrayLit(Vec::new()),
+                }
+            } else {
+                // PLAN-106（014 真语料）：非空 view-data 记录列表=惰性
+                // StrLit 占位（展示读 view_data 初值；赋值可投影、不 foreign）。
+                Expr {
+                    span: self.cx.span_of(rhs_node),
+                    kind: ExprKind::StrLit(self.cx.spelling(rhs_node)),
+                }
+            }
+        } else {
+            self.project_expr_sync(rhs_node)
+        };
         let field_name = self.cx.spelling(field);
         let op_node = self.cx.field_child(stmt, "op").expect("stmt assign op");
         let op_inner = self.unwrap_child(op_node);
@@ -7566,7 +7656,9 @@ impl<'a> Engine<'a> {
                     let inner = self.unwrap_child(stmt);
                     if Some(self.cx.tree.kind(inner)) == view_if_kind {
                         stmts.push(self.project_view_if(inner, channel_names, &mut body_foreign));
-                    } else if self.rule_name_of(inner) == "age-view-assign-stmt" {
+                    } else if self.rule_name_of(inner) == "age-view-assign-stmt"
+                        || self.rule_name_of(inner) == "age-view-assign-viewdata-stmt"
+                    {
                         let mut one = Vec::new();
                         self.collect_view_stmt(inner, &mut one);
                         if let Some(a) = one.pop() {

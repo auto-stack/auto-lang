@@ -90,7 +90,9 @@ fn p105_component_entry_comparison_binding_projects_as_expr() {
     assert!(compiles(src), "package face must compile the same source");
 }
 
-/// `onclick: .Msg(arg)` 仍是事件绑定：投影为裸 `.Msg` Field（实参作宿主通道丢弃）。
+/// `onclick: .Msg(arg)` 事件绑定：作者载荷实参保留（PLAN-106 改判——投影为
+/// MethodCall，recv=self；AV 桥按钮载荷据此提取。`$event` 通道形由消费侧
+/// fail-closed，本面不求值）。
 #[test]
 fn p105_component_entry_msg_with_args_is_event_binding() {
     let src = "widget App {\n\
@@ -109,13 +111,18 @@ fn p105_component_entry_msg_with_args_is_event_binding() {
             assert!(
                 matches!(
                     expr.kind,
-                    ace_core::source::ast::ExprKind::Field { .. }
+                    ace_core::source::ast::ExprKind::MethodCall { .. }
                 ),
-                "event binding projects to a bare field"
+                "event binding projects to a method call with the authored payload"
             );
         }
-        other => panic!("expected bare-field event binding, got {other:?}"),
+        other => panic!("expected method-call event binding, got {other:?}"),
     }
+    let (name, args) = en
+        .message_call()
+        .expect("message_call reads the projected payload");
+    assert_eq!(name.name, "SetMode");
+    assert_eq!(args.len(), 1, "the authored payload arg is preserved");
     assert!(compiles(src));
 }
 

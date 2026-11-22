@@ -1499,8 +1499,16 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                         }
                                         // PLAN-1072 刀B：条件样式 cond 入绑定
                                         // 验证（两臂为字面量/替换后字面量）。
-                                        ComponentEntryValue::If { cond, .. } => {
+                                        // PLAN-106：else-if 链臂 cond 一并入列。
+                                        ComponentEntryValue::If {
+                                            cond,
+                                            else_chain,
+                                            ..
+                                        } => {
                                             checks.push(ScopedViewCheck::Condition(cond), loops);
+                                            for (c, _) in else_chain {
+                                                checks.push(ScopedViewCheck::Condition(c), loops);
+                                            }
                                         }
                                         ComponentEntryValue::ClassList(parts) => {
                                             if !matches!(en.key.as_str(), "style" | "class") {
@@ -3496,6 +3504,7 @@ fn replace_style_in_items(
             ComponentViewItem::Entry(en) => match &mut en.value {
                 ComponentEntryValue::If {
                     then_value,
+                    else_chain,
                     else_value,
                     ..
                 } => {
@@ -3507,6 +3516,16 @@ fn replace_style_in_items(
                         imports,
                         scope,
                     )?;
+                    // PLAN-106：else-if 链臂值同样过替换检查。
+                    for (_, value) in else_chain {
+                        replace_style_in_entry_expr(
+                            value,
+                            &en.key,
+                            lits,
+                            imports,
+                            scope,
+                        )?;
+                    }
                     replace_style_in_entry_expr(
                         else_value,
                         &en.key,

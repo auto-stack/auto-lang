@@ -315,11 +315,14 @@ fn p114_nested_tree_literal_is_preserved_as_read_only_view_data() {
     }
     compile(&src).expect("unrelated scalar handler remains executable");
 
+    // PLAN-106 改判：view-data 字段写=**惰性收据**——可编译，不落 state。
     let writes_to_view_data = src.replace(".count = 1", ".nodes = 1");
-    let diagnostics = compile(&writes_to_view_data).expect_err("view data is not mutable state");
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic
-        .message
-        .contains("assigns undeclared model field `nodes`")));
+    compile(&writes_to_view_data).expect("view-data write is an inert receipt");
+    let nodes = project_component_candidates(&writes_to_view_data).expect("projects");
+    assert!(
+        nodes[0].view_data.iter().any(|f| f.name == "nodes"),
+        "the written field stays view-data (no state slot)"
+    );
     let malformed = src.replace("children: []", "children: [");
     assert!(project_component_candidates(&malformed).is_err());
 }
@@ -942,6 +945,7 @@ fn p1072_view_entry_conditional_style_value() {
                     if let ComponentEntryValue::If {
                         cond,
                         then_value,
+                        else_chain,
                         else_value,
                     } = &en.value
                     {
@@ -950,6 +954,10 @@ fn p1072_view_entry_conditional_style_value() {
                         assert!(
                             matches!(cond.kind, ace_core::source::ast::ExprKind::Field { .. }),
                             "cond references the field"
+                        );
+                        assert!(
+                            else_chain.is_empty(),
+                            "a single-else conditional carries no chain arms"
                         );
                         assert!(matches!(
                             then_value.kind,
@@ -976,12 +984,13 @@ fn p1072_view_entry_conditional_style_value() {
     compile(src).expect("whole source compiles");
 }
 
-/// ⑭负控：handler 写视图数据字段——具名拒（未声明 model 字段；1071 边界
-/// 的 fail-closed 面：view-data 不是可写 state 通道）。
+/// ⑭（PLAN-106 授权改判）：handler 写 view-data 字段=**惰性收据**——赋值
+/// 可 bind、可编译（展示读 view_data 初值，不落 state cell、不提升为
+/// model 字段）；真正未知字段仍具名拒（见 plan106 用例组）。
 #[test]
-fn p1072_view_data_write_is_named() {
-    let err = compile(
-        "widget App {
+fn p1072_view_data_write_is_inert_receipt() {
+    use ace_core::source::age_component::project_component_candidates;
+    let src = "widget App {
     msg { Submit }
     model {
         var n int = 0
@@ -996,15 +1005,17 @@ fn p1072_view_data_write_is_named() {
         .Submit -> { .faqs = .n }
     }
 }
-",
-    )
-    .expect_err("writing a view-data field is rejected");
+";
+    compile(src).expect("a view-data write is an inert receipt, not a state write");
+    let nodes = project_component_candidates(src).expect("the source projects");
+    let node = &nodes[0];
     assert!(
-        err[0]
-            .message
-            .contains("assigns undeclared model field `faqs`"),
-        "named reject: {:?}",
-        err[0].message
+        node.view_data.iter().any(|f| f.name == "faqs"),
+        "the list stays view-data (display source)"
+    );
+    assert!(
+        !node.fields.iter().any(|f| f.name == "faqs"),
+        "no state slot is created for the inert receipt"
     );
 }
 
