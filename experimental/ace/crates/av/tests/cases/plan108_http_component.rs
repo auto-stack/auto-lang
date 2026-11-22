@@ -97,3 +97,61 @@ fn p108_user_shadow_wins() {
         "遮蔽形须回落普通解析（非 http 族诊断），实际: {err}"
     );
 }
+
+/// M2 正例：注入宿主 provider 后 Http.post_json 真实执行（同步语义——
+/// 阻塞由调用侧承担；UI 桥的 worker 线程派发是消费侧责任），结果体
+/// 文本落账 model 字段；provider 缺席仍 fail-closed（M1 不变式保持）。
+struct FakeHttp {
+    seen: std::sync::Arc<std::sync::Mutex<Vec<(String, String, Option<String>)>>>,
+}
+
+impl ace_av::component_event_sessions::HttpProvider for FakeHttp {
+    fn execute(
+        &mut self,
+        verb: &str,
+        url: &str,
+        body: Option<&str>,
+    ) -> Result<String, String> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push((verb.to_string(), url.to_string(), body.map(str::to_string)));
+        Ok("{\"ok\":true,\"slow\":65,fake-body}".to_string())
+    }
+}
+
+#[test]
+fn p108_http_provider_executes_and_lands() {
+    let program = ComponentEventSessionProgram::compile(
+        HTTP_PROBE_SRC,
+        "plan108.http.probe",
+        LegacyWidgetAlias::Accept,
+    )
+    .expect("M2 正例编译");
+    let mut session = program.open_session(&[]).expect("open_session");
+    // 无 provider：仍具名 fail-closed（M1 不变式）。
+    let err = session.dispatch("Load", &[]).expect_err("无 provider 须 fail-closed");
+    assert!(err.contains("http.client"), "实际: {err}");
+    // 注入 provider：执行并落账。
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let provider = std::sync::Arc::new(std::sync::Mutex::new(FakeHttp {
+        seen: seen.clone(),
+    }));
+    session.set_http_provider(provider);
+    session.dispatch("Load", &[]).expect("Load 带 provider 须成功");
+    let states = session.read_states().expect("read_states");
+    let result = states
+        .iter()
+        .find(|(n, _)| n == "result")
+        .map(|(_, v)| format!("{v:?}"))
+        .expect("result 字段在案");
+    assert!(
+        result.contains("fake-body") || result.contains("slow"),
+        "result 须落账响应体，实际: {result}"
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "provider 恰一调");
+    assert_eq!(seen[0].0, "auto.http.post-json.v1");
+    assert_eq!(seen[0].1, "http://127.0.0.1:7072/slow");
+    assert_eq!(seen[0].2.as_deref(), Some("q=1"));
+}

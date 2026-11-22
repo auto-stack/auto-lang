@@ -72,3 +72,14 @@ pub fn declaration(symbol: &str, sig: u32) -> Result<MirHostImport, AdmissionErr
         max_call_bytes: spec.max_call_bytes,
     })
 }
+
+/// PLAN-108（T-03c M2）：宿主 HTTP 执行器——UI 桥注入会话。**阻塞语义**：
+/// 桥负责把携带 Http 的 handler 派发跑在 worker 线程（桥级异步，UI 线程
+/// 不等待）；执行器内同步调用。取消=桥丢弃会话（provider 随会话死，迟到
+/// 响应经完成口代际核对拒写——桥侧责任）。
+pub trait HttpProvider: Send {
+    /// `verb`=目录 symbol（`auto.http.post-json.v1` 形）；`body`=请求体
+    /// 文本（无体动词=None）。Ok=响应体文本（VM shim 同语义）；Err=具名
+    /// 失败消息（映射 `ExecOutcome::Error`）。
+    fn execute(&mut self, verb: &str, url: &str, body: Option<&str>) -> Result<String, String>;
+}

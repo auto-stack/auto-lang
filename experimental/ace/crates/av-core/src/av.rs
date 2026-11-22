@@ -1449,8 +1449,22 @@ pub fn execute_program_entry_args(
     cancel: &CancelFlag,
     args: &[EntryArg<'_>],
 ) -> (ExecOutcome, ExecTrace) {
+    execute_program_entry_args_with_http(prog, def_id, limits, cancel, args, None)
+}
+
+/// PLAN-108（T-03c M2）：携带宿主 HTTP provider 的会话派发入口（UI 桥注入；
+/// None=M1 fail-closed 语义）。
+pub fn execute_program_entry_args_with_http(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    def_id: &str,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[EntryArg<'_>],
+    http: Option<std::sync::Arc<std::sync::Mutex<dyn crate::http_client::HttpProvider>>>,
+) -> (ExecOutcome, ExecTrace) {
     let mut st = LoopState {
         arena: crate::owned_text::StrArena::new(),
+        http,
         ..Default::default()
     };
     st.trace.arena = Some(st.arena.clone());
@@ -2056,6 +2070,9 @@ struct LoopState {
     /// PLAN-919: fast gate for the lifecycle channel (one bool check per
     /// hook site; the RefCell is only touched when enabled).
     lifecycle_on: bool,
+    /// PLAN-108（T-03c M2）：宿主 HTTP provider（UI 桥注入；None=HttpCall
+    /// 具名 fail-closed——M1 语义保持）。
+    http: Option<std::sync::Arc<std::sync::Mutex<dyn crate::http_client::HttpProvider>>>,
     /// PLAN-968: the shared scheduler tables (mailboxes, reply ports,
     /// virtual clock). Present only inside `execute_sched` chains.
     sched: Option<std::sync::Arc<std::sync::Mutex<SchedTables>>>,
@@ -4594,13 +4611,59 @@ fn dispatch_with_host<V: ModuleView>(
             }
             match instr {
                 MirInstr::HttpCall { dst, host, args } => {
-                    // PLAN-108（T-03b M1）：Http 效应执行准入——M1 无 provider
-                    // 注册=具名 fail-closed（M2 由 UI 桥经会话 provider 执行；
-                    // 桥级异步：worker 线程派发，UI 线程不阻塞）。
-                    let _ = (dst, host, args);
-                    return Some(ExecOutcome::Infra(
-                        "http.client: no http provider installed in this session lane (plan108 M1 fail-closed)".into(),
-                    ));
+                    // PLAN-108：Http 效应执行——provider 缺席=具名 fail-closed
+                    // （M1 语义）；provider 在场=同步执行（阻塞语义由桥侧
+                    // worker 线程承担，UI 线程不等待）。
+                    let Some(http) = st.http.clone() else {
+                        return Some(ExecOutcome::Infra(
+                            "http.client: no http provider installed in this session lane (plan108 M1 fail-closed)".into(),
+                        ));
+                    };
+                    let Some(import) = v.host_import_at(func_idx, *host) else {
+                        return Some(ExecOutcome::Infra(
+                            "http.client: host import index out of range".into(),
+                        ));
+                    };
+                    let frame = st.frames.last().expect("frame present");
+                    let mut texts: Vec<String> = Vec::with_capacity(args.len());
+                    for a in args {
+                        let view = match foreign_view(&frame.slots[*a as usize]) {
+                            Ok(view) => view,
+                            Err(out) => return Some(out),
+                        };
+                        let bytes = view.bytes();
+                        match std::str::from_utf8(bytes) {
+                            Ok(text) => texts.push(text.to_string()),
+                            Err(_) => {
+                                return Some(ExecOutcome::Error {
+                                    message: "http.client: argument is not valid UTF-8".into(),
+                                    span: span_of(func, flat)
+                                        .map(|sp| v.map_span(func_idx, sp)),
+                                });
+                            }
+                        }
+                    }
+                    let url = texts.first().cloned().unwrap_or_default();
+                    let body = texts.get(1).cloned();
+                    let result = {
+                        let mut provider =
+                            http.lock().expect("http provider mutex");
+                        provider.execute(&import.symbol, &url, body.as_deref())
+                    };
+                    match result {
+                        Ok(body_text) => {
+                            let handle = st.arena.alloc(body_text.as_bytes());
+                            let frame = st.frames.last_mut().expect("frame present");
+                            frame.slots[*dst as usize] = Value::Str(handle);
+                        }
+                        Err(message) => {
+                            return Some(ExecOutcome::Error {
+                                message: format!("http.client: {message}"),
+                                span: span_of(func, flat)
+                                    .map(|sp| v.map_span(func_idx, sp)),
+                            });
+                        }
+                    }
                 }
                 MirInstr::ForeignCall {
                     declaration,

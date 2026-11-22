@@ -21,7 +21,7 @@ use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::function_code::FunctionCode;
 use ace_av_core::program_snapshot::ProgramSnapshot;
 use ace_av_core::span_map::SpanSegments;
-use ace_av_core::{execute_program_entry_args, EntryArg};
+use ace_av_core::{execute_program_entry_args, execute_program_entry_args_with_http, EntryArg};
 use ace_core::source::age_component::{
     compile_component_event_program, ComponentEventProgram as CoreEventProgram,
 };
@@ -30,6 +30,8 @@ use std::sync::Arc;
 
 // 消费者（UI 桥）经本模块取值域，不必直接依赖 ace-av 的场景观察面。
 pub use crate::age_component::ComponentFieldValue;
+// PLAN-108（T-03c M2）：宿主 HTTP provider trait 随会话面再出口（UI 桥注入）。
+pub use ace_av_core::http_client::HttpProvider;
 
 /// 会话级观察口（执行层 oracle；真实调用边界计数）。
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -322,6 +324,7 @@ impl ComponentEventSessionProgram {
             watermark: None,
             last_states: Vec::new(),
             audit: SessionAudit::default(),
+            http: None,
         };
         // init 链（首次派发触发；每代一次）。
         let (out, trace) = session.entry(&self.init_def_id, &[]);
@@ -370,6 +373,9 @@ pub struct ComponentEventSession {
     /// 最近一次已提交状态（重投时返回；Duplicate 分支不重算）。
     last_states: Vec<(String, ComponentFieldValue)>,
     audit: SessionAudit,
+    /// PLAN-108（T-03c M2）：宿主 HTTP provider（UI 桥注入；None=HttpCall
+    /// 具名 fail-closed）。
+    http: Option<std::sync::Arc<std::sync::Mutex<dyn ace_av_core::http_client::HttpProvider>>>,
 }
 
 impl ComponentEventSession {
@@ -379,13 +385,23 @@ impl ComponentEventSession {
         args: &[EntryArg<'static>],
     ) -> (ExecOutcome, ace_av_core::ExecTrace) {
         let snap = self.snap.as_ref().expect("session is live");
-        execute_program_entry_args(
+        execute_program_entry_args_with_http(
             snap,
             def_id,
             &ace_av_core::ExecLimits::default(),
             &ace_av_core::CancelFlag::new(false),
             args,
+            self.http.clone(),
         )
+    }
+
+    /// PLAN-108（T-03c M2）：注入/替换宿主 HTTP provider（UI 桥在打开
+    /// 会话后调用；阻塞语义由桥侧 worker 线程承担）。
+    pub fn set_http_provider(
+        &mut self,
+        provider: std::sync::Arc<std::sync::Mutex<dyn ace_av_core::http_client::HttpProvider>>,
+    ) {
+        self.http = Some(provider);
     }
 
     /// 会话代次（每次 open 递增；关闭重开必然新代次）。
