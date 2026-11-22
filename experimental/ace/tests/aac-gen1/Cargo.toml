@@ -21,6 +21,7 @@ blake3 = "1"
 sha2 = "0.10"
 ace-aac-bridge = { path = "../../crates/aac-bridge" }
 ace-av-core = { path = "../../crates/av-core" }
+auto-test-case = { path = "../../../../crates/auto-test-case" }
 
 [[test]]
 name = "gen1"

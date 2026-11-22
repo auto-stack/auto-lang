@@ -136,6 +136,7 @@ dependencies = [
  "ace-core",
  "ace-native",
  "ace-source-query",
+ "auto-test-case",
  "auto-tool-execution",
  "blake3",
  "sha2",

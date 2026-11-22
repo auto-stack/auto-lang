@@ -419,10 +419,200 @@ fn gen1_end_to_end_source_to_real_pe_exit() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Run one single-file source through the whole Gen1 chain and return the
+/// real PE's exit code: Gen1 compile (mir) -> bridge service -> link -> run.
+fn gen1_chain_exit(compile: &std::path::Path, source: &[u8], tag: &str) -> Result<i32, String> {
+    use auto_tool_execution::{BoundedPolicy, ExecutionSpec, ExitKind, TreeScope};
+    let root = scratch(tag);
+    let input = root.join("main.at");
+    let output = root.join("report.txt");
+    let abc_path = root.join("closure.abc");
+    std::fs::write(&input, source).map_err(|e| format!("write pilot input: {e}"))?;
+    let (_report, abc) = run_compile_case(compile, &input, &output, "mir", Some(&abc_path))
+        .map_err(|e| format!("Gen1 compile: {e}"))?;
+    let abc = abc.ok_or("mir mode emitted no ABC")?;
+    let decoded = ace_av_core::abc::decode_abc(&abc).map_err(|e| format!("decode ABC: {e:?}"))?;
+    let module = decoded.module;
+    use ace_av_core::contract::*;
+    let expected_schema: &str = match module.profile.as_str() {
+        AV_PROFILE => MIR_SCHEMA,
+        AV_DATA_PROFILE => MIR_DATA_SCHEMA,
+        AV_OWNED_PROFILE => MIR_OWNED_SCHEMA,
+        AV_COLLECTIONS_PROFILE => MIR_COLLECTIONS_SCHEMA,
+        AV_CLOSURES_PROFILE => MIR_CLOSURES_SCHEMA,
+        AV_DYNAMIC_PROFILE => MIR_DYNAMIC_SCHEMA,
+        AV_ENTRY_UNIT_PROFILE => MIR_ENTRY_UNIT_SCHEMA,
+        AV_HOST_CONSOLE_PROFILE => MIR_HOST_CONSOLE_SCHEMA,
+        other => return Err(format!("unsupported ABC profile family: {other}")),
+    };
+    let mode = ace_aac_bridge::Mode::NativeObjects;
+    let request = ace_aac_bridge::Request {
+        id: blake3::hash(tag.as_bytes()).as_bytes()[..16]
+            .try_into()
+            .expect("16-byte request id"),
+        mode,
+        domains: ace_aac_bridge::Domains::windows(mode),
+        inputs: ace_aac_bridge::InputIdentity {
+            source: *blake3::hash(source).as_bytes(),
+            grammar: *blake3::hash(expected_schema.as_bytes()).as_bytes(),
+            passes: [3; 32],
+            stdlib: [4; 32],
+            dependencies: [5; 32],
+        },
+        owner: if module.owner.module.is_empty() {
+            tag.to_string()
+        } else {
+            module.owner.module.clone()
+        },
+        mir_schema: expected_schema.to_string(),
+        options: ace_aac_bridge::Options { remaining_ms: 7000 },
+        capabilities: module.capabilities.clone(),
+        external_provider: None,
+        globals: module
+            .globals
+            .iter()
+            .map(|global| ace_aac_bridge::WireGlobal {
+                name: global.name.clone(),
+                ty: global.ty,
+                mutable: global.mutable,
+            })
+            .collect(),
+        initializers: module.init.clone(),
+    };
+    let bridge = ace_aac_bridge::Client::new(
+        prepared_bridge().map_err(|e| format!("prepared bridge: {e}"))?,
+    )
+    .map_err(|e| format!("bridge client: {e}"))?;
+    let (response, bytes) = bridge
+        .run(&request, &abc)
+        .map_err(|e| format!("bridge exchange: {e}"))?;
+    let ace_aac_bridge::Outcome::Objects {
+        units,
+        wrapper,
+        ..
+    } = response.outcome
+    else {
+        return Err(format!("expected an object bundle: {:?}", response.outcome));
+    };
+    let mut remaining = bytes.as_slice();
+    let mut objects = Vec::new();
+    for object in units {
+        let (unit, rest) = remaining
+            .split_at_checked(object.len as usize)
+            .ok_or("object bundle truncated")?;
+        objects.push(ace_native::link_driver::ObjectInput {
+            name: object.symbol,
+            bytes: unit.to_vec(),
+        });
+        remaining = rest;
+    }
+    let image = ace_native::link_driver::link_only(
+        &objects,
+        remaining,
+        &wrapper.symbol,
+        &root.join("link"),
+        &[],
+        tag,
+    )
+    .map_err(|e| format!("link: {e:?}"))?;
+    let mut spec = ExecutionSpec::new([std::ffi::OsStr::new(&image.exe_path)]);
+    spec.tree_scope = TreeScope::ProcessTree;
+    let result = auto_tool_execution::run_bounded(
+        &spec,
+        &BoundedPolicy {
+            exec_deadline: std::time::Duration::from_secs(4),
+            cleanup_deadline: std::time::Duration::from_secs(1),
+            stdout_cap: Some(4096),
+            stderr_cap: Some(4096),
+        },
+    )
+    .map_err(|e| format!("run PE: {e}"))?;
+    let _ = std::fs::remove_dir_all(&root);
+    match result.kind {
+        ExitKind::Success => Ok(0),
+        ExitKind::Failure(code) => Ok(code),
+        other => Err(format!("unexpected exit kind {other:?}")),
+    }
+}
+
+#[test]
+fn gen1_corpus_pilot_basics_expressions_takeover() {
+    let started = Instant::now();
+    let compile = prepared_compile()
+        .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
+    // The 1078 shared corpus: the `ac-native` probes carry the AV-phase
+    // #ignore marker; this pilot executes them through the Gen1 chain and
+    // compares the real PE exit codes against the corpus' frozen oracles
+    // (the same bytes the AV and A2R checks consume).
+    let case_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/language/basics/expressions.case.ad");
+    let bytes = std::fs::read(&case_file).expect("read the corpus case file");
+    let doc = auto_test_case::document::CaseDocument::parse(&bytes)
+        .expect("the corpus document parses under the sanctioned loader");
+    let limits = auto_test_case::admission::Limits::defaults();
+    let cases = auto_test_case::author::decode_document(
+        &doc,
+        "language/basics/expressions.case.ad",
+        &limits,
+    )
+    .expect("the corpus cases decode under the authoring contract");
+    let mut ran = 0usize;
+    let mut skipped = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for authored in &cases {
+        let resolved = auto_test_case::ir::resolve_case(
+            authored.spec.clone(),
+            &doc,
+            case_file.parent().expect("case dir"),
+            &limits,
+        )
+        .expect("resolve the case files");
+        for check in &authored.spec.checks {
+            if check.options.probe_recipe.as_deref() != Some("ac/mir-native-scalar-v1") {
+                continue;
+            }
+            let Some(expected) = check.expect.exit else {
+                skipped += 1;
+                continue;
+            };
+            if resolved.files.len() != 1 {
+                skipped += 1;
+                continue;
+            }
+            let was_ignored = check.skip.is_some();
+            let observed = gen1_chain_exit(
+                compile,
+                &resolved.files[0].bytes,
+                &format!("aac1053-pilot-{}", authored.spec.id),
+            )
+            .unwrap_or_else(|e| panic!("Gen1 chain failed for {}: {e}", authored.spec.id));
+            ran += 1;
+            if observed != expected {
+                failures.push(format!(
+                    "{} (was AV-#ignore: {}): exit {} != corpus oracle {}",
+                    authored.spec.id, was_ignored, observed, expected
+                ));
+            }
+        }
+    }
+    eprintln!(
+        "gen1 corpus pilot: ran={ran} skipped={skipped} failures={} in {:?}",
+        failures.len(),
+        started.elapsed()
+    );
+    // This file currently declares exactly one ac-native probe (the corpus
+    // grows them in later batches; the pilot executes EVERY declared one).
+    assert!(ran >= 1, "pilot must execute every declared ac-native probe (ran={ran})");
+    assert!(failures.is_empty(), "exit oracle mismatches: {failures:?}");
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "corpus pilot exceeded the 10-second gate: {:?}",
+        started.elapsed()
+    );
+}
+
 #[test]
 fn gen1_stale_preparation_is_refused() {
-    let started = Instant::now();
-    let exe = prepared_gen1().expect("prepared Gen1 exe");
     let started = Instant::now();
     let exe = prepared_gen1().expect("prepared Gen1 exe");
     let root = exe.parent().expect("exe parent").to_path_buf();
