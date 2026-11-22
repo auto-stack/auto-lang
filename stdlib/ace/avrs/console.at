@@ -1,0 +1,7 @@
+// PLAN-1114 batch 2: the AV/Rust stdlib `console` contract face — the
+// public API record. The `.rs.at` candidate implements the ops as REAL
+// Rust (std::io stdout) through the checked shim chain; the app imports
+// the composed provider (`use.rs avrs`). The default Auto/native console
+// neighbor keeps its own contract (1041/973); this face is the Rs lane.
+// Returns UTF-8 byte counts (NUL is content).
+pub spec fn console_write(s str) int

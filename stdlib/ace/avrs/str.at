@@ -1,0 +1,11 @@
+// PLAN-1114: the AV/Rust stdlib `str` contract face — the public API
+// record for the module. The `.rs.at` candidate selected for the AV
+// backend (PackageAssemblyContext backend=AV provider=Rs) implements
+// these operations as REAL Rust through the checked 967/1113 shim chain;
+// the app source imports the composed provider (`use.rs avrs`) and calls
+// the same public names. Signatures inherit the legacy
+// `stdlib/auto/str.rs.at` mirror API (PLAN-781 nat#1526: UTF-8 bytes,
+// NUL is content, never a terminator). The old mirror keeps serving the
+// legacy A2R route until the 1115/1117 switch.
+pub spec fn str_byte_len(s str) int
+pub spec fn char_at(s str, i int) int

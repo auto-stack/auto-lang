@@ -1,0 +1,35 @@
+// PLAN-1114 batch 2: the `time` Rust provider fragment. The clock is an
+// owned provider resource (SystemTime read on borrow, lo/hi i32 halves
+// per the sys lane's frozen 64-bit convention); a closed or
+// stale-generation handle is rejected before execution by the owned
+// model. The legacy `#[rs]` sleep/now faces belong to the
+// completion-port product lane (PLAN-1113 M2Build executor) — boundary
+// row B-10. Composed under `avrs/1`.
+/// The provider-owned clock resource (the handle the AV side holds).
+pub struct AvrsClock {
+    born: std::time::SystemTime,
+}
+// auto-ffi fn clock_open symbol=avrs.time.clock_open.v1 form=owned_open owned=AvrsClock
+pub fn clock_open() -> Box<AvrsClock> {
+    Box::new(AvrsClock {
+        born: std::time::SystemTime::now(),
+    })
+}
+// auto-ffi fn clock_ms_lo symbol=avrs.time.clock_ms_lo.v1 form=owned_borrow owned=AvrsClock
+pub fn clock_ms_lo(clock: &AvrsClock) -> i32 {
+    ms_since_epoch(clock.born) as u32 as i32
+}
+// auto-ffi fn clock_ms_hi symbol=avrs.time.clock_ms_hi.v1 form=owned_borrow owned=AvrsClock
+pub fn clock_ms_hi(clock: &AvrsClock) -> i32 {
+    (ms_since_epoch(clock.born) >> 32) as i32
+}
+// auto-ffi fn clock_close symbol=avrs.time.clock_close.v1 form=owned_close owned=AvrsClock
+pub fn clock_close(clock: Box<AvrsClock>) -> i32 {
+    drop(clock);
+    0
+}
+fn ms_since_epoch(t: std::time::SystemTime) -> i64 {
+    t.duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}

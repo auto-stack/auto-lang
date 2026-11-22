@@ -1,0 +1,9 @@
+// PLAN-1114 batch 2: the AV/Rust stdlib `net` contract face — the public
+// API record. net_loopback_echo performs a REAL loopback TCP exchange in
+// the provider (std::net listener on 127.0.0.1:0, connect, write the
+// exact payload bytes, read to EOF, compare): the return is the echoed
+// byte count, -1 = a content mismatch, -8 = the transport failure. The
+// persistent-socket API (the sys lane's platform.net/1 handle family)
+// stays with its native owner — the Rs lane delivers the loopback proof
+// through the checked frame; TLS/proxy stay the 974 r2 optional path.
+pub spec fn net_loopback_echo(payload str) int

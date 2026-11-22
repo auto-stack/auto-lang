@@ -1,0 +1,15 @@
+// PLAN-1114 batch 2: the AV/Rust stdlib `file` contract face — the
+// public API record. The `.rs.at` candidate implements the ops as REAL
+// Rust (std::fs; provider opens/reads/writes and closes within each
+// call — provider-managed resources). Sentinels follow the sys lane's
+// frozen spellings: -8 = the named io failure (missing path / io error),
+// -1 = EOF at idx. The frame domain carries one borrowed view per call,
+// so content writes ride the byte-granular truncate-write + append pair
+// (exact UTF-8 bytes observable through read_byte); bulk two-string
+// write is a named boundary row in the coverage matrix.
+pub spec fn file_write_byte(path str, byte int) int
+pub spec fn file_append_byte(path str, byte int) int
+pub spec fn file_read_len(path str) int
+pub spec fn file_read_byte(path str, idx int) int
+pub spec fn file_exists(path str) bool
+pub spec fn file_remove(path str) int

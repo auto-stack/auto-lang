@@ -1,0 +1,13 @@
+// PLAN-1114 batch 2: the AV/Rust stdlib `time` contract face — the
+// public API record. The clock is an OWNED provider resource (open →
+// borrow lo/hi → close): the handle is provider-private with
+// session-generation binding — a stale-generation or closed handle is
+// named-rejected before execution (the V-02 handle-safety witness).
+// sleep_ms/now_ms/now_sec (the legacy `#[rs]` faces) ride the
+// completion-port product lane (PLAN-1113 M2Build executor — a
+// completion call turns the module into a scheduler surface, outside
+// the avrs session lane): boundary row B-10 in the coverage matrix.
+pub spec fn clock_open() int
+pub spec fn clock_ms_lo(clock int) int
+pub spec fn clock_ms_hi(clock int) int
+pub spec fn clock_close(clock int) int

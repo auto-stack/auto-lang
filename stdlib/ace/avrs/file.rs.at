@@ -1,0 +1,68 @@
+// PLAN-1114 batch 2: the `file` Rust provider fragment (std::fs — the
+// provider opens/reads/writes and closes within each call; provider-
+// managed resources, exact UTF-8 bytes, NUL is content). Sentinels:
+// -8 = the named io failure; -1 = EOF. The frame domain carries ONE
+// borrowed view per call, so content writes ride the byte-granular ops
+// (truncate-write + append) — bulk two-string write is a named boundary
+// row (B-09). `file_read_into` would ride the checked out-buffer frame
+// (PLAN-1064 `&mut [u8]` auto-binding); the read_byte lane observes
+// exact content bytes instead. Composed under `avrs/1`.
+// auto-ffi fn file_write_byte symbol=avrs.file.write_byte.v1 form=pure ret=i32
+pub fn file_write_byte(path: &str, byte: i32) -> i32 {
+    use std::io::Write;
+    let b = byte.clamp(0, 255) as u8;
+    match std::fs::File::create(path) {
+        Ok(mut file) => match file.write_all(&[b]) {
+            Ok(()) => 0,
+            Err(_) => -8,
+        },
+        Err(_) => -8,
+    }
+}
+// auto-ffi fn file_append_byte symbol=avrs.file.append_byte.v1 form=pure ret=i32
+pub fn file_append_byte(path: &str, byte: i32) -> i32 {
+    use std::io::Write;
+    let b = byte.clamp(0, 255) as u8;
+    let mut file = match std::fs::OpenOptions::new().append(true).create(true).open(path) {
+        Ok(file) => file,
+        Err(_) => return -8,
+    };
+    match file.write_all(&[b]) {
+        Ok(()) => 0,
+        Err(_) => -8,
+    }
+}
+// auto-ffi fn file_read_len symbol=avrs.file.read_len.v1 form=pure ret=i32
+pub fn file_read_len(path: &str) -> i32 {
+    match std::fs::read(path) {
+        Ok(bytes) => bytes.len() as i32,
+        Err(_) => -8,
+    }
+}
+// auto-ffi fn file_read_byte symbol=avrs.file.read_byte.v1 form=pure ret=i32
+pub fn file_read_byte(path: &str, idx: i32) -> i32 {
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            if idx < 0 {
+                return -8;
+            }
+            match bytes.get(idx as usize) {
+                Some(byte) => *byte as i32,
+                // EOF: the index is at or past the end.
+                None => -1,
+            }
+        }
+        Err(_) => -8,
+    }
+}
+// auto-ffi fn file_exists symbol=avrs.file.exists.v1 form=pure ret=bool
+pub fn file_exists(path: &str) -> bool {
+    std::path::Path::new(path).is_file()
+}
+// auto-ffi fn file_remove symbol=avrs.file.remove.v1 form=pure ret=i32
+pub fn file_remove(path: &str) -> i32 {
+    match std::fs::remove_file(path) {
+        Ok(()) => 0,
+        Err(_) => -8,
+    }
+}

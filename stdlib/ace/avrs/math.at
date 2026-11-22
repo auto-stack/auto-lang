@@ -1,0 +1,13 @@
+// PLAN-1114: the AV/Rust stdlib `math` contract face — the public API
+// record for the module's Rs-delivered integer op (abs). The `.rs.at`
+// candidate implements it as REAL Rust through the checked shim chain
+// (the calling-thread i32 completion lane); the app imports the composed
+// provider (`use.rs avrs`) and calls the same public name. min/max carry
+// TWO i32 lanes and have no runtime lane on the delivered checked frame
+// (view-first + at most one trailing scalar) — they stay the shared
+// pure-Auto single source (PLAN-972 applicability note; the 2-scalar
+// lane extension is a named boundary row in the coverage matrix). The
+// double family stays shared Auto per the PLAN-972 ruling; the AV lane's
+// checked int is i32 (the legacy i64 spellings stay the old-VM contract
+// face, recorded per-op in the matrix).
+pub spec fn abs(x int) int

@@ -1,0 +1,47 @@
+// PLAN-1114 batch 2: the `net` Rust provider fragment: a REAL loopback
+// TCP exchange in the provider (std::net) — bind 127.0.0.1:0, connect,
+// write the exact payload bytes, shutdown-write, read the echo to EOF,
+// byte-compare. Returns the echoed byte count; -1 = content mismatch;
+// -8 = transport failure. The provider opens and closes both sockets
+// within the call (provider-managed resources; no leaked handles).
+// Composed under `avrs/1`.
+// auto-ffi fn net_loopback_echo symbol=avrs.net.loopback_echo.v1 form=pure ret=i32
+pub fn net_loopback_echo(payload: &str) -> i32 {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(l) => l,
+        Err(_) => return -8,
+    };
+    let addr = match listener.local_addr() {
+        Ok(a) => a,
+        Err(_) => return -8,
+    };
+    let mut client = match std::net::TcpStream::connect(addr) {
+        Ok(s) => s,
+        Err(_) => return -8,
+    };
+    let (mut server, _) = match listener.accept() {
+        Ok(pair) => pair,
+        Err(_) => return -8,
+    };
+    let bytes = payload.as_bytes();
+    if client.write_all(bytes).is_err() {
+        return -8;
+    }
+    // EOF toward the server: no more bytes will follow on this direction.
+    if client.shutdown(std::net::Shutdown::Write).is_err() {
+        return -8;
+    }
+    let mut echoed = Vec::new();
+    if server.read_to_end(&mut echoed).is_err() {
+        return -8;
+    }
+    drop(server);
+    drop(client);
+    if echoed == bytes {
+        bytes.len() as i32
+    } else {
+        -1
+    }
+}

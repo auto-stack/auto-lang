@@ -1,0 +1,12 @@
+// PLAN-1114: the `math` Rust provider fragment (public names). The body
+// migrates from the legacy `stdlib/auto/math.rs.at` `#[rs]` abs target,
+// narrowed to the AV lane's checked i32 int domain (the legacy i64
+// spelling stays with the old-VM contract until the A2R switch). abs
+// rides the calling-thread i32 completion lane (`complete_sync` — the
+// delivered one-i32-in/one-i32-out synchronous form; min/max have no
+// two-scalar lane on the checked frame and stay shared Auto). Composed
+// under `avrs/1`.
+// auto-ffi fn abs symbol=avrs.math.abs.v1 form=complete_sync
+pub fn abs(x: i32) -> i32 {
+    if x < 0 { -x } else { x }
+}

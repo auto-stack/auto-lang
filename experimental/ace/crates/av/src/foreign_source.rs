@@ -402,6 +402,17 @@ pub unsafe fn bind_rust_exports(
                         >(sym),
                     )
                 },
+                // PLAN-1114: the `(view, i32) -> i32` lane — before the
+                // view-only default, so the scalar lane is never dropped
+                // from the transmute (the T-11 family's bool twin shape).
+                auto_bindgen::rust_import::RustFnForm::PureI32 if view_first && scalars == 1 => unsafe {
+                    ace_av_core::foreign_exec::ForeignCallable::ViewI32ToI32(
+                        std::mem::transmute::<
+                            _,
+                            unsafe extern "C" fn(*const u8, u64, i32) -> i32,
+                        >(sym),
+                    )
+                },
                 auto_bindgen::rust_import::RustFnForm::PureI32 => unsafe {
                     ace_av_core::foreign_exec::ForeignCallable::PureI32(std::mem::transmute::<
                         _,

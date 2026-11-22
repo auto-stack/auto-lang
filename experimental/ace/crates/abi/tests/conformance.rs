@@ -24,6 +24,8 @@ mod f0_axr;
 mod f0_int1026;
 #[path = "cases/f0_load1043.rs"]
 mod f0_load1043;
+#[path = "cases/avrs_stdlib_1114.rs"]
+mod avrs_stdlib_1114;
 #[path = "cases/f0_rich.rs"]
 mod f0_rich;
 #[path = "cases/f0_t13.rs"]

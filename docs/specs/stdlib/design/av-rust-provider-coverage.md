@@ -1,0 +1,73 @@
+# AV/Rust 标准库来源覆盖矩阵（av-rust-provider-coverage）
+
+> Status: PLAN-1114 work 草稿（随批交付更新；merge 时按 `/auto-plan:merge` 沉淀为 canonical Spec）。
+> 记录 AV/RS 标准库（`IF-ACE-AV-RS-STDLIB/1`）的逐操作来源、平台与实际支持矩阵：
+> 每行 = 一个公共操作 → 实现来源分类、owner、平台与验证入口。分类法沿
+> [Design 60](../../../design/60-ace-rust-route.md) 与
+> [backend-provider-coverage](backend-provider-coverage.md)。
+
+## 架构裁定（T-01 冻结）
+
+- **D-1114-01 消费模型**：AV/RS 标准库沿 967 AC-LOAD 交付模型——公共 `.at`
+  = 契约面（`pub spec fn` 公共 API 记录，同一 API 各来源同签名）；`.rs.at` =
+  Rust provider 实现（`// auto-ffi` 注解 Rust 源，片段形）。选源 =
+  `PackageAssemblyContext(Av, Kind(Rs), Windows)` 经 `discover_provider_sources`
+  /`assemble_package_inputs`（1043 语义原样，无新 loader/binder）。会话 =
+  `open_assembled_rs_stdlib_session`（ace-abi）：闭包内**全部选中 Rs 层**按模块
+  序拼接为单一 `avrs/1` provider 单元（`AVRS_PROVIDER_HEADER`），经同一
+  importer/shim/build 链构建，开为一个 `F0Session`；跨模块重复导出名 =
+  具名 `avrs.duplicate-fn` 拒。
+- **D-1114-02 应用消费面**：应用为普通单模块源 `use.rs avrs` + 调 provider 公共
+  名（1093/967 已交付前门；包绑定面明文拒 `use.rs`——`source.use-rs.surface`
+  冻结诊断不动）。公共契约一致性由测试锚定：provider 每个导出必须在模块 `.at`
+  契约面有同签名 `pub spec fn` 声明（`v01_avrs_public_contract_faces_match_provider_exports`）。
+- **D-1114-03 源码过渡**：旧 `stdlib/auto/*.rs.at`（`#[rs]` A2R 镜像）**原样保留**
+  服务旧 A2R 轨到 1115/1117 切换（保旧文件发现与语义兼容）；Rust 体按本矩阵
+  逐操作迁移进 `stdlib/ace/avrs/*.rs.at`（AV 车道 i32 int 域收窄记录在案）。
+  冻结面（`stdlib/ace/{std,asm,sys}`、`std` 保留包名）零改动。
+- **D-1114-04 帧域边界**：受检帧运行时域 = view 首参 + ≤2 个尾随 i32 标量、
+  或单 i32 完成口（`complete_sync`）、owned 三形、回调/出参帧。本 Plan 补
+  `(view, i32) -> i32` 车道（`ViewI32ToI32`，T-11 家族 i32 单标量孪生；此前
+  该形被误转到 view-only 帧丢弃标量道——已修）。双 i32 纯形（`min/max` 等）
+  无运行车道：共享 Auto 单源承载（PLAN-972 适用性说明），2-标量车道扩展为
+  具名边界行（见下表）。
+
+## 逐操作矩阵
+
+分类：`R` = Rust provider 真身（经受检 shim 真调用）｜`S` = 共享 Auto 单源
+（最终原语来源记录）｜`X` = 显式外部/领域提供者｜`N` = 具名非支持面（本版）。
+平台：W = Windows/MSVC 实跑；L = Linux 腿按 1063 延期（代码臂 NOT_RUN）。
+
+### 批 1 · core/text/math/collections（T-02，已交付）
+
+| 操作 | 来源 | 平台 | Rust 体来源/迁移 | 验证入口 |
+|---|---|---|---|---|
+| str.str_byte_len | R | W | 迁 `stdlib/auto/str.rs.at` `#[rs]`（PLAN-781 nat#1526 镜像）| `v01_avrs_core_values_via_rust_provider`（`A中😀\0`=9）|
+| str.char_at | R | W | 迁同上 `#[rs]`（`(view,i32)->i32` 车道首批消费者）| 同上（'中'=20013）|
+| math.abs | R | W | 迁 `math.rs.at` `#[rs]`，i64→i32（AV checked int 域；i64 拼写留旧 VM 合同）| 同上（abs(-7)=7，complete_sync 车道）|
+| math.min/max | S | W | 共享 Auto（asm 972 单源；最终原语=纯 Auto 比较无外部分派）| 972 `v08_surface_972` 复用 + 本表适用性说明 |
+| math double 族（sqrt/abs_f/powf/sin/cos）| S | W | 共享 Auto（972 裁定：不复制三份算法、无 libm 委托）| 同上 |
+| collections（list 11 ops/char 7/conv 4/hash 1/bytes 6/map 6）| S | W | 共享 Auto（972 asm 单源；List 值不过受检帧——帧域无集合车道；最终原语=mn arena/底座）| 972/v08 复用 + 适用性说明 |
+
+### 批 2 · I/O/fs/env/time/net（T-03）
+
+（随 T-03 交付填充；console/file/env/time/net 计划行与
+`stdlib/auto/platform/io.rs.at` 占位（1041 等 967——已交，本批填真身）。）
+
+### 批 3 · 数据与显式外部模块（T-04）
+
+（随 T-04 交付填充；json（serde_json 钉版显式外库）/sqlite（967 钉版 3.46.0
+C provider）/redis（RESP2 共享 Auto over TCP 原语）/storage（ACE-KV 共享
+Auto）/rand（OS 熵）。）
+
+### 具名边界与非支持面
+
+| 行 | 内容 | owner |
+|---|---|---|
+| B-01 | 双 i32 纯形无受检帧车道（min/max/未来 2-标量 op）——`ViewI32I32ToI32` 存在但 `(i32,i32)` 无 view 首参不可入 | 帧域扩展归后续 Plan（1114 记边界；共享 Auto 承载）|
+| B-02 | List/Map 值不过帧——集合 op 无 Rust 分派面 | 共享 Auto 单源（972）；如需 Rust 集合=opaque 模型另立增量 |
+| B-03 | image/frame（旧资产 17+2 `#[rs]`）| 领域 owner 980/OS064（S-20：媒体域不入 972-975；1114 不交付、不冒充）|
+| B-04 | net TLS/proxy | 974 r2 显式可选 provider 道（未实现不冒充）|
+| B-05 | Linux 腿 | 1063（deferred-required/NOT_RUN，Windows required 全跑）|
+| B-06 | inline.rs.at（旧 C-inline 面，无 `#[rs]`）| 旧 C 内联资产，AV/Rs 无义务面（N；旧轨保留）|
+| B-07 | json.rs.at 旧 `#[rs]` 镜像 parse P6 坏（D-948-04）| 975 已交 std/json.at 共享 Auto 真身；本计划 T-04 交显式外库（serde_json）行后旧镜像退役记录在案 |

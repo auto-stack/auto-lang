@@ -1140,6 +1140,93 @@ pub fn open_assembled_rs_provider_session(
     Ok((session, input.source.clone()))
 }
 
+/// The composed `avrs/1` provider header every AV/Rust stdlib fragment
+/// composes under (PLAN-1114). Fragments carry only `// auto-ffi fn`/`dep`
+/// annotations and Rust bodies; the header exists exactly once in the
+/// composed unit.
+pub const AVRS_PROVIDER_HEADER: &str =
+    "//! auto-ffi provider avrs/1 target=x86_64-pc-windows-msvc profile=avrs-stdlib.v1";
+
+/// PLAN-1114 (IF-ACE-AV-RS-STDLIB/1): the AV/Rust STDLIB session. The
+/// assembled closure's EVERY selected Rs layer composes ONE provider unit
+/// under [`AVRS_PROVIDER_HEADER`] (module-prefixed fragment fn names keep
+/// the composition collision-free; a duplicate name is the named
+/// `avrs.duplicate-fn` rejection), built through the same
+/// importer/shim/build chain (dep-carrying fragments route through the
+/// real-dependency cargo builder) and opened as ONE `F0Session`. The
+/// caller receives the assembled inputs for
+/// `compile_assembled_inputs_foreign` — the public `.at` adapters (with
+/// their `use.rs avrs` imports) compile as the same package closure and
+/// execute on the AV lane with REAL foreign dispatch. Named rejections:
+/// `load.discovery`/`load.assembly`/`load.no-provider-impl` (a closure
+/// selecting no rs layer) and the importer/build chain's own codes.
+pub fn open_assembled_rs_stdlib_session(
+    root: &Path,
+    entry: &str,
+    ctx: &mut ace_core::source::packages::PackageAssemblyContext,
+    generation: u64,
+) -> Result<
+    (
+        F0Session,
+        Vec<ace_core::source::packages::PackageModuleInput>,
+    ),
+    String,
+> {
+    use ace_core::source::packages::ProviderKind;
+    let files = ace_source_query::modules::packages::discover_provider_sources(root)
+        .map_err(|e| format!("load.discovery: {e}"))?;
+    let inputs = ace_source_query::modules::packages::assemble_package_inputs(&files, entry, ctx)
+        .map_err(|e| format!("load.assembly: {e}"))?;
+    // Every Rs layer in the closure, ordered by module base — the composed
+    // source is a deterministic function of the selected layers (same
+    // selection ⇒ same provider digest ⇒ same build identity).
+    let mut layers: Vec<(String, String)> = inputs
+        .iter()
+        .filter_map(|i| {
+            i.provider
+                .as_ref()
+                .filter(|l| l.kind == ProviderKind::Rs)
+                .map(|l| (i.id.clone(), l.source.clone()))
+        })
+        .collect();
+    if layers.is_empty() {
+        return Err(
+            "load.no-provider-impl: the assembled closure selects no rs implementation for this configuration"
+                .to_string(),
+        );
+    }
+    layers.sort_by(|a, b| a.0.cmp(&b.0));
+    // A duplicated exported fn name across fragments would silently shadow
+    // one module's op in the composed unit — reject it by name first.
+    let mut exported: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for (module, source) in &layers {
+        for line in source.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("pub fn ") {
+                let name = rest.split('(').next().unwrap_or("").trim();
+                if !exported.insert(name) {
+                    return Err(format!(
+                        "avrs.duplicate-fn: module `{module}` re-exports `{name}`; fragment fn names are module-prefixed by contract"
+                    ));
+                }
+            }
+        }
+    }
+    let mut composed = String::from(AVRS_PROVIDER_HEADER);
+    composed.push('\n');
+    for (_, source) in &layers {
+        composed.push_str(source.trim_end());
+        composed.push_str("\n\n");
+    }
+    let build = if provider_deps(&composed).is_empty() {
+        build_source(&root.join("avrs-build"), &composed)?
+    } else {
+        build_cargo_provider(&root.join("avrs-build"), &composed)?
+    };
+    let session = open_session_from_build(&build, generation)?;
+    Ok((session, inputs))
+}
+
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`
 /// frontdoor. The source's `use.rs <provider>` names a PROJECT file
 /// `<root>/<provider>.rs`; the binding, shim, build unit and manifest

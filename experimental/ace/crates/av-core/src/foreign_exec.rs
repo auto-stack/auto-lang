@@ -40,6 +40,11 @@ pub type ViewUtf8OutI32Fn =
 /// domain — one borrowed view plus i32 scalars).
 pub type ViewI32I32ToI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32, p1: i32) -> i32;
+/// PLAN-1114: the one-scalar i32 lane of the same T-11 family (the
+/// `(view, i32) -> i32` importable shape — the bool twin existed; this
+/// closes the i32 half so a one-scalar pure op is never transmuted onto
+/// the view-only frame with an unread scalar lane).
+pub type ViewI32ToI32Fn = unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32) -> i32;
 pub type ViewI32ToBoolFn = unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32) -> u8;
 pub type ViewI32OutI32Fn =
     unsafe extern "C" fn(data: *const u8, byte_len: u64, p0: i32, out: *mut i32) -> i32;
@@ -127,6 +132,9 @@ pub enum ForeignCallable {
     FallibleOutI32(ViewUtf8OutI32Fn),
     /// T-11 mixed frames.
     ViewI32I32ToI32(ViewI32I32ToI32Fn),
+    /// PLAN-1114: the `(view, i32) -> i32` lane (the T-11 family's i32
+    /// one-scalar twin).
+    ViewI32ToI32(ViewI32ToI32Fn),
     ViewI32ToBool(ViewI32ToBoolFn),
     ViewI32FallibleI32(ViewI32OutI32Fn),
     /// PLAN-1064 T-FRAME: checked writable out-buffer frames.
@@ -904,6 +912,13 @@ impl ForeignStubTable {
                             ret: ace_foreign_contract::ResOut::I32
                         })
                     ) | (
+                        // PLAN-1114: the one-scalar i32 lane (same pure
+                        // i32 resource form as its two-scalar twin).
+                        ForeignCallable::ViewI32ToI32(_),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::I32
+                        })
+                    ) | (
                         ForeignCallable::ViewI32ToBool(_),
                         Some(ace_foreign_contract::ResourceForm::Pure {
                             ret: ace_foreign_contract::ResOut::Bool
@@ -1119,6 +1134,10 @@ impl ForeignStubTable {
                 // values ride the declaration's i32 lanes after the view.
                 ForeignCallable::ViewI32I32ToI32(f) => {
                     ForeignDispatch::PureI32(unsafe { f(data, byte_len, scalars[0], scalars[1]) })
+                }
+                // PLAN-1114: the one-scalar i32 lane of the same family.
+                ForeignCallable::ViewI32ToI32(f) => {
+                    ForeignDispatch::PureI32(unsafe { f(data, byte_len, scalars[0]) })
                 }
                 ForeignCallable::ViewI32ToBool(f) => {
                     ForeignDispatch::PureBool(unsafe { f(data, byte_len, scalars[0]) != 0 })

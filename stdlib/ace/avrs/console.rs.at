@@ -1,0 +1,13 @@
+// PLAN-1114 batch 2: the `console` Rust provider fragment. The real
+// stdout write (std::io) returns the UTF-8 byte count; the provider
+// manages its own buffers (no host console delegation on this lane).
+// Composed under `avrs/1`.
+// auto-ffi fn console_write symbol=avrs.console.write.v1 form=pure ret=i32
+pub fn console_write(s: &str) -> i32 {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    match out.write_all(s.as_bytes()).and_then(|()| out.flush()) {
+        Ok(()) => s.as_bytes().len() as i32,
+        Err(_) => -1,
+    }
+}

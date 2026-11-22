@@ -1,0 +1,18 @@
+// PLAN-1114: the `str` Rust provider fragment (exported under the module's
+// PUBLIC names — the app calls these through `use.rs avrs`). Bodies migrate
+// from the legacy `stdlib/auto/str.rs.at` `#[rs]` targets (PLAN-781 phase
+// E T-24): byte_len is the a2r mirror of VM nat#1526. The session builder
+// composes the selected fragments under the single `avrs/1` provider
+// identity; fragment fn names must stay unique across modules. Domain:
+// view_utf8 params / i32 returns (the checked frame).
+// auto-ffi fn str_byte_len symbol=avrs.str.byte_len.v1 form=pure ret=i32
+pub fn str_byte_len(s: &str) -> i32 {
+    s.as_bytes().len() as i32
+}
+// auto-ffi fn char_at symbol=avrs.str.char_at.v1 form=pure ret=i32
+pub fn char_at(s: &str, i: i32) -> i32 {
+    match s.chars().nth(i.max(0) as usize) {
+        Some(c) => c as i32,
+        None => 0,
+    }
+}
