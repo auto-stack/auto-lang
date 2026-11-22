@@ -706,7 +706,7 @@ all = false
 # 1051 bridge -> real PE; requires AAC1053_GEN1_DIR + the gen1 worker).
 [[group]]
 name = "case-aac-gen1-language-parity"
-title = "TestCase 公共语言语料 Gen1 AC 视图（PLAN-1053 AAC Gen1 原生运行车道）"
+title = "TestCase 公共语言语料 Gen1 AC 视图（PLAN-1053 AAC Gen1 原生运行车道；须 AAC1053_GEN1_DIR 预备目录）"
 runner = "case"
 workspace = "."
 args = []

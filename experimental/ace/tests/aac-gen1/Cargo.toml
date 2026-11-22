@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 autotests = false
-description = "PLAN-1053 T-02: the whole AAC subject tree S (experimental/ace/aac/**/*.at, 60 modules) compiled by the bound Gen0 toolchain into one real native AC (mn) Gen1 executable, with source-bound identity manifest admission and an AV-lane independent oracle for the whole-subject boot reduction"
+description = "PLAN-1053 T-02: the whole AAC subject tree S (experimental/ace/aac/**/*.at, 60 modules) compiled by the bound Gen0 toolchain into one real native AC (mn) Gen1 executable, with source-bound identity manifest admission and an independent Rust contract-mirror oracle for the whole-subject boot reduction"
 
 [dependencies]
 ace-a2x-rust = { path = "../../crates/a2x-rust" }

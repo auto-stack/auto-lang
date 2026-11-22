@@ -8,9 +8,12 @@
 // and folds the observables with the wrap32 FNV-1a reduction in
 // `app.boot_lib` (the entry-unit profile itself admits no typed literals).
 // The exit code is that reduction (never a self-verdict): the conformance
-// suite derives the SAME reduction on the independent AV lane over
-// identical source, so any byte of drift in any subsystem changes the exit
-// code.
+// suite derives the SAME reduction independently in Rust from the frozen
+// contract constants (quoted literals, the schema bytes, a SHA-256
+// reference and the blake3 identity framing), so any byte of drift in any
+// subsystem changes the exit code. (A whole-tree AV reference is
+// infeasible: one lowered function needs ~34 MiB of ownership analysis,
+// above the frozen 16 MiB admission budget.)
 //
 // Modules whose public entry points take only complex pipeline state
 // (parse tables, lowering arenas, CT envelopes, bridge exchanges) are not
