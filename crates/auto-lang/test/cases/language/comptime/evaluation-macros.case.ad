@@ -23,7 +23,7 @@ exit: 42
 recipe: "ac-a2r/hir-language-run-v1"
 profile: "language"
 entry: "main"
-caps: ["ac.source.language.av/v1"]
+caps: ["ac.source.language.av/v1", "ac.source.cte.scalar/v1"]
 exit: 0
 
 #### stdout
@@ -186,19 +186,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: concrete-generic
 id: "av.parity.1091.concrete-generic"
 tags: ["av-language-parity", "plan-1091"]
@@ -217,19 +204,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: readonly-module-value
 id: "av.parity.1091.readonly-module-value"
@@ -256,19 +230,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: fold-list-element
 id: "av.parity.1091.fold-list-element"
 tags: ["av-language-parity", "plan-1091"]
@@ -286,19 +247,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: fold-bool-condition
 id: "av.parity.1091.fold-bool-condition"
@@ -318,19 +266,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: metadata
 id: "av.parity.1091.metadata"
 tags: ["av-language-parity", "plan-1091"]
@@ -349,19 +284,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1", "cte.meta.fields/v1"]
 exit: 2
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:2
-```
 
 ## Case: runtime-log-streams
 id: "av.parity.1091.runtime-log-streams"
@@ -578,16 +500,3 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr", "ac.source.cte.scalar/v1"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```

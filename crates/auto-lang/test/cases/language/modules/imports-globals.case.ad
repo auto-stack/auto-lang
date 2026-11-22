@@ -25,19 +25,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: module-global-once
 id: "av.parity.1085.module-global-once"
 tags: ["av-language-parity", "plan-1085"]
@@ -65,19 +52,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: missing-import
 id: "av.parity.1085.missing-import"
@@ -129,19 +103,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: private-import
 id: "av.parity.1085.private-import"
@@ -220,19 +181,6 @@ final-newline: false
 aba
 ```
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: same-module-name-in-two-packages
 id: "av.parity.1085.same-module-name-in-two-packages"
 tags: ["av-language-parity", "plan-1085"]
@@ -266,19 +214,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: cyclic-import
 id: "av.parity.1085.cyclic-import"
@@ -334,19 +269,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: read-moved-global
 id: "av.parity.1085.read-moved-global"
@@ -420,19 +342,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 47
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:47
-```
-
 ## Case: string-global-replacement
 id: "av.parity.1085.string-global-replacement"
 tags: ["av-language-parity", "plan-1085"]
@@ -451,19 +360,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 5
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:5
-```
 
 ## Case: list-global
 id: "av.parity.1085.list-global"
@@ -484,19 +380,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: variant-global
 id: "av.parity.1085.variant-global"
 tags: ["av-language-parity", "plan-1085"]
@@ -515,19 +398,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: closure-global
 id: "av.parity.1085.closure-global"
@@ -553,19 +423,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: object-global
 id: "av.parity.1085.object-global"
 tags: ["av-language-parity", "plan-1085"]
@@ -589,19 +446,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: legacy-03-variables-001-var
 id: "legacy.03_variables.001_var"
@@ -983,19 +827,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: dependency-script-refusal
 id: "av.parity.1085.dependency-script-refusal"
 tags: ["av-language-parity", "plan-1085"]
@@ -1062,19 +893,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "ac.source.modules.packages/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: initializer-cycle
 id: "av.parity.1085.initializer-cycle"

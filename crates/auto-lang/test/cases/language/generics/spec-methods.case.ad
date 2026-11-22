@@ -680,19 +680,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: explicit-result-type
 id: "av.parity.1088.explicit-result-type"
 tags: ["av-language-parity", "plan-1088"]
@@ -1330,19 +1317,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: legacy-28-enum-methods-005-generic-enum-method
 id: "legacy.28_enum_methods.005_generic_enum_method"

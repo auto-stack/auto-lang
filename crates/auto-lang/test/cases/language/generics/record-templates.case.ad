@@ -447,19 +447,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: cross-module-record-template-method
 id: "av.parity.1088.cross-module-record-template-method"
 tags: ["av-language-parity", "plan-1088"]
@@ -486,19 +473,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: imported-record-extension
 id: "av.parity.1088.imported-record-extension"
 tags: ["av-language-parity", "plan-1088"]
@@ -524,19 +498,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
 
 ## Case: private-record-extension
 id: "av.parity.1088.private-record-extension"

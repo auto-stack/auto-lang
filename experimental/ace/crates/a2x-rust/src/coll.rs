@@ -300,6 +300,9 @@ pub fn a2x_dyn_int(v: i32) -> A2xDyn { A2xDyn::Int(v) }
 pub fn a2x_dyn_bool(v: bool) -> A2xDyn { A2xDyn::Bool(v) }
 pub fn a2x_dyn_char(v: char) -> A2xDyn { A2xDyn::Char(v) }
 pub fn a2x_dyn_str(v: A2xStr) -> A2xDyn { A2xDyn::Str(v) }
+/// The READ-pack: an owned text operand packs as a COPY (AV value-read
+/// semantics — the source local stays live; never moves).
+pub fn a2x_dyn_str_share(v: &A2xStr) -> A2xResult<A2xDyn> { Ok(A2xDyn::Str(a2x_str_clone(v.as_str())?)) }
 pub fn a2x_dyn_str_view(v: &str) -> A2xResult<A2xDyn> { Ok(A2xDyn::Str(a2x_str_clone(v)?)) }
 pub fn a2x_dyn_list(v: A2xDynList) -> A2xDyn { A2xDyn::List(v) }
 pub fn a2x_dyn_object(v: A2xObject) -> A2xDyn { A2xDyn::Object(v) }
@@ -480,6 +483,58 @@ pub fn a2x_dyn_share(v: &A2xDyn) -> A2xResult<A2xDyn> {
         A2xDyn::Object(o) => A2xDyn::Object(std::rc::Rc::clone(o)),
     })
 }
+
+/// PLAN-1115 (T-05): the dynamic list's length (shared buffer read).
+pub fn a2x_dyn_list_len(v: &A2xDyn) -> i32 {
+    match v {
+        A2xDyn::List(l) => l.borrow().len() as i32,
+        _ => 0,
+    }
+}
+
+/// PLAN-1115 (T-05): the deep copy of a dynamic value (explicit
+/// `.clone()` — a NEW buffer/vec; Rc payloads still share per element
+/// deep-clone semantics).
+pub fn a2x_dyn_deep(v: &A2xDyn) -> A2xResult<A2xDyn> {
+    use A2xDyn as D;
+    Ok(match v {
+        D::Nil => D::Nil,
+        D::Int(i) => D::Int(*i),
+        D::Bool(b) => D::Bool(*b),
+        D::Char(c) => D::Char(*c),
+        D::Str(s) => D::Str(a2x_str_clone(s.as_str())?),
+        D::List(_) | D::Object(_) => v.a2x_elem_deep_clone()?,
+    })
+}
+
+// ---- PLAN-1115 (T-05): the checked text-scan helpers (the assembled
+// stdlib's text intrinsics; scalar indices throughout, -1 = absent). ----
+pub fn a2x_str_find(s: &str, sub: &str, start: i32) -> A2xResult<i32> {
+    let scalars: Vec<(usize, char)> = s.char_indices().collect();
+    let total = scalars.len() as i32;
+    if start < 0 || start > total { return Err(AutoTrap::TextIndex) }
+    let byte_start = scalars.get(start as usize).map(|(b, _)| *b).unwrap_or(s.len());
+    match s[byte_start..].find(sub) {
+        Some(hit) => {
+            let prefix = s[..byte_start + hit].chars().count() as i32;
+            Ok(prefix)
+        }
+        None => Ok(-1),
+    }
+}
+pub fn a2x_str_trim(s: &str) -> A2xResult<A2xStr> { a2x_str_clone(s.trim()) }
+pub fn a2x_str_trim_len(s: &str) -> A2xResult<i32> { Ok(s.trim().chars().count() as i32) }
+pub fn a2x_str_upper(s: &str) -> A2xResult<A2xStr> { a2x_str_clone(&s.to_uppercase()) }
+
+// ---- PLAN-1115 (T-05): the widening conversion remainder (never trap;
+// the frozen 961 matrix's language-lane completion — the shared RT_NUMERIC
+// keeps its frozen bytes for the 902 channel). ----
+pub fn a2x_c_u8_u32(a: u8) -> A2xResult<u32> { Ok(a as u32) }
+pub fn a2x_c_u8_u64(a: u8) -> A2xResult<u64> { Ok(a as u64) }
+pub fn a2x_c_u32_u64(a: u32) -> A2xResult<u64> { Ok(a as u64) }
+pub fn a2x_c_i8_u8(a: i8) -> A2xResult<u8> { u8::try_from(a).map_err(|_| AutoTrap::Overflow) }
+pub fn a2x_c_i8_u32(a: i8) -> A2xResult<u32> { i32::from(a).try_into().map_err(|_| AutoTrap::Overflow) }
+pub fn a2x_c_i8_u64(a: i8) -> A2xResult<u64> { i64::from(a).try_into().map_err(|_| AutoTrap::Overflow) }
 
 // ---- PLAN-1115 (T-03): the cross-frame language-error channel ----------
 //

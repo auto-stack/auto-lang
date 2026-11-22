@@ -330,7 +330,14 @@ fn render_param(ctx: &PrintCtx<'_>, p: &RustParam) -> String {
         (ParamMode::MoveOwn, Ty::Record(_)) => ctx.ty_str(p.ty),
         (_, other) => p.ty_text.clone().unwrap_or_else(|| ctx.ty_str(other)),
     };
-    format!("{}: {}", p.name, ty)
+    // PLAN-1115 (T-05): a by-value owned record param may be exclusively
+    // borrowed in its body (1086 consume shapes) — a mut BINDING name
+    // (unused-mut is a benign generated-code warning otherwise).
+    if matches!(p.mode, ParamMode::MoveOwn) && matches!(p.ty, Ty::Record(_)) {
+        format!("mut {}: {}", p.name, ty)
+    } else {
+        format!("{}: {}", p.name, ty)
+    }
 }
 
 /// Result text. A borrowed `str` result borrows from the view params
@@ -608,7 +615,7 @@ fn render_expr(e: &RExpr) -> String {
             }
             format!(
                 "match {} {{ Ok(v) => v, Err(e) => {{
-{}            if matches!(e, AutoTrap::LangError) {{
+{}            if matches!(e, AutoTrap::LangError | AutoTrap::ListIndex | AutoTrap::TextIndex) {{
                 {} = 4;
                 {} = a2x_lang_take_err();
                 break;

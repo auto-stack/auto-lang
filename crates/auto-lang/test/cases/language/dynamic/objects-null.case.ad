@@ -228,19 +228,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 4
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:4
-```
-
 ## Case: legacy-07-objects-003-object-field-bool-key
 id: "legacy.07_objects.003_object_field_bool_key"
 tags: ["av-language-parity", "plan-1084"]
@@ -267,19 +254,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 4
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:4
-```
 
 ## Case: legacy-07-objects-004-obj-set
 id: "legacy.07_objects.004_obj_set"
@@ -336,19 +310,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 10
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:10
-```
 
 ## Case: legacy-07-objects-006-inline-map
 id: "legacy.07_objects.006_inline_map"
@@ -419,19 +380,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 20
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:20
-```
 
 ## Case: legacy-07-objects-007-json
 id: "legacy.07_objects.007_json"
@@ -608,19 +556,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 30
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:30
-```
-
 ## Case: legacy-15-nested-mutation-003-multiple-fields
 id: "legacy.15_nested_mutation.003_multiple_fields"
 tags: ["av-language-parity", "plan-1084"]
@@ -692,19 +627,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 30
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:30
-```
-
 ## Case: legacy-15-nested-mutation-007-array-of-obj-field
 id: "legacy.15_nested_mutation.007_array_of_obj_field"
 tags: ["av-language-parity", "plan-1084"]
@@ -732,19 +654,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 10
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:10
-```
 
 ## Case: legacy-15-nested-mutation-008-obj-array-element
 id: "legacy.15_nested_mutation.008_obj_array_element"
@@ -774,19 +683,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 10
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:10
-```
-
 ## Case: legacy-15-nested-mutation-011-three-level
 id: "legacy.15_nested_mutation.011_three_level"
 tags: ["av-language-parity", "plan-1084"]
@@ -815,19 +711,6 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 200
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:200
-```
-
 ## Case: legacy-15-nested-mutation-012-deep-array-obj
 id: "legacy.15_nested_mutation.012_deep_array_obj"
 tags: ["av-language-parity", "plan-1084"]
@@ -855,19 +738,6 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 25
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:25
-```
 
 ## Case: legacy-15-nested-mutation-014-out-of-bounds-error
 id: "legacy.15_nested_mutation.014_out_of_bounds_error"
@@ -1007,19 +877,6 @@ exit: 42
 #### stderr
 
 ```text
-```
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
 ```
 
 ## Case: heterogeneous-list
@@ -1376,19 +1233,6 @@ exit: 42
 ```text
 ```
 
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
-```
-
 ## Case: null-boxed-callee
 id: "av.parity.1084.null-boxed-callee"
 tags: ["av-language-parity", "plan-1084"]
@@ -1598,19 +1442,6 @@ exit: 42
 #### stderr
 
 ```text
-```
-
-### Probe a2r
-recipe: "ac-a2r/hir-language-run-v1"
-profile: "language"
-entry: "main"
-caps: ["ac.source.language.av/v1"]
-exit: 0
-
-#### stdout
-
-```text
-value:42
 ```
 
 ## Case: duplicate-int-key

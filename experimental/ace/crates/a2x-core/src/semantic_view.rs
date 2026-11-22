@@ -752,6 +752,22 @@ impl<'a> SemanticView<'a> {
             Some(hir::DefKind::Intrinsic { symbol, .. }) if symbol == "__ace_text_find")
     }
 
+    /// PLAN-1115 (T-05): the checked text-scan intrinsic family's symbol
+    /// (the assembled stdlib's text helpers call them).
+    pub fn text_scan_symbol(&self, def_index: usize) -> Option<&'static str> {
+        let sym = match self.module.defs.get(def_index).map(|def| &def.kind) {
+            Some(hir::DefKind::Intrinsic { symbol, .. }) => symbol.as_str(),
+            _ => return None,
+        };
+        match sym {
+            "__ace_text_find" => Some("__ace_text_find"),
+            "__ace_text_trim" => Some("__ace_text_trim"),
+            "__ace_text_trim_len" => Some("__ace_text_trim_len"),
+            "__ace_text_upper" => Some("__ace_text_upper"),
+            _ => None,
+        }
+    }
+
     /// PLAN-981：`def_index` 是否是 module.global.get/set 访问器；是则返回
     /// （global 符号, 是否 set）。
     pub fn global_accessor(&self, def_index: usize) -> Option<(&str, bool)> {
@@ -1215,6 +1231,8 @@ impl<'a> SemanticView<'a> {
                 if self.fn_by_def(target).is_some()
                     || self.trace_symbol(target).is_some()
                     || self.is_text_find(target)
+                    // PLAN-1115 (T-05): the whole checked text-scan family.
+                    || self.text_scan_symbol(target).is_some()
                     || self.external_by_def(target).is_some()
                     || self.foreign_by_def(target).is_some()
                     // PLAN-981: module.global accessors reach the targets'
@@ -1430,6 +1448,10 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     | hir::ExprKind::ObjectCtor { .. }
                     | hir::ExprKind::ObjectGet { .. }
                     | hir::ExprKind::ObjectSet { .. }
+                    // PLAN-1115 (T-05): the independent-copy node of the
+                    // ordinary face's container clones (1088 copy-
+                    // independence family).
+                    | hir::ExprKind::OwnedClone { .. }
             ) || record_kinds
                 || collections_kinds
                 // PLAN-972 (T-03): the assembled stdlib's text/char
@@ -1782,6 +1804,17 @@ fn collect_trace_defs(
                 py_defs.push((def_index, symbol.clone()));
                 continue;
             }
+            // PLAN-1115 (T-05): the checked text-scan intrinsics — the
+            // assembled stdlib's text helpers call them; the language lane
+            // lowers them onto the runtime text helpers.
+            if matches!(
+                symbol.as_str(),
+                "__ace_text_find" | "__ace_text_trim" | "__ace_text_trim_len"
+                    | "__ace_text_upper"
+            ) {
+                trace_defs.push((def_index, "hir.text.scan"));
+                continue;
+            }
             let sym = match symbol.as_str() {
                 "hir.test.mark_a" => "hir.test.mark_a",
                 "hir.test.mark_b" => "hir.test.mark_b",
@@ -1961,6 +1994,8 @@ fn kind_name(k: &hir::ExprKind) -> &'static str {
         hir::ExprKind::ObjectCtor { .. } => "ObjectCtor",
         hir::ExprKind::ObjectGet { .. } => "ObjectGet",
         hir::ExprKind::ObjectSet { .. } => "ObjectSet",
+        hir::ExprKind::OwnedClone { .. } => "OwnedClone",
+        hir::ExprKind::ClosureClone { .. } => "ClosureClone",
         _ => "non-core-scalar",
     }
 }

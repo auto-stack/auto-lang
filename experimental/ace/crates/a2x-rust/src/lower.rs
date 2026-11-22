@@ -2444,6 +2444,13 @@ pub(super) fn conv_helper(
         (B::I64, B::U64) => "a2x_c_i64_u64",
         (B::U8, B::I32) => "a2x_c_u8_i32",
         (B::U8, B::I64) => "a2x_c_u8_i64",
+        // PLAN-1115 (T-05): the widening remainder (never trap).
+        (B::U8, B::U32) => "a2x_c_u8_u32",
+        (B::U8, B::U64) => "a2x_c_u8_u64",
+        (B::U32, B::U64) => "a2x_c_u32_u64",
+        (B::I8, B::U8) => "a2x_c_i8_u8",
+        (B::I8, B::U32) => "a2x_c_i8_u32",
+        (B::I8, B::U64) => "a2x_c_i8_u64",
         (B::U32, B::I32) => "a2x_c_u32_i32",
         (B::U32, B::I64) => "a2x_c_u32_i64",
         (B::U32, B::U8) => "a2x_c_u32_u8",
