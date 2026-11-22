@@ -1086,6 +1086,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
             // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
             // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
             for mut node in nodes {
+                // PLAN-113（026 真语料）：视图事件绑定引用的未声明消息变体
+                //（TreeView on_toggle: .DbToggle）——闭包作用域结束后应用。
+                let mut synthetic: Vec<crate::source::age_component::ComponentMsgVariant> = Vec::new();
                 if specializes_legacy_vm {
                     crate::source::age_component::specialize_legacy_vm_guards(&mut node, &mut inactive_hosts);
                 }
@@ -1113,12 +1116,21 @@ pub(crate) fn project_packages_front_with_widget_lists(
                         && match param.ty.as_str() {
                             "List" => match &default.kind {
                                 ExprKind::ArrayLit(items) => {
+                                    // PLAN-113（026 真语料）：裸 `List` 参数默认
+                                    // 除文本元素外也收**整数元素**（`pageSizes:
+                                    // List = [10, 25, 50]` 分页容量候选）——元素
+                                    // 类型由默认值定型（str 或 int 全一致）。
                                     let text_elements = param.collection_type.as_ref().is_none_or(|ann| {
                                         matches!(&ann.kind, TypeRef::Generic { args, .. }
                                             if matches!(args.as_slice(), [element]
                                                 if matches!(element.kind, TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned))))
                                     });
-                                    !text_elements || items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))
+                                    if !text_elements {
+                                        true
+                                    } else {
+                                        items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))
+                                            || items.iter().all(|item| matches!(item.kind, ExprKind::IntLit(_)))
+                                    }
                                 }
                                 _ => false,
                             },
@@ -1465,12 +1477,22 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                             kind: ExprKind::ArrayLit(items),
                                             ..
                                         }) if !en.is_event => {
-                                            if let Some(item) = items.iter().find(|item| {
-                                                !matches!(item.kind, ExprKind::StrLit(_))
-                                            }) {
+                                            // PLAN-113（026 真语料）：文字列表属性
+                                            // 除全文本外也收**全整数**列表
+                                            //（`pageSizes: [10, 25, 50]` 分页容量候选）；
+                                            // 混合 str/int 或其它类型保持拒（p114
+                                            // 契约：文字列表属性=同质字面量）。
+                                            let homogeneous =
+                                                items.iter().all(|i| matches!(i.kind, ExprKind::StrLit(_)))
+                                                    || items.iter().all(|i| matches!(i.kind, ExprKind::IntLit(_)));
+                                            if !homogeneous {
+                                                let item = items
+                                                    .iter()
+                                                    .find(|i| !matches!(i.kind, ExprKind::StrLit(_)))
+                                                    .unwrap_or(&items[0]);
                                                 return Err(vec![crate::source::age_h0::text_diag(
                                                     "source.age.view-list",
-                                                    "a literal view property list requires quoted text values",
+                                                    "a literal view property list requires homogeneous text (or integer) values",
                                                     item.span,
                                                 )]);
                                             }
@@ -1682,7 +1704,11 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     items.extend(handler_check_items);
                     items.extend(event_items);
                     items.extend(scoped_items);
-                } // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
+                } // 闭包作用域结束（check_value 等 drop）——合成消息变体在此应用。
+                for variant in synthetic {
+                    node.messages.push(variant);
+                }
+                crate::source::age_component::check_handler_bindings(&node)?; // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                   // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。
                   // 不另建求值器，也不把手写数值当常量。
                 let widget_inputs = crate::source::age_package::widget_input_params(&node);

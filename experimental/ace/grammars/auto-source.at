@@ -844,7 +844,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // a2ts.foreign-unsupported 域合同，§13.16）。赋值形在前（PEG
             // 首匹配），`.field = x` 不落入本臂。组合器约束：alt 内不可
             // 混排非 alt 子步——`;` 分隔归各子规则尾。
-            alt(profiles: [age-component]) { age-view-call-stmt() {} }
+            // PLAN-113（026 真语料）：包面 view 内联 lambda 体同样收调用语句
+            //（tab 按钮 `onclick: () => { .SelectTab("data") }`——包面作者
+            // 面与组件面同形；投影把 lambda 体当 view-stmt 消费）。
+            alt { age-view-call-stmt() {} }
             // PLAN-980 on-if 刀：view-stmt 面 if 臂（widget on 体与 view 内联
             // lambda 体共用本面——010 的 on 体 if 与 005 的 lambda 体 if 一并
             // 开）。then/else 体=**本面方言**（age-view-stmt——带点赋值形；

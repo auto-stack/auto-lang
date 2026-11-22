@@ -342,10 +342,11 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 363fd950…→6d2df8f9…。
         // PLAN-113（026 真语料，交付刀）：view-data 记录字段键收 `type` 保留字
         //（两 AGE 面同开，同 AgeComponent 行）——6d2df8f9…→b250ed41…。
-        // PLAN-113（026 真语料，同批第二刀）：age-on-branch-stmt 增 view-data
-        // 列表赋值臂（同 AgeComponent 行）——b250ed41…→4641d973…。
         // PLAN-113（026 真语料，同批第四刀）：postfix 成员位收 `type` 保留字
         //（同 AgeComponent 行）——4641d973…→9bd00590…。
-        "9bd0059053a36634808737e8a0cdb70746e90bd7c2432da21b242f5aa4a0cc40"
+        // PLAN-113（026 真语料，同批第五刀）：view-stmt 调用语句臂开包面
+        //（tab 按钮 `onclick: () => { .SelectTab("data") }` lambda 体）——
+        // 9bd00590…→2308100f…；age-component 面编译字节不变（该臂组件面本有）。
+        "2308100fece7a7a906670a35017d9edf39524eb43db5e0e42f5c7dfe5feb4f02"
     );
 }
