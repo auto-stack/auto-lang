@@ -13546,9 +13546,13 @@ F:{d}
             );
             return None;
         }
+        // find/any/all are predicates: the callback must return bool (the
+        // same admission filter_typed_list applies); map keeps any result U.
+        let bool_result = matches!(method, "find" | "any" | "all");
         let fidx = match arg.value.vt {
             VT::Function(index) => self.coll.function_types.get(index).filter(|signature| {
                 signature.params.len() == 1
+                    && (!bool_result || signature.result == VT::Bool)
                     && (signature.params == [elem]
                         || (elem == VT::StrOwned && signature.params == [VT::Str]))
             }),
@@ -13558,8 +13562,9 @@ F:{d}
             self.bind_err(
                 "source.type-mismatch",
                 format!(
-                    "`{method}` expects a callback taking one {} element",
-                    elem.as_str()
+                    "`{method}` expects a callback taking one {} element{}",
+                    elem.as_str(),
+                    if bool_result { " and returning bool" } else { "" }
                 ),
                 arg.span,
             );

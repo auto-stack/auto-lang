@@ -251,7 +251,114 @@ fn main() int {
         ("bind", "source.type-mismatch"),
         "reduce's second callback parameter must be the element type"
     );
+    // PLAN-1120 review F2: predicate result types reject at BIND time, not
+    // at the generated-code typecheck (filter's admission precedent).
+    let (stage, code) = diag(
+            r#"
+fn main() int {
+    let xs = ["a", "b"]
+    let hit = xs.find((s Str) => 1)
+    return 0
 }
+"#
+            );
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.type-mismatch"),
+        "find's predicate must return bool — named at bind, not verify"
+    );
+    let (stage, code) = diag(
+            r#"
+fn main() int {
+    let xs = ["a", "b"]
+    print(xs.all((s Str) => s.len()))
+    return 0
+}
+"#
+            );
+    assert_eq!(
+        (stage.as_str(), code.as_str()),
+        ("bind", "source.type-mismatch"),
+        "all's predicate must return bool — named at bind, not verify"
+    );
+}
+
+
+#[test]
+fn hof_text_family_real_execution() {
+    // PLAN-1120 review F1: the StrOwned loop body (per-visit clone, the
+    // fn(Str) borrowed view, the ?Str Option slot) gets real execution and
+    // owner accounting, mirroring the record-domain V-01/V-03 rows.
+    let module = load(&lower(
+        r#"
+fn main() int {
+    let words = ["a", "bb", "ccc"]
+    let lens = words.map((s Str) => s.len())
+    let total = words.reduce(0, (acc int, s Str) => acc + s.len())
+    let hit = words.find((s Str) => s.len() == 2)
+    var hit_len = 0
+    is hit {
+        Some(s) -> { hit_len = s.len() }
+        None -> {}
+    }
+    var any_long = false
+    if words.any((s Str) => s.len() > 2) { any_long = true }
+    var all_short = false
+    if words.all((s Str) => s.len() <= 3) { all_short = true }
+    var bonus = 0
+    if any_long { bonus = bonus + 1 }
+    if all_short { bonus = bonus + 2 }
+    return lens.len() * 10000 + lens.get(2) * 1000 + total * 100 + hit_len * 10 + bonus
+}
+"#,
+    ));
+    let (outcome, trace) = execute_observed(&module, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(matches!(
+        outcome,
+        ExecOutcome::Success {
+            value: Value::I32(33623),
+            ..
+        }
+    ));
+    let allocations = assert_released(trace);
+    assert!(
+        allocations >= 3,
+        "source, snapshot, and mapped owners were allocated"
+    );
+}
+
+#[test]
+fn hof_text_family_short_circuits() {
+    // The text-domain predicates short-circuit exactly like the record
+    // domain: markers print once per invocation.
+    assert_eq!(
+        ok_stdout(
+            r#"
+fn main() int {
+    let words = ["a", "bb", "ccc"]
+    print(words.any((s Str) => { print("p"); return s.len() == 1 }))
+    print(words.all((s Str) => { print("q"); return s.len() > 1 }))
+    let hit = words.find((s Str) => { print("r"); return s.len() == 2 })
+    is hit {
+        Some(_) -> { print("hit") }
+        None -> { print("miss") }
+    }
+    return 0
+}
+"#
+        ),
+        "p
+true
+q
+false
+r
+r
+hit
+",
+        "text predicates: any stops at first hit (p×1), all at first miss (q×1), find scans to hit (r×2)"
+    );
+}
+
 
 // ---- V-03: ownership, callback failure, and the List<int> neighbors -------
 
