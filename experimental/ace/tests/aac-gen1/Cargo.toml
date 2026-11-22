@@ -7,7 +7,10 @@ autotests = false
 description = "PLAN-1053 T-02: the whole AAC subject tree S (experimental/ace/aac/**/*.at, 60 modules) compiled by the bound Gen0 toolchain into one real native AC (mn) Gen1 executable, with source-bound identity manifest admission and an AV-lane independent oracle for the whole-subject boot reduction"
 
 [dependencies]
+ace-a2x-rust = { path = "../../crates/a2x-rust" }
+ace-a2x-store = { path = "../../crates/a2x-store" }
 ace-aac-host-conformance = { path = "../aac-host" }
+ace-aac-syntax-conformance = { path = "../aac-syntax" }
 ace-core = { path = "../../crates/core" }
 ace-native = { path = "../../crates/native" }
 ace-source-query = { path = "../../crates/source-query" }

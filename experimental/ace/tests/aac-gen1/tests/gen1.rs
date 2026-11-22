@@ -20,7 +20,8 @@ use std::process::Command;
 use std::time::Instant;
 
 use ace_aac_gen1_conformance::{
-    gen1_fingerprint, prepared_gen1, run_gen1_boot, scratch, DRIVER_MANIFEST, GEN1_EXE,
+    gen1_fingerprint, prepared_compile, prepared_gen1, run_compile_case, run_gen1_boot, scratch,
+    DRIVER_MANIFEST, GEN1_EXE,
 };
 use sha2::Digest;
 
@@ -206,6 +207,70 @@ fn gen1_exe_is_a_pe_with_manifest_identity() {
         started.elapsed().as_secs_f64() <= 10.0,
         "identity case exceeded the 10-second gate"
     );
+}
+
+#[test]
+#[ignore = "named external blocker: A2R emit rejects the AAC driver sets with a2x.unsupported-expr use-after-move (moved_locals kill is control-flow-insensitive; false positive on the AAC .move idiom). Repro on master: prepare-native native+semantic modes both fail (predates 9a34e2eee). Owner: shared-interface repair (AAC duty per Design59) or a2x-rust owner; see PLAN-1053 §10. Un-ignore when the emitter is repaired."]
+fn gen1_compile_entry_runs_pipeline_and_reports_stages() {
+    let started = Instant::now();
+    let exe = prepared_compile()
+        .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
+    let root = scratch("compile-entry");
+    let input = root.join("input.at");
+    let output = root.join("report.txt");
+    let abc = root.join("closure.abc");
+    std::fs::write(&input, "fn main() int { return 2 + 3 * 4 }\n").expect("write input");
+
+    // Positive: the corpus baseline program lowers to typed MIR; the
+    // report header is the frozen "MIR aac.base-mir/1 <n>" shape and the
+    // ABC byte count must equal the reported length (never emit-as-run).
+    let (report, abc) = run_compile_case(exe, &input, &output, "mir", Some(&abc))
+        .expect("run Gen1 compile (mir)");
+    let header = "MIR aac.base-mir/1 ";
+    let reported = report
+        .strip_prefix(header)
+        .and_then(|rest| rest.trim().parse::<usize>().ok())
+        .unwrap_or_else(|| panic!("MIR report header mismatch: {report:?}"));
+    let bytes = abc.expect("mir mode must emit ABC bytes");
+    assert_eq!(
+        bytes.len(),
+        reported,
+        "reported ABC length must equal the emitted bytes (emit-as-run is a failure)"
+    );
+    assert!(bytes.len() > 44, "ABC closure must carry its header");
+
+    // Determinism: same input, fresh run, byte-identical closure identity.
+    let abc2_path = root.join("closure2.abc");
+    let (report2, abc2) = run_compile_case(exe, &input, &output, "mir", Some(&abc2_path))
+        .expect("rerun Gen1 compile (mir)");
+    assert_eq!(report, report2, "compile report must be deterministic");
+    assert_eq!(
+        bytes,
+        abc2.expect("second ABC"),
+        "same source must lower to byte-identical ABC"
+    );
+
+    // Negative: an Auto-semantic error is refused at its stage with the
+    // contract diagnostic naming (never a silent empty success).
+    let bad = root.join("bad.at");
+    std::fs::write(&bad, "fn main() int { return missing_name }\n").expect("write bad input");
+    let (bad_report, bad_abc) = run_compile_case(exe, &bad, &output, "verify", None)
+        .expect("run Gen1 compile (bad source)");
+    assert!(
+        bad_report.starts_with("ERROR "),
+        "invalid source must report ERROR, got {bad_report:?}"
+    );
+    assert!(
+        bad_report.contains("bind.unresolved") || bad_report.contains("type."),
+        "diagnostic must name the frozen stage/code, got {bad_report:?}"
+    );
+    assert!(bad_abc.is_none());
+    eprintln!("gen1 compile entry ok in {:?} (<=10s gate)", started.elapsed());
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "compile-entry case exceeded the 10-second gate"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

@@ -127,7 +127,10 @@ dependencies = [
 name = "ace-aac-gen1-conformance"
 version = "0.1.0"
 dependencies = [
+ "ace-a2x-rust",
+ "ace-a2x-store",
  "ace-aac-host-conformance",
+ "ace-aac-syntax-conformance",
  "ace-core",
  "ace-native",
  "ace-source-query",
