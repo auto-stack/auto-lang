@@ -14,7 +14,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [ace/source, ace/av, ace/a2x-python, auto-test-case]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -125,7 +125,8 @@ AV 用 `case-av-language-parity` 与普通源码执行入口。A2PY 消费 1110 
 - [x] AC-04（owner_stage=work）所有必验 Case 有相同源身份和双端真运行，V-04 反例、回归与支持矩阵有证据。
   - 证据：每 Case 两端 `identity.source` 相同；测试层 M1..M8、运行器层 C1..C10 负控全部按预期；基线回归仅 2 条既有 1093 红；支持矩阵写入 SD-01/SD-02。
 - [x] AC-05（owner_stage=review）独立核提交、验收和规范增量，检查同源、oracle 独立性及运行身份。
-- [ ] AC-06（owner_stage=merge）执行冻结职责组与必要消费者门，沉淀实测规范、归档与清理。
+- [x] AC-06（owner_stage=merge）执行冻结职责组与必要消费者门，沉淀实测规范、归档与清理。
+  - 证据：§9 冻结验证与合入闭环，主线交付 `6db6d7bf7`。
 
 ## 8. 执行步骤
 
@@ -145,8 +146,9 @@ AV 用 `case-av-language-parity` 与普通源码执行入口。A2PY 消费 1110 
   - 证据：实现提交 `9039eb7c8`、规范草稿 `6ca8c483e`；V-01..04、输入身份、计时表与负控见 §9。
 - [x] T-05 独立复审
   - owner_stage: review。前置 T-04。冻结提交核验 AC-01..04、负控、资源及规范增量。关联 AC-05。
-- [ ] T-06 合入归档
+- [x] T-06 合入归档
   - owner_stage: merge。前置 T-05 pass。冻结门、规范沉淀、归档和材料对账。移树前用 `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <worktree>` 核对。关联 AC-06。
+  - 证据：固定组无新增红、五补丁等价快进、规范 blob 核验，两个 worktree guard clean 后清理及材料回收完成（§9）。
 
 ## 9. 复审记录
 
@@ -342,6 +344,12 @@ AV 用 `case-av-language-parity` 与普通源码执行入口。A2PY 消费 1110 
 索引由应用派生。暂存路径核对：专属树内 target 为可删除缓存；统一材料范围经 guard clean，7346 文件、370133870 B；旧外置三个 `fixed-admission-*` 的 meter 均指向该专属树，共 2399 B；两个历史批次和本轮的临时 Case runtime 均已回收。Q-01 专用 venv 是持久机器环境，登记的路径和 wheel 哈希见 §10。
 
 **archived**。completion_kind: delivered。主线 archive checkpoint：归档状态与 5/6 任务一致，T-06 的路径与登记清理待本阶段确认；§9 保留冻结验证、快进和规范来源。
+
+**cleaned**。归档提交 `e501fef74` 的文件、状态、规范回链及实际相对链接已核验。用 pwsh 逐一 guard clean，移除 `lang-1126/auto-lang` 和未改动的 detached `lang-1126/auto-down@456c86a`、已合入的分支 `plan-1126-dev` 及空组目录。统一暂存目录内 7346 文件、370133870 B，含临时 venv、最终 gate 输出和当次 temp 目录，逐项核归属和路径后删除。旧的三个 `fixed-admission-{ruoi5fct,qxikq2qt,r41op7qj}` 目录共 2399 B 已按 meter 路径确认归属并清理。已保留并回读用户裁定的 `A2PY_PYTHON`，其持久 venv 见 Q-01。主检出的其他计划文档与既有目录保留。
+
+**落地观察**。本计划交付语料、参考和规范，落地清单冒烟已核验。主检出旧 debug `auto-case.exe`（2026-11-22 23:19）早于交付；冻结门使用已验证的专属树 debug 工具。产品发布工件不在计划范围。
+
+`stage: merge | plan_id: PLAN-1126 | plan_revision: r1 | outcome: pass | delivery_commit: 6db6d7bf7a552175a122fed78bd5a613eede2c27 | archive_commit: e501fef74 | archive_path: docs/plans/archive/1126-ace-python-numpy-json-parity.md | cleanup: trees, branch, scratch and owned temp cleared | iteration_gate: closeout complete; periodic batch due from PLAN-1120, tracked by separate batch receipt`。
 
 ## 10. 待澄清事项
 
