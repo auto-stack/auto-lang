@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1120
-status: reviewed
+status: archived
 feature_name: "AV 泛型 List 高阶方法补齐"
 author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 3
+current_step: 5
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1082, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/auto-av/language-parity.md, docs/specs/ace-migration/m2-stdlib-core.md]
@@ -82,9 +82,9 @@ affects: [auto-av, auto-semantics, stdlib]
   - owner_stage=work。依赖 T-01。在共享绑定与库体实现五项方法，运行 V-01/02，保留实测源序和短路。
 - [x] T-03 验证资源与原整数近邻（2026-11-23 复审 F1 文本域资源断言补齐后关闭）
   - owner_stage=work。依赖 T-02。执行 V-03，沉淀唯一 canonical 用例与迁移映射。
-- [ ] T-04 独立复审
+- [x] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
-- [ ] T-05 冻结验证与归档
+- [x] T-05 冻结验证与归档
   - owner_stage=merge。依赖复审。执行 §6 固定组并集，核规范与主线结果，折叠证据摘要并按生命周期规则收尾。
 
 ## 9. 复审记录
@@ -143,3 +143,30 @@ work 证据（原始日志：D:/autostack/plan-artifacts/plan-1120/，合并收�
 ## 10. 待澄清事项
 
 （2026-11-23 T-01 已决，无待澄清）旧 `find` 直接取字段的处置：AV `find` 绑定 `?T` Option 合同，`found.id` 直取 = `bind/source.type-mismatch` 具名拒；迁移行保留原源与诊断，canonical 用例改用显式 `is` 处理（见 §9 work 证据与 legacy-map.tsv 012 行）。
+
+2026-11-23 · stage: merge | PLAN-1120:r1 | outcome: pass | consolidation receipt（prepared / landed / canonical_verified / archived / cleaned 全记录）
+
+**prepared**：复审基线 = r2 final pass 绑定 7a114b480（rebase 前）/ af7e98402（rebase 后，range-diff `=` 全等）；规范增量 SD-01/SD-02 已在 worktree 落盘（language-parity.md PLAN-1120 增量节 + m2-stdlib-core.md PLAN-1120 增量节，冻结哈希 c582a703… / 1cdc5c54…）；交付提交 af7e98402。
+
+**冻结固定组并集（§6，worktree 冻结提交上执行，准备 17.6min + 执行 3.9min）**——`cargo t ace-source ace-semantics ace-lowering ace-av ace-stdlib case-av-language-parity`（prepared manifest 1f4483defd5137fc，run 6m0gctsc）：
+
+| 组 | 结果 | 归因 |
+|---|---|---|
+| ace-semantics | PASS | — |
+| ace-lowering | PASS | — |
+| ace-stdlib | PASS | — |
+| ace-source | 红 5 | 原红：text_record_source 五例（flagship/generated_atom/move_arguments/named_ctor/positional_ctor），与 master 基面逐名相同（diff 为空），引入窗口为 PLAN-113（d4bc60a89 基面即红） |
+| ace-av | 红 14 | 12 例原红（av_method_owned×4、av_method_modes、av_owned_first_case、av_owned_recipe、av_test_batch、c_data、component_event_sessions_1106、layout、resource_915×3，master 基面同名同败）；2 例环境/负载伪红（bstr_1064 64k、sys973 spawn 超时 21.8s），冻结提交进程内重跑双绿（1.59s/3.84s） |
+| case-av-language-parity | 红 2 | 原红：av.parity.1093 explicit-c-library / c-header-spelling-rejected（PLAN-1110 归档收据 + 批回归 1118 台账在案）；其余非 AV 目标 NOT_RUN/SKIP 为组契约排除 |
+
+零新增可归因红。会话计时：准备 1057s（含等待他计划构建 210s）、执行 235s、冒烟 60s、无资源争用冲突（他计划 prepare 期间本计划等待）。
+
+**landed**：worktree `git rebase master`（d47bd50dc→75ecc4bc4、7a114b480→af7e98402，`git range-diff` 两提交全等 `=`）；主检出 `git merge --ff-only plan-1120-dev` → master tip = af7e98402a8bce9cee35f3baaa2ecae79a5389（无 merge commit，7 文件 +1258/-6）；落地冒烟 master 上 plan1120 族 11/11（0.14s）。主检出其余脏文件均为他计划簿记 WIP，未触碰。
+
+**canonical_verified**：docs/specs/auto-av/language-parity.md（落地哈希 c582a703b185275a32cef82a929b2e784adadbd4343a2c6c90d8d0d82a6fd3e0）、docs/specs/ace-migration/m2-stdlib-core.md（1cdc5c54e8b0cba15a340b8ff60592d2a2b7da1ccccd6d58422cddc23ca5d040）与冻结增量哈希一致；legacy-map.tsv 012 行落地（af7f6782…）；无 ledger/索引写入。
+
+**archived**：git mv 至 docs/plans/archive/1120-av-generic-list-hof.md，status: archived，current_step 5/5；任务/AC/回执齐（本收据）；completion_kind: delivered。
+
+**cleaned**：wt-guard.ps1 lang-1120/auto-lang clean → worktree remove + branch -d plan-1120-dev + 组目录移除（auto-down 兄弟树随之）；plan-artifacts/plan-1120 全目录删除（证据已折叠本文件）；登记表刷新。具名未解决问题：无。
+
+2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: af7e98402a8bce9cee35f3baaa2ecae79a5389 | next: done
