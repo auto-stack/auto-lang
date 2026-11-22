@@ -974,6 +974,118 @@ fn prepared_worker_at(root: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Minimal PE import-directory walk: the DLL names the executable imports.
+/// Returns the imported module names (uppercased, unordered).
+fn pe_imported_dlls(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let be = |at: usize, n: usize| -> Result<u64, String> {
+        bytes
+            .get(at..at + n)
+            .ok_or_else(|| format!("PE read past EOF at {at}"))
+            .map(|s| match n {
+                2 => u16::from_le_bytes(s.try_into().unwrap()) as u64,
+                4 => u32::from_le_bytes(s.try_into().unwrap()) as u64,
+                _ => unreachable!(),
+            })
+    };
+    if be(0, 2)? != 0x5A4D {
+        return Err("not an MZ executable".into());
+    }
+    let pe_off = be(0x3C, 4)? as usize;
+    if bytes.get(pe_off..pe_off + 4) != Some(b"PE\0\0") {
+        return Err("no PE signature".into());
+    }
+    let opt_off = pe_off + 24;
+    let magic = be(opt_off, 2)?;
+    if magic != 0x20B {
+        return Err(format!("expected PE32+ (x64), magic {magic:#x}"));
+    }
+    // Data directories: 16 entries x 8 bytes right after the 112-byte
+    // PE32+ standard+windows-specific headers; index 1 = IMPORT.
+    let dd_off = opt_off + 112;
+    let import_rva = be(dd_off + 8, 4)? as usize;
+    let import_size = be(dd_off + 12, 4)? as usize;
+    if import_rva == 0 || import_size == 0 {
+        return Ok(vec![]);
+    }
+    // Section headers follow the data directories (16 entries = 128 bytes).
+    let sections = be(opt_off + 92, 2)? as usize; // NumberOfSections? no:
+    let _ = sections;
+    let num_sections = be(pe_off + 6, 2)? as usize;
+    let sec_off = dd_off + 128;
+    let rva_to_offset = |rva: usize| -> Result<usize, String> {
+        for i in 0..num_sections {
+            let s = sec_off + i * 40;
+            let virt_addr = be(s + 12, 4)? as usize;
+            let raw_size = be(s + 16, 4)? as usize;
+            let raw_ptr = be(s + 20, 4)? as usize;
+            let span = raw_size.max(be(s + 8, 4)? as usize);
+            if rva >= virt_addr && rva < virt_addr + span {
+                return Ok(raw_ptr + (rva - virt_addr));
+            }
+        }
+        Err(format!("RVA {rva:#x} not mapped by any section"))
+    };
+    let mut names = Vec::new();
+    let mut desc = import_rva;
+    // Bound the walk: one descriptor is 20 bytes, names are NUL-terminated.
+    for _ in 0..64 {
+        let off = rva_to_offset(desc)?;
+        let name_rva = be(off + 12, 4)? as usize;
+        let original_first_thunk = be(off, 4)? as usize;
+        let _ = original_first_thunk;
+        if name_rva == 0 {
+            break;
+        }
+        let name_off = rva_to_offset(name_rva)?;
+        let end = bytes[name_off..]
+            .iter()
+            .position(|b| *b == 0)
+            .ok_or("unterminated DLL name")?;
+        let name = String::from_utf8_lossy(&bytes[name_off..name_off + end]).to_uppercase();
+        names.push(name);
+        desc += 20;
+    }
+    Ok(names)
+}
+
+#[test]
+fn gen1_exe_imports_only_the_declared_runtime_surface() {
+    let started = Instant::now();
+    // T-09 binary subject window: the Gen1 machine product may link ONLY
+    // the declared collections runtime and OS system DLLs — any Rust
+    // frontend / compiler-service library in the import table is a hidden
+    // source-semantics conduit and fails this control.
+    let exe = prepared_gen1().expect("prepared Gen1 exe");
+    let bytes = std::fs::read(exe).expect("read Gen1 exe");
+    let imports = pe_imported_dlls(&bytes).expect("walk the PE import table");
+    assert!(!imports.is_empty(), "the Gen1 exe must declare its imports");
+    // The collections runtime is a STATIC object link (Rust .lib, not a
+    // DLL), so it does not appear here — its identity is the prep-manifest
+    // runtime digest instead. The import table must contain ONLY OS system
+    // DLLs: no Rust frontend / compiler-service library may be a dynamic
+    // dependency of the machine product.
+    let allowed = ["KERNEL32", "NTDLL", "BCRYPT", "MSVCRT", "VCRUNTIME", "API-MS-WIN-"];
+    let unexpected: Vec<String> = imports
+        .iter()
+        .filter(|name| !allowed.iter().any(|a| name.starts_with(a)))
+        .cloned()
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "unexpected imports (hidden subject surface): {unexpected:?} (all: {imports:?})"
+    );
+    eprintln!(
+        "gen1 import surface ok: {} dlls, {:?}, in {:?} (<=10s gate)",
+        imports.len(),
+        imports,
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "import-surface case exceeded the 10-second gate"
+    );
+}
+
 #[test]
 fn gen1_stale_preparation_is_refused() {
     let started = Instant::now();
