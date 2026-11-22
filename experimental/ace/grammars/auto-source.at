@@ -882,10 +882,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             ident(field: "name") comma() {}
         }
         // PLAN-106（014 真语料）：handler 重写无类型记录列表的专用语句——
-        // `.field = [ { … }, … ]`。**仅多行**列表字面量（`[\n {…},\n …]`，
-        // pratt 的 array 元素不支持换行起始的对象字面量）；内联列表
-        // （`["a", "b"]`）仍走 age-view-assign-stmt 的 pratt——类型化
-        // List 字段（114 expanded）保持真实列表表达式。
+        // `.field = [ { … }, … ]`。多行列表字面量（`[\n {…},\n …]`，pratt
+        // 的 array 元素不支持换行起始的对象字面量）经本面解析；含 pratt
+        // 元素的单行列表（`["a", "b"]`、`[id.clone()]`）仍走
+        // age-view-assign-stmt 的 pratt——类型化 List 字段（114 expanded）
+        // 保持真实列表表达式。投影按元素形态分流（记录→惰性收据，pratt
+        // →真实数组）。
         age-view-assign-viewdata-stmt(profiles: [age-component, age-package], expect: "a handler `<field> = [ … ]` view-data list assignment") {
             dot(field: "dot") {}
             ident(field: "field")

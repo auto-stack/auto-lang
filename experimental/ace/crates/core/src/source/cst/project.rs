@@ -7342,23 +7342,53 @@ impl<'a> Engine<'a> {
         );
         let mut rhs = if viewdata_rhs {
             let entry_kind = self.rule_kind_of("age-view-data-entry");
-            let empty = self
+            let record_kind = self.rule_kind_of("age-view-data-record");
+            let entries: Vec<u32> = self
                 .cx
                 .children(rhs_node)
                 .into_iter()
-                .all(|c| Some(self.cx.tree.kind(c)) != entry_kind);
-            if empty {
+                .filter(|&c| Some(self.cx.tree.kind(c)) == entry_kind)
+                .collect();
+            if entries.is_empty() {
                 // 空列表 `[]` 是真实空数组（类型化 List 字段的 reset 合法）。
                 Expr {
                     span: self.cx.span_of(rhs_node),
                     kind: ExprKind::ArrayLit(Vec::new()),
                 }
-            } else {
-                // PLAN-106（014 真语料）：非空 view-data 记录列表=惰性
-                // StrLit 占位（展示读 view_data 初值；赋值可投影、不 foreign）。
+            } else if entries.iter().all(|&e| {
+                self.cx
+                    .children(e)
+                    .iter()
+                    .any(|&c| Some(self.cx.tree.kind(c)) == record_kind)
+            }) {
+                // PLAN-106（014 真语料）：纯记录多行列表=惰性 StrLit 占位
+                // （展示读 view_data 初值；赋值可投影、不 foreign）。
                 Expr {
                     span: self.cx.span_of(rhs_node),
                     kind: ExprKind::StrLit(self.cx.spelling(rhs_node)),
+                }
+            } else {
+                // 含 pratt 元素的列表（`[id.clone()]`）——逐元素投影为真实
+                // 数组（类型化 List 字段（114 expanded）保持列表类型）。
+                let mut nodes = Vec::new();
+                for &e in &entries {
+                    if let Some(node) = self
+                        .cx
+                        .children(e)
+                        .into_iter()
+                        // 规则节点=pratt 表达式（comma 是 token 叶）。
+                        .find(|&c| self.cx.tree.child_count(c) > 0)
+                    {
+                        nodes.push(node);
+                    }
+                }
+                let elems = nodes
+                    .into_iter()
+                    .map(|node| self.project_expr_sync(node))
+                    .collect::<Vec<_>>();
+                Expr {
+                    span: self.cx.span_of(rhs_node),
+                    kind: ExprKind::ArrayLit(elems),
                 }
             }
         } else {
