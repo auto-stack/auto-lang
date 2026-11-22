@@ -36,7 +36,30 @@ fn tools_available() -> bool {
 /// Emit + compile + run one language-channel case; returns (stdout, stderr).
 fn run_lang(name: &str, src: &str, caps: &[&str]) -> (String, String) {
     let caps: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
-    let compiled = compile_language_source(src, "main.at", &caps).unwrap_or_else(|ds| {
+    let compiled = ace_core::source::adapter::compile_language_source_prepared(
+        src,
+        "main.at",
+        &caps,
+        |program, projected_source, has_instances| {
+            if has_instances {
+                ace_source_query::instantiate_auto_program(program, "main.at", &caps)?;
+            }
+            if src.contains('#') {
+                let mut service =
+                    ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+                ace_source_cte::product::prepare_auto_ct(
+                    &mut service,
+                    program,
+                    projected_source,
+                    "main.at",
+                    &caps,
+                )
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .unwrap_or_else(|ds| {
         panic!(
             "frontend diagnostics for {name}: {}",
             ds.iter()
@@ -429,4 +452,65 @@ fn main() int {
 }"#;
     let (out, _) = run_lang("v02-e-cross-frame", src, &[LANG_CAP]);
     assert_value("v02-e-cross-frame", &out, 42);
+}
+
+/// V-03a — generics (1088 canonical): `fn id<T>` concretizes through the
+/// shared instance pass; bool and int instantiations both run — exact 42.
+#[test]
+fn v03_a_generic_instantiation() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "fn id<T>(x T) T { return x }\nfn main() int { if id(true) { return id(42) }; return 0 }";
+    let (out, _) = run_lang("v03-a-generics", src, &[LANG_CAP]);
+    assert_value("v03-a-generics", &out, 42);
+}
+
+/// V-03b — comptime (1091 canonical): `#{ sum(20, 22) }` is served by the
+/// CT service at bind; the frozen constant rides the emitted program.
+#[test]
+fn v03_b_comptime_cte() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "fn sum(a int, b int) int { return a + b }\nfn main() int { let n = #{ sum(20, 22) }; return n }";
+    let (out, _) = run_lang("v03-b-cte", src, &[LANG_CAP, "ac.source.cte.scalar/v1"]);
+    assert_value("v03-b-cte", &out, 42);
+}
+
+/// V-03c — the A2R common library (the grafted public stdlib, same frozen
+/// files the AV lane runs): the `.to(int)` conversion function and the
+/// List module's `new/push/get` through real compilation.
+#[test]
+fn v03_c_common_library_graft() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "fn main() int {\n\
+         let wide = 40i64\n\
+         let n = (wide + 2i64).to(int)\n\
+         let xs = List<int>.new()\n\
+         xs.push(n)\n\
+         xs.push(0)\n\
+         return xs.get(0) + xs.get(1)\n\
+     }";
+    let (out, _) = run_lang("v03-c-stdlib", src, &[LANG_CAP]);
+    assert_value("v03-c-stdlib", &out, 42);
+}
+
+/// V-03d — metadata/target attributes (1092 canonical): `#[c, vm, rs]`
+/// declares one body for every target — the rust lane keeps it and the
+/// near neighbor still rebuilds (no AV/legacy emitter in the closure).
+#[test]
+fn v03_d_target_attribute_overload() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "#[c, vm, rs]\nfn answer() int { return 42 }\nfn main() int { return answer() }";
+    let (out, _) = run_lang("v03-d-attrs", src, &[LANG_CAP]);
+    assert_value("v03-d-attrs", &out, 42);
 }

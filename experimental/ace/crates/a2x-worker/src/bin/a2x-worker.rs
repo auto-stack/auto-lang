@@ -511,10 +511,36 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         "text" => compile_text_source(&src, "a2x-worker", &caps),
         "text-record" => compile_text_record_source(&src, "a2x-worker", &caps),
         "collections" => compile_collections_source(&src, "a2x-worker", &caps),
-        // PLAN-1115 T-02: the ordinary language face — its own front door
+        // PLAN-1115 T-04: the ordinary language face — its own front door
         // (the caps carry the admission capability, e.g. the corpus rows'
-        // `ac.source.language.av/v1`).
-        "language" => compile_language_source(&src, "a2x-worker", &caps),
+        // `ac.source.language.av/v1`). Generic templates concretize through
+        // the shared instance pass and `#{...}` compile-time demands are
+        // served by the same CT service the scalar lane uses — the same
+        // prepare hooks the AV language lane runs.
+        "language" => ace_core::source::adapter::compile_language_source_prepared(
+            &src,
+            "a2x-worker",
+            &caps,
+            |program, projected_source, has_instances| {
+                if has_instances {
+                    ace_source_query::instantiate_auto_program(program, "a2x-worker", &caps)?;
+                }
+                if src.contains('#') {
+                    let mut service =
+                        ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+                    let _counters = service.counters();
+                    ace_source_cte::product::prepare_auto_ct(
+                        &mut service,
+                        program,
+                        projected_source,
+                        "a2x-worker",
+                        &caps,
+                    )
+                } else {
+                    Ok(())
+                }
+            },
+        ),
         other => fail(&format!("unknown source profile `{}`", other)),
     };
     let compiled = match compiled {

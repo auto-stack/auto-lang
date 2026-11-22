@@ -368,3 +368,46 @@ fn main() int {
         Err(e) => panic!("view: {e:?}"),
     }
 }
+
+
+
+/// P16（T-04 基础库试点）：嫁接 stdlib 的 text/integer/list 公共函数经
+/// language 通道真降落（`.to(int)`/文本查找/列表构造）。
+#[test]
+fn p16_stdlib_graft_surface() {
+    let src = "fn main() int {\n\
+         let wide = 40i64\n\
+         let n = (wide + 2i64).to(int)\n\
+         let xs = List<int>.new()\n\
+         xs.push(n)\n\
+         xs.push(n)\n\
+         return xs.get(0) + xs.get(1)\n\
+     }";
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits the grafted stdlib face");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel lowers the grafted stdlib functions");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
+}
+
+/// P17（T-04 metadata 试点，1092 形态探）。
+#[test]
+fn p17_metadata_attrs() {
+    let src = "#[c, vm, rs]\nfn answer() int { return 42 }\nfn main() int { return answer() }";
+    let outcome = ace_core::source::compile_language_source(
+        src,
+        "main.at",
+        &["ac.source.language.av/v1".to_string()],
+    );
+    match outcome {
+        Ok(compiled) => {
+            let checked = Box::leak(Box::new(compiled.checked));
+            let view = SemanticView::from_checked(checked).expect("view admits");
+            let program = ace_a2x_rust::lower_language_program(&view, "main")
+                .expect("attr functions lower (metadata rides the CST layer)");
+            assert!(program.entry.ends_with("main"), "{}", program.entry);
+        }
+        Err(ds) => panic!("metadata shape binds elsewhere: {} {}", ds[0].code, ds[0].message),
+    }
+}
