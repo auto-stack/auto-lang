@@ -48,6 +48,9 @@ Windows x64、CPython 3.14.2、NumPy 2.5.1（`numpy-2.5.1-cp314-cp314-win_amd64.
   用户 site，因此其**声明解释器**（`A2PY_PYTHON`，缺省依次探测 `python3`/`python`/`py -3`）必须在自身的
   site-packages 里带 NumPy。解释器看不到 NumPy 时用例以真实 `ModuleNotFoundError`（`python.1`）失败，
   不会跳过，也不会通过。
+- **换一台机器**：建一个 venv，在其中 `pip install numpy==2.5.1`，再把用户级环境变量 `A2PY_PYTHON`
+  指向该 venv 的 `python.exe`（AV 腿不需要这一步）。本机冻结环境即按此布置；该 venv 是机器环境，
+  不随任何计划的清理删除。
 - A2PY 的程序输出走解释器文本流，Windows 上行尾为 CRLF（`value:` 观察行为原始字节 LF），故 A2PY 的流
   oracle 用 `compare: "lf"`；AV 的流 oracle 保持字节精确。
 - 隔离模式下 `PYTHONUTF8` 不生效；本机 ANSI 代码页为 cp65001，stdout 仍为 UTF-8。参考脚本显式按

@@ -50,7 +50,7 @@ main.at (use.py …)
 |---|---|---|---|
 | OS/arch | Windows x64 | 端到端真实运行 | Linux/macOS（按 2026-11-14 裁定归专用环境） |
 | AV 解释器 | 进程内 CPython 3.14.2（967 provider） | V-01/V-02 AV 运行 | 其他 3.x 版本 |
-| A2PY 解释器 | PATH 上的声明 `python3`（实测 3.14.2），`-B` 运行 | A2PY 原生运行、`run_sdk` | 其他版本；缺失 → `m2build.run.interpreter-failed` |
+| A2PY 解释器 | CPython 3.14.2。`run_sdk`：PATH 上的 `python`，`-B`；`run-py`：`A2PY_PYTHON`（缺省依次探测 `python3`/`python`/`py -3`），`-I -B` 隔离运行（§7） | A2PY 原生运行、`run_sdk`、`case-a2py-language-parity` | 其他版本；`run_sdk` 缺解释器 → `m2build.run.interpreter-failed`，`run-py` 候选耗尽 → 具名失败 |
 | 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、numpy 2.5.1、标准库（list/len/repr/round、`json`） | 共享用例；PLAN-1126 `python-libraries` 语料（§7） | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
 | 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法；int/文本/Python 对象（`slice`）键索引与属性派生对象的继续索引（PLAN-1126，未新增操作） | 端到端 | 容器/记录跨边界、动态浮点实参（仅字面量编码） |
 | 目标 | AV（in-process）、A2PY（原生 Python 文件集）、978 SDK A2py | T-01/T-03/T-05 | 其他 978 目标不变 |
@@ -129,3 +129,7 @@ main.at (use.py …)
   运行，不加载用户 site，所以其声明解释器（`A2PY_PYTHON`；缺省依次探测 `python3`/`python`/
   `py -3`）必须在自身的 site-packages 里带 NumPy；否则 NumPy 用例以真实
   `ModuleNotFoundError`（`python.1`）失败，不跳过、不通过。`run_sdk` 腿不带 `-I`，不受此限。
+- **持久安排（Windows x64 冻结环境）**：A2PY 隔离腿的声明解释器是一个只装 `numpy==2.5.1` 的专用
+  venv（基座 CPython 3.14.2），经**用户级**环境变量 `A2PY_PYTHON` 声明；AV 腿不需要它（进程内
+  CPython 可见用户 site）。该变量只被 `a2x-worker` 的 `resolve_python`（及沿用它的测试）读取，
+  `run_sdk` 与原生参考脚本不受影响。换机器时按同样方式准备，否则 NumPy 用例在 A2PY 端具名失败。
