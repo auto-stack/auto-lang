@@ -207,6 +207,10 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 2026-11-22 stage: merge | PLAN-1052:r5 | checkpoints: landed, canonical_verified | delivery: `e386d97c0` | default: master | spec_inputs: aac-incremental-driver.md（新）、source-query-session.md（SD-02 修改） | 主检出仍有其他会话 docs/design、docs/plans 簿记 WIP（非本包，未包含）
 
+2026-11-22 stage: merge | PLAN-1052:r5 | checkpoint: archived | completion_kind: delivered | archive: `docs/plans/archive/1052-aac-incremental-driver-and-artifacts.md` | archive_commits: `594c3fd08`（git mv）+ `a3868e55b`（status: archived + T-08 关闭） | docs committed: 是（default branch 两份提交） | status: archived | current_step: 7/9（T-01..T-07、T-09 完成；T-08 merge 完成；9 任务计数含 review/merge 为 7 完成 + 2 阶段任务，按 §8 实核）
+
+2026-11-22 stage: merge | PLAN-1052:r5 | checkpoint: cleaned | wt-guard: `D:/autostack/.wt/lang-1052/auto-lang` 与 `auto-down` 均 clean | worktree removed: auto-lang + auto-down（branch plan-1052-dev deleted at `e386d97c0`，组目录 `D:/autostack/.wt/lang-1052` 移除） | plan-artifacts: `D:/autostack/plan-artifacts/plan-1052/` 已删除（review-rerun-timings.txt 关键数字折叠入 §9；registry `policy.json` 已刷新，154 条目含 PLAN-1052 deleted-at-merge，no holds） | batch regression: 不 due（1052 % 5 = 2；last_covered=1114 已覆盖，receipt 2026-11-22T15:10Z < 48h） | landing checks: master tip = `a3868e55b`（归档簿记），ff-only 线性历史完整，SD-01/SD-02 已落主并核身份 | 无发布级产物受本包影响（纯测试/Auto 模块/规范，未触碰 release 二进制） |
+
 ## 10. 待澄清事项
 
 无须当前用户新增决定。基础身份/依赖/事务可在1047已交后先；完整Plan验收必须1048/1049/1051实际结果，不能用模拟服务关闭真实consumer腿。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。
