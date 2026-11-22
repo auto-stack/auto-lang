@@ -175,3 +175,27 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
    恰一次、truthy `__exit__` 抑制错误、enter 失败不 exit。
 
 来源：[PLAN-1094](../../plans/1094-av-parity-script-and-python-protocols.md)。
+
+## 附：PLAN-1126 追加（NumPy 与 json 库实测，不改写 v1/1107/1094 冻结事实）
+
+> 本节追加到 `docs/specs/auto-av/python-interop.md`，1026 的 v1 冻结事实与 1107/1094 附录
+> 保持原样。1126 没有新增受检操作、provider op 或索引值类别；以下是把 NumPy 2.5.1 与
+> 标准库 `json` 经普通 AV 入口真实运行后实测到的**支持边界**。
+
+1. **索引值类别（既有 `py.getitem.v1`）**：`obj[k]` 的 `k` 可以是 int、文本字面量，或产生
+   Python 对象的表达式（如 `row[slice(0, 3, 2)]`，`slice` 经 `use.py builtins: slice` 导入）。
+   provider 侧一律 `obj.get_item(key)`，不按键类型分派。
+2. **属性派生对象**：`a.shape` 的结果是普通 Python 对象（AV 侧 token），可以继续索引或调用
+   （`shape[0].to(int)`、`a.sum()`）。属性结果不进入 Auto 值域，容器/记录仍不跨边界。
+3. **标量与文本提取**：`.to(int)` 对 NumPy 整数标量、`.to(float)` 对 NumPy 浮点标量、
+   `.to(bool)` 对 Python `bool`、`.to(str)` 对含非 ASCII 的 `str` 成立；
+   `json.dumps(..., ensure_ascii: false)` 的 UTF-8 文本经 codepoint 文本通道逐字往返
+   （上限仍是 256 codepoint）。
+4. **异常类别**：provider 的 `record_py_err` 按类型 qualname 精确匹配——
+   `json.JSONDecodeError` 不在类表内，归 10（other），不按 `ValueError` 子类归 5。未捕获时是
+   `lang.error` 终态，不发布部分输出，`source_span` 是失败调用表达式的原源字节范围。缺
+   NumPy 时 `py_import` 抛 `ModuleNotFoundError`（类 1），同样不跳过。
+5. **证据**：`crates/auto-lang/test/cases/language/script/python-libraries.case.ad` 的 3 条 AV
+   检查，由 `case-av-language-parity` 运行（Windows x64 / CPython 3.14.2 / NumPy 2.5.1）。
+
+来源：PLAN-1126。

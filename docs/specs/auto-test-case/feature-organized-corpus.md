@@ -194,3 +194,21 @@ stdout `value:<n>`/`trap:<Name>`）精确判定。**值行启用**：185 条
 面）。recipe 注册于 `contract::REGISTERED_PROBE_RECIPES`；适配器
 `ac_a2r_lang.rs`（单 spawn 预构建 worker）；profile=language 白名单于
 contract.rs。`case-av-language-parity`（target=av）不受影响（零新增红）。
+
+## PLAN-1126 增量（script/Python 家族，delta-2026-11-23）
+
+新增 canonical 作者
+[python-libraries.case.ad](../../../crates/auto-lang/test/cases/language/script/python-libraries.case.ad)，
+由 `language.suite.ad` 引用。3 个 Case 一源双端：每 Case 一份 `### Auto`，AV 普通源码入口
+（`ac-av/language-source-run-v1`）与 A2PY `run-py`（`ac-a2py/hir-stdlib-run-v1`，PLAN-1110）
+各一条真实执行检查，共用同一份冻结 oracle——NumPy 与标准库 `json` 的正例、真实 NumPy
+`ValueError` 捕获后继续、真实 `json.JSONDecodeError` 未捕获。case 携带声明性
+`foreign: {kind, provider: "py"}` 与错误类别/位置 oracle；A2PY 流 oracle 用 `compare: "lf"`
+（程序输出走解释器文本流，Windows 上为 CRLF）。独立参考是
+`crates/auto-lang/test/cases/ace-m2/python-1126/` 的手写原生 Python（不读 ACE 产物），由
+`ace-a2x-python` 的 `py_libraries_1126` 按值与冻结 oracle 比对并钉住三个源码指纹。
+0 份旧 VM 文档迁移行。父端反控覆盖错切片和、错 JSON 字段（源与 oracle）、错类别/位置/类型、
+源指纹失效、A2PY oracle 漂移（均必红），以及缺 NumPy（两端具名 FAIL，不跳过）、未选中
+（NOT_RUN）、只发射（worker 拒绝）。A2PY 的 `run-py` 腿按 1042 合同隔离运行，其声明解释器
+须自带 NumPy（见 `docs/specs/auto-a2x/python-ecosystem-integration.md` §7）。其他视图
+（A2R/AC）不选择本文件的检查。

@@ -51,10 +51,10 @@ main.at (use.py …)
 | OS/arch | Windows x64 | 端到端真实运行 | Linux/macOS（按 2026-11-14 裁定归专用环境） |
 | AV 解释器 | 进程内 CPython 3.14.2（967 provider） | V-01/V-02 AV 运行 | 其他 3.x 版本 |
 | A2PY 解释器 | PATH 上的声明 `python3`（实测 3.14.2），`-B` 运行 | A2PY 原生运行、`run_sdk` | 其他版本；缺失 → `m2build.run.interpreter-failed` |
-| 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、标准库（list/len/repr/round） | 共享用例 | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
-| 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法 | 端到端 | 容器/记录跨边界、动态浮点实参（仅字面量编码） |
+| 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、numpy 2.5.1、标准库（list/len/repr/round、`json`） | 共享用例；PLAN-1126 `python-libraries` 语料（§7） | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
+| 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法；int/文本/Python 对象（`slice`）键索引与属性派生对象的继续索引（PLAN-1126，未新增操作） | 端到端 | 容器/记录跨边界、动态浮点实参（仅字面量编码） |
 | 目标 | AV（in-process）、A2PY（原生 Python 文件集）、978 SDK A2py | T-01/T-03/T-05 | 其他 978 目标不变 |
-| 失败 | 缺解释器/包/工件/授权 → 具名 `m2build.*`；未捕获异常 → 两端非 PASS；A2PY Python 异常 → Auto 错误类型 + 原始位置（`ValueError`→`python.5`、`IndexError`→`python.4`，PLAN-1110） | V-04/V-07；1110 语料 V-01..04 | 其余异常类按 `A2xPythonError` 类别表归 `python.10`（other），映射矩阵未逐类实测验交 |
+| 失败 | 缺解释器/包/工件/授权 → 具名 `m2build.*`；未捕获异常 → 两端非 PASS；A2PY Python 异常 → Auto 错误类型 + 原始位置（`ValueError`→`python.5`、`IndexError`→`python.4`，PLAN-1110） | V-04/V-07；1110 语料 V-01..04 | 其余异常类按 `A2xPythonError` 类别表归 `python.10`（other），映射矩阵未逐类实测验交（`json.JSONDecodeError`→`python.10` 已实测，PLAN-1126） |
 
 ## 4. 工程集成（978）
 
@@ -67,6 +67,8 @@ main.at (use.py …)
 ## 5. 未交与边界
 
 - 不支持：容器/记录跨边界、动态浮点实参、属性派生值、CPython 版本矩阵、Linux 腿。
+  PLAN-1126 实测的是属性读取的**结果仍为 Python 对象**，可继续索引、调用并显式提取叶子（§7）；
+  属性结果不进入 Auto 值域，容器/记录仍不跨边界，本条边界不据此改写。
 - 异常映射仅覆盖受检 py 操作运行中实际抛出的普通 `Exception`；`A2xTrap`、进程级中断
   （`KeyboardInterrupt`/`SystemExit` 等 `BaseException`）与解释器/包准入失败（具名
   `m2build.*`）维持各自路径，不进入 Auto 错误映射。
@@ -99,3 +101,31 @@ main.at (use.py …)
 - **证据**：`py_native_run_1107` 新增原生捕获/未捕获观察（含缓存前缀位移重跑）、
   `py_project_1107` 工程腿、语料固定组 `case-a2py-language-parity`（Windows x64 /
   CPython 3.14.2）。
+
+## 7. NumPy 与 json 同源验收（PLAN-1126，已交并实测）
+
+- **语料**：唯一作者 `crates/auto-lang/test/cases/language/script/python-libraries.case.ad`
+  （`language.suite.ad` 引用，3 Case）：`numpy-json` 正例、`numpy-shape-error-caught`、
+  `json-decode-error-uncaught`。每 Case 一份 `### Auto`，AV 普通源码入口
+  （`ac-av/language-source-run-v1`）与 A2PY `run-py`（`ac-a2py/hir-stdlib-run-v1`）各一条
+  真实执行检查，共用同一份冻结 oracle。A2PY 的流 oracle 用 `compare: "lf"`：程序输出走
+  解释器文本流，Windows 上行尾为 CRLF，而 `value:` 观察行是原始字节 LF；AV 流 oracle 字节精确。
+- **实测对象操作（未新增操作或索引值类别）**：同一 `GetItem`（AV `py_getitem` →
+  `obj.get_item`；A2PY `a2x_py_getitem` → `recv[idx]`）覆盖 int 键、文本键与 Python 对象键
+  （`row[slice(0, 3, 2)]`）。属性读取的结果仍是 Python 对象，可继续索引/调用（`a.shape` →
+  `shape[0]`）。`__add__` 广播、绑定方法（`reshape`/`sum`/`mean`）、关键字实参
+  （`sort_keys: true, ensure_ascii: false`）与 `.to(int/float/bool/str)` 对 NumPy 标量和
+  `json` 叶子成立。数组与解析树留在 Python 端，Auto 只显式提取小值。
+- **异常**：类别按类型 qualname 精确匹配，两端一致——`ValueError`→`python.5`；
+  `json.JSONDecodeError`→`python.10`（不在类表内，不按 `ValueError` 子类归 5）；
+  `ModuleNotFoundError`→`python.1`。失败位置是失败调用表达式整体的原 Auto 源半开字节范围
+  （如 `arange(6).reshape(4, 2)`、`loads("{")`），导入失败是 `use.py` 行的成员名。
+- **独立参考**：`crates/auto-lang/test/cases/ace-m2/python-1126/` 的手写原生 Python 直接调用
+  NumPy 与 `json`，不读 ACE 产物，由 OS Python 运行。`ace-a2x-python` 的 `py_libraries_1126`
+  把参考输出与作者文件的冻结 oracle 按**值**比对（整数/文本精确，均值 `rtol=atol=1e-6`），
+  并钉住三个源码字节的 sha256、两端 oracle 互相一致与失败位置等于原源字节范围。
+- **运行环境（Windows x64）**：CPython 3.14.2；NumPy 2.5.1（`numpy-2.5.1-cp314-cp314-win_amd64.whl`）。
+  AV 取装配 CPython 可见的 NumPy。A2PY 的 `run-py` 按 1042 合同以 `python -I -B` **隔离模式**
+  运行，不加载用户 site，所以其声明解释器（`A2PY_PYTHON`；缺省依次探测 `python3`/`python`/
+  `py -3`）必须在自身的 site-packages 里带 NumPy；否则 NumPy 用例以真实
+  `ModuleNotFoundError`（`python.1`）失败，不跳过、不通过。`run_sdk` 腿不带 `-I`，不受此限。
