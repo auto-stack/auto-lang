@@ -117,3 +117,17 @@ owner=PLAN-1063；Windows 原 required 门不减；交叉编译成功或 Windows
   `ac-build run --sdk <dir> --target av --grant <grant>`，先核闭包、pin、授权与运行
   兼容，再用当前 stub 表重验 ABC 并执行。此运行路径在源工程与编译工具不可见时已验证。
   重新打包先写入并验证新闭包，发布失败时保留旧可用 SDK。
+
+## A2R 真编译腿与 SDK（PLAN-1116）
+
+- **A2R build lane**：`lane_a2x` 对 A2r 目标在文本 emit 后走真实 rustc（scratch
+  工作目录、spawn 计数 `rustc-a2r`），产出 `targets/a2r/<name>.exe`（PE）+
+  `targets/a2r/build-receipt.json`（rustc 身份/entry）。source 腿只产文本 fileset
+  与 assembly-manifest；编译是本显式腿，同 native 腿模式。`build_sdk` 的 A2r 臂记
+  `msvc-crt` 运行依赖与 `rustc` 构建工具身份。
+- **仓外消费**：`run_sdk` 对 A2r 将观察协议归一为值（`value:<n>`/`trap:` stdout），
+  重定位 SDK 只需动态 CRT 族。工件 sha 失配具名拒；`restore` 读回旧可用根；业务
+  edit 身份键变（构建命中分验）。证据：
+  `crates/m2-build/tests/a2r_project_1116.rs`。
+- **边界**：多模块（包）工程走 a2x-store 包冷路径（`ProjectInputs` 现单源限制）；
+  m2-build 层 Rust 依赖 edit 缓存分验随包缝批。
