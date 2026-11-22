@@ -832,11 +832,29 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 }
                 hir::Stmt::If { cond, then, els } => {
                     let c = self.expr(*cond, &mut out)?;
+                    // PLAN-1053: the move-kill set is a may-kill analysis.
+                    // A kill inside one branch must not mark the root dead
+                    // on the SIBLING path (the `else` may be the taken one)
+                    // nor after the merge unless EVERY path kills it — merge
+                    // the branch-end sets by INTERSECTION (the pre-if kills
+                    // are in both, so they survive). Without this, the
+                    // control-flow-insensitive set false-positives the AAC
+                    // idiom `if p.len() == 0 { p = part.move } else { p =
+                    // p + "." + part }` (source_catalog.import_paths) and
+                    // any kill placed inside a conditional.
+                    let saved = self.moved_locals.clone();
                     let t = self.block(*then)?;
+                    let then_kills = self.moved_locals.clone();
+                    self.moved_locals = saved;
                     let e = match els {
                         Some(eb) => Some(self.block(*eb)?),
                         None => None,
                     };
+                    let merged: std::collections::HashSet<u32> = then_kills
+                        .intersection(&self.moved_locals)
+                        .copied()
+                        .collect();
+                    self.moved_locals = merged;
                     out.push(RStmt::If {
                         cond: c,
                         then: t,
@@ -862,7 +880,15 @@ impl<'a, 'v> CollLower<'a, 'v> {
                             self.local_name_of(u.message),
                         ));
                     }
+                    // PLAN-1053: a kill inside the loop body executes only
+                    // if the body runs, so it must not escape past the
+                    // header — restore the pre-loop set (kills before the
+                    // loop stay in effect inside and after; real
+                    // use-after-move is still refused by the frozen MIR
+                    // ownership verification upstream).
+                    let saved_moves = self.moved_locals.clone();
                     let lowered_body = self.block(*lb);
+                    self.moved_locals = saved_moves;
                     self.protected = saved;
                     self.loop_stack.pop();
                     let mut body_stmts = lowered_body?;
@@ -1010,9 +1036,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
         let inner = match &self.f.body.exprs[e.0 as usize].kind {
             hir::ExprKind::ReadLocal { local } => {
                 if self.moved_locals.contains(&local.0) {
-                    return Err(A2xReject::unsupported_expr(
-                        "use-after-move: the root moved at its binding site and is dead here",
-                    ));
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "use-after-move: the root `{}` moved at its binding site and is dead here (read at {}..{})",
+                        self.local_name_of(*local),
+                        self.f.body.exprs[e.0 as usize].span.start,
+                        self.f.body.exprs[e.0 as usize].span.end
+                    )));
                 }
                 let n = self.local_name_of(*local);
                 // PLAN-946: a `&'a mut A2xList` param place passes the name
@@ -1099,9 +1128,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
         match kind {
             hir::ExprKind::ReadLocal { local } => {
                 if self.moved_locals.contains(&local.0) {
-                    return Err(A2xReject::unsupported_expr(
-                        "use-after-move: the root moved at its `.move` site and is dead here",
-                    ));
+                    return Err(A2xReject::unsupported_expr(format!(
+                        "use-after-move: the root `{}` moved at its `.move` site and is dead here (read at {}..{})",
+                        self.local_name_of(local),
+                        e.span.start,
+                        e.span.end
+                    )));
                 }
                 Ok(RExpr::Local(self.local_name_of(local)))
             }
