@@ -61,6 +61,9 @@ fn manifest_face_only_sanctioned_dependencies() {
         // lane uses (no second importer path)
         "base64", // PLAN-1116 T-03: the provider descriptor's frozen
         // source field decode (the same codec the AV closure uses)
+        "tempfile", // PLAN-1110: the python-script run observation temp
+        // dir + native error-run scratch — rust-lang utility crate,
+        // no backend/frontend/executor stack
     ];
     let members = [
         "crates/a2x-c",
