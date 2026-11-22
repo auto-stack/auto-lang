@@ -17,6 +17,7 @@ use app.base_ir.record_view_wire_tag
 use app.base_ir.record_wire_tag
 use app.base_ir.return_terminator
 use app.base_ir.slot_stride
+use app.base_ir.str_len_instruction
 use app.binding.bind_budget
 use app.binding.decl_name
 use app.core_records.record_at
@@ -69,13 +70,32 @@ fn record_index(recs List<int>, lane int) int {
     return -1
 }
 
-fn wire_type_of(recs List<int>, lane int, as_view bool) int {
+// Type-table layout: 9 scalars, then per record a Record+RecordView pair,
+// then (with text present) StrView followed by Str, then per-function Fn
+// entries. The base offset for the first Fn entry depends on all of these.
+fn scalar_and_record_type_count(recs List<int>) int {
+    return 9 + record_count(recs) * 2
+}
+
+fn text_type_base(recs List<int>) int {
+    return scalar_and_record_type_count(recs)
+}
+
+fn wire_lane_type(recs List<int>, lane int, text_count int) int {
+    let base = record_index(recs, lane)
+    if (base >= 0) { return base }
+    if (lane == 4) { return text_type_base(recs) }
+    if (lane == 3) { return text_type_base(recs) + 1 }
+    return type_index(lane)
+}
+
+fn wire_type_of(recs List<int>, lane int, as_view bool, text_count int) int {
     let base = record_index(recs, lane)
     if (base >= 0) {
         if (as_view) { return base + 1 }
         return base
     }
-    return type_index(lane)
+    return wire_lane_type(recs, lane, text_count)
 }
 
 fn record_count(recs List<int>) int {
@@ -88,6 +108,54 @@ fn record_count(recs List<int>) int {
     return count
 }
 
+fn text_type_count(texts List<int>) int {
+    if (texts.len() == 0) { return 0 }
+    return 2
+}
+
+fn text_row_count(texts List<int>) int {
+    var at = 0
+    var count = 0
+    for (at < texts.len()) {
+        count = count + 1
+        at = at + 2 + texts.get(at + 1)
+    }
+    return count
+}
+
+fn text_row_at(texts List<int>, row int) int {
+    var at = 0
+    for (at < texts.len()) {
+        if (texts.get(at) == row) { return at }
+        at = at + 2 + texts.get(at + 1)
+    }
+    return -1
+}
+
+fn text_ordinal(texts List<int>, row int) int {
+    var at = 0
+    var ordinal = 0
+    for (at < texts.len()) {
+        if (texts.get(at) == row) { return ordinal }
+        ordinal = ordinal + 1
+        at = at + 2 + texts.get(at + 1)
+    }
+    return -1
+}
+
+fn write_text_const(out List<int>, texts List<int>, at int) int {
+    out.push(7)
+    let count = texts.get(at + 1)
+    word(out, count, 4)
+    var offset = at + 2
+    var index = 0
+    for (index < count) {
+        out.push(texts.get(offset + index))
+        index = index + 1
+    }
+    return 0
+}
+
 fn write_record_entry(out List<int>, recs List<int>, ast List<int>, src List<int>, declarations List<int>, at int, wire_tag int) int {
     out.push(wire_tag)
     let fields = recs.get(at + 1)
@@ -98,7 +166,7 @@ fn write_record_entry(out List<int>, recs List<int>, ast List<int>, src List<int
     for (field < record_next(recs, at)) {
         let name = spelling(src, ast, decl_name(declarations, recs.get(field)))
         append_string(out, name)
-        word(out, wire_type_of(recs, recs.get(field + 1), false), 4)
+        word(out, wire_type_of(recs, recs.get(field + 1), false, 0), 4)
         field = field + 2
     }
     return 0
@@ -224,7 +292,7 @@ fn build_indices(functions List<int>, slots List<int>, blocks List<int>, slot_ma
     return 0
 }
 
-fn write_instr(out List<int>, instrs List<int>, at int, slots List<int>, slot_map List<int>, operands List<int>, recs List<int>) int {
+fn write_instr(out List<int>, instrs List<int>, at int, slots List<int>, slot_map List<int>, operands List<int>, recs List<int>, texts List<int>, exact List<int>) int {
     let op = instrs.get(at + 1)
     let dst = slot_map.get(instrs.get(at + 2))
     let first = instrs.get(at + 3)
@@ -233,10 +301,23 @@ fn write_instr(out List<int>, instrs List<int>, at int, slots List<int>, slot_ma
     out.push(op)
     if (op == constant_instruction()) {
         word(out, dst, 4)
+        if (detail == 1) {
+            // Text const: the wire index is the scalar count plus the
+            // literal's ordinal in the text table.
+            let ordinal = text_ordinal(texts, first)
+            if (ordinal < 0) { return invalid_mir_reference() }
+            word(out, exact.len() / exact_literal_stride() + ordinal, 4)
+            return 0
+        }
         word(out, first, 4)
         return 0
     }
     if (op == copy_instruction()) {
+        word(out, dst, 4)
+        word(out, slot_map.get(first), 4)
+        return 0
+    }
+    if (op == str_len_instruction()) {
         word(out, dst, 4)
         word(out, slot_map.get(first), 4)
         return 0
@@ -303,10 +384,10 @@ fn source_row(ast List<int>, origin int) int {
     return 0
 }
 
-fn write_function(out List<int>, sidecar List<int>, ast List<int>, src List<int>, declarations List<int>, recs List<int>, function int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, slot_map List<int>, block_map List<int>, fuel List<int>, deadline i64) int {
+fn write_function(out List<int>, sidecar List<int>, ast List<int>, src List<int>, declarations List<int>, recs List<int>, texts List<int>, function int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, exact List<int>, slot_map List<int>, block_map List<int>, fuel List<int>, deadline i64) int {
     if (!account(fuel, deadline, slots.len() / slot_stride() * 2 + blocks.len() / block_stride() * 2)) { return bind_budget() }
     let info = function * function_stride()
-    word(out, 9 + record_count(recs) * 2 + function, 4)
+    word(out, scalar_and_record_type_count(recs) + text_type_count(texts) + function, 4)
     append_string(out, "d" + from_int(functions.get(info)))
     var at = 0
     var local_count = 0
@@ -319,7 +400,7 @@ fn write_function(out List<int>, sidecar List<int>, ast List<int>, src List<int>
     for (at < slots.len()) {
         if (slots.get(at) == function) {
             out.push(slots.get(at + 2))
-            word(out, wire_type_of(recs, slots.get(at + 1), slots.get(at + 2) == parameter_slot()), 4)
+            word(out, wire_type_of(recs, slots.get(at + 1), slots.get(at + 2) == parameter_slot(), text_type_count(texts)), 4)
         }
         at = at + slot_stride()
     }
@@ -349,7 +430,7 @@ fn write_function(out List<int>, sidecar List<int>, ast List<int>, src List<int>
             for (index < instrs.len()) {
                 if (instrs.get(index) == block) {
                     if (out.len() > 4194304 - 1032 || !account(fuel, deadline, 0)) { return bind_budget() }
-                    let status = write_instr(out, instrs, index, slots, slot_map, operands, recs)
+                    let status = write_instr(out, instrs, index, slots, slot_map, operands, recs, texts, exact)
                     if (status != 0) { return status }
                     let row = source_row(ast, instrs.get(index + 6))
                     word(spans, ordinal, 4)
@@ -409,18 +490,19 @@ fn checksum(out List<int>, fuel List<int>, deadline i64) int {
     return 0
 }
 
-pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations List<int>, recs List<int>, entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, exact List<int>, fuel List<int>, deadline i64) int {
+pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations List<int>, recs List<int>, texts List<int>, entry int, functions List<int>, slots List<int>, blocks List<int>, instrs List<int>, operands List<int>, exact List<int>, fuel List<int>, deadline i64) int {
     let count = functions.len() / function_stride()
     let literals = exact.len() / exact_literal_stride()
     let rec_count = record_count(recs)
-    if (count > 65527 || literals > 65536 || slots.len() / slot_stride() > 65536 || blocks.len() / block_stride() > 65536 || rec_count > 32767) { return bind_budget() }
+    let text_types = text_type_count(texts)
+    if (count > 65527 || literals > 65536 || slots.len() / slot_stride() > 65536 || blocks.len() / block_stride() > 65536 || rec_count > 32767 || text_types > 2) { return bind_budget() }
     var slot_indices = List<int>.new()
     var block_indices = List<int>.new()
     let indexed = build_indices(functions, slots, blocks, slot_indices, block_indices, fuel, deadline)
     if (indexed != 0) { return indexed }
     // AVAD v1 data (profile 2) for the scalar base; v2 owned (profile 3)
-    // when recs are present (the record domain lowers through the owned
-    // generation: Record/RecordView types and data opcodes).
+    // when records or text are present (the data domains lower through the
+    // owned generation: Record/RecordView/Str/StrView types and opcodes).
     out.push(65)
     out.push(86)
     out.push(65)
@@ -429,12 +511,12 @@ pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations
     word(out, 2, 2)
     word(out, 1, 2)
     word(out, 0, 2)
-    if (rec_count > 0) {
+    if (rec_count > 0 || text_types > 0) {
         out.set(4, 2)
         out.set(6, 3)
     }
-    word(out, 9 + rec_count * 2 + count, 4)
-    word(out, literals, 4)
+    word(out, 9 + rec_count * 2 + text_types + count, 4)
+    word(out, literals + text_row_count(texts), 4)
     word(out, 0, 4)
     word(out, count, 4)
     word(out, entry, 4)
@@ -457,6 +539,10 @@ pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations
         if (status_view != 0) { return status_view }
         rec_at = record_next(recs, rec_at)
     }
+    if (text_types > 0) {
+        out.push(10)
+        out.push(9)
+    }
     var func = 0
     for (func < count) {
         if (!account(fuel, deadline, slots.len() / slot_stride())) { return bind_budget() }
@@ -466,11 +552,11 @@ pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations
         var at = 0
         for (at < slots.len()) {
             if (slots.get(at) == func && slots.get(at + 2) == parameter_slot()) {
-                word(out, wire_type_of(recs, slots.get(at + 1), true), 4)
+                word(out, wire_type_of(recs, slots.get(at + 1), true, text_types), 4)
             }
             at = at + slot_stride()
         }
-        word(out, wire_type_of(recs, functions.get(info + 1), false), 4)
+        word(out, wire_type_of(recs, functions.get(info + 1), false, text_types), 4)
         func = func + 1
     }
     var at = 0
@@ -479,10 +565,16 @@ pub fn encode_base_abc(out List<int>, ast List<int>, src List<int>, declarations
         write_const(out, exact, at)
         at = at + exact_literal_stride()
     }
+    at = 0
+    for (at < texts.len()) {
+        if (!account(fuel, deadline, 0)) { return bind_budget() }
+        write_text_const(out, texts, at)
+        at = at + 2 + texts.get(at + 1)
+    }
     var sidecar = List<int>.new()
     func = 0
     for (func < count) {
-        let status = write_function(out, sidecar, ast, src, declarations, recs, func, functions, slots, blocks, instrs, operands, slot_indices, block_indices, fuel, deadline)
+        let status = write_function(out, sidecar, ast, src, declarations, recs, texts, func, functions, slots, blocks, instrs, operands, exact, slot_indices, block_indices, fuel, deadline)
         if (status != 0) { return status }
         func = func + 1
     }

@@ -21,6 +21,7 @@ use app.base_ir.local_slot_index
 use app.base_ir.outside_base_profile
 use app.base_ir.parameter_slot
 use app.base_ir.return_terminator
+use app.base_ir.str_len_instruction
 use app.base_ir.temporary_slot
 use app.binding.bind_budget
 use app.core_ops.binary_op
@@ -43,19 +44,22 @@ use app.numeric_literal.exact_literal_stride
 use app.numeric_literal.exact_scalar_word
 use app.types.boolean_type
 use app.types.integer_type
+use app.types.text_view_type
 
 fn scalar(lane int) bool {
     return lane == integer_type() || lane == boolean_type() || exact_scalar_word(lane).len() > 0
 }
 
 fn data_value(recs List<int>, lane int) bool {
-    return scalar(lane) || record_at(recs, lane) >= 0
+    return scalar(lane) || lane == text_view_type() || record_at(recs, lane) >= 0
 }
 
 // Expression op identities shared with core_hir's HIR table.
 fn record_constructor_op() int { return 9 }
 fn record_field_op() int { return 10 }
 fn record_view_op() int { return 11 }
+fn text_literal_op() int { return 7 }
+fn text_length_op() int { return 8 }
 
 fn add_small_constant(constants List<int>, lane int, value int) int {
     let index = constants.len() / exact_literal_stride()
@@ -140,11 +144,15 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
                 push_expr(work, lhs, 0, 0, 0)
                 continue
             }
-            if (op != call_op() && !binary_op(op) && op != record_constructor_op() && op != record_field_op() && op != record_view_op()) { return outside_base_profile() }
+            if (op != call_op() && !binary_op(op) && op != record_constructor_op() && op != record_field_op() && op != record_view_op() && op != text_literal_op() && op != text_length_op()) { return outside_base_profile() }
             push_expr(work, expr, 1, results.len(), 0)
             if (op == record_view_op()) {
                 // Borrow views fold to their base expression (the owned
                 // value satisfies the borrowed-view position directly).
+                push_expr(work, data, 0, 0, 0)
+                continue
+            }
+            if (op == text_length_op()) {
                 push_expr(work, data, 0, 0, 0)
                 continue
             }
@@ -195,6 +203,23 @@ fn lower_expression(id int, owner int, current List<int>, exprs List<int>, args 
             let folded = results.get(first)
             for (results.len() > first) { results.remove(results.len() - 1) }
             results.push(folded)
+            continue
+        }
+        if (op == text_literal_op()) {
+            // A text literal const rides the wire const table after the
+            // scalar entries; detail=1 marks the text-const form.
+            let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
+            add_instruction(instrs, block, constant_instruction(), dst, data, -1, 1, expr)
+            for (results.len() > first) { results.remove(results.len() - 1) }
+            results.push(dst)
+            continue
+        }
+        if (op == text_length_op()) {
+            let dst = add_slot(slots, owner, lane, temporary_slot(), -1)
+            if (results.len() - first != 1) { return invalid_mir_reference() }
+            add_instruction(instrs, block, str_len_instruction(), dst, results.get(first), -1, -1, expr)
+            for (results.len() > first) { results.remove(results.len() - 1) }
+            results.push(dst)
             continue
         }
         let dst = add_slot(slots, owner, lane, temporary_slot(), -1)

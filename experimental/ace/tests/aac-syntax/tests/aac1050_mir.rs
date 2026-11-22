@@ -250,6 +250,34 @@ fn run_generic_mir(source: &[u8]) -> Result<(String, Vec<u8>), String> {
     Ok((report, bytes))
 }
 
+/// T-03 owned-text 域：str 字面量（含 \n/\t 转义解码）经 Auto lowering 产出
+/// ABC，独立消费端 decode→verify→AV 执行返回正确长度；text 与 record 的
+/// 视图参数组合（`fetch` 加 `let` 绑定）保持正确。独立预期：`"abc".len()`
+/// 与 `let s = "a\n\tb"; s.len()` 均得 4 字符的正确值。
+#[test]
+fn aac1050_text_literals_and_length_run_in_av() {
+    let direct = b"fn main() int { return \"abc\".len() }";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(direct).expect("Auto MIR direct str len")),
+        ExecOutcome::Success { value: Value::I32(3), .. }
+    ));
+
+    let escaped = b"fn main() int { let s = \"a\\n\\tb\"; return s.len() }";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(escaped).expect("Auto MIR escaped str len")),
+        ExecOutcome::Success { value: Value::I32(4), .. }
+    ));
+
+    // Text flows through a borrowed view param alongside a record call.
+    let mixed = b"fn takes(s str, p Pair) int { return s.len() + p.number }
+type Pair { number int; enabled bool }
+fn main() int { let s = \"xy\"; return takes(s, Pair(enabled: true, number: 7)) }";
+    assert!(matches!(
+        execute_owned_auto_mir(&run(mixed).expect("Auto MIR text+record view")),
+        ExecOutcome::Success { value: Value::I32(9), .. }
+    ));
+}
+
 fn run(source: &[u8]) -> Result<Vec<u8>, String> {
     ace_aac_syntax_conformance::run_base_mir_case(source)
 }

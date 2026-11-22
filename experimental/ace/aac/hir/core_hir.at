@@ -149,6 +149,53 @@ fn transport_text(src List<int>, start int, limit int, deadline i64, fuel List<i
     return 0
 }
 
+// Decode a validated string literal (stripped quotes, escapes resolved)
+// into the text-const table. Each row opens with its source AST row, then
+// its byte count, then the decoded bytes.
+fn decode_text_literal(src List<int>, start int, limit int, row int, texts List<int>, fuel List<int>, deadline i64) int {
+    var bytes = List<int>.new()
+    var at = start + 1
+    for (at < limit - 1) {
+        if (!take_step(fuel, deadline)) { return bind_budget() }
+        let octet = src.get(at)
+        if (octet == 92) {
+            at = at + 1
+            let escape = src.get(at)
+            if (escape == 110) { bytes.push(10) }
+            if (escape == 116) { bytes.push(9) }
+            if (escape == 34 || escape == 92) { bytes.push(escape) }
+        } else {
+            bytes.push(octet)
+        }
+        at = at + 1
+    }
+    texts.push(row)
+    texts.push(bytes.len())
+    for (bytes.len() > 0) {
+        texts.push(bytes.remove(0))
+    }
+    return 0
+}
+
+fn text_row_count(texts List<int>) int {
+    var at = 0
+    var count = 0
+    for (at < texts.len()) {
+        count = count + 1
+        at = at + 2 + texts.get(at + 1)
+    }
+    return count
+}
+
+fn text_row_at(texts List<int>, row int) int {
+    var at = 0
+    for (at < texts.len()) {
+        if (texts.get(at) == row) { return at }
+        at = at + 2 + texts.get(at + 1)
+    }
+    return -1
+}
+
 // Definition IDs and expression IDs are distinct even when they share an
 // origin row. Each table carries its own owner and exact source-row identity.
 // Definitions: (id, result type, body owner, entry block)
@@ -260,7 +307,7 @@ fn lower_field_chain(pg List<int>, ast List<int>, links List<int>, declarations 
     return 0
 }
 
-fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, exprs List<int>, args List<int>, expressions List<int>, exact List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, exprs List<int>, args List<int>, expressions List<int>, exact List<int>, texts List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var owners = List<int>.new()
     var scalar = List<int>.new()
     scalar.push(0)
@@ -330,6 +377,8 @@ fn lower_expressions(pg List<int>, ast List<int>, links List<int>, src List<int>
             if (node_kind == "str-lit") {
                 let valid = transport_text(src, start_of(ast, row), end_of(ast, row), deadline, fuel)
                 if (valid != 0) { return failed(errors, row, valid) }
+                let text = decode_text_literal(src, start_of(ast, row), end_of(ast, row), row, texts, fuel, deadline)
+                if (text == bind_budget()) { return failed(errors, row, text) }
                 add_expression(exprs, expressions, row, owner, text_literal_op(), t, row)
             }
             if (node_kind == "ident") {
@@ -570,9 +619,9 @@ fn lower_global_initializers(count int, layouts List<int>, expression_ids List<i
     return 0
 }
 
-fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, errors List<int>) int {
+fn lower_core(pg List<int>, ast List<int>, links List<int>, src List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, records List<int>, layouts List<int>, defs List<int>, locals List<int>, exprs List<int>, args List<int>, blocks List<int>, statements List<int>, exact List<int>, texts List<int>, fuel List<int>, deadline i64, errors List<int>) int {
     var expressions = List<int>.new()
-    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, types, records, exprs, args, expressions, exact, fuel, deadline, errors)
+    let lowered = lower_expressions(pg, ast, links, src, declarations, uses, mappings, facts, types, records, exprs, args, expressions, exact, texts, fuel, deadline, errors)
     if (lowered != 0) { return lowered }
     var row = 0
     for (row < row_count(ast)) {
@@ -1697,7 +1746,7 @@ fn mir_control(control int, functions List<int>, blocks List<int>, instrs List<i
     return invalid_mir_reference()
 }
 
-fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, records List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int, entry_name Str) int {
+fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<int>, records List<int>, texts List<int>, defs List<int>, parameters List<int>, exprs List<int>, args List<int>, hir_blocks List<int>, statements List<int>, exact List<int>, fuel List<int>, deadline i64, control int, entry_name Str) int {
     var entry = -1
     var at = 0
     for (at < defs.len()) {
@@ -1719,9 +1768,9 @@ fn emit_base_mir(out List<int>, ast List<int>, src List<int>, declarations List<
     if (status != 0) { return status }
     let applied = mir_control(control, functions, blocks, instrs, operands, exact, fuel, deadline)
     if (applied != 0) { return applied }
-    let verified = verify_base(entry, functions, slots, blocks, instrs, operands, exact, records, fuel, deadline)
+    let verified = verify_base(entry, functions, slots, blocks, instrs, operands, exact, texts, records, fuel, deadline)
     if (verified != 0) { return verified }
-    return encode_base_abc(out, ast, src, declarations, records, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
+    return encode_base_abc(out, ast, src, declarations, records, texts, entry, functions, slots, blocks, instrs, operands, exact, fuel, deadline)
 }
 
 pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<int>, roots List<int>, modules List<int>, declarations List<int>, uses List<int>, mappings List<int>, facts List<int>, types List<int>, layouts List<int>, fuel List<int>, deadline i64, errors List<int>, control int, abc List<int>, entry_name Str) Str {
@@ -1749,13 +1798,14 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     var blocks = List<int>.new()
     var statements = List<int>.new()
     var records = List<int>.new()
+    var texts = List<int>.new()
     var exact = List<int>.new()
     let shaped = source_record_shapes(pg, ast, declarations, facts, types, records, fuel, deadline)
     if (shaped != 0) {
         failed(errors, 0, shaped)
         return ""
     }
-    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, errors)
+    let status = lower_core(pg, ast, links, src, declarations, uses, mappings, facts, types, records, layouts, defs, parameters, exprs, args, blocks, statements, exact, texts, fuel, deadline, errors)
     if (status != 0) { return "" }
     let exact_type_decls = exact_scalar_types(defs, parameters, exprs)
     if (exact_type_decls.len() > 0 && (layouts.len() > 0 || records.len() > 0 || has_text(defs, parameters, exprs))) {
@@ -1778,11 +1828,11 @@ pub fn checked_core_atom(pg List<int>, ast List<int>, links List<int>, src List<
     is verified {
         Some(checked) -> {
             if (control >= 4) {
-                if (layouts.len() > 0 || has_text(defs, parameters, exprs)) {
+                if (layouts.len() > 0) {
                     failed(errors, 0, outside_base_profile())
                     return ""
                 }
-                let status = emit_base_mir(abc, ast, src, declarations, records, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control, entry_name)
+                let status = emit_base_mir(abc, ast, src, declarations, records, texts, defs, parameters, exprs, args, blocks, statements, exact, fuel, deadline, control, entry_name)
                 if (status != 0) {
                     failed(errors, 0, status)
                     return ""

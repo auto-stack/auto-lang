@@ -21,6 +21,7 @@ pub fn aggregate_instruction() int { return 9 }
 pub fn view_instruction() int { return 12 }
 pub fn borrow_end_instruction() int { return 14 }
 pub fn drop_instruction() int { return 15 }
+pub fn str_len_instruction() int { return 19 }
 pub fn jump_terminator() int { return 16 }
 pub fn branch_terminator() int { return 17 }
 pub fn return_terminator() int { return 18 }
