@@ -79,3 +79,36 @@ fallback。
   component_event_sessions_1106`；UI
   `cargo test -p auto-ui-runtime --features ace-bridge --test
   component_event_sessions_1106`（V-06..08 负控）。
+
+## UI 异步 HTTP（`http.client/1`，PLAN-108 2026-11-22）
+
+组件面 handler 的 VM 原生 `Http.<verb>` 效应族（闭合集：
+get/get_json/post/post_json/put/put_json/patch/patch_json/delete；
+`get_msg` 不在族——消息桥另案）：
+
+- **源级目录**：`core/src/source/http_ops.rs` 为单一真源
+  （callee→符号 `auto.http.<verb>.v1`、参数/结果 VT）；resolve 在
+  text-record/collections/AGE* profile 以魔数 receiver 拦截
+  （`Http` 被用户局部遮蔽时让位）。`verb`/`arity`/类型不匹配=具名拒绝
+  （`source.http-unsupported`/`source.http-argument`）。
+- **MIR**：`MirInstr::HttpCall{dst,host,args}`（host=host_imports 索引）；
+  ABC `OP_HTTP_CALL 0x58`（Owned 线族恒携 HOST section；split_units 逐
+  单元携带并重编号 http host import）。admission 走 host.rs 第三条声明
+  类别（category/capability/budget 由 av-core `http_client` 目录核）；
+  `http.client/1` 为已知能力，per-run grant `http.client` 在执行侧核。
+  console/platform 准入门不覆盖 http 族（缺席在 HttpCall 执行点具名
+  fail-closed，无 provider=`Infra "http.client: no http provider…"`）。
+- **执行=挂起/续跑**（park/resume，对齐 PLAN-702 段化语义）：
+  provider 为 job 式（`http_start→job`/`http_poll→Option`；阻塞请求由
+  消费侧线程承担）。HttpCall 首过 start+挂起 `LoopState`（`SuspendedHttp`，
+  ip 回退、帧保留）；`execute_program_http_resumable` 续跑。挂起期间同
+  会话其它派发照常提交（提交在 handler 体尾）；**统一提交 epilogue 会
+  覆盖并发提交**——续跑成功后对源级未赋值字段（`handler_assigns`）做
+  保留-重播种（取值在续跑前，并发者胜出；MIR GlobalSet 扫描不可用——
+  epilogue 对每字段都发 GlobalSet）。
+- **取消/卸载**：会话关闭时 resume 具名拒写（`late result isolated`），
+  挂起态随取随弃，零落账。同 msg 重入由消费侧 pending 门忽略（VM T-04
+  语义）。http 车道执行墙放宽 300s（默认 wall 装不下 65s+ 慢端点见证）。
+- 已验入口：av `cargo test -p ace-av --test conformance plan108_http_component`
+  （7 例：准入/fail-closed/三具名拒/遮蔽/落账-交错-保留/取消隔离）；
+  AV 生产宿主 65s 慢端点双窗实窗见证见 PLAN-108 §9（归档）。

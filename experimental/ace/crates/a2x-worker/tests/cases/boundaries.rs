@@ -56,6 +56,11 @@ fn manifest_face_only_sanctioned_dependencies() {
         "sha2", // PLAN-1034: pyrun interpreter content hash — STREAMED
                 // 64KiB chunks (never caching the binary whole); the
                 // same pure hash primitive ace-native already uses
+        "auto-bindgen", // PLAN-1116 T-03: the language lane's prepared
+        // foreign closure binds the SAME shared Rust importer the AV
+        // lane uses (no second importer path)
+        "base64", // PLAN-1116 T-03: the provider descriptor's frozen
+        // source field decode (the same codec the AV closure uses)
     ];
     let members = [
         "crates/a2x-c",

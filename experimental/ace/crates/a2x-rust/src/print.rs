@@ -934,7 +934,7 @@ fn coll_record_helpers(
         match ty {
             Ty::StrOwned => {
                 clone_stmts.push_str(&format!(
-                    "    let c_{f} = match a2x_str_clone(src.{f}.as_str()) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    "    let mut c_{f} = match a2x_str_clone(src.{f}.as_str()) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
                     f = fname,
                     rollback = rollback_stmts(&owned)
                 ));
@@ -944,7 +944,7 @@ fn coll_record_helpers(
                 let inner = record_name_of(p, *id);
                 let call = format!("a2x_coll_free_{}", inner);
                 clone_stmts.push_str(&format!(
-                    "    let c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    "    let mut c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
                     f = fname,
                     inner = inner,
                     rollback = rollback_stmts(&owned)
@@ -955,7 +955,7 @@ fn coll_record_helpers(
                 let inner = variant_name_of(p, *id);
                 let call = format!("a2x_coll_free_{}", inner);
                 clone_stmts.push_str(&format!(
-                    "    let c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    "    let mut c_{f} = match a2x_coll_clone_{inner}(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
                     f = fname,
                     inner = inner,
                     rollback = rollback_stmts(&owned)
@@ -964,7 +964,7 @@ fn coll_record_helpers(
             }
             Ty::List(_) => {
                 clone_stmts.push_str(&format!(
-                    "    let c_{f} = match a2x_coll_list_clone(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
+                    "    let mut c_{f} = match a2x_coll_list_clone(&src.{f}) {{ Ok(v) => v, Err(e) => {{ {rollback} return Err(e) }} }};\n",
                     f = fname,
                     rollback = rollback_stmts(&owned)
                 ));

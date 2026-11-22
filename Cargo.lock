@@ -792,6 +792,7 @@ dependencies = [
  "ace-core",
  "ace-foreign-contract",
  "ace-lowering",
+ "ace-source-cte",
  "ace-source-query",
  "auto-lang-core",
  "auto-val",

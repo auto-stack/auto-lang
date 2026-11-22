@@ -441,6 +441,9 @@ struct EmitOutcome {
     recipe: String,
     /// The compiled bundle's HIR domain string (cert identity).
     hir_domain: String,
+    /// PLAN-1116 (T-03): a prepared foreign provider rides the request —
+    /// (provider out dir, DLL file name) for the link/run closure.
+    foreign_lib: Option<(String, String)>,
 }
 
 /// PLAN-1034 IPC-01：一次 cap+1 有界快照——text/hash/compile 消费同一
@@ -496,6 +499,180 @@ fn read_bounded_utf8_result(
         .map_err(|e| format!("a2x.{what}-utf8: {path}: {e}"))
 }
 
+/// PLAN-1116 (T-03): the request `foreign` section (declarative: kind +
+/// provider; the prepared closure carries every artifact identity) — the
+/// same shape the AV lane consumes.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForeignSpec {
+    /// `rust` (`c` keeps the named rejection on this lane for this batch).
+    pub kind: String,
+    /// Provider id (`f0_text` on the frozen checked-shim domain).
+    pub provider: String,
+    /// The prepared artifact root (must exist; the run phase never
+    /// compiles — missing/stale artifacts are named preparation failures).
+    pub artifact_root: String,
+}
+
+/// The prepared provider closure (schema-strict), mirroring the AV lane's
+/// descriptor — one schema, one identity axis.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderDescriptor {
+    pub schema: String,
+    pub kind: String,
+    pub provider: String,
+    /// SHA-256 hex of the provider DLL the run binds.
+    pub artifact_sha256: String,
+    /// The frozen provider source (rust), base64.
+    #[serde(default)]
+    pub source_b64: Option<String>,
+    /// The rustc identity the prepared Rust build used (stamp axis).
+    #[serde(default)]
+    pub rustc_identity: Option<String>,
+    #[serde(default)]
+    pub dll: Option<String>,
+    #[serde(default)]
+    pub lib: Option<String>,
+    #[serde(default)]
+    pub stamp: Option<String>,
+}
+
+const PROVIDER_DESCRIPTOR_SCHEMA: &str = "plan1093.provider-descriptor/1";
+
+/// PLAN-1116 (T-03): resolve + verify the prepared provider closure (the
+/// RUST branch of the AV lane's loader, without the in-process binding —
+/// the A2R lane links the checked shim exports at rustc time and loads
+/// the DLL as a process dependency). Every identity axis is checked
+/// before the compile front door sees the admitted foreign: descriptor
+/// schema/kind/provider, the frozen-source-derived digests (re-derived
+/// here, never trusted from the descriptor), the prepare stamp, the
+/// artifacts' presence, and the DLL's sha256.
+fn load_prepared_foreign(
+    v: &serde_json::Value,
+) -> (
+    ace_foreign_contract::manual::AdmittedForeign,
+    String,
+    String,
+) {
+    let spec: ForeignSpec = serde_json::from_value(v["foreign"].clone())
+        .unwrap_or_else(|e| fail(&format!("a2x.foreign-spec: invalid foreign binding: {e}")));
+    if spec.kind != "rust" {
+        fail(&format!(
+            "a2x.foreign-kind: provider kind `{}` is outside the A2R support domain (rust only on this lane)",
+            spec.kind
+        ));
+    }
+    let root = std::path::Path::new(&spec.artifact_root);
+    let descriptor_path = root.join(format!("{}.descriptor.json", spec.provider));
+    let bytes = std::fs::read(&descriptor_path).unwrap_or_else(|e| {
+        fail(&format!(
+            "a2x.foreign-prepared: prepared provider closure missing at {}: {e} (run the prepare lane)",
+            descriptor_path.display()
+        ))
+    });
+    let descriptor: ProviderDescriptor = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|e| fail(&format!("a2x.foreign-prepared: bad provider descriptor: {e}")));
+    if descriptor.schema != PROVIDER_DESCRIPTOR_SCHEMA {
+        fail(&format!(
+            "a2x.foreign-prepared: expected {PROVIDER_DESCRIPTOR_SCHEMA}, got {}",
+            descriptor.schema
+        ));
+    }
+    if descriptor.kind != spec.kind || descriptor.provider != spec.provider {
+        fail(&format!(
+            "a2x.foreign-prepared: descriptor identity mismatch: declared {} {} but closure holds {} {}",
+            spec.kind, spec.provider, descriptor.kind, descriptor.provider
+        ));
+    }
+    let source_b64 = descriptor.source_b64.as_deref().unwrap_or_else(|| {
+        fail("a2x.foreign-prepared: rust provider closure lacks its source")
+    });
+    use base64::Engine as _;
+    let provider_source = String::from_utf8(
+        base64::engine::general_purpose::STANDARD
+            .decode(source_b64)
+            .unwrap_or_else(|e| fail(&format!("a2x.foreign-source: {e}"))),
+    )
+    .unwrap_or_else(|e| fail(&format!("a2x.foreign-source: {e}")));
+    let manifest = auto_bindgen::rust_import::import(&provider_source)
+        .unwrap_or_else(|e| fail(&format!("a2x.foreign-import: {}: {}", e.code, e.message)));
+    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+    let provider_digest = auto_bindgen::rust_import::provider_digest(&provider_source);
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
+    let manual = auto_bindgen::rust_import::to_manual_manifest(
+        &manifest,
+        "f0-rust-provider/1",
+        &provider_digest,
+        &shim_digest,
+    )
+    .unwrap_or_else(|e| fail(&format!("a2x.foreign-manifest: {e}")));
+    let rustc_identity = descriptor
+        .rustc_identity
+        .as_deref()
+        .unwrap_or_else(|| fail("a2x.foreign-prepared: rust provider closure lacks a rustc identity"));
+    let dll_name = descriptor
+        .dll
+        .clone()
+        .unwrap_or_else(|| "f0_text_provider.dll".to_string());
+    let lib_name = descriptor
+        .lib
+        .clone()
+        .unwrap_or_else(|| "f0_text_provider.lib".to_string());
+    let stamp_name = descriptor
+        .stamp
+        .clone()
+        .unwrap_or_else(|| "f0-build-stamp.txt".to_string());
+    let out = root.join("out");
+    let stamp = format!("{provider_digest}\n{shim_digest}\n{rustc_identity}\n");
+    let stamp_path = out.join(&stamp_name);
+    let prepared = stamp_path.is_file()
+        && std::fs::read_to_string(&stamp_path)
+            .map(|s| s == stamp)
+            .unwrap_or(false)
+        && out.join(&dll_name).is_file()
+        && out.join(&lib_name).is_file();
+    if !prepared {
+        fail(&format!(
+            "a2x.foreign-prepared: prepared Rust provider missing or stale at {} (run the prepare lane)",
+            out.display()
+        ));
+    }
+    let dll = out.join(&dll_name);
+    let actual = sha256_hex(
+        &std::fs::read(&dll)
+            .unwrap_or_else(|e| fail(&format!("a2x.foreign-artifact: read {}: {e}", dll.display()))),
+    );
+    if actual != descriptor.artifact_sha256 {
+        fail(&format!(
+            "a2x.foreign-artifact: prepared provider dll sha {actual} != declared {}",
+            descriptor.artifact_sha256
+        ));
+    }
+    let authority = ace_foreign_contract::manual::HostAuthority {
+        review_id: manual.review_id.clone(),
+        contract_digest: manual
+            .contract_digest()
+            .unwrap_or_else(|e| fail(&format!("a2x.foreign-manifest: {e}"))),
+        provider: manual.provider.clone(),
+        provider_digest,
+        header_digest: manual.header_digest.clone(),
+        physical_table_digest: manual.physical_table_digest.clone(),
+        target: manual.target.clone(),
+        capabilities: manual.facts.capabilities.iter().cloned().collect(),
+        available_symbols: manifest
+            .functions
+            .iter()
+            .map(|f| f.export.clone())
+            .collect(),
+        binding_generation: 1,
+    };
+    let admitted = manual
+        .admit(&authority)
+        .unwrap_or_else(|e| fail(&format!("a2x.foreign-admit: {e}")));
+    (admitted, out.to_string_lossy().to_string(), dll_name)
+}
+
 fn emit(v: &serde_json::Value) -> EmitOutcome {
     let (src, source_sha256) = read_source(v);
     let profile = v["profile"].as_str().unwrap_or("core").to_string();
@@ -508,6 +685,16 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
                 .collect()
         })
         .unwrap_or_default();
+    // PLAN-1116 (T-03): a prepared foreign provider closure rides the
+    // request on the language lane only.
+    let foreign = if v.get("foreign").is_some() {
+        if profile != "language" {
+            fail("a2x.domain: a `foreign` binding is only accepted on the `language` profile");
+        }
+        Some(load_prepared_foreign(v))
+    } else {
+        None
+    };
     // The profile selects BOTH the frontend entry and the recipe channel
     // (PLAN-902: record/text/text-record ride the record-text fileset).
     let compiled = match profile.as_str() {
@@ -522,11 +709,22 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         // `ac.source.language.av/v1`). Generic templates concretize through
         // the shared instance pass and `#{...}` compile-time demands are
         // served by the same CT service the scalar lane uses — the same
-        // prepare hooks the AV language lane runs.
-        "language" => ace_core::source::adapter::compile_language_source_prepared(
-            &src,
-            "a2x-worker",
-            &caps,
+        // prepare hooks the AV language lane runs. PLAN-1116 T-03: a
+        // prepared foreign provider rides the request through the shared
+        // admitted-foreign front door (the same checked closure the AV
+        // lane binds; the run phase never compiles).
+        "language" => {
+            match &foreign {
+                Some((admitted, _, _)) => ace_core::source::adapter::compile_language_source_with_foreign(
+                    &src,
+                    "a2x-worker",
+                    &caps,
+                    admitted,
+                ),
+                None => ace_core::source::adapter::compile_language_source_prepared(
+                    &src,
+                    "a2x-worker",
+                    &caps,
             |program, projected_source, has_instances| {
                 if has_instances {
                     ace_source_query::instantiate_auto_program(program, "a2x-worker", &caps)?;
@@ -546,7 +744,9 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
                     Ok(())
                 }
             },
-        ),
+            ),
+            }
+        }
         other => fail(&format!("unknown source profile `{}`", other)),
     };
     let compiled = match compiled {
@@ -639,6 +839,7 @@ fn emit(v: &serde_json::Value) -> EmitOutcome {
         source_sha256,
         recipe: RECIPE.to_string(),
         hir_domain: view.domain.as_str().to_string(),
+        foreign_lib: foreign.map(|(_, out, dll)| (out, dll)),
     }
 }
 
@@ -850,6 +1051,7 @@ fn emit_c(v: &serde_json::Value) -> EmitOutcome {
         source_sha256,
         recipe: recipe.to_string(),
         hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+        foreign_lib: None,
     }
 }
 
@@ -1094,7 +1296,8 @@ fn run_language(v: &serde_json::Value) -> serde_json::Value {
     write_out_dir(out_dir, &out);
     let dir = PathBuf::from(out_dir);
     let t0 = std::time::Instant::now();
-    let (stdout, stderr, processes) = compile_and_run(&dir, "main.rs", "a2x_lang_run.exe");
+    let fl = out.foreign_lib.clone();
+    let (stdout, stderr, processes) = compile_and_run(&dir, "main.rs", "a2x_lang_run.exe", fl.as_ref());
     let wall_ms = t0.elapsed().as_millis() as u64;
     let mut r = ok_base(LANG_RUN_RECIPE);
     r["mode"] = "run-language".into();
@@ -1157,7 +1360,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
     // <=30s, whole certify <=360s) — the caller asserts the caps
     let t0 = std::time::Instant::now();
     let (actual_out, actual_err, actual_processes) =
-        compile_and_run(&dir, "main.rs", "a2x_actual.exe");
+        compile_and_run(&dir, "main.rs", "a2x_actual.exe", None);
     let actual_wall_ms = t0.elapsed().as_millis() as u64;
     // independent hand-written reference: compile + run separately.
     // PLAN-1034: reference 源同一次 cap+1 有界快照（读取/hash 同 bytes，
@@ -1168,7 +1371,7 @@ fn certify(v: &serde_json::Value) -> serde_json::Value {
         .unwrap_or_else(|e| fail(&format!("write reference: {e}")));
     let t1 = std::time::Instant::now();
     let (reference_out, reference_err, reference_processes) =
-        compile_and_run(&dir, "reference.rs", "a2x_reference.exe");
+        compile_and_run(&dir, "reference.rs", "a2x_reference.exe", None);
     let reference_wall_ms = t1.elapsed().as_millis() as u64;
 
     let mut r = ok_base(recipe_of_profile(&profile));
@@ -1443,6 +1646,7 @@ fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
         source_sha256,
         recipe: recipe.to_string(),
         hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+        foreign_lib: None,
     };
     (outcome, fileset)
 }
@@ -1692,6 +1896,7 @@ fn emit_ts(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
         source_sha256,
         recipe: recipe.to_string(),
         hir_domain: compiled.checked.bundle().domain.as_str().to_string(),
+        foreign_lib: None,
     };
     (outcome, fileset)
 }
@@ -1841,7 +2046,12 @@ fn contained(cmd: &mut Command, deadline: std::time::Duration) -> ace_core::link
     }
 }
 
-fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String, serde_json::Value) {
+fn compile_and_run(
+    dir: &Path,
+    src: &str,
+    exe_name: &str,
+    foreign_lib: Option<&(String, String)>,
+) -> (String, String, serde_json::Value) {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
     let exe = dir.join(exe_name);
     let mut compile = Command::new(&rustc);
@@ -1850,6 +2060,11 @@ fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String, se
         .arg(&exe)
         .arg(src)
         .current_dir(dir);
+    // PLAN-1116 (T-03): the checked provider's import library directory
+    // (the generated bridge's `#[link(name = ...)]` resolves here).
+    if let Some((lib_dir, _)) = foreign_lib {
+        compile.arg("-L").arg(lib_dir);
+    }
     let out = contained(
         &mut compile,
         std::time::Duration::from_secs(COMPILE_DEADLINE_SECS),
@@ -1859,6 +2074,12 @@ fn compile_and_run(dir: &Path, src: &str, exe_name: &str) -> (String, String, se
             "{src} compile failed: {}",
             String::from_utf8_lossy(&out.stderr)
         ));
+    }
+    // The provider DLL loads as a process dependency — place it next to
+    // the produced exe (a DLL search location on Windows).
+    if let Some((lib_dir, dll)) = foreign_lib {
+        std::fs::copy(std::path::Path::new(lib_dir).join(dll), dir.join(dll))
+            .unwrap_or_else(|e| fail(&format!("a2x.foreign-artifact: stage {dll}: {e}")));
     }
     let mut run = Command::new(&exe);
     run.current_dir(dir);

@@ -1080,6 +1080,13 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                         needed.push(hi.sig);
                     }
                 }
+                // PLAN-108（T-03b M1）：Http 效应的 host import sig 同样须
+                // 随单元携带（否则 split 后 verify host.reference 越界）。
+                if let MirInstr::HttpCall { host, .. } = i {
+                    if let Some(hi) = m.host_imports.get(*host as usize) {
+                        needed.push(hi.sig);
+                    }
+                }
             }
         }
         // Transitive closure over Fn-sig param/result types: scalars intern
@@ -1309,6 +1316,18 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                         }
                     },
                     MirInstr::HostCall { host, .. } | MirInstr::PlatformCall { host, .. } => {
+                        let next = unit.host_imports.len() as u32;
+                        let local = *host_map.entry(*host).or_insert(next);
+                        if unit.host_imports.len() == local as usize {
+                            let mut hi = m.host_imports[*host as usize].clone();
+                            hi.sig = ty_map[hi.sig as usize];
+                            unit.host_imports.push(hi);
+                        }
+                        *host = local;
+                    }
+                    // PLAN-108（T-03b M1）：Http 效应 host import 的单元局部
+                    // 重编号（与 HostCall/PlatformCall 同一簿记）。
+                    MirInstr::HttpCall { host, .. } => {
                         let next = unit.host_imports.len() as u32;
                         let local = *host_map.entry(*host).or_insert(next);
                         if unit.host_imports.len() == local as usize {

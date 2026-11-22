@@ -32,6 +32,7 @@ pub mod config_document;
 /// PLAN-982（B-CONFIG-I）：配置文档源级原语目录（`config.document/1`）。
 pub mod config_ops;
 pub mod console;
+pub mod http_ops;
 pub mod cst;
 pub mod decl_env;
 pub mod domain;

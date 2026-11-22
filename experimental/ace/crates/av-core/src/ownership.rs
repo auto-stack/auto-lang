@@ -985,6 +985,13 @@ fn verify_owned_function_impl(
                     }
                     st.define_slot(*dst as usize);
                 }
+                // PLAN-108（T-03b M1）：Http 效应=读实参、定义 dst。
+                MirInstr::HttpCall { dst, args, .. } => {
+                    for arg in args {
+                        check_read!(arg, "http input");
+                    }
+                    st.define_slot(*dst as usize);
+                }
                 // PLAN-961: a numeric conversion reads its source and
                 // defines its destination (pure value flow, Copy scalars).
                 MirInstr::Conv { dst, src } => {

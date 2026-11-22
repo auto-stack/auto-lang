@@ -1403,7 +1403,10 @@ fn visit_local_refs_stmts(stmts: &mut [RStmt], visit: &mut impl FnMut(&mut Local
 fn offset_step_locals_stmts(stmts: &mut [RStmt], offset: usize) {
     let mut stack: Vec<*mut RStmt> = stmts.iter_mut().map(|s| s as *mut RStmt).collect();
     let shift = |l: &mut LocalRef| {
-        if l.0 >= 1 {
+        // PLAN-1116 (T-01): the error-recovery sentinel (an earlier
+        // `source.undefined` recovery node) is not a real local — leave
+        // it untouched; the pending diagnostic fails the compile anyway.
+        if l.0 >= 1 && l.0 != usize::MAX {
             l.0 += offset;
         }
     };

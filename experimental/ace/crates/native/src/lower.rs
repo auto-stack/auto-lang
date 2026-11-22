@@ -3379,6 +3379,11 @@ impl<'a, 'b> FnLowerer<'a, 'b> {
             MirInstr::HostCall { .. } | MirInstr::PlatformCall { .. } => {
                 return Err("av.host-console/1 calls are outside the native surface".into())
             }
+            // PLAN-108（T-03b M1）：Http 效应不在 native 面（组件事件程序由
+            // AV 执行器直链；具名拒绝）。
+            MirInstr::HttpCall { .. } => {
+                return Err("http.client/1 calls are outside the native surface".into())
+            }
             // PLAN-1067: the scheduler surface executes on the dedicated
             // scheduler lane; every other lane keeps PLAN-968's named
             // rejection (the D3 arm is superseded only by the real lane).

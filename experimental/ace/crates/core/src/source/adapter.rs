@@ -4673,6 +4673,8 @@ impl<'p> Emitter<'p> {
                 .or_else(|| super::platform_io::signature(sym).map(|(_, _, cap)| cap))
                 // PLAN-982：配置文档原语自带 `config.document/1` 能力键。
                 .or_else(|| super::config_ops::capability_of(sym))
+                // PLAN-108（T-03b M1）：组件面 Http 原语自带 `http.client/1` 能力键。
+                .or_else(|| super::http_ops::capability_of(sym))
                 // PLAN-981：AGE 资源服务自带能力键。
                 .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
@@ -5106,6 +5108,11 @@ impl<'p> Emitter<'p> {
                 let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = format!("\"t_rec_{}\"", op.result_port);
                 (ps.join(", "), rs)
+            } else if let Some(op) = super::http_ops::by_symbol(sym) {
+                // PLAN-108（T-03b M1）：Http 原语签名 = 目录里的精确参数 VT
+                // + 结果 VT（与 resolve 侧同一声明行，不另写一份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (ps.join(", "), self.ty_use_ref(op.result))
             } else if let Some(op) = super::config_ops::by_symbol(sym) {
                 // PLAN-982（B-CONFIG-I）：配置文档原语的签名 = 目录里的精确参数
                 // VT + 结果 VT（与 resolve 侧选择的重载是同一行，不另写一份）。

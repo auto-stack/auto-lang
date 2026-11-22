@@ -289,8 +289,9 @@ impl TargetProvider for RustTargetProvider {
             sched_drain
         );
         // PLAN-968: append the scheduler runtime for scheduler-surface
-        // programs (the generated __sched calls bind to it).
-        let runtime = if view.is_some_and(|v| v.has_sched_ops()) {
+        // programs (the generated __sched calls bind to it). PLAN-1116
+        // (T-02): console-only programs print through the same runtime.
+        let runtime = if view.is_some_and(|v| v.has_sched_ops() || v.has_console_ops()) {
             format!("{runtime}{}", include_str!("sched_rt.txt"))
         } else {
             runtime.to_string()

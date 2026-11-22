@@ -961,6 +961,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // sys-library units stage through io/mem primitives
                         | crate::platform_io::CAP_WRITE
                         | crate::platform_io::CAP_MEM
+                        // PLAN-108（T-03b M1）：组件面 Http 效应族能力
+                        // （`http.client/1` 目录=已知准入；per-run grant 由
+                        // 执行侧核，不在此处授权）。
+                        | crate::http_client::CATEGORY_HTTP
+                        | crate::http_client::CAP_HTTP
                 )
             };
             if !known {
@@ -2962,6 +2967,48 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     return Err(err(
                         "host.signature",
                         "platform result type mismatch".into(),
+                    ));
+                }
+            }
+            MirInstr::HttpCall { dst, host, args } => {
+                // PLAN-108（T-03b M1）：组件面 Http 效应——host import 须为
+                // http 族符号（能力键 http.client/1 的运行时 grant 在执行
+                // 准入侧核，此处核结构）。
+                let h = self
+                    .module
+                    .host_imports
+                    .get(*host as usize)
+                    .ok_or_else(|| err("host.reference", "http index out of range".into()))?;
+                if !crate::http_client::is_http_symbol(&h.symbol) {
+                    return Err(err(
+                        "host.category",
+                        "HttpCall must target an http.client/1 operation".into(),
+                    ));
+                }
+                let sig = self
+                    .module
+                    .sig_of(h.sig)
+                    .ok_or_else(|| err("host.signature", "invalid http signature".into()))?;
+                if args.len() != sig.params.len() {
+                    return Err(err(
+                        "host.signature",
+                        "http operand count mismatch".into(),
+                    ));
+                }
+                for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
+                    let at = slot_ty_of(f, *arg, sp, "http arg")?;
+                    if !self.ty_equiv(at, *param_ty) {
+                        return Err(err(
+                            "host.signature",
+                            "http operand type mismatch".into(),
+                        ));
+                    }
+                }
+                let dt = slot_ty_of(f, *dst, sp, "http dst")?;
+                if !self.ty_equiv(dt, sig.result) {
+                    return Err(err(
+                        "host.signature",
+                        "http result type mismatch".into(),
                     ));
                 }
             }
@@ -5066,7 +5113,8 @@ impl MirInstr {
             MirInstr::CreateClosure { dst, .. }
             | MirInstr::CallClosure { dst, .. }
             | MirInstr::EnvGet { dst, .. }
-            | MirInstr::PlatformCall { dst, .. } => Some(*dst),
+            | MirInstr::PlatformCall { dst, .. }
+            | MirInstr::HttpCall { dst, .. } => Some(*dst),
             MirInstr::HostCall { .. }
             | MirInstr::Trace { .. }
             | MirInstr::BorrowEnd { .. }
@@ -5132,6 +5180,7 @@ impl MirInstr {
             | MirInstr::SchedPort { .. }
             | MirInstr::SchedStopping { .. } => vec![],
             MirInstr::PlatformCall { args, .. } => args.clone(),
+            MirInstr::HttpCall { args, .. } => args.clone(),
             MirInstr::GlobalGet { .. } | MirInstr::GlobalTake { .. } => vec![],
             MirInstr::GlobalSet { src, .. } => vec![*src],
             MirInstr::FieldGet { base, .. } => vec![*base],

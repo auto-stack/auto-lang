@@ -282,6 +282,14 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
                 .unwrap_or_else(|| format!("host#{host}"));
             format!("host_call {} {}", h, arg)
         }
+        MirInstr::HttpCall { dst, host, args } => {
+            let h = m
+                .host_imports
+                .get(*host as usize)
+                .map(|hi| format!("{}:{}", hi.category, escape(&hi.symbol)))
+                .unwrap_or_else(|| "http:?".to_string());
+            format!("http_call {} {} {:?}", dst, h, args)
+        }
         MirInstr::PlatformCall { dst, host, args } => {
             let h = m
                 .host_imports

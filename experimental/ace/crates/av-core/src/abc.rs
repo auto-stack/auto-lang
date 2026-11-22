@@ -262,6 +262,8 @@ pub const OP_SCHED_STOPPING: u8 = 0x4B;
 pub const OP_SCHED_FUTURE: u8 = 0x54;
 pub const OP_SCHED_DETACH: u8 = 0x55;
 pub const OP_SCHED_SINGLETON: u8 = 0x56;
+/// PLAN-108（T-03b M1）：组件面 Http 效应调用（`http.client/1`）。
+pub const OP_HTTP_CALL: u8 = 0x58;
 
 // sub-ops
 pub const BIN_ADD: u8 = 1;
@@ -834,6 +836,16 @@ fn encode_preflight_scratch(m: &MirModule) -> usize {
     largest.saturating_mul(3).saturating_add(4096)
 }
 
+/// PLAN-108（T-03b M1）：模块的全部 host import 是否均为 Http 效应族
+/// （`http.client/1`）——Owned 线族的 HOST section 窄开口（非 AVHC/Closures
+/// 的既有门对其余 host import 不变）。
+fn all_http_host_imports(m: &MirModule) -> bool {
+    !m.host_imports.is_empty()
+        && m.host_imports
+            .iter()
+            .all(|h| crate::http_client::is_http_symbol(&h.symbol))
+}
+
 fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, AbcDecodeError> {
     let family = match m.profile.as_str() {
         crate::contract::AV_PROFILE
@@ -866,7 +878,10 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
         && family != WireFamily::HostConsole
         // PLAN-968: scheduler-surface modules (closures family) carry
         // console host imports for task-handler stdout observation.
-        && family != WireFamily::Closures)
+        && family != WireFamily::Closures
+        // PLAN-108（T-03b M1）：组件事件程序（Owned 线族）携带 Http 效应
+        // host import（全部=http 族符号才放行；其余 host import 门不变）。
+        && !(family == WireFamily::Owned && all_http_host_imports(m)))
         || m.host_imports.len() > crate::platform_io::MAX_TOTAL_HOST_IMPORTS
     {
         return Err(AbcDecodeError::fmt_err(
@@ -935,7 +950,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
 
     // PLAN-968: scheduler modules (closures family) carry the same HOST
     // section (console host imports).
-    if family == WireFamily::HostConsole || family == WireFamily::Closures {
+    if family == WireFamily::HostConsole
+        || family == WireFamily::Closures
+        // PLAN-108（T-03b M1）：Owned 线族恒携 HOST section（n 可为 0；
+        //  admission 门只放 http 族 import——见上）。编解码两侧同条件。
+        || family == WireFamily::Owned
+    {
         w.push(b"HOST");
         put_u16(&mut w, m.host_imports.len() as u16);
         for h in &m.host_imports {
@@ -1544,6 +1564,23 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u8(&mut w, OP_HOST_CALL);
                         put_u32(&mut w, *host);
                         put_u32(&mut w, *arg);
+                    }
+                    MirInstr::HttpCall { dst, host, args } => {
+                        // PLAN-108（T-03b M1）：Http 效应接线（组件事件程序
+                        // 车道；新 opcode 无 legacy 兼容约束，arity ≤ 8）。
+                        if args.len() > 8 {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.encode.http-arity",
+                                "http call arity exceeds wire limit".into(),
+                            ));
+                        }
+                        put_u8(&mut w, OP_HTTP_CALL);
+                        put_u32(&mut w, *dst);
+                        put_u32(&mut w, *host);
+                        put_u8(&mut w, args.len() as u8);
+                        for a in args {
+                            put_u32(&mut w, *a);
+                        }
                     }
                     MirInstr::PlatformCall { dst, host, args } => {
                         // PLAN-973: the closures family (packages-aggregates
@@ -2901,7 +2938,12 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
     }
     let mut host_imports = Vec::new();
     // PLAN-968: scheduler modules (closures family) carry the HOST section.
-    if family == WireFamily::HostConsole || family == WireFamily::Closures {
+    // PLAN-108（T-03b M1）：Owned 线族的 Http host import 同截面（编码侧
+    // 同条件，见上）。
+    if family == WireFamily::HostConsole
+        || family == WireFamily::Closures
+        || family == WireFamily::Owned
+    {
         if c.take(4)? != b"HOST" {
             return Err(AbcDecodeError::fmt_err(
                 "abc.decode.host-section",
@@ -3804,6 +3846,23 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             args.push(c.u32()?);
                         }
                         MirInstr::PlatformCall { dst, host, args }
+                    }
+                    OP_HTTP_CALL => {
+                        // PLAN-108（T-03b M1）：Http 效应接线解码。
+                        let dst = c.u32()?;
+                        let host = c.u32()?;
+                        let argc = c.u8()? as usize;
+                        if argc > 8 {
+                            return Err(AbcDecodeError::fmt_err(
+                                "abc.decode.http-arity",
+                                "http call arity exceeds wire limit".into(),
+                            ));
+                        }
+                        let mut args = Vec::with_capacity(argc);
+                        for _ in 0..argc {
+                            args.push(c.u32()?);
+                        }
+                        MirInstr::HttpCall { dst, host, args }
                     }
                     OP_TRACE => {
                         let ev = c.u8()?;

@@ -390,6 +390,22 @@ T-06 落主后由 `inflight` 翻 `landed`。本节只挂接来源，不改 SD-01
 - **义务承接**：D-971-B-01（发现契约 helper 假阳性）、D-971-B-02（notebook 无 console）、D-971-B-03（脚本前门语言面）、D-971-B-04（debug/test UI 消费者）、D-971-B-05（inlay 内容断言）、D-971-B-06（编辑器宿主 E2E），均记录于 `docs/plans/KNOWN-DEBT-AND-RISKS.md`（owner+关闭条件）。
 - **范围裁定**：SD-TARGET-SCOPE 无改动——本批未新增/删除 Godot 代码，Godot 后置与生产 TS required 的既有裁定不受影响。
 
+## PLAN-1117 增量：A2R v0.5 接管候选已验（SD-03 挂接，2026-11-22）
+
+按本文件 SD-01 分类口径登记本包已验 producer（不复制子计划分母）：
+
+| 入口/producer | repo/SHA | 状态 | 证据边界 |
+|---|---|---|---|
+| 候选路由（宿主桥语言通道 + m2-build A2R 车道） | auto-lang plan-1117-dev 451cdb0be | implemented-verified | 单文件普通语言面：真 rustc build lane→预编译 exe→SDK 仓外重定位运行（V-01 三观察同值 39 + trap:Overflow）；仓外 Cargo consumer `#[path]` 原样编入实调 `fn_main` |
+| `IF-ACE-A2R-V05-REPLACEMENT/1` 接收门（`auto.a2r.v05-replacement/1` 回执） | 同上 | implemented-verified | 四 required 行哈希绑定候选 SDK；删行/emit-only/错工件/标 ACE 实 legacy 四负控具名拒 |
+| 回滚/失败恢复重演 | 同上 | implemented-verified | 错工件与失败升级下原包+用户数据保持；`restore` 读回旧可用根；再选候选真实重建走语言通道 |
+
+未闭/范围外（保持显式）：多模块语言面包车道（D-1117-2）、兄弟仓 CLI 绕过孔
+（D-1117-1，auto-man owner）、安装默认/升级回滚发行（986）、旧链退役（987）、
+`while` 等语言面冻结差异改写（legacy-replacement §3）。旧分母行义务不减；
+985/B 接 1068 三端门与本包替换证据。规范落点
+[auto-a2r/legacy-replacement](../auto-a2r/legacy-replacement.md)。
+
 ## M2-A Python 互操作已验（PLAN-1026，2026-11-18）
 
 PLAN-1026 交付 AV 侧的 Python 互操作 A 切片：普通 Auto 源码 `use.py <module>: <members>`

@@ -212,3 +212,15 @@ Rust 的 `form=pure ret=i32` 可以声明 `(&F0Callback, i32, i32) -> i32`。Aut
 摘要、锁文件摘要、目标、ABC 与 DLL 摘要及运行授权核对。包内 `targets/av/program.abc`、
 `targets/av/rust-program.json` 与 `providers/rust/provider.dll` 是 AV Rust 运行闭包的
 主要工件。后续工程通过同一个 `ac-build build|sdk|run` 入口消费接口。
+
+## A2R 工程运行时面（PLAN-1116）
+
+- **调度/异步**：任务/actor 沿用 968 共享脱糖与 sched_rt.txt 运行时；异步块与
+  `~T` future 函数为惰性 future（首用物化，正数=ask 活 port），`await` 按符号
+  分派。生成器状态机走语言通道；显式 next/close 的所有权合同=非 Copy owned
+  Assign/消费杀源 + 状态字段写回（AV 句柄别名 vs A2R 逐读克隆的桥）。
+- **外库**：worker `run-language` 的 `foreign` 段（声明形，同 AV）经全身份轴复验
+  （descriptor/digest 重导/stamp/DLL sha）入 `compile_language_source_with_foreign`
+  公共前门；降低时校验 967 冻结 bridge 域；链接=cdylib import lib，DLL 为进程依赖；
+  `AutoTrap::Foreign(i32)` 仅语言通道 trap 集。详见
+  [project-runtime-and-distribution](../auto-a2r/project-runtime-and-distribution.md)。

@@ -556,14 +556,15 @@ impl M2Build {
         lane: &str,
     ) -> Result<(Vec<(String, Vec<u8>)>, Option<RunObservation>, BuildCounts), M2Reject> {
         let target = TargetKind::parse(lane).unwrap();
+        // PLAN-1117 T-02: the A2R lane rides the ORDINARY-LANGUAGE channel
+        // (PLAN-1115/1116 — the v0.5 replacement surface), emitted by the
+        // worker's exact pipeline and then compiled by the real-rustc build
+        // leg below. The a2c/a2py lanes keep their frozen store cold paths.
+        if target == TargetKind::A2r {
+            return self.lane_a2r_language(inputs, src);
+        }
         let mut session = match target {
-            TargetKind::A2r => ace_a2x_store::A2xSession::open(
-                &self.store_root.join("a2x"),
-                &inputs.name,
-                "m2build",
-                DEFAULT_A2X_QUOTA,
-                ace_a2x_rust::RustTargetProvider::v1(),
-            ),
+            // (A2r early-returned above — the language lane owns it.)
             TargetKind::A2c => ace_a2x_store::A2xSession::open(
                 &self.store_root.join("a2x"),
                 &inputs.name,
@@ -615,6 +616,155 @@ impl M2Build {
             assembly.manifest.clone().into_bytes(),
         ));
         Ok((products, None, counts))
+    }
+
+    /// PLAN-1117 T-02: the A2R lane on the ORDINARY-LANGUAGE channel — the
+    /// v0.5 replacement surface. Emit is the a2x-worker `language` lane's
+    /// exact pipeline (admission cap `ac.source.language.av/v1` (+ the CT
+    /// key when the source carries `#{...}`) + the shared
+    /// instantiate/CT prepare hook → `SemanticView` →
+    /// `lower_language_program` → the LANGUAGE fileset schema
+    /// `auto.a2x.rust.language.fileset/1`), session-less: the a2x-store
+    /// family lanes stay frozen on their own channels; their language
+    /// upgrade rides the package seam. The PLAN-1116 build leg then takes
+    /// the fileset through REAL rustc into the precompiled exe (the SDK's
+    /// run closure; spawn counter `rustc-a2r`; no run observation — the
+    /// run closure is `run_sdk` on the precompiled exe).
+    fn lane_a2r_language(
+        &mut self,
+        inputs: &ProjectInputs,
+        src: &str,
+    ) -> Result<(Vec<(String, Vec<u8>)>, Option<RunObservation>, BuildCounts), M2Reject> {
+        let mut caps = inputs.caps.clone();
+        for cap in [ace_core::source::AUTO_SOURCE_ADMISSION_CAP] {
+            if !caps.iter().any(|c| c == cap) {
+                caps.push(cap.to_string());
+            }
+        }
+        if src.contains('#')
+            && !caps
+                .iter()
+                .any(|c| c == ace_core::source::cst::CT_CAPABILITY)
+        {
+            caps.push(ace_core::source::cst::CT_CAPABILITY.to_string());
+        }
+        let compiled =
+            ace_core::source::adapter::compile_language_source_prepared(
+                src,
+                "m2build",
+                &caps,
+                |program, projected_source, has_instances| {
+                    if has_instances {
+                        ace_source_query::instantiate_auto_program(program, "m2build", &caps)?;
+                    }
+                    if src.contains('#') {
+                        let mut service =
+                            ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+                        let _counters = service.counters();
+                        ace_source_cte::product::prepare_auto_ct(
+                            &mut service,
+                            program,
+                            projected_source,
+                            "m2build",
+                            &caps,
+                        )?;
+                    }
+                    Ok(())
+                },
+            )
+            .map_err(|ds| {
+                M2Reject::new(
+                    "m2build.lane-a2x",
+                    ds.iter()
+                        .map(|d| format!("{}: {}", d.code, d.message))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                )
+            })?;
+        let view = ace_a2x_core::SemanticView::from_checked(&compiled.checked)
+            .map_err(|r| M2Reject::new("m2build.lane-a2x", format!("{r:?}")))?;
+        let program = ace_a2x_rust::lower_language_program(&view, &inputs.entry)
+            .map_err(|r| M2Reject::new("m2build.lane-a2x", r.to_string()))?;
+        let source_sha256 = ace_a2x_core::sha256::sha256_hex(src.as_bytes());
+        let config =
+            ace_a2x_rust::canonical_execution_config("transpile", u64::MAX, None, false, false);
+        let set = ace_a2x_rust::assemble_language_file_set(
+            &view,
+            &program,
+            &compiled.input_hash,
+            &source_sha256,
+            &config,
+            &inputs.entry,
+        );
+        let mut products = Vec::new();
+        for (name, text) in &set.files {
+            products.push((format!("targets/a2r/{name}"), text.clone().into_bytes()));
+        }
+        products.push((
+            "targets/a2r/assembly-manifest.json".to_string(),
+            set.manifest.clone().into_bytes(),
+        ));
+        // The PLAN-1116 build leg: REAL rustc over the staged fileset → the
+        // precompiled exe + build receipt (rustc identity / entry).
+        let workdir = self
+            .scratch
+            .join(format!("a2r-{}-{}", inputs.name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&workdir);
+        std::fs::create_dir_all(&workdir).map_err(|e| {
+            M2Reject::new("m2build.io", format!("create {}: {e}", workdir.display()))
+        })?;
+        for (path, text) in &set.files {
+            std::fs::write(workdir.join(path), text)
+                .map_err(|e| M2Reject::new("m2build.io", format!("stage {path}: {e}")))?;
+        }
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+        let exe = workdir.join(format!("{}.exe", inputs.name));
+        let (code, _out, err) = self.spawn_capture_args_stderr(
+            "rustc-a2r",
+            &rustc,
+            &[
+                "--edition",
+                "2021",
+                "-o",
+                &exe.to_string_lossy(),
+                "main.rs",
+            ],
+            Some(&workdir),
+        );
+        if code != Some(0) {
+            let _ = std::fs::remove_dir_all(&workdir);
+            return Err(M2Reject::new(
+                "m2build.lane-a2r-build",
+                format!("rustc failed (exit {code:?}): {err}"),
+            ));
+        }
+        let exe_bytes = std::fs::read(&exe).map_err(|e| {
+            let _ = std::fs::remove_dir_all(&workdir);
+            M2Reject::new("m2build.io", format!("read {}: {e}", exe.display()))
+        })?;
+        let rustc_identity = ace_abi::rust_provider::rustc_identity(&workdir).unwrap_or_default();
+        products.push((
+            "targets/a2r/build-receipt.json".to_string(),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": BUILD_RECEIPT_SCHEMA,
+                "target": "a2r",
+                "rustc_identity": rustc_identity,
+                "entry": inputs.entry,
+            }))
+            .unwrap(),
+        ));
+        products.insert(0, (format!("targets/a2r/{}.exe", inputs.name), exe_bytes));
+        let _ = std::fs::remove_dir_all(&workdir);
+        // No run observation: this lane BUILDS (the run closure is the
+        // SDK's `run_sdk` on the precompiled exe).
+        Ok((
+            products,
+            None,
+            BuildCounts {
+                lane: "a2r".into(),
+                ..Default::default()
+            },
+        ))
     }
 
     /// Build every target and pack one relocatable candidate SDK.
@@ -691,6 +841,23 @@ impl M2Build {
                         name: "cpython".into(),
                         kind: "interpreter".into(),
                         detail: "python3 (declared A2PY runtime interpreter)".into(),
+                    });
+                }
+                TargetKind::A2r => {
+                    // PLAN-1116 (T-04): the A2R build lane's real closure —
+                    // the rustc that compiled the packed exe, and the
+                    // dynamic CRT family that exe links at run time.
+                    run_deps.push(RunDependency {
+                        name: "msvc-crt".into(),
+                        kind: "crt".into(),
+                        detail: "VCRUNTIME140+ucrt (dynamic CRT family the rustc lane linked)"
+                            .into(),
+                    });
+                    build_inputs.push(BuildToolDependency {
+                        name: "rustc".into(),
+                        identity: ace_abi::rust_provider::rustc_identity(&self.scratch)
+                            .unwrap_or_default(),
+                        role: "a2r compilation".into(),
                     });
                 }
                 _ => {}
@@ -887,6 +1054,28 @@ impl M2Build {
                     })?;
                 let full = sdk_root.join(exe.0.replace('/', "\\"));
                 let run = self.spawn_capture("sdk-exe", &full);
+                // PLAN-1116 (T-04): the A2R observation protocol prints
+                // `value:<n>`/`trap:<Name>` and exits 0 — normalize the
+                // observation to the VALUE (the lane's observable), like
+                // the a2py lane, keeping the raw stdout.
+                if target == TargetKind::A2r {
+                    if let Some(v) = run.1.trim().strip_prefix("value:") {
+                        if let Ok(n) = v.trim().parse::<i32>() {
+                            return Ok(RunObservation {
+                                exit_code: Some(n),
+                                stdout: run.1,
+                                channel: "process-stdout".into(),
+                            });
+                        }
+                    }
+                    if run.1.trim().starts_with("trap:") {
+                        return Ok(RunObservation {
+                            exit_code: None,
+                            stdout: run.1,
+                            channel: "process-stdout".into(),
+                        });
+                    }
+                }
                 Ok(RunObservation {
                     exit_code: run.0,
                     stdout: run.1,

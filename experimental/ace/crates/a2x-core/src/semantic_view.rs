@@ -874,6 +874,15 @@ impl<'a> SemanticView<'a> {
             .any(|(_, s)| s.starts_with("__sched_"))
     }
 
+    /// PLAN-1116 (T-02): whether any console print spellings are present
+    /// (they bind to the scheduler runtime's print helpers — a program can
+    /// print without any scheduler operation, e.g. a bare generator loop).
+    pub fn has_console_ops(&self) -> bool {
+        self.sched_defs
+            .iter()
+            .any(|(_, s)| s.starts_with("auto.console."))
+    }
+
     /// PLAN-968: the resolved (param, result) types of a scheduler
     /// intrinsic's fn-type def (the import seam carries the exact shape).
     pub fn sched_sig_types(&self, def_index: usize) -> Option<Result<(Vec<Ty>, Ty), A2xReject>> {

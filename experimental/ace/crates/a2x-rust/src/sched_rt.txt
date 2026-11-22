@@ -73,13 +73,27 @@ struct SchedRegistry {
     tasks: Vec<TaskEntry>,
     /// Ask awaiters by 1-based port id.
     awaiters: Vec<Option<std::sync::mpsc::Receiver<SchedValue>>>,
+    /// PLAN-1116 T-02: lazy futures (`~{ ... }` blocks and `~T` fn calls)
+    /// by 1-based slot — created WITHOUT spawning, materialized (thread
+    /// spawned, port published) on the first `await`/`go`. The deferred
+    /// value is the NEGATIVE slot id; live ask ports stay positive, so
+    /// `await`/`detach` discriminate by sign.
+    lazy_futures: Vec<Option<LazyFuture>>,
     go_threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+struct LazyFuture {
+    f: fn(Vec<SchedValue>) -> SchedValue,
+    env: Vec<SchedValue>,
+    /// The published port once materialized (a second `await` observes
+    /// the single-terminal already-consumed rule).
+    port: Option<i32>,
 }
 
 fn registry() -> &'static std::sync::Mutex<SchedRegistry> {
     static REG: std::sync::OnceLock<std::sync::Mutex<SchedRegistry>> = std::sync::OnceLock::new();
     REG.get_or_init(|| {
-        std::sync::Mutex::new(SchedRegistry { tasks: Vec::new(), awaiters: Vec::new(), go_threads: Vec::new() })
+        std::sync::Mutex::new(SchedRegistry { tasks: Vec::new(), awaiters: Vec::new(), lazy_futures: Vec::new(), go_threads: Vec::new() })
     })
 }
 
@@ -271,6 +285,78 @@ pub fn a2x_sched_sleep(ms: i32) -> i32 {
 pub fn a2x_sched_go(args: Vec<SchedValue>, f: fn(Vec<SchedValue>)) -> i32 {
     let handle = std::thread::spawn(move || f(args));
     registry().lock().unwrap().go_threads.push(handle);
+    0
+}
+
+/// PLAN-1116 T-02: an async block's (`~{ ... }`) or future fn's (`~T`
+/// call) LAZY future. Nothing runs yet — the thunk's thread spawns on the
+/// first `await`/`go` (AV's deferred ordering: `let f = work(42)` must
+/// not observe `work`'s effects before the later statements). The
+/// returned handle is the NEGATIVE 1-based slot id.
+pub fn a2x_sched_future_lazy(f: fn(Vec<SchedValue>) -> SchedValue, env: Vec<SchedValue>) -> i32 {
+    let mut reg = registry().lock().unwrap();
+    reg.lazy_futures.push(Some(LazyFuture { f, env, port: None }));
+    -(reg.lazy_futures.len() as i32)
+}
+
+/// Materialize a deferred value: a negative lazy-future handle spawns the
+/// thunk (once) and becomes its published port; a positive ask port is
+/// already live and passes through.
+fn a2x_sched_materialize(handle: i32) -> i32 {
+    if handle >= 0 {
+        return handle;
+    }
+    let idx = (-handle - 1).max(0) as usize;
+    let (f, env, memo) = {
+        let mut reg = registry().lock().unwrap();
+        let Some(slot) = reg.lazy_futures.get_mut(idx) else {
+            a2x_sched_fail("sched: await on an unknown future");
+        };
+        let Some(future) = slot else {
+            a2x_sched_fail("sched: await on an unknown future");
+        };
+        if let Some(port) = future.port {
+            return port;
+        }
+        (
+            future.f,
+            std::mem::take(&mut future.env),
+            future.port,
+        )
+    };
+    let _ = memo;
+    let (rtx, rrx) = std::sync::mpsc::channel::<SchedValue>();
+    let thread = std::thread::spawn(move || {
+        let value = f(env);
+        // The awaiting end may be gone (a detached fire-and-forget): the
+        // late result is dropped, never resurrected (single terminal).
+        let _ = rtx.send(value);
+    });
+    let port = {
+        let mut reg = registry().lock().unwrap();
+        let port = reg.awaiters.len() as i32 + 1;
+        reg.awaiters.push(Some(rrx));
+        reg.go_threads.push(thread);
+        if let Some(slot) = reg.lazy_futures.get_mut(idx) {
+            if let Some(future) = slot {
+                future.port = Some(port);
+            }
+        }
+        port
+    };
+    port
+}
+
+/// PLAN-1116 T-02: `await` on any deferred value (an ask future's live
+/// port or a lazy future's handle).
+pub fn a2x_sched_await_any(handle: i32) -> SchedValue {
+    a2x_sched_await(a2x_sched_materialize(handle))
+}
+
+/// PLAN-1116 T-02: `go` on a future — materialize the lazy body (its
+/// thread runs to completion at the orderly drain) and discard the port.
+pub fn a2x_sched_detach(handle: i32) -> i32 {
+    let _ = a2x_sched_materialize(handle);
     0
 }
 

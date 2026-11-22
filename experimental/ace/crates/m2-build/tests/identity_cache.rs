@@ -74,9 +74,16 @@ fn p978_identity_axes_separate_real_inputs() {
     );
 }
 
-/// V-02/V-10 leg: per-function precise invalidation on the a2r lane — a
-/// `main` body edit reproduces exactly ONE fragment; the untouched
-/// `helper` rides the semantic/fragment store hits.
+/// V-02/V-10 leg: the a2r lane's edit invalidation contract.
+///
+/// PLAN-1117 (D-1117-3): the a2r producer rides the ORDINARY-LANGUAGE
+/// channel session-less — per-fragment store accounting belongs to the
+/// store-served lanes (a2c/a2py) and the a2x-store's own suite; the a2r
+/// lane's precise invalidation now lives at the M2Build identity layer:
+/// a `main` body edit flips the build identity and rebuilds, while the
+/// language channel's own manifest identity pins the emitted artifact.
+/// (The store-fragment precision property re-binds to a2r with the
+/// package seam, D-1117-2.)
 #[test]
 fn p978_a2r_edit_invalidates_only_changed_function() {
     let root = scratch("a2r-precise");
@@ -84,21 +91,35 @@ fn p978_a2r_edit_invalidates_only_changed_function() {
     let s1 = ProjectInputs::new("twofn", "main", "main.at", &two_fn_source("helper() * 4"));
     let s2 = ProjectInputs::new("twofn", "main", "main.at", &two_fn_source("helper() * 5"));
     let first = driver.build(TargetKind::A2r, &s1).unwrap();
-    assert_eq!(first.counts.fragments_produced, 2, "cold: both functions");
+    assert_eq!(
+        first.counts.fragments_produced, 0,
+        "the session-less language lane produces no store fragments (got {:?})",
+        first.counts
+    );
+    assert!(
+        first.products.iter().any(|(p, _)| p == "targets/a2r/twofn.exe"),
+        "cold build produces the precompiled exe"
+    );
+    let manifest = first
+        .products
+        .iter()
+        .find(|(p, _)| p == "targets/a2r/assembly-manifest.json")
+        .expect("the language assembly manifest rides the products");
+    let manifest_a = manifest.1.clone();
     let second = driver.build(TargetKind::A2r, &s2).unwrap();
     assert!(
         second.rebuilt,
         "identity flipped (main body edit) — node rebuilds"
     );
-    assert_eq!(
-        second.counts.fragments_produced, 1,
-        "only the edited function is reproduced (got counts {:?})",
-        second.counts
-    );
-    assert!(
-        second.counts.store_hit_semantic + second.counts.store_hit_fragment >= 1,
-        "the unchanged function rides store hits (got {:?})",
-        second.counts
+    assert_ne!(
+        manifest_a,
+        second
+            .products
+            .iter()
+            .find(|(p, _)| p == "targets/a2r/assembly-manifest.json")
+            .map(|(_, b)| b.clone())
+            .unwrap_or_default(),
+        "a body edit re-emits a different language manifest (full-source identity)"
     );
 }
 

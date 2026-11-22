@@ -6,6 +6,8 @@ mod py_lane_probe_1094;
 mod abc_semantics_tier;
 #[path = "cases/component_event_sessions_1106.rs"]
 mod component_event_sessions_1106;
+#[path = "cases/plan108_http_component.rs"]
+mod plan108_http_component;
 #[path = "cases/plan1106_t01_probe.rs"]
 mod plan1106_t01_probe;
 #[path = "cases/plan980_lambda_if.rs"]
