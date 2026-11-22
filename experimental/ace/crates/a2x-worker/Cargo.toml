@@ -34,6 +34,7 @@ ace-source-cte = { path = "../source-cte" }
 ace-foreign-contract = { path = "../foreign-contract" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tempfile = "3"
 
 [dev-dependencies]
 # PLAN-1116 T-03: the foreign probe derives the prepared-closure digests

@@ -45,6 +45,8 @@ dependencies = [
  "ace-a2x-core",
  "ace-core",
  "ace-foreign-contract",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -102,6 +104,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "windows-sys 0.59.0",
 ]
 

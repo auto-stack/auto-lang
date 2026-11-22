@@ -3125,7 +3125,7 @@ fn decode_options(
                 }
                 let hpath = f.path_of("a2x_hir");
                 let pairs = as_obj(v, &hpath)?;
-                let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps"])?;
+                let hf = Fields::new(&hpath, pairs, &["profile", "entry", "caps", "python-error"])?;
                 let profile = req_str(&hf, "profile")?;
                 let profile_ok = match recipe.as_str() {
                     "ac-a2r/hir-scalar-emit-v1" => {
@@ -3165,7 +3165,7 @@ fn decode_options(
                     "ac-a2py/hir-stdlib-run-v1" => {
                         matches!(
                             profile.as_str(),
-                            "core" | "scalar" | "record" | "text" | "text-record" | "collections"
+                            "core" | "scalar" | "record" | "text" | "text-record" | "collections" | "python-script"
                         )
                     }
                     _ => matches!(profile.as_str(), "record" | "text" | "text-record"),
@@ -3191,10 +3191,31 @@ fn decode_options(
                         out
                     }
                 };
+                let python_error = match hf.sub("python-error") {
+                    None => None,
+                    Some(value) => {
+                        let path = hf.path_of("python-error");
+                        if !py_error_profile(&recipe, &profile) {
+                            return Err(err(&path, "Python errors require the python-script run profile"));
+                        }
+                        let pairs = as_obj(value, &path)?;
+                        let fields = Fields::new(&path, pairs, &["type", "kind", "span"])?;
+                        let span_text = req_str(&fields, "span")?;
+                        let span = parse_error_span(&span_text).ok_or_else(|| {
+                            err(&fields.path_of("span"), "expected start..end byte range")
+                        })?;
+                        Some(ProbePythonErrorExpect {
+                            name: req_str(&fields, "type")?,
+                            kind: req_str(&fields, "kind")?,
+                            span,
+                        })
+                    }
+                };
                 Some(ProbeA2xHirSpec {
                     profile,
                     entry,
                     caps,
+                    python_error,
                 })
             }
         };
@@ -3621,8 +3642,25 @@ pub struct ProbeA2xHirSpec {
     pub profile: String,
     pub entry: String,
     pub caps: Vec<String>,
+    pub python_error: Option<ProbePythonErrorExpect>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbePythonErrorExpect {
+    pub name: String,
+    pub kind: String,
+    pub span: (u32, u32),
+}
+
+pub(crate) fn py_error_profile(recipe: &str, profile: &str) -> bool {
+    recipe == "ac-a2py/hir-stdlib-run-v1" && profile == "python-script"
+}
+
+pub(crate) fn parse_error_span(text: &str) -> Option<(u32, u32)> {
+    let (start, end) = text.split_once("..")?;
+    let (start, end) = (start.trim().parse().ok()?, end.trim().parse().ok()?);
+    (start < end).then_some((start, end))
+}
 /// sema/query-v1 binding: which semantic query the recipe runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeSemaSpec {

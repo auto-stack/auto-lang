@@ -111,6 +111,14 @@
       "target": "experimental/ace/target",
       "env": "AC_A2X_HIR_WORKER"
     },
+    "a2x-python-debug": {
+      "workspace": "experimental/ace",
+      "package": "ace-a2x-worker",
+      "binaries": ["a2x-worker"],
+      "profile": "debug",
+      "target": "experimental/ace/target",
+      "env": "AC_A2X_HIR_WORKER"
+    },
     "trace-runtime": {
       "workspace": "experimental/ace",
       "package": "ace-trace-runtime",

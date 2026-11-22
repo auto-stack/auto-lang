@@ -1305,7 +1305,40 @@ impl A2xSession {
         let view =
             SemanticView::from_checked(&compiled.checked).map_err(A2xRejectOrResource::Reject)?;
         self.stats.whole_fallback += 1;
-        self.assemble_from_view(&view, &compiled.input_hash, entry, src, read_only)
+        // A2PY embeds original byte offsets for Python operations. The semantic
+        // fingerprint deliberately ignores location, so location-bearing
+        // fragments also need the physical inputs read during lowering.
+        let mut contexts = BTreeMap::new();
+        if let Some(ops) = view.py_ops() {
+            for f in view.functions() {
+                let starts: std::collections::BTreeSet<_> = f
+                    .body
+                    .exprs
+                    .iter()
+                    .map(|expr| expr.span.start as u32)
+                    .collect();
+                let relevant: Vec<_> = ops
+                    .facts()
+                    .iter()
+                    .filter(|op| starts.contains(&op.span.0))
+                    .collect();
+                if !relevant.is_empty() {
+                    contexts.insert(
+                        f.source_name.to_string(),
+                        sha256_hex(format!("{relevant:?}").as_bytes()),
+                    );
+                }
+            }
+        }
+        self.assemble_view_with_contexts(
+            &view,
+            &compiled.input_hash,
+            entry,
+            src,
+            read_only,
+            true,
+            &contexts,
+        )
     }
     /// Assemble from a view, reusing resident fragments and store hits;
     /// persists only what is new (§5.4 "未改函数生产/工件写入均0").

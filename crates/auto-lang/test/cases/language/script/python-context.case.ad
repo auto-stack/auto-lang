@@ -65,10 +65,33 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
 foreign: { kind: "rust", provider: "py" }
 exit: 42
+error-kind: "python.5"
+error-span: "51..61"
 
 #### stdout
 
 ```text
+```
+
+#### stderr
+
+```text
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "51..61"
+
+#### stdout
+
+```text
+value:42
 ```
 
 #### stderr
@@ -119,12 +142,122 @@ error-span: "45..55"
 ```text
 ```
 
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 1
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "45..55"
+
+#### stdout
+
+```text
+```
+
 ### Notes
 
 The uncaught Python exception is a LANGUAGE-ERROR terminal state (not a
 silent foreign-status trap): `lang.error` at the run stage, the
 `PyException ValueError: …` message, classification `python.5`, and the
 original half-open span `[45,55)` of `int("abc")` on line 3.
+
+## Case: python-error-nested-index
+id: "py.parity.1110.nested-index"
+tags: ["av-language-parity", "plan-1110"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int, list
+fn main() int {
+ var items = list()
+ try { return int(items.pop()).to(int) } catch e { return 42 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 42
+error-kind: "python.4"
+error-span: "81..92"
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "IndexError"
+error-kind: "python.4"
+error-span: "81..92"
+
+#### stdout
+
+```text
+value:42
+```
+
+#### stderr
+
+```text
+```
+
+## Case: python-nested-success
+id: "py.parity.1110.nested-success"
+tags: ["av-language-parity", "plan-1110"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: int, list
+fn main() int {
+ var items = list()
+ items.append(7)
+ try { return int(items.pop()).to(int) } catch e { return 42 }
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 7
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+
+#### stdout
+
+```text
+value:7
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The only element can be popped once. If a target evaluates the inner operand
+twice, the second pop reaches catch and returns 42 instead of 7.
 
 ## Case: context-manager-close
 id: "av.parity.1094.context-manager-close"

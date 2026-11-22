@@ -9,3 +9,7 @@ publish = false
 ace-a2x-core = { path = "../a2x-core" }
 ace-foreign-contract = { path = "../foreign-contract" }
 ace-core = { path = "../core" }
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"

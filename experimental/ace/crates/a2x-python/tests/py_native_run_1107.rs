@@ -50,15 +50,19 @@ fn find_python() -> String {
 }
 
 fn emit_fileset(dir: &PathBuf, src: &str) -> Vec<String> {
+    emit_fileset_for_path(dir, src, "p1107-a2py.at")
+}
+
+fn emit_fileset_for_path(dir: &PathBuf, src: &str, path: &str) -> Vec<String> {
     let contract = py_declaration_contract().expect("declaration contract");
     let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
-    let compiled = ace_core::source::compile_aggregates_source_with_foreign(
-        src,
-        "p1107-a2py.at",
-        &caps,
-        &contract,
-    )
-    .unwrap_or_else(|d| panic!("compile: {d:?}"));
+    let compile = if path.ends_with(".as") {
+        ace_core::source::compile_language_source_with_foreign
+    } else {
+        ace_core::source::compile_aggregates_source_with_foreign
+    };
+    let compiled =
+        compile(src, path, &caps, &contract).unwrap_or_else(|d| panic!("compile: {d:?}"));
     let view = SemanticView::from_checked(&compiled.checked).expect("view");
     let provider = PythonTargetProvider;
     provider
@@ -113,6 +117,72 @@ fn emit_fileset(dir: &PathBuf, src: &str) -> Vec<String> {
         paths.push(name.clone());
     }
     paths
+}
+
+fn shared_error_source(case_id: &str) -> &'static str {
+    let document = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../crates/auto-lang/test/cases/language/script/python-context.case.ad"
+    ));
+    let heading = format!("## Case: {case_id}\n");
+    document
+        .split_once(&heading)
+        .unwrap()
+        .1
+        .split_once("```auto\n")
+        .unwrap()
+        .1
+        .split_once("```")
+        .unwrap()
+        .0
+}
+
+fn check_shared_python_error(case_id: &str, expected_start: u64, caught: bool) {
+    let source = shared_error_source(case_id);
+    let root = std::env::var_os("ACE_PLAN_1110_SCRATCH")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = tempfile::Builder::new()
+        .prefix(case_id)
+        .tempdir_in(root)
+        .expect("create isolated native error workspace");
+    emit_fileset_for_path(&dir.path().to_path_buf(), source, "main.as");
+    let trace = dir.path().join("error.json");
+    let actual = Command::new(find_python())
+        .args(["-I", "-B", "a2x_main.py"])
+        .current_dir(dir.path())
+        .env("ACE_A2PY_ERROR_OBSERVATION", &trace)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&actual.stdout);
+    let stderr = String::from_utf8_lossy(&actual.stderr);
+    assert_eq!(actual.status.success(), caught, "{stdout}\n{stderr}");
+    if caught {
+        assert_eq!(stdout.trim(), "value:42");
+        assert!(stderr.is_empty(), "{stderr}");
+    } else {
+        assert!(stdout.is_empty(), "{stdout}");
+        assert!(stderr.contains("PyException ValueError"), "{stderr}");
+    }
+    let observation: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&trace).expect("native error observation")).unwrap();
+    assert_eq!(observation["name"], "ValueError");
+    assert_eq!(observation["kind"], "python.5");
+    assert_eq!(observation["escaped"], !caught);
+    assert_eq!(observation["handled"], u64::from(caught));
+    assert_eq!(observation["start"], expected_start);
+    assert_eq!(observation["end"], expected_start + 10);
+    dir.close().unwrap();
+}
+
+#[test]
+fn p1110_native_caught_error_observes_actual_type_and_span() {
+    check_shared_python_error("python-error-catch", 51, true);
+}
+
+#[test]
+fn p1110_native_uncaught_error_observes_actual_type_and_span() {
+    check_shared_python_error("python-error-uncaught", 45, false);
 }
 
 #[test]

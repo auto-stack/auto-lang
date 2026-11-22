@@ -731,6 +731,19 @@ suite = "crates/auto-lang/test/cases/language.suite.ad"
 all = false
 
 [[group]]
+name = "case-a2py-language-parity"
+title = "TestCase 公共语言语料 A2PY 视图（PLAN-1110 Python 异常）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+check = "a2py"
+tools = ["case-parent", "a2x-python-debug"]
+domain = "ace"
+suite = "crates/auto-lang/test/cases/language.suite.ad"
+all = false
+
+[[group]]
 name = "case-ac-av"
 title = "TestCase case-ac-av"
 runner = "case"

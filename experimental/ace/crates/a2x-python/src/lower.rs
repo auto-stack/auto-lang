@@ -342,6 +342,7 @@ fn py_text_arg(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            c if (c as u32) > 0xffff => out.push_str(&format!("\\U{:08x}", c as u32)),
             c if (c as u32) < 0x20 || (c as u32) > 0x7e => {
                 out.push_str(&format!("\\u{:04x}", c as u32))
             }
@@ -353,12 +354,12 @@ fn py_text_arg(s: &str) -> String {
 }
 
 /// PLAN-1107 T-03: one compile-time literal operand of a Python operation,
-/// in the target's value representation (Auto text is bytes on this target).
+/// in Python's value representation at the foreign boundary.
 fn py_literal_text(lit: &PyLiteral) -> String {
     match lit {
         PyLiteral::Int(v) => format!("{v}"),
         PyLiteral::Bool(b) => if *b { "True" } else { "False" }.to_string(),
-        PyLiteral::Text(t) => py_bytes_literal(t.as_bytes()),
+        PyLiteral::Text(t) => py_text_arg(t),
         PyLiteral::Float(f) => {
             if f.is_finite() {
                 format!("{f:?}")
@@ -605,6 +606,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             plan.find_exact(kind, exact)
                 .or_else(|| plan.find(kind, start))
         };
+        let op = |fact: &ace_core::py_ops::PyOpFact, helper: &str, args: &str| {
+            let (start, end) = fact.span;
+            format!("a2x_py_op({start}, {end}, {helper}, {args})")
+        };
         // `.to(float)`: the F32 lane is `Cast(bits-pair intrinsic)`; the F64
         // lane's OUTER node is the bits-pair intrinsic itself. Both are ONE
         // native extraction.
@@ -622,12 +627,13 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             if outer == Some(true) {
                 let recv = self.py_operand(fact, PyRole::Receiver)?;
                 let t = self.fresh_temp();
+                let call = op(fact, "a2x_py_to_f64", &recv);
                 let call = match &e.kind {
                     hir::ExprKind::Cast {
                         to: hir::BuiltinType::F32,
                         ..
-                    } => format!("a2x_cast_f32(a2x_py_to_f64({recv}))"),
-                    _ => format!("a2x_py_to_f64({recv})"),
+                    } => format!("a2x_cast_f32({call})"),
+                    _ => call,
                 };
                 self.emit_line(&format!("{t} = {call}"));
                 return Ok(Some(t));
@@ -639,7 +645,8 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 if self.view.py_symbol(callee.0 as usize) == Some("__py_staged_text") {
                     let recv = self.py_operand(fact, PyRole::Receiver)?;
                     let t = self.fresh_temp();
-                    self.emit_line(&format!("{t} = a2x_str_from_lit(a2x_py_to_str({recv}))"));
+                    let call = op(fact, "a2x_py_to_str", &recv);
+                    self.emit_line(&format!("{t} = a2x_str_from_lit({call})"));
                     return Ok(Some(t));
                 }
             }
@@ -669,11 +676,15 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             )
         })?;
         let t = self.fresh_temp();
-        let line = match kind {
-            PyOpKind::Import => format!(
-                "{t} = a2x_py_import({}, {})",
-                py_text_arg(&fact.module),
-                py_text_arg(&fact.member)
+        let call = match kind {
+            PyOpKind::Import => op(
+                fact,
+                "a2x_py_import",
+                &format!(
+                    "{}, {}",
+                    py_text_arg(&fact.module),
+                    py_text_arg(&fact.member)
+                ),
             ),
             PyOpKind::Call => {
                 let recv = self.py_operand(fact, PyRole::Receiver)?;
@@ -702,46 +713,69 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 } else {
                     py_text_arg(&fact.member)
                 };
-                format!(
-                    "{t} = a2x_py_call({recv}, {member}, [{}], {{{}}})",
-                    args.join(", "),
-                    kwargs.join(", ")
+                op(
+                    fact,
+                    "a2x_py_call",
+                    &format!(
+                        "{recv}, {member}, [{}], {{{}}}",
+                        args.join(", "),
+                        kwargs.join(", ")
+                    ),
                 )
             }
-            PyOpKind::GetAttr => format!(
-                "{t} = a2x_py_getattr({}, {})",
-                self.py_operand(fact, PyRole::Receiver)?,
-                py_text_arg(&fact.member)
+            PyOpKind::GetAttr => op(
+                fact,
+                "a2x_py_getattr",
+                &format!(
+                    "{}, {}",
+                    self.py_operand(fact, PyRole::Receiver)?,
+                    py_text_arg(&fact.member)
+                ),
             ),
-            PyOpKind::GetItem => format!(
-                "{t} = a2x_py_getitem({}, {})",
-                self.py_operand(fact, PyRole::Receiver)?,
-                self.py_operand(fact, PyRole::Positional(0))?
+            PyOpKind::GetItem => op(
+                fact,
+                "a2x_py_getitem",
+                &format!(
+                    "{}, {}",
+                    self.py_operand(fact, PyRole::Receiver)?,
+                    self.py_operand(fact, PyRole::Positional(0))?
+                ),
             ),
-            PyOpKind::BinOp => format!(
-                "{t} = a2x_py_binop({}, {}, {})",
-                py_text_arg(&fact.member),
-                self.py_operand(fact, PyRole::Receiver)?,
-                self.py_operand(fact, PyRole::Positional(0))?
+            PyOpKind::BinOp => op(
+                fact,
+                "a2x_py_binop",
+                &format!(
+                    "{}, {}, {}",
+                    py_text_arg(&fact.member),
+                    self.py_operand(fact, PyRole::Receiver)?,
+                    self.py_operand(fact, PyRole::Positional(0))?
+                ),
             ),
-            PyOpKind::ToFloat => format!(
-                "{t} = a2x_py_to_f64({})",
-                self.py_operand(fact, PyRole::Receiver)?
+            PyOpKind::ToFloat => op(
+                fact,
+                "a2x_py_to_f64",
+                &self.py_operand(fact, PyRole::Receiver)?,
             ),
-            PyOpKind::ToInt => format!(
-                "{t} = a2x_check_i32(a2x_py_to_i32({}))",
-                self.py_operand(fact, PyRole::Receiver)?
+            PyOpKind::ToInt => {
+                let call = op(
+                    fact,
+                    "a2x_py_to_i32",
+                    &self.py_operand(fact, PyRole::Receiver)?,
+                );
+                format!("a2x_check_i32({call})")
+            }
+            PyOpKind::ToBool => op(
+                fact,
+                "a2x_py_to_bool",
+                &self.py_operand(fact, PyRole::Receiver)?,
             ),
-            PyOpKind::ToBool => format!(
-                "{t} = a2x_py_to_bool({})",
-                self.py_operand(fact, PyRole::Receiver)?
-            ),
-            PyOpKind::ToText => format!(
-                "{t} = a2x_py_to_str({})",
-                self.py_operand(fact, PyRole::Receiver)?
+            PyOpKind::ToText => op(
+                fact,
+                "a2x_py_to_str",
+                &self.py_operand(fact, PyRole::Receiver)?,
             ),
         };
-        self.emit_line(&line);
+        self.emit_line(&format!("{t} = {call}"));
         Ok(Some(t))
     }
 
@@ -929,7 +963,12 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 }
                 Ok(())
             }
-            hir::Stmt::Loop { id, body, .. } => {
+            hir::Stmt::Loop { id, body, unwind } => {
+                let unwind = unwind.filter(|_| self.view.py_ops().is_some());
+                if unwind.is_some() {
+                    self.emit_line("try:");
+                    self.indent += 1;
+                }
                 self.loop_stack.push(id.0);
                 self.emit_line("while True:");
                 self.indent += 1;
@@ -944,6 +983,23 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 }
                 self.indent -= 1;
                 self.loop_stack.pop();
+                if let Some(unwind) = unwind {
+                    self.indent -= 1;
+                    let error = self.fresh_temp();
+                    self.emit_line(&format!("except A2xPythonError as {error}:"));
+                    self.indent += 1;
+                    let kind = self.local_name(unwind.kind.0)?.to_string();
+                    let message = self.local_name(unwind.message.0)?.to_string();
+                    let old = self.fresh_temp();
+                    self.emit_line(&format!("{old} = {message}"));
+                    self.emit_line(&format!("{message} = a2x_py_intercept({error})"));
+                    self.emit_line(&format!("if {old} is not None:"));
+                    self.indent += 1;
+                    self.emit_line(&format!("a2x_str_free({old})"));
+                    self.indent -= 1;
+                    self.emit_line(&format!("{kind} = 4"));
+                    self.indent -= 1;
+                }
                 Ok(())
             }
             hir::Stmt::Break { target } => {
@@ -962,7 +1018,11 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             }
             hir::Stmt::Fail { value } => {
                 let msg = self.lower_expr(*value)?;
-                self.emit_line(&format!("raise RuntimeError({msg})"));
+                if self.view.py_ops().is_some() {
+                    self.emit_line(&format!("a2x_py_fail({msg})"));
+                } else {
+                    self.emit_line(&format!("raise RuntimeError({msg})"));
+                }
                 Ok(())
             }
             hir::Stmt::Drop { .. } => Err(A2xReject::unsupported_stmt(

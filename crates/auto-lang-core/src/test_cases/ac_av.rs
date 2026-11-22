@@ -2697,7 +2697,9 @@ fn run_check_with_transport(
                         }
                     }
                     if let Some((want_s, want_e)) = av.error_span {
-                        let got = step.source_span.as_ref();
+                        let got = step.source_span.as_ref().or_else(|| {
+                            step.language_error.as_ref().and_then(|error| error.span.as_ref())
+                        });
                         let ok = got.is_some_and(|span| {
                             span.start as u32 == want_s && span.end as u32 == want_e
                         });

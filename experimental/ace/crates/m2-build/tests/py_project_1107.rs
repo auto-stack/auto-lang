@@ -19,10 +19,61 @@ fn section_5_1() -> String {
 }
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("p1107_m2_{name}_{}", std::process::id()));
+    let scope = std::env::var_os("ACE_PLAN_1110_SCRATCH")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = scope.join(format!("p1107_m2_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+#[test]
+fn p1110_cached_python_errors_follow_original_source_after_prefix_edit() {
+    let began = std::time::Instant::now();
+    let root = scratch("error-offset");
+    let source = corpus_file("error_uncaught_1107.at");
+    let shifted = format!("\n\n{source}");
+    let python = find_python();
+    let mut build = M2Build::new(&root.join("store"));
+    let mut positions = Vec::new();
+    for (i, text) in [&source, &shifted].into_iter().enumerate() {
+        let inputs = ProjectInputs {
+            name: "python-error-offsets".into(),
+            entry: "main".into(),
+            caps: vec![],
+            sources: vec![("main.at".into(), text.to_string())],
+            stdlib: Vec::new(),
+            rust_provider: None,
+        };
+        let output = build.build(TargetKind::A2py, &inputs).unwrap();
+        assert!(output
+            .identity
+            .tool_axes
+            .iter()
+            .any(|(name, _)| name == "python-object-runtime"));
+        let run = root.join(i.to_string());
+        write_tree(&run, &output.products);
+        let trace = run.join("error.json");
+        let actual = Command::new(&python)
+            .args(["-I", "-B", "a2x_main.py"])
+            .current_dir(run.join("targets/a2py"))
+            .env("ACE_A2PY_ERROR_OBSERVATION", &trace)
+            .output()
+            .unwrap();
+        assert_eq!(actual.status.code(), Some(1), "{actual:?}");
+        let error: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(trace).unwrap()).unwrap();
+        assert_eq!(error["kind"], "python.4");
+        let expected = text.find("l.pop()").unwrap() as u64;
+        assert_eq!(error["start"], expected);
+        assert_eq!(error["end"], expected + "l.pop()".len() as u64);
+        positions.push(expected);
+    }
+    assert_eq!(positions[1], positions[0] + 2);
+    drop(build);
+    std::fs::remove_dir_all(&root).unwrap();
+    eprintln!("p1110 source-prefix cache check: {:?}", began.elapsed());
 }
 
 fn find_python() -> String {

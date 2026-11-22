@@ -24,7 +24,8 @@ use crate::contract::{
     PayloadSpec, ProbeAbiSpec, ProbeMnTypedSpec, ProbeStepExpect, SyntaxEdit, TypedExpect,
     ProbeAvInvalidationSpec, ProbeAvResourceSpec, ProbeMnDeclarationSpec, ProbeMnHistorySpec,
     ProbeMnResourceSpec, ProbeMnTurnaroundSpec, ProbeAvForeignSpec,
-    ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbeSemaSpec, ProbeStep,
+    ProbeA2xHirSpec, ProbeAvSpec, ProbeCteSpec, ProbeMnSpec, ProbePythonErrorExpect, ProbeSemaSpec,
+    ProbeStep,
     ResultExpect, SkipSpec, SourceSpec, Stage, StreamExpect, Syntax, MessageMatcher};
 use crate::document::{CaseDocument, DocumentFence};
 use crate::raw_ranges::line_table;
@@ -277,6 +278,7 @@ struct ProbeSection {
     /// PLAN-1094: expected language-error classification + original span.
     error_kind: Option<(String, usize)>,
     error_span: Option<(String, usize)>,
+    error_type: Option<(String, usize)>,
     /// CF-07 MN nested oracles.
     mn_resource: Option<CVal>,
     declaration: Option<CVal>,
@@ -1644,15 +1646,32 @@ fn decode_one_case(
                             line: p.section_line,
                             message: "emit recipe 需要 profile".into(),
                         })?;
+                        let python_error = match (&p.error_type, &p.error_kind, &p.error_span) {
+                            (None, None, None) => None,
+                            (Some((name, _)), Some((kind, _)), Some((span, line)))
+                                if crate::contract::py_error_profile(&p.recipe, &profile.0) =>
+                            {
+                                let span = crate::contract::parse_error_span(span).ok_or_else(|| AuthorError {
+                                    line: *line,
+                                    message: "error-span 需要 start..end 半开字节范围".into(),
+                                })?;
+                                Some(ProbePythonErrorExpect { name: name.clone(), kind: kind.clone(), span })
+                            }
+                            _ => return err(p.section_line, "Python 异常检查需要 python-script 运行 profile 及 error-type、error-kind、error-span"),
+                        };
                         options.probe_a2x_hir = Some(ProbeA2xHirSpec {
                             profile: profile.0.clone(),
                             entry: p.entry.clone(),
                             caps: p.caps.clone(),
+                            python_error,
                         });
                     }
                 }
                 // CF-07: nested oracle attrs are family-gated — a declared
                 // but unwired oracle would silently drop the expectation.
+                if family != ProbeFamily::A2x && p.error_type.is_some() {
+                    return err(p.section_line, "error-type 仅属于 A2PY python-script");
+                }
                 if family != ProbeFamily::Av && family != ProbeFamily::AvConsole {
                     if p.invalidation.is_some() {
                         return err(p.section_line, "invalidation 仅属于 av 系 recipe");
@@ -2232,7 +2251,7 @@ fn decode_h3_section(
             "foreign",
             // PLAN-1094: the language-error classification + original-span
             // oracles for the py error lanes.
-            "error-kind", "error-span",
+            "error-kind", "error-span", "error-type",
             // PLAN-1095: the node CPU oracle (node name → view text values).
             "nodes",
         ],
@@ -2743,6 +2762,7 @@ fn decode_h3_section(
             let mut foreign = None;
             let mut error_kind = None;
             let mut error_span = None;
+            let mut error_type = None;
             let mut declaration = None;
             let mut history = None;
             let mut turnaround = None;
@@ -2785,6 +2805,7 @@ fn decode_h3_section(
                     "foreign" => foreign = Some(a.value.clone()),
                     "error-kind" => error_kind = Some((want_str(a)?.to_string(), a.line)),
                     "error-span" => error_span = Some((want_str(a)?.to_string(), a.line)),
+                    "error-type" => error_type = Some((want_str(a)?.to_string(), a.line)),
                     "declaration" => declaration = Some(a.value.clone()),
                     "history" => history = Some(a.value.clone()),
                     "turnaround" => turnaround = Some(a.value.clone()),
@@ -2849,6 +2870,7 @@ fn decode_h3_section(
                 foreign,
                 error_kind,
                 error_span,
+                error_type,
                 declaration,
                 history,
                 turnaround,

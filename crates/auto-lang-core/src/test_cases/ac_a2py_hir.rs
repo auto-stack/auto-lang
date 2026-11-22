@@ -182,12 +182,6 @@ pub fn run_check(
     _run_dir: &Path,
 ) -> Result<Verdict, String> {
     let started = Instant::now();
-    if case.spec.source.syntax != Syntax::Auto {
-        return Err(format!(
-            "ac-a2py consumes auto source files; syntax {:?} is not accepted",
-            case.spec.source.syntax.as_str()
-        ));
-    }
     let recipe = check
         .options
         .probe_recipe
@@ -201,6 +195,20 @@ pub fn run_check(
         .probe_a2x_hir
         .as_ref()
         .ok_or("probe check without an a2x_hir binding (contract violation)")?;
+    let python_script = recipe == A2PY_STDLIB_RUN_RECIPE && binding.profile == "python-script";
+    let required_syntax = if python_script {
+        Syntax::AutoScript
+    } else {
+        Syntax::Auto
+    };
+    if case.spec.source.syntax != required_syntax {
+        return Err(format!(
+            "{recipe}/{} requires {:?} source, got {:?}",
+            binding.profile,
+            required_syntax.as_str(),
+            case.spec.source.syntax.as_str()
+        ));
+    }
     let profile_ok = match recipe {
         A2PY_RT_HIR_RECIPE => {
             matches!(binding.profile.as_str(), "record" | "text" | "text-record")
@@ -208,7 +216,7 @@ pub fn run_check(
         A2PY_COLL_HIR_RECIPE => binding.profile == "collections",
         A2PY_STDLIB_RUN_RECIPE => matches!(
             binding.profile.as_str(),
-            "core" | "scalar" | "record" | "text" | "text-record" | "collections"
+            "core" | "scalar" | "record" | "text" | "text-record" | "collections" | "python-script"
         ),
         _ => matches!(binding.profile.as_str(), "core" | "scalar"),
     };
@@ -226,9 +234,12 @@ pub fn run_check(
     if steps.len() != 1 || !matches!(steps[0], ProbeStep::Run) {
         return Err(format!("{recipe} takes exactly one `run` step"));
     }
-    let source_bytes = case
-        .files
-        .first()
+    let source_file = if python_script {
+        case.files.iter().find(|file| file.virtual_path == case.entry_path)
+    } else {
+        case.files.first()
+    };
+    let source_bytes = source_file
         .map(|f| f.bytes.clone())
         .ok_or_else(|| "a2x_hir adapter needs the resolved entry input".to_string())?;
 
@@ -268,6 +279,7 @@ pub fn run_check(
         "op": op,
         "recipe": recipe,
         "source_path": source_path,
+        "logical_path": case.entry_path,
         "profile": binding.profile,
         "entry": binding.entry,
         "caps": binding.caps,
@@ -341,6 +353,13 @@ pub fn run_check(
             ..Verdict::pass()
         });
     }
+    if python_script
+        && (resp["logical_path"].as_str() != Some(case.entry_path.as_str())
+            || resp["source_syntax"] != "auto-script"
+            || resp["source_sha256"] != hex(&sha256(&source_bytes)))
+    {
+        return Err("a2py.python-script: worker source identity mismatch".into());
+    }
 
     match &oracle.completion {
         Completion::Success => {
@@ -366,6 +385,37 @@ pub fn run_check(
             let mut refs = Vec::new();
             if recipe == A2PY_STDLIB_RUN_RECIPE {
                 let actual_exit = resp["exit_code"].as_i64().map(|x| x as i32);
+                if let Some(expected) = &binding.python_error {
+                    let observed = &resp["language_error"];
+                    let caught = oracle.exit.unwrap_or(0) == 0;
+                    let same_type =
+                        observed["name"] == expected.name && observed["kind"] == expected.kind;
+                    let same_range = observed["start"] == expected.span.0
+                        && observed["end"] == expected.span.1
+                        && expected.span.1 as usize <= source_bytes.len();
+                    let same_outcome =
+                        observed["escaped"] == !caught && observed["handled"] == u64::from(caught);
+                    if !(same_type && same_range && same_outcome) {
+                        mismatches.push(Mismatch {
+                            observation: "python-error".into(),
+                            kind: "execution-observation".into(),
+                            expected: format!(
+                                "{} {} {}..{} caught={caught}",
+                                expected.name, expected.kind, expected.span.0, expected.span.1
+                            ),
+                            actual: observed.to_string(),
+                            first_diff: None,
+                        });
+                    }
+                } else if python_script && !resp["language_error"].is_null() {
+                    mismatches.push(Mismatch {
+                        observation: "python-error".into(),
+                        kind: "unexpected-exception".into(),
+                        expected: "no Python exception".into(),
+                        actual: resp["language_error"].to_string(),
+                        first_diff: None,
+                    });
+                }
                 if let Some(want_exit) = oracle.exit {
                     if actual_exit != Some(want_exit) {
                         mismatches.push(Mismatch {

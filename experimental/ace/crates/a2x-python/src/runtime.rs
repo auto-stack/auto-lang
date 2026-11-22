@@ -23,9 +23,82 @@ pub const PY_OBJECT_HELPERS: &str = r#"
 # ---- PLAN-1107: native Python object operations -------------------------
 # The A2PY lane implements the shared Python op set directly on the running
 # interpreter's own objects: no ctypes provider, no second embedded
-# interpreter and no token registry. Python failures surface as Python
-# exceptions; the language error mapping consumes them at the call site that
-# needs a typed result.
+# interpreter and no token registry.
+
+class A2xPythonError(Exception):
+    def __init__(self, name, message, start, end):
+        super().__init__(message)
+        self.name = name
+        self.start = start
+        self.end = end
+        # The provider's existing Python error classes, independent of its ABI.
+        self.category = {
+            "ImportError": 1, "ModuleNotFoundError": 1,
+            "AttributeError": 2, "TypeError": 3, "IndexError": 4,
+            "ValueError": 5, "OverflowError": 6, "KeyError": 7,
+            "ZeroDivisionError": 8, "RuntimeError": 9,
+        }.get(name, 10)
+
+    def observation(self):
+        return {
+            "name": self.name, "kind": f"python.{self.category}",
+            "start": self.start, "end": self.end,
+        }
+
+def a2x_py_op(start, end, operation, *args):
+    try:
+        return operation(*args)
+    except (A2xTrap, A2xPythonError):
+        raise
+    except Exception as exc:
+        raise A2xPythonError(type(exc).__qualname__, str(exc), start, end) from exc
+
+class _A2xPythonErrorText(A2xOwnedStr):
+    __slots__ = ("origin",)
+
+    def __init__(self, error):
+        super().__init__(f"PyException {error.name}: {error}".encode("utf-8"))
+        # Keep the origin across rethrow without retaining Python traceback
+        # frames and their live Python objects in the Auto error value.
+        self.origin = (error.name, str(error), error.start, error.end)
+
+_a2x_python_observation = None
+_a2x_python_handled = 0
+
+def a2x_py_intercept(error):
+    global _a2x_python_observation, _a2x_python_handled
+    message = _A2xPythonErrorText(error)
+    _a2x_python_observation = error.observation()
+    _a2x_python_handled += 1
+    return message
+
+def a2x_py_fail(message):
+    if isinstance(message, _A2xPythonErrorText):
+        raise A2xPythonError(*message.origin)
+    raise RuntimeError(message)
+
+_a2x_run_main_without_py_observation = a2x_run_main
+
+def a2x_run_main(entry_fn):
+    global _a2x_python_observation, _a2x_python_handled
+    _a2x_python_observation = None
+    _a2x_python_handled = 0
+    escaped = False
+    try:
+        return _a2x_run_main_without_py_observation(entry_fn)
+    except A2xPythonError as error:
+        _a2x_python_observation = error.observation()
+        escaped = True
+        sys.stderr.write(f"PyException {error.name}: {error}\n")
+        return 1
+    finally:
+        path = os.environ.get("ACE_A2PY_ERROR_OBSERVATION")
+        if path and _a2x_python_observation is not None:
+            with open(path, "x", encoding="utf-8") as observation:
+                json.dump({
+                    **_a2x_python_observation,
+                    "escaped": escaped, "handled": _a2x_python_handled,
+                }, observation)
 
 def a2x_py_import(module: str, member: str):
     _mod = __import__(module, fromlist=[member])

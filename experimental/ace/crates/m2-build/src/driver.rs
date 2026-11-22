@@ -240,9 +240,17 @@ impl M2Build {
         inputs: &ProjectInputs,
     ) -> Result<BuildOutcome, M2Reject> {
         let src = inputs.entry_source()?;
+        let mut tools = tool_axes(target);
+        if target == TargetKind::A2py && src.contains("use.py") {
+            let helpers = ace_a2x_python::runtime::py_object_helpers_source();
+            tools.push((
+                "python-object-runtime".into(),
+                ace_a2x_core::sha256::sha256_hex(helpers.as_bytes()),
+            ));
+        }
         #[allow(unused_mut)]
         let mut identity =
-            ProjectBuildIdentity::of(inputs, target, &grammar_identity(target), tool_axes(target));
+            ProjectBuildIdentity::of(inputs, target, &grammar_identity(target), tools);
         let rust_inputs = inputs
             .rust_provider
             .as_ref()

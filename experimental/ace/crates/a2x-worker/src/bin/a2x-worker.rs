@@ -1514,6 +1514,7 @@ fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
     check_py_admission(v);
     let (src, source_sha256) = read_source(v);
     let profile = v["profile"].as_str().unwrap_or("core").to_string();
+    let user_path = v["logical_path"].as_str().unwrap_or("a2x-worker");
     let entry = v["entry"].as_str().unwrap_or("main").to_string();
     let caps: Vec<String> = v["caps"]
         .as_array()
@@ -1524,6 +1525,17 @@ fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
         })
         .unwrap_or_default();
     let compiled = match profile.as_str() {
+        "python-script" => {
+            if v["op"] != "run-py"
+                || v["recipe"] != PY_STDLIB_RUN_RECIPE
+                || !user_path.ends_with(".as")
+            {
+                fail("a2py.admission: python-script requires a run recipe and a logical .as source");
+            }
+            let foreign = ace_a2x_python::py_contract::py_declaration_contract()
+                .unwrap_or_else(|e| fail(&format!("a2py.admission: {e}")));
+            ace_core::source::compile_language_source_with_foreign(&src, user_path, &caps, &foreign)
+        }
         "core" => compile_source(&src, "a2x-worker", &caps),
         "scalar" => compile_scalar_product_934(&src, &caps),
         "record" => compile_record_source(&src, "a2x-worker", &caps),
@@ -1560,7 +1572,7 @@ fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
     let provider = ace_a2x_python::PythonTargetProvider;
     let family = match profile.as_str() {
         "record" | "text" | "text-record" => Family::RecordText,
-        "collections" => Family::Collections,
+        "collections" | "python-script" => Family::Collections,
         _ => Family::Scalar,
     };
     let expected_schema = match family {
@@ -1588,7 +1600,11 @@ fn emit_py(v: &serde_json::Value) -> (EmitOutcome, ace_a2x_core::FileSet) {
         Ok(r) => r,
         Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
     };
-    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view.functions().iter().collect();
+    let fns: Vec<&ace_a2x_core::FnFacts<'_>> = view
+        .functions()
+        .iter()
+        .filter(|f| view.py_ops().is_none() || !ace_a2x_python::provider::is_py_lane_helper(f.name))
+        .collect();
     let texts = match provider.produce_fragments(&view, &fns, family) {
         Ok(t) => t,
         Err(e) => fail(&format!("{}: {}", e.code, e.detail)),
@@ -1694,7 +1710,25 @@ fn run_py(v: &serde_json::Value) -> serde_json::Value {
     };
     let (out, _fileset) = emit_py(v);
     write_out_dir(out_dir, &out);
-    let exec = match ace_a2x_worker::pyrun::run_py_fileset(&py, Path::new(out_dir), &[]) {
+    let trace_dir = (out.profile == "python-script").then(|| {
+        tempfile::Builder::new()
+            .prefix(".py-observation-")
+            .tempdir_in(out_dir)
+            .unwrap_or_else(|e| fail(&format!("python.observation: {e}")))
+    });
+    let trace_path = trace_dir.as_ref().map(|dir| dir.path().join("error.json"));
+    let envs = trace_path.as_ref().map(|path| {
+        [(
+            "ACE_A2PY_ERROR_OBSERVATION",
+            path.to_str()
+                .unwrap_or_else(|| fail("python.observation: non-UTF-8 path")),
+        )]
+    });
+    let exec = match ace_a2x_worker::pyrun::run_py_fileset(
+        &py,
+        Path::new(out_dir),
+        envs.as_ref().map_or(&[], |env| &env[..]),
+    ) {
         Ok(e) => e,
         Err(e) => fail(&format!("python.exec: {e}")),
     };
@@ -1724,6 +1758,26 @@ fn run_py(v: &serde_json::Value) -> serde_json::Value {
     r["stderr"] = String::from_utf8_lossy(&exec.stderr).to_string().into();
     r["stdout_hex"] = bytes_hex(&exec.stdout).into();
     r["stderr_hex"] = bytes_hex(&exec.stderr).into();
+    if let Some(path) = trace_path {
+        r["logical_path"] = v["logical_path"].clone();
+        r["source_syntax"] = "auto-script".into();
+        match std::fs::File::open(path) {
+            Ok(file) => {
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                file.take(4097)
+                    .read_to_end(&mut bytes)
+                    .unwrap_or_else(|e| fail(&format!("python.observation: {e}")));
+                if bytes.len() > 4096 {
+                    fail("python.observation: observation exceeds its size limit");
+                }
+                r["language_error"] = serde_json::from_slice(&bytes)
+                    .unwrap_or_else(|e| fail(&format!("python.observation: {e}")));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => fail(&format!("python.observation: {e}")),
+        }
+    }
     r["exit_code"] = exec
         .exit_code
         .map(serde_json::Value::from)
