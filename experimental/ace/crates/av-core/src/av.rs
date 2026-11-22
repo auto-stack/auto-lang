@@ -4317,6 +4317,9 @@ fn dispatch_with_host<V: ModuleView>(
     let needs_console = v.host_imports().iter().any(|h| {
         !crate::platform_io::is_platform_symbol(&h.symbol)
             && !crate::config_document::is_config_symbol(&h.symbol)
+            // PLAN-108：http import 无 console 语义（同 720 行门；缺席在
+            // HttpCall 执行点具名 fail-closed）。
+            && !crate::http_client::is_http_symbol(&h.symbol)
     });
     let needs_platform = v
         .host_imports()
