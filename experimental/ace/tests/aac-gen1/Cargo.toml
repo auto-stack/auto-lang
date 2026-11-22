@@ -19,6 +19,8 @@ blake3 = "1"
 
 [dev-dependencies]
 sha2 = "0.10"
+ace-aac-bridge = { path = "../../crates/aac-bridge" }
+ace-av-core = { path = "../../crates/av-core" }
 
 [[test]]
 name = "gen1"

@@ -36,6 +36,13 @@ pub const GEN1_MAIN_SOURCE: &str = include_str!("../gen1_main.at");
 pub const COMPILE_EXE: &str = "aac1053-compile.exe";
 pub const COMPILE_MANIFEST: &str = "compile.manifest";
 pub const COMPILE_DRIVER_SOURCE: &str = include_str!("../../aac-syntax/semantic_driver.at");
+/// The 1051 machine-backend service, part of the Gen1 chain's declared
+/// tools: prepare-gen1 copies it into the preparation directory and pins
+/// its digest in `tools.manifest` so archive/debug group runners (which
+/// remap the test binaries away from the target dir) admit the same
+/// service identity.
+pub const BRIDGE_EXE: &str = "ace-aac-bridge.exe";
+pub const TOOLS_MANIFEST: &str = "tools.manifest";
 
 /// The whole subject tree S: (module stem, source bytes). `main.at` is
 /// appended per build; `hir_schema_data` is synthesized below.
@@ -338,6 +345,26 @@ pub fn prepare_gen1(
         tool_id,
     );
     std::fs::write(root.join(COMPILE_MANIFEST), cmanifest)?;
+
+    // The declared machine-backend service, pinned alongside the exes so
+    // archive/remap group runners admit the same tool identity.
+    let bridge_src = std::env::var_os("ACE_AAC1053_BRIDGE")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p.is_file())
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join(BRIDGE_EXE)))
+                .filter(|p| p.is_file())
+        })
+        .ok_or("set ACE_AAC1053_BRIDGE to the built ace-aac-bridge.exe (or build it in this target dir)")?;
+    std::fs::copy(&bridge_src, root.join(BRIDGE_EXE))?;
+    let tools_manifest = format!(
+        "ace-aac-bridge\n{}\n{}",
+        blake3::hash(&std::fs::read(root.join(BRIDGE_EXE))?),
+        bridge_src.display(),
+    );
+    std::fs::write(root.join(TOOLS_MANIFEST), tools_manifest)?;
     Ok(())
     })();
     if let Err(err) = compile_prep {
@@ -385,6 +412,36 @@ fn admit(
 }
 
 static PREPARED_COMPILE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+static PREPARED_BRIDGE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+
+/// Admit the prepared machine-backend service (see `TOOLS_MANIFEST`).
+pub fn prepared_bridge() -> Result<&'static Path, String> {
+    PREPARED_BRIDGE
+        .get_or_init(|| {
+            let root = PathBuf::from(
+                std::env::var_os("AAC1053_GEN1_DIR")
+                    .ok_or("prepare the Gen1 exe (prepare-gen1) and set AAC1053_GEN1_DIR")?,
+            );
+            if !root.is_absolute() {
+                return Err("AAC1053_GEN1_DIR must be an absolute preparation directory".into());
+            }
+            let text = std::fs::read_to_string(root.join(TOOLS_MANIFEST))
+                .map_err(|err| format!("read tools manifest: {err}"))?;
+            let mut fields = text.lines();
+            if fields.next() != Some("ace-aac-bridge") {
+                return Err("tools manifest does not declare ace-aac-bridge".into());
+            }
+            let exe = root.join(BRIDGE_EXE);
+            let bytes =
+                std::fs::read(&exe).map_err(|err| format!("read bridge executable: {err}"))?;
+            if fields.next() != Some(blake3::hash(&bytes).to_hex().as_str()) {
+                return Err("bridge executable digest differs from preparation".into());
+            }
+            Ok(exe)
+        })
+        .as_deref()
+        .map_err(Clone::clone)
+}
 
 /// Admit the prepared whole-subject COMPILE executable (same contract as
 /// the boot exe, separate manifest).

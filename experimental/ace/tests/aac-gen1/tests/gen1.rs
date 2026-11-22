@@ -20,8 +20,8 @@ use std::process::Command;
 use std::time::Instant;
 
 use ace_aac_gen1_conformance::{
-    gen1_fingerprint, prepared_compile, prepared_gen1, run_compile_case, run_gen1_boot, scratch,
-    DRIVER_MANIFEST, GEN1_EXE,
+    gen1_fingerprint, prepared_bridge, prepared_compile, prepared_gen1, run_compile_case,
+    run_gen1_boot, scratch, DRIVER_MANIFEST, GEN1_EXE,
 };
 use sha2::Digest;
 
@@ -272,8 +272,157 @@ fn gen1_compile_entry_runs_pipeline_and_reports_stages() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+
+
+#[test]
+fn gen1_end_to_end_source_to_real_pe_exit() {
+    let started = Instant::now();
+    let exe = prepared_compile()
+        .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
+    let root = scratch("gen1-e2e");
+    let input = root.join("input.at");
+    let output = root.join("report.txt");
+    let abc_path = root.join("closure.abc");
+    std::fs::write(&input, "fn main() int { return 2 + 3 * 4 }\n").expect("write input");
+
+    // 1. The Gen1 compiler (whole-subject Auto exe) lowers the corpus
+    //    baseline program to its typed MIR ABC closure.
+    let (_report, abc) = run_compile_case(exe, &input, &output, "mir", Some(&abc_path))
+        .expect("Gen1 compile to ABC");
+    let abc = abc.expect("mir mode must emit ABC");
+
+    // 2. The ABC rides the 1051 bridge service (explicit machine backend,
+    //    spawned as its own process) and comes back as a COFF object bundle.
+    let decoded = ace_av_core::abc::decode_abc(&abc).expect("decode the Gen1 ABC");
+    let module = decoded.module;
+    // The bridge admits the request against the schema DERIVED FROM THE ABC
+    // PROFILE (the driver's own owner schema is its private artifact id,
+    // not the wire schema) — mirror the bridge's expectation exactly.
+    use ace_av_core::contract::*;
+    let expected_schema: &str = match module.profile.as_str() {
+        AV_PROFILE => MIR_SCHEMA,
+        AV_DATA_PROFILE => MIR_DATA_SCHEMA,
+        AV_OWNED_PROFILE => MIR_OWNED_SCHEMA,
+        AV_COLLECTIONS_PROFILE => MIR_COLLECTIONS_SCHEMA,
+        AV_CLOSURES_PROFILE => MIR_CLOSURES_SCHEMA,
+        AV_DYNAMIC_PROFILE => MIR_DYNAMIC_SCHEMA,
+        AV_ENTRY_UNIT_PROFILE => MIR_ENTRY_UNIT_SCHEMA,
+        AV_HOST_CONSOLE_PROFILE => MIR_HOST_CONSOLE_SCHEMA,
+        other => panic!("unsupported ABC profile family: {other}"),
+    };
+    let mode = ace_aac_bridge::Mode::NativeObjects;
+    let request = ace_aac_bridge::Request {
+        id: blake3::hash(b"aac1053-gen1-e2e").as_bytes()[..16]
+            .try_into()
+            .expect("16-byte request id"),
+        mode,
+        domains: ace_aac_bridge::Domains::windows(mode),
+        inputs: ace_aac_bridge::InputIdentity {
+            source: *blake3::hash(&std::fs::read(&input).expect("read input")).as_bytes(),
+            grammar: *blake3::hash(expected_schema.as_bytes()).as_bytes(),
+            passes: [3; 32],
+            stdlib: [4; 32],
+            dependencies: [5; 32],
+        },
+        // The 1047 driver's ABC carries an empty owner module name; the
+        // bridge requires a non-empty admitted owner — declare this
+        // request's owner identity explicitly.
+        owner: if module.owner.module.is_empty() {
+            "aac1053.gen1.e2e".to_string()
+        } else {
+            module.owner.module.clone()
+        },
+        mir_schema: expected_schema.to_string(),
+        options: ace_aac_bridge::Options { remaining_ms: 7000 },
+        capabilities: module.capabilities.clone(),
+        external_provider: None,
+        globals: module
+            .globals
+            .iter()
+            .map(|global| ace_aac_bridge::WireGlobal {
+                name: global.name.clone(),
+                ty: global.ty,
+                mutable: global.mutable,
+            })
+            .collect(),
+        initializers: module.init.clone(),
+    };
+    let bridge = ace_aac_bridge::Client::new(prepared_bridge().expect("prepared bridge tool"))
+        .expect("bridge client");
+    let (response, bytes) = bridge.run(&request, &abc).expect("bridge exchange");
+    let ace_aac_bridge::Outcome::Objects {
+        units,
+        wrapper,
+        runtime,
+        ..
+    } = response.outcome
+    else {
+        panic!("expected a linked-program object bundle: {:?}", response.outcome);
+    };
+    assert_eq!(
+        runtime,
+        ace_aac_bridge::NativeRuntime::None,
+        "the scalar baseline must not pull a runtime library"
+    );
+
+    // 3. Parent-side link of the service-returned objects into a real PE.
+    let mut remaining = bytes.as_slice();
+    let mut objects = Vec::new();
+    for object in units {
+        let (unit, rest) = remaining.split_at(object.len as usize);
+        objects.push(ace_native::link_driver::ObjectInput {
+            name: object.symbol,
+            bytes: unit.to_vec(),
+        });
+        remaining = rest;
+    }
+    assert_eq!(remaining.len(), wrapper.len as usize);
+    let image = ace_native::link_driver::link_only(
+        &objects,
+        remaining,
+        &wrapper.symbol,
+        &root.join("link"),
+        &[],
+        "aac1053-gen1-e2e",
+    )
+    .expect("link the bridge objects");
+
+    // 4. The real machine product runs with the corpus oracle: exit 14.
+    let mut spec = auto_tool_execution::ExecutionSpec::new([std::ffi::OsStr::new(
+        &image.exe_path,
+    )]);
+    spec.tree_scope = auto_tool_execution::TreeScope::ProcessTree;
+    let result = auto_tool_execution::run_bounded(
+        &spec,
+        &auto_tool_execution::BoundedPolicy {
+            exec_deadline: std::time::Duration::from_secs(4),
+            cleanup_deadline: std::time::Duration::from_secs(1),
+            stdout_cap: Some(4096),
+            stderr_cap: Some(4096),
+        },
+    )
+    .expect("run the Gen1-produced PE");
+    assert_eq!(
+        result.kind,
+        auto_tool_execution::ExitKind::Failure(14),
+        "the Gen1-compiled corpus baseline must exit 14, stderr={:?}",
+        result.stderr.as_deref().map(|b| String::from_utf8_lossy(b).into_owned())
+    );
+    eprintln!(
+        "gen1 end-to-end (compile->bridge->link->run) ok in {:?} (<=10s gate)",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "end-to-end case exceeded the 10-second gate"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn gen1_stale_preparation_is_refused() {
+    let started = Instant::now();
+    let exe = prepared_gen1().expect("prepared Gen1 exe");
     let started = Instant::now();
     let exe = prepared_gen1().expect("prepared Gen1 exe");
     let root = exe.parent().expect("exe parent").to_path_buf();
