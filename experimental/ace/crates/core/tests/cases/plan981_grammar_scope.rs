@@ -199,7 +199,16 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-106（014 真语料，交付刀）：条件条目值 else-if 链臂（age-if-else
             // chain）+ handler 多行 view-data 列表重写语句（age-view-assign-
             // viewdata-stmt）+ 对象字面量开 age-component——b9d1d2d8…→456a54b4…。
-            "456a54b4b18cac169e4f3c8c1149da056123e0b72abf9d84bd89c36f214efd80",
+            // PLAN-113（026 真语料，交付刀）：view-data 记录字段键收 `type` 保留字
+            //（`{ type: "INTEGER", … }` schema 元数据行，两 AGE 面同开）——
+            // 456a54b4…→c8a67456…；其余 13 邻居逐字节不变。
+            // PLAN-113（026 真语料，同批第二刀）：if/for/while 分支体语句面
+            //（age-on-branch-stmt）增 view-data 列表赋值臂（SelectTable 每表
+            // 分支 `.schemaColumns = [ { … } ]`）——c8a67456…→08c8cdbd…。
+            // PLAN-113（026 真语料，同批第三刀）：handler 参数类型注解开组件面
+            //（`.PageChanged(ev str)`，msg payload 定型同一条 notation 校验）——
+            // 08c8cdbd…→c36f1ec3…；age-package 面规则文本等值（该臂包面本有）。
+            "c36f1ec3850005293cee503ce4dd0a7162cb513d3a436546584895bc24f0bfbe",
         ),
         (
             SourceProfile::AgeH0,
@@ -329,6 +338,10 @@ fn p981_age_package_grammar_id_is_frozen() {
         // PLAN-106（014 真语料，交付刀）：else-if 链臂 + handler 多行 view-data
         // 列表重写语句 + 对象字面量开 age-component（同 AgeComponent 行）——
         // 363fd950…→6d2df8f9…。
-        "6d2df8f9b1cf3df435d08c0b1e8a297f865c04ead9ff02890c6b1784befe7315"
+        // PLAN-113（026 真语料，交付刀）：view-data 记录字段键收 `type` 保留字
+        //（两 AGE 面同开，同 AgeComponent 行）——6d2df8f9…→b250ed41…。
+        // PLAN-113（026 真语料，同批第二刀）：age-on-branch-stmt 增 view-data
+        // 列表赋值臂（同 AgeComponent 行）——b250ed41…→4641d973…。
+        "4641d973523cfe91695ee83083d0efb535de127c149882fc49ff577575ef00c2"
     );
 }

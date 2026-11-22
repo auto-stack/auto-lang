@@ -363,6 +363,7 @@ fn native_admission_selection_excludes_ac_check_without_scratch() {
         case: Some("nothing-matches".into()),
         adapter: Some("ac".into()),
         check: None,
+        target: None,
     };
     let report = crate::test_cases::run_suite_selected(
         &root.join("t04ac.suite.ad"),

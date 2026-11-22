@@ -824,13 +824,16 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-on-handler-params(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
             ident(field: "param")
-            opt(profiles: [age-package]) { ann-ty(field: "param_ann") {} }
+            // PLAN-113（026 真语料）：组件面接受 handler 参数**类型注解**
+            //（`.PageChanged(ev str) ->`——msg payload 已定型，注解与包面
+            // 同一条 notation 校验链；age-component 面 ann-ty 无 f32 臂沿用）。
+            opt { ann-ty(field: "param_ann") {} }
             many { age-on-handler-param-tail() {} }
             rparen() {}
         }
         age-on-handler-param-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "param")
-            opt(profiles: [age-package]) { ann-ty(field: "param_ann") {} }
+            opt { ann-ty(field: "param_ann") {} }
         }
         // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
         age-view-stmt(profiles: [age-component, age-package]) {
@@ -1166,6 +1169,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 age-view-data-field-value(field: "value") {}
                 opt { comma() {} }
             }
+            // PLAN-113（U04 026 真语料）：view-data 记录字段可用**保留字**作键
+            // （`{ type: "INTEGER", … }` schema 元数据行）。键位置是记录语义，
+            // 不是语句关键字——与 cfg-doc-key 同律；`type` 之外按实际语料收紧。
+            alt {
+                type-kw(field: "key") colon() {}
+                age-view-data-field-value(field: "value") {}
+                opt { comma() {} }
+            }
             // A graph edge can use the same `to` spelling as a route link.
             alt(profiles: [age-package]) {
                 r-to(field: "key") colon() {}
@@ -1326,6 +1337,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // 都接受，外加 hook-local let 与嵌套 if。分支归属哪种外层形式由作者
         // 决定，两拼写不互斥（同一体内混用也解析——字段语义同一条检查链）。
         age-on-branch-stmt(profiles: [age-component, age-package], expect: "a branch statement (`<field> = <expr>` / `.field = <expr>` / hook-local `let` / nested `if` / `for`)") {
+            // PLAN-113（026 真语料）：分支/循环体内的 view-data 列表重写
+            // （`.schemaColumns = [ { … } ]`——SelectTable/SelectView 每表
+            // 分支）——与 handler 顶层同一条专用语句面（PEG 序同
+            // age-on-widget-stmt：置于通用赋值之前）。
+            alt { age-view-assign-viewdata-stmt() {} }
             alt { age-on-assign() {} }
             alt { age-view-assign-stmt() {} }
             // PLAN-105 T-02（U03 真语料 013）：分支/循环体里的调用语句

@@ -2559,11 +2559,13 @@ fn compile_component_scenario_full(
     for f in &node.fields {
         // PLAN-105 T-02（U03 真语料 013/015）：列表字段（`[]T`/`[N]T`）也承载
         // （collections 域 `List<T>`）；状态观测通道只打包 int 字段，其余跳过。
-        if field_type(f).is_none() && field_ann(f).is_none() {
+        // PLAN-113（U04 026 真语料）：**裸 `List`** 泛型字段同样承载（`List<str>`
+        // 或经记录推断的 `List<Record>`——`dbNodesFull`/`dbExpanded` 树与选择态）。
+        if field_type(f).is_none() && field_ann(f).is_none() && model_list_type(f).is_none() {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
                 format!(
-                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` and `[]T`/`[N]T` model fields; field `{}` is `{}`",
+                    "the component slice supports `int`/`i32`/`bool`/`str`/`f32` and `[]T`/`[N]T`/`List` model fields; field `{}` is `{}`",
                     f.name, f.ty
                 ),
                 f.ty_span,
@@ -3114,7 +3116,11 @@ pub(crate) fn check_event_dispatch(
 pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
     for h in &node.handlers {
         let variant = node.messages.iter().find(|variant| variant.name == h.msg);
-        let declared = variant.map_or(0, |variant| variant.payload.len());
+        // PLAN-113（026 真语料）：**未声明消息**的 widget 组件回调 handler
+        //（`on_toggle: .DbToggle`——TreeView 组件把选中 id 回传）。组件面按
+        // handler 自身形参作载荷（无注解时默认 `str`，与 `msg { X(str) }` 的
+        // 约定拼写同律）；包面仍由 R65-3（msg-unknown）在进入本核对前拒。
+        let declared = variant.map_or(h.params.len(), |variant| variant.payload.len());
         if h.params.len() != declared {
             // span 指到“多出来的那个形参”；形参不足时落在 handler 自身。
             let span = h
@@ -3429,9 +3435,17 @@ pub(crate) fn handler_check_fn(
         return None;
     }
     let payload = node.messages.iter().find(|v| v.name == h.msg)
-        .map_or(&[][..], |variant| variant.payload.as_slice());
+        .map_or_else(
+            // PLAN-113（026 真语料）：未声明消息（组件回调）按 handler 形参
+            // 合成载荷拼写——注解优先，缺省 `str`（与 check_handler_bindings
+            // 的组件面合成同律）。
+            || h.param_annotations.iter().map(|ann| {
+                ann.as_ref().map(|(s, _)| s.clone()).unwrap_or_else(|| "str".to_string())
+            }).collect::<Vec<_>>(),
+            |variant| variant.payload.clone(),
+        );
     behavior_check_fn(node, node_index, handler_index, prefix, package_lists, Behavior {
-        body: &h.stmts, params: &h.params, payload, channels: &h.channel_calls, span: h.span,
+        body: &h.stmts, params: &h.params, payload: &payload, channels: &h.channel_calls, span: h.span,
         allow_outbound: true,
     })
 }
@@ -3512,7 +3526,7 @@ fn behavior_check_fn(
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ty.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
-                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
+                if name.name == "List" && (f.ty.starts_with('[') || f.ty.trim() == "List") && !args.is_empty() =>
             {
                 list_new_from_array(init, &args[0])
             }
@@ -3701,7 +3715,7 @@ pub(crate) fn lambda_value_fn(
         // 列表字段的空数组初值规范化为 `List<T>.new()`（与场景路径同律）。
         let init = match (&ann.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(_))
-                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
+                if name.name == "List" && (f.ty.starts_with('[') || f.ty.trim() == "List") && !args.is_empty() =>
             {
                 list_new_from_array(init, &args[0])
             }
@@ -4856,7 +4870,7 @@ pub(crate) fn instance_stmts(
         let mut pushes: Vec<Expr> = Vec::new();
         let init = match (&ty.kind, &init.kind) {
             (TypeRef::Generic { name, args }, ExprKind::ArrayLit(elems))
-                if name.name == "List" && f.ty.starts_with('[') && !args.is_empty() =>
+                if name.name == "List" && (f.ty.starts_with('[') || f.ty.trim() == "List") && !args.is_empty() =>
             {
                 if elems.is_empty() {
                     list_new_from_array(init, &args[0])
@@ -5497,7 +5511,7 @@ pub(crate) fn model_type(
 ) -> Result<TypeAnn, Vec<Diagnostic>> {
     let span = field.ty_span;
     let kind = field_type(field).map(TypeRef::Builtin)
-        .or_else(|| package_lists.then(|| model_list_type(field)).flatten())
+        .or_else(|| (package_lists || field.ty.trim() == "List").then(|| model_list_type(field)).flatten())
         .or_else(|| field_ann(field).map(|ty| ty.kind))
         .ok_or_else(|| vec![text_diag(
             "source.age.component-unsupported",
