@@ -268,6 +268,18 @@ impl ComponentEventSessionProgram {
     }
 
     /// handler 入口表（消息名 → def id + 载荷拼写）。
+    /// PLAN-108（T-03c M2）：本程序是否含 Http 效应（任一单元 MIR 有
+    /// HttpCall）——桥据此把派发路由到 worker 线程（UI 线程不阻塞）。
+    pub fn has_http_effects(&self) -> bool {
+        self.codes.iter().any(|code| {
+            code.unit().module().funcs.iter().any(|f| {
+                f.blocks
+                    .iter()
+                    .any(|b| b.instrs.iter().any(|i| matches!(i, ace_av_core::mir::MirInstr::HttpCall { .. })))
+            })
+        })
+    }
+
     pub fn handlers(&self) -> &[HandlerEntry] {
         &self.handlers
     }
