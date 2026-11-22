@@ -21,7 +21,17 @@ use ace_av_core::contract::{ExecOutcome, Value};
 use ace_av_core::function_code::FunctionCode;
 use ace_av_core::program_snapshot::ProgramSnapshot;
 use ace_av_core::span_map::SpanSegments;
-use ace_av_core::{execute_program_entry_args, execute_program_entry_args_with_http, EntryArg};
+use ace_av_core::{
+    execute_program_entry_args, execute_program_http_resumable, EntryArg, HttpEntryOutcome,
+};
+
+/// PLAN-108（T-03c M3）：派发结果——`SuspendedHttp`=handler 在 HttpCall
+/// 挂起（帧保留在会话，经 [`ComponentEventSession::resume_http`] 续跑）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DispatchState {
+    Settled,
+    SuspendedHttp,
+}
 use ace_core::source::age_component::{
     compile_component_event_program, ComponentEventProgram as CoreEventProgram,
 };
@@ -62,6 +72,9 @@ pub struct HandlerEntry {
     pub msg: String,
     pub def_id: String,
     pub payload: Vec<String>,
+    /// PLAN-108（T-03c M3）：源级赋值字段清单（handler_assigns 的字段名）——
+    /// http 挂起的保留-重播种用（统一提交覆盖并发提交）。
+    pub assigns: Vec<String>,
 }
 
 /// 一次被接纳事件的结果（差量面由调用方从 [`ComponentEventSession::read_states`] 取）。
@@ -188,6 +201,24 @@ impl ComponentEventSessionProgram {
         compile_count: u64,
     ) -> Result<Self, String> {
         let built = Self::lower_and_admit(&core)?;
+        // PLAN-108：源级赋值字段清单（msg → 赋值字段名）——供 http 挂起的
+        // 保留-重播种（统一提交模型的并发提交覆盖补齐）。
+        let assigns_by_msg: std::collections::HashMap<String, Vec<String>> =
+            ace_core::source::age_component::project_component_candidates(src)
+                .ok()
+                .and_then(|nodes| nodes.into_iter().next())
+                .map(|node| {
+                    node.handlers
+                        .into_iter()
+                        .map(|h| {
+                            (
+                                h.msg,
+                                h.assigns.into_iter().map(|a| a.field).collect(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
         Ok(Self {
             src: src.to_string(),
             module_path: module_path.to_string(),
@@ -201,6 +232,7 @@ impl ComponentEventSessionProgram {
                     msg: h.msg.clone(),
                     def_id: h.def_id.clone(),
                     payload: h.payload.clone(),
+                    assigns: assigns_by_msg.get(&h.msg).cloned().unwrap_or_default(),
                 })
                 .collect(),
             cell_of_field: built.cell_of_field,
@@ -338,9 +370,14 @@ impl ComponentEventSessionProgram {
             audit: SessionAudit::default(),
             http: None,
             http_wall: None,
+            suspended: None,
+            suspended_preserve: Vec::new(),
+            seed_def_id: self.seed_def_id.clone(),
         };
         // init 链（首次派发触发；每代一次）。
-        let (out, trace) = session.entry(&self.init_def_id, &[]);
+        let EntryResult::Done(out, trace) = session.entry(&self.init_def_id, &[]) else {
+            return Err("init entry unexpectedly suspended on http".to_string());
+        };
         if !matches!(out, ExecOutcome::Success { .. }) {
             return Err(format!("event session init did not succeed: {out:?}"));
         }
@@ -360,7 +397,9 @@ impl ComponentEventSessionProgram {
                     }
                 }
             }
-            let (out, trace) = session.entry(&self.seed_def_id, &args);
+            let EntryResult::Done(out, trace) = session.entry(&self.seed_def_id, &args) else {
+                return Err("seed entry unexpectedly suspended on http".to_string());
+            };
             if !matches!(out, ExecOutcome::Success { .. }) {
                 return Err(format!("event session seed did not succeed: {out:?}"));
             }
@@ -392,28 +431,106 @@ pub struct ComponentEventSession {
     /// PLAN-108：http 车道的执行墙上限放宽（默认 wall 短于 65s 慢端点见证；
     /// provider 注入时置 300s；只放大不缩小）。
     http_wall: Option<std::time::Duration>,
+    /// PLAN-108（T-03c M3）：Http 挂起态（帧保留；续跑经 resume_http）。
+    suspended: Option<ace_av_core::SuspendedHttp>,
+    /// PLAN-108（T-03c M3）：挂起 handler **未赋值**字段的下标（挂起时
+    /// 定）——续跑**前**取值、成功后重播种，抵消事件程序统一提交对并发
+    /// 提交的覆盖（并发提交须胜出；取值须在续跑前、单线程内无交错）。
+    suspended_preserve: Vec<usize>,
+    /// PLAN-108：seed 入口 def（保留-重播种用；来自程序）。
+    seed_def_id: String,
+}
+
+/// PLAN-108：entry 执行结果（挂起时帧随 `SuspendedHttp` 保留）。
+pub enum EntryResult {
+    Done(ExecOutcome, ace_av_core::ExecTrace),
+    Suspended(ace_av_core::SuspendedHttp),
 }
 
 impl ComponentEventSession {
-    fn entry(
-        &self,
-        def_id: &str,
-        args: &[EntryArg<'static>],
-    ) -> (ExecOutcome, ace_av_core::ExecTrace) {
-        let snap = self.snap.as_ref().expect("session is live");
+    fn limits(&self) -> ace_av_core::ExecLimits {
         // PLAN-108：http 车道放宽执行墙（默认 wall 容不下 65s+ 慢端点）。
         let mut limits = ace_av_core::ExecLimits::default();
         if let Some(wall) = self.http_wall {
             limits.wall = limits.wall.max(wall);
         }
-        execute_program_entry_args_with_http(
+        limits
+    }
+
+    fn entry(&self, def_id: &str, args: &[EntryArg<'static>]) -> EntryResult {
+        let snap = self.snap.as_ref().expect("session is live");
+        let limits = self.limits();
+        match execute_program_http_resumable(
             snap,
             def_id,
             &limits,
             &ace_av_core::CancelFlag::new(false),
             args,
             self.http.clone(),
-        )
+            None,
+        ) {
+            HttpEntryOutcome::Completed(out, trace) => EntryResult::Done(out, trace),
+            HttpEntryOutcome::Suspended(susp) => EntryResult::Suspended(susp),
+        }
+    }
+
+    /// PLAN-108（T-03c M3）：续跑挂起的 Http handler——provider job 完成时
+    /// 经桥 poll 调用；`None`=仍在途（挂起态保留）；`Some(Ok(states))`=完成
+    /// 落账；`Some(Err)`=执行失败（事务回滚语义同派发臂）。
+    pub fn resume_http(
+        &mut self,
+    ) -> Option<Result<Vec<(String, ComponentFieldValue)>, String>> {
+        let susp = self.suspended.take()?;
+        let def_id = susp.def_id.clone();
+        let snap = self.snap.as_ref().expect("session is live").clone();
+        // 续跑前取未赋值字段的当前值（并发提交胜出源；单线程内此后无交错）。
+        let preserved: Vec<(usize, ComponentFieldValue)> = match self.read_states() {
+            Ok(states) => self
+                .suspended_preserve
+                .iter()
+                .map(|i| (*i, states[*i].1.clone()))
+                .collect(),
+            Err(e) => return Some(Err(e)),
+        };
+        let limits = self.limits();
+        match execute_program_http_resumable(
+            &snap,
+            &def_id,
+            &limits,
+            &ace_av_core::CancelFlag::new(false),
+            &[],
+            self.http.clone(),
+            Some(susp),
+        ) {
+            HttpEntryOutcome::Suspended(s2) => {
+                self.suspended = Some(s2);
+                None
+            }
+            HttpEntryOutcome::Completed(out, _trace) => match out {
+                ExecOutcome::Success { .. } => {
+                    self.audit.handler_entries += 1;
+                    // 统一提交的过期视图覆盖了挂起期的并发提交——把续跑前
+                    // 未赋值字段的值重播种回来（并发者胜出）。
+                    if let Err(e) = self.reseed_preserved(&preserved) {
+                        return Some(Err(e));
+                    }
+                    self.suspended_preserve = Vec::new();
+                    match self.read_states() {
+                        Ok(states) => {
+                            self.last_states = states.clone();
+                            Some(Ok(states))
+                        }
+                        Err(e) => Some(Err(e)),
+                    }
+                }
+                other => {
+                    self.audit.rejected += 1;
+                    Some(Err(format!(
+                        "resumed http handler did not succeed (state rolled back): {other:?}"
+                    )))
+                }
+            },
+        }
     }
 
     /// PLAN-108（T-03c M2）：注入/替换宿主 HTTP provider（UI 桥在打开
@@ -458,6 +575,101 @@ impl ComponentEventSession {
         if self.snap.is_none() {
             return Err("session closed: no further events are accepted".to_string());
         }
+        let backup = self
+            .snap
+            .as_ref()
+            .expect("session is live")
+            .global_cells();
+        let result = self
+            .dispatch_seq_state(seq, msg, args)
+            .map(|(outcome, _)| outcome);
+        if result.is_err() {
+            // 事务兜底：失败恢复派发前 cell（不发布半状态）。
+            self.snap
+                .as_ref()
+                .expect("session is live")
+                .restore_global_cells(&backup)
+                .map_err(|e| format!("rollback after failed dispatch: {e}"))?;
+        }
+        result
+    }
+
+    /// PLAN-108（T-03c M3）：派发（返回是否挂起）——桥据 `SuspendedHttp`
+    /// 走 InFlight 车道并在逐步 poll 中 resume。同 msg 重入由桥的
+    /// pending 门忽略（对齐 VM 轨 T-04）。
+    pub fn dispatch_state(
+        &mut self,
+        msg: &str,
+        args: &[ComponentFieldValue],
+    ) -> Result<(EventOutcome, DispatchState), String> {
+        let backup = self
+            .snap
+            .as_ref()
+            .expect("session is live")
+            .global_cells();
+        let result = self.dispatch_seq_state(None, msg, args);
+        if result.is_err() {
+            self.snap
+                .as_ref()
+                .expect("session is live")
+                .restore_global_cells(&backup)
+                .map_err(|e| format!("rollback after failed dispatch: {e}"))?;
+        }
+        result
+    }
+
+    /// PLAN-108（T-03c M3）：handler 的**源级**赋值字段 cell 下标集——
+    /// 未赋值字段的值在统一提交下会被挂起 handler 的过期帧视图覆盖，
+    /// 须在续跑后保留-重播种。（统一提交 epilogue 对每个字段都发
+    /// GlobalSet，MIR 扫描不可用；以 handler_assigns 源级清单为准。）
+    fn handler_assigned_cells(&self, msg: &str) -> std::collections::BTreeSet<usize> {
+        let Some(h) = self.handlers.iter().find(|h| h.msg == msg) else {
+            return std::collections::BTreeSet::new();
+        };
+        h.assigns
+            .iter()
+            .filter_map(|name| self.fields.iter().position(|(n, _)| n == name))
+            .map(|i| self.cell_of_field[i])
+            .collect()
+    }
+
+    /// PLAN-108（T-03c M3）：续跑成功后的保留-重播种——把续跑**前**未赋值
+    /// 字段的值写回（统一提交覆盖了并发提交，并发者胜出；重播种用全量 seed
+    /// 形参，赋值字段取当前值以免冲掉续跑结果）。
+    fn reseed_preserved(&mut self, preserved: &[(usize, ComponentFieldValue)]) -> Result<(), String> {
+        if preserved.is_empty() {
+            return Ok(());
+        }
+        let snap = self.snap.as_ref().expect("session is live").clone();
+        let cells = snap.global_cells();
+        let mut args: Vec<EntryArg<'static>> = Vec::with_capacity(self.fields.len());
+        for (i, (_, _)) in self.fields.iter().enumerate() {
+            let value = match preserved.iter().find(|(fi, _)| *fi == i) {
+                Some((_, v)) => v.clone(),
+                None => cell_value_to_field(&cells[self.cell_of_field[i]])?,
+            };
+            args.push(field_value_to_arg(&value));
+        }
+        match self.entry(&self.seed_def_id.clone(), &args) {
+            EntryResult::Done(out, _) if matches!(out, ExecOutcome::Success { .. }) => Ok(()),
+            EntryResult::Done(out, _) => Err(format!(
+                "reseed of preserved fields did not succeed: {out:?}"
+            )),
+            EntryResult::Suspended(_) => {
+                Err("reseed unexpectedly suspended on http".to_string())
+            }
+        }
+    }
+
+    fn dispatch_seq_state(
+        &mut self,
+        seq: Option<u64>,
+        msg: &str,
+        args: &[ComponentFieldValue],
+    ) -> Result<(EventOutcome, DispatchState), String> {
+        if self.snap.is_none() {
+            return Err("session closed: no further events are accepted".to_string());
+        }
         let Some(h) = self.handlers.iter().find(|h| h.msg == msg) else {
             self.audit.rejected += 1;
             return Err(format!(
@@ -466,8 +678,6 @@ impl ComponentEventSession {
         };
         if args.len() != h.payload.len() {
             self.audit.rejected += 1;
-            // 原场景车道的具名诊断（check_event_dispatch）同码同形——消费侧
-            // 错误合同（stage/type）保持。
             return Err(format!(
                 "source.age.component-event: message `{msg}` declares {} payload slot(s); the directed event carries {} value(s) — a payload event must not run with dropped, padded or swapped values",
                 h.payload.len(),
@@ -477,54 +687,60 @@ impl ComponentEventSession {
         for (i, (v, spelling)) in args.iter().zip(h.payload.iter()).enumerate() {
             if !value_matches_spelling(v, spelling) {
                 self.audit.rejected += 1;
-                // 消费侧错误合同保持旧诊断码（`source.type-mismatch`——旧道
-                // 经 verify 的类型诊断；效果前拒同语义）。
                 return Err(format!(
                     "source.type-mismatch: payload slot #{i} of `{msg}` declares `{spelling}`, which the value does not match"
                 ));
             }
         }
-        // 序号水位：已成功事件的重投不重复执行（返回上次结果或具名 duplicate）。
         if let Some(seq) = seq {
             if self.watermark >= Some(seq) {
                 self.audit.duplicate_ignored += 1;
-                return Ok(EventOutcome::Duplicate);
+                return Ok((EventOutcome::Duplicate, DispatchState::Settled));
             }
         }
         let entry_args: Vec<EntryArg<'static>> = args.iter().map(field_value_to_arg).collect();
-        // 事务兜底：派发前备份 cell；失败恢复（业务中途 trap 由编译期
-        // locals-先行/统一提交承担；这是预算边界的残余半提交兜底）。
-        let backup = self.snap.as_ref().expect("session is live").global_cells();
-        let (out, trace) = self.entry(&h.def_id, &entry_args);
-        self.audit.entry_seqs.push(trace.execution_seq);
-        match out {
-            ExecOutcome::Success { .. } => {
-                self.audit.handler_entries += 1;
-                match self
-                    .audit
-                    .handler_entries_by_msg
-                    .iter_mut()
-                    .find(|(m, _)| m == msg)
-                {
-                    Some((_, c)) => *c += 1,
-                    None => self.audit.handler_entries_by_msg.push((msg.to_string(), 1)),
-                }
-                if let Some(seq) = seq {
-                    self.watermark = Some(seq);
-                }
-                self.last_states = self.read_states()?;
-                Ok(EventOutcome::Dispatched)
+        match self.entry(&h.def_id, &entry_args) {
+            EntryResult::Suspended(susp) => {
+                // handler 在 HttpCall 挂起——帧随会话保留，本事件不提交；
+                // 挂起期间其它派发照常（提交在体尾）。未赋值字段的值此刻
+                // 快照（续跑统一提交会覆盖并发提交——保留-重播种）。
+                let assigned = self.handler_assigned_cells(msg);
+                self.suspended_preserve = (0..self.fields.len())
+                    .filter(|i| !assigned.contains(&self.cell_of_field[*i]))
+                    .collect();
+                self.suspended = Some(susp);
+                Ok((EventOutcome::Dispatched, DispatchState::SuspendedHttp))
             }
-            other => {
-                self.snap
-                    .as_ref()
-                    .expect("session is live")
-                    .restore_global_cells(&backup)
-                    .map_err(|e| format!("rollback after failed dispatch: {e}"))?;
-                self.audit.rejected += 1;
-                Err(format!(
-                    "event `{msg}` did not succeed (state rolled back): {other:?}"
-                ))
+            EntryResult::Done(out, trace) => {
+                self.audit.entry_seqs.push(trace.execution_seq);
+                match out {
+                    ExecOutcome::Success { .. } => {
+                        self.audit.handler_entries += 1;
+                        match self
+                            .audit
+                            .handler_entries_by_msg
+                            .iter_mut()
+                            .find(|(m, _)| m == msg)
+                        {
+                            Some((_, c)) => *c += 1,
+                            None => self
+                                .audit
+                                .handler_entries_by_msg
+                                .push((msg.to_string(), 1)),
+                        }
+                        if let Some(seq) = seq {
+                            self.watermark = Some(seq);
+                        }
+                        self.last_states = self.read_states()?;
+                        Ok((EventOutcome::Dispatched, DispatchState::Settled))
+                    }
+                    other => {
+                        self.audit.rejected += 1;
+                        Err(format!(
+                            "event `{msg}` did not succeed (state rolled back): {other:?}"
+                        ))
+                    }
+                }
             }
         }
     }
@@ -567,7 +783,9 @@ impl ComponentEventSession {
         }
         let mut out = Vec::with_capacity(self.text_def_ids.len());
         for def_id in &self.text_def_ids {
-            let (outcome, trace) = self.entry(def_id, &[]);
+            let EntryResult::Done(outcome, trace) = self.entry(def_id, &[]) else {
+                return Err("text leaf evaluation unexpectedly suspended on http".to_string());
+            };
             self.audit.entry_seqs.push(trace.execution_seq);
             match outcome {
                 ExecOutcome::Success { value, .. } => match value {

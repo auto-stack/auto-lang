@@ -10,7 +10,7 @@
 //!
 //! 语义锚（VM shim 同契）：post_json 返回响应体文本（str）。
 
-use ace_av::component_event_sessions::ComponentEventSessionProgram;
+use ace_av::component_event_sessions::{ComponentEventSessionProgram, EventOutcome};
 use ace_core::source::age_h0::LegacyWidgetAlias;
 
 /// 032 形探针（node 声明 + 65s 慢端点 handler 族闭合面最小切片）。
@@ -103,20 +103,26 @@ fn p108_user_shadow_wins() {
 /// 文本落账 model 字段；provider 缺席仍 fail-closed（M1 不变式保持）。
 struct FakeHttp {
     seen: std::sync::Arc<std::sync::Mutex<Vec<(String, String, Option<String>)>>>,
+    /// job → 完成值（None=在途；测试注入）。
+    results: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, Option<Result<String, String>>>>>,
+    next_job: std::sync::Mutex<u64>,
 }
 
 impl ace_av::component_event_sessions::HttpProvider for FakeHttp {
-    fn execute(
-        &mut self,
-        verb: &str,
-        url: &str,
-        body: Option<&str>,
-    ) -> Result<String, String> {
+    fn http_start(&mut self, verb: &str, url: &str, body: Option<&str>) -> u64 {
         self.seen
             .lock()
             .unwrap()
             .push((verb.to_string(), url.to_string(), body.map(str::to_string)));
-        Ok("{\"ok\":true,\"slow\":65,fake-body}".to_string())
+        let mut next = self.next_job.lock().unwrap();
+        let job = *next;
+        *next += 1;
+        self.results.lock().unwrap().insert(job, None);
+        job
+    }
+
+    fn http_poll(&mut self, job: u64) -> Option<Result<String, String>> {
+        self.results.lock().unwrap().get(&job)?.clone()
     }
 }
 
@@ -132,25 +138,60 @@ fn p108_http_provider_executes_and_lands() {
     // 无 provider：仍具名 fail-closed（M1 不变式）。
     let err = session.dispatch("Load", &[]).expect_err("无 provider 须 fail-closed");
     assert!(err.contains("http.client"), "实际: {err}");
-    // 注入 provider：执行并落账。
+    // 注入 provider：start 挂起 → 完成注入 → resume 落账。
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let results = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
     let provider = std::sync::Arc::new(std::sync::Mutex::new(FakeHttp {
         seen: seen.clone(),
+        results: results.clone(),
+        next_job: std::sync::Mutex::new(1),
     }));
     session.set_http_provider(provider);
-    session.dispatch("Load", &[]).expect("Load 带 provider 须成功");
-    let states = session.read_states().expect("read_states");
+    let (outcome, state) = session
+        .dispatch_state("Load", &[])
+        .expect("Load 派发");
+    assert_eq!(outcome, EventOutcome::Dispatched);
+    assert_eq!(
+        state,
+        ace_av::component_event_sessions::DispatchState::SuspendedHttp,
+        "job 未完成前须挂起"
+    );
+    // 挂起期间同会话其它派发照常（提交在体尾——M3 交互性）。
+    session.dispatch("Bump", &[]).expect("Bump 挂起期照常");
+    // 挂起期 Bump 的提交即时可见（不等待 resume）。
+    let during = session.read_states().unwrap();
+    let during_bumps = during
+        .iter()
+        .find(|(n, _)| n == "bumps")
+        .map(|(_, v)| format!("{v:?}"))
+        .unwrap_or_default();
+    assert_eq!(during_bumps, "Int(1)", "挂起期 Bump 须即时提交，实际: {during_bumps}");
+    // job 完成注入 → resume 落账。
+    results
+        .lock()
+        .unwrap()
+        .insert(1, Some(Ok("{\"ok\":true,\"slow\":65,fake-body}".to_string())));
+    let states = session
+        .resume_http()
+        .expect("resume 应有结果")
+        .expect("resume 应成功");
     let result = states
         .iter()
         .find(|(n, _)| n == "result")
         .map(|(_, v)| format!("{v:?}"))
         .expect("result 字段在案");
     assert!(
-        result.contains("fake-body") || result.contains("slow"),
+        result.contains("fake-body"),
         "result 须落账响应体，实际: {result}"
     );
+    let bumps = states
+        .iter()
+        .find(|(n, _)| n == "bumps")
+        .map(|(_, v)| format!("{v:?}"))
+        .unwrap_or_default();
+    assert_eq!(bumps, "Int(1)", "挂起期的 Bump 须保留（保留-重播种），实际: {bumps}");
     let seen = seen.lock().unwrap();
-    assert_eq!(seen.len(), 1, "provider 恰一调");
+    assert_eq!(seen.len(), 1, "provider 恰一调（重入不双发）");
     assert_eq!(seen[0].0, "auto.http.post-json.v1");
     assert_eq!(seen[0].1, "http://127.0.0.1:7072/slow");
     assert_eq!(seen[0].2.as_deref(), Some("q=1"));

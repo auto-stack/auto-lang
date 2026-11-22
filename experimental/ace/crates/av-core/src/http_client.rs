@@ -73,13 +73,14 @@ pub fn declaration(symbol: &str, sig: u32) -> Result<MirHostImport, AdmissionErr
     })
 }
 
-/// PLAN-108（T-03c M2）：宿主 HTTP 执行器——UI 桥注入会话。**阻塞语义**：
-/// 桥负责把携带 Http 的 handler 派发跑在 worker 线程（桥级异步，UI 线程
-/// 不等待）；执行器内同步调用。取消=桥丢弃会话（provider 随会话死，迟到
-/// 响应经完成口代际核对拒写——桥侧责任）。
+/// PLAN-108（T-03c M3）：宿主 HTTP 执行器（job 式——执行器挂起语义）。
+/// UI 桥实现：`start` 把真实请求派发上 worker 线程立即返回 job id；
+/// `poll` 非阻塞查完成（None=在途）。执行器首过 start+挂起 `LoopState`，
+/// 完成后经会话续跑（同一会话、提交序=完成序——handler 提交在体尾，挂起
+/// 期间其它派发自然交错，对齐 PLAN-702 段化语义）。
 pub trait HttpProvider: Send {
-    /// `verb`=目录 symbol（`auto.http.post-json.v1` 形）；`body`=请求体
-    /// 文本（无体动词=None）。Ok=响应体文本（VM shim 同语义）；Err=具名
-    /// 失败消息（映射 `ExecOutcome::Error`）。
-    fn execute(&mut self, verb: &str, url: &str, body: Option<&str>) -> Result<String, String>;
+    /// 启动请求；返回 job id（桥侧单调分配）。
+    fn http_start(&mut self, verb: &str, url: &str, body: Option<&str>) -> u64;
+    /// 非阻塞完成查询：None=在途；Some=终值（Ok=响应体文本，VM shim 同语义）。
+    fn http_poll(&mut self, job: u64) -> Option<Result<String, String>>;
 }

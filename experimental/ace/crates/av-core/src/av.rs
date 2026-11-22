@@ -1456,8 +1456,23 @@ pub fn execute_program_entry_args(
     execute_program_entry_args_with_http(prog, def_id, limits, cancel, args, None)
 }
 
-/// PLAN-108（T-03c M2）：携带宿主 HTTP provider 的会话派发入口（UI 桥注入；
-/// None=M1 fail-closed 语义）。
+/// PLAN-108：Http 挂起运行（跨续跑的帧保留态；`def_id`/`values` 为续跑
+/// 再入的入口实参——handler 帧内局部与簿记全在 `st`）。
+pub struct SuspendedHttp {
+    st: Box<LoopState>,
+    /// 挂起 handler 的入口 def（续跑再入用）。
+    pub def_id: String,
+    values: Vec<Value>,
+}
+
+pub enum HttpEntryOutcome {
+    Completed(ExecOutcome, ExecTrace),
+    Suspended(SuspendedHttp),
+}
+
+/// PLAN-108（T-03c M2/M3）：携带宿主 HTTP provider 的会话派发入口
+/// （UI 桥注入；None=M1 fail-closed 语义）。HttpCall 经 job 式 provider
+/// 挂起时返回 [`HttpEntryOutcome::Suspended`]（st 不清理、帧保留）。
 pub fn execute_program_entry_args_with_http(
     prog: &crate::program_snapshot::ProgramSnapshot,
     def_id: &str,
@@ -1466,61 +1481,94 @@ pub fn execute_program_entry_args_with_http(
     args: &[EntryArg<'_>],
     http: Option<std::sync::Arc<std::sync::Mutex<dyn crate::http_client::HttpProvider>>>,
 ) -> (ExecOutcome, ExecTrace) {
-    let mut st = LoopState {
-        arena: crate::owned_text::StrArena::new(),
-        http,
-        ..Default::default()
-    };
-    st.trace.arena = Some(st.arena.clone());
-    st.trace.execution_seq = EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    st.trace.dispatched = observe_dispatched(prog);
-    st.trace.loaded_index_builds = prog.loaded_program().builds();
-    st.trace.loaded_index_reuses = prog.loaded_program().reuses();
-    st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
-    let limits = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
-        Ok(limits) => limits,
-        Err(out) => return (out, st.trace),
-    };
-    // 文本实参：非法 UTF-8 在**分配前**拒（预算前置同 `execute_entry_text`）。
-    let mut values: Vec<Value> = Vec::with_capacity(args.len());
-    for arg in args {
-        match arg {
-            EntryArg::Value(v) => values.push(v.clone()),
-            EntryArg::Text(bytes) => {
-                let Ok(text) = std::str::from_utf8(bytes.as_ref()) else {
-                    let out = ExecOutcome::Infra("entry text argument is not valid UTF-8".into());
-                    finish_trace(&mut st, &limits);
-                    return (out, st.trace);
-                };
-                let handle = st.arena.alloc(bytes);
-                let scalars = text.chars().count() as u32;
-                values.push(Value::StrView(crate::contract::StrView {
-                    src: crate::contract::StrViewSrc::Share(handle),
-                    start: 0,
-                    end: scalars,
-                }));
+    match execute_program_http_resumable(prog, def_id, limits, cancel, args, http, None) {
+        HttpEntryOutcome::Completed(out, trace) => (out, trace),
+        HttpEntryOutcome::Suspended(_) => (
+            ExecOutcome::Infra("http.client: parked without a resume lane".into()),
+            ExecTrace::default(),
+        ),
+    }
+}
+
+/// PLAN-108（T-03c M3）：可续跑的 http 派发——`resume` 为上次的挂起态
+/// （同一 def/实参，簿记与帧原样继续）。
+pub fn execute_program_http_resumable(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    def_id: &str,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[EntryArg<'_>],
+    http: Option<std::sync::Arc<std::sync::Mutex<dyn crate::http_client::HttpProvider>>>,
+    resume: Option<SuspendedHttp>,
+) -> HttpEntryOutcome {
+    let (mut st, values) = match resume {
+        Some(s) => (*s.st, s.values),
+        None => {
+            let mut st = LoopState {
+                arena: crate::owned_text::StrArena::new(),
+                http,
+                ..Default::default()
+            };
+            st.trace.arena = Some(st.arena.clone());
+            st.trace.execution_seq =
+                EXECUTION_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            st.trace.dispatched = observe_dispatched(prog);
+            st.trace.loaded_index_builds = prog.loaded_program().builds();
+            st.trace.loaded_index_reuses = prog.loaded_program().reuses();
+            st.trace.loaded_index_bytes = prog.loaded_program().usage().1 as u64;
+            let limits2 = match limits_with_loaded_index(limits, prog.loaded_program().usage().0) {
+                Ok(limits2) => limits2,
+                Err(out) => return HttpEntryOutcome::Completed(out, st.trace),
+            };
+            if let Some(out) = run_module_inits(prog, &limits2, cancel, &mut st, true) {
+                finish_trace(&mut st, &limits2);
+                return HttpEntryOutcome::Completed(out, st.trace);
             }
+            let mut values: Vec<Value> = Vec::with_capacity(args.len());
+            for arg in args {
+                match arg {
+                    EntryArg::Value(v) => values.push(v.clone()),
+                    EntryArg::Text(bytes) => {
+                        let Ok(text) = std::str::from_utf8(bytes.as_ref()) else {
+                            let out = ExecOutcome::Infra("entry text argument is not valid UTF-8".into());
+                            finish_trace(&mut st, &limits2);
+                            return HttpEntryOutcome::Completed(out, st.trace);
+                        };
+                        let handle = st.arena.alloc(bytes);
+                        let scalars = text.chars().count() as u32;
+                        values.push(Value::StrView(crate::contract::StrView {
+                            src: crate::contract::StrViewSrc::Share(handle),
+                            start: 0,
+                            end: scalars,
+                        }));
+                    }
+                }
+            }
+            (st, values)
         }
-    }
-    if let Some(out) = run_module_inits(prog, &limits, cancel, &mut st, true) {
-        finish_trace(&mut st, &limits);
-        return (out, st.trace);
-    }
+    };
     let Some(slot) = prog.code().iter().position(|c| c.name() == def_id) else {
         let out = ExecOutcome::Infra(format!(
             "entry-at: function `{def_id}` is not linked in this snapshot"
         ));
-        finish_trace(&mut st, &limits);
-        return (out, st.trace);
+        finish_trace(&mut st, limits);
+        return HttpEntryOutcome::Completed(out, st.trace);
     };
     let view = prog.unit_view_at(slot as u32);
-    let out = dispatch(&view, &limits, cancel, &values, &mut st, None, false)
+    let out = dispatch(&view, limits, cancel, &values, &mut st, None, false)
         .expect("no budget: the loop always terminates with an outcome");
+    if st.http_park.is_some() {
+        return HttpEntryOutcome::Suspended(SuspendedHttp {
+            st: Box::new(st),
+            def_id: def_id.to_string(),
+            values,
+        });
+    }
     if !st.frames.is_empty() {
         cleanup_owned_frames(&mut st);
     }
-    finish_trace(&mut st, &limits);
-    (out, st.trace)
+    finish_trace(&mut st, limits);
+    HttpEntryOutcome::Completed(out, st.trace)
 }
 
 /// PLAN-960: run the snapshot's module init functions (once per generation).
@@ -2077,6 +2125,9 @@ struct LoopState {
     /// PLAN-108（T-03c M2）：宿主 HTTP provider（UI 桥注入；None=HttpCall
     /// 具名 fail-closed——M1 语义保持）。
     http: Option<std::sync::Arc<std::sync::Mutex<dyn crate::http_client::HttpProvider>>>,
+    /// PLAN-108（T-03c M3）：Http 挂起簿记——Some=HttpCall 已启动 job 并挂起
+    /// （ip 回退、帧保留）；续跑 poll job，命中则写 dst 继续。
+    http_park: Option<HttpPark>,
     /// PLAN-968: the shared scheduler tables (mailboxes, reply ports,
     /// virtual clock). Present only inside `execute_sched` chains.
     sched: Option<std::sync::Arc<std::sync::Mutex<SchedTables>>>,
@@ -4618,9 +4669,10 @@ fn dispatch_with_host<V: ModuleView>(
             }
             match instr {
                 MirInstr::HttpCall { dst, host, args } => {
-                    // PLAN-108：Http 效应执行——provider 缺席=具名 fail-closed
-                    // （M1 语义）；provider 在场=同步执行（阻塞语义由桥侧
-                    // worker 线程承担，UI 线程不等待）。
+                    // PLAN-108（T-03c M3）：provider 缺席=具名 fail-closed（M1）；
+                    // job 式 provider：首过 start+挂起（帧保留、ip 回退、会话
+                    // 续跑），续跑 poll 命中即写 dst 继续——挂起期间同会话其它
+                    // 派发照常提交（提交在 handler 体尾）。
                     let Some(http) = st.http.clone() else {
                         return Some(ExecOutcome::Infra(
                             "http.client: no http provider installed in this session lane (plan108 M1 fail-closed)".into(),
@@ -4652,18 +4704,32 @@ fn dispatch_with_host<V: ModuleView>(
                     }
                     let url = texts.first().cloned().unwrap_or_default();
                     let body = texts.get(1).cloned();
-                    let result = {
-                        let mut provider =
-                            http.lock().expect("http provider mutex");
-                        provider.execute(&import.symbol, &url, body.as_deref())
+                    let (job, symbol) = match st.http_park.take() {
+                        Some(park) => (park.job, park.symbol),
+                        None => {
+                            let mut provider = http.lock().expect("http provider mutex");
+                            let job = provider.http_start(&import.symbol, &url, body.as_deref());
+                            (job, import.symbol.clone())
+                        }
                     };
-                    match result {
-                        Ok(body_text) => {
+                    let polled = {
+                        let mut provider = http.lock().expect("http provider mutex");
+                        provider.http_poll(job)
+                    };
+                    match polled {
+                        None => {
+                            st.http_park = Some(HttpPark { job, dst: *dst, symbol });
+                            st.frames.last_mut().expect("frame present").ip -= 1;
+                            return Some(ExecOutcome::Infra(
+                                "http.client: parked awaiting completion (internal suspend)".into(),
+                            ));
+                        }
+                        Some(Ok(body_text)) => {
                             let handle = st.arena.alloc(body_text.as_bytes());
                             let frame = st.frames.last_mut().expect("frame present");
                             frame.slots[*dst as usize] = Value::Str(handle);
                         }
-                        Err(message) => {
+                        Some(Err(message)) => {
                             return Some(ExecOutcome::Error {
                                 message: format!("http.client: {message}"),
                                 span: span_of(func, flat)
@@ -9988,6 +10054,15 @@ impl SchedTables {
 }
 
 /// Why a chain parked (mirrored between LoopState and the scheduler).
+#[derive(Clone, Debug)]
+/// PLAN-108（T-03c M3）：HttpCall 挂起点（job 式 provider 续跑簿记）。
+struct HttpPark {
+    job: u64,
+    dst: u32,
+    #[allow(dead_code)]
+    symbol: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum SchedPark {
     Recv(usize),
