@@ -124,3 +124,36 @@ age-package `93cd6814…`（前值线：`620a0f73→e3859aed`（980 on-if，mast
 980 侧配套：`plan980_on_if.rs`（4，含 else-if 链/分支调用 foreign/Str==str 放行）
 + `plan980_lambda_if.rs`（core 5+av 4，值函数道结构化——`Lambda.stmts` 接共享
 `project_view_stmt_children`，本仓投影侧无第二分支语义）。
+
+## 5. Gallery 公共 AV 会话与适用边界（PLAN-1075）
+
+**多模块闭包会话**：Gallery 作者来源是 `use <id>: …` 模块集（如 g01 的
+resources/shapes/main），经 `AgeSession::open_modules(modules, entry, …)` 以同一
+受检前门开为 AV 会话（`experimental/age-ace-session/src/age_session_core.rs`，
+bridge 与 driver 共同编译的唯一实现；出口 `app::<entry>`）。`update_module(id, src)`
+同 PID 单模块热更新：未名模块具名拒；编译失败保留上一好代/账面/代数（坏编辑保旧）；
+成功递增 body 代数、新值即时可见（进程内 AV 重编译，无 cargo/rustc）。变体入口
+文件名带连字符（`v-color`/`main-alt`）不是合法模块 id——由接线适配层净化为下划线；
+受检前门对连字符 id 具名拒 `module-identity`（净化是接线职责，不是语言放宽）。
+
+**适用边界**：受检前门作者面为平面场景行（`shape2d`/3D 冻结叶/组件实例行；嵌套
+`group2d` 与 `character2d`/`solid2d`/`player3d` 等元素种类不在其中）。56 个
+Gallery generated 闭包（22 入口×47 变体）中 **6 个**过门开为 AV 会话：g01 全部
+5 变体 + g02/main（静态 GLB）；其余 50 个具名 pending（45 嵌套语法 `expected fn,
+found node`、5 元素种类 `scene-element`），其前门扩展归图形能力线（AutoUI
+099–102 MAP/ASSET/PBR/CLIP 及后续场景扩展计划），非本面义务。混合场景/两游戏归
+1099/1100/1101。
+
+**永久 oracle**：auto-ui driver `tests/plan1075_gallery_av_session.rs`（8 用例：
+g01 四行声明序/几何/材质/hidden、v-color/v-order/v-position/v-visible 变体事实、
+g02 model3d 行+Model3D 资源+GLB 路径符号实参、坏编辑保旧/热更新恢复/Run-Stop
+净零/PID 稳定、连字符 id 与未知入口负控）+ `tests/fixtures_plan1075/`（17 个 .at
+逐字冻结自 age-examples `ea0fc59`，manifest 逐文件 SHA256）。会话面基线入口：
+`authoring_session`/`mixed_regions_lifecycle_flow`/`s2_age_routing`/`authoring_storage`
+（driver）与 bridge `s1/s3/s4`（live ACE）。
+
+**SDK 身份**：driver `.sdk-source` = 冻结基座 681 文件 + overlay 1435 文件
+@ auto-lang `0a167f611`（`prepare_sdk --from-snapshot` + `apply_overlay`，复用
+受检前门不刷新 overlay）。原 M1 引擎/收据身份保持 age-examples `ea0fc59` 冻结
+（`gallery.py validate --all` 12 IDs/22 subentries/6 locks；21/22 收据全绑
+296/296 oracle）。
