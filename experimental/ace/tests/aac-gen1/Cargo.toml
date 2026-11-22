@@ -11,16 +11,17 @@ ace-a2x-rust = { path = "../../crates/a2x-rust" }
 ace-a2x-store = { path = "../../crates/a2x-store" }
 ace-aac-host-conformance = { path = "../aac-host" }
 ace-aac-syntax-conformance = { path = "../aac-syntax" }
+ace-aac-bridge = { path = "../../crates/aac-bridge" }
+ace-av-core = { path = "../../crates/av-core" }
 ace-core = { path = "../../crates/core" }
 ace-native = { path = "../../crates/native" }
 ace-source-query = { path = "../../crates/source-query" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1"
+serde_json = "1"
 
 [dev-dependencies]
 sha2 = "0.10"
-ace-aac-bridge = { path = "../../crates/aac-bridge" }
-ace-av-core = { path = "../../crates/av-core" }
 auto-test-case = { path = "../../../../crates/auto-test-case" }
 
 [[test]]

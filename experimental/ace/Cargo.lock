@@ -139,6 +139,7 @@ dependencies = [
  "auto-test-case",
  "auto-tool-execution",
  "blake3",
+ "serde_json",
  "sha2",
 ]
 
