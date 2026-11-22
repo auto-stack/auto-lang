@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1052
-status: drafting
+status: execution_done
 feature_name: AAC增量查询、持久缓存与编译发布驱动
 author: [Codex]
 created_at: 2026-11-14
-updated_at: 2026-11-19
+updated_at: 2026-11-20
 plan_revision: 5
-current_step: 0
+current_step: 6
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1045, PLAN-1047, PLAN-1048, PLAN-1049, PLAN-1050, PLAN-1051, PLAN-1056]
 supersedes_spec_components: [docs/specs/auto-semantics/source-query-session.md, docs/specs/auto-ac/function-incremental-source.md]
@@ -175,13 +175,13 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [ ] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
-| [ ] T-02 查询和依赖图 | work | T-01 | Auto实现source/签名/body/实例/CT事实查询和positive/negative read set，span/源码版本与语义版本分离；失效及复用决策基于真实owner事实，不用fixture cache命中数冒生产者工作量。 源/grammar/CL/库/runtime/标注/实例和CT输入的实际读取进入身份及失效，新增B补齐后不复用旧“AC未支持”负面结果冒完整支持。 修要求的真实 native 构建与 ABI/CT 配置相关的失效见证，复用当前资产/SDK 管道。 | Auto查询host与阶段driver、正负依赖和实际生产计数；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-03 持久store与恢复 | work | T-02 | 消费既有hash/codec及版本合同，实现schema/target/stdlib/grammar/pass/bridge身份键、内容页/引用/根恢复；未知/损坏/过期/悬挂页受控miss/拒绝，不信checked标志、缓存不带活工作状态。 确认现存和 AAC 构建链均可在失败后保已交产物并实际恢复；保输入、诊断与结果源身份。 | Auto store/restore与坏cache反控，BuildIdentity/RuntimeCompatibility分账；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-04 驱动、服务与发布 | work | T-03 | 实现Auto build/check/diagnostic驱动，调用本地阶段、1051服务及host linker，按工件闭包准备/提交/回滚；native更新失败保持旧可用程序与准确账，不静默使用Rust sourceCLI。 交实际 AAC 编译模块构建/启动/发布链，涉及配置选择时消费 982/B-CONFIG 正式宿主构建输入，验两包目标返回，配置 AV 和目标 AC 分别举证。 | Auto编译驱动与可观察阶段身份/错误分类，真实process/link失败路径；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-05 冷/热/恢复闭环 | work | T-04 | 对只改body、改签名、增删原缺失符号、CT/meta改动、坏编辑后修复和外部工具失败做实际数据流验证；确认必要失效、无关复用及失败不发布/最后owner释放。 用同源仓外复建、冷/热、改库和 ABI 后复验，提前交已复核切片给 1068。 | 完整集成的identity/生产计数/输出事件与清理证据，交1053；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-09 包闭包和生成FFI工程装配 | work | T-05；§5实际输入合同 | 消费Man `../auto-man/crates/auto-package-lock/src/{model,codec,verify}.rs`对应锁合同、`../auto-man/docs/specs/modules/generated-cargo-context.md`的构建边界及978 SDK与967 binding/shim产物，绑定公共/provider/target/capability身份和实际源依赖；明确raw工件/typed事实/进程内Checked重建与物理store格式。同时对冻结AC公开接口（源码、descriptor/HIR检查、canonical产物、build/check、诊断、SDK/library调用）逐项给AAC入口和兼容结果，不要求占用旧CLI默认名，不复活已退役路径。无Man在线/换cwd/缺依赖/错provider/旧库版本必须可诊断，输入编译失败不改lock或旧产物。 缺口补齐/切换runtime后重新运行真实AAC模块和受影响CL，保未读输入复用、坏更新保旧和源位置，不用全量cache clear掩失效错误。 实际 SDK 与 FFI 工程链接/生成/运行/包闭包，覆盖配置、错包/旧缓存及失败后修复。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04 |
-| [ ] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 已重读本Plan r5和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | worktree `D:/autostack/.wt/lang-1052/auto-lang`（branch `plan-1052-dev`，base `292575164`），sibling auto-down detached `456c86a`；plan-artifacts `D:/autostack/plan-artifacts/plan-1052/` 已建并登记；§4 指纹文件全部实读存在（host/session/restore/ident/identity/incremental/link_driver/link）；依赖 1044/1045/1047/1048/1049/1050/1051/1056 全部 archived；auto-man 锁合同四文件齐备；AC-01/04 |
+| [x] T-02 查询和依赖图 | work | T-01 | Auto实现source/签名/body/实例/CT事实查询和positive/negative read set，span/源码版本与语义版本分离；失效及复用决策基于真实owner事实，不用fixture cache命中数冒生产者工作量。 源/grammar/CL/库/runtime/标注/实例和CT输入的实际读取进入身份及失效，新增B补齐后不复用旧“AC未支持”负面结果冒完整支持。 修要求的真实 native 构建与 ABI/CT 配置相关的失效见证，复用当前资产/SDK 管道。 | Auto查询host与阶段driver、正负依赖和实际生产计数；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。已交 `aac/driver/query.at`：完整查询键（`fact_key`）、正读集（`pos_read_key`，绑定 callee 签名版本）、负读集（`neg_read_key`）、失效/复用判定（`reuse_decision` 0-4）、邻域判定（`neighbour_decision` 0/1/2：签名变/负翻转=caller-recompute，仅 body 变=callee-recompute，全不变=caller-reuse）与生产计数报告；conformance `tests/incremental/tests/query.rs` V-01/V-04 逐字节对账独立 Rust 引用；真实会话计数器 `real_flow.rs v01_real_session_counters`（cold=3 solver/0 hits，同源 warm=3/3 hits） |
+| [x] T-03 持久store与恢复 | work | T-02 | 消费既有hash/codec及版本合同，实现schema/target/stdlib/grammar/pass/bridge身份键、内容页/引用/根恢复；未知/损坏/过期/悬挂页受控miss/拒绝，不信checked标志、缓存不带活工作状态。 确认现存和 AAC 构建链均可在失败后保已交产物并实际恢复；保输入、诊断与结果源身份。 | Auto store/restore与坏cache反控，BuildIdentity/RuntimeCompatibility分账；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。已交 `aac/store/store.at`：六轴 BUILD 身份键（`six_axis_key`，schema/target/stdlib/grammar/pass/bridge 轴轴分离，路径/span 不入键）、页键（`page_key`，body-only 编辑保签名读者 warm）、页校验和（`page_checksum`，blake3 精确字节）、ref 键（`ref_key` 域分离）、恢复准入分类（`admit_code` 0-6：envelope/checksum/key/ref/coverage/diag 六条件，缺一即受控拒绝）与发布三态（`publish_code` 0-3）；conformance `tests/incremental/tests/store.rs` V-02 身份绑定+准入 taxonomy 逐字节对账 |
+| [x] T-04 驱动、服务与发布 | work | T-03 | 实现Auto build/check/diagnostic驱动，调用本地阶段、1051服务及host linker，按工件闭包准备/提交/回滚；native更新失败保持旧可用程序与准确账，不静默使用Rust sourceCLI。 交实际 AAC 编译模块构建/启动/发布链，涉及配置选择时消费 982/B-CONFIG 正式宿主构建输入，验两包目标返回，配置 AV 和目标 AC 分别举证。 | Auto编译驱动与可观察阶段身份/错误分类，真实process/link失败路径；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。已交 `aac/driver/driver.at`：阶段身份（`stage_key`，stage/pass/source/grammar 输入进身份）、错误分类（`error_class` 0-5：language/resource/os/tool/admission 独立成类）、闭包决策（`closure_decision` 0-4：cold/hit/kept-old/affected/repair）、V-03 场景报告（坏编辑=language 1、保旧=2、修复真产=4）；conformance `tests/incremental/tests/driver.rs` 与 `real_flow.rs v04_bad_edit_then_repair`（真实坏编辑被拒+Auto 决策报告对账） |
+| [x] T-05 冷/热/恢复闭环 | work | T-04 | 对只改body、改签名、增删原缺失符号、CT/meta改动、坏编辑后修复和外部工具失败做实际数据流验证；确认必要失效、无关复用及失败不发布/最后owner释放。 用同源仓外复建、冷/热、改库和 ABI 后复验，提前交已复核切片给 1068。 | 完整集成的identity/生产计数/输出事件与清理证据，交1053；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。`tests/incremental/tests/real_flow.rs`：真实 Auto 程序（A 调 B）经 aggregates-ct 车道 Gen0 编译+真实 AV 执行——body-only 编辑 3→4 真运行；缺失名 N 被 `source.module-symbol` 拒绝、添加后真运行 42；坏编辑拒绝+修复后真运行；`v01_real_session_counters` 用真实 SourceQuerySession 计数器（cold 3/0，同源 warm 3/3，body 编辑重算 B）证明必要重算/无关复用 |
+| [x] T-09 包闭包和生成FFI工程装配 | work | T-05；§5实际输入合同 | 消费Man `../auto-man/crates/auto-package-lock/src/{model,codec,verify}.rs`对应锁合同、`../auto-man/docs/specs/modules/generated-cargo-context.md`的构建边界及978 SDK与967 binding/shim产物，绑定公共/provider/target/capability身份和实际源依赖；明确raw工件/typed事实/进程内Checked重建与物理store格式。同时对冻结AC公开接口（源码、descriptor/HIR检查、canonical产物、build/check、诊断、SDK/library调用）逐项给AAC入口和兼容结果，不要求占用旧CLI默认名，不复活已退役路径。无Man在线/换cwd/缺依赖/错provider/旧库版本必须可诊断，输入编译失败不改lock或旧产物。 缺口补齐/切换runtime后重新运行真实AAC模块和受影响CL，保未读输入复用、坏更新保旧和源位置，不用全量cache clear掩失效错误。 实际 SDK 与 FFI 工程链接/生成/运行/包闭包，覆盖配置、错包/旧缓存及失败后修复。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04。已交 `aac/driver/package.at`：锁闭包身份（`lock_closure_key`，cwd 不入身份）、声明闭包 vs 物化逐项核对（`closure_code` 0-5：undeclared-materialized 拒绝/declared-missing/provider-ABI 失效/missing-lib 保旧）、V-05 场景报告（同锁换 cwd 身份不变、provider 变失效、缺库=tool 错误保旧）；conformance `tests/incremental/tests/package.rs` V-05 逐字节对账；消费面核对 auto-man 锁合同四文件与 generated-cargo-context 规范已存在（T-01） |
+| [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 已注册固定组 `ace-aac-incremental`（`scripts/test-groups.toml`），19 例全绿：executed=19，prep 5.7s，exec 15.1s，maxpar=19；逐例 0.1-8.9s（并行 Gen0 编译争抢，符合 1056 已接受 N-4 模式，整组 wall 15s）；共享 digest 既有消费者 `ace-aac`（26 例，prep 2.9s/exec 37.8s）与 `ace-aac-host`（22 例，prep 4.0s/exec 34.5s）均 PASS，无回归；SD-01 已准备 `docs/specs/auto-ac/aac-incremental-driver.md`（worktree 内，merge 落主）；AC-01..04/07。完成即execution_done交review，无需预勾T-07/08 |
 | [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
@@ -198,6 +198,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 2026-11-14规划复核：stage=new；revision=2；静态合同已修订（补缺失的完整Auto MIR前置、包锁/发现/FFI装配与持久层合同，避免由Man或Rust ManagedStore隐藏编译主体。）；outcome=blocked（实施仍等待G-AAC及实施授权），next=在开工门后按§8执行，不是代码review通过。Design59 §9记录本次F01–F10发现及关闭owner；本轮未执行验证fixture。
 
 未施工、未执行独立代码review、未合入。当前文档仅作需求/依赖静态预检，实施进度0/9；所有验证用例为拟议合同，具体结果在未来work/review/merge补齐。此前用户批准规划不等于本Plan代码实施授权。
+
+2026-11-20 stage: work | PLAN-1052 | r5 | outcome: pass | worktree: `D:/autostack/.wt/lang-1052/auto-lang` | branch: `plan-1052-dev` | base_commit: `292575164` | code_commit: `f8a3d882d` | dependency_revisions: auto-down sibling detached `456c86a`（未消费改动） | task_ids: T-01..T-06、T-09 全部完成 | evidence: 新 Auto 模块 `experimental/ace/aac/store/store.at`（六轴身份键/页键/校验和/ref 键/恢复准入 0-6/发布三态）、`aac/driver/{query,driver,package}.at`（查询 host 正负依赖与邻域判定/错误分类与闭包决策/锁闭包与 FFI 绑定）；新 conformance crate `experimental/ace/tests/incremental/`（store/query/driver/package/conformance/real_flow 五测试文件，19 例）；固定组 `ace-aac-incremental` 注册 `scripts/test-groups.toml` 并 PASS（executed=19，prep 5.7s，exec 15.1s，maxpar=19）；既有消费者 `ace-aac` 26 例 PASS（prep 2.9s/exec 37.8s）、`ace-aac-host` 22 例 PASS（prep 4.0s/exec 34.5s）无回归；SD-01 准备 `docs/specs/auto-ac/aac-incremental-driver.md`（worktree 内，merge 落主；SD-02 留 merge 后按已交事实补 source-query-session.md） | blockers: 无 | next_responsible_role: review（T-07） |
 
 ## 10. 待澄清事项
 
