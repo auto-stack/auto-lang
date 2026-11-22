@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+use ace_source_query::modules::packages::PackageProduct;
 use auto_tool_execution::{run_command_capture, ExitKind, TreeScope};
 
 pub const GEN1_EXE: &str = "aac1053-gen1.exe";
@@ -32,69 +33,71 @@ pub const GEN1_MAIN_SOURCE: &str = include_str!("../gen1_main.at");
 /// appended per build; `hir_schema_data` is synthesized below.
 pub fn gen1_modules() -> Vec<(String, String)> {
     let mut files: Vec<(String, String)> = vec![
-        ("syntax_cst".into(), include_str!("../../aac/syntax/syntax_cst.at").into()),
-        ("syntax_format_edit".into(), include_str!("../../aac/syntax/syntax_format_edit.at").into()),
-        ("syntax_frontend".into(), include_str!("../../aac/syntax/syntax_frontend.at").into()),
-        ("syntax_fstr".into(), include_str!("../../aac/syntax/syntax_fstr.at").into()),
-        ("syntax_grammar_data".into(), include_str!("../../aac/syntax/syntax_grammar_data.at").into()),
-        ("syntax_incremental".into(), include_str!("../../aac/syntax/syntax_incremental.at").into()),
-        ("syntax_lexer".into(), include_str!("../../aac/syntax/syntax_lexer.at").into()),
-        ("syntax_parse".into(), include_str!("../../aac/syntax/syntax_parse.at").into()),
-        ("syntax_program".into(), include_str!("../../aac/syntax/syntax_program.at").into()),
-        ("syntax_smoke".into(), include_str!("../../aac/syntax/syntax_smoke.at").into()),
-        ("syntax_snapshot".into(), include_str!("../../aac/syntax/syntax_snapshot.at").into()),
-        ("source_ast".into(), include_str!("../../aac/source/source_ast.at").into()),
-        ("source_catalog".into(), include_str!("../../aac/source/source_catalog.at").into()),
-        ("source_position".into(), include_str!("../../aac/source/source_position.at").into()),
-        ("binding".into(), include_str!("../../aac/semantics/binding.at").into()),
-        ("choices".into(), include_str!("../../aac/semantics/choices.at").into()),
-        ("declarations".into(), include_str!("../../aac/semantics/declarations.at").into()),
-        ("facts_report".into(), include_str!("../../aac/semantics/facts_report.at").into()),
-        ("float_literal".into(), include_str!("../../aac/semantics/float_literal.at").into()),
-        ("foreign_contract".into(), include_str!("../../aac/semantics/foreign_contract.at").into()),
-        ("foreign_json".into(), include_str!("../../aac/semantics/foreign_json.at").into()),
-        ("initializers".into(), include_str!("../../aac/semantics/initializers.at").into()),
-        ("nominal_layout".into(), include_str!("../../aac/semantics/nominal_layout.at").into()),
-        ("numeric_literal".into(), include_str!("../../aac/semantics/numeric_literal.at").into()),
-        ("patterns".into(), include_str!("../../aac/semantics/patterns.at").into()),
-        ("semantic_tree".into(), include_str!("../../aac/semantics/semantic_tree.at").into()),
-        ("typecheck".into(), include_str!("../../aac/semantics/typecheck.at").into()),
-        ("types".into(), include_str!("../../aac/semantics/types.at").into()),
-        ("control".into(), include_str!("../../aac/semantics/control/control.at").into()),
-        ("cte".into(), include_str!("../../aac/semantics/cte/cte.at").into()),
-        ("domains".into(), include_str!("../../aac/semantics/domains/domains.at").into()),
-        ("instances_core".into(), include_str!("../../aac/semantics/instances/instances_core.at").into()),
-        ("instances_solve".into(), include_str!("../../aac/semantics/instances/instances_solve.at").into()),
-        ("instances_expand".into(), include_str!("../../aac/semantics/instances/instances_expand.at").into()),
-        ("meta".into(), include_str!("../../aac/semantics/meta/meta.at").into()),
-        ("resources".into(), include_str!("../../aac/semantics/resources/resources.at").into()),
-        ("core_atom_bound".into(), include_str!("../../aac/hir/core_atom_bound.at").into()),
-        ("core_globals".into(), include_str!("../../aac/hir/core_globals.at").into()),
-        ("core_hir".into(), include_str!("../../aac/hir/core_hir.at").into()),
-        ("core_ops".into(), include_str!("../../aac/hir/core_ops.at").into()),
-        ("core_records".into(), include_str!("../../aac/hir/core_records.at").into()),
-        ("base_abc".into(), include_str!("../../aac/mir/base_abc.at").into()),
-        ("base_ir".into(), include_str!("../../aac/mir/base_ir.at").into()),
-        ("lower_base".into(), include_str!("../../aac/mir/lower_base.at").into()),
-        ("verify_base".into(), include_str!("../../aac/mir/verify_base.at").into()),
-        ("client".into(), include_str!("../../aac/host/bridge/client.at").into()),
-        ("factory".into(), include_str!("../../aac/host/cte-entry/factory.at").into()),
-        ("invoke".into(), include_str!("../../aac/host/cte-entry/invoke.at").into()),
-        ("host_client".into(), include_str!("../../aac/host/host_client.at").into()),
-        ("host_diag".into(), include_str!("../../aac/host/host_diag.at").into()),
-        ("host_files".into(), include_str!("../../aac/host/host_files.at").into()),
-        ("host_main".into(), include_str!("../../aac/host/host_main.at").into()),
-        ("host_publish".into(), include_str!("../../aac/host/host_publish.at").into()),
-        ("store".into(), include_str!("../../aac/store/store.at").into()),
-        ("driver".into(), include_str!("../../aac/driver/driver.at").into()),
-        ("package".into(), include_str!("../../aac/driver/package.at").into()),
-        ("query".into(), include_str!("../../aac/driver/query.at").into()),
-        ("atom_data".into(), include_str!("../../aac/support/atom_data.at").into()),
-        ("codec".into(), include_str!("../../aac/support/codec.at").into()),
-        ("digest".into(), include_str!("../../aac/support/digest.at").into()),
+        ("syntax_cst.at".into(), include_str!("../../../aac/syntax/syntax_cst.at").into()),
+        ("syntax_format_edit.at".into(), include_str!("../../../aac/syntax/syntax_format_edit.at").into()),
+        ("syntax_frontend.at".into(), include_str!("../../../aac/syntax/syntax_frontend.at").into()),
+        ("syntax_fstr.at".into(), include_str!("../../../aac/syntax/syntax_fstr.at").into()),
+        ("syntax_grammar_data.at".into(), include_str!("../../../aac/syntax/syntax_grammar_data.at").into()),
+        ("syntax_incremental.at".into(), include_str!("../../../aac/syntax/syntax_incremental.at").into()),
+        ("syntax_lexer.at".into(), include_str!("../../../aac/syntax/syntax_lexer.at").into()),
+        ("syntax_parse.at".into(), include_str!("../../../aac/syntax/syntax_parse.at").into()),
+        ("syntax_program.at".into(), include_str!("../../../aac/syntax/syntax_program.at").into()),
+        ("syntax_smoke.at".into(), include_str!("../../../aac/syntax/syntax_smoke.at").into()),
+        ("syntax_snapshot.at".into(), include_str!("../../../aac/syntax/syntax_snapshot.at").into()),
+        ("source_ast.at".into(), include_str!("../../../aac/source/source_ast.at").into()),
+        ("source_catalog.at".into(), include_str!("../../../aac/source/source_catalog.at").into()),
+        ("source_position.at".into(), include_str!("../../../aac/source/source_position.at").into()),
+        ("binding.at".into(), include_str!("../../../aac/semantics/binding.at").into()),
+        ("choices.at".into(), include_str!("../../../aac/semantics/choices.at").into()),
+        ("declarations.at".into(), include_str!("../../../aac/semantics/declarations.at").into()),
+        ("facts_report.at".into(), include_str!("../../../aac/semantics/facts_report.at").into()),
+        ("float_literal.at".into(), include_str!("../../../aac/semantics/float_literal.at").into()),
+        ("foreign_contract.at".into(), include_str!("../../../aac/semantics/foreign_contract.at").into()),
+        ("foreign_json.at".into(), include_str!("../../../aac/semantics/foreign_json.at").into()),
+        ("initializers.at".into(), include_str!("../../../aac/semantics/initializers.at").into()),
+        ("nominal_layout.at".into(), include_str!("../../../aac/semantics/nominal_layout.at").into()),
+        ("numeric_literal.at".into(), include_str!("../../../aac/semantics/numeric_literal.at").into()),
+        ("patterns.at".into(), include_str!("../../../aac/semantics/patterns.at").into()),
+        ("semantic_tree.at".into(), include_str!("../../../aac/semantics/semantic_tree.at").into()),
+        ("typecheck.at".into(), include_str!("../../../aac/semantics/typecheck.at").into()),
+        ("types.at".into(), include_str!("../../../aac/semantics/types.at").into()),
+        ("control.at".into(), include_str!("../../../aac/semantics/control/control.at").into()),
+        ("cte.at".into(), include_str!("../../../aac/semantics/cte/cte.at").into()),
+        ("domains.at".into(), include_str!("../../../aac/semantics/domains/domains.at").into()),
+        ("instances_core.at".into(), include_str!("../../../aac/semantics/instances/instances_core.at").into()),
+        ("instances_solve.at".into(), include_str!("../../../aac/semantics/instances/instances_solve.at").into()),
+        ("instances_expand.at".into(), include_str!("../../../aac/semantics/instances/instances_expand.at").into()),
+        ("meta.at".into(), include_str!("../../../aac/semantics/meta/meta.at").into()),
+        ("resources.at".into(), include_str!("../../../aac/semantics/resources/resources.at").into()),
+        ("core_atom_bound.at".into(), include_str!("../../../aac/hir/core_atom_bound.at").into()),
+        ("core_globals.at".into(), include_str!("../../../aac/hir/core_globals.at").into()),
+        ("core_hir.at".into(), include_str!("../../../aac/hir/core_hir.at").into()),
+        ("core_ops.at".into(), include_str!("../../../aac/hir/core_ops.at").into()),
+        ("core_records.at".into(), include_str!("../../../aac/hir/core_records.at").into()),
+        ("base_abc.at".into(), include_str!("../../../aac/mir/base_abc.at").into()),
+        ("base_ir.at".into(), include_str!("../../../aac/mir/base_ir.at").into()),
+        ("lower_base.at".into(), include_str!("../../../aac/mir/lower_base.at").into()),
+        ("verify_base.at".into(), include_str!("../../../aac/mir/verify_base.at").into()),
+        ("client.at".into(), include_str!("../../../aac/host/bridge/client.at").into()),
+        ("factory.at".into(), include_str!("../../../aac/host/cte-entry/factory.at").into()),
+        ("invoke.at".into(), include_str!("../../../aac/host/cte-entry/invoke.at").into()),
+        ("host_client.at".into(), include_str!("../../../aac/host/host_client.at").into()),
+        ("host_diag.at".into(), include_str!("../../../aac/host/host_diag.at").into()),
+        ("host_files.at".into(), include_str!("../../../aac/host/host_files.at").into()),
+        ("host_main.at".into(), include_str!("../../../aac/host/host_main.at").into()),
+        ("host_publish.at".into(), include_str!("../../../aac/host/host_publish.at").into()),
+        ("store.at".into(), include_str!("../../../aac/store/store.at").into()),
+        ("driver.at".into(), include_str!("../../../aac/driver/driver.at").into()),
+        ("package.at".into(), include_str!("../../../aac/driver/package.at").into()),
+        ("query.at".into(), include_str!("../../../aac/driver/query.at").into()),
+        ("atom_data.at".into(), include_str!("../../../aac/support/atom_data.at").into()),
+        ("codec.at".into(), include_str!("../../../aac/support/codec.at").into()),
+        ("digest.at".into(), include_str!("../../../aac/support/digest.at").into()),
         // stem disambiguation, see module header: same bytes, unique path.
-        ("support_driver".into(), include_str!("../../aac/support/driver.at").into()),
-        ("hir_schema_data".into(), hir_schema_data()),
+        ("support_driver.at".into(), include_str!("../../../aac/support/driver.at").into()),
+        // crate-local boot reduction helpers (not part of S).
+        ("boot_lib.at".into(), include_str!("../boot_lib.at").into()),
+        ("hir_schema_data.at".into(), hir_schema_data()),
     ];
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files
@@ -105,9 +108,9 @@ pub fn gen1_modules() -> Vec<(String, String)> {
 fn hir_schema_data() -> String {
     format!(
         "pub fn core_schema() Str {{ return {:?} }}\npub fn scalar_schema() Str {{ return {:?} }}\npub fn global_schema() Str {{ return {:?} }}\n",
-        include_str!("../../crates/core/schema/core-i32.atom"),
-        include_str!("../../crates/core/schema/scalar-i32.atom"),
-        include_str!("../../crates/core/schema/text-record.atom")
+        include_str!("../../../crates/core/schema/core-i32.atom"),
+        include_str!("../../../crates/core/schema/scalar-i32.atom"),
+        include_str!("../../../crates/core/schema/text-record.atom")
     )
 }
 
@@ -139,7 +142,7 @@ pub fn gen1_fingerprint() -> blake3::Hash {
     for source in [
         "windows-x64/a2r/dev/stack-16777216/v1",
         include_str!("bin/prepare-gen1.rs"),
-        include_str!("../../Cargo.lock"),
+        include_str!("../../../Cargo.lock"),
     ] {
         fingerprint_part(&mut hash, source.as_bytes());
     }
@@ -174,7 +177,7 @@ pub fn scratch(tag: &str) -> PathBuf {
 /// Assemble + compile the whole subject S plus the boot entry on the
 /// sys/aggregates lane (Gen0 frontend window — the produced checked module
 /// is the authority the native lowering consumes).
-pub fn compile_gen1() -> Result<ace_core::source::packages::PackageProduct, String> {
+pub fn compile_gen1() -> Result<PackageProduct, String> {
     let mut files = gen1_modules();
     files.push(("main.at".to_owned(), GEN1_MAIN_SOURCE.to_owned()));
     ace_aac_host_conformance::sys_product_backend("aac1053-gen1", &files, ace_core::source::packages::AssemblyBackend::Ac)

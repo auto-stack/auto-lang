@@ -8,13 +8,14 @@ description = "PLAN-1053 T-02: the whole AAC subject tree S (experimental/ace/aa
 
 [dependencies]
 ace-aac-host-conformance = { path = "../aac-host" }
-ace-av = { path = "../../crates/av" }
-ace-av-core = { path = "../../crates/av-core" }
 ace-core = { path = "../../crates/core" }
 ace-native = { path = "../../crates/native" }
 ace-source-query = { path = "../../crates/source-query" }
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 blake3 = "1"
+
+[dev-dependencies]
+sha2 = "0.10"
 
 [[test]]
 name = "gen1"

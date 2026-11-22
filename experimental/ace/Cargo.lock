@@ -128,13 +128,12 @@ name = "ace-aac-gen1-conformance"
 version = "0.1.0"
 dependencies = [
  "ace-aac-host-conformance",
- "ace-av",
- "ace-av-core",
  "ace-core",
  "ace-native",
  "ace-source-query",
  "auto-tool-execution",
  "blake3",
+ "sha2",
 ]
 
 [[package]]

@@ -1,0 +1,37 @@
+// PLAN-1053 T-02: boot reduction helpers for the Gen1 whole-subject entry.
+//
+// The i64 wrap32/FNV reduction lives in this ordinary module (numeric
+// surface), keeping the `main.at` entry free of typed literals — the entry
+// unit profile admits only the plain surface.
+
+use app.host_client.fnv32_bytes
+use std.conv.from_int
+
+pub fn zero64() i64 {
+    return 0i64
+}
+
+pub fn empty_ints() List<int> {
+    return List<int>.new()
+}
+
+pub fn empty_strs() List<Str> {
+    return List<Str>.new()
+}
+
+pub fn wrap32(x i64) i64 {
+    return x % 4294967296i64
+}
+
+pub fn mix_str(c i64, s Str) i64 {
+    return wrap32(c * 31i64 + fnv32_bytes(s))
+}
+
+pub fn mix_int(c i64, v int) i64 {
+    return mix_str(c, from_int(v))
+}
+
+pub fn exit32(c i64) int {
+    let e = c % 2147483648i64
+    return e.to(i32)
+}
