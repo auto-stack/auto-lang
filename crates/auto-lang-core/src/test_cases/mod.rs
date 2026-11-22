@@ -48,6 +48,7 @@ pub mod ac_a2py_hir;
 pub mod ac_a2r_hir;
 pub mod ac_a2r_lang;
 pub mod ac_av;
+pub mod ac_gen1;
 pub mod ac_cte;
 pub mod ac_mn;
 mod ac_protocol;
@@ -938,6 +939,21 @@ fn dispatch_check(
                 .is_some_and(ac_a2py_hir::is_a2py_recipe) =>
         {
             ac_a2py_hir::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-1053: the Gen1 native AAC corpus runner — the whole-subject
+        // Auto compiler (mir) -> 1051 bridge -> parent-side link -> real
+        // PE, inside the bounded gen1-worker; parent-side exit judging.
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_gen1::GEN1_RECIPE) =>
+        {
+            ac_gen1::run_check(
                 resolved,
                 check,
                 oracle,

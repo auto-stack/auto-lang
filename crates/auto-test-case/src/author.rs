@@ -117,6 +117,9 @@ fn probe_family(recipe: &str) -> Option<ProbeFamily> {
         "ac-av/console-run-v1" => Some(ProbeFamily::AvConsole),
         r if r.starts_with("ac-av/") => Some(ProbeFamily::Av),
         r if r.starts_with("ac/mir-native-") || r.starts_with("ac/mn/") => Some(ProbeFamily::Mn),
+        // PLAN-1053: the Gen1 native AAC corpus runner rides the same
+        // probe family shape as the MIR-native recipe (entry/exit oracles).
+        r if r.starts_with("ac-aac-gen1/") => Some(ProbeFamily::Mn),
         r if r.starts_with("cte/") => Some(ProbeFamily::Cte),
         r if r.starts_with("sema/") => Some(ProbeFamily::Sema),
         r if r.starts_with("abi/") => Some(ProbeFamily::Abi),

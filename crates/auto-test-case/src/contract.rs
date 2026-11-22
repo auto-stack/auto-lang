@@ -1960,6 +1960,9 @@ fn decode_options(
                         // PLAN-891: the typed recipe consumes exactly a
                         // single run step in the formal case form.
                         "ac/mir-native-typed-v1" => matches!(op.as_str(), "run"),
+                        // PLAN-1053: the Gen1 corpus runner takes exactly
+                        // the judged run step.
+                        "ac-aac-gen1/native-run-v1" => matches!(op.as_str(), "run"),
                         // PLAN-915: the resource recipe takes exactly the
                         // judged run step (the sweep/sequence is the op).
                         "ac-av/resource-run-v1" => matches!(op.as_str(), "run"),
@@ -3258,6 +3261,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "cte/scalar-query-v1",
     // PLAN-818: the MIR-native experimental recipe, same seam contract.
     "ac/mir-native-scalar-v1",
+    // PLAN-1053: the Gen1 native AAC corpus runner (whole-subject Auto
+    // compiler -> 1051 bridge -> parent-side link -> real PE run; the
+    // bounded gen1-worker transport, parent-side judging).
+    "ac-aac-gen1/native-run-v1",
     "ac/mir-native-collections-v1",
     // PLAN-892: the A2X Checked-HIR -> Rust emit recipe (prebuilt worker,
     // daily spawn-zero emit + parent-side golden judging).
