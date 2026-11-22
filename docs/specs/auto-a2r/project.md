@@ -51,3 +51,15 @@ Cargo/profile/固定工具名）；901 已落地的 test-feature 拍平为本线
 
 collections(List/Variant) HIR→Rust 通道已交付（[collections-hir-backend](collections-hir-backend.md)）；
 未覆盖面与 893/903 交接记录在 PLAN-904 归档件。
+
+## PLAN-1115（普通语言 A2R）新域
+
+普通 Auto 源（`auto.source.language.av/v1`）→ 共享 Checked HIR → 统一
+language 通道（collections 族 lane + 动态/全局/跨帧错误扩面）→ 真实
+rustc → 受控执行，见
+[ordinary-language-and-stdlib](ordinary-language-and-stdlib.md)。
+通道 identity：recipe `ac-a2r/hir-language-run-v1`（运行）/
+`ac-a2r/hir-language-emit-v1`（发射）、fileset
+`auto.a2x.rust.language.fileset/1`、cert `ace.a2r-hir.language.cert/1`，
+与标量/record-text/collections 三通道窄通道并列互斥。固定组
+`case-a2r-language-parity`（target=a2r）选择语料 A2R 值行。

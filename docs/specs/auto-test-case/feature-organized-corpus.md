@@ -179,3 +179,18 @@ source-mutation-sensitive，oracle 源绑定——改错必红，2026-11-22 故�
 消息保留），均加入 `language.suite.ad`。三条均真实 AV 执行；非 AV 检查在本包
 保持 AV-ONLY `#ignore`/未选。0 份旧 VM 文档迁移行（§PLAN-1096 清单为 0），
 全路线 required 并集由既有 canonical 语料承接。
+
+## PLAN-1115 A2R 视图（delta-2026-11-22）
+
+固定组 `case-a2r-language-parity`（runner=case，target=a2r）选择
+`language.suite.ad` 中 recipe 为 `ac-a2r/hir-language-run-v1` 的 probe/run
+检查。该 recipe 消费 `a2xworker/1` 协议的 `run-language` 操作：普通源经
+language 通道降落+真实 rustc 编译+受控执行；父侧按行自有 oracle（exit=0+
+stdout `value:<n>`/`trap:<Name>`）精确判定。**值行启用**：185 条
+（PLAN-1115 扫一轮起 230 条→剔 45 条非单文件 i32 入口车道行后收敛），
+172 PASS（93%）；余 13 行 7 类具名缺口记录在 PLAN-1115 §8。**未启用面**：
+94 条诊断行（需逐行作者化 A2R 面 stage/code 预期）、113 条 console 行
+（需 print/显示通道）、多文件包行 31 条（归包车道后续）、脚本行（归 1094
+面）。recipe 注册于 `contract::REGISTERED_PROBE_RECIPES`；适配器
+`ac_a2r_lang.rs`（单 spawn 预构建 worker）；profile=language 白名单于
+contract.rs。`case-av-language-parity`（target=av）不受影响（零新增红）。
