@@ -211,6 +211,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 9. 复审记录
 
+- 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 2 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user（§10 无新答复；连续 waiting 第 2 轮）
+
 - 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 1 | from: work | to: work | status: executing | outcome: waiting | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user（985/A 开工门闭合后再入 work T-02）
 
 - 2026-11-22 stage: work | plan_id: PLAN-1053 | plan_revision: r8 | outcome: blocked-on-named-dependency（T-01 完成， verdict=未就绪） | worktree_path: D:/autostack/.wt/lang-1053/auto-lang | branch: plan-1053-dev | base_commit: 9a34e2eee | code_commit: 9a34e2eee（无代码改动） | dependency_revisions: 1044–1052/1055/1056 archived；985 executing 6/14（A批work收口 r29，T-A04/T-A05 未执行，M2A-08 未落主） | task_ids: T-01 | evidence: T-01 行内记录（指纹3/5不变、test-groups.toml/design55演进、机器占用 lang-1116、材料scope已登记） | blockers: 985/A 开工门未闭——须 985 T-A04 独立复审 pass 且 T-A05 落 M2A-08 至 master 后本包方可绑定A基线开工；具名依赖属 PLAN-985 自身范围，本目标不代行 | next_responsible_role: user decision → work（T-02）
