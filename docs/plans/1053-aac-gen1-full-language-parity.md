@@ -241,6 +241,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
+2026-11-22 语料清扫具名缺口登记（T-03/04 实证，sweep 测试内冻结清单守卫——新增 blocked 探针即红，须先在此具名）：①`av.parity.1080.pipe-method-and-field`→`hir.unsupported 20..53`，即 1047 归档已开放的 pipe 方法 `lower.method` 缺口（owner：Design59 具名实施任务/1047-1050 后继）；②`av.parity.1092.with-unconstrained-type-parameter`→`type.unresolved 28..29`，未约束泛型形参未解析（owner：1048/1050 实例需求求解后继；属 985/A 允许的具名 AC 差额账）。已跑通：`av.parity.1078.baseline-value` exit 14 过全链。关闭条件：对应 owner 交付正式来源后同输入重跑 sweep 自动转 ran。
+
 2026-11-22 更新——**阻塞已关闭（本包在约内修复）**：根因 = a2x-rust `lower_coll.rs` 的 `moved_locals` may-kill 集合控制流不敏感——单分支内 `.move` 把根标记死，兄弟分支与汇合后误拒；循环体 kill 泄出循环头。误杀实例：`source_catalog.import_paths` 的 `if prefix.len() == 0 { prefix = part.move } else { prefix = prefix + "." + part }`（诊断增强后定位到根名+span）。修复（plan-1053-dev `013c4fde5`）：if 两分支以保存集合各 lowering、分支末集合**按交合并**（pre-if kill 保留）；循环体恢复 pre-loop 集合（零迭代可靠；真实 use-after-move 仍由上游冻结 MIR ownership 验证拒绝）。验证：`prepare-native` native+semantic 两模式恢复链接（aac1046-driver/aac1047-driver）；`ace-aac-gen1` 4/4 PASS（compile 入口取消 ignore 并交付：aac1053-compile.exe=A2R 车道整机编译命令）；aac 家族 ace-aac/ace-aac-host/ace-aac-incremental PASS，ace-aac-syntax 51/51 隔离绿（`aac1046_corpus_text` 组内 8.2s 红=同机争抢越过该用例 8s harness 预算，隔离 5.65s 绿、4 线程 libtest 绿，按环境归因记债务候选，非本修复语义变化）。1115/1116 的 A2R 语料车道为本修复的消费者复核面（记入 T-06/review 选择理由）。原记录保留备查：
 ~~2026-11-22 具名外部阻塞（T-03 发现，owner：a2x-rust 共享接面修复……~~（原文归档于 git 历史）
 
