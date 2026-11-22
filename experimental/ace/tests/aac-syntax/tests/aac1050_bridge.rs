@@ -20,7 +20,7 @@ fn bridge_exe() -> std::path::PathBuf {
     exe
 }
 
-fn bridge_request(mode: Mode, schema: &str, id: u8, abc: &[u8]) -> Request {
+fn bridge_request(mode: Mode, schema: &str, id: u8) -> Request {
     Request {
         id: [id; 16],
         mode,
@@ -56,7 +56,7 @@ fn main() int { return fetch(Pair(enabled: true, number: 42)) }";
     let client = Client::new(&bridge_exe()).unwrap();
 
     // AV leg (CompileTime): the bridge re-verifies and runs the value.
-    let request = bridge_request(Mode::CompileTime, "auto.mir.av-owned/1", 60, &bytes);
+    let request = bridge_request(Mode::CompileTime, "auto.mir.av-owned/1", 60);
     let (response, payload) = client.run(&request, &bytes).unwrap();
     let Outcome::Value {
         value: Value::I32(42),
@@ -69,7 +69,7 @@ fn main() int { return fetch(Pair(enabled: true, number: 42)) }";
     assert!(payload.is_empty());
 
     // Native leg (NativeObjects): the bridge emits real COFF units.
-    let request = bridge_request(Mode::NativeObjects, "auto.mir.av-owned/1", 61, &bytes);
+    let request = bridge_request(Mode::NativeObjects, "auto.mir.av-owned/1", 61);
     let (response, payload) = client.run(&request, &bytes).unwrap();
     let Outcome::Objects {
         units, wrapper, ..
@@ -92,7 +92,7 @@ fn auto_text_abc_runs_through_bridge_av() {
         .expect("Auto text ABC through the shared builder");
 
     let client = Client::new(&bridge_exe()).unwrap();
-    let request = bridge_request(Mode::CompileTime, "auto.mir.av-owned/1", 62, &bytes);
+    let request = bridge_request(Mode::CompileTime, "auto.mir.av-owned/1", 62);
     let (response, _) = client.run(&request, &bytes).unwrap();
     let Outcome::Value {
         value: Value::I32(3),

@@ -202,3 +202,12 @@ Auto 主体从严格源码 AST 建立绑定与类型事实，生成 core-i32/tex
 闭合单态纯标量输入经同一 Auto verifier 发给 Auto MIR lowerer。结构化控制、短路、
 精确常量和调用顺序在到 CFG 的转换中保留。MIR 经本地验证后以 AVAD 交独立消费端，
 实际执行入口与 CT 字面调用见 [AAC 基础 Typed MIR 与 CT 调用](../auto-ac/aac-base-mir-and-ct.md)。
+
+## AAC 的 S5 数据域扩展（PLAN-1050，已交付切片）
+
+同一 Auto MIR builder/verifier 承继 1055 基座后扩展到 record 与 owned-text 域：
+record_ctor→Aggregate、field_get→FieldGet、借用视图参数（owned 线代际 v2）、
+str 字面量转义解码与 StrLen、StrView 参数，经 1051 桥 AV/native 双端验证；
+泛型实例经 1048 展开为单态后 lowering。数据面准入控制（aggregate 操作数类型/
+字段索引变异）阶段定位拒绝。支持面与具名供给缺口见
+[AAC 共享 Typed MIR lowering](../auto-ac/aac-mir-lowering.md)。
