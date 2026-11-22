@@ -62,7 +62,7 @@ A2R公共语言测试复用language按特性Case，在同Case加生成/真实rus
 
 由原T-01/T-02/T-03按其职责消费/迁移对应行，保原source/expected/check及条件，重复仅在完整输入闭包/语义等价时合并，原义务→canonical Case/check映射不得丢；既有固定组/suite/worker读者按1078接口切换，不新建按后端/代际维护的Auto副本。缺字段/目标接口由1078和实际producer在原框架有界补接，不要求本包先等全AV/全AAC完成。
 
-**前置**。新增图形端到端需 1097 正式 UI-W2-AC 与 1071/AutoUI 104–108 同源 UI/Widgets。非图形工具能力可按已交接口先行。
+**前置**。新增图形端到端需 1097 正式 UI-W2-AC，使用 1071 与 [AutoUI 逐例交付表](../../../auto-ui/docs/plans/README.md#u04u06-逐例交付) 所定的同源 UI/Widgets。非图形工具能力可按已交接口先行。
 
 **接手范围**。接 980 B-RUST 的 UI/Widgets、普通 Node 及跨工程共用生成、编译、调度端口，保真实窗口、传统 UI 和全分母。[1103](1103-age-a2r-gallery-fusion-and-capabilities.md) 消费公共接口并拥有 981 B-RUST 的 AGE 共用宿主接线、域格与原公共失败验证。
 

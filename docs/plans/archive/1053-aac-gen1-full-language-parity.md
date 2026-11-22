@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1053
-status: reviewed
+status: archived
 feature_name: AAC Gen1完整语言闭环与主体迁移核验
 author: [Codex]
 created_at: 2026-11-14
@@ -207,7 +207,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [x] T-09 主体观察窗口及整机组合（阶段切片交付，余量具名pending） | work | T-05；§5实际输入合同 | 建立Gen0-build与Gen1-request明确分窗及真实Rust源码入口阻断/计数控制；对全部Auto主体模块、生成源码、CT/库、FFI ABI、包闭包及原M2-A领域最小host逐行映射。保原完整UI/AGE作者源兼容义务，不能只测试一个Hello或把领域前端移出主体当runtime。 用来源/调用审计区分Gen0构建AAC与Gen1处理测试程序；1053完整CL不得因Design59 具名实施任务未交而记NA/通过，阶段切片可先正式交接。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04。已交（2026-11-22 部分）：①**Gen0/Gen1 分窗证据链**——Gen0 窗=prepare 车道内 `compile_assembled_aggregates_inputs`（一次性，产物身份钉扎）；Gen1 窗=被测 exe 处理用户源（全 Auto 算法）。②**二进制主体窗口控制**（`69eb3192a`）：PE 导入表只允许 OS 系统 DLL（实测 KERNEL32+BCRYPT；runtime 为静态摘要钉扎对象链接），任何 Rust 前端/编译器库动态依赖即红。③**服务审计**（T-02 静态 + bridge 协议无源码字段 + worker/工具摘要钉扎）。④整机组合：全主体 60 模块单产物编译+运行（boot exe）、语义管线整机编译命令（compile exe）、CL 矩阵 529 用例全链零失配。余量：逐模块映射大表（文档规模，证据核心已备：boot 全子系统触达+全树编译）；"helper 请求 Rust 绑定使主体门红"动态计数（foreign 准入 pending 面已具名，计数控制随语料 ffi 声明扩面） |
 | [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08。已执行（2026-11-22）：受影响组并集= `ace-aac-gen1` **9/9 PASS**（逐例 0.3–2.1s，prep 车道另计）＋ aac 家族（ace-aac/ace-aac-host/ace-aac-incremental PASS；ace-aac-syntax 51/51 隔离绿）＋ `case-av-language-parity`（876 检查；**2 红=1093 foreign 腿，master 单 case 复放同红=既存漂移**，非本批触面，归批量回归 triage）＋ gen1 视图绿 ＋ auto-lang-core 单元反控绿。正反例：V-01/02/03/04 行全数（boot parity/compile 入口/e2e 链/负控 stage 码/use-after-move/emit冒run/stale/worker钉扎/导入面）入 `ace-aac-gen1`；CL 矩阵重放 529 例零失配。SD-01 预备稿 `docs/specs/auto-test-case/aac-language-parity.md`（worktree 内，merge 落主）；SD-02 留 merge。具名 pending（阶段切片不充 PASS）：§10 缺口登记（pipe lower.method、未约束泛型、CL 族 41 例 owner 移交）；T-04/05/09 行内余量；1093 foreign 漂移红；1049 陈旧夹具。完成→execution_done 交 review（T-07） |
 | [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
 

@@ -45,7 +45,7 @@ affects: [ace, auto-ac, autoui]
 
 ## 4. 需求分析与背景调查
 
-985/A 已在 `95c7fbad8` 正式交 M2A-08。980/981 已有 HELLO/AXR0/SOURCE，原窗口与源接口可复用。完整 W2 取正式 W1 的全分母。归档 [1071](archive/1071-autoui-w1-av.md) 提供已交 U01、原分组与生产入口子面。其余 U02–U06 和关联 Widgets 取 [AutoUI 104–108](../../../auto-ui/docs/plans/README.md) 的实际 AV/Iced 阶段收据，与 W1 原矩阵逐行核齐。各计划 A2Vue 的验收仍按各自合同。宿主接缝最小切片可先取 A 的接口和正式同源用例。1067 已交的调度路径按实际用例消费，所需后续调度切片按 [AAC 归属表](../design/59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属) 接收。扩展 AGE 域另取 [1075](1075-age-av-content-and-fusion.md) 对应同源 AV cap、原 981 类型及资源合同。进度以正式来源为准。
+985/A 已在 `95c7fbad8` 正式交 M2A-08。980/981 已有 HELLO/AXR0/SOURCE，原窗口与源接口可复用。完整 W2 取正式 W1 的全分母。归档 [1071](archive/1071-autoui-w1-av.md) 提供已交 U01、原分组与生产入口子面。其余 U02–U06 和关联 Widgets 取 [AutoUI 逐例交付表](../../../auto-ui/docs/plans/README.md#u04u06-逐例交付) 汇总实际 AV/Iced 阶段收据。U02 取 104，U03 取 105 正式汇总（含已交 124/125 的适用来源），U04–U06 按原 demo 和 Widget 页逐行接收各自正式 AV 收据。完整 W2 仍核完整 W1；A2Vue 走各自交付条件。宿主接缝最小切片可先取 A 的接口和正式同源用例。1067 已交的调度路径按实际用例消费，所需后续调度切片按 [AAC 归属表](../design/59-aac-native-bootstrap-and-compiler-subject.md#现有-ac-差额的实施归属) 接收。扩展 AGE 域另取 [1075](1075-age-av-content-and-fusion.md) 对应同源 AV cap、原 981 类型及资源合同。进度以正式来源为准。
 
 ## 5. 详细设计
 
