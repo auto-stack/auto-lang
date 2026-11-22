@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1120
-status: execution_done
+status: reviewed
 feature_name: "AV 泛型 List 高阶方法补齐"
 author: [Codex]
 created_at: 2026-11-22
@@ -68,6 +68,7 @@ affects: [auto-av, auto-semantics, stdlib]
 
 - [x] AC-01 · owner_stage=work。普通入口非整数 List 的五项操作都完成真实执行，V-01/02 独立判值。
 - [x] AC-02 · owner_stage=work。V-01–03 覆盖所有权、空表、短路和拒绝。旧 ID、源码、旧 oracle 和新证据可逐项追溯。
+- [x] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。（2026-11-23 复审 r2 通过，见 §9）
 - [ ] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
 - [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
 
@@ -127,6 +128,17 @@ work 证据（原始日志：D:/autostack/plan-artifacts/plan-1120/，合并收�
 - 修复轮验证：plan1120 族 11/11（0.14s）；近邻 plan1082 17/17、plan1088 3/3、plan1086 10/10、plan1083 3/3、plan1081 21/21 复用性重跑全绿。新增 2 例计时 0.1s 级（≤10s 门）。冻结并集仍归 merge。
 
 2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: 7a114b480 | next: review
+
+2026-11-23 · stage: review | review_scope: final（复审 r2，限 F1/F2 受影响项；同会话自复审局限已记） | PLAN-1120 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | branch: plan-1120-dev | reviewed_commit: 7a114b480 | base_commit: d4bc60a89 | dependency_revisions: 无 | spec_inputs: 同 r1（增量内容未随修复轮变动，哈希基线 d47bd50dc 文件副本） | acceptance_results: AC-01 pass / AC-02 pass / AC-03 pass / AC-04 merge 所有 | pending_closeout_gates: §6 冻结固定组并集（merge 在冻结提交执行） | findings: F1/F2 均闭合（closure rows 如下） | evidence: 见下 | next: merge
+
+复审 r2 证据（基线 7a114b480，工作树干净；重建已确认——编译 10.51s 非缓存）：
+
+- F2 closure row：谓词回调准入不变量 = find/any/all 仅收 Bool 返回、绑定时具名拒。修复 diff 核验（hof_typed_callback 增 `(!bool_result || signature.result == VT::Bool)`，消息区分谓词/非谓词）；永久负控 4 子例重放 PASS（map 参型不符、reduce 参型不符、find 非 Bool、all 非 Bool，stage 均 = bind）；合法兄弟路径不受影响重放 PASS（map 任意 U：hof_text_family_real_execution 的 map(→int)；记录域谓词：V-01 族）。
+- F1 closure row：文本域非空表真实执行 + 所有者账目不变量。`hof_text_family_real_execution`（33623 独立预期 + assert_released ≥3）与 `hof_text_family_short_circuits`（p×1/q×1/r×2）重放 PASS；隔离探针四形态（expr/block/print/for-in）在修复轮已全对。
+- 修复回归面：hof_typed_callback 为五操作共享，受影响域 = plan1120 全族，已整族重放 11/11 PASS（run ca2abe25，逐例 0.099s–0.187s，新增 2 例 0.138s/0.162s ≤10s）；近邻五族 54 例证据自修复轮复用（diff 仅限该 helper 与测试文件，输入/配置未变）。
+- 会话计时表：准备 10.51s（编译，已确认非缓存）、发现含于编译、执行 0.192s、无清理；无资源等待（占用观察：无本计划外活动构建冲突）。
+
+2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 4 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: 7a114b480 | next: merge
 
 ## 10. 待澄清事项
 
