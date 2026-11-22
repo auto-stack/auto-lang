@@ -1,0 +1,19 @@
+// PLAN-1114 batch 3: the `rand` Rust provider fragment: a NON-CREDENTIAL
+// PRNG step (splitmix64 mixing the tag bytes and the caller seed; the
+// low 31 bits keep the value inside the checked i32 positive domain).
+// The credential entropy face stays the sys lane's native owner (973 —
+// BCrypt). Composed under `avrs/1`.
+// auto-ffi fn rand_next symbol=avrs.rand.next.v1 form=pure ret=i32
+pub fn rand_next(tag: &str, seed: i32) -> i32 {
+    let mut state: u64 = seed as u32 as u64;
+    for byte in tag.as_bytes() {
+        state = state.rotate_left(8) ^ (*byte as u64);
+    }
+    // splitmix64 finalizer.
+    state = state.wrapping_add(0x9E3779B97F4A7C15);
+    let mut z = state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^= z >> 31;
+    (z & 0x7FFF_FFFF) as i32
+}

@@ -1218,10 +1218,33 @@ pub fn open_assembled_rs_stdlib_session(
         composed.push_str(source.trim_end());
         composed.push_str("\n\n");
     }
-    let build = if provider_deps(&composed).is_empty() {
-        build_source(&root.join("avrs-build"), &composed)?
+    // PLAN-1114: the build root is keyed by the COMPOSED source digest —
+    // the same selection reuses its artifacts (a rebuild would have to
+    // replace a DLL a live session may still have loaded: Windows refuses
+    // with os error 5), and a selected-input edit lands in a fresh root.
+    let deps = provider_deps(&composed);
+    let digest = auto_bindgen::rust_import::provider_digest(&composed);
+    let build_root = root.join(format!("avrs-build-{digest}"));
+    std::fs::create_dir_all(&build_root).map_err(|e| format!("avrs.build-root: {e}"))?;
+    let build = if deps.is_empty() {
+        build_source(&build_root, &composed)?
     } else {
-        build_cargo_provider(&root.join("avrs-build"), &composed)?
+        // The cargo unit's output path is fixed; reuse the existing
+        // artifacts for an unchanged composed source instead of asking
+        // cargo to replace a possibly-loaded DLL.
+        let (dir_rel, base) = ("cargo-unit/target/debug", "provider_unit");
+        let cdylib = build_root.join(dir_rel).join(format!("{base}.dll"));
+        let staticlib = build_root.join(dir_rel).join(format!("{base}.lib"));
+        if cdylib.is_file() && staticlib.is_file() {
+            describe_rust_provider(
+                &composed,
+                rustc_identity(&build_root)?,
+                cdylib,
+                staticlib,
+            )?
+        } else {
+            build_cargo_provider(&build_root, &composed)?
+        }
     };
     let session = open_session_from_build(&build, generation)?;
     Ok((session, inputs))

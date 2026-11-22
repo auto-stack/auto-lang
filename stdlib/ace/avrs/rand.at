@@ -1,0 +1,6 @@
+// PLAN-1114 batch 3: the AV/Rust stdlib `rand` contract face — the public
+// API record. rand_next is a NON-CREDENTIAL PRNG step (splitmix64 over
+// seed + tag, low 31 bits — deterministic given its inputs; the Plan 250
+// ruling keeps credentials off this face). The entropy face (OS
+// BCryptGenRandom) stays the sys lane's native owner (973).
+pub spec fn rand_next(tag str, seed int) int

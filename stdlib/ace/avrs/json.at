@@ -1,0 +1,10 @@
+// PLAN-1114 batch 3: the AV/Rust stdlib `json` contract face — the public
+// API record. The `.rs.at` candidate is the EXPLICIT EXTERNAL LIBRARY leg
+// (the pinned serde_json =1.0.151 dependency — the MIX-07 clean-project
+// rule; its own `dep` annotation routes the composed unit through the
+// real-dependency cargo builder). Bad input is the NAMED parse-failure
+// value (-1), never a silent green. The pure-Auto JSON algorithm stays
+// the shared single source (PLAN-975 std/json.at); this face is the Rs
+// lane's explicit external-library proof.
+pub spec fn json_is_valid(doc str) bool
+pub spec fn json_sum_ints(doc str) int

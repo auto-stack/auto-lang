@@ -1,0 +1,27 @@
+// PLAN-1114 batch 3: the `json` Rust provider fragment — the EXPLICIT
+// EXTERNAL LIBRARY leg: the pinned serde_json =1.0.151 public API (the
+// only dependency configuration is this `dep` annotation, the MIX-07
+// clean-project rule; the composed unit routes through the
+// real-dependency cargo builder). Bad input is the named parse-failure
+// value (-1). Composed under `avrs/1`.
+// auto-ffi dep serde_json =1.0.151
+// auto-ffi fn json_is_valid symbol=avrs.json.is_valid.v1 form=pure ret=bool
+pub fn json_is_valid(doc: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(doc).is_ok()
+}
+// auto-ffi fn json_sum_ints symbol=avrs.json.sum_ints.v1 form=pure ret=i32
+pub fn json_sum_ints(doc: &str) -> i32 {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(doc) else {
+        return -1;
+    };
+    let serde_json::Value::Object(map) = parsed else {
+        return -1;
+    };
+    let mut sum: i64 = 0;
+    for value in map.values() {
+        if let Some(i) = value.as_i64() {
+            sum += i;
+        }
+    }
+    i32::try_from(sum).unwrap_or(-1)
+}

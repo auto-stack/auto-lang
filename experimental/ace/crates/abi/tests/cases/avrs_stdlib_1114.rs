@@ -47,8 +47,32 @@ fn scope(tag: &str) -> Scope {
 
 /// Stage the delivered stdlib files into one flat assembly root (the
 /// 1043 discovery contract: one flat directory; the app source is the
-/// single-module entry of the ordinary AV chain). Every delivered module
-/// stages — the composed provider is a function of the whole tree.
+/// single-module entry of the ordinary AV chain). `stage` copies the
+/// WHOLE tree; `stage_modules` stages the named subset — a consumer
+/// selects its modules (the composed provider is a function of the
+/// selected layers; the dep-carrying json fragment routes the whole unit
+/// through cargo, so the dependency-free batches stage without it and
+/// keep their per-case budget on the fast rustc path).
+fn stage_modules(root: &Path, modules: &[&str], extra: &[(&str, &str)]) {
+    for module in modules {
+        for suffix in ["at", "rs.at"] {
+            let name = format!("{module}.{suffix}");
+            let bytes = std::fs::read(avrs_dir().join(&name))
+                .unwrap_or_else(|e| panic!("stage {name}: {e}"));
+            std::fs::write(root.join(&name), bytes).unwrap();
+        }
+    }
+    // The entry module's public source (the flat-dir assembly requires
+    // it): the ordinary single-module app importing the composed provider.
+    std::fs::write(root.join("main.at"), APP).unwrap();
+    for (name, content) in extra {
+        std::fs::write(root.join(name), content).unwrap();
+    }
+}
+
+/// The dependency-free batches (V-01/V-02): the plain rustc build path.
+const CORE_MODULES: &[&str] = &["str", "math", "console", "file", "env", "time", "net"];
+
 fn stage(root: &Path, extra: &[(&str, &str)]) {
     let mut names: Vec<String> = std::fs::read_dir(avrs_dir())
         .expect("the avrs stdlib tree exists")
@@ -61,8 +85,6 @@ fn stage(root: &Path, extra: &[(&str, &str)]) {
             .unwrap_or_else(|e| panic!("stage {name}: {e}"));
         std::fs::write(root.join(name), bytes).unwrap();
     }
-    // The entry module's public source (the flat-dir assembly requires
-    // it): the ordinary single-module app importing the composed provider.
     std::fs::write(root.join("main.at"), APP).unwrap();
     for (name, content) in extra {
         std::fs::write(root.join(name), content).unwrap();
@@ -139,7 +161,7 @@ fn expect_i32(out: ExecOutcome, want: i32, what: &str) {
 #[test]
 fn v01_avrs_core_values_via_rust_provider() {
     let root = scope("v01-core");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (mut session, inputs) =
         open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
             .expect("the avrs stdlib session opens");
@@ -194,7 +216,7 @@ fn v01_avrs_core_values_via_rust_provider() {
 #[test]
 fn v01_avrs_public_contract_faces_match_provider_exports() {
     let root = scope("v01-contract");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (session, _) = open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
         .expect("the avrs stdlib session opens");
     let mut contracts = String::new();
@@ -231,7 +253,7 @@ fn v01_avrs_named_rejections() {
     // py-only on the AV backend: the assembly's named selection error.
     let proj = root.join("py-only");
     std::fs::create_dir_all(&proj).unwrap();
-    stage(&proj, &[]);
+    stage_modules(&proj, CORE_MODULES, &[]);
     remove_rs_layers(&proj);
     std::fs::write(proj.join("str.py.at"), "# python adapter\n").unwrap();
     let err = match open_assembled_rs_stdlib_session(&proj, "app::main", &mut rs_ctx(), 1) {
@@ -247,7 +269,7 @@ fn v01_avrs_named_rejections() {
     // AV/RS stdlib lane names the missing provider.
     let proj = root.join("no-rs");
     std::fs::create_dir_all(&proj).unwrap();
-    stage(&proj, &[]);
+    stage_modules(&proj, CORE_MODULES, &[]);
     remove_rs_layers(&proj);
     let err = match open_assembled_rs_stdlib_session(&proj, "app::main", &mut rs_ctx(), 1) {
         Err(e) => e,
@@ -267,7 +289,7 @@ fn v01_avrs_named_rejections() {
 #[test]
 fn v02_avrs_file_exact_bytes_eof_and_errors() {
     let root = scope("v02-file");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (mut session, _) =
         open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
             .expect("the avrs stdlib session opens");
@@ -318,7 +340,7 @@ fn main() int {{
 #[test]
 fn v02_avrs_console_exact_bytes() {
     let root = scope("v02-console");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (mut session, _) =
         open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
             .expect("the avrs stdlib session opens");
@@ -346,7 +368,7 @@ fn v02_avrs_console_exact_bytes() {
 #[test]
 fn v02_avrs_env_time_and_loopback() {
     let root = scope("v02-sys");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     std::env::set_var("AVRS_V02_PROBE", "abc");
     let (mut session, _) =
         open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
@@ -381,7 +403,7 @@ fn main() int {
 #[test]
 fn v02_avrs_owned_handle_generation_and_close_safety() {
     let root = scope("v02-handles");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (mut s1, _) = open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
         .expect("generation 1 opens");
     // The handle escapes as the app's value (an opaque i32 to the guest).
@@ -425,7 +447,7 @@ fn v02_avrs_owned_handle_generation_and_close_safety() {
 #[test]
 fn v02_avrs_closed_handle_rejected() {
     let root = scope("v02-closed");
-    stage(&root, &[]);
+    stage_modules(&root, CORE_MODULES, &[]);
     let (mut session, _) =
         open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
             .expect("session opens");
@@ -439,3 +461,161 @@ fn v02_avrs_closed_handle_rejected() {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// V-03 (T-04): public JSON values and bad input, the explicit external
+// library (pinned serde_json) really running, named rejections (missing
+// Rust source / wrong signature / revoked grants) and the default Auto
+// neighbor with the optional artifacts removed.
+// ---------------------------------------------------------------------------
+
+/// V-03 json + rand legs: the EXPLICIT EXTERNAL LIBRARY (pinned
+/// serde_json =1.0.151) really runs — object int values sum through the
+/// real dependency, valid/invalid documents are distinguished, bad input
+/// is the NAMED parse-failure value (-1); the PRNG step is deterministic
+/// per (tag, seed) and distinguishing across inputs.
+#[test]
+fn v03_avrs_json_external_library_and_rand() {
+    let root = scope("v03-data");
+    stage(&root, &[]);
+    let (mut session, _) =
+        open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
+            .expect("the dep-carrying composed unit builds through cargo");
+    let app = r#"use.rs avrs
+fn main() int {
+    var acc = 0
+    if json_is_valid("{\"rows\":3,\"base\":6}") { acc = acc + 1 }
+    if json_is_valid("{\"rows\":}") { acc = acc + 100 }
+    acc = acc + json_sum_ints("{\"rows\":3,\"base\":6}")
+    var bad = json_sum_ints("{\"rows\":}")
+    var r1 = rand_next("avrs", 1)
+    var r2 = rand_next("avrs", 1)
+    var r3 = rand_next("avrs", 2)
+    var same = 0
+    if r1 == r2 { same = 1 }
+    var distinct = 0
+    if r1 != r3 { distinct = 1 }
+    return acc * 1000 + (bad + 1) * 100 + same * 10 + distinct
+}"#;
+    // valid(+1) invalid(+0) sum(9) bad(-1) | same(1: the PRNG step is
+    // deterministic per (tag, seed)) distinct(1: a moved seed moves the
+    // value) — acc = 10 -> 10*1000 + 0*100 + 10 + 1 = 10011.
+    expect_i32(run_avrs_app(app, &mut session), 10011, "json/rand face");
+}
+
+/// V-03 negatives: a missing Rust source leaves the module's ops
+/// unresolvable (the named compile rejection — never a silent fallback);
+/// a wrong-signature annotation is the importer's named rejection.
+#[test]
+fn v03_avrs_named_rejections() {
+    let root = scope("v03-neg");
+
+    // (a) MISSING Rust source: the json module loses its `.rs.at`; the
+    // composed unit no longer exports the json ops and the app's call is
+    // the named undefined-symbol rejection at compile.
+    let proj = root.join("no-json-rs");
+    std::fs::create_dir_all(&proj).unwrap();
+    stage(&proj, &[]);
+    std::fs::remove_file(proj.join("json.rs.at")).unwrap();
+    let session = open_assembled_rs_stdlib_session(&proj, "app::main", &mut rs_ctx(), 1)
+        .expect("the remaining rs layers still compose")
+        .0;
+    let caps = [
+        "ac.source.language.av/v1".to_string(),
+        ace_foreign_contract::manual::SOURCE_CAP.to_string(),
+        ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
+    ];
+    let err = match ace_av::foreign_source::compile_foreign_program(
+        "use.rs avrs\nfn main() int { return json_is_valid(\"{}\") }",
+        "main.at",
+        "d_main",
+        &caps,
+        &session.admitted,
+    ) {
+        Err(diag) => diag,
+        Ok(_) => panic!("a missing Rust source must name-reject at compile"),
+    };
+    let text = err.to_string();
+    assert!(
+        text.contains("source.undefined") && text.contains("json_is_valid"),
+        "the rejection names the missing op: {text}"
+    );
+
+    // (b) WRONG SIGNATURE: the annotation claims ret=bool for an i32
+    // body — the importer's named rejection at build time.
+    let proj = root.join("bad-signature");
+    std::fs::create_dir_all(&proj).unwrap();
+    stage(&proj, &[]);
+    let original = std::fs::read_to_string(proj.join("json.rs.at")).unwrap();
+    let broken = original.replace(
+        "// auto-ffi fn json_sum_ints symbol=avrs.json.sum_ints.v1 form=pure ret=i32",
+        "// auto-ffi fn json_sum_ints symbol=avrs.json.sum_ints.v1 form=pure ret=bool",
+    );
+    assert_ne!(&broken, &original);
+    std::fs::write(proj.join("json.rs.at"), &broken).unwrap();
+    let err = match open_assembled_rs_stdlib_session(&proj, "app::main", &mut rs_ctx(), 1) {
+        Err(e) => e,
+        Ok(_) => panic!("a wrong-signature annotation must reject"),
+    };
+    assert!(
+        err.contains("rust-import") || err.contains("import") || err.contains("signature"),
+        "the importer's named rejection: {err}"
+    );
+}
+
+/// V-03 revoked grants: the same admitted program with the foreign grants
+/// removed is the named capability rejection (never a silent run).
+#[test]
+fn v03_avrs_revoked_grants_rejected() {
+    let root = scope("v03-grants");
+    stage(&root, &[]);
+    let session = open_assembled_rs_stdlib_session(&root, "app::main", &mut rs_ctx(), 1)
+        .expect("the avrs stdlib session opens")
+        .0;
+    let caps = ["ac.source.language.av/v1".to_string()];
+    let err = match ace_av::foreign_source::compile_foreign_program(
+        "use.rs avrs\nfn main() int { return json_is_valid(\"{}\") }",
+        "main.at",
+        "d_main",
+        &caps,
+        &session.admitted,
+    ) {
+        Err(diag) => diag,
+        Ok(_) => panic!("a program without the foreign grants must reject"),
+    };
+    assert!(
+        format!("{diag:?}", diag = err).contains("foreign"),
+        "the named capability rejection: {err}"
+    );
+}
+
+/// V-03 default Auto neighbor: with the optional Rust artifacts REMOVED,
+/// the ordinary default lane still answers the same public byte-length
+// face through the shared Auto source (the intrinsic-backed neighbor —
+/// `A中😀\0` = 9 again, no provider anywhere in the chain).
+#[test]
+fn v03_avrs_default_auto_neighbor_without_artifacts() {
+    let root = scope("v03-default");
+    stage(&root, &[]);
+    for entry in std::fs::read_dir(&*root).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+        if name.ends_with(".rs.at") || name.ends_with(".py.at") {
+            std::fs::remove_file(root.join(&name)).unwrap();
+        }
+    }
+    let source = "fn main() int {\n    let text = \"A中😀\0\"\n    return text.len_bytes()\n}";
+    let compiled = ace_core::source::adapter::compile_language_source(
+        source,
+        "main.at",
+        &["ac.source.language.av/v1".to_string()],
+    )
+    .expect("the default Auto neighbor compiles without any provider");
+    let mir = ace_lowering::lower_checked_auto_language(&compiled.checked, "d_main", 0)
+        .expect("lowers");
+    ace_av_core::mir_verify::verify_mir(&mir).expect("mir");
+    let encoded = ace_av_core::abc::encode_abc(&mir).unwrap().to_flat();
+    let loaded =
+        ace_av_core::abc_verify::verify_abc_bytes(&encoded, &mir.owner).expect("admits");
+    let (out, _) = ace_av_core::av::execute(&loaded, &ace_av_core::av::ExecLimits::default(), &ace_av_core::av::CancelFlag::new(false));
+    expect_i32(out, 9, "the default Auto neighbor keeps the same face");
+}
