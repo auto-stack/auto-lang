@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1052
-status: execution_done
+status: reviewed
 feature_name: AAC增量查询、持久缓存与编译发布驱动
 author: [Codex]
 created_at: 2026-11-14
-updated_at: 2026-11-20
+updated_at: 2026-11-22
 plan_revision: 5
-current_step: 6
+current_step: 7
 total_steps: 9
 depends_on: [PLAN-1044, PLAN-1045, PLAN-1047, PLAN-1048, PLAN-1049, PLAN-1050, PLAN-1051, PLAN-1056]
 supersedes_spec_components: [docs/specs/auto-semantics/source-query-session.md, docs/specs/auto-ac/function-incremental-source.md]
@@ -182,7 +182,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [x] T-05 冷/热/恢复闭环 | work | T-04 | 对只改body、改签名、增删原缺失符号、CT/meta改动、坏编辑后修复和外部工具失败做实际数据流验证；确认必要失效、无关复用及失败不发布/最后owner释放。 用同源仓外复建、冷/热、改库和 ABI 后复验，提前交已复核切片给 1068。 | 完整集成的identity/生产计数/输出事件与清理证据，交1053；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。`tests/incremental/tests/real_flow.rs`：真实 Auto 程序（A 调 B）经 aggregates-ct 车道 Gen0 编译+真实 AV 执行——body-only 编辑 3→4 真运行；缺失名 N 被 `source.module-symbol` 拒绝、添加后真运行 42；坏编辑拒绝+修复后真运行；`v01_real_session_counters` 用真实 SourceQuerySession 计数器（cold 3/0，同源 warm 3/3，body 编辑重算 B）证明必要重算/无关复用 |
 | [x] T-09 包闭包和生成FFI工程装配 | work | T-05；§5实际输入合同 | 消费Man `../auto-man/crates/auto-package-lock/src/{model,codec,verify}.rs`对应锁合同、`../auto-man/docs/specs/modules/generated-cargo-context.md`的构建边界及978 SDK与967 binding/shim产物，绑定公共/provider/target/capability身份和实际源依赖；明确raw工件/typed事实/进程内Checked重建与物理store格式。同时对冻结AC公开接口（源码、descriptor/HIR检查、canonical产物、build/check、诊断、SDK/library调用）逐项给AAC入口和兼容结果，不要求占用旧CLI默认名，不复活已退役路径。无Man在线/换cwd/缺依赖/错provider/旧库版本必须可诊断，输入编译失败不改lock或旧产物。 缺口补齐/切换runtime后重新运行真实AAC模块和受影响CL，保未读输入复用、坏更新保旧和源位置，不用全量cache clear掩失效错误。 实际 SDK 与 FFI 工程链接/生成/运行/包闭包，覆盖配置、错包/旧缓存及失败后修复。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04。已交 `aac/driver/package.at`：锁闭包身份（`lock_closure_key`，cwd 不入身份）、声明闭包 vs 物化逐项核对（`closure_code` 0-5：undeclared-materialized 拒绝/declared-missing/provider-ABI 失效/missing-lib 保旧）、V-05 场景报告（同锁换 cwd 身份不变、provider 变失效、缺库=tool 错误保旧）；conformance `tests/incremental/tests/package.rs` V-05 逐字节对账；消费面核对 auto-man 锁合同四文件与 generated-cargo-context 规范已存在（T-01） |
 | [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 已注册固定组 `ace-aac-incremental`（`scripts/test-groups.toml`），19 例全绿：executed=19，prep 5.7s，exec 15.1s，maxpar=19；逐例 0.1-8.9s（并行 Gen0 编译争抢，符合 1056 已接受 N-4 模式，整组 wall 15s）；共享 digest 既有消费者 `ace-aac`（26 例，prep 2.9s/exec 37.8s）与 `ace-aac-host`（22 例，prep 4.0s/exec 34.5s）均 PASS，无回归；SD-01 已准备 `docs/specs/auto-ac/aac-incremental-driver.md`（worktree 内，merge 落主）；AC-01..04/07。完成即execution_done交review，无需预勾T-07/08 |
-| [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
+| [x] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | 2026-11-22 独立复审子代理 `reviewer-1052`（独立上下文，未参与实现）最终复审 f8a3d882d：AC-01/02/03/04/07 pass；F1（V-05 保旧字段字面量 3 无 taxonomy 归属，违反 §6 独立期望纪律）→ needs_fix。修复提交 89de09b5c（dec_lib 改为 closure_code(1,1,1,1,0)=5 派生 + 组级 max-threads=4 覆盖 + 计时段预算：checksum_report/neighbour_report 单编译多观测、v04 b3/b4 拆分）。修复复审 `reviewer-1052b` pass：F1/F2/F3 闭合，空闲窗口 20 例逐例 6.64–8.95s ≤10s（证据 plan-artifacts/plan-1052/review-rerun-timings.txt）。AC-05 通过 |
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
@@ -200,6 +200,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 未施工、未执行独立代码review、未合入。当前文档仅作需求/依赖静态预检，实施进度0/9；所有验证用例为拟议合同，具体结果在未来work/review/merge补齐。此前用户批准规划不等于本Plan代码实施授权。
 
 2026-11-20 stage: work | PLAN-1052 | r5 | outcome: pass | worktree: `D:/autostack/.wt/lang-1052/auto-lang` | branch: `plan-1052-dev` | base_commit: `292575164` | code_commit: `f8a3d882d` | dependency_revisions: auto-down sibling detached `456c86a`（未消费改动） | task_ids: T-01..T-06、T-09 全部完成 | evidence: 新 Auto 模块 `experimental/ace/aac/store/store.at`（六轴身份键/页键/校验和/ref 键/恢复准入 0-6/发布三态）、`aac/driver/{query,driver,package}.at`（查询 host 正负依赖与邻域判定/错误分类与闭包决策/锁闭包与 FFI 绑定）；新 conformance crate `experimental/ace/tests/incremental/`（store/query/driver/package/conformance/real_flow 五测试文件，19 例）；固定组 `ace-aac-incremental` 注册 `scripts/test-groups.toml` 并 PASS（executed=19，prep 5.7s，exec 15.1s，maxpar=19）；既有消费者 `ace-aac` 26 例 PASS（prep 2.9s/exec 37.8s）、`ace-aac-host` 22 例 PASS（prep 4.0s/exec 34.5s）无回归；SD-01 准备 `docs/specs/auto-ac/aac-incremental-driver.md`（worktree 内，merge 落主；SD-02 留 merge 后按已交事实补 source-query-session.md） | blockers: 无 | next_responsible_role: review（T-07） |
+
+2026-11-22 stage: review | review_scope: final | reviewer_identity: 独立复审子代理 `reviewer-1052`（general，独立上下文，未参与本包实现；实现作者为本会话） | plan_id: PLAN-1052 | plan_revision: r5 | outcome: needs_fix（窄，F1）→ 修复后复审 pass | worktree: `D:/autostack/.wt/lang-1052/auto-lang` | branch: `plan-1052-dev` | reviewed_commit: 首次 `f8a3d882d`，修复 `89de09b5c`（最终 pass 绑定） | base_commit: `292575164` | dependency_revisions: auto-down `456c86a` | spec_inputs: `docs/specs/auto-ac/aac-incremental-driver.md`（SD-01，worktree 内已准备，merge 落主；SD-02 留 merge） | acceptance_results: AC-01/02/03/04/07 pass；AC-05 pass（修复复审）；AC-06 merge | findings: F1 [high/AC-07/V-05] `package.at` v05_report 硬编码 `dec_lib=3` 无 taxonomy 归属（模块 closure_code 3=cwd-invariant、driver kept-old=2），期望"…,4,4,3"违反 §6 独立期望纪律——修复为 `closure_code(1,1,1,1,0)=5`（missing-external-lib 派生），期望改"…,4,4,5"，注释标明派生；F2 [low/AC-04] 新组未加 nextest-full.toml max-threads 覆盖——已加 `ace-aac-incremental = {max-threads=4}` + override filter（同 ace-aac/ace-aac-host 先例；archive 路径 maxpar 实测 20，1056 N-4 同构，按空闲窗口逐例 ≤10s 归因记录）；F3 [low/AC-04] 逐例计时落盘 plan-artifacts/plan-1052/review-rerun-timings.txt（executed=20、exec 14.5s、逐例 6.64–8.95s 全 ≤10s）；F4/F5 [trivial] 测试文件计数 6、非 rustfmt-clean（先例同构，`git show --check` 通过，无 debug/todo/panic） | evidence: `cargo t ace-aac-incremental` PASS（空闲窗口 20 例，prep 6.5s/exec 14.5s）；`ace-aac` 26 例、`ace-aac-host` 22 例 PASS 无回归；修复 diff `git diff f8a3d882d..89de09b5c` 7 文件，语义零变化（仅 oracle 派生/限流/预算） | pending_closeout_gates: AC-06（merge：SD-01 落主、SD-02 补 source-query-session.md、归档、材料清理、wt-guard clean）；冻结受影响模块并集 = `ace-aac-incremental`（新 crate + 新 Auto 模块；既有 crate 零改动） | next: merge（T-08） |
 
 ## 10. 待澄清事项
 
