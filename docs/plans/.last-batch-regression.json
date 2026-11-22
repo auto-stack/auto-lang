@@ -1,47 +1,45 @@
 {
-  "last_covered_plan_id": 1114,
-  "timestamp": "2026-11-22T15:10:00Z",
-  "covered_commit": "b2e873bb4",
+  "last_covered_plan_id": 1118,
+  "timestamp": "2026-11-22T16:35:00Z",
+  "covered_commit": "00503eeac",
   "command": "cargo t all",
   "legs": [
     "language-fixed-groups"
   ],
   "counts": {
-    "PASS": 30,
-    "FAIL": 5,
+    "PASS": 29,
+    "FAIL": 6,
     "NOT_APPLICABLE": 3,
     "executed_atomic_items": 0
   },
   "preparation": {
     "command": "python scripts/fixed-tests.py all --prepare-only",
     "exit": 0,
-    "manifest": "D:/autostack/auto-lang/target/test-groups/prepared/fcef1bbd886dedb6/prepared.json",
+    "manifest": "D:/autostack/auto-lang/target/test-groups/prepared/2a77fb330f6bc78e/prepared.json",
     "invocations": 37,
-    "note": "first attempt blocked by pre-existing auto-test-case ExpectSpec::nodes E0063 (1095/1096 delivered field without updating ir.rs helper); L0 fix b2e873bb4 restored the build and prep succeeded"
+    "wall_seconds": 355.241
   },
   "execution": {
-    "exit": 1,
-    "wall_seconds": 276.189,
-    "results": "D:/autostack/auto-lang/target/test-groups/run-fyiltseo/results.json",
-    "source_state": "fcef1bbd886dedb643c5addaa081455cc3067c17aa4f0f1052c7fc994a9b1816"
+    "exit": 0,
+    "wall_seconds": 262.92,
+    "results": "D:/autostack/plan-artifacts/batch-regression-1118/results.json",
+    "source_state": "2a77fb330f6bc78e"
   },
-  "new_reds": [
-    "auto-lang-core aac_baseline v01-v06: identity pin of docs/specs/ace-migration/m2-certification.md stale (pinned 045340642830E6B0, actual 6eb773b2...) - spec last edited by PLAN-985 95c7fbad8 and PLAN-1096 b8e2edf6e; checker pin not refreshed. auto-lang-core could not run at the 1109 batch (discovery break), so newly observed, pre-existing since the spec edits.",
-    "auto-lang-core obligation_ledger p985_*: receipt pin of docs/specs/ace-migration/m2-numbers.md stale (pinned 8f10b476c76d8ac4, actual b776a27d...) - same class.",
-    "auto-generation-core plan988_byte_consumers x5: newest_rlib expect fails in the prepared archive-run mode (test binary detached from target/debug/deps; rlib precondition unmet).",
-    "auto-lang: infra spawn [WinError 2] (was discovery-stop at 1109) - PLAN-1108 / DEBT-1098-BATCH-PREPARE family persists."
-  ],
+  "trigger": "PLAN-1110 merge closeout: 1110 % 5 == 0 > last_covered 1114; window b2e873bb4..00503eeac landed 1052/1053/1110/1115/1116/1117/1118.",
+  "new_reds": [],
   "known_reds_seen": [
+    "auto-lang-core aac_baseline v01-v06: spec identity pin stale (m2-certification.md edited by 985/1096, checker pin not refreshed) - unchanged since 1114 batch",
+    "auto-lang-core obligation_ledger p985_* x5: receipt pin of m2-numbers.md stale - unchanged since 1114 batch",
+    "auto-generation-core plan988_byte_consumers x5: newest_rlib expect fails in prepared archive-run mode - unchanged since 1114 batch",
+    "auto-lang: infra spawn [WinError 2] (PLAN-1108 / DEBT-1098-BATCH-PREPARE family) - unchanged",
     "infra-meter ProcessCapture.test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build (PLAN-1108)",
     "infra-fixed FixedGroups.test_all_is_explicit_language_only (D-1051-BATCH-SELECTION / PLAN-1108)",
     "infra-fixed PreparedRunGate.test_ordinary_ace_entry_requires_preparation_before_any_run (PLAN-1108)"
   ],
-  "verdict": "known-reds-only-plus-newly-observed-non-plan-reds",
+  "verdict": "known-reds-only",
   "notes": [
-    "Trigger: PLAN-1050 (%5) landed after last_covered 1109; 1114/1075/1095/1096 also merged since. last_covered advanced to 1114 (highest archived at run time).",
-    "None of the observed reds is attributable to PLAN-1050 (its 12-file landed set touches only experimental/ace/aac, tests/aac-syntax, docs/specs/auto-{ac,hir}); auto-test-case build break was fixed as L0 fix b2e873bb4.",
-    "Newly observed reds routed to fix-forward owners: auto-lang-core identity/receipt pins (985/1096 spec as-built refresh), plan988 archive-mode precondition (batch-selection/plan988 tests owner), auto-lang infra spawn (PLAN-1108 line).",
-    "auto-lang-core/aavm discovery breaks of the 1109 batch are resolved for auto-lang-core (1682 executed) and aavm is NOT_APPLICABLE; auto-lang still infra-fails.",
-    "Windows lane. UI/Man owner legs remain independent."
+    "NOT_APPLICABLE: aavm, a2r-actor-tests, auto-vm (unchanged conditions).",
+    "All 6 FAIL groups match the 1114-batch receipt identities exactly; none attributable to the 1052/1053/1110/1115-1118 window.",
+    "PLAN-1110-adjacent pre-existing reds (1093 C-provider av cases x2, abi source-protocol x1) live outside cargo t all (case-view/ace-adapters groups) and are recorded in the PLAN-1110 archive receipt with master-equivalence evidence."
   ]
 }
