@@ -97,3 +97,29 @@ source-cte CtValue；仅 `== != < <= > >= && ||`，无括号分组/算术/调用
 受检 Auto 适配源（纯选择证明），真实 C/Rust 外库 dispatch 归 967；OS
 原语归 1039/1040；完整 CTE/宏/metadata 归 966 消费本包。Mac 仅覆盖输入
 与选择机制，不构成产品平台 PASS。
+
+## 标准库生产入口的实际选择（PLAN-1114 AV/RS 车道，2026-11-22）
+
+AV/RS 标准库（`IF-ACE-AV-RS-STDLIB/1`，规范主文件
+[av-rust-provider-coverage.md](av-rust-provider-coverage.md)）消费本合同的
+**实际生产形态**：
+
+- 源树 = 平铺 `stdlib/ace/avrs/<m>.at`（契约面：`pub spec fn` 公共 API 记录）
+  + `<m>.rs.at`（Rust provider 片段，`// auto-ffi` 注解——**967 AC-LOAD
+  消费模型**，非本合同装配绑定的 Auto 填充体）。选源语义原样：显式
+  `ProviderChoice::Kind(Rs)` 经 `discover_provider_sources`/
+  `assemble_package_inputs`；py-only 具名 `assembly.provider-backend` 拒；
+  无候选纯公共模块合法；Auto 缺省永不静默回落。
+- **装配绑定不跑在这条车道**：会话（`open_assembled_rs_stdlib_session`）
+  只经发现/装配取层（assemble 不 parse），闭包内全部选中 Rs 层按模块序
+  组合为单一 `avrs/1` provider 单元（重复导出名=具名 `avrs.duplicate-fn`
+  拒），走 967 importer/shim/build 链。应用=普通单模块源 `use.rs avrs` +
+  provider 公共名（包模块内 `use.rs` 仍按 `source.use-rs.surface` 冻结
+  诊断拒绝——本合同不动）。
+- **混合来源约束**：纯 Auto 算法模块（math double 族/collections/json 算法
+  等）不设候选（共享单源，适用性说明入覆盖矩阵）；带 Rs 候选的模块契约面
+  与 provider 导出同签名（测试锚定）；旧 `stdlib/auto/*.rs.at` 镜像与冻结
+  面（`std` 保留包名/asm/sys 字节身份）零改动，旧 A2R 发现保持到 1115/1117
+  切换。组合构建根按组合源摘要键控（选择不变=身份复用；选中层编辑=新根）。
+- 验收锚：AC-02/03（V-01 选择/身份突变、V-03 缺源/错签名/撤权具名拒与
+  默认 Auto 近邻）。

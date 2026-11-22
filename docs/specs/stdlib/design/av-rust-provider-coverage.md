@@ -74,6 +74,7 @@
 | time.sleep_ms / now_ms / now_sec | N→B-10 | W | 完成口形属 M2Build 工程执行器（1113 已证；avrs 会话车道不收调度面模块）| sdk_pack 复用 |
 | net.net_loopback_echo | R | W | std::net 真回环（127.0.0.1:0 监听+连接+精确字节写+EOF 读+比对）；-1=内容不符/-8=传输失败 | `v02_avrs_env_time_and_loopback` |
 | 持久 socket 面（platform.net/1 句柄族）| S | W | sys 车道 native owner（973/1051）；Rs 车道交回环证明 | 973 复用 |
+| 旧资产 `stdlib/auto/platform/io.rs.at`（1041 存在性占位 `io_impl_layer_present`）| 保留原位 | W | 注释声明"967 交付后 AV/Rust in-process foreign dispatch 消费此 origin"——该消费由本 Plan 的 avrs 车道实际承接（console/net 行）；占位文件本身属旧 A2R 降低路径，随 1115/1117 切换处置 | 本表 console/net 行 + 1041/1043 复用 |
 
 ### 批 3 · 数据与显式外部模块（T-04，已交付）
 

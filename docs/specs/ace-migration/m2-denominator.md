@@ -401,3 +401,27 @@ source-change / uncaught），全路线 required 并集均有归属与实际结�
 FINAL-COVERAGE/FINAL-CONTROLS 的可区分失败控制齐备；非 AV 检查保 `#ignore`
 与后续 owner（1068/985），不计 PASS、不阻 AV 证书。历史收据不改。来源与
 逐 case 结果见 [PLAN-1096](../../plans/1096-av-parity-full-language-certification.md)。
+
+## delta-2026-11-22（PLAN-1114 AV/RS 标准库行）
+
+来源身份：auto-lang plan-1114-dev @ 8d3d0ddbc（worktree
+`D:/autostack/.wt/lang-1114/auto-lang`）。本 delta 只**登记映射与归属**，
+不提升任何冻结行的实现状态（§10 第 1/3 条）。
+
+- **S 表 AV/RS 面**：S-01..S-25 各域的 AV/Rust provider 义务现按
+  [av-rust-provider-coverage.md](../stdlib/design/av-rust-provider-coverage.md)
+  逐操作登记（`IF-ACE-AV-RS-STDLIB/1`）：批 1 core/text/math（str/math
+  Rs 真身；min/max=双 i32 帧域边界 B-01，共享 Auto 承载）、批 2 I/O/fs/
+  env/time/net（console/file/env/time/net Rs 真身；完成口形归 M2Build
+  执行器 B-10）、批 3 数据（json=serde_json 钉版显式外库、rand=非凭据
+  PRNG；sqlite 沿 967 钉版 C provider、redis=975 共享 Auto+外部服务
+  B-11、storage=1064 共享 Auto）。
+- **旧资产映射**：`stdlib/auto/` 现存 15 个 `*.rs.at` A2R 镜像逐文件归类
+  入矩阵（`#[rs]` 体按操作迁 `stdlib/ace/avrs/*.rs.at` 或边界行；
+  `platform/io.rs.at` 存在性占位原位保留，其注释声明的 AV/Rust 消费由
+  avrs 车道承接）；镜像文件本身零改动，旧 A2R 发现与语义兼容保持到
+  1115/1117 切换（1114 契约，非本台账状态提升）。
+- **具名边界**：B-01 双 i32 纯形、B-02 集合值不过帧、B-08 无参 i32 形、
+  B-09 双字符串形、B-10 完成口车道域——帧域扩展归后续 Plan；B-03
+  image/frame 域 owner 980/OS064、B-04 TLS/proxy 974 r2、B-05 Linux 1063
+  沿原归属。
