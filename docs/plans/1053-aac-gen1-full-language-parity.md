@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1053
-status: execution_done
+status: reviewed
 feature_name: AAC Gen1完整语言闭环与主体迁移核验
 author: [Codex]
 created_at: 2026-11-14
@@ -211,6 +211,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 9. 复审记录
 
+- 2026-11-22 stage: review | review_scope: final | reviewer_identity: 独立复审子代理（独立上下文，未参与实现） | plan_id: PLAN-1053 | plan_revision: r8 | outcome: **pass**（逐字核验 `e908dc4da`；措辞/计数修复后最终 HEAD `9550dacdf`，纯文档零语义变化） | worktree: D:/autostack/.wt/lang-1053/auto-lang | branch: plan-1053-dev | reviewed_commit: 9550dacdf | base_commit: 9a34e2eee | acceptance_results: AC-01/02/03/04 pass（阶段切片，pending 全具名）、AC-07 partial（动态计数=计划内具名 pending）、AC-05 pass、AC-06 merge | findings: F1[low] §10 计数 41→53（口径更正已落）/ F2[low] boot-oracle 两处措辞（已修 9550dacdf）/ F3[low观察，§9 按 1046 先例签免] 契约镜像信任根 / F4[info] 组标题 env 注记（已修）；无未登记新缺口；红线全绿（无 symlink、master 零代码改动、AV/A2R 视图零爆半径：876 检查 PASS=1/SKIP=161/NOT_RUN=714） | evidence: 复审员独立重放 ace-aac-gen1 9/9、ac_gen1 单元 2/2、gen1 视图 PASS、CL 矩阵 88.1s 0 失配 blocked=53、prepare-native 两模式重链成功、aac1046_corpus_text 环境归因成立、boot exit=681978131 复放一致、导入面 KERNEL32+BCRYPT 实测 | pending_closeout_gates: T-08 merge（SD-01 落主/SD-02 补、归档、材料清理、wt-guard）；冻结受影响并集 = ace-aac-gen1 新 crate + a2x-rust lower_coll + auto-test-case contract/author + auto-lang-core ac_gen1/selection + 语料 1 文件 + test-groups.toml | next: merge（T-08）
+
 - 2026-11-22 stage: work | PLAN-1053 | r8 | outcome: pass（A批整机阶段切片收口：execution_done，交 review） | worktree_path: D:/autostack/.wt/lang-1053/auto-lang | branch: plan-1053-dev | base_commit: 9a34e2eee | code_commit: 69eb3192a（T-06 收口时 HEAD；SD-01 预备稿随后提交） | dependency_revisions: 985/A M2A-08 落主 95c7fbad8（开工门）；1044–1052/1055/1056 archived | task_ids: T-01..T-06、T-09（阶段切片；T-07 review/T-08 merge 未执行） | evidence: 各行内证据 + §10 具名 pending；受影响组并集 ace-aac-gen1 9/9 PASS、aac 家族、case-av-language-parity（2 红=1093 foreign 既存漂移，master 复放同红）、gen1 视图绿、auto-lang-core 单元反控绿；会话计时：组内逐例 0.3–2.1s（prep 车道编译另计：boot+compile 双产物全备 ~4–5min，rustc 链接为主）；新用例逐例计时表见 plan-artifacts/plan-1053/t03-survey-design.md 末节 | blockers: 无执行阻塞；具名 pending 全列 §10（含 CL 族 41 缺口 owner 移交、1093 foreign 漂移、1049 陈旧夹具） | next_responsible_role: review（T-07 独立复审）
 
 - 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 5 | from: work | to: work | status: executing | outcome: pass（T-03 切片：共享发射器修复 + Gen1 compile 入口交付） | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: cce104008 | next: work（T-03 余量：corpus recipe 接线与逐 check 接手）
@@ -243,7 +245,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
-2026-11-22 语料接管与 CL 矩阵（T-03/04 实证，plan-1053-dev `2ad24c90b`）：gen1 target 视图登记（`Selection` "gen1" 臂 + 固定组 `case-aac-gen1-language-parity`；AV/A2R 视图显式 target 过滤、零爆半径）；共享语料 `baseline-value` 的 ac-native 探针已切 Gen1 recipe 并去 `#ignore`，**经真实 suite runner PASS（exit 14）**。CL 矩阵重放腿（ignore 档，78.9s）：529 用例全分类，全部单文件 AV-oracle 用例过 Gen1 链，**exit 零失配**；41 个具名缺口拒绝（hir.unsupported 控制流/legacy 形、type.global/bind.duplicate legacy 变量习语、aac.pending-work/1 async/CT/AGE 组合、node 域不支持）= CL 族缺口图，归 T-04 后续与具名 owner。
+2026-11-22 语料接管与 CL 矩阵（T-03/04 实证，plan-1053-dev `2ad24c90b`）：gen1 target 视图登记（`Selection` "gen1" 臂 + 固定组 `case-aac-gen1-language-parity`；AV/A2R 视图显式 target 过滤、零爆半径）；共享语料 `baseline-value` 的 ac-native 探针已切 Gen1 recipe 并去 `#ignore`，**经真实 suite runner PASS（exit 14）**。CL 矩阵重放腿（ignore 档，78.9s）：529 用例全分类，全部单文件 AV-oracle 用例过 Gen1 链，**exit 零失配**；41 个具名缺口拒绝（hir.unsupported 控制流/legacy 形、type.global/bind.duplicate legacy 变量习语、aac.pending-work/1 async/CT/AGE 组合、node 域不支持）= CL 族缺口图，归 T-04 后续与具名 owner。计数口径更正（T-07 复审发现 F1，复审员冻结树重放实测 **53** 个 blocked = 16×aac.pending-work/1＋37×具名 stage 诊断；"41"为首次清扫计数，全部落在上述四族内、无新类别）。
 
 2026-11-22 语料清扫具名缺口登记（T-03/04 实证，sweep 测试内冻结清单守卫——新增 blocked 探针即红，须先在此具名）：①`av.parity.1080.pipe-method-and-field`→`hir.unsupported 20..53`，即 1047 归档已开放的 pipe 方法 `lower.method` 缺口（owner：Design59 具名实施任务/1047-1050 后继）；②`av.parity.1092.with-unconstrained-type-parameter`→`type.unresolved 28..29`，未约束泛型形参未解析（owner：1048/1050 实例需求求解后继；属 985/A 允许的具名 AC 差额账）。已跑通：`av.parity.1078.baseline-value` exit 14 过全链。关闭条件：对应 owner 交付正式来源后同输入重跑 sweep 自动转 ran。
 
