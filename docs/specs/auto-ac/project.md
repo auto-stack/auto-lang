@@ -24,6 +24,21 @@ PLAN-1046 已交 [AAC 源码前端](aac-source-frontend.md)，含 Auto 实现的
 源码快照和编辑、CST/AST 投影、位置与模块候选目录，已验证 Windows A2R 与 AC 阶段入口。
 完整 AAC 自举仍由 1053/1054 独立验收，阶段切片由 1045–1052/1056 各包原门关闭。
 
+## AAC Gen1 语言对等阶段（PLAN-1053 已交切片）
+
+PLAN-1053 已交 AAC Gen1 整机阶段切片（2026-11-22，review pass，归档收据见
+`docs/plans/archive/1053-*.md`）：全主体 60 模块单产物 Gen1 可执行入口
+（`ace-aac-gen1-conformance` 的 `prepare-gen1` 车道：boot exe = AC(mn) 真 PE，
+compile exe = 1047 语义驱动复用的整机编译命令）、工具身份三 manifest 钉扎、
+机器后端走 1051 bridge（协议无源码字段）、PE 导入面只含 OS 系统 DLL、
+corpus recipe `ac-aac-gen1/native-run-v1` 与固定组 `case-aac-gen1-language-parity`
+（target `gen1`；共享语言语料逐 check 接手，AV/A2R 视图零爆半径）、
+CL 矩阵重放零失配。共享接面修复：a2x-rust `lower_coll` 的 moved_locals
+分支/循环感知合并（原控制流不敏感误杀曾致 AAC prepare 车道不可用）。
+规范增量见 [../auto-test-case/aac-language-parity.md](../auto-test-case/aac-language-parity.md)。
+具名缺口（pipe `lower.method`、未约束泛型形参、CL 族 53 例）按 §10 登记归具名
+owner，Gen2/3 代际验收仍归 PLAN-1054，本切片不签整个 AAC。
+
 ## 目标与范围
 
 - 消费 `verify::CheckedModule`（唯一合法来源），**经 `auto-mir-lower` 降到共享 Typed MIR**；
