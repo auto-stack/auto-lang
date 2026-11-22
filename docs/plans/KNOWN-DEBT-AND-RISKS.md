@@ -5026,3 +5026,11 @@ PLAN-1109 冻结 `ace-abi` 运行中 25 条 `source_foreign` 用例失败。以�
 
 - 主责归 ABI 源外调和 A2C 运行时维护方。关闭条件是按正式信任来源复核摘要变更，同一完整 ABI 目标确认原 25 条测试的真实恢复结果。
 - 同次 `ace-facade` 基线重放的 `p969_t02_console_lane_grants_and_capture` 属现有 D-1098-01 控制台具名入口断言问题。它维持失败计数，维护归属和关闭条件沿用该项。
+
+## D-BATCH-01-PINS-STALE — auto-lang-core aac_baseline/obligation_ledger 身份与收据钉过期（OPEN，2026-11-22）
+
+批量回归（last_covered 1109→1114，触发 PLAN-1050）首次完整执行 auto-lang-core（1682 用例）：aac_baseline v01–v06 与 obligation_ledger p985_* 共 11 例红——`docs/specs/ace-migration/m2-certification.md` 身份钉（pin 045340642830E6B0 vs 实际 6eb773b2…）与 `docs/specs/ace-migration/m2-numbers.md` 收据钉（pin 8f10b476C76D8AC4 vs 实际 b776a27d…）过期；两规范分别被 PLAN-985（95c7fbad8）与 PLAN-1096（b8e2edf6e）正式改写但 checker 钉未同步。owner=aac_baseline/obligation_ledger checker 维护方（985/1096 spec as-built 线）；关闭条件=按现行规范 as-built 状态复核并刷新两处钉，同一 auto-lang-core 完整段重跑全绿。非 PLAN-1050 归因（其落地集未触及 checker 与上述规范）。
+
+## D-BATCH-02-PLAN988-ARCHIVE — plan988_byte_consumers 在 prepared archive 运行模式缺 rlib（OPEN，2026-11-22）
+
+批量回归中 auto-generation-core plan988_byte_consumers 5 例红：`newest_rlib` 在 archive 运行模式下从测试二进制解包目录（非 target/debug/deps）找 rlib 失败（expect「Cargo must build the current core dependency before this consumer test」）。owner=批量选择机制（PLAN-1108/D-1051-BATCH-SELECTION 线）与 plan988 字节消费者测试维护方；关闭条件=archive 运行保留 rlib 依赖定位或该组改显式 cargo-parented 上下文，同组复跑全绿。非 PLAN-1050 归因。
