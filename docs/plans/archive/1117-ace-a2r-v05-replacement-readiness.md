@@ -117,6 +117,10 @@ stage: goal | plan_id: PLAN-1117 | plan_revision: r1 | round: 1 | from: review |
 
 stage: merge | plan_id: PLAN-1117 | plan_revision: r1 | outcome: pass | completion_kind: delivered | prepared: reviewed pass（0789cdfac，r1）+ 冻结 Spec delta | 冻结门: 上述 T-06 记录（ace-m2-build 修复后 PASS、两个预存红具名不充 PASS）| landed: ff-only，master tip=937851ead=delivery commit（rebase 旧→新映射与 range-diff 见 T-06）| canonical_verified: 五文件哈希见 T-06（主检出=审阅 delta）| batch_regression: DUE → regress 交接 | cleaned: 见下条收据 | delivery_commit: 937851ead
 
+2026-11-22 merge 收尾：cleaned — wt-guard clean → worktree `D:/autostack/.wt/lang-1117/auto-lang` 与分支 plan-1117-dev 删除、组目录移除；plan-artifacts/plan-1117 整 scope 删除（5.1GiB，证据已折叠 §7/§8/§9；零持有）；.retention/policy.json 刷新（delivery 937851ead/archive 1491f307d）。路径对账：本计划全部输出均在 worktree（已删）与统一 scope（已删）内，v01/v02 消费者 cargo 工程 target 目录（consumer-target/legacy-*-target，约 5.1GiB 主体）随 scope 一并删除；仓内无散落输出；无外部盘符目录。部署观察：本仓为库+测试，无生产二进制；auto-man CLI 对桥的消费与部署归其 owner（D-1117-1），未触发任何发行构建。批量回归 DUE（1115%5==0 > last_covered 1114）→ /auto-plan:regress 交接（主检出单实例）。
+
+stage: goal | plan_id: PLAN-1117 | plan_revision: r1 | round: 1 | from: merge | to: done | status: archived | outcome: pass | worktree: (removed) | commit: 937851ead | next: done
+
 ## 10. 待澄清事项
 
 （2026-11-22 更新）T-01 原"识别 v0.5 生成 API/布局与依赖行为"已闭（SD-01 §1/§3：v0.5=发布名，代码身份=四 profile id + 候选三件套 fileset）。公开承诺破坏：无——候选为增量可选路由，旧布局/行为逐字节不变（986 发行默认切换时再裁定）。兄弟仓入口：D-1117-1（auto-man `auto trans -t rust` 无 merge 臂绕过开关）由 auto-man owner 接线出证；985/B、986、987 消费 §6 接收门与签发样本。
