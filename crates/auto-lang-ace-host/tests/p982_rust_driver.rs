@@ -31,8 +31,11 @@ fn p982_rust_host_driver_renders_the_frozen_triple() {
     );
     assert!(fileset.files.iter().all(|f| !f.text.trim().is_empty()));
     assert_eq!(fileset.entry, "fn_main");
+    // PLAN-1117 T-02：候选路由（`transpile_scalar_source` 是兄弟 CLI 注册的
+    // 渲染器名）改走普通语言通道——manifest schema 由标量
+    // `auto.a2x.rust.fileset/1` 换为语言 `auto.a2x.rust.language.fileset/1`。
     assert!(
-        fileset.manifest.contains("auto.a2x.rust.fileset/1"),
+        fileset.manifest.contains("auto.a2x.rust.language.fileset/1"),
         "manifest schema: {}",
         fileset.manifest
     );

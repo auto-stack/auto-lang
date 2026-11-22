@@ -421,6 +421,8 @@ dependencies = [
  "ace-core",
  "ace-foreign-contract",
  "ace-native",
+ "ace-source-cte",
+ "ace-source-query",
  "serde",
  "serde_json",
 ]

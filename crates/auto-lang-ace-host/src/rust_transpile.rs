@@ -6,6 +6,11 @@
 //! `lower_program` → `assemble_file_set`，产出一个**无缓存、确定性**的
 //! `AceRustFileSet`（冻结的 wrapper/runtime/generated 三件套 + manifest）。
 //!
+//! PLAN-1117 T-02：`AUTO_ACE_RUST=ace` 绑定的候选路由（兄弟 CLI 注册的
+//! `transpile_scalar_source`）改走**普通语言通道**——`ac.source.language.av/v1`
+//! 准入 + 实例化/CT 准备钩子 + `lower_language_program` + 语言 fileset schema
+//! （PLAN-1115/1116 交付的 v0.5 替换面）。
+//!
 //! 合同（与配置桥一致）：
 //! - 每个失败都是**具名**的（`ace.rust/view`、`ace.rust/lower`、`ace.rust/entry`），
 //!   绝不返回"空 file set"或静默降级到旧转译；
@@ -58,12 +63,17 @@ impl std::fmt::Display for AceRustError {
 ///
 /// `entry` 是**源名**（文档里的函数名，如 `main`）；`module` 只用于诊断与
 /// input hash 的命名。产出是**确定**的：同输入两次调用逐字节一致。
+///
+/// PLAN-1117 T-02：候选路由改走**普通语言通道**（PLAN-1115/1116 的
+/// `ac.source.language.av/v1` 面 + 语言 fileset schema）——v0.5 替换分母覆盖的
+/// 就是这个面。标量前门仍可用（`transpile_with_profile(.., Scalar)`），但用户
+/// 入口绑定的本函数不再以它为准。
 pub fn transpile_scalar_source(
     source: &str,
     module: &str,
     entry: &str,
 ) -> Result<AceRustFileSet, AceRustError> {
-    transpile_with_profile(source, module, entry, TranspileProfile::Scalar)
+    transpile_with_profile(source, module, entry, TranspileProfile::Language)
 }
 
 /// 受检前门的 profile（决定用哪个 `compile_*_source`）。
@@ -73,6 +83,9 @@ pub enum TranspileProfile {
     Collections,
     Records,
     Scheduler,
+    /// PLAN-1117：普通语言面（`ac.source.language.av/v1` 准入 + 实例化/CT
+    /// 准备钩子 + `lower_language_program` + 语言 fileset schema）。
+    Language,
 }
 
 /// 同 [`transpile_scalar_source`]，但显式选择受检 profile（collections/records
@@ -92,6 +105,39 @@ pub fn transpile_with_profile(
         TranspileProfile::Scheduler => {
             ace_core::source::compile_scheduler_source(source, module, &[])
         }
+        // PLAN-1117 T-02：普通语言前门——准入键 `ac.source.language.av/v1`
+        // （源含 `#{...}` 时补 CT 键，同 a2x-worker language 车道的 caps 形），
+        // 准备钩子与 AV/worker 车道同一对共享 pass：泛型实例化
+        // （`instantiate_auto_program`）+ CT 单门（`prepare_auto_ct`）。
+        TranspileProfile::Language => {
+            let mut caps = vec![ace_core::source::AUTO_SOURCE_ADMISSION_CAP.to_string()];
+            if source.contains('#') {
+                caps.push(ace_core::source::cst::CT_CAPABILITY.to_string());
+            }
+            ace_core::source::adapter::compile_language_source_prepared(
+                source,
+                module,
+                &caps,
+                |program, projected_source, has_instances| {
+                    if has_instances {
+                        ace_source_query::instantiate_auto_program(program, module, &caps)?;
+                    }
+                    if source.contains('#') {
+                        let mut service =
+                            ace_source_cte::CtService::new(ace_source_cte::MemoryEnvelopeSink::new());
+                        let _counters = service.counters();
+                        ace_source_cte::product::prepare_auto_ct(
+                            &mut service,
+                            program,
+                            projected_source,
+                            module,
+                            &caps,
+                        )?;
+                    }
+                    Ok(())
+                },
+            )
+        }
     };
     let compiled = compiled_result.map_err(|diags| {
         AceRustError::new(
@@ -108,8 +154,13 @@ pub fn transpile_with_profile(
     })?;
     let view = SemanticView::from_checked(&compiled.checked)
         .map_err(|reject| AceRustError::new("ace.rust/view", format!("{reject:?}")))?;
-    let program = ace_a2x_rust::lower_program(&view, entry)
-        .map_err(|reject| AceRustError::new("ace.rust/lower", format!("{reject:?}")))?;
+    // PLAN-1117：语言通道用自己的整模块 lowerer（跨帧错误槽 + 语言陷阱面）；
+    // 其余 profile 保持原冻结 lowerer。
+    let program = match profile {
+        TranspileProfile::Language => ace_a2x_rust::lower_language_program(&view, entry),
+        _ => ace_a2x_rust::lower_program(&view, entry),
+    }
+    .map_err(|reject| AceRustError::new("ace.rust/lower", format!("{reject:?}")))?;
     let input_hash = format!("{:016x}", fnv1a(source.as_bytes()));
     // collections 家族有**自己的**运行时前导（`A2xStr` 等）：用它的装配器，
     // 否则产物缺少文本运行时、冷构建必失败（本轮实测：E0425 A2xStr）。
@@ -123,6 +174,26 @@ pub fn transpile_with_profile(
             let config =
                 ace_a2x_rust::canonical_execution_config("transpile", u64::MAX, None, false, false);
             let set = ace_a2x_rust::assemble_collections_file_set(
+                &view,
+                &program,
+                &input_hash,
+                &source_sha256,
+                &config,
+                entry,
+            );
+            ace_a2x_rust::FileSet {
+                files: set.files,
+                manifest: set.manifest,
+            }
+        }
+        // PLAN-1117 T-02：语言通道装配器——同 collections 的身份纪律（真实
+        // full-source sha256 + 规范化执行配置），落在语言通道自己的 fileset
+        // schema（`auto.a2x.rust.language.fileset/1`）上。
+        TranspileProfile::Language => {
+            let source_sha256 = source_sha256_hex(source.as_bytes());
+            let config =
+                ace_a2x_rust::canonical_execution_config("transpile", u64::MAX, None, false, false);
+            let set = ace_a2x_rust::assemble_language_file_set(
                 &view,
                 &program,
                 &input_hash,
