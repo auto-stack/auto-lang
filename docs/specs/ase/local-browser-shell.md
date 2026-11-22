@@ -66,8 +66,9 @@
 ## 边界
 
 真鼠标/键盘注入与真人走查档 pending（与自动注入分账，1022/1023/1109
-同界）；Ctrl 快捷键经共享 keyboard_subscription 的声明式扩展投递（组件
-`key_bindings` 声明 `Ctrl+<Key>` 才投递），真窗 OS 级键盘注入未验；
+同界）；Ctrl 快捷键经共享 keyboard_subscription 扩展投递——对声明了
+`key_bindings` 的组件投递 `Ctrl+<字母>` 组合名，由组件 `key_message`
+分派过滤（未映射组合零效果），真窗 OS 级键盘注入未验；
 `https://`/`auto://`/`file://` 目标、权限、多窗口、发行与 Todo 内容不在
 本域（1119/1111/1112 各自合同）。跨页签并发导航的取消面 = 活动页签单
 导航（后台页签进行中请求在其重新成为活动页签后的首个 tick 提交）。
