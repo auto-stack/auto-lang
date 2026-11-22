@@ -229,3 +229,204 @@ fn v01_e_closures_and_nested_places() {
     // load-bearing for the oracle.)
     assert_value("v01-e-closures-places", &out, 42);
 }
+
+/// V-02a — dynamic objects and explicit null (1084 canonical family):
+/// shared-map aliasing (writes through a field-read are visible), nil
+/// entries, and nil/int comparisons — exact value oracle.
+#[test]
+fn v02_a_dynamic_objects_and_null_exact() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "fn main() int {\n\
+         var values = { amount: 19, unset: null }\n\
+         if values.unset != null { return 1 }\n\
+         if values.amount == null { return 2 }\n\
+         var o = { inner: { x: 19, y: 20 } }\n\
+         o.inner.y = 23\n\
+         if o.inner.y != 23 { return 3 }\n\
+         return o.inner.x + o.inner.y\n\
+     }";
+    let (out, _) = run_lang("v02-a-dynamic-objects", src, &[LANG_CAP]);
+    assert_value("v02-a-dynamic-objects", &out, 42);
+}
+
+/// V-02b — the dynamic surface's named traps (the AV codes' suffixes):
+/// missing key = ObjectMissing, wrong-type recover = DynType, and the
+/// self-referential insert = ObjectCycle.
+#[test]
+fn v02_b_dynamic_named_traps() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let missing = "fn main() int { let obj = { present: 42 }\n return obj[\"missing\"] }";
+    let wrong = "fn main() int { let obj = { payload: \"not an integer\" }\n return obj.payload }";
+    let cycle = "fn main() int { var obj = { items: [19, \"twenty\"] }\n obj.items[1] = obj\n return 42 }";
+    let (a, _) = run_lang("v02-b-missing", missing, &[LANG_CAP]);
+    assert_trap("v02-b-missing", &a, "ObjectMissing");
+    let (b, _) = run_lang("v02-b-dyn-type", wrong, &[LANG_CAP]);
+    assert_trap("v02-b-dyn-type", &b, "DynType");
+    let (c, _) = run_lang("v02-b-cycle", cycle, &[LANG_CAP]);
+    assert_trap("v02-b-cycle", &c, "ObjectCycle");
+}
+
+/// V-02c — two-module initialization (1085 canonical, the 981 package
+/// chain): module globals initialize once in dependency order before the
+/// entry; the state module's `bump` write is visible to `read`.
+#[test]
+fn v02_c_two_module_initialization() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    use ace_core::source::cst::FrontBudget;
+    use ace_core::source::packages::{bind_packages_auto, PackageModuleInput, PACKAGES_CAPABILITY};
+    use ace_a2x_core::SemanticView;
+    use ace_a2x_rust::lower_language_program;
+
+    let main = "use state.bump\nuse state.read\nfn main() int { bump(); return read() }";
+    let state = "var n = 40\npub fn bump() { n = n + 2 }\npub fn read() int { return n }";
+    let inputs = [
+        PackageModuleInput { package: "auto".into(), id: "main".into(), version: "0".into(), source: main.into(), provider: None },
+        PackageModuleInput { package: "auto".into(), id: "state".into(), version: "0".into(), source: state.into(), provider: None },
+    ];
+    let caps = [LANG_CAP.to_string(), PACKAGES_CAPABILITY.to_string()];
+    let bound = bind_packages_auto(&inputs, "auto::main", &caps, FrontBudget::WORK_OWNED_64MIB)
+        .expect("bind the ordinary package closure");
+    let resolved = ace_core::source::adapter::resolve_auto_package(&bound.program, &caps)
+        .expect("resolve the bound package");
+    ace_core::source::typecheck_with(&resolved, ace_core::source::SourceProfile::Auto)
+        .expect("typecheck the bound package");
+    let parts = ace_core::source::emit_resolved_packages_parts_profile(
+        &resolved,
+        &bound,
+        "packages",
+        ace_core::source::SourceProfile::Auto,
+    )
+    .expect("emit package parts");
+    let mut checked = ace_core::verify::verify_auto_language(parts.bundle)
+        .expect("verify the ordinary package bundle");
+    checked.set_module_globals(ace_core::verify::ModuleGlobalsPlan {
+        init_order: bound.init_order.clone(),
+        init_fns: bound
+            .module_init_order
+            .iter()
+            .filter_map(|k| bound.module_init_fns.get(k).cloned())
+            .collect(),
+        facts: bound
+            .globals
+            .iter()
+            .map(|(sym, decl)| ace_core::verify::GlobalFact {
+                symbol: sym.clone(),
+                name: decl.name.clone(),
+                mutable: decl.mutable,
+            })
+            .collect(),
+    });
+    let view = SemanticView::from_checked(&checked).expect("package view admits");
+    let program = lower_language_program(&view, "main").expect("lower the package program");
+    let cfg = canonical_execution_config("debug", 16_777_216, None, false, false);
+    let fs = assemble_language_file_set(&view, &program, "v02c", "1115-v02c", &cfg, "main");
+
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/a2x-out/lang-1115/v02-c-two-module");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (path, content) in &fs.files {
+        std::fs::write(dir.join(path), content).unwrap();
+    }
+    std::fs::write(dir.join("manifest.json"), &fs.manifest).unwrap();
+    let exe = dir.join("a2x_lang_case.exe");
+    let mut compiler = Command::new(rustc());
+    compiler.args(["--edition", "2021"]).arg("-o").arg(&exe).arg("main.rs").current_dir(&dir);
+    let build = auto_tool_execution::run_command_capture(
+        compiler,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc");
+    assert!(
+        build.kind == auto_tool_execution::ExitKind::Success,
+        "rustc failed:\n{}",
+        String::from_utf8_lossy(build.stderr.as_ref().expect("compiler stderr"))
+    );
+    let mut run = Command::new(&exe);
+    run.current_dir(&dir);
+    let out = auto_tool_execution::run_command_capture(
+        run,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("run exe");
+    assert_eq!(out.kind, auto_tool_execution::ExitKind::Success);
+    let stdout = String::from_utf8_lossy(out.stdout.as_ref().expect("stdout")).to_string();
+    assert_value("v02-c-two-module", &stdout, 42);
+}
+
+/// V-02d — move and release (1086 family): an owned Str moves into a
+/// callee (the callee owns and frees it); the same-type use-after-move is
+/// rejected at the source check with a locatable diagnostic (negative
+/// oracle — the bind never reaches emission).
+#[test]
+fn v02_d_move_release_and_use_after_move_diag() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = "fn take(s Str) int { return s.len() }\n\
+         fn main() int {\n\
+         var label Str = \"abcdef\".clone()\n\
+         let n = take(label.move)\n\
+         return n * 7\n\
+     }";
+    let (out, _) = run_lang("v02-d-move-release", src, &[LANG_CAP]);
+    assert_value("v02-d-move-release", &out, 42);
+
+    // negative: reading the moved root is a named source diagnostic with
+    // a span that points at the dead read.
+    let bad = "fn main() int {
+         let a = List<int>.new()
+         let b = a.move
+         return a.len()
+     }";
+    // The shared front binds it (the AV lane rejects at MIR verify); the
+    // A2R lane's source-side check is the lowering's named kill reject.
+    let caps = [LANG_CAP.to_string()];
+    let compiled = compile_language_source(bad, "main.at", &caps)
+        .expect("the shared front binds the shape");
+    let view = SemanticView::from_checked(&compiled.checked).expect("view admits");
+    let err = lower_language_program(&view, "main")
+        .expect_err("use-after-move must be a named rejection on the A2R lane");
+    assert!(
+        format!("{err:?}").contains("use-after-move"),
+        "named reject: {err:?}"
+    );
+}
+
+
+/// V-02e — cross-frame error capture (1087 canonical family): the callee
+/// `fail(msg)` unwinds through the call boundary into the caller's catch
+/// arm; the message text compares exactly; the uncaught path re-throws.
+#[test]
+fn v02_e_cross_frame_error_capture() {
+    if !tools_available() {
+        eprintln!("infra-blocked: rustc unavailable — skipped");
+        return;
+    }
+    let src = r#"fn boom(n int) int {
+    if n > 1 { fail("boom-msg") }
+    return n
+}
+fn main() int {
+    try {
+        return boom(3)
+    } catch err {
+        if err == "boom-msg" { return 42 }
+    }
+    return 0
+}"#;
+    let (out, _) = run_lang("v02-e-cross-frame", src, &[LANG_CAP]);
+    assert_value("v02-e-cross-frame", &out, 42);
+}

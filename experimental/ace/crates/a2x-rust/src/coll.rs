@@ -160,7 +160,11 @@ fn assemble_family_file_set(
     generated.push_str("use crate::a2x_runtime::*;\n\n");
     generated.push_str(&print_program(program));
 
-    let mut runtime = collections_runtime_source(&program.marks);
+    let mut runtime = if schema == LANG_FILESET_SCHEMA {
+        language_runtime_source(&program.marks)
+    } else {
+        collections_runtime_source(&program.marks)
+    };
     // PLAN-968: append the scheduler runtime for scheduler-surface
     // programs (the generated __sched calls bind to it).
     if view.has_sched_ops() {
@@ -175,6 +179,13 @@ fn assemble_family_file_set(
     wrapper.push_str("mod a2x_runtime;\nmod generated;\n\n");
     wrapper.push_str("use a2x_runtime::A2xResult;\n\n");
     wrapper.push_str("fn main() {\n");
+    // PLAN-1115 (T-03, from 981): the module init chain (dependency
+    // order) runs before the entry; init failure reports as a trap.
+    for init in &program.init_fns {
+        wrapper.push_str(&format!(
+            "    if let Err(t) = generated::{init}() {{ println!(\"trap:{{}}\", t.name()); return; }}\n"
+        ));
+    }
     wrapper.push_str(&format!(
         "    let outcome: A2xResult<i32> = generated::{}();\n",
         program.entry
@@ -255,14 +266,281 @@ fn build_family_manifest(
     out
 }
 
+const DYN_RT: &str = r#"
+// ---- PLAN-1115 (T-03): the ordinary dynamic surface (PLAN-964) --------
+//
+// A2xDyn is the checked dynamic value. Objects are SHARED mutable maps
+// and dynamic lists are SHARED element buffers (Rc handles - assignment,
+// field reads and index reads ALIAS, exactly the AV handle semantics);
+// explicit `.clone()` deep-copies. Typed (static) lists cross the Dyn
+// boundary only through DynCast conversions, which check every element.
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum A2xKey {
+    Text(String),
+    Int(i32),
+    Bool(bool),
+}
+
+pub type A2xDynList = std::rc::Rc<std::cell::RefCell<std::vec::Vec<A2xDyn>>>;
+pub type A2xObject = std::rc::Rc<std::cell::RefCell<std::collections::BTreeMap<A2xKey, A2xDyn>>>;
+
+pub enum A2xDyn {
+    Nil,
+    Int(i32),
+    Bool(bool),
+    Char(char),
+    Str(A2xStr),
+    List(A2xDynList),
+    Object(A2xObject),
+}
+
+pub fn a2x_dyn_nil() -> A2xDyn { A2xDyn::Nil }
+pub fn a2x_dyn_int(v: i32) -> A2xDyn { A2xDyn::Int(v) }
+pub fn a2x_dyn_bool(v: bool) -> A2xDyn { A2xDyn::Bool(v) }
+pub fn a2x_dyn_char(v: char) -> A2xDyn { A2xDyn::Char(v) }
+pub fn a2x_dyn_str(v: A2xStr) -> A2xDyn { A2xDyn::Str(v) }
+pub fn a2x_dyn_str_view(v: &str) -> A2xResult<A2xDyn> { Ok(A2xDyn::Str(a2x_str_clone(v)?)) }
+pub fn a2x_dyn_list(v: A2xDynList) -> A2xDyn { A2xDyn::List(v) }
+pub fn a2x_dyn_object(v: A2xObject) -> A2xDyn { A2xDyn::Object(v) }
+
+pub fn a2x_dyn_is_nil(v: &A2xDyn) -> bool { matches!(v, A2xDyn::Nil) }
+
+pub fn a2x_dyn_eq(a: &A2xDyn, b: &A2xDyn) -> bool {
+    match (a, b) {
+        (A2xDyn::Nil, A2xDyn::Nil) => true,
+        (A2xDyn::Int(x), A2xDyn::Int(y)) => x == y,
+        (A2xDyn::Bool(x), A2xDyn::Bool(y)) => x == y,
+        (A2xDyn::Char(x), A2xDyn::Char(y)) => x == y,
+        (A2xDyn::Str(x), A2xDyn::Str(y)) => a2x_str_eq(x.as_str(), y.as_str()),
+        (A2xDyn::Object(x), A2xDyn::Object(y)) => std::rc::Rc::ptr_eq(x, y),
+        (A2xDyn::List(x), A2xDyn::List(y)) => std::rc::Rc::ptr_eq(x, y),
+        _ => false,
+    }
+}
+
+fn a2x_dyn_key(v: &A2xDyn) -> A2xResult<A2xKey> {
+    match v {
+        A2xDyn::Int(i) => Ok(A2xKey::Int(*i)),
+        A2xDyn::Bool(b) => Ok(A2xKey::Bool(*b)),
+        A2xDyn::Str(s) => Ok(A2xKey::Text(s.as_str().to_string())),
+        _ => Err(AutoTrap::DynType),
+    }
+}
+
+pub fn a2x_dyn_as_int(v: &A2xDyn) -> A2xResult<i32> {
+    match v { A2xDyn::Int(i) => Ok(*i), _ => Err(AutoTrap::DynType) }
+}
+pub fn a2x_dyn_as_bool(v: &A2xDyn) -> A2xResult<bool> {
+    match v { A2xDyn::Bool(b) => Ok(*b), _ => Err(AutoTrap::DynType) }
+}
+pub fn a2x_dyn_as_char(v: &A2xDyn) -> A2xResult<char> {
+    match v { A2xDyn::Char(c) => Ok(*c), _ => Err(AutoTrap::DynType) }
+}
+pub fn a2x_dyn_as_str(v: &A2xDyn) -> A2xResult<A2xStr> {
+    match v { A2xDyn::Str(s) => a2x_str_clone(s.as_str()), _ => Err(AutoTrap::DynType) }
+}
+pub fn a2x_dyn_as_object(v: &A2xDyn) -> A2xResult<A2xObject> {
+    match v { A2xDyn::Object(o) => Ok(std::rc::Rc::clone(o)), _ => Err(AutoTrap::DynType) }
+}
+pub fn a2x_dyn_as_list(v: &A2xDyn) -> A2xResult<A2xDynList> {
+    match v { A2xDyn::List(l) => Ok(std::rc::Rc::clone(l)), _ => Err(AutoTrap::DynType) }
+}
+
+/// Pack a TYPED (static) dyn-element list into the shared dynamic list
+/// (elements move; the source list is consumed).
+pub fn a2x_dyn_pack_list(mut l: A2xList<A2xDyn>) -> A2xResult<A2xDyn> {
+    let mut out: Vec<A2xDyn> = Vec::new();
+    while a2x_coll_list_len(&l) > 0 {
+        let n = a2x_coll_list_len(&l);
+        let v = a2x_coll_list_remove(&mut l, n - 1)?;
+        out.insert(0, v);
+    }
+    a2x_coll_list_free(&mut l);
+    Ok(A2xDyn::List(std::rc::Rc::new(std::cell::RefCell::new(out))))
+}
+
+pub fn a2x_key_text(s: &str) -> A2xKey { A2xKey::Text(s.to_string()) }
+pub fn a2x_key_int(i: i32) -> A2xKey { A2xKey::Int(i) }
+pub fn a2x_key_bool(b: bool) -> A2xKey { A2xKey::Bool(b) }
+
+pub fn a2x_obj_new() -> A2xObject {
+    std::rc::Rc::new(std::cell::RefCell::new(std::collections::BTreeMap::new()))
+}
+
+/// ctor-time insert (entries cannot reference the object being built).
+pub fn a2x_obj_init(obj: &A2xObject, key: A2xKey, value: A2xDyn) {
+    obj.borrow_mut().insert(key, value);
+}
+
+/// `obj[k]` - runtime dispatch: a map keyed by the dynamic key; a list
+/// indexed by an i32 key (out-of-range = ListIndex, the collections name).
+pub fn a2x_dyn_get(base: &A2xDyn, key: &A2xDyn) -> A2xResult<A2xDyn> {
+    match base {
+        A2xDyn::Object(o) => {
+            let k = a2x_dyn_key(key)?;
+            let hit = o.borrow().get(&k).map(|v| a2x_dyn_share(v));
+            match hit { Some(r) => r, None => Err(AutoTrap::ObjectMissing) }
+        }
+        A2xDyn::List(l) => {
+            let A2xKey::Int(i) = a2x_dyn_key(key)? else { return Err(AutoTrap::DynType) };
+            let buf = l.borrow();
+            if i < 0 || i as usize >= buf.len() { return Err(AutoTrap::ListIndex) }
+            a2x_dyn_share(&buf[i as usize])
+        }
+        _ => Err(AutoTrap::DynType),
+    }
+}
+
+/// `obj[k] = v` - upsert (the old entry drops exactly once at commit);
+/// a list element write by i32 key. Self-referential inserts trap
+/// ObjectCycle (inserting a container into itself or into anything it
+/// already reaches).
+pub fn a2x_dyn_set(base: &A2xDyn, key: &A2xDyn, value: A2xDyn) -> A2xResult<()> {
+    match base {
+        A2xDyn::Object(o) => {
+            let k = a2x_dyn_key(key)?;
+            if matches!(&value, A2xDyn::Object(_))
+                && a2x_dyn_reaches_object(&value, o, &mut std::vec::Vec::new())
+            {
+                return Err(AutoTrap::ObjectCycle)
+            }
+            o.borrow_mut().insert(k, value);
+            Ok(())
+        }
+        A2xDyn::List(l) => {
+            let A2xKey::Int(i) = a2x_dyn_key(key)? else { return Err(AutoTrap::DynType) };
+            if matches!(&value, A2xDyn::List(_) | A2xDyn::Object(_))
+                && a2x_dyn_reaches_list(&value, l, &mut std::vec::Vec::new())
+            {
+                return Err(AutoTrap::ObjectCycle)
+            }
+            let mut buf = l.borrow_mut();
+            if i < 0 || i as usize >= buf.len() { return Err(AutoTrap::ListIndex) }
+            buf[i as usize] = value;
+            Ok(())
+        }
+        _ => Err(AutoTrap::DynType),
+    }
+}
+
+/// Whether the container value `x` already reaches the shared list
+/// `target` by Rc identity - the anti-cycle admission, list side.
+fn a2x_dyn_reaches_list(x: &A2xDyn, target: &A2xDynList, seen: &mut Vec<*const ()>) -> bool {
+    match x {
+        A2xDyn::List(l) => {
+            if std::rc::Rc::ptr_eq(l, target) { return true }
+            let p = std::rc::Rc::as_ptr(l) as *const ();
+            if seen.contains(&p) { return false }
+            seen.push(p);
+            let guard = l.borrow();
+            guard.iter().any(|v| a2x_dyn_reaches_list(v, target, seen))
+        }
+        A2xDyn::Object(o) => {
+            let p = std::rc::Rc::as_ptr(o) as *const ();
+            if seen.contains(&p) { return false }
+            seen.push(p);
+            let guard = o.borrow();
+            guard.values().any(|v| a2x_dyn_reaches_list(v, target, seen))
+        }
+        _ => false,
+    }
+}
+
+/// Whether the container value `x` already contains the object `target`
+/// by Rc identity - the anti-cycle admission for dynamic inserts.
+fn a2x_dyn_reaches_object(x: &A2xDyn, target: &A2xObject, seen: &mut Vec<*const ()>) -> bool {
+    match x {
+        A2xDyn::Object(o) => {
+            let p = std::rc::Rc::as_ptr(o) as *const ();
+            if std::rc::Rc::ptr_eq(o, target) { return true }
+            if seen.contains(&p) { return false }
+            seen.push(p);
+            let guard = o.borrow();
+            guard.values().any(|v| a2x_dyn_reaches_object(v, target, seen))
+        }
+        A2xDyn::List(l) => {
+            let guard = l.borrow();
+            guard.iter().any(|v| a2x_dyn_reaches_object(v, target, seen))
+        }
+        _ => false,
+    }
+}
+
+/// The value read out of a dynamic container: containers SHARE (handle
+/// semantics); scalars/text copy.
+pub fn a2x_dyn_share(v: &A2xDyn) -> A2xResult<A2xDyn> {
+    Ok(match v {
+        A2xDyn::Nil => A2xDyn::Nil,
+        A2xDyn::Int(i) => A2xDyn::Int(*i),
+        A2xDyn::Bool(b) => A2xDyn::Bool(*b),
+        A2xDyn::Char(c) => A2xDyn::Char(*c),
+        A2xDyn::Str(s) => A2xDyn::Str(a2x_str_clone(s.as_str())?),
+        A2xDyn::List(l) => A2xDyn::List(std::rc::Rc::clone(l)),
+        A2xDyn::Object(o) => A2xDyn::Object(std::rc::Rc::clone(o)),
+    })
+}
+
+// ---- PLAN-1115 (T-03): the cross-frame language-error channel ----------
+//
+// `fail(msg)` stores its owned message in the frame's error slot and
+// unwinds as the LangError trap; the enclosing protected region's catch
+// arm takes it back (empty text when the slot is empty).
+
+thread_local! {
+    static A2X_LANG_ERR: std::cell::RefCell<Option<A2xStr>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn a2x_lang_fail<T>(msg: A2xStr) -> A2xResult<T> {
+    A2X_LANG_ERR.with(|s| *s.borrow_mut() = Some(msg));
+    Err(AutoTrap::LangError)
+}
+
+pub fn a2x_lang_take_err() -> A2xStr {
+    A2X_LANG_ERR.with(|s| s.borrow_mut().take())
+        .unwrap_or(A2xStr { buf: Some(String::new()) })
+}
+
+impl A2xCollElem for A2xDyn {
+    fn a2x_elem_free(&mut self) { *self = A2xDyn::Nil }
+    fn a2x_elem_deep_clone(&self) -> A2xResult<Self> {
+        match self {
+            A2xDyn::List(l) => {
+                let mut out = std::vec::Vec::with_capacity(l.borrow().len());
+                for e in l.borrow().iter() { out.push(e.a2x_elem_deep_clone()?) }
+                Ok(A2xDyn::List(std::rc::Rc::new(std::cell::RefCell::new(out))))
+            }
+            other => a2x_dyn_share(other),
+        }
+    }
+    fn a2x_elem_str_bytes(&self) -> u64 {
+        match self { A2xDyn::Str(s) => s.as_str().len() as u64, _ => 0 }
+    }
+}
+"#;
+
 /// The typed collections runtime source: the frozen scalar core (same
 /// helper names/shapes as the 902 core, with the collections trap set) +
 /// the list/billing/cleanup layer. Byte-stable for a crate version.
 pub fn collections_runtime_source(marks: &[&'static str]) -> String {
+    coll_family_runtime(marks, COLL_TRAPS_FROZEN, "")
+}
+
+/// PLAN-1115 (T-03): the LANGUAGE channel runtime - the collections
+/// substrate with the widened dynamic-surface trap set and the dynamic
+/// value/object runtime appended.
+pub fn language_runtime_source(marks: &[&'static str]) -> String {
+    coll_family_runtime(marks, LANG_TRAPS, DYN_RT)
+}
+
+fn coll_family_runtime(marks: &[&'static str], traps: &str, extra: &str) -> String {
     let mut s = String::new();
     s.push_str("// AUTO-GENERATED typed collections runtime (PLAN-904 AX-C) — DO NOT EDIT.\n");
     s.push_str("#![allow(dead_code)]\n\n");
-    s.push_str(COLL_CORE);
+    s.push_str(&coll_core(traps));
+    if !extra.is_empty() {
+        s.push_str(extra);
+    }
     for &mark in marks {
         let (suffix, value) = if mark == "hir.test.mark_a" {
             ("a", "1")
@@ -338,7 +616,10 @@ pub fn a2x_str_to_owned(s: &str) -> A2xResult<A2xStr> {
     s
 }
 
-const COLL_CORE: &str = r#"#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// PLAN-1115 (T-03): the coll core splits around the trap enum so the
+// LANGUAGE channel widens the trap set (ObjectMissing/DynType/ObjectCycle)
+// while the 904 collections channel keeps its frozen runtime bytes.
+const COLL_TRAP_HEAD: &str = r#"#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AutoTrap {
     Overflow,
     DivByZero,
@@ -353,6 +634,8 @@ pub enum AutoTrap {
     Budget,
     Cancelled,
     LangError,
+"#;
+const COLL_TRAP_MID: &str = r#"
 }
 
 impl AutoTrap {
@@ -371,10 +654,34 @@ impl AutoTrap {
             AutoTrap::Budget => "Budget",
             AutoTrap::Cancelled => "Cancelled",
             AutoTrap::LangError => "LangError",
+"#;
+const COLL_TRAP_TAIL: &str = r#"
         }
     }
 }
+"#;
+/// The 904 channel's frozen trap list (reconstructed byte-identically).
+const COLL_TRAPS_FROZEN: &str = "";
+/// PLAN-1115 (T-03): the language channel's dynamic-surface traps —
+/// names align with the AV codes' suffixes (av.dyn.object-missing /
+/// av.trap.dyn-type / av.dyn.object-cycle).
+const LANG_TRAPS: &str = "    ObjectMissing,
+    DynType,
+    ObjectCycle,
+";
 
+fn coll_core(traps: &str) -> String {
+    let mut names = String::new();
+    if !traps.is_empty() {
+        for name in ["ObjectMissing", "DynType", "ObjectCycle"] {
+            names.push_str(&format!("            AutoTrap::{name} => \"{name}\",
+"));
+        }
+    }
+    format!("{COLL_TRAP_HEAD}{traps}{COLL_TRAP_MID}{names}{COLL_TRAP_TAIL}{COLL_REST}")
+}
+
+const COLL_REST: &str = r#"
 pub type A2xResult<T> = Result<T, AutoTrap>;
 
 pub fn a2x_add(a: i32, b: i32) -> A2xResult<i32> { a.checked_add(b).ok_or(AutoTrap::Overflow) }

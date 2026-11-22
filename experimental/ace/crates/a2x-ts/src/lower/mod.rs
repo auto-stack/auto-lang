@@ -202,6 +202,10 @@ pub fn ts_ty(view: &SemanticView<'_>, ty: Ty) -> String {
         Ty::List(_) => "A2xList".to_string(),
         Ty::Variant(_) => "A2xVariant".to_string(),
         Ty::Unit => "void".to_string(),
+        // PLAN-1115 (T-03): the dynamic family rides the TS lane's
+        // untyped spelling (the ordinary dynamic surface is a Rust-lane
+        // delivery; TS keeps a representation-only mapping).
+        Ty::Nil | Ty::Dyn | Ty::Object(_) => "any".to_string(),
         Ty::Record(idx) => match view.record(idx) {
             Some(r) if !r.fields.is_empty() => {
                 let fields: Vec<String> = r

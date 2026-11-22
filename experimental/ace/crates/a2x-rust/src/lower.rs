@@ -154,6 +154,15 @@ pub struct ClosureLitData {
     pub env_args: Vec<RExpr>,
 }
 
+/// PLAN-1115 (T-03): the protected-region intercept payload.
+#[derive(Clone, Debug)]
+pub struct WrapInterceptData {
+    pub inner: RExpr,
+    pub frees: Vec<(String, String)>,
+    pub kind: String,
+    pub msg: String,
+}
+
 /// One emitted Rust expression. Rendering (print.rs) appends `?` where a
 /// fallible root is consumed as a value (`render_val`); nested fallible
 /// operands are pinned into temporaries by the lowering, so call/checked
@@ -217,6 +226,13 @@ pub enum RExpr {
         func: Box<RExpr>,
         args: Vec<RExpr>,
     },
+    /// PLAN-1115 (T-03): the protected-region error intercept — on a
+    /// LangError the kind local takes 4, the message local takes the
+    /// frame's stored error text and control breaks out of the protected
+    /// loop (the catch arm reads both); any other trap propagates.
+    /// Boxed to keep the enum at its frozen width.
+    WrapIntercept(Box<WrapInterceptData>),
+
     /// Authorized trace intrinsic call — fallible, effectful.
     Trace {
         func: &'static str,
@@ -357,6 +373,7 @@ impl RExpr {
             RExpr::CharToI32 { .. } => "char-to-i32",
             RExpr::ClosureLit { .. } => "closure-lit",
             RExpr::IndirectCall { .. } => "indirect-call",
+            RExpr::WrapIntercept(_) => "wrap-intercept",
             RExpr::Wrap { .. } => "wrap",
             RExpr::CollCall { .. } => "coll-call",
             RExpr::VariantIs { .. } => "variant-is",

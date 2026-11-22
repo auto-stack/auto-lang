@@ -408,6 +408,8 @@ fn encode_ty(ty: &Ty) -> String {
         // PLAN-972 (T-03): closure values in fragment manifests — the
         // interned signature index rides the wire.
         Ty::Closure(n) => format!("closure:{}", n),
+        // PLAN-1115 (T-03): the dynamic family's wire word.
+        Ty::Nil | Ty::Dyn | Ty::Object(_) => "dyn".into(),
     }
 }
 

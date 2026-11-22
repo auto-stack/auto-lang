@@ -72,6 +72,17 @@ pub enum Ty {
     U64,
     F32,
     F64,
+    /// PLAN-1115 (T-03, from PLAN-964): the zero-width null value type —
+    /// only Nil-typed equality is admitted at the source.
+    Nil,
+    /// PLAN-1115 (T-03, from PLAN-964): a checked value with an erased,
+    /// independently recoverable type tag.
+    Dyn,
+    /// PLAN-1115 (T-03, from PLAN-964): a shared mutable string-keyed
+    /// object map; the payload is the module type-table index of the
+    /// `Object { elem }` entry (the resolve freezes the homogeneous entry
+    /// value type; entries may be nil when `elem = Nil`).
+    Object(u32),
 }
 
 impl Ty {
@@ -96,6 +107,9 @@ impl Ty {
             Ty::F32 => "f32",
             Ty::F64 => "f64",
             Ty::Closure(_) => "closure",
+            Ty::Nil => "nil",
+            Ty::Dyn => "dyn",
+            Ty::Object(_) => "object",
         }
     }
 
@@ -554,6 +568,18 @@ impl<'a> SemanticView<'a> {
             _ => Err(A2xReject::new(
                 "a2x.internal",
                 format!("type #{type_index} is not a list entry"),
+            )),
+        }
+    }
+
+    /// PLAN-1115 (T-03): the frozen homogeneous entry value type of an
+    /// `Object { elem }` type-table entry.
+    pub fn object_elem(&self, type_index: u32) -> Result<Ty, A2xReject> {
+        match self.module.types.get(type_index as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::Object { elem }) => resolve_ty(self.module, *elem),
+            _ => Err(A2xReject::new(
+                "a2x.internal",
+                format!("type #{type_index} is not an object entry"),
             )),
         }
     }
@@ -1394,6 +1420,16 @@ fn kind_in_family(k: &hir::ExprKind, family: Family) -> bool {
                     // operand). The 904/962 frozen goldens never carry a
                     // standalone Unit expr, so their channels are inert.
                     | hir::ExprKind::Unit
+                    // PLAN-1115 (T-03, PLAN-964): the ordinary dynamic
+                    // surface — nil literal, dyn pack/recover, and the
+                    // shared object map node set (language lane only in
+                    // practice; the frozen 904/962 goldens never carry
+                    // them).
+                    | hir::ExprKind::NilLit
+                    | hir::ExprKind::DynCast { .. }
+                    | hir::ExprKind::ObjectCtor { .. }
+                    | hir::ExprKind::ObjectGet { .. }
+                    | hir::ExprKind::ObjectSet { .. }
             ) || record_kinds
                 || collections_kinds
                 // PLAN-972 (T-03): the assembled stdlib's text/char
@@ -1868,6 +1904,10 @@ fn resolve_ty(module: &hir::Module, ty: hir::TypeUse) -> Result<Ty, A2xReject> {
             // PLAN-904: structural lists and nominal variants
             Some(hir::TypeKind::List { .. }) => Ok(Ty::List(id.0)),
             Some(hir::TypeKind::Variant { .. }) => Ok(Ty::Variant(id.0)),
+            // PLAN-1115 (T-03, PLAN-964): the ordinary dynamic surface.
+            Some(hir::TypeKind::Nil) => Ok(Ty::Nil),
+            Some(hir::TypeKind::Dyn) => Ok(Ty::Dyn),
+            Some(hir::TypeKind::Object { .. }) => Ok(Ty::Object(id.0)),
             Some(other) => Err(A2xReject::unsupported_type(format!(
                 "type `{}` is outside the supported value types",
                 type_kind_name(other)
@@ -1916,6 +1956,11 @@ fn kind_name(k: &hir::ExprKind) -> &'static str {
         hir::ExprKind::VariantCtor { .. } => "VariantCtor",
         hir::ExprKind::VariantGuardTest { .. } => "VariantGuardTest",
         hir::ExprKind::VariantProject { .. } => "VariantProject",
+        hir::ExprKind::NilLit => "NilLit",
+        hir::ExprKind::DynCast { .. } => "DynCast",
+        hir::ExprKind::ObjectCtor { .. } => "ObjectCtor",
+        hir::ExprKind::ObjectGet { .. } => "ObjectGet",
+        hir::ExprKind::ObjectSet { .. } => "ObjectSet",
         _ => "non-core-scalar",
     }
 }
@@ -1941,6 +1986,9 @@ fn type_kind_name(k: &hir::TypeKind) -> &'static str {
         hir::TypeKind::Record(_) => "record",
         hir::TypeKind::List { .. } => "list",
         hir::TypeKind::Variant { .. } => "variant",
+        hir::TypeKind::Nil => "nil",
+        hir::TypeKind::Dyn => "dyn",
+        hir::TypeKind::Object { .. } => "object",
         hir::TypeKind::I8 => "i8",
         hir::TypeKind::U8 => "u8",
         hir::TypeKind::U32 => "u32",

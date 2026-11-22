@@ -32,34 +32,60 @@ fn view_rejects_named(src: &str, path: &str, needle: &str) -> String {
     text
 }
 
-/// P1（1084 动态对象，反例）：受检事实在场（bind OK），view 以具名
-/// `a2x.unsupported-type` 拒绝 Object 族 —— 缺口=投影层，不是上游。
+/// P1（1084 动态对象，T-03 翻绿点）：上游受检事实在场，view 准入 +
+/// language 通道统一降落整链绿。
 #[test]
-fn p1_dynamic_object_facts_bind_view_rejects_named() {
-    let text = view_rejects_named(
+fn p1_dynamic_object_lowers_on_the_language_channel() {
+    let compiled = compile_ordinary(
         r#"fn main() int {
  var o = { inner: { x: 19, y: 20 } }
  o.inner.y = 23
  return o.inner.x + o.inner.y
 }"#,
         "main.at",
-        "object",
     );
-    assert!(text.contains("a2x."), "a2x.* reject code: {text}");
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("the dynamic surface admits");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel lowers objects");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
 }
 
-/// P2（1084 显式 null，反例）：纯 null 源钉 Nil 族（对象字面量先撞
-/// `object` 的变体见 P1）。
+/// P2（1084 显式 null，T-03 翻绿点）：Nil 族整链绿。
 #[test]
-fn p2_nil_and_coalesce_facts_bind_view_rejects_named() {
-    view_rejects_named(
+fn p2_nil_lowers_on_the_language_channel() {
+    let compiled = compile_ordinary(
         r#"fn main() int {
     let a = null
     if a == null { return 42 }
     return 0
 }"#,
         "main.at",
-        "nil",
+    );
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("the nil surface admits");
+    let program = ace_a2x_rust::lower_language_program(&view, "main")
+        .expect("the language channel lowers nil");
+    assert!(program.entry.ends_with("main"), "{}", program.entry);
+}
+
+/// P12（通道边界钉）：动态面在 compute 通道（892/902 冻结 lane）仍具名拒。
+#[test]
+fn p12_dynamic_still_rejected_on_the_compute_channel() {
+    let compiled = compile_ordinary(
+        "fn main() int { let a = null
+ if a == null { return 42 }
+ return 0 }",
+        "main.at",
+    );
+    let checked = Box::leak(Box::new(compiled.checked));
+    let view = SemanticView::from_checked(checked).expect("view admits");
+    let err = ace_a2x_rust::lower_program(&view, "main")
+        .expect_err("the compute channel must keep rejecting the dynamic surface");
+    let text = format!("{err:?}");
+    assert!(
+        text.contains("a2x.") && text.to_lowercase().contains("nil"),
+        "channel boundary shape: {text}"
     );
 }
 
@@ -314,4 +340,31 @@ fn p10_rexpr_width_frozen() {
         72,
         "RExpr width is frozen for the depth-budgeted lowering recursion"
     );
+}
+
+/// P13（T-03 探）：try/catch 与跨帧 fail 的 HIR 形态记录。
+#[test]
+fn p13_catch_shape_probe() {
+    let src = r#"fn boom(n int) int {
+    if n > 1 { fail("boom-msg") }
+    return n
+}
+fn main() int {
+    try {
+        return boom(3)
+    } catch err {
+        if err == "boom-msg" { return 42 }
+    }
+    return 0
+}"#;
+    let compiled = compile_ordinary(src, "main.at");
+    let checked = Box::leak(Box::new(compiled.checked));
+    match SemanticView::from_checked(checked) {
+        Ok(view) => {
+            let program = ace_a2x_rust::lower_language_program(&view, "main")
+                .expect("the protected-region catch chain lowers");
+            assert!(program.entry.ends_with("main"), "{}", program.entry);
+        }
+        Err(e) => panic!("view: {e:?}"),
+    }
 }

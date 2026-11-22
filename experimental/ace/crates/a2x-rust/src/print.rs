@@ -86,6 +86,8 @@ impl<'p> PrintCtx<'p> {
                 .map(|e| format!("A2xList<{}>", self.ty_str(*e)))
                 .unwrap_or_else(|| "A2xList".to_string()),
             Ty::Unit => "()".to_string(),
+            // PLAN-1115 (T-03): the dynamic family renders as A2xDyn.
+            Ty::Nil | Ty::Dyn | Ty::Object(_) => "A2xDyn".to_string(),
         }
     }
 }
@@ -464,6 +466,9 @@ fn local_ty_text(ctx: &PrintCtx<'_>, ty: Ty) -> String {
         Ty::Variant(id) => ctx.ty_str(Ty::Variant(id)),
         Ty::List(id) => ctx.ty_str(Ty::List(id)),
         Ty::Unit => "()".to_string(),
+        // PLAN-1115 (T-03): the dynamic family renders as A2xDyn.
+        // PLAN-1115 (T-03): the dynamic family renders as A2xDyn.
+        Ty::Nil | Ty::Dyn | Ty::Object(_) => "A2xDyn".to_string(),
     }
 }
 
@@ -585,6 +590,26 @@ fn render_expr(e: &RExpr) -> String {
             let mut pas: Vec<String> = env_args.iter().map(render_val).collect();
             pas.extend(params.iter().map(|(n, _)| n.clone()));
             format!("move |{}| {}({})", ps.join(", "), func, pas.join(", "))
+        }
+        // PLAN-1115 (T-03): the protected-region error intercept — the
+        // `break` arm's never type coerces to any value position.
+        RExpr::WrapIntercept(data) => {
+            let d = &**data;
+            let mut frees = String::new();
+            for (name, call) in &d.frees {
+                frees.push_str(&format!("            {call}(&mut {name});
+"));
+            }
+            format!(
+                "match {} {{ Ok(v) => v, Err(e) => {{
+{}            if matches!(e, AutoTrap::LangError) {{
+                {} = 4;
+                {} = a2x_lang_take_err();
+                break;
+            }} else {{ return Err(e) }}
+        }} }}",
+                render_expr(&d.inner), frees, d.kind, d.msg
+            )
         }
         // PLAN-972 (T-03): indirect call through a closure value.
         RExpr::IndirectCall { func, args } => {

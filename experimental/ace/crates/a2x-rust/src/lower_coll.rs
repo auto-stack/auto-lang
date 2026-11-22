@@ -19,7 +19,7 @@ use ace_core::hir;
 
 use crate::lower::{
     rust_fn_name, rust_record_name, rust_variant_name, sanitize, CmpOp, RExpr, RStmt, RustFn,
-    RustParam, RustProgram, RustVariant,
+    RustParam, RustProgram, RustVariant, RStatic,
 };
 
 /// Rust type text of a view type (collections surface).
@@ -77,6 +77,9 @@ pub fn rust_ty_str(view: &SemanticView<'_>, ty: Ty) -> String {
             }
             None => "impl Fn".into(),
         },
+        // PLAN-1115 (T-03): the whole dynamic family (nil/dyn/object) is
+        // the checked dynamic value — one runtime type.
+        Ty::Nil | Ty::Dyn | Ty::Object(_) => "A2xDyn".into(),
     }
 }
 
@@ -100,16 +103,28 @@ pub fn lower_language_program(
     view: &SemanticView<'_>,
     entry_name: &str,
 ) -> Result<RustProgram, A2xReject> {
-    lower_collections_program(view, entry_name)
+    // PLAN-1115 (T-03): the language lane — the collections-family surface
+    // WITH the cross-frame error slot machinery enabled.
+    let entry = view.entry(entry_name)?;
+    let mut p = lower_coll_functions_channel(view, true)?;
+    p.entry = rust_fn_name(entry.source_name);
+    Ok(p)
 }
 
 /// Lower every function of a collections view WITHOUT entry selection
 /// (the store's per-fragment produce path needs the function table only).
 pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xReject> {
+    lower_coll_functions_channel(view, false)
+}
+
+fn lower_coll_functions_channel(
+    view: &SemanticView<'_>,
+    lang_channel: bool,
+) -> Result<RustProgram, A2xReject> {
     let mut functions = Vec::new();
     let mut clones: Vec<u32> = Vec::new();
     for f in view.functions() {
-        let (rf, used) = lower_coll_fn(view, f)?;
+        let (rf, used) = lower_coll_fn_channel(view, f, lang_channel)?;
         for c in used {
             if !clones.contains(&c) {
                 clones.push(c);
@@ -136,9 +151,38 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
             collect_list_elems(view, Some(*ty), &mut list_elems);
         }
     }
+    // PLAN-1115 (T-03, from 981): module-level globals -> static decls
+    // with zero init; the init chain (dependency order) runs in main
+    // before the entry. Scalar compute globals only in this slice —
+    // owned/record globals stay the compute lane's named boundary.
+    let mut statics = Vec::new();
+    for g in view.globals_model()? {
+        let init = match g.ty {
+            Ty::I32 | Ty::I8 | Ty::U8 | Ty::U32 | Ty::I64 | Ty::U64 => "0",
+            Ty::F32 | Ty::F64 => "0.0",
+            Ty::Bool => "false",
+            other => {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "module global `{}` has type `{}` — only compute-surface scalar globals lower to Rust statics in this slice",
+                    g.name,
+                    other.as_str()
+                )))
+            }
+        };
+        statics.push(RStatic {
+            name: crate::lower::global_static_name(&g.symbol),
+            ty: g.ty,
+            init,
+        });
+    }
+    let init_fns = view
+        .global_init_fns()
+        .into_iter()
+        .map(crate::lower::rust_fn_name)
+        .collect();
     Ok(RustProgram {
-        statics: Vec::new(),
-        init_fns: Vec::new(),
+        statics,
+        init_fns,
         functions,
         entry: String::new(),
         marks,
@@ -156,6 +200,16 @@ pub fn lower_coll_functions(view: &SemanticView<'_>) -> Result<RustProgram, A2xR
 pub fn lower_coll_fn(
     view: &SemanticView<'_>,
     f: &FnFacts<'_>,
+) -> Result<(RustFn, Vec<u32>), A2xReject> {
+    lower_coll_fn_channel(view, f, false)
+}
+
+/// PLAN-1115 (T-03): channel-aware form — the language lane enables the
+/// cross-frame error slot machinery.
+pub fn lower_coll_fn_channel(
+    view: &SemanticView<'_>,
+    f: &FnFacts<'_>,
+    lang_channel: bool,
 ) -> Result<(RustFn, Vec<u32>), A2xReject> {
     let facts = view.body_facts(f).ok_or_else(|| {
         A2xReject::new(
@@ -176,6 +230,8 @@ pub fn lower_coll_fn(
         clones: Vec::new(),
         borrow_list_locals: std::collections::HashSet::new(),
         moved_locals: std::collections::HashSet::new(),
+        protected: None,
+        lang_channel,
     };
     // param names follow the HIR local table (l<LocalId>_<name>) so body
     // references and the signature agree on one naming
@@ -260,6 +316,55 @@ pub fn lower_coll_fn(
     ))
 }
 
+/// PLAN-1115 (T-03): pack a typed value into the dynamic representation
+/// by its own static type (identity for the dynamic family).
+fn pack_to_dyn(v: RExpr, ty: Ty) -> RExpr {
+    match ty {
+        Ty::Dyn | Ty::Nil | Ty::Object(_) => v,
+        Ty::I32 => RExpr::PlainCall { func: "a2x_dyn_int".into(), args: vec![v] },
+        Ty::Bool => RExpr::PlainCall { func: "a2x_dyn_bool".into(), args: vec![v] },
+        Ty::Char => RExpr::PlainCall { func: "a2x_dyn_char".into(), args: vec![v] },
+        // an owned-typed LITERAL packs through the view (the immortal
+        // literal clones into an owned buffer); real owned values move.
+        Ty::StrOwned if matches!(v, RExpr::StrLit(_)) => {
+            RExpr::Call { func: "a2x_dyn_str_view".into(), args: vec![v] }
+        }
+        Ty::StrOwned => RExpr::PlainCall { func: "a2x_dyn_str".into(), args: vec![v] },
+        Ty::Str => RExpr::Call { func: "a2x_dyn_str_view".into(), args: vec![v] },
+        // a typed dyn-element list packs through the shared-list helper.
+        Ty::List(_) => RExpr::Call {
+            func: "a2x_dyn_pack_list".into(),
+            args: vec![v],
+        },
+        // Everything else (records, variants, numerics via the catch-all,
+        // closures) does not enter the dynamic domain on this slice — the
+        // lowering rejects by name at the pack site.
+        _ => {
+            let _ = v;
+            unreachable!("pack_to_dyn is only called for packable operand types")
+        }
+    }
+}
+
+/// A static object-key literal's runtime rendering.
+fn key_lit(k: &ace_core::hir::ObjectKey) -> RExpr {
+    use ace_core::hir::ObjectKey;
+    match k {
+        ObjectKey::Text(t) => RExpr::PlainCall {
+            func: "a2x_key_text".into(),
+            args: vec![RExpr::StrLit(t.clone())],
+        },
+        ObjectKey::Int(i) => RExpr::PlainCall {
+            func: "a2x_key_int".into(),
+            args: vec![RExpr::I32Lit(*i)],
+        },
+        ObjectKey::Bool(b) => RExpr::PlainCall {
+            func: "a2x_key_bool".into(),
+            args: vec![RExpr::BoolLit(*b)],
+        },
+    }
+}
+
 fn local_name(name: &str, id: u32) -> String {
     format!("l{}_{}", id, sanitize(name))
 }
@@ -288,6 +393,15 @@ struct CollLower<'a, 'v> {
     /// record construction (or another consumer) — later error-path and
     /// exit frees of these names are stale (the consumer owns them now).
     moved_locals: std::collections::HashSet<u32>,
+    /// PLAN-1115 (T-03): the nearest enclosing PROTECTED region's
+    /// (kind-local, message-local) names — fallible expressions inside
+    /// intercept LangError and break out to the catch arm.
+    protected: Option<(String, String)>,
+    /// PLAN-1115 (T-03): the LANGUAGE channel flag — the cross-frame
+    /// message slot (`a2x_lang_fail`/`a2x_lang_take_err`) exists only in
+    /// the language runtime; the collections channel keeps its frozen
+    /// `a2x_coll_fail` shape.
+    lang_channel: bool,
 }
 
 impl<'a, 'v> CollLower<'a, 'v> {
@@ -415,8 +529,10 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     let ty = self.local_ty(hir::LocalId(*l)).ok();
                     let call = ty
                         .and_then(|t| self.owned_kind_of_ty(t))
-                        .map(|k| self.free_call(k))
-                        .unwrap_or_else(|| "a2x_str_free".into());
+                        .map(|k| self.free_call(k));
+                    // PLAN-1115 (T-03): no owned kind (the dynamic family
+                    // rides Rc) -> no caller-side free.
+                    let call = call?;
                     Some(RStmt::FreeSlot {
                         name: self.local_name_of(hir::LocalId(*l)),
                         call,
@@ -478,8 +594,9 @@ impl<'a, 'v> CollLower<'a, 'v> {
                             let ty = self.local_ty(hir::LocalId(*l)).ok();
                             let call = ty
                                 .and_then(|t| self.owned_kind_of_ty(t))
-                                .map(|k| self.free_call(k))
-                                .unwrap_or_else(|| "a2x_str_free".into());
+                                .map(|k| self.free_call(k));
+                            // PLAN-1115 (T-03): no owned kind -> no free.
+                            let call = call?;
                             Some((self.local_name_of(hir::LocalId(*l)), call))
                         }
                         FreeRef::Temp(e, kind) => Some((format!("e{}", e), self.free_call(*kind))),
@@ -490,10 +607,22 @@ impl<'a, 'v> CollLower<'a, 'v> {
     }
 
     /// Wrap a fallible expression with its verifier-scheduled error frees.
+    /// PLAN-1115 (T-03): inside a PROTECTED region the wrap INTERCEPTS the
+    /// language error (kind=4 + the stored message + break to the catch
+    /// arm); other traps keep propagating.
     fn wrap(&self, id: hir::ExprId, inner: RExpr) -> RExpr {
+        let frees = self.err_frees_of(id.0);
+        if let Some((kind, msg)) = &self.protected.clone().filter(|_| self.lang_channel) {
+            return RExpr::WrapIntercept(Box::new(crate::lower::WrapInterceptData {
+                inner,
+                frees,
+                kind: kind.clone(),
+                msg: msg.clone(),
+            }));
+        }
         RExpr::Wrap {
             inner: Box::new(inner),
-            frees: self.err_frees_of(id.0),
+            frees,
         }
     }
 
@@ -563,6 +692,21 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         A2xReject::new("a2x.internal", "local index out of range")
                     })?;
                     let ty = self.view.resolve_use_ty(l.ty)?;
+                    // PLAN-1115 (T-03): the ordinary face's whole-root
+                    // move is a PLAIN local-to-local binding (`.move` or
+                    // implicit) — an owned source dies here; later reads
+                    // reject by name (mir.use-after-move's A2R form).
+                    // Reassignment below revives the local.
+                    if let (hir::ExprKind::ReadLocal { local: src }, true) =
+                        (&self.f.body.exprs[value.0 as usize].kind, true)
+                    {
+                        let src_ty = self.local_ty(*src).ok();
+                        if src_ty.is_some_and(|t| self.owned_kind_of_ty(t).is_some())
+                            && src.0 != local.0
+                        {
+                            self.moved_locals.insert(src.0);
+                        }
+                    }
                     // PLAN-1115 (T-02): a let bound to a container-field
                     // ALIAS renders as an exclusive borrow binding — the
                     // local table keeps the LIST type (the facts address
@@ -607,6 +751,11 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 }
                 hir::Stmt::Assign { place, value } => {
                     let p_pre = &self.f.body.places[place.0 as usize];
+                    // PLAN-1115 (T-03): assigning a whole local revives a
+                    // previously moved root (a fresh value binds here).
+                    if matches!(p_pre.kind, hir::PlaceKind::Local) {
+                        self.moved_locals.remove(&p_pre.local.0);
+                    }
                     let target_ty = match &p_pre.kind {
                         hir::PlaceKind::Local => self.local_ty(p_pre.local).ok(),
                         hir::PlaceKind::FieldPath(path) => self
@@ -627,12 +776,14 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                 let ty = self.local_ty(p.local).ok();
                                 let call = ty
                                     .and_then(|t| self.owned_kind_of_ty(t))
-                                    .map(|k| self.free_call(k))
-                                    .unwrap_or_else(|| "a2x_str_free".into());
-                                out.push(RStmt::FreeSlot {
-                                    name: self.local_name_of(p.local),
-                                    call,
-                                });
+                                    .map(|k| self.free_call(k));
+                                // PLAN-1115 (T-03): no owned kind -> no free.
+                                if let Some(call) = call {
+                                    out.push(RStmt::FreeSlot {
+                                        name: self.local_name_of(p.local),
+                                        call,
+                                    });
+                                }
                                 let _ = old;
                             }
                             out.push(RStmt::Assign {
@@ -664,12 +815,27 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         els: e,
                     });
                 }
-                hir::Stmt::Loop { id, body: lb, .. } => {
+                hir::Stmt::Loop {
+                    id,
+                    body: lb,
+                    unwind,
+                } => {
                     // PLAN-1036 (F35): lower the body with this loop on the
                     // stack so every `continue` into it carries the same
                     // back-edge poll.
                     self.loop_stack.push((*id, *lb));
+                    // PLAN-1115 (T-03): a loop carrying an unwind spec is a
+                    // PROTECTED region — fallible expressions inside
+                    // intercept the language error into (kind, message).
+                    let saved = self.protected.take();
+                    if let (true, Some(u)) = (self.lang_channel, unwind) {
+                        self.protected = Some((
+                            self.local_name_of(u.kind),
+                            self.local_name_of(u.message),
+                        ));
+                    }
                     let lowered_body = self.block(*lb);
+                    self.protected = saved;
                     self.loop_stack.pop();
                     let mut body_stmts = lowered_body?;
                     // back-edge: per-iteration scoped frees (recorded at the
@@ -726,7 +892,23 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     } else {
                         self.expr(*value, &mut out)?
                     };
-                    let _ = v;
+                    // PLAN-1115 (T-03): the language error carries its
+                    // message — inside a protected region the catch arm
+                    // reads the (kind, message) locals directly (break's
+                    // never type needs no value); outside, the frame's
+                    // error slot carries it across the call boundary.
+                    if let Some((kind, msg)) = self.protected.clone() {
+                        out.push(RStmt::Assign {
+                            name: kind.clone(),
+                            value: RExpr::I32Lit(4),
+                        });
+                        out.push(RStmt::Assign {
+                            name: msg.clone(),
+                            value: v,
+                        });
+                        out.push(RStmt::Break);
+                        continue;
+                    }
                     let frees = self
                         .facts
                         .exit_frees
@@ -751,13 +933,28 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                 .collect()
                         })
                         .unwrap_or_default();
+                    let frees: Vec<(String, String)> = frees;
+                    // the message operand MOVED into the fail call — its
+                    // own error-path free drops out of the wrap.
+                    let msg_name = match &v {
+                        RExpr::Local(n) => Some(n.clone()),
+                        _ => None,
+                    };
+                    let frees = frees
+                        .into_iter()
+                        .filter(|(n, _)| Some(n) != msg_name.as_ref())
+                        .collect();
+                    // the language channel carries the message through
+                    // the frame slot; the collections channel keeps the
+                    // frozen arg-less shape.
+                    let (func, args) = if self.lang_channel {
+                        ("a2x_lang_fail".to_string(), vec![v])
+                    } else {
+                        ("a2x_coll_fail".to_string(), Vec::new())
+                    };
                     out.push(RStmt::Return {
                         value: RExpr::Wrap {
-                            inner: Box::new(RExpr::CollCall {
-                                func: "a2x_coll_fail".into(),
-                                turbo: None,
-                                args: Vec::new(),
-                            }),
+                            inner: Box::new(RExpr::CollCall { func, turbo: None, args }),
                             frees,
                         },
                     });
@@ -776,6 +973,11 @@ impl<'a, 'v> CollLower<'a, 'v> {
     fn place_ref(&self, e: hir::ExprId, mut_: bool) -> Result<RExpr, A2xReject> {
         let inner = match &self.f.body.exprs[e.0 as usize].kind {
             hir::ExprKind::ReadLocal { local } => {
+                if self.moved_locals.contains(&local.0) {
+                    return Err(A2xReject::unsupported_expr(
+                        "use-after-move: the root moved at its binding site and is dead here",
+                    ));
+                }
                 let n = self.local_name_of(*local);
                 // PLAN-946: a `&'a mut A2xList` param place passes the name
                 // bare (Rust reborrows at the argument position).
@@ -837,7 +1039,14 @@ impl<'a, 'v> CollLower<'a, 'v> {
             .ok_or_else(|| A2xReject::new("a2x.internal", "expr index out of range"))?;
         let kind = e.kind.clone();
         match kind {
-            hir::ExprKind::ReadLocal { local } => Ok(RExpr::Local(self.local_name_of(local))),
+            hir::ExprKind::ReadLocal { local } => {
+                if self.moved_locals.contains(&local.0) {
+                    return Err(A2xReject::unsupported_expr(
+                        "use-after-move: the root moved at its `.move` site and is dead here",
+                    ));
+                }
+                Ok(RExpr::Local(self.local_name_of(local)))
+            }
             hir::ExprKind::Constant { value } => Ok(RExpr::I32Lit(value)),
             // PLAN-1115 (T-02): the zero-width unit value — the return
             // operand of a Unit-result function on the ordinary face.
@@ -1014,6 +1223,32 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         lhs: Box::new(l),
                         rhs: Box::new(r),
                     });
+                }
+                // PLAN-1115 (T-03): dynamic-family equality (nil, dyn and
+                // object operands) — the shared tagged comparator.
+                if matches!(op, hir::BinOp::Eq | hir::BinOp::Ne)
+                    && matches!(lt, Ty::Dyn | Ty::Nil | Ty::Object(_))
+                {
+                    let l = self.expr(lhs, out)?;
+                    let r = self.expr(rhs, out)?;
+                    let eq = matches!(op, hir::BinOp::Eq);
+                    let call = RExpr::PlainCall {
+                        func: "a2x_dyn_eq".into(),
+                        args: vec![
+                            RExpr::Ref { inner: Box::new(l) },
+                            RExpr::Ref { inner: Box::new(r) },
+                        ],
+                    };
+                    return if eq {
+                        self.coll_temp_plain(id, "bool".into(), call, out)
+                    } else {
+                        self.coll_temp_plain(
+                            id,
+                            "bool".into(),
+                            RExpr::Not(Box::new(call)),
+                            out,
+                        )
+                    };
                 }
                 let l = self.expr(lhs, out)?;
                 let r = self.expr(rhs, out)?;
@@ -1392,6 +1627,34 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     let ty = self.view.resolve_use_ty(e.ty)?;
                     return self.lower_sched_call_coll(sym, target, id, ty, &eval_args, out);
                 }
+                // PLAN-1115 (T-03, from 981): module.global accessors ->
+                // static read/write (admitted only with the facts plan).
+                if let Some((sym, is_set)) = self.view.global_accessor(target) {
+                    let name = crate::lower::global_static_name(sym);
+                    if is_set {
+                        let value = eval_args.first().copied().ok_or_else(|| {
+                            A2xReject::new(
+                                "a2x.internal",
+                                "module.global.set call without exactly one argument",
+                            )
+                        })?;
+                        let v = self.expr(value, out)?;
+                        // the setter contract yields i32 (the write expr
+                        // renders as an assignment producing 0) — the
+                        // compute lane's shape.
+                        return Ok(RExpr::GlobalWrite {
+                            name,
+                            value: Box::new(v),
+                        });
+                    }
+                    if !eval_args.is_empty() {
+                        return Err(A2xReject::new(
+                            "a2x.internal",
+                            "module.global.get call carries arguments",
+                        ));
+                    }
+                    return self.coll_temp_plain(id, "i32".into(), RExpr::GlobalRead { name }, out);
+                }
                 let mut trace_name: Option<&'static str> = None;
                 let mut fn_call = false;
                 let func = if let Some(sym) = self.view.trace_symbol(target) {
@@ -1621,6 +1884,162 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     out,
                 )
             }
+            // ---- PLAN-1115 (T-03): the ordinary dynamic surface --------
+            hir::ExprKind::NilLit => Ok(RExpr::PlainCall {
+                func: "a2x_dyn_nil".into(),
+                args: Vec::new(),
+            }),
+            hir::ExprKind::DynCast { operand, test_nil } => {
+                let o = self.expr(operand, out)?;
+                let from = root_ty_of(self, operand)?;
+                let to = self.view.resolve_use_ty(e.ty)?;
+                if test_nil {
+                    // dyn -> bool: the nil test.
+                    return self.coll_temp_plain(
+                        id,
+                        "bool".into(),
+                        RExpr::PlainCall {
+                            func: "a2x_dyn_is_nil".into(),
+                            args: vec![RExpr::Ref { inner: Box::new(o) }],
+                        },
+                        out,
+                    );
+                }
+                if matches!(from, Ty::Dyn | Ty::Nil | Ty::Object(_))
+                    && matches!(to, Ty::Dyn | Ty::Nil | Ty::Object(_))
+                {
+                    // already the dynamic representation
+                    return Ok(o);
+                }
+                if matches!(to, Ty::Dyn | Ty::Nil | Ty::Object(_)) {
+                    // T -> Dyn: pack by the operand's own type (a consumed
+                    // owned LIST operand dies at the pack).
+                    if matches!(from, Ty::List(_)) {
+                        if let hir::ExprKind::ReadLocal { local } =
+                            &self.f.body.exprs[operand.0 as usize].kind
+                        {
+                            self.moved_locals.insert(local.0);
+                        }
+                    }
+                    return Ok(pack_to_dyn(o, from));
+                }
+                // Dyn -> T: the checked recover (type mismatch = DynType).
+                let func = match to {
+                    Ty::I32 => "a2x_dyn_as_int",
+                    Ty::Bool => "a2x_dyn_as_bool",
+                    Ty::Char => "a2x_dyn_as_char",
+                    Ty::StrOwned | Ty::Str => "a2x_dyn_as_str",
+                    _ => {
+                        return Err(A2xReject::unsupported_op(format!(
+                            "dyn recover to `{}` awaits the dyn-conversion unit (PLAN-1115 debt)",
+                            to.as_str()
+                        )))
+                    }
+                };
+                self.coll_temp(
+                    id,
+                    rust_ty_str(self.view, to),
+                    RExpr::Call {
+                        func: func.into(),
+                        args: vec![RExpr::Ref { inner: Box::new(o) }],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::ObjectCtor {
+                eval_args, keys, ..
+            } => {
+                // source-order entry values (each dyn-packed by its own
+                // type), then the shared map handle; static keys only.
+                let mut vals = Vec::new();
+                for a in &eval_args {
+                    let v = self.expr(*a, out)?;
+                    let aty = root_ty_of(self, *a)?;
+                    // a consumed owned LIST operand dies at the pack.
+                    if matches!(aty, Ty::List(_)) {
+                        if let hir::ExprKind::ReadLocal { local } =
+                            &self.f.body.exprs[a.0 as usize].kind
+                        {
+                            self.moved_locals.insert(local.0);
+                        }
+                    }
+                    vals.push(pack_to_dyn(v, aty));
+                }
+                let obj_name = format!("e{}_obj", id.0);
+                out.push(RStmt::CollLet {
+                    name: obj_name.clone(),
+                    ty_str: "A2xObject".into(),
+                    mutable: false,
+                    init: RExpr::PlainCall {
+                        func: "a2x_obj_new".into(),
+                        args: Vec::new(),
+                    },
+                });
+                for (k, v) in keys.iter().zip(vals.into_iter()) {
+                    out.push(RStmt::EvalExpr {
+                        expr: RExpr::PlainCall {
+                            func: "a2x_obj_init".into(),
+                            args: vec![
+                                RExpr::Ref {
+                                    inner: Box::new(RExpr::Local(obj_name.clone())),
+                                },
+                                key_lit(k),
+                                v,
+                            ],
+                        },
+                    });
+                }
+                self.coll_temp_plain(
+                    id,
+                    "A2xDyn".into(),
+                    RExpr::PlainCall {
+                        func: "a2x_dyn_object".into(),
+                        args: vec![RExpr::Local(obj_name)],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::ObjectGet { base, key } => {
+                let b = self.expr(base, out)?;
+                let k = self.expr(key, out)?;
+                let kty = root_ty_of(self, key)?;
+                let k = pack_to_dyn(k, kty);
+                self.coll_temp(
+                    id,
+                    "A2xDyn".into(),
+                    RExpr::Call {
+                        func: "a2x_dyn_get".into(),
+                        args: vec![
+                            RExpr::Ref { inner: Box::new(b) },
+                            RExpr::Ref { inner: Box::new(k) },
+                        ],
+                    },
+                    out,
+                )
+            }
+            hir::ExprKind::ObjectSet { base, key, value } => {
+                let b = self.expr(base, out)?;
+                let k = self.expr(key, out)?;
+                let kty = root_ty_of(self, key)?;
+                let k = pack_to_dyn(k, kty);
+                let v = self.expr(value, out)?;
+                let vty = root_ty_of(self, value)?;
+                let v = pack_to_dyn(v, vty);
+                out.push(RStmt::EvalExpr {
+                    expr: self.wrap(
+                        id,
+                        RExpr::Call {
+                            func: "a2x_dyn_set".into(),
+                            args: vec![
+                                RExpr::Ref { inner: Box::new(b) },
+                                RExpr::Ref { inner: Box::new(k) },
+                                v,
+                            ],
+                        },
+                    ),
+                });
+                Ok(RExpr::UnitExpr)
+            }
             hir::ExprKind::RecordCtor {
                 record,
                 eval_args,
@@ -1739,7 +2158,19 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     inner: Box::new(RExpr::Local(n)),
                 })
             }
-            hir::ExprKind::Move { inner } => self.expr(inner, out),
+            hir::ExprKind::Move { inner } => {
+                // PLAN-1115 (T-03): the whole-root transfer KILLS the
+                // source local — lower the read FIRST, then record the
+                // kill; any later read rejects by name (the AV lane's
+                // mir.use-after-move equivalent).
+                let v = self.expr(inner, out)?;
+                if let hir::ExprKind::ReadLocal { local } =
+                    &self.f.body.exprs[inner.0 as usize].kind
+                {
+                    self.moved_locals.insert(local.0);
+                }
+                Ok(v)
+            }
             // PLAN-1115 (T-02): explicit deep clone (PLAN-782) rides the
             // collections family — the same per-record generated helper
             // set as the record-text lane (one allocation per non-empty
