@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1120
-status: executing
+status: execution_done
 feature_name: "AV 泛型 List 高阶方法补齐"
 author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 1
+current_step: 3
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1082, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/auto-av/language-parity.md, docs/specs/ace-migration/m2-stdlib-core.md]
@@ -77,9 +77,9 @@ affects: [auto-av, auto-semantics, stdlib]
 
 - [x] T-01 核定方法签名与迁移行
   - owner_stage=work。绑定旧 012、1082/1088 正负例和 `std_list_hof`。先用非整数 map/find 复现现状，确认实例化、闭包和资源通路以及旧 find 口形处置。
-- [ ] T-02 补齐泛型方法与普通源码用例（2026-11-23 复审 F1/F2 重开）
+- [x] T-02 补齐泛型方法与普通源码用例（2026-11-23 复审 F1/F2 修复后关闭）
   - owner_stage=work。依赖 T-01。在共享绑定与库体实现五项方法，运行 V-01/02，保留实测源序和短路。
-- [ ] T-03 验证资源与原整数近邻（2026-11-23 复审 F1 文本域资源断言重开）
+- [x] T-03 验证资源与原整数近邻（2026-11-23 复审 F1 文本域资源断言补齐后关闭）
   - owner_stage=work。依赖 T-02。执行 V-03，沉淀唯一 canonical 用例与迁移映射。
 - [ ] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
@@ -116,6 +116,17 @@ work 证据（原始日志：D:/autostack/plan-artifacts/plan-1120/，合并收�
 - 重审范围：仅重放 F1/F2 受影响用例与新用例 + 复用未变近邻证据（plan1082/1086/1088 族）；§6 冻结并集仍归 merge，不随本轮重复。
 
 2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 2 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: d47bd50dc | next: work
+
+2026-11-23 · stage: work（修复轮，F1/F2） | PLAN-1120 r1 | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | branch: plan-1120-dev | base_commit: d4bc60a89 | code_commit: 7a114b480 | task_ids: T-02/T-03 | blockers: 无 | next_responsible_role: review（仅重审 F1/F2 受影响项）。
+
+修复证据：
+
+- F2 闭合：`hof_typed_callback` 对 find/any/all 准入增 `signature.result == VT::Bool`（map 保任意 U、reduce 维持 acc 校验），非 Bool 谓词在绑定时具名拒 `source.type-mismatch`。负控：`hof_callback_type_mismatch_rejects_at_bind` 新增 find/all 非 Bool 谓词两例（stage=bind）。
+- F1 闭合：新增 `hof_text_family_real_execution`（非空 `["a","bb","ccc"]` 上 map/reduce/find/any/all 五项真实执行 + `assert_released` 文本所有者账目，独立预期 33623）与 `hof_text_family_short_circuits`（p×1/q×1/r×2 短路计数）。
+- 排障记录（环境归因，非代码缺陷）：修复轮中一度观测到 all 谓词 q×2 的"伪失败"，隔离探针（expr/block/print/for-in 四形）全部正确后定位为本机时钟偏斜导致 cargo 用过期 ace-core rlib 链接（失败输出恰为修复前 Not 极性行为）；矫正 mtime 强制重建后消失。教训：本机 cargo 增量可靠性受时钟影响，每轮验证须确认重建发生（观察构建时长）并以行为探针复核可疑失败。
+- 修复轮验证：plan1120 族 11/11（0.14s）；近邻 plan1082 17/17、plan1088 3/3、plan1086 10/10、plan1083 3/3、plan1081 21/21 复用性重跑全绿。新增 2 例计时 0.1s 级（≤10s 门）。冻结并集仍归 merge。
+
+2026-11-23 · stage: goal | plan_id: PLAN-1120 | plan_revision: r1 | round: 3 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1120/auto-lang | commit: 7a114b480 | next: review
 
 ## 10. 待澄清事项
 
