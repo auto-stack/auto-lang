@@ -243,7 +243,10 @@ pub fn compile_language_source_with_metadata(
     // method surface dispatches to these REAL public functions (same
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
-    let grafted = graft_stdlib_integer_parse(src, graft_stdlib_text(src, graft_stdlib_list(src)));
+    let grafted = graft_stdlib_integer_parse(
+        src,
+        graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
+    );
     let profile = SourceProfile::Auto;
     let (mut program, has_instances, metadata) =
         super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
@@ -260,23 +263,32 @@ pub fn compile_language_source_with_metadata(
             |item| matches!(item, super::ast::Item::Fn(f) if f.name.name == "__av_text_find_at"),
         );
         for mut item in helpers.items {
-            let super::ast::Item::Fn(helper) = &mut item else {
-                unreachable!("ordinary standard library graft contains only functions");
-            };
-            if text_optimized {
-                // Select the AV assembly implementations of these helpers.
-                // Other text helpers and their public call sites stay shared.
-                match helper.name.name.as_str() {
-                    "__std_text_find_at" | "__std_text_find" | "__std_text_trim"
-                    | "__std_text_split" => continue,
-                    "__av_text_find_at" => helper.name.name = "__std_text_find_at".into(),
-                    "__av_text_find" => helper.name.name = "__std_text_find".into(),
-                    "__av_text_trim" => helper.name.name = "__std_text_trim".into(),
-                    "__av_text_split" => helper.name.name = "__std_text_split".into(),
-                    _ => {}
+            match &mut item {
+                super::ast::Item::Fn(helper) => {
+                    if text_optimized {
+                        // Select the AV assembly implementations of these helpers.
+                        // Other text helpers and their public call sites stay shared.
+                        match helper.name.name.as_str() {
+                            "__std_text_find_at" | "__std_text_find" | "__std_text_trim"
+                            | "__std_text_split" => continue,
+                            "__av_text_find_at" => helper.name.name = "__std_text_find_at".into(),
+                            "__av_text_find" => helper.name.name = "__std_text_find".into(),
+                            "__av_text_trim" => helper.name.name = "__std_text_trim".into(),
+                            "__av_text_split" => helper.name.name = "__std_text_split".into(),
+                            _ => {}
+                        }
+                    }
+                    super::cst::shift_fn_item(helper, src.len());
                 }
+                // PLAN-1121: the migration graft appends the mangled
+                // HashMap/HashSet record types (span-shifted like fns).
+                super::ast::Item::Type(helper) => {
+                    super::cst::shift_type_item(helper, src.len());
+                }
+                _ => unreachable!(
+                    "ordinary standard library graft contains only functions and the PLAN-1121 migration record types"
+                ),
             }
-            super::cst::shift_fn_item(helper, src.len());
             program.items.push(item);
         }
     }
@@ -386,6 +398,29 @@ fn graft_stdlib_list(src: &str) -> String {
     let mangled = mangle_stdlib_list(STDLIB_ASM_LIST_AT);
     format!("{src}
 {mangled}
+"
+    )
+}
+
+/// PLAN-1121: the ordinary-face HashMap/HashSet migration graft — pure
+/// Auto record types (stdlib/ace/asm/map_str.at; NOT part of the 972
+/// assembled surface) appended when the source mentions the legacy
+/// container names. Identity is the repo file itself (same include_str
+/// discipline as the list graft); a user-declared `HashMap`/`HashSet`
+/// type shadows the compat entry at resolve time (the resolver only
+/// falls back to the mangled grafted types when the name is undeclared).
+const STDLIB_ASM_MAP_STR_AT: &str = include_str!("../../../../../../stdlib/ace/asm/map_str.at");
+
+fn needs_stdlib_mapset_graft(src: &str) -> bool {
+    src.contains("HashMap") || src.contains("HashSet")
+}
+
+fn graft_stdlib_mapset(src: &str) -> String {
+    if !needs_stdlib_mapset_graft(src) {
+        return src.to_string();
+    }
+    format!("{src}
+{STDLIB_ASM_MAP_STR_AT}
 "
     )
 }
@@ -583,6 +618,21 @@ fn map("));
         assert_eq!(graft_stdlib_list(plain), plain);
         assert!(graft_stdlib_list("fn main() int { let xs = List.new(1, 2)
  return xs[0] }").len() > 100);
+    }
+
+    /// PLAN-1121: the map/set migration graft fires on the legacy names
+    /// and stays byte-identical otherwise.
+    #[test]
+    fn stdlib_mapset_graft_trigger_and_identity() {
+        let plain = "fn main() int { return 1 }";
+        assert_eq!(graft_stdlib_mapset(plain), plain);
+        let hit = graft_stdlib_mapset("fn main() int { var m = HashMap.new()
+ return 0 }");
+        assert!(hit.contains("type __std_HashMap {"));
+        assert!(hit.contains("type __std_HashSet {"));
+        let hit = graft_stdlib_mapset("fn main() int { var s = HashSet.new()
+ return 0 }");
+        assert!(hit.contains("type __std_HashSet {"));
     }
 }
 

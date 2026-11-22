@@ -12,6 +12,8 @@ mod plan108_http_component;
 mod plan1106_t01_probe;
 #[path = "cases/plan1120_generic_list_hof.rs"]
 mod plan1120_generic_list_hof;
+#[path = "cases/plan1121_map_set.rs"]
+mod plan1121_map_set;
 #[path = "cases/plan980_lambda_if.rs"]
 mod plan980_lambda_if;
 #[path = "cases/plan980_web_6o_face.rs"]

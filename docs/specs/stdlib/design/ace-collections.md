@@ -61,3 +61,24 @@ body 编辑＝精确段失效（仅被编模块段移动，std.list 字节稳定
 case-ace-m1-collections-864 case-ace-m1-native-collections-889`；套件 `stdlib_list_946`（31 例，四端真工具链：
 rustc/cl/mn 机器码/OS Python）＋`p946_t01_probe`（11 例）。六路径分账：AV/native/A2C/A2R/A2PY 实跑＋
 AV/C、AV/Rust 具名 pending。
+
+## PLAN-1121 增量（2026-11-23，普通面迁移容器合同）
+
+`HashMap`/`HashSet` 迁移容器（`stdlib/ace/asm/map_str.at`，普通 Auto 面嫁接，非本装配集）的
+键值与生命周期合同（细节见 [m2-stdlib-core](../ace-migration/m2-stdlib-core.md) PLAN-1121 增量）：
+
+- **容器资源**：迁移 map 的存储 = 四条并行 List（keys List<Str>/tags List<int>/ivals
+  List<int>/svals List<Str>），set = 一条 List<Str>；全部经冻结 collections 方法表
+  （new/push/get/set/remove/len/clear），无第二容器机制、无 arena 外堆。
+- **键相等**：精确文本相等（Str==Str，元素视图不经转换不与 str 形参混比）；扫描为
+  for-条件线性查找；插入序由 collections 表保留，但合同不承诺迭代序。
+- **替换/清空**：put 命中原地覆盖（大小不变）；remove 命中压缩全部并行表（返回 true），
+  未命中返回 false；clear 清空全部并行表。
+- **缺键行为**：缺键 get 走受检失败通道 `fail("KeyError")`（可 catch，catch 后 owner
+  存活可续用）；contains 给存在性；迁移面 `drop()` 为使用结束标记（释放观察在作用域退出）。
+- **所有权**：写方法 owned-Str 形参移入（`.move` 入存储）；`get_str` 返回显式元素 clone
+  （D-962 elements-clone-explicit；容器级 clone 保持双面拒）；记录实参跨函数 Rc 共享、
+  被调变更对调用者可见；变量间赋值 = MOVE（`mir.use-after-move`）。
+- **静态面纪律**：每接收者局部变量一个值面（int/str，int 默认）；面冲突与未知面为
+  绑定期具名拒（`source.map-face-mismatch`/`source.map-face-unknown`）；错值型在
+  Verify 阶段 `verify.type-mismatch` 拒。

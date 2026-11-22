@@ -1,0 +1,186 @@
+// PLAN-1121 T-02: the ordinary-face HashMap/HashSet migration compat
+// graft — pure Auto over the frozen collections method table
+// (new/push/get/set/remove/len/clear on List<Str>/List<int> fields).
+// This file is NOT part of the 972 assembled stdlib surface (the 8-module
+// 62-symbol set keeps its frozen identity; stdlib_assembled_files() does
+// not list this file). It is grafted into ordinary Auto-language sources
+// by experimental/ace/crates/core/src/source/adapter.rs when the source
+// mentions HashMap/HashSet (the user-declared type wins by the same
+// shadowing rule as the List legacy sugar), and the resolver rewrites the
+// legacy spellings onto these mangled types
+// (experimental/ace/crates/core/src/source/resolve.rs).
+//
+// Semantics (the agreed container contract):
+// - string keys, value domain {int, str} per entry (tags/ivals/svals
+//   parallel lists); per-variable value face is tracked statically by
+//   the resolver (legacy monomorphic <str,int> default).
+// - put overwrites in place; insert of an existing key does not grow.
+// - get of a missing key fails through the checked channel
+//   (fail("KeyError")); a get of the wrong value face fails
+//   ("ValueError: ..."). The map owner survives a caught failure.
+// - contains/remove answer presence; remove compacts all parallel lists.
+// - clear empties; size answers the entry count; iteration order is
+//   insertion order (the collections table preserves it) but no order is
+//   promised by the contract.
+// - ownership: put methods take owned Str (move-in, .move into storage);
+//   get_str returns an explicit element clone (D-962 elements clone
+//   explicitly; container clone stays rejected).
+type __std_HashMap {
+    keys List<Str>
+    tags List<int>
+    ivals List<int>
+    svals List<Str>
+    static fn new() __std_HashMap {
+        return __std_HashMap { keys: List<Str>.new(), tags: List<int>.new(), ivals: List<int>.new(), svals: List<Str>.new() }
+    }
+    fn put_int(k Str, v int) void {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i >= 0 {
+            .tags.set(__i, 0)
+            .ivals.set(__i, v)
+        } else {
+            .keys.push(k.move)
+            .tags.push(0)
+            .ivals.push(v)
+            .svals.push("")
+        }
+    }
+    fn put_str(k Str, v Str) void {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i >= 0 {
+            .tags.set(__i, 1)
+            .svals.set(__i, v.move)
+        } else {
+            .keys.push(k.move)
+            .tags.push(1)
+            .ivals.push(0)
+            .svals.push(v.move)
+        }
+    }
+    fn get_int(k Str) int {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i < 0 { fail("KeyError") }
+        if .tags.get(__i) != 0 { fail("ValueError: str entry") }
+        return .ivals.get(__i)
+    }
+    fn get_str(k Str) Str {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i < 0 { fail("KeyError") }
+        if .tags.get(__i) != 1 { fail("ValueError: int entry") }
+        return .svals.get(__i).clone()
+    }
+    fn contains(k Str) bool {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        return __i >= 0
+    }
+    fn remove(k Str) bool {
+        var __i = -1
+        var __n = 0
+        for __n < .keys.len() {
+            if __i < 0 {
+                if .keys.get(__n) == k { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i < 0 { return false }
+        .keys.remove(__i)
+        .tags.remove(__i)
+        .ivals.remove(__i)
+        .svals.remove(__i)
+        return true
+    }
+    fn clear() void {
+        .keys.clear()
+        .tags.clear()
+        .ivals.clear()
+        .svals.clear()
+    }
+    fn size() int {
+        return .keys.len()
+    }
+}
+
+type __std_HashSet {
+    items List<Str>
+    static fn new() __std_HashSet {
+        return __std_HashSet { items: List<Str>.new() }
+    }
+    fn insert(v Str) void {
+        var __i = -1
+        var __n = 0
+        for __n < .items.len() {
+            if __i < 0 {
+                if .items.get(__n) == v { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i < 0 {
+            .items.push(v.move)
+        }
+    }
+    fn contains(v Str) bool {
+        var __i = -1
+        var __n = 0
+        for __n < .items.len() {
+            if __i < 0 {
+                if .items.get(__n) == v { __i = __n }
+            }
+            __n = __n + 1
+        }
+        return __i >= 0
+    }
+    fn remove(v Str) bool {
+        var __i = -1
+        var __n = 0
+        for __n < .items.len() {
+            if __i < 0 {
+                if .items.get(__n) == v { __i = __n }
+            }
+            __n = __n + 1
+        }
+        if __i < 0 { return false }
+        .items.remove(__i)
+        return true
+    }
+    fn clear() void {
+        .items.clear()
+    }
+    fn size() int {
+        return .items.len()
+    }
+}

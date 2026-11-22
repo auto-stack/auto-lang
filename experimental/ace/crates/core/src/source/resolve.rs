@@ -4918,6 +4918,7 @@ pub(crate) fn resolve_lambda_in_context(
             legacy_text_result: false,
             legacy_text_lists: BTreeSet::new(),
             legacy_text_find_results: BTreeMap::new(),
+            map_faces: BTreeMap::new(),
             loop_stack: Vec::new(),
             loop_count: 0,
             used_intrinsics: BTreeSet::new(),
@@ -6347,6 +6348,17 @@ enum RecvClass<'a> {
     },
 }
 
+/// PLAN-1121: outcome of the legacy HashMap/HashSet spelling rewrite on
+/// the grafted migration record types.
+enum MapsetRewrite {
+    /// Keep the written name (native methods, unknown names).
+    Same,
+    /// Resolve as the renamed (real) grafted method.
+    Rename(ast::Ident),
+    /// `drop()` — resolve the whole call to a unit no-op.
+    Drop,
+}
+
 struct FnResolver<'a, 's> {
     instance_probe: Option<&'a instances::InstanceProbe<'a>>,
     sigs: &'a BTreeMap<String, FnSig>,
@@ -6413,6 +6425,10 @@ struct FnResolver<'a, 's> {
     /// function's non-move closures write (function-wide static grouping;
     /// `scan_shared_capture_cells` owns the scope model).
     shared_cell_spans: BTreeSet<usize>,
+    /// PLAN-1121: per-local value face of a grafted migration HashMap
+    /// receiver (0 unknown / 1 int / 2 str) — the legacy monomorphic
+    /// `<str,int>` dispatch is reproduced statically per receiver local.
+    map_faces: BTreeMap<LocalRef, u8>,
     /// PLAN-909 §5.5: the enclosing top-level function's name and the
     /// per-owner lambda ordinal — together they mint the OWNER-STABLE
     /// synthetic identity `__closure_<owner>_<k>` (an unrelated owner's
@@ -6657,6 +6673,7 @@ fn resolve_fn_reuse<'a, 's>(
         legacy_text_result: surface.is_auto_language() && is_legacy_text_list(&f.ret),
         legacy_text_lists: BTreeSet::new(),
         legacy_text_find_results: BTreeMap::new(),
+        map_faces: BTreeMap::new(),
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
@@ -12623,6 +12640,17 @@ F:{d}
         lref
     }
 
+    /// PLAN-1121: the grafted migration record type for a legacy
+    /// container name (`HashMap`/`HashSet` when the user declared no such
+    /// type — the compat construction entry falls back to it).
+    fn mapset_graft_rec(&self, name: &str) -> Option<usize> {
+        match name {
+            "HashMap" => self.rec_index.get("__std_HashMap").copied(),
+            "HashSet" => self.rec_index.get("__std_HashSet").copied(),
+            _ => None,
+        }
+    }
+
     /// PLAN-864: classify a `List<T>`-style generic receiver. Only
     /// `List<one elem>` with a legal element type commits;
     /// everything else is a named rejection.
@@ -18244,6 +18272,219 @@ F:{d}
         }
     }
 
+    /// PLAN-1121: the legacy-spelling rewrite for the grafted migration
+    /// record types (`__std_HashMap`/`__std_HashSet` from
+    /// stdlib/ace/asm/map_str.at). Returns the effective method name;
+    /// `Drop` resolves the whole call to a unit no-op. `Same` keeps the
+    /// written name (native methods like `size`, unknown names that fall
+    /// through to the normal lookup error).
+    fn mapset_rewrite(
+        &mut self,
+        ri: usize,
+        recv: &Option<Box<ResolvedExpr>>,
+        name: &ast::Ident,
+        rargs: &mut [ResolvedArg],
+        span: Span,
+    ) -> MapsetRewrite {
+        let is_map = match self.records[ri].name.as_str() {
+            "__std_HashMap" => true,
+            "__std_HashSet" => false,
+            _ => return MapsetRewrite::Same,
+        };
+        let recv_local = recv
+            .as_ref()
+            .and_then(|r| match &r.kind {
+                RExprKind::ReadLocal(l) => Some(*l),
+                _ => None,
+            });
+        let rename = |n: &str| {
+            MapsetRewrite::Rename(ast::Ident {
+                name: n.into(),
+                span: name.span,
+            })
+        };
+        // Read-only key/value parameters are owned `Str` on the grafted
+        // methods; a `str` view argument converts with an explicit clone
+        // (the D-962 element-copy discipline).
+        let mut owned_str_arg = |arg: &mut ResolvedArg| {
+            retag_literal(&mut arg.value, VT::StrOwned);
+            if arg.value.vt == VT::Str {
+                let span = arg.value.span;
+                let inner = std::mem::replace(
+                    &mut arg.value,
+                    ResolvedExpr {
+                        span,
+                        vt: VT::Unit,
+                        kind: RExprKind::Unit,
+                    },
+                );
+                arg.value = ResolvedExpr {
+                    span,
+                    vt: VT::StrOwned,
+                    kind: RExprKind::Method {
+                        recv: Box::new(inner),
+                        method: BuiltinMethod::Clone,
+                        to: None,
+                        args: Vec::new(),
+                    },
+                };
+            }
+        };
+        match (is_map, name.name.as_str()) {
+            (_, "drop") => MapsetRewrite::Drop,
+            (true, "insert_str") => {
+                self.mapset_note_face(recv_local, 2, name);
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                if let Some(a) = rargs.get_mut(1) {
+                    owned_str_arg(a);
+                }
+                rename("put_str")
+            }
+            (true, "insert_int") => {
+                self.mapset_note_face(recv_local, 1, name);
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                rename("put_int")
+            }
+            (true, "get_str") => {
+                self.mapset_expect_face(recv_local, 2, name);
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                rename("get_str")
+            }
+            (true, "get_int") => {
+                self.mapset_expect_face(recv_local, 1, name);
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                rename("get_int")
+            }
+            (true, "insert") => {
+                let face = match rargs.get(1).map(|a| a.value.vt) {
+                    Some(VT::I32) => 1,
+                    Some(VT::Str) | Some(VT::StrOwned) => 2,
+                    Some(other) => {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`insert` on the HashMap migration face admits int or str values, found `{}`",
+                                other.as_str()
+                            ),
+                            rargs[1].span,
+                        );
+                        1
+                    }
+                    None => {
+                        self.bind_err(
+                            "source.argument",
+                            "`insert` takes a key and a value".to_string(),
+                            span,
+                        );
+                        1
+                    }
+                };
+                self.mapset_note_face(recv_local, face, name);
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                if face == 2 {
+                    if let Some(a) = rargs.get_mut(1) {
+                        owned_str_arg(a);
+                    }
+                    rename("put_str")
+                } else {
+                    rename("put_int")
+                }
+            }
+            (true, "get") => {
+                let face = self
+                    .mapset_known_face(recv_local)
+                    .unwrap_or_else(|| {
+                        self.bind_err(
+                            "source.map-face-unknown",
+                            "the value face of this map is not known yet; write `get_int`/`get_str` explicitly, or insert before getting"
+                                .to_string(),
+                            name.span,
+                        );
+                        1
+                    });
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                rename(if face == 2 { "get_str" } else { "get_int" })
+            }
+            (_, "contains") | (_, "remove") => {
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                MapsetRewrite::Same
+            }
+            (false, "insert") => {
+                if let Some(a) = rargs.get_mut(0) {
+                    owned_str_arg(a);
+                }
+                MapsetRewrite::Same
+            }
+            _ => MapsetRewrite::Same,
+        }
+    }
+
+    /// The statically known value face of a map receiver local
+    /// (0 unknown / 1 int / 2 str); untracked receivers read as unknown.
+    fn mapset_known_face(&self, local: Option<LocalRef>) -> Option<u8> {
+        let local = local?;
+        let face = self.map_faces.get(&local).copied().unwrap_or(0);
+        (face != 0).then_some(face)
+    }
+
+    /// Record a write-face observation (`insert*`); a conflicting earlier
+    /// observation is a named rejection (legacy maps are monomorphic).
+    fn mapset_note_face(&mut self, local: Option<LocalRef>, face: u8, name: &ast::Ident) {
+        if let Some(local) = local {
+            let prev = self.map_faces.get(&local).copied().unwrap_or(0);
+            if prev != 0 && prev != face {
+                self.bind_err(
+                    "source.map-face-mismatch",
+                    format!(
+                        "this map already holds `{}` values; `{}` cannot change the value face",
+                        if prev == 1 { "int" } else { "str" },
+                        name.name
+                    ),
+                    name.span,
+                );
+                return;
+            }
+            self.map_faces.insert(local, face);
+        }
+    }
+
+    /// A read-face observation (`get*`); same conflict rule as writes,
+    /// and an unknown face stays unknown (the caller reports it).
+    fn mapset_expect_face(&mut self, local: Option<LocalRef>, face: u8, name: &ast::Ident) {
+        if let Some(local) = local {
+            let prev = self.map_faces.get(&local).copied().unwrap_or(0);
+            if prev != 0 && prev != face {
+                self.bind_err(
+                    "source.map-face-mismatch",
+                    format!(
+                        "this map holds `{}` values; `{}` reads the other face",
+                        if prev == 1 { "int" } else { "str" },
+                        name.name
+                    ),
+                    name.span,
+                );
+                return;
+            }
+            if prev == 0 {
+                self.map_faces.insert(local, face);
+            }
+        }
+    }
+
     fn instance_or_static(
         &mut self,
         recv: Option<Box<ResolvedExpr>>,
@@ -18252,6 +18493,28 @@ F:{d}
         mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
+        // PLAN-1121: legacy HashMap/HashSet spellings on the grafted
+        // migration record types rewrite onto the real methods (with
+        // per-receiver value-face tracking for the unified `insert`/`get`).
+        let owned_name;
+        let name = match self.mapset_rewrite(ri, &recv, name, &mut rargs, span) {
+            MapsetRewrite::Same => name,
+            MapsetRewrite::Rename(n) => {
+                owned_name = n;
+                &owned_name
+            }
+            MapsetRewrite::Drop => {
+                // `drop()` on the migration face is an explicit end-of-use
+                // marker; storage release stays observable at scope exit
+                // (the AV resource contract — same normalization the List
+                // legacy rows record).
+                return ResolvedExpr {
+                    span,
+                    vt: VT::Unit,
+                    kind: RExprKind::Unit,
+                };
+            }
+        };
         match self.records[ri]
             .methods
             .iter()
@@ -18338,7 +18601,16 @@ F:{d}
         // static: `Pair.new(...)`
         if let ast::ExprKind::Var(id) = &recv.kind {
             if self.lookup(&id.name).is_none() {
-                if let Some(&ri) = self.rec_index.get(&id.name) {
+                // PLAN-1121: `HashMap.new()`/`HashSet.new()` fall back to the
+                // grafted migration types when the user declared no such
+                // type (a user declaration wins by the ordinary shadowing
+                // rule — the fallback only fires on a missing name).
+                let grafted = match id.name.as_str() {
+                    "HashMap" => self.rec_index.get("__std_HashMap"),
+                    "HashSet" => self.rec_index.get("__std_HashSet"),
+                    _ => None,
+                };
+                if let Some(&ri) = self.rec_index.get(&id.name).or(grafted) {
                     let rargs = self.resolve_args(args);
                     match self.records[ri]
                         .methods
@@ -19270,6 +19542,7 @@ F:{d}
                                     .rec_index
                                     .get(&id.name)
                                     .copied()
+                                    .or_else(|| self.mapset_graft_rec(&id.name))
                                     .map_or(RecvClass::Value, RecvClass::Static),
                                 _ => RecvClass::Value,
                             }
@@ -19305,9 +19578,19 @@ F:{d}
                                         .expect("checked above"),
                                 )
                             } else if self.lookup(&id.name).is_none()
-                                && self.rec_index.contains_key(&id.name)
+                                && (self.rec_index.contains_key(&id.name)
+                                    || self.mapset_graft_rec(&id.name).is_some())
                             {
-                                RecvClass::Static(self.rec_index[&id.name])
+                                // PLAN-1121: a user-declared type wins; the
+                                // grafted migration record carries the
+                                // legacy container name otherwise.
+                                RecvClass::Static(
+                                    self.rec_index
+                                        .get(&id.name)
+                                        .copied()
+                                        .or_else(|| self.mapset_graft_rec(&id.name))
+                                        .expect("checked above"),
+                                )
                             } else if self.lookup(&id.name).is_none()
                                 && self.profile.is_collections()
                             {

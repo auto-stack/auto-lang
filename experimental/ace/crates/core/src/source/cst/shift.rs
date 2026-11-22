@@ -543,3 +543,35 @@ pub(crate) fn shift_fn_item_signed(f: &mut FnItem, delta: i64) {
         shift_ident(o, delta);
     }
 }
+
+/// PLAN-1121: shift a whole `type` item (the ordinary-face HashMap/HashSet
+/// migration graft appends record declarations after the user source).
+pub(crate) fn shift_type_item(t: &mut TypeItem, off: usize) {
+    let delta = off as i64;
+    shift_ident(&mut t.name, delta);
+    for tp in t.type_params.iter_mut() {
+        shift_ident(&mut tp.name, delta);
+        if let Some(b) = &mut tp.bound {
+            shift_ident(b, delta);
+        }
+    }
+    for c in t.conforms.iter_mut() {
+        shift_ident(&mut c.name, delta);
+        for a in c.args.iter_mut() {
+            shift_type_ann(a, delta);
+        }
+        for (i, a) in c.assoc.iter_mut() {
+            shift_ident(i, delta);
+            shift_type_ann(a, delta);
+        }
+    }
+    for f in t.fields.iter_mut() {
+        shift_ident(&mut f.name, delta);
+        shift_type_ann(&mut f.ty, delta);
+        shift_span(&mut f.span, delta);
+    }
+    for m in t.methods.iter_mut() {
+        shift_fn_item_signed(m, delta);
+    }
+    shift_span(&mut t.span, delta);
+}

@@ -105,3 +105,30 @@ merge 级门。
 - **整数实例限制更新到实测覆盖**：冻结 `list.at` graft 仍只承载 `List<int>` 实例（sum/find_first_gt/pop/total_len/reduce/find/any/all/filter/map/sort 实测公共方法覆盖未变）；非整数元素的 `map/reduce/find/any/all`（及先行落地的 `filter`）不再具名拒 `source.hof-elem-domain`，改由源解析器内联 typed 脱糖（snapshot 隔离 + 源序访问 + 冻结闭包/所有权契约），与整数 graft 车道并存、无第二 stdlib 算法。
 - **回调与持有规则**：回调单参须为元素类型（`List<StrOwned>` 接受 `fn(Str)` 借用视图，同 filter）；记录元素走借用视图车道，其余 owned 元素每次访问克隆；`find` 绑定 AV `?T` Option 合同（Some 载荷 owned 元素 Move 入槽）；`reduce` 累加类型取自 init、可与元素类型不同，回调须返回累加类型；回调类型不符在绑定时具名拒 `source.type-mismatch`；`any/all/find` 短路、空表零回调、reduce 空表保持初值。
 - 证据：`av.parity.1120.generic-list-hof`（`experimental/ace/crates/av/tests/cases/plan1120_generic_list_hof.rs`，9 例：V-01 独立预期 `2 2 world true true 3 1 3 6`、V-02 空表/未命中/短路计数/绑定拒绝、V-03 所有权/分配故障重放/回调失败经 try-catch 后输入可续用、int 近邻 graft 不变）；旧 `source.hof-elem-domain` 负控行迁移为回调类型不匹配负控（plan1082 `hof_non_int_callback_type_rejects`）。
+
+## PLAN-1121 增量（2026-11-23，普通面 HashMap/HashSet 迁移容器）
+
+- **迁移容器（非装配集）**：`stdlib/ace/asm/map_str.at` = 纯 Auto 记录类型
+  `__std_HashMap`/`__std_HashSet`（keys/tags/ivals/svals 与 items 并行 List 底座，
+  for-条件扫描，put owned-Str 移入、get_str 显式元素 clone、缺键/错面 `fail` 受检通道）。
+  **不属于** 972 装配 62 符号面（`stdlib_assembled_files()` 不列本文件；v08 奇偶校验零改动）。
+- **嫁接与拼写回写**：adapter 在普通 Auto 源提及 HashMap/HashSet 时嫁接（用户自声明同名
+  类型优先，同 List 旧糖遮蔽规则）；resolve 拦截构造（`HashMap.new()` 未声明时落到
+  `__std_HashMap`）与方法拼写（insert_str/insert_int/get_str/get_int → put/get 族；
+  `insert`/`get` 按**接收者局部变量的静态值面**分派，int 为默认面——legacy `<str,int>`
+  单态语义；面冲突/未知面 = `source.map-face-mismatch`/`source.map-face-unknown`）。
+- **已验键值域**：字符串键；值域 {int, str}（每变量单态面；Dyn 实参经 `.to(int)` 显式转换，
+  直插具名拒 `source.type-mismatch`；错值型在记录方法准入的 Verify 阶段
+  `verify.type-mismatch` 拒）。首批公共操作：new/insert_str/insert_int/get_str/get_int/
+  insert/get/contains/remove/clear/size/drop。
+- **容器合同**：put 命中即原地覆盖（size 不增）；remove 命中返回 true 并压缩并行表；
+  缺键 get = `fail("KeyError")`（try-catch 后 owner 可续用）；错面 get = 静态
+  `source.map-face-mismatch`（graft 内运行时 ValueError 为纵深防御）；`drop()` 为
+  显式"使用结束"标记（单元 no-op），释放观察在作用域退出（同 List 行归一）。
+- **展示兼容规则**：AV 文本面 print(bool)=true/false；f-string 插值拒 bool
+  （`source.fstr-arg`）——旧 [1,0] 展示迁移用显式 bool→int shim；V-01 原 oracle
+  逐字保留（`age=30 score=100 has=1 size=1` / `apple=1 cherry=0 size=1`）。
+- **证据**：`av.parity.1121.map-set`（`experimental/ace/crates/av/tests/cases/plan1121_map_set.rs`，
+  26 例：V-01 旧行逐行承接含两条旧删除红例的成功删除重归类、V-02 覆盖/去重/错型具名拒、
+  V-03 缺键协议/owner 存活/释放对账/整数 List 与 Dyn 近邻不回归）；
+  旧行映射 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（PLAN-1121 行组）。
