@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1110
-status: execution_done
+status: reviewed
 feature_name: ACE A2PY 的 Python 异常映射与同源位置验收
 author: [Codex]
 created_at: 2026-11-20
@@ -13,7 +13,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [ace/a2x-python, ace/a2x-worker, auto-test-case]
-current_step: 4
+current_step: 5
 total_steps: 6
 ---
 
@@ -103,7 +103,7 @@ AV 规范归 1094 沉淀。本轮的规范增量均为提案。
 - [x] AC-02（owner_stage=work）V-01/V-02/V-04 两端捕获及未捕获都有实际错误携带的原始逻辑路径与失败操作范围。同一次执行的源指纹、类型、结果和位置均能核对，错误或缺失的观察令验收失败。
 - [x] AC-03（owner_stage=work）V-03/V-04 各类失败沿对应结果路径，1107 既有场景及普通 Auto 错误回归通过。
 - [x] AC-04（owner_stage=work）V-04 从同一个作者源取得真实 AV 与 A2PY 结果，两端输入指纹一致，AV 视图可独立选择 AV。
-- [ ] AC-05（owner_stage=review）独立复核 AC-01..04、SD-01..02、接口和负控，将结果绑定实际 revision 和提交。
+- [x] AC-05（owner_stage=review）独立复核 AC-01..04、SD-01..02、接口和负控，将结果绑定实际 revision 和提交。
 - [ ] AC-06（owner_stage=merge）冻结门通过，沉淀已验规范与合入收据。按仓库流程归档和清理。
 
 ## 8. 执行步骤
@@ -120,12 +120,25 @@ AV 规范归 1094 沉淀。本轮的规范增量均为提案。
 - [x] T-04 完成同源双端验收
   - owner_stage: work。前置 T-02/03。复用 1094 的 canonical Case、AV check 和适用独立预期。仅启用本计划承接且实际通过的 A2PY check，新增对照沿一源多 check 规则登记。
   - 关闭条件为 V-01..04 双端真实结果及受影响职责组证据。关联 AC-01..04。
-- [ ] T-05 独立复审
+- [x] T-05 独立复审
   - owner_stage: review。前置 T-04。对冻结提交重建验收映射，核实原始 span、真实运行和规范增量。关联 AC-05。
 - [ ] T-06 合入归档
   - owner_stage: merge。前置 T-05 pass。按审定并集和仓库清理规则收尾。移除专属树前用 `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <worktree>` 核对。关联 AC-06。
 
 ## 9. 复审记录
+
+2026-11-22，`stage: review | review_scope: final | reviewer_identity: ZCode 会话（独立于实施会话 Codex；结论从工件重建，非转述执行方摘要）| plan_id: PLAN-1110 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1110/auto-lang | branch: plan-1110-dev | reviewed_commit: ece92f65b548635f44b8c9deb6aaea0e520676d2 | base_commit: b2a616c779aaafb1c97029787c88ef4343392785 | dependency_revisions: 1094@ce8ba4fbc,1107@535b34a01（均为祖先）| spec_inputs: docs/specs/auto-a2x/python-ecosystem-integration.md@r1107, docs/specs/auto-a2x/python-stdlib-readiness.md@r1107 | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-04 pass | pending_closeout_gates: 冻结并集 `cargo t case-a2py-language-parity case-av-language-parity ace-adapters ace-a2x ace-python ace-m2-build`（merge 所属）| findings: 0 blocking | evidence: 见下 | next: merge (T-06)`。
+
+独立核验要点（全部对照冻结提交 `ece92f65b`，树 clean）：
+
+- **基线与身份**：worktree 无未提交改动；单实现提交叠 base `b2a616c77`；收据 `fixed-a2py-debug-run/results.json` SHA256 实测 `f22d17cac26971a99050fceb05b8b9048e852a6f52eea757047fceb8195c0ef8` 与记录一致，内含 4 条 A2PY check PASS（1057/1290/1366/1314 ms，仅选中行执行，882 项矩阵其余 NOT_RUN 具名）。
+- **复跑（本会话新增运行）**：`cargo nextest run --locked --offline -p ace-a2x-python --test py_native_run_1107 -p ace-m2-build --test py_project_1107 -E 'test(p1110)' --test-threads 1` → 3 PASS（caught 0.154s / uncaught 0.142s / 缓存前缀位移 0.304s；warm 构建 0.48s，无新例超 10s）。scratch 限定 `plan-artifacts/plan-1110/review-native/`。
+- **span 独立验证**：从作者文件字节直接重算——catch `int("abc")`@51..61、uncaught@45..55、nested-index `items.pop()`@81..92，与 oracle 完全一致（非自证：native 测试硬编码 51/45 并按 `int("abc")` 10 字节推 end）。
+- **同源双端（AC-04）**：4 份 paired report 原始工件显示每 Case 的 av/a2py 共享同一 source SHA256（fe536c29…/c85fe9c2…/3f98fc39…/f9895004…），AV 视图经既有 `--check av` 独立选择。
+- **负控**：result-*-type/position/missing 共 6 组原始 report，错类型/错位置 → A2PY FAIL 各 1 mismatch；缺观察 → 双端 FAIL（av 3 / a2py 2-3 mismatch）；与记录一致。
+- **身份绑定核查**：`oracle` 哈希只覆盖期望块（catch-av 与 nested-index-av 期望块等价故同哈希，属正常）；区分性 error-type/kind/span 断言在 options 侧，由 `contract = fingerprint(CaseSpec)` 覆盖——改任一 span/kind 均使旧 PASS 失效，绑定成立。`{kind}=4` 为既有语言错误 catch 通道常量（与 a2x-rust PLAN-1115 约定一致）。
+- **健康检查**：本提交零新增编译警告（强制重编 4 个触碰 crate 核对）；ace-core/ace-lowering/ace-av/ace-native 及 a2x-worker 既有警告均为 base 存量（`compile_language_source` 未用 import 在 base 已存在），diff 无遗留调试输出（测试内 eprintln 为计时输出，惯例）。
+- **规范增量**：SD-01/SD-02 目标文档存在，现行文本带"尚未映射/未捕获=退出码+异常类"未交标记，增量描述与实现一一对应（python-script 准入、logical_path/语法/SHA256 身份回验、≤4KiB 独占创建观察文件、escaped/handled 计数、a2x-store 位置上下文缓存、m2-build python helper 哈希轴）。均为提案，落主归 merge。
 
 2026-11-22，`stage: work | plan_id: PLAN-1110 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1110/auto-lang | branch: plan-1110-dev | base_commit: b2a616c77 | code_commit: ece92f65b548635f44b8c9deb6aaea0e520676d2 | dependency_revisions: 1094@ce8ba4fbc,1107@535b34a01 | task_ids: T-01..04 | blockers: none | next_responsible_role: review (T-05)`。
 
