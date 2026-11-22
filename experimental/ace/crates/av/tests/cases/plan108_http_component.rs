@@ -196,3 +196,43 @@ fn p108_http_provider_executes_and_lands() {
     assert_eq!(seen[0].1, "http://127.0.0.1:7072/slow");
     assert_eq!(seen[0].2.as_deref(), Some("q=1"));
 }
+
+/// M3 取消/卸载见证：挂起 → 会话关闭（卸载）→ job 完成 → resume 具名拒写，
+/// 状态无任何迟到落账。
+#[test]
+fn p108_cancel_unload_late_result_isolated() {
+    let program = ComponentEventSessionProgram::compile(
+        HTTP_PROBE_SRC,
+        "plan108.http.probe",
+        LegacyWidgetAlias::Accept,
+    )
+    .expect("编译");
+    let mut session = program.open_session(&[]).expect("open_session");
+    let results = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    let provider = std::sync::Arc::new(std::sync::Mutex::new(FakeHttp {
+        seen: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        results: results.clone(),
+        next_job: std::sync::Mutex::new(1),
+    }));
+    session.set_http_provider(provider);
+    let (_, state) = session.dispatch_state("Load", &[]).expect("Load 派发");
+    assert_eq!(
+        state,
+        ace_av::component_event_sessions::DispatchState::SuspendedHttp
+    );
+    // 卸载：会话关闭（in-flight handler 随会话死）。
+    session.close();
+    // 迟到完成到达——resume 须具名拒写，不 panic、不落账。
+    results
+        .lock()
+        .unwrap()
+        .insert(1, Some(Ok("{\"ok\":true,late}".to_string())));
+    let err = session
+        .resume_http()
+        .expect("resume 应有裁决")
+        .expect_err("关闭会话的 resume 必须拒写");
+    assert!(
+        err.contains("late result isolated"),
+        "须为迟到隔离具名拒，实际: {err}"
+    );
+}

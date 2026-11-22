@@ -481,8 +481,17 @@ impl ComponentEventSession {
         &mut self,
     ) -> Option<Result<Vec<(String, ComponentFieldValue)>, String>> {
         let susp = self.suspended.take()?;
+        // PLAN-108：会话已关（卸载/取消）——挂起态随取随弃，迟到结果拒写
+        // （不 panic、不落账）。
+        let Some(snap_ref) = self.snap.as_ref() else {
+            self.suspended_preserve = Vec::new();
+            return Some(Err(
+                "session closed before http completion: suspended handler discarded (late result isolated)"
+                    .to_string(),
+            ));
+        };
         let def_id = susp.def_id.clone();
-        let snap = self.snap.as_ref().expect("session is live").clone();
+        let snap = snap_ref.clone();
         // 续跑前取未赋值字段的当前值（并发提交胜出源；单线程内此后无交错）。
         let preserved: Vec<(usize, ComponentFieldValue)> = match self.read_states() {
             Ok(states) => self
