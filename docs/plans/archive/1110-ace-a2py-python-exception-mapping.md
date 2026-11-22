@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1110
-status: reviewed
+status: archived
 feature_name: ACE A2PY 的 Python 异常映射与同源位置验收
 author: [Codex]
 created_at: 2026-11-20
@@ -13,7 +13,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: [GOAL-002]
 affects: [ace/a2x-python, ace/a2x-worker, auto-test-case]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -104,7 +104,7 @@ AV 规范归 1094 沉淀。本轮的规范增量均为提案。
 - [x] AC-03（owner_stage=work）V-03/V-04 各类失败沿对应结果路径，1107 既有场景及普通 Auto 错误回归通过。
 - [x] AC-04（owner_stage=work）V-04 从同一个作者源取得真实 AV 与 A2PY 结果，两端输入指纹一致，AV 视图可独立选择 AV。
 - [x] AC-05（owner_stage=review）独立复核 AC-01..04、SD-01..02、接口和负控，将结果绑定实际 revision 和提交。
-- [ ] AC-06（owner_stage=merge）冻结门通过，沉淀已验规范与合入收据。按仓库流程归档和清理。
+- [x] AC-06（owner_stage=merge）冻结门通过，沉淀已验规范与合入收据。按仓库流程归档和清理。
 
 ## 8. 执行步骤
 
@@ -122,10 +122,22 @@ AV 规范归 1094 沉淀。本轮的规范增量均为提案。
   - 关闭条件为 V-01..04 双端真实结果及受影响职责组证据。关联 AC-01..04。
 - [x] T-05 独立复审
   - owner_stage: review。前置 T-04。对冻结提交重建验收映射，核实原始 span、真实运行和规范增量。关联 AC-05。
-- [ ] T-06 合入归档
+- [x] T-06 合入归档
   - owner_stage: merge。前置 T-05 pass。按审定并集和仓库清理规则收尾。移除专属树前用 `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <worktree>` 核对。关联 AC-06。
 
 ## 9. 复审记录
+
+2026-11-22，`stage: merge | plan_id: PLAN-1110 | plan_revision: r2 | outcome: pass（delivered）| consolidation_receipt: PLAN-1110:r2`。
+
+- `prepared`：复审基线 `ece92f65b`（r2 final pass）；SD-01/SD-02 在专属树落稿并提交 `fd828c232`（docs-only 后代）；rebase 到 master（`ca7c8e07e`）零冲突，补丁等价核对——本计划触碰的全部文件字节一致，差异仅为 master 自身 1116/1117/1053 文件；旧→新映射 `ece92f65b→d4e658d14`、`fd828c232→729bf91e5`。
+- 冻结门（merge 所属，专属树）：准备 `python scripts/fixed-tests.py <6组> --prepare-only`（14m44s，6 invocation）+ `cargo t --run-prepared`（3m49s）。首轮 case-a2py-language-parity PASS（4/4）、ace-python PASS（10）、ace-m2-build PASS（45）、ace-a2x FAIL、ace-adapters FAIL（1）、case-av-language-parity FAIL（2）。
+- **门禁修复（return-to-work）**：`ace-a2x` 组 `boundaries::manifest_face_only_sanctioned_dependencies` 红——本计划给 `ace-a2x-python`/`ace-a2x-worker` 新增的 `tempfile` 依赖不在 V-13 白名单（工作阶段只跑定向 nextest 二进制，未跑整组，故漏网）。修复 `9c9135825`：按 1116 `auto-bindgen`/`base64` 先例把 `tempfile` 以 PLAN-1110 注释加入许可清单；boundaries 5/5 复绿，`ace-a2x` 整组重准备（6.3s）+ 重跑 PASS（349，1m45s）。修复仅触碰 `a2x-worker/tests/cases/boundaries.rs`，其余 5 组输入未变，首轮 PASS 证据保持有效。
+- **既有红（非本计划所致，具名排除）**：① `case-av-language-parity` 的 `av.parity.1093.explicit-c-library`/`c-header-spelling-rejected` —— `parity1093_c` C provider 源未入库（1093 既有债务，PLAN-1125 已立项），`ACE_AV_C_PROVIDER_DIR` 未设时 prepare 具名跳过、用例判 FAIL；master 主检出同条件复现同样 2 红（收据 plan-artifacts 已核，`master-av-group/results.json`，529 执行 2 红同 ID 同 detail）。② `ace-adapters` 的 `abi::source_protocol_tests::source_parent_oracle_failure_rejudges...` —— master 主检出 nextest 复现红（120s 超时），专属树内 8.4s 断言红，双端均红，本计划 diff 不触 abi/source-protocol 面。
+- `landed`：wt-guard clean → `git merge --ff-only plan-1110-dev`，master tip = `9c9135825`（delivery commit），无 merge 提交，线性历史。
+- `canonical_verified`：`docs/specs/auto-a2x/python-ecosystem-integration.md`（8115B，sha256 前缀 1d8b98d6d954d7f0，§2/§3/§5 更新 + §6 新增）、`docs/specs/auto-a2x/python-stdlib-readiness.md`（9233B，sha256 前缀 9580e6174bb57414，1107 附录第 3 条修订 + PLAN-1110 附录新增），均经 `729bf91e5` 落主，PLAN-1110 溯源在文。
+- `archived`：`git mv` 至 `docs/plans/archive/`，status: archived，AC-06/T-06 勾选，current_step 6/6，completion_kind: delivered。
+- merge 会话计时：定向复跑 3 测试 0.602s（warm）；boundaries 复跑 0.163s；6 组准备 14m44s + 门禁 3m49s；ace-a2x 重准备 6.3s + 重跑 1m45s；master 对照准备 2m41s + 运行 2m44s；auto-case 主检出重建 27.3s。资源等待：让位其他会话 `cargo t ace` 约 4.7 分钟。新增用例无超 10s（见 work 记录）。
+- `cleaned`：见下条收据。
 
 2026-11-22，`stage: review | review_scope: final | reviewer_identity: ZCode 会话（独立于实施会话 Codex；结论从工件重建，非转述执行方摘要）| plan_id: PLAN-1110 | plan_revision: r2 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1110/auto-lang | branch: plan-1110-dev | reviewed_commit: ece92f65b548635f44b8c9deb6aaea0e520676d2 | base_commit: b2a616c779aaafb1c97029787c88ef4343392785 | dependency_revisions: 1094@ce8ba4fbc,1107@535b34a01（均为祖先）| spec_inputs: docs/specs/auto-a2x/python-ecosystem-integration.md@r1107, docs/specs/auto-a2x/python-stdlib-readiness.md@r1107 | acceptance_results: AC-01 pass, AC-02 pass, AC-03 pass, AC-04 pass | pending_closeout_gates: 冻结并集 `cargo t case-a2py-language-parity case-av-language-parity ace-adapters ace-a2x ace-python ace-m2-build`（merge 所属）| findings: 0 blocking | evidence: 见下 | next: merge (T-06)`。
 
