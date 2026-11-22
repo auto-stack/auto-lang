@@ -206,7 +206,7 @@ test-group = "ace-aac-incremental"
 # group (same discipline as ace-aac/ace-aac-host above; only under THIS
 # config file).
 [[profile.default.overrides]]
-filter = "package(/^(ace-aac-gen1-conformance|auto-lang|ace-core)$/) and not package(/^(auto-lang|ace-core)$/)"
+filter = "package(/^(ace-aac-gen1-conformance|auto-lang|ace-core|ase-m0)$/) and not package(/^(auto-lang|ace-core|ase-m0)$/)"
 test-group = "ace-aac-gen1"
 
 # PLAN-1016: explicitly selected formal pressure suite prioritizes stable
