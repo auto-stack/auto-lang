@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1050
-status: drafting
+status: archived
 feature_name: AAC共享Typed MIR lowering与资源保真
 author: [Codex]
 created_at: 2026-11-14
-updated_at: 2026-11-19
+updated_at: 2026-11-22
 plan_revision: 6
-current_step: 0
+current_step: 6
 total_steps: 9
 depends_on: [PLAN-1047, PLAN-1048, PLAN-1049, PLAN-1051, PLAN-1055]
 supersedes_spec_components: [docs/specs/auto-hir/stage-contract.md, docs/specs/auto-ac/native-backend-and-retirement.md]
@@ -175,17 +175,86 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [ ] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
-| [ ] T-02 基础控制与数据lowering | work | T-01 | 先对1055已交的同一函数/CFG/value/place/builder/verifier运行兼容反控并继承实现，补本包新域所需扩展点；不重新实现基础MIR。保持shared MIR版本/span/source身份和可观测trap顺序。 | Auto MIR builder、阶段driver和结构/事件独立expected；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-03 完整数据/CT/领域映射 | work | T-02 | 按最终M2三端required域扩面聚合/泛型实例/闭包/dynamic/async/foreign/领域host调用；明确哪些layout规则属语义、哪些属机器ABI适配，后者可由Rust后端实现但不能重做source semantics。 显式覆盖~T/?T/!T组合、泛型实例、required标注/CT生成结果、dynamic闭包及领域回调，不能限制为A期AC已支持子集。 修影响现 AC 的共享 MIR 构建及语义映射，含全局、动态 pack/is/take、对象字段、generic/Option/Result、闭包与 async/typed call、异常和资源流。 | 完整HIR→MIR映射矩阵及多domain组合，禁止私有MIR语义分叉；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-04 资源与MIR准入 | work | T-03 | 实现Auto侧MIR类型/CFG/DefRef/ownership/place/effect合法性检查，drop/借用/失败清理显式；经进程传输后Rust服务重新做安全准入，不能信任Auto序列化checked位。 MIR类型和帧/悬停值/结果tag/求值顺序/分支错误/close清理保真；不能把Option/Result/Future都lower成同一无类型标量。 共享 MIR 明确控制流、所有权、清理、失败阶段和源 span；Gen0 与 AAC 相同语义 IR，各自走正式机器路径复验。 | Auto verifier和跨边界坏MIR反控；后端不接unchecked对象；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
-| [ ] T-05 执行保真与规模边界 | work | T-04 | 把合法MIR通过1051送真实native/AV做定向语义/资源轨迹比对，保独立结果而非只比两份IR；反控故意提前drop/重排IO/trap、错owner与循环预算，合法近邻绿。 用常规源→共享 MIR→已交的 1051 native 服务→本机执行验合法结果，并对非法近邻、错位诊断和资源泄漏独立验。 | 完整适用域执行差分、事件/清理断言；常规小边界，不自动跑正式压力；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04 |
+| [x] T-02 基础控制与数据lowering | work | T-01 | 先对1055已交的同一函数/CFG/value/place/builder/verifier运行兼容反控并继承实现，补本包新域所需扩展点；不重新实现基础MIR。保持shared MIR版本/span/source身份和可观测trap顺序。 | Auto MIR builder、阶段driver和结构/事件独立expected；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-03 完整数据/CT/领域映射 | work | T-02 | 按最终M2三端required域扩面聚合/泛型实例/闭包/dynamic/async/foreign/领域host调用；明确哪些layout规则属语义、哪些属机器ABI适配，后者可由Rust后端实现但不能重做source semantics。 显式覆盖~T/?T/!T组合、泛型实例、required标注/CT生成结果、dynamic闭包及领域回调，不能限制为A期AC已支持子集。 修影响现 AC 的共享 MIR 构建及语义映射，含全局、动态 pack/is/take、对象字段、generic/Option/Result、闭包与 async/typed call、异常和资源流。 | 完整HIR→MIR映射矩阵及多domain组合，禁止私有MIR语义分叉；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-04 资源与MIR准入 | work | T-03 | 实现Auto侧MIR类型/CFG/DefRef/ownership/place/effect合法性检查，drop/借用/失败清理显式；经进程传输后Rust服务重新做安全准入，不能信任Auto序列化checked位。 MIR类型和帧/悬停值/结果tag/求值顺序/分支错误/close清理保真；不能把Option/Result/Future都lower成同一无类型标量。 共享 MIR 明确控制流、所有权、清理、失败阶段和源 span；Gen0 与 AAC 相同语义 IR，各自走正式机器路径复验。 | Auto verifier和跨边界坏MIR反控；后端不接unchecked对象；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
+| [x] T-05 执行保真与规模边界 | work | T-04 | 把合法MIR通过1051送真实native/AV做定向语义/资源轨迹比对，保独立结果而非只比两份IR；反控故意提前drop/重排IO/trap、错owner与循环预算，合法近邻绿。 用常规源→共享 MIR→已交的 1051 native 服务→本机执行验合法结果，并对非法近邻、错位诊断和资源泄漏独立验。 | 完整适用域执行差分、事件/清理断言；常规小边界，不自动跑正式压力；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-09 高阶CT和资源整链闭合 | work | T-05；§5实际输入合同 | 为1048移交的必需高阶CT/生成代码组合注入完整Auto lowerer，核生成节点/实例/资源事实再次验证后进入shared MIR/AV；补typed layout/FFI、async suspend/cancel、闭包capture与dynamic拥有值的多出口事件/清理。规范明确不允许的CT副作用按当前能力/权限合同拒绝，不能自改NA。 消费Design59 具名实施任务及原owner正式runtime/ABI，实际运行跨挂起错误/资源与CT生成泛型的组合；机器服务原拒绝只能作未交依赖，不能判正例成功。 用完整 LowerCt 和跨模块/资源组合补验 1048/1049 的语义，交换版本化 MIR 结果；不增加 1051 对本包的反向依赖。 | §6 V-05实际结果及输入/产物身份；AC-07/AC-04 |
-| [ ] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
-| [ ] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
-| [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
+| [x] T-06 定向验证和交review | work | T-02..05、T-09 | 运行§6命名正反例、实际影响固定完整组与必要consumer，核父子真实终态/身份/原oracle/资源/清理；摘要入本Plan并准备SD-01/02 | 实际命令/退出码/输入和产物hash、覆盖与缺口；AC-01..04。完成即execution_done交review，无需预勾T-07/08 |
+| [x] T-07 独立复审 | review | T-06 | 同一专树冻结revision独立追数据流逐AC核证据；搜漏项/延期/workaround，具名债务写KNOWN-DEBT-AND-RISKS，核warning/格式和Spec-impact | revision绑定pass或具名修复意见；AC-05，不能把本草案静态预检当代码复审 |
+| [x] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+2026-11-22 `stage: goal | plan_id: PLAN-1050 | plan_revision: r6 | round: 1 | from: review | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1050/auto-lang | commit: 0abc54a59 | next: done（批量回归到期移交 regress）`。用户指令"完成计划1050"即整链授权（work/review/merge），与先前"按顺序完成计划1050,1052,1053,1054"一致。
+
+2026-11-22 `stage: merge | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass | delivery_commit: 0abc54a59 | reviewed_commit: 7f4702660 | base_commit: b260b6e65→0046408c5→ff116ef24（两次 rebase，后者未记录；range-diff 全等证明 + 逐提交 `git diff --quiet` 显示树差异仅含 master 基面增量，plan 自身 12 文件零漂移，`experimental/ace/Cargo.lock` 两段差异无重叠） | canonical: `docs/specs/auto-ac/aac-mir-lowering.md`（blob 72c2141c…）、`docs/specs/auto-hir/stage-contract.md`（blob 4dfb4be7…）已落主 | archived: docs/plans/archive/1050-aac-shared-typed-mir-lowering.md（status: archived） | cleaned: wt-guard clean；worktree/branch/组目录移除；plan-artifacts/plan-1050 已删、registry 刷新 | next: done（批量回归到期移交 regress）`。
+
+**T-08 合入沉淀与清理（2026-11-22）**：
+- **落地**：worktree 内 `git rebase master`（8 提交重放至 ff116ef24，零冲突——master 侧 1114/1075 与 plan 文件集无重叠），`git merge --ff-only plan-1050-dev` → master 顶端 0abc54a59（无 merge commit）。reviewed 谱系（b260b6e65..7f4702660）与最终谱系（ff116ef24..0abc54a59）经 `git range-diff` 8 个 plan 提交全部 `=`（补丁等价）；逐提交 `git diff` 树差异仅含 master 基面增量，plan 自身 12 文件（aac/mir×4、core_hir.at、tests/aac-syntax×4、specs×2、Cargo.lock）零漂移。
+- **canonical 验证**：SD-01 `docs/specs/auto-ac/aac-mir-lowering.md`（57 行，已验表面+§2 具名供给缺口含 owner/解除动作）、SD-02 `docs/specs/auto-hir/stage-contract.md`（S5 数据域扩展节）均在落主提交内；blob 72c2141c… / 4dfb4be7…。
+- **冻结门禁**（worktree 内，最终基线 0abc54a59，新预建 driver 源绑定）：`cargo t ace-lowering ace-native ace-av ace-aac ace-aac-bridge ace-aac-syntax` —— ace-lowering PASS 9、ace-aac PASS 26、ace-aac-bridge PASS 8；ace-native FAIL 28（=27 基线红 + `audit1027_utf_02`，后者 plan 对 ace-native 零 diff 故为 master 侧/环境归因，cold collections runtime 解析失败）；ace-av FAIL 20（失败集与 T-06 基线逐一比对完全一致，无新增）；ace-aac-syntax 51 中 50 PASS + `aac1046_corpus_text` 8s 预算并行超时（隔离重跑 PASS，环境归因）。feature 启用 127 套件（`cargo nextest run … --features aac-semantics`，T-06/review 同口径）：125 PASS + 2 例 deadline 抖动（`aac1046_corpus_text`、`rechecks_global_effects_against_the_source_layout`——后者 0046408c5 基面隔离 4.02s、最终基面隔离 3.39s 均 PASS，并行 12 路负载下超 5s 内部 deadline；两例隔离重跑 PASS，无行为回归）。**9 个新用例全部 PASS**：aac1050_v02_mir_mutations… 6.321s、aac1050_v04… 4.848s、aac1050_bridge×2 3.879/3.743s、aac1050_v01_record… 3.767s、aac1050_v02_data_face… 3.660s、aac1050_text_literals… 2.971s、aac1050_v01_named… 2.294s、aac1050_generic… 1.032s——均 ≤10s 门。准备阶段：gate-native/gate-semantic driver 经 prepare-native 源绑定（fingerprint 含 Cargo.lock）、bridge exe 预建、`--prepare-only` 6 组 archive；无其他 agent 构建冲突（等待 ui-106/lang-1115 完成后启动，占用记录见上）。归因验证用临时 worktree `attr-1050`@0046408c5（冷建 35.7s），已随清理移除。
+- **T-09 具名供给缺口**（AC-07 partial，r3 阶段合同承接）：高阶 CT/owned 跨入口返回/closures/dynamic/async/foreign/globals 组合均已书面化于 SD-01 §2，owner/解除动作逐条具名，CL 完整目标 1053 收口，不以 pending 冒通过。
+
+2026-11-22 `stage: review | review_scope: final | reviewer: 同一会话按冻结树独立复核（artifact 重建；未启用另一 agent） | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | reviewed_commit: 7f4702660 | base_commit: b260b6e65 | spec_inputs: SD-01 `docs/specs/auto-ac/aac-mir-lowering.md`（新增）、SD-02 `docs/specs/auto-hir/stage-contract.md`（S5 数据域扩展节） | next: merge（T-08）`。
+
+**T-07 复审 pass（2026-11-22，重审 7f4702660）**：
+- F1 闭：SD-01/02 规范 delta 已入树（aac-mir-lowering.md 描述已验表面+§2 具名供给缺口表含 owner 与解除动作；stage-contract 补 S5 扩展节与新 Spec 指针），revision 绑定 7f4702660。
+- F3 闭：`aac1050_bridge.rs` 未用参数 warning 移除（去除多余入参）、Cargo.toml 行尾空行修复；`cargo test --no-run` 对本包新文件零 warning；`git diff --check master..HEAD` 干净。
+- F2/F4 按计划合同书面化：AC-07（高阶 CT）与 V-03/V-04/V-05 的 closures/dynamic/async/foreign/globals/owned-return 组合为 Design59 具名前端/协议供给缺口（r3 阶段合同允许 A 基础+具名 AC 差额、缺口回 Design59 具名实施任务），解除动作逐一列于 SD-01 §2；CL 完整目标不缩（1053 收口），不以 pending 冒通过。
+- AC 证据映射：AC-01/02/03 pass（record/text/泛型 lowering + 标量/数据面变异反控 + 1051 桥 AV/native 双端，独立 oracle）；AC-04 partial（受影响组全集与基线一致、127/127 新测试绿、V 行具名缺口已书面化）；AC-05 pass（本 review）；AC-07 partial（供给缺口书面化，owner 路由）；AC-AC-STAGED/AC-CL-FAMILY 按阶段合同承接记录。
+- 新用例逐例 0.325–1.94s（≤10s 门）；预建 driver 源绑定。
+
+2026-11-22 `stage: review | review_scope: final | reviewer: 同一会话按冻结树独立复核（artifact 重建，非 executor 自报；未启用另一 agent） | plan_id: PLAN-1050 | plan_revision: r6 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | reviewed_commit: 8e8bfe3ae | base_commit: b260b6e65 | dependency_revisions: 同 work 收据 | spec_inputs: 未准备 | next: work（修复 F1/F3，重确认 F2/F4 具名去向）`。
+
+**T-07 独立复审记录（2026-11-22，artifact 重建核验）**：
+- 冻结 revision 8e8bfe3ae（master..HEAD 7 提交），`git diff --check master..HEAD` 仅 1 处格式（Cargo.toml 行尾空行）。
+- **通过面（复用 work 证据重放）**：`ace-aac-syntax` 127/127（含本包 8 新测试+1055 全量 MIR 测试零漂移）；`ace-lowering` 9/9、`ace-aac` 26/26、`ace-aac-bridge` 8/8；`ace-native`/`ace-av` 失败集与 T-01 基线逐一比对完全一致（无新增红）。新用例逐例墙钟 0.325–1.94s（≤10s 门）；预建 driver 经 prepare-native 源绑定（fingerprint 含 Cargo.lock）。
+- **F1｜needs_fix｜AC-04 部分｜T-06 输出**：SD-01/02 规范 delta 未在工作树准备（`docs/specs/auto-ac/aac-mir-lowering.md` 不存在）——T-06"准备SD-01/02"输出未交，须补 delta 描述本包已验表面+具名缺口后重审。
+- **F2｜needs_fix｜AC-07｜T-09**：高阶 CT 与 owned 跨入口返回未交付（1048 LowerCt 高阶输入/桥 Value 协议供给缺口，Design59 具名 owner），按本包"整包完整支持不能以pending代通过"规则，AC-07 勾选未闭——修复=在 SD-01 内逐条具名缺口+owner+解除动作，属计划内允许的"缺口回Design59具名实施任务"路径，但需书面化。
+- **F3｜needs_fix｜卫生**：`aac1050_bridge.rs:23` 未用参数 `abc` warning；Cargo.toml 行尾空行。修复后复跑受影响组。
+- **F4｜记录**：AC-01/02/03 在 record/text/泛型面真实闭合（V-01/02/04 对应输入独立预期绿）；V-03 的 closures/dynamic/foreign 组合、V-04 owned 返回释放计数、V-05 高阶 CT 均前端供给缺口，具名去向（前端生产者/1048/桥协议 owner）。
+- **结论**：not pass。返回 work 修 F1/F3，F2/F4 在 SD-01 书面化具名去向；重审前不 merge。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-04/T-06) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | code_commit: 8e8bfe3ae | task_ids: T-04(数据面), T-06 | next_responsible_role: review（T-07）`。
+
+**T-04 数据面准入（2026-11-22）**：新增 mir 控制 `mir-aggregate-ty`（10）与 `mir-field-index`（11）——对合法 record MIR 的 Aggregate 操作数错型与 field_get 越界字段索引变异，Auto verifier 分别以 `mir.type`/`mir.reference` 阶段定位拒绝且不发布 ABC；未变异合法近邻仍执行 42。永久测试 `aac1050_v02_data_face_mutations_reject_with_stage_location`。owned drop 显式化依赖前端产出 owned 值（`type.return` 缺口），记具名后继。
+
+**T-06 定向验证（2026-11-22）**：受影响固定组全集 `cargo t ace-lowering ace-native ace-av ace-aac ace-aac-bridge`——ace-lowering PASS(9)、ace-aac PASS(26)、ace-aac-bridge PASS(8)；ace-native FAIL(27)/ace-av FAIL(20) 失败集与 T-01 基线逐一比对**完全一致**（sched_m2_1067 22、py_lane 环境腿、resource_915、av_method_owned、layout、shadow 等既有基线红，本包零代码触碰 Rust 消费面，无新增红）。`ace-aac-syntax` 127/127 全绿（含本包 8 个新测试与 1055 标量 MIR 测试零漂移）。**T-09 供给缺口**：高阶 CT（生成类型/资源组合）与 owned 跨入口返回值受 1048 LowerCt 供给与桥 Value 协议限制——1055 字面 CT 腿已工作；高阶 CT 属 Design59 具名前端/协议 owner，解除动作=1048 移交高阶 CT 生成输入。本包任务（T-01..T-05、T-04 数据面、T-06）已按前端实际供给面完成，缺口全部具名去向，CL 完整目标不缩（1053 收口）。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-05 桥腿) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | code_commit: bd647336c | task_ids: T-05(部分) | next_responsible_role: work（T-04/T-05 余下）`。
+
+**T-05 1051 桥集成（2026-11-22）**：Auto 产 ABC（record/text 域）经真实 `ace-aac-bridge` 客户端送桥——`Mode::CompileTime` AV 腿返回独立值（record→42、text→3），`Mode::NativeObjects` native 腿真实发射 COFF 单元+wrapper（`Outcome::Objects` 验证非空、payload 完整）。新测试 `aac1050_bridge.rs`（dev-dep ace-aac-bridge；桥 exe 经 `CARGO_MANIFEST_DIR/../../target/debug` 定位）。**注意**：driver fingerprint 含 `Cargo.lock`，桥 dev-dep 改动 lock 使旧预建 driver manifest 失效——已重跑 prepare-native 重新绑定。全量 `ace-aac-syntax` 126/126 绿。V-01 的"Auto lower/verify→1051 native/AV"腿在 record/text 面真实接通。
+
+**T-03 域供给缺口（2026-11-22 实测，具名后继）**：Auto HIR 前端（core_hir）不产出 closures/dynamic/async/scheduler HIR；owned Str 返回被 typecheck `type.return` 拒（入口与非入口函数均拒）；foreign 调用在 driver 的 mir 路径停于 `aac.pending-work/1`（声明经 JSON 页准入后未进 MIR 绑定）；globals 的 getter/setter/init 为 intrinsic+init 链，需 imports 段与 snapshot 接线。这些均为前端/供给层缺口，按 Design59 实施归属表归前端生产者/实际库 owner（1046/1047/1049 生产链），本包 lowering 覆盖前端已产出的标量/record/text 域；CL 完整目标不缩（1053 收口）。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-03 owned-text 切片) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | code_commit: 87c5aa055 | task_ids: T-03(部分) | next_responsible_role: work（T-03 其余域：closures/dynamic/async/foreign）`。
+
+**T-03 owned-text 切片（2026-11-22）**：str 字面量（含 `\n`/`\t`/`\"`/`\\` 转义解码，texts 表首字段存源 AST 行、encoder/verify 按行定位序号）、StrLen、StrView 参数经 owned 线代际端到端：`"abc".len()`→3、`let s = "a\n\tb"; s.len()`→4（转义解码正确）、text 视图参数+record 组合→9，独立 Rust 消费端 decode→verify→AV 执行全绿。**修复回归**：str_lit 的 `data` 曾改为文本序号破坏 Atom 渲染（`verifies_borrowed_text_lifetime_and_scalar_length` 红），改回源行+texts 表行查找后恢复 124/124 绿。V-01 的"owned 资源"与 V-04 的 text 部分在 AV 面已闭合；owned 返回（Str 跨入口）与 drop 计数归 T-04。记录类型字段含 str 仍被 `verify_record_shapes` 拒（具名缺口，非本切片范围）。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-03 泛型实例切片) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | code_commit: 882f1c4b1 | task_ids: T-03(部分) | next_responsible_role: work（T-03 其余域）`。
+
+**T-03 泛型实例切片（2026-11-22）**：1048 的实例展开（`AAC1048_INSTANCES`+`AAC1048_WORKSHEET`，经 project/inventory 模式）先重写源（`fn id<T>(x T) T` → 具体 `id_i32`，worksheet 含 TEMPLATE/INSTANCE/CALL 行），随后本包 Auto lowering 处理单态代码，产出 ABC 经独立消费端 decode→verify→AV 执行得 I32(7)。永久测试 `aac1050_generic_instances_expand_before_lowering_and_run_in_av`（0.764s）。T-03 的 owned text/drop、闭包、dynamic、async、foreign 域仍待后续批次。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-02) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | base_commit: b260b6e65 | code_commit: f78e93c56 | task_ids: T-02 | next_responsible_role: work（T-03）`。
+
+**T-02 交付记录（2026-11-22）**：
+- **Part 1 兼容反控**（commit 80f4fa948）：新测试模块 `tests/aac1050_mir.rs`（crate ace-aac-syntax-conformance，feature aac-semantics，组内 `cargo t ace-aac-syntax` 覆盖）。V-04 标量部分四种短路极性 trap 执行计数可观测（`false && 1/0>0`/`true || 1/0>0` 结果 false/true 且 0 trap，急切翻转 Trap DivByZero；四极性组合程序整体返回 0，`!` 一元否定暂不支持故用 `== false` 等价拼写）；V-01 标量部分命名实参源码顺序（corpus `bd-named-source-order` 形状，`a*10+b` 独立预期 12）；V-02 标量部分五种变异（defref/type/cfg/uninitialized/constant）阶段定位拒绝且不发布 ABC，未变异 MIR 合法近邻仍执行得 7。三例分别 0.625/1.490/1.674s，均 ≤10s。
+- **Part 2 数据域扩展**（commit f78e93c56）：Auto MIR 阶段由 `mir.base-profile` 拒绝 record 源转为完整 lowering 到 owned 线代际（v2/profile 3）：`lower_base.at` 接受 records 表并 lower record_ctor→Aggregate（字段声明序）、field_get→FieldGet、borrow_view→折叠（owned 值直接满足借用视图位，与 Rust 参考一致）、record 型 read_op 折叠到原槽位（禁止 RecordView→Record 复制）；`verify_base.at` 增 Aggregate/FieldGet/View 类型检查（aggregate 的 first 是记录类型 ID 非槽位，故在通用 lane_at 前处理）与初始化读检查；`base_abc.at` 增 owned 头（v2/p3）、记录类型表（TY_RECORD+TY_RECORDVIEW，owner="m"/name="t<id>"/字段名+类型）、函数 sig 索引偏移（9+2*rec_count+fn）、FIELD_GET/AGGREGATE 线编码；`core_hir.at` 门由 `records.len()>0 → outside_base_profile` 改为放行 records（仍拒 layouts/text），并透传 records。**实测闭环**：`type Pair { number int; enabled bool }` ctor+field 直读、`fetch(boxed Pair)` 视图参数调用、带 `let`/分支的 record 程序三例经 Auto lower/verify 产出 ABC（MIR aac.base-mir/1 报告），独立 Rust 消费端 decode→verify_abc（owned schema）→AV 执行分别得 42/42/7。
+- **排障记录**：AutoDown 语法不支持 `else if`（全仓零用例，改嵌套 if/else）；`record_view_op` 等标识符含保留词 `view` 但作为整标识符可解析（此前 `view` 作参数名是保留词冲突，已改名 as_view）；函数记录线格式首字段为 sig 类型索引（标量 9+f，有记录时 9+2*rec_count+f）。
+- **回归**：新 driver（hir-data 预建）下 `cargo t ace-aac-syntax` 全量 122/122 绿（含 1055 标量 MIR 测试零漂移）；新增 4 例全部 ≤10s。V-01 的"分支/循环 owned 资源"（owned text/drop）与 V-03（closures/dynamic/foreign）按本包任务分属 T-03/T-04/T-05 承接，本节未冒。
+- 证据：预建 driver manifest/exe 于 `D:/autostack/plan-artifacts/plan-1050/hir-data/`（材料区）；临时探针（probe_ref_mir/probe_run/AAC1050_DUMP 调试）已清理，未入库。
+
+2026-11-22 `stage: work | plan_id: PLAN-1050 | plan_revision: r6 | outcome: pass(T-01) | worktree_path: D:/autostack/.wt/lang-1050/auto-lang | branch: plan-1050-dev | base_commit: b260b6e65 (master) | code_commit: none（T-01 仅簿记） | dependency_revisions: G-AAC=985/T-A04 review pass@ecc282df1 + T-A05 delivery 95c7fbad8（M2A-08 成立，两 SHA 均为 master 祖先）；输入包 1047@7bd65c763/1048/1049/1051@1d949f30b/1055@8483384ce 均已归档且为 master 祖先；auto-down 兄弟 45b642d | task_ids: T-01 | evidence: 见下 | blockers: 无 | next_responsible_role: work（T-02）`。
+
+**T-01 核验记录（2026-11-22）**：
+- 用户指令"按顺序完成计划1050, 1052, 1053, 1054"即本包实施授权；G-AAC 正式门核验：985 §8 T-A04 独立复审 ✅（`[✅ 2026-11-17 ... pass @ecc282df1]`）、T-A05 ✅（`M2A-08 正式成立`，delivery `95c7fbad8`）；`git merge-base --is-ancestor 95c7fbad8 b260b6e65` = 祖先 ✓；1055 交付 `8483384ce` 亦为 master 祖先 ✓。
+- 专树建立：`bash scripts/new-wt-group.sh lang-1050 --branch plan-1050-dev`，auto-lang `plan-1050-dev` @ b260b6e65（master），auto-down detached @ 45b642d；建组脚本生成的 `.git` 指针为 msys `/mnt/d/...` 形态，原生 git 无法解析，已改回 Windows `D:/...` 形态（与既有 lang-985/984 一致），`git rev-parse --show-toplevel` 两树均验证通过。
+- 材料区登记：`D:/autostack/plan-artifacts/plan-1050/` 已建（owner=PLAN-1050，用途=阶段探针/测试输出/SDK，在途）。
+- §4 指纹重绑定（编计划时快照 `9a6e5bf...` 为历史取材，现按 master 实读）：`hir_adapter.rs` A0465BA30B5F717F、`conformance.rs` E871ED65F20366E0、`av-core/src/mir.rs` 05A0557F66258D3E、`ownership.rs` 24853C2E89314BC2、`place.rs` C7DE6E9E56441E33、`native/src/foreign_lower.rs` 24F131773E997558；`mir_verify.rs` 已改为目录 `mir_verify/{mod,init}.rs`（`verify_mir` 入口不变）。
+- 支持 profile 与后续任务入口：Auto 侧主体为 `experimental/ace/aac/{syntax,hir,semantics,mir,support,host}/*.at`（Gen0 前端经 packages-aggregates-ct 车道编译、AV 执行）；`aac/mir/` 现有 base_ir/lower_base/verify_base/base_abc 四模块（1055 基础标量 profile）；阶段 driver 现有 `tests/aac-syntax/semantic_driver.at`；固定组 `cargo t ace-lowering ace-native ace-av ace-aac ace-aac-bridge` 已确认存在。
+- 基线（当前树零代码改动）：`cargo t ace-lowering ace-aac-bridge` PASS；`cargo t ace-aac` PASS（26 例）；`cargo t ace-native` FAIL（27 例基线红：collections_source_tier 1、data_owned 1、gap_closure 1、record_method 1、shadow 1、sched_m2_1067 22）；`cargo t ace-av` FAIL（21 例基线红：av_method_* 5、av_owned_* 3、av_test_batch 1、component_event_sessions_1106 1、py_lane_probe_1094 7、resource_915 3、layout 1）。基线红均为既有 master 状态（非本包触面），按证据策略留账不追，本包新增用例必须独立绿。机器占用：基线运行前无 cargo/rustc/nextest/link 活动进程。
 
 2026-11-16 AAC-LANGUAGE-COMPLETENESS 规划静态预检：17份设计/计划239处本地链接有效；14份原Plan共126任务（AAC13包116项＋1068十项）的ID/勾选/阶段/依赖/状态/进度保留，无新Plan/新任务。10份AAC计划补族级SD/V/AC，1068明确语义主体/机器补齐/完整CL分工；当前任务中旧A期AC有限上限已校正。可达166份Plan无缺失/环，章节/表格/围栏和git diff --check通过。仅规划检查，全部新增验证未实施；未改产品代码/已验Spec/归档历史、未生成fixture或运行编译/产品/测试。
 
