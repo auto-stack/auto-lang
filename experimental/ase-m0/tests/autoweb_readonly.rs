@@ -147,6 +147,17 @@ fn document_response(etag: Option<&str>) -> ScriptedResponse {
     ScriptedResponse::ok(DOCUMENT_MEDIA, DOC_BODY, etag)
 }
 
+/// `304 Not Modified`（可选 ETag）。
+fn not_modified(etag: Option<&str>) -> ScriptedResponse {
+    ScriptedResponse {
+        status: 304,
+        headers: etag
+            .map(|e| vec![("ETag".to_string(), e.to_string())])
+            .unwrap_or_default(),
+        body: Vec::new(),
+    }
+}
+
 fn navigate(
     transport: &mut ScriptTransport,
     cache: &mut AutowebCache,
@@ -369,6 +380,11 @@ fn p1119_readonly_admission_domain() {
         ("[x](javascript:alert(1))", "whitelist"),
         ("[x](file:///C:/secret)", "whitelist"),
         ("[x](data:text/html,hi)", "whitelist"),
+        // RF-3：词法洞回归——前导空格、实体编码、定义行。
+        ("[x]( javascript:alert(1))", "whitelist"),
+        ("[x](javascript&#58;alert(1))", "entity"),
+        ("[ref]: javascript:alert(1)", "whitelist"),
+        ("  [ref]: file:///C:/secret", "whitelist"),
     ] {
         let refusal = admit_readonly_document(body).unwrap_err();
         assert_eq!(refusal.stage, NavStage::DocumentAdmission);
@@ -655,6 +671,57 @@ fn p1119_cache_revalidation_reuses_304_without_body_redownload() {
     assert!(success.trace.cache_reused);
     assert_eq!(cache.reuse_hits, 2);
     assert_eq!(cache.revalidations, 2);
+}
+
+/// RF-2 回归：`304` 复用必须通过身份（ETag）与摘要（当前描述声明）双
+/// 复验——描述/文档发布偏斜时拒绝复用。
+#[test]
+fn p1119_cache_304_reuse_revalidates_identity_and_digest() {
+    let url = "https://demo.example/guide/";
+    // RF-2-b：304 自身 ETag 与缓存条目不符 → 复用拒（fetch 阶段）。
+    let mut cache = AutowebCache::new();
+    let mut first = ScriptTransport::new(vec![
+        descriptor_response("./guide.ad", "G", Some("\"d1\"")),
+        document_response(Some("\"b1\"")),
+    ]);
+    assert!(matches!(
+        navigate(&mut first, &mut cache, url),
+        NavOutcome::Success(_)
+    ));
+    let mut second = ScriptTransport::new(vec![
+        not_modified(Some("\"d1\"")),
+        ScriptedResponse {
+            status: 304,
+            headers: vec![("ETag".to_string(), "\"unrelated-tag\"".to_string())],
+            body: Vec::new(),
+        },
+    ]);
+    let (stage, reason) = refused(navigate(&mut second, &mut cache, url));
+    assert_eq!(stage, NavStage::DocumentFetch, "{reason}");
+    assert!(reason.contains("does not identify"), "{reason}");
+
+    // RF-2-a：描述更新声明新正文摘要，文档却 304 复用旧字节 → 摘要复验拒。
+    let mut cache = AutowebCache::new();
+    let mut first = ScriptTransport::new(vec![
+        descriptor_response("./guide.ad", "G", Some("\"d1\"")),
+        document_response(Some("\"b1\"")),
+    ]);
+    assert!(matches!(
+        navigate(&mut first, &mut cache, url),
+        NavOutcome::Success(_)
+    ));
+    let new_doc = "# v2 body\n";
+    let mut second = ScriptTransport::new(vec![
+        ScriptedResponse::ok(
+            DESCRIPTOR_MEDIA,
+            &descriptor_json("./guide.ad", &doc_sha_hex(new_doc), "G2"),
+            Some("\"d2\""),
+        ),
+        not_modified(Some("\"b1\"")),
+    ]);
+    let (stage, reason) = refused(navigate(&mut second, &mut cache, url));
+    assert_eq!(stage, NavStage::DocumentIntegrity, "{reason}");
+    assert!(reason.contains("revalidated"), "{reason}");
 }
 
 #[test]

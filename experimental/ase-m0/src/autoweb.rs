@@ -571,9 +571,11 @@ fn status_reason(status: u16) -> String {
 
 /// 只读文档准入：零隐式资源、零执行面、链接目标白名单。
 ///
-/// 拒绝清单（T-01 冻结）：`![`（图片）；`<`+`[A-Za-z/!?]`（HTML）；任何
-/// `$`（数学与 `$embed`/`$query`/`$callout`/`$details` 组件指令）；链接
-/// 目标仅 `https://`、`autoweb://`、`#锚`、相对引用——其余 scheme 具名拒。
+/// 拒绝清单（T-01 冻结；RF-3 修补词法面）：`![`（图片）；`<`+
+/// `[A-Za-z/!?]`（HTML）；任何 `$`（数学与 `$embed`/`$query`/`$callout`/
+/// `$details` 组件指令）；链接目标（行内 `[text](target)` 与定义行
+/// `[label]: target`）先 trim、拒绝实体编码（`&#`），再按白名单判——仅
+/// `https://`、`autoweb://`、`#锚`、相对引用，其余 scheme 具名拒。
 pub fn admit_readonly_document(body: &str) -> Result<(), AutowebRefusal> {
     let refuse = |message: String| AutowebRefusal {
         stage: NavStage::DocumentAdmission,
@@ -608,24 +610,48 @@ pub fn admit_readonly_document(body: &str) -> Result<(), AutowebRefusal> {
             ));
         }
     }
-    // 链接目标白名单：扫描 [text](target) 形态（含图片已在上面的 `![` 拒）。
+    // 行内链接 `[text](target)`（图片已在上面的 `![` 拒；目标 trim 后非空
+    // 即判——含前导空格的形态同样受白名单约束）。
     let mut rest = body;
     while let Some(open) = rest.find(']') {
         let after = &rest[open + 1..];
         if let Some(target) = after.strip_prefix('(') {
             if let Some(close) = target.find(')') {
-                let target = &target[..close];
-                if !target.is_empty() && !target.starts_with(' ') {
+                let target = target[..close].trim();
+                if !target.is_empty() {
                     admit_link_target(target)?;
                 }
             }
         }
         rest = &rest[open + 1..];
     }
+    // 链接定义行 `[label]: target`（≤3 空格缩进；目标取到首个空白）。
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if line.len() - trimmed.len() <= 3 && trimmed.starts_with('[') {
+            if let Some(close) = trimmed.find("]:") {
+                let target = trimmed[close + 2..].trim();
+                let target = target.split_whitespace().next().unwrap_or("");
+                if !target.is_empty() {
+                    admit_link_target(target)?;
+                }
+            }
+        }
+    }
     Ok(())
 }
 
 fn admit_link_target(target: &str) -> Result<(), AutowebRefusal> {
+    // 实体编码形态（`&#58;` 等）不参与白名单猜测——直接具名拒。
+    if target.contains("&#") || target.contains("&amp;") {
+        return Err(AutowebRefusal {
+            stage: NavStage::DocumentAdmission,
+            reason: format!(
+                "link target {target:?} uses character-entity encoding (entity forms are \
+                 refused in the readonly v1 domain)"
+            ),
+        });
+    }
     let lower = target.to_ascii_lowercase();
     let allowed = lower.starts_with("https://")
         || lower.starts_with("autoweb://")
@@ -1063,6 +1089,24 @@ impl<'a, T: AutowebTransport> ReadonlyNavigator<'a, T> {
             let (bytes, from_cache) = match self.cache.ingest(&key, &response, sent_match) {
                 Ok(IngestOutcome::Reused) => {
                     let entry = self.cache.entry(&key).expect("reuse implies entry");
+                    // 身份复验（RF-2）：`304` 自身携带的 `ETag` 若存在，必须
+                    // 标识所复用的缓存条目（大小写无关比较）——不匹配的
+                    // `304` 不复用。
+                    let response_etag = response.header_get("ETag");
+                    let etag_matches = entry
+                        .etag
+                        .as_deref()
+                        .is_some_and(|cached| cached.eq_ignore_ascii_case(response_etag));
+                    if !response_etag.is_empty() && !etag_matches {
+                        return Err(AutowebRefusal {
+                            stage: fetch_stage,
+                            reason: format!(
+                                "304 ETag {response_etag:?} does not identify the cached \
+                                 representation ({:?}); reuse refused",
+                                entry.etag
+                            ),
+                        });
+                    }
                     (entry.body.clone(), true)
                 }
                 Ok(IngestOutcome::Stored { .. }) | Ok(IngestOutcome::FreshNotStored) => {
@@ -1173,11 +1217,24 @@ impl<'a, T: AutowebTransport> ReadonlyNavigator<'a, T> {
                 admit_readonly_document(text)
             },
         )?;
+        // 摘要复验（RF-2）：覆盖**缓存复用**路径——新鲜 200 已在验证闭包内
+        // 比对，`304` 复用的字节在此与当前描述声明统一比对（描述/文档发布
+        // 偏斜时拒绝复用，防旧正文与新描述组合提交）。
+        let document_sha256_hex = sha_hex_of(&document_bytes);
+        if document_sha256_hex != hex(&descriptor.entry_sha256) {
+            return Err(AutowebRefusal {
+                stage: NavStage::DocumentIntegrity,
+                reason: format!(
+                    "document sha256 mismatch on revalidated content: descriptor declares {}, \
+                     bytes hash to {document_sha256_hex}",
+                    hex(&descriptor.entry_sha256)
+                ),
+            });
+        }
         let document = String::from_utf8(document_bytes.clone()).map_err(|e| AutowebRefusal {
             stage: NavStage::DocumentAdmission,
             reason: format!("document is not valid UTF-8: {e}"),
         })?;
-        let document_sha256_hex = sha_hex_of(&document_bytes);
         Ok(NavSuccess {
             display_address: address.display_address(),
             canonical_url: address.https_url(),
