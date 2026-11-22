@@ -40,6 +40,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ### Notes
 
 i64 arithmetic is exact well past the f64/double 2^53 integer window, so
@@ -94,6 +107,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ### Notes
 

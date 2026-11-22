@@ -121,6 +121,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ### Notes
 
 The escape block pins the frozen decode table: `\n` is one scalar / one byte,

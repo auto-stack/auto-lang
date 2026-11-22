@@ -3144,6 +3144,11 @@ fn decode_options(
                     "ac-a2c/hir-collections-emit-v1" => {
                         matches!(profile.as_str(), "collections")
                     }
+                    // PLAN-1115: the ordinary-language A2R run lane takes
+                    // the language profile only.
+                    "ac-a2r/hir-language-run-v1" => {
+                        matches!(profile.as_str(), "language")
+                    }
                     // PLAN-1042: Python TargetProvider channels.
                     "ac-a2py/hir-scalar-emit-v1" => {
                         matches!(profile.as_str(), "core" | "scalar")
@@ -3264,6 +3269,10 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // prebuilt worker and seam contract, riding the collections fileset
     // (strictly disjoint recipe/profile/fileset/cert identities).
     "ac-a2r/hir-collections-emit-v1",
+    // PLAN-1115: the ordinary-language A2R RUN recipe — the prebuilt
+    // worker compiles AND executes through the real Rust toolchain; the
+    // parent judges exit/stdout against the corpus row's own oracle.
+    "ac-a2r/hir-language-run-v1",
     // PLAN-921: the C scalar A2X emit recipe (HIR→C11) — the same prebuilt
     // worker (its `daily-emit-c` op) and seam contract, riding the C
     // fileset (main.c/a2x_c_runtime.h/generated.c + manifest.json sidecar;

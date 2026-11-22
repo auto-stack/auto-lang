@@ -355,6 +355,13 @@ def case_inventory(group, output, env):
                   and (c['recipe'] or '').startswith('ac-av/')]
         if not any(c['state'] == 'RUN' for c in checks):
             raise ValueError('AV target selection has no active check')
+    # PLAN-1115: the public language corpus A2R view — exactly the
+    # language-run recipe's probe/run checks (not the 892 golden suites).
+    if target_filter == 'a2r':
+        checks = [c for c in checks if c['adapter'] == 'probe' and c['action'] == 'run'
+                  and (c['recipe'] or '') == 'ac-a2r/hir-language-run-v1']
+        if not any(c['state'] == 'RUN' for c in checks):
+            raise ValueError('A2R target selection has no active check')
     return binary, suite, checks
 
 

@@ -39,6 +39,19 @@ exit: 42
 ```text
 ```
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: uncaught-keeps-message
 id: "av.parity.1087.uncaught-keeps-message"
 tags: ["av-language-parity", "plan-1087"]
@@ -96,6 +109,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 2
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:2
+```
 
 ## Case: legacy-04-control-flow-008-is-or-pattern
 id: "legacy.04_control_flow.008_is_or_pattern"
@@ -258,6 +284,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 45
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:45
+```
+
 ## Case: legacy-05-loops-002-range-inclusive
 id: "legacy.05_loops.002_range_inclusive"
 entry-mode: "program"
@@ -286,6 +325,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 55
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:55
+```
 
 ## Case: legacy-05-loops-005-loop-keyword
 id: "legacy.05_loops.005_loop_keyword"
@@ -353,6 +405,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 100
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:100
+```
+
 ## Case: legacy-16-option-result-010-propagate-err
 id: "legacy.16_option_result.010_propagate_err"
 entry-mode: "program"
@@ -409,6 +474,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: legacy-16-option-result-012-coalesce-none
 id: "legacy.16_option_result.012_coalesce_none"
 entry-mode: "program"
@@ -435,6 +513,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 99
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:99
+```
 
 ## Case: legacy-16-option-result-020-result-propagate
 id: "legacy.16_option_result.020_result_propagate"
@@ -514,6 +605,19 @@ exit: 42
 ```text
 ```
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: catch-index-error
 id: "av.parity.1087.catch-index-error"
 tags: ["av-language-parity", "plan-1087"]
@@ -545,6 +649,19 @@ exit: 42
 ```text
 ```
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: legacy-04-control-flow-001-if-true
 id: "legacy.04_control_flow.001_if_true"
 entry-mode: "program"
@@ -569,6 +686,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 1
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:1
+```
 
 ## Case: legacy-04-control-flow-002-if-false
 id: "legacy.04_control_flow.002_if_false"
@@ -595,6 +725,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 2
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:2
+```
+
 ## Case: legacy-04-control-flow-003-if-else-if
 id: "legacy.04_control_flow.003_if_else_if"
 entry-mode: "program"
@@ -619,6 +762,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 3
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:3
+```
 
 ## Case: legacy-04-control-flow-004-if-with-bool
 id: "legacy.04_control_flow.004_if_with_bool"
@@ -688,6 +844,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: nested-finally
 id: "av.parity.1087.nested-finally"
 tags: ["av-language-parity", "plan-1087"]
@@ -743,6 +912,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: rethrow
 id: "av.parity.1087.rethrow"
 tags: ["av-language-parity", "plan-1087"]
@@ -787,6 +969,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: module
 id: "av.parity.1087.module"
 tags: ["av-language-parity", "plan-1087"]
@@ -813,6 +1008,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: module-rethrow
 id: "av.parity.1087.module-rethrow"
@@ -941,6 +1149,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: loop-exits
 id: "av.parity.1087.loop-exits"
 tags: ["av-language-parity", "plan-1087"]
@@ -971,6 +1192,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: null-through-call
 id: "av.parity.1087.null-through-call"
 tags: ["av-language-parity", "plan-1087"]
@@ -995,6 +1229,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: legacy-04-control-flow-013-to-int-from-str
 id: "legacy.04_control_flow.013_to_int_from_str"
@@ -1051,6 +1298,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: legacy-04-control-flow-006-is-stmt
 id: "legacy.04_control_flow.006_is_stmt"
@@ -1310,3 +1570,16 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```

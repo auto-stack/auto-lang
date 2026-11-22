@@ -30,6 +30,19 @@ exit: 42
 ```text
 ```
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: owned-transfer
 id: "av.parity.1086.owned-transfer"
 tags: ["av-language-parity", "plan-1086"]
@@ -58,6 +71,19 @@ exit: 42
 #### stderr
 
 ```text
+```
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
 ```
 
 ## Case: hold-scope
@@ -91,6 +117,19 @@ exit: 42
 #### stderr
 
 ```text
+```
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
 ```
 
 ## Case: use-after-move
@@ -155,6 +194,19 @@ recipe: "ac-av/collections-source-run-v1"
 entry: "d_main"
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: owned-argument
 id: "av.parity.1086.owned-argument"
 tags: ["av-language-parity", "plan-1086"]
@@ -174,6 +226,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: named-view
 id: "av.parity.1086.named-view"
 tags: ["av-language-parity", "plan-1086"]
@@ -191,6 +256,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: borrow-block
 id: "av.parity.1086.borrow-block"
@@ -210,6 +288,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: mut-resource
 id: "av.parity.1086.mut-resource"
 tags: ["av-language-parity", "plan-1086"]
@@ -227,6 +318,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: mut-return
 id: "av.parity.1086.mut-return"
@@ -246,6 +350,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: method-write
 id: "av.parity.1086.method-write"
 tags: ["av-language-parity", "plan-1086"]
@@ -263,6 +380,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: method-readonly-receiver
 id: "av.parity.1086.method-readonly-receiver"
@@ -358,6 +488,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 84
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:84
+```
+
 ## Case: legacy-14-borrow-004-move-basic
 id: "legacy.14_borrow.004_move_basic"
 entry-mode: "program"
@@ -413,6 +556,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 100
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:100
+```
+
 ## Case: legacy-14-borrow-006-nested-view
 id: "legacy.14_borrow.006_nested_view"
 entry-mode: "program"
@@ -440,6 +596,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: legacy-14-borrow-007-borrow-arithmetic
 id: "legacy.14_borrow.007_borrow_arithmetic"
@@ -470,6 +639,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 30
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:30
+```
+
 ## Case: legacy-14-borrow-009-view-in-expr
 id: "legacy.14_borrow.009_view_in_expr"
 entry-mode: "program"
@@ -496,6 +678,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 15
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:15
+```
 
 ## Case: legacy-14-borrow-011-move-chaining
 id: "legacy.14_borrow.011_move_chaining"
@@ -968,6 +1163,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: return-local-view
 id: "av.parity.1086.return-local-view"
 entry-mode: "program"
@@ -1003,6 +1211,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: legacy-14-borrow-008-view-in-array
 id: "legacy.14_borrow.008_view_in_array"
@@ -2000,6 +2221,19 @@ exit: 50000
 ```text
 ```
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:50000
+```
+
 ## Case: empty-record-pop
 id: "av.parity.1086.empty-record-pop"
 entry-mode: "program"
@@ -2163,6 +2397,19 @@ exit: 2
 #### stderr
 
 ```text
+```
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:2
 ```
 
 ## Case: trim-and-empty-split

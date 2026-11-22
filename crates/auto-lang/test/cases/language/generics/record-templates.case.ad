@@ -20,6 +20,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: generic-record-explicit
 id: "av.parity.1088.generic-record-explicit"
 tags: ["av-language-parity", "plan-1088"]
@@ -39,6 +52,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: generic-record-build-in-template
 id: "av.parity.1088.generic-record-build-in-template"
@@ -60,6 +86,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: generic-record-result
 id: "av.parity.1088.generic-record-result"
 tags: ["av-language-parity", "plan-1088"]
@@ -79,6 +118,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: local-generic-alias-explicit
 id: "av.parity.1088.local-generic-alias-explicit"
@@ -101,6 +153,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: generic-function-numeric-alias-explicit
 id: "av.parity.1088.generic-function-numeric-alias-explicit"
 tags: ["av-language-parity", "plan-1088"]
@@ -121,6 +186,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: generic-record-nested
 id: "av.parity.1088.generic-record-nested"
 tags: ["av-language-parity", "plan-1088"]
@@ -140,6 +218,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: generic-record-nested-from-parameter
 id: "av.parity.1088.generic-record-nested-from-parameter"
@@ -163,6 +254,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: generic-record-owner
 id: "av.parity.1088.generic-record-owner"
 tags: ["av-language-parity", "plan-1088"]
@@ -182,6 +286,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: generic-inherited-bound
 id: "av.parity.1088.generic-inherited-bound"
@@ -204,6 +321,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: generic-record-wrong-argument
 id: "av.parity.1088.generic-record-wrong-argument"
@@ -271,6 +401,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: cross-module-record-template
 id: "av.parity.1088.cross-module-record-template"
 tags: ["av-language-parity", "plan-1088"]
@@ -304,6 +447,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: cross-module-record-template-method
 id: "av.parity.1088.cross-module-record-template-method"
 tags: ["av-language-parity", "plan-1088"]
@@ -330,6 +486,19 @@ entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
 
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
+
 ## Case: imported-record-extension
 id: "av.parity.1088.imported-record-extension"
 tags: ["av-language-parity", "plan-1088"]
@@ -355,6 +524,19 @@ recipe: "ac-av/language-source-run-v1"
 entry: "d_main"
 caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
 exit: 42
+
+### Probe a2r
+recipe: "ac-a2r/hir-language-run-v1"
+profile: "language"
+entry: "main"
+caps: ["ac.source.language.av/v1"]
+exit: 0
+
+#### stdout
+
+```text
+value:42
+```
 
 ## Case: private-record-extension
 id: "av.parity.1088.private-record-extension"

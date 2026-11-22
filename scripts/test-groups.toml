@@ -699,6 +699,21 @@ domain = "ace"
 suite = "crates/auto-lang/test/cases/language.suite.ad"
 all = false
 
+# PLAN-1115: the public language corpus A2R view — the ordinary-language
+# RUN recipe's rows (same sources, the A2R observation oracle).
+[[group]]
+name = "case-a2r-language-parity"
+title = "TestCase 公共语言语料 A2R 视图（PLAN-1115 普通语言 A2R 运行车道）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+target = "a2r"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/language.suite.ad"
+all = false
+
 [[group]]
 name = "case-ac-av"
 title = "TestCase case-ac-av"

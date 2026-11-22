@@ -98,6 +98,10 @@ const RT_RECIPE: &str = "ac-a2r/hir-record-text-emit-v1";
 /// PLAN-904: the collections channel (List/Variant) — parallel to (and
 /// mutually untrusted with) both recipes above.
 const COLL_RECIPE: &str = "ac-a2r/hir-collections-emit-v1";
+/// PLAN-1115: the ordinary-language RUN lane — the corpus rows' execution
+/// oracle axis (source -> fileset -> real rustc -> run; the parent judges
+/// exit/stdout/stderr). Distinct identity from the emit lane above.
+const LANG_RUN_RECIPE: &str = "ac-a2r/hir-language-run-v1";
 /// PLAN-921 CA-A: the C scalar channel (HIR→C11) — its own recipe,
 /// fileset schema and cert; parallel to and mutually untrusted with every
 /// Rust recipe above. Served by the same worker binary (one tool
@@ -147,6 +151,8 @@ fn main() {
         "run-py" => run_py(&v),
         "daily-emit-ts" => daily_emit_ts(&v),
         "run-ts" => run_ts(&v),
+        // PLAN-1115 T-05: the language RUN lane (corpus rows' oracle axis).
+        "run-language" => run_language(&v),
         other => fail(&format!("unknown op `{}`", other)),
     };
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -1063,6 +1069,48 @@ fn certify_c(v: &serde_json::Value) -> serde_json::Value {
                         "run": captured_observation(&actual_run) },
             "reference": { "compile": captured_observation(&reference_compile),
                            "run": captured_observation(&ref_run) },
+        });
+    }
+    r
+}
+
+/// PLAN-1115 T-05: the language RUN lane — the ordinary source compiles
+/// through the REAL toolchain and executes under the contained executor;
+/// the parent-side case adapter judges the observed exit/stdout/stderr
+/// against the corpus row's expectations. Frontend rejections surface as
+/// the structured `a2x.source-diagnostic/1` envelope (stage/code carried).
+fn run_language(v: &serde_json::Value) -> serde_json::Value {
+    let out_dir = v["out_dir"]
+        .as_str()
+        .unwrap_or_else(|| fail("out_dir required"));
+    let nonce = v["nonce"].as_str().unwrap_or("");
+    match v["profile"].as_str().unwrap_or("language") {
+        "language" => {}
+        other => fail(&format!(
+            "a2x.domain: the language run lane serves `language`, not `{other}`"
+        )),
+    }
+    let out = emit(v);
+    write_out_dir(out_dir, &out);
+    let dir = PathBuf::from(out_dir);
+    let t0 = std::time::Instant::now();
+    let (stdout, stderr, processes) = compile_and_run(&dir, "main.rs", "a2x_lang_run.exe");
+    let wall_ms = t0.elapsed().as_millis() as u64;
+    let mut r = ok_base(LANG_RUN_RECIPE);
+    r["mode"] = "run-language".into();
+    r["nonce"] = nonce.into();
+    r["profile"] = out.profile.clone().into();
+    r["input_hash"] = out.input_hash.clone().into();
+    r["source_sha256"] = out.source_sha256.clone().into();
+    r["entry_fn"] = out.entry_fn.clone().into();
+    r["manifest_sha256"] = sha256_hex(out.manifest.as_bytes()).into();
+    r["stdout"] = stdout.into();
+    r["stderr"] = stderr.into();
+    r["compile_run_ms"] = wall_ms.into();
+    if std::env::var("AUTO_CASE_WIRE_EVIDENCE").as_deref() == Ok("1") {
+        r["execution_observations"] = serde_json::json!({
+            "schema": "ace.a2x.cert-execution/1",
+            "run": processes,
         });
     }
     r

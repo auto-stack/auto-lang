@@ -46,6 +46,7 @@ pub mod ac;
 pub mod ac_a2c_hir;
 pub mod ac_a2py_hir;
 pub mod ac_a2r_hir;
+pub mod ac_a2r_lang;
 pub mod ac_av;
 pub mod ac_cte;
 pub mod ac_mn;
@@ -194,7 +195,15 @@ impl Selection {
                 .map(|a| a == check.adapter.as_str())
                 .unwrap_or(true)
             && self.check.as_deref().map(|c| c == check.id).unwrap_or(true)
-            && self.target.as_deref().is_none_or(|target| target == "av" && is_av_run(check))
+            && self.target.as_deref().is_none_or(|target| match target {
+                "av" => is_av_run(check),
+                // PLAN-1115: the ordinary-language A2R run rows.
+                "a2r" => check.adapter == Adapter::Probe
+                    && check.action == auto_test_case::contract::Action::Run
+                    && check.options.probe_recipe.as_deref()
+                        == Some("ac-a2r/hir-language-run-v1"),
+                _ => false,
+            })
     }
 }
 
@@ -270,8 +279,14 @@ fn run_suite_selected_impl(
         }
     }
 
-    if selection.target.as_deref().is_some_and(|target| target != "av") {
-        return Err("bad selector: target must be av".into());
+    // PLAN-1078/1115: the corpus target views — `av` (the AV run checks)
+    // and `a2r` (the ordinary-language A2R run rows).
+    if selection
+        .target
+        .as_deref()
+        .is_some_and(|target| target != "av" && target != "a2r")
+    {
+        return Err("bad selector: target must be av or a2r".into());
     }
     let loaded = load_suite(suite_path, limits).map_err(|e| format!("suite load: {}", e))?;
 
@@ -281,7 +296,8 @@ fn run_suite_selected_impl(
     for case_file in &loaded.cases {
         for spec in &case_file.specs {
             let selected_checks = spec.checks.iter().filter(|check| selection.matches(&spec.id, check));
-            if selection.target.is_some() && selection.case.as_deref().is_none_or(|id| id == spec.id)
+            if selection.target.as_deref() == Some("av")
+                && selection.case.as_deref().is_none_or(|id| id == spec.id)
                 && spec.tags.iter().any(|tag| tag == "av-language-parity")
                 && (spec.status_skip.is_some() || !selected_checks.clone().any(|check| check.skip.is_none()))
             {
@@ -1106,6 +1122,21 @@ fn dispatch_check(
             if check.options.probe_recipe.as_deref() == Some(ac_av::AV_LANGUAGE_SOURCE_RECIPE) =>
         {
             ac_av::run_language_source_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-1115: the ordinary-language A2R RUN recipe (real rustc
+        // execution inside the prebuilt worker; the corpus rows' own
+        // oracle; append-only registration).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_a2r_lang::A2R_LANG_RUN_RECIPE) =>
+        {
+            ac_a2r_lang::run_language_check(
                 resolved,
                 check,
                 oracle,
