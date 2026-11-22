@@ -199,7 +199,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
-| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04。已核（2026-11-22）：专树 `D:/autostack/.wt/lang-1053/auto-lang`@`plan-1053-dev`，base `9a34e2eee`；材料scope `D:/autostack/plan-artifacts/plan-1053/` 已登记 `.retention/policy.json`；§4指纹3/5不变（case-worker/ac-native/ace-m1-expanded-acceptance），`scripts/test-groups.toml` 与 design/55 已演进（历史取材，不阻塞）；1044–1052/1055/1056 依赖全部 archived；机器占用：lang-1116 在构建 ace-av av-worker（本包构建须等其释放）。**开工门未闭：985/A 的 T-A04 独立复审未执行、T-A05 未落 M2A-08（985 status executing 6/14，A批work已收口于 r29/ecc282df1，review/land 未发生）**——按 T-01 合同停在具名依赖，不消费 WIP；T-02 及以下未启动 |
+| [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04。已核（2026-11-22）：专树 `D:/autostack/.wt/lang-1053/auto-lang`@`plan-1053-dev`，base `9a34e2eee`；材料scope `D:/autostack/plan-artifacts/plan-1053/` 已登记 `.retention/policy.json`；§4指纹3/5不变（case-worker/ac-native/ace-m1-expanded-acceptance），`scripts/test-groups.toml` 与 design/55 已演进（历史取材，不阻塞）；1044–1052/1055/1056 依赖全部 archived。**开工门核实已闭（2026-11-22 更正）**：985/A 的 T-A04 独立phase复审 pass（r29，reviewed ecc282df1，独立子代理上下文）＋T-A05 A批fold pass，M2A-08 正式成立并落主 `95c7fbad8`（ff-only线性，A阶段Spec `docs/specs/ace-migration/m2-certification.md` 在delivery内；985 目标会话 round3 outcome pass done）——早前 T-01 初判"T-A04未执行"系只读 r29 §9 首条 mid-session 记录所致误判，已更正。机器占用注意：lang-1116 构建期须错峰。T-02 据此启动 |
 | [ ] T-02 Gen0构建与主体归属 | work | T-01 | 用绑定M2-A Rust AC/标准库/后端工具真编同一AAC源码树S为native Gen1，记录源码/工具/桥/ABI/依赖hash；审计服务入口与动态调用，Gen0编译S的窗口允许Rustparse等；从Gen1接受被测请求开始，Rustparse/resolve/infer/HIRlower/sourceCT入口禁止访问。 | 真实Gen1 exe/身份清单与无Rustsource服务证据；自举壳/转译壳不计；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-03 测试义务与固定组接线 | work | T-02 | 复用 `crates/auto-test-case`、`crates/auto-lang-core/src/test_cases/{mod,ac_av}.rs`、`vendor/autodown-test-parser/PROVENANCE.md`及ACE case-worker的现合同，创建CL逐行用例/去向、CS模块调用与新反控，复用各前序包已交阶段driver/选择，只补整机AAC薄adapter及固定组汇总；把实际native AAC命令/阶段产物配置成可执行入口，名称在实现时登记。 逐最终CL语言/库/领域行绑定AAC实际编译入口→AC真实产物→执行oracle，给AAC源码未用特性建永久语料；与AV/A2R正式producer分别对独立expected。 | 永久AAC语料与可运行固定入口；原旧义务不减、未观察不得PASS；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-04 全语言/库与领域执行 | work | T-03 | Gen1编译运行全部冻结CL的AC适用输入，覆盖普通源码/完整标准库调用、泛型CT、dynamic/闭包/async/foreign/资源及Schema/UI/AGE最小真实host执行；每项保独立expected，Rustreference仅补对照。 显式执行~T/?T/!T与泛型/CTE/required标注的跨模块/owned资源组合，及完整Node/FFI消费；不能只自编译、只parse/emit、只跑happy-path或仅编一个代表例。 | CL全量结果与host/provider/生命周期记录；不凭parse/emit代run，不迁整个产品；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
@@ -210,6 +210,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量，归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+- 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 4 | from: work | to: work | status: executing | outcome: pass（gate 更正后继续） | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: work（T-02）
 
 - 2026-11-22 stage: goal | plan_id: PLAN-1053 | plan_revision: r8 | round: 3 | from: work | to: work | status: executing | outcome: waiting（连续第 3 轮，转 blocked） | worktree: D:/autostack/.wt/lang-1053/auto-lang | commit: 9a34e2eee | next: user
 
@@ -237,7 +239,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
-2026-11-22（T-01 核得，需用户决定）：本包开工门为 985/A 正式来源（§5"985/A正式来源仍为开工门"），但 PLAN-985 当前 status executing 6/14——A批 work 已收口（r29，ecc282df1）而 **T-A04 独立复审未执行、T-A05 未落 M2A-08**，A基线未正式冻结落主。按 T-01 合同"未就绪停在具名依赖不消费WIP"，T-02 及以下未启动、零代码改动、专树与材料scope保留待续。
- unblock 二选一：（1）先完成 985/A（用户授权跑 985 的 T-A04→T-A05，落 M2A-08 后本目标自动续跑 T-02）；（2）用户裁定本包可针对 985/A 未落主的 work 批次基线先行开工（等于修订开工门合同，属用户决定，须显式授权）。
+2026-11-22 更正与关闭：T-01 初判"985/A 开工门未闭"系误判——完整核对 985 §9 后确认 T-A04 phase复审 pass（r29/ecc282df1，独立子代理）＋T-A05 fold pass，**M2A-08 已成立并落主 `95c7fbad8`**（985 目标会话 round3 done）。开工门实已闭合，无须用户在 §10 二选一；用户已授权的实施指令有效，T-02 启动。下列更正前的问题记录作废保留备查：
+~~2026-11-22（T-01 核得，需用户决定）：本包开工门为 985/A 正式来源（§5"985/A正式来源仍为开工门"），但 PLAN-985 当前 status executing 6/14——A批 work 已收口（r29，ecc282df1）而 **T-A04 独立复审未执行、T-A05 未落 M2A-08**，A基线未正式冻结落主。按 T-01 合同"未就绪停在具名依赖不消费WIP"，T-02 及以下未启动、零代码改动、专树与材料scope保留待续。 unblock 二选一：（1）先完成 985/A（用户授权跑 985 的 T-A04→T-A05，落 M2A-08 后本目标自动续跑 T-02）；（2）用户裁定本包可针对 985/A 未落主的 work 批次基线先行开工（等于修订开工门合同，属用户决定，须显式授权）。~~
 
 原 standing 记录（2026-11-19 r8前）：所有主体/服务/驱动输入都已正式交付，Windows x64 Gen0 toolchain/SDK可复现；不要求M2-B完成或产品改默认。 1044负责冻结具体schema/源码需求/资源profile，1051/T-02负责transport有界决策；重大支持范围/预算/仓修改边界变化另按用户授权处理，例行实现选择不反复请求确认。后续源与工具变化按真实影响更新收据，不复用失效身份。
