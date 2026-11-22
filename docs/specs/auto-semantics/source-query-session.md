@@ -177,3 +177,12 @@ revision=0）零变化；公开 `QueryHost<ManagedStoreSink>` 同源连续 prepa
   logical；同形同名跨域（外域/同形 owner/codec 还原）页 typed 拒。合法页、位置漂移恢复、
   fresh 等值与 seed solver-disabled 暖命中保持；实际 AV 失败后旧负例族可继续。
   （F-941-09；AC-02/05/07/18）
+
+## AAC 增量驱动层的策略所有权交接（PLAN-1052 已交，SD-02）
+
+AAC 增量驱动/持久缓存/编译发布策略主体已由 [AAC 增量驱动规范](auto-ac/aac-incremental-driver.md)
+冻结（PLAN-1052）：Auto 模块 `experimental/ace/aac/store/` 与 `aac/driver/` 拥有六轴 BUILD
+身份键、页键、恢复准入分类与发布三态决策，以及正负 read set/邻域判定；conformance 见
+`experimental/ace/tests/incremental/`。本文（SQ-A 934）的 Rust 事实页/查询会话仍是事实
+生产者，其 owner 与合同不变；AAC 策略层在其上决策，不重写本文件任何现行规则。
+
