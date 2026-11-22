@@ -156,8 +156,7 @@ pub struct ComponentHandler {
 /// The compatibility VM implements `Env.track() == "vm"`. Checked package
 /// hosts never run on that track. Keep the surviving branch's lexical scope
 /// and exclude inactive branches from both lowering and import reachability.
-pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &mut Vec<Span>) {
-    use super::ast::BinOp;
+pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &mut Vec<Span>) {    use super::ast::BinOp;
 
     fn is_legacy_track(expr: &Expr) -> bool {
         match &expr.kind {
@@ -3113,6 +3112,58 @@ pub(crate) fn check_event_dispatch(
 /// PLAN-981（IF-981-PARAMS-B）：handler 形参与消息载荷的**声明级**绑定核对。
 /// 逐 handler：形参数必须等于变体载荷槽数（未声明变体按 0），重复形参具名拒。
 /// 未派发也核对（"未调用 handler 亦按原声明语义 verify"）。
+/// PLAN-113（026 真语料）：handler 体是否引用**惰性 view-data 列表字段**
+///（`for r in .customers` 迭代、`.customers.len()`、`.activeRows = sl`
+/// 等列表读）——惰性字段不落状态，组件车道无法静态承载其检查/派发。
+pub(crate) fn handler_reads_view_data(
+    handler: &ComponentHandler,
+    view_data: &[ComponentViewDataField],
+) -> bool {
+    fn expr_reads_inert(e: &crate::source::ast::Expr, inert: &[String]) -> bool {
+        match &e.kind {
+            crate::source::ast::ExprKind::Field { base, name }
+                if matches!(&base.kind, crate::source::ast::ExprKind::Var(v) if v.name == "self")
+                    && inert.iter().any(|n| n == &name.name) =>
+            {
+                true
+            }
+            crate::source::ast::ExprKind::MethodCall { recv, .. } => {
+                expr_reads_inert(recv, inert)
+            }
+            crate::source::ast::ExprKind::Call { args, .. } => {
+                args.iter().any(|a| match a {
+                    crate::source::ast::Arg::Pos(e) => expr_reads_inert(e, inert),
+                    _ => false,
+                })
+            }
+            _ => false,
+        }
+    }
+    fn stmt_reads(st: &ComponentStmt, inert: &[String]) -> bool {
+        match st {
+            ComponentStmt::Assign(a) => expr_reads_inert(&a.rhs, inert),
+            ComponentStmt::AssignLocal { value, .. } => expr_reads_inert(value, inert),
+            ComponentStmt::Call { call, .. } => expr_reads_inert(call, inert),
+            ComponentStmt::For { iter, body, .. } => {
+                expr_reads_inert(iter, inert) || body.iter().any(|b| stmt_reads(b, inert))
+            }
+            ComponentStmt::While { cond, body, .. } => {
+                expr_reads_inert(cond, inert) || body.iter().any(|b| stmt_reads(b, inert))
+            }
+            ComponentStmt::If { cond, then, els, .. } => {
+                expr_reads_inert(cond, inert)
+                    || then.iter().any(|b| stmt_reads(b, inert))
+                    || els.as_deref().is_some_and(|e| e.iter().any(|b| stmt_reads(b, inert)))
+            }
+            ComponentStmt::Let { value, .. } => expr_reads_inert(value, inert),
+            ComponentStmt::Effect { value, .. } => expr_reads_inert(value, inert),
+            _ => false,
+        }
+    }
+    let inert: Vec<String> = view_data.iter().map(|v| v.name.clone()).collect();
+    handler.stmts.iter().any(|st| stmt_reads(st, &inert))
+}
+
 pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
     for h in &node.handlers {
         let variant = node.messages.iter().find(|variant| variant.name == h.msg);
@@ -3427,6 +3478,15 @@ pub(crate) fn handler_check_fn(
     package_lists: bool,
 ) -> Option<Result<Item, Vec<Diagnostic>>> {
     let h = &node.handlers[handler_index];
+    // PLAN-113（026 真语料）：**组件面车道**（package_lists=false）handler 体
+    // 引用惰性 view-data 列表（`for r in .customers`、`.customers.len()`、
+    // `.schemaColumns = […]` 重写）——惰性字段不落状态，检查函数无法静态
+    // 承载（共享 verify 会对 self.field 报 undefined/iterate 系）；与域外体
+    // 同律不铸检查函数（装载通过，派发按 handler 具名拒）。包面契约（p105
+    // list-iteration pending surface）保持原样——本跳过只作用于组件面车道。
+    if !package_lists && handler_reads_view_data(h, &node.view_data) {
+        return None;
+    }
     // PLAN-980 WEB #6o 合同闭合（#6p 实装）：域外体（let/if/非头参数调用）
     // **不铸检查函数**——部分体 verify 禁止；lane 缺席（旧道承载）。
     // （#6o 落了 body_foreign 标记与场景派发拒，但检查函数铸造未守——
@@ -5644,7 +5704,7 @@ pub fn compile_component_event_program(
     emit_texts: bool,
 ) -> Result<ComponentEventProgram, Vec<Diagnostic>> {
     let src = &desugar_widget_src(src)?;
-    let candidates = project_component_candidates(src)?;
+    let mut candidates = project_component_candidates(src)?;
     if !alias.is_accept() {
         if let Some(n) = candidates.iter().find(|n| n.legacy_widget) {
             return Err(vec![text_diag(
@@ -5670,20 +5730,24 @@ pub fn compile_component_event_program(
         )]);
     }
     let node = match node_index {
-        Some(i) => candidates.get(i).ok_or_else(|| {
-            vec![text_diag(
-                "source.age.component-shape",
-                format!(
-                    "node index {i} is out of range; the source declares {} node(s)",
-                    candidates.len()
-                ),
-                candidates
+        Some(i) => {
+            if i >= candidates.len() {
+                let span = candidates
                     .first()
                     .map(|n| n.span)
-                    .unwrap_or(Span { start: 0, end: 0 }),
-            )]
-        })?,
-        None => &candidates[0],
+                    .unwrap_or(Span { start: 0, end: 0 });
+                return Err(vec![text_diag(
+                    "source.age.component-shape",
+                    format!(
+                        "node index {i} is out of range; the source declares {} node(s)",
+                        candidates.len()
+                    ),
+                    span,
+                )]);
+            }
+            &mut candidates[i]
+        }
+        None => &mut candidates[0],
     };
     let items = parse_program_items(src)?;
     if let Some(d) = hidden_name_conflict(&items) {
@@ -5741,35 +5805,22 @@ pub fn compile_component_event_program(
     validate_channel_value_use(node)?;
     // 增量车道 = 场景重放车道同一 fail-closed 边界：外部名体/宿主通道调用
     // 不进本车道（WEB lane 的检查函数道承载；ASE 域不消费）。
-    for h in &node.handlers {
+    // PLAN-113（026 真语料）：body_foreign 与**惰性 view-data 引用** handler
+    // **跳过**（不建派发入口）而非整体拒编——应用仍可装载渲染；脚本点击
+    // 命中该 handler 时由派发守卫按 handler 具名拒（4956 行同判定），零效果
+    // fail-closed 语义不变。
+    node.handlers.retain(|h| {
         if h.body_foreign {
-            return Err(vec![text_diag(
-                "source.age.component-unsupported",
-                format!(
-                    "handler `{}` carries a body outside the checked script domain \
-                     (calls/lets/control flow); an incremental event entry must not run a partial body",
-                    h.msg
-                ),
-                h.span,
-            )]);
+            return false;
         }
         if !h.channel_calls.is_empty() {
-            return Err(vec![text_diag(
-                "source.age.component-unsupported",
-                format!(
-                    "handler `{}` carries a host-channel call ({}); the incremental event lane has no \
-                     host, so a directed event must not drop the notification",
-                    h.msg,
-                    h.channel_calls
-                        .iter()
-                        .map(|c| c.channel.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-                h.span,
-            )]);
+            return false;
         }
-    }
+        if handler_reads_view_data(h, &node.view_data) {
+            return false;
+        }
+        true
+    });
 
     let mut out_items: Vec<Item> = Vec::new();
     // (1) 字段 cell（store 声明只注册访问子伪签名；真实初值由 init 写入，

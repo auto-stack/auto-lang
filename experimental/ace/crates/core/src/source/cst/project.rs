@@ -145,7 +145,7 @@ pub(crate) fn project_program_with_pragmas(
         false,
         profile.is_auto_language(),
         false,
-        false,
+        matches!(profile, SourceProfile::AgeH0 | SourceProfile::AgeComponent),
     )
 }
 
@@ -5819,9 +5819,37 @@ impl<'a> Engine<'a> {
                             .into_iter()
                             .find(|&c| self.cx.tree.node(c).flags & FLAG_TRIVIA == 0)
                             .unwrap_or(ty_node);
-                        let init = self.project_expr_sync(init_node);
+                        let ty_spelled = self.cx.spelling(ty_leaf);
                         let collection_type = self.cx.field_child(ty_node, "generic")
                             .map(|generic| self.project_generic_ty(generic));
+                        // PLAN-113（026 真语料）：**裸 `List`**（无泛型实参）且
+                        // 初值是列表字面量的字段（`dbNodesFull List = [{ … }]`、
+                        // `dbExpanded List = ["a"]`）按**惰性 view-data** 承载——
+                        // 与无类型列表同律（106 B2）：不落状态单元、不发射初值；
+                        // 展示读/视图循环消费原样字面量。带泛型实参的
+                        // `List<T> = […]`（114 类型化列表）保持真实状态。
+                        let init = self.project_expr_sync(init_node);
+                        // PLAN-113（026 真语料）：**裸 `List`**（无泛型实参）且
+                        // 初值元素是**记录/嵌套列表**（`dbNodesFull List = [{ … }]`）
+                        // 按**惰性 view-data** 承载——与无类型列表同律（106 B2）：
+                        // 不落状态单元、不发射初值；异构记录字段无法经共享 resolver
+                        // 定型（object-elem）。纯标量元素的裸 `List`（`ids List =
+                        // ["a","b"]`，p114 合同）保持真实类型化状态（List<str>）。
+                        let is_inert_record_list = ty_spelled == "List"
+                            && collection_type.is_none()
+                            && matches!(&init.kind, ExprKind::ArrayLit(items)
+                                if items.iter().any(|e| matches!(
+                                    e.kind,
+                                    ExprKind::ObjectLit { .. } | ExprKind::ArrayLit(_)
+                                )));
+                        if is_inert_record_list {
+                            view_data.push(crate::source::age_component::ComponentViewDataField {
+                                name: self.cx.spelling(name_leaf),
+                                literal: self.cx.spelling(init_node),
+                                span: self.cx.span_of(field),
+                            });
+                            continue;
+                        }
                         let mutable = self
                             .cx
                             .field_child(field, "kw")
@@ -6342,7 +6370,68 @@ impl<'a> Engine<'a> {
                 );
             }
         }
+        // PLAN-113（026 真语料）：裸 `List` 字面量字段的惰性判定**延后到
+        // view 投影**——未被 view 循环迭代的裸 List 字段（`dbExpanded List =
+        // ["db/app", …]` 树展开态，仅 handler/TreeView 引用）按惰性
+        // view-data 承载（106 B2：不落状态、不发射初值）；**view 循环迭代**的
+        // 裸 List（p114 ids 合同：事件 fn 迭代）保持类型化状态。记录元素在
+        // model 时点已惰性化（上一处）；此处补字符串数组形。
+        let mut view_iterated: BTreeSet<String> = BTreeSet::new();
+        Self::collect_view_iter_names(&component.view.tree, &mut view_iterated);
+        let mut inert_fields: Vec<ComponentField> = Vec::new();
+        component.fields.retain(|f| {
+            if f.ty.trim() == "List"
+                && f.collection_type.is_none()
+                && matches!(f.init.kind, ExprKind::ArrayLit(_))
+                && !view_iterated.contains(f.name.as_str())
+            {
+                inert_fields.push(f.clone());
+                return false;
+            }
+            true
+        });
+        for f in inert_fields {
+            component.view_data.push(
+                crate::source::age_component::ComponentViewDataField {
+                    name: f.name.clone(),
+                    literal: self
+                        .cx
+                        .spelling_by_range(f.init.span.start as u64, f.init.span.end as u64),
+                    span: f.span,
+                },
+            );
+        }
         component
+    }
+
+    /// 收集 view 树中 for 循环迭代的 `self.<field>` 名（惰性判定豁免）。
+    fn collect_view_iter_names(
+        items: &[crate::source::age_component::ComponentViewItem],
+        out: &mut BTreeSet<String>,
+    ) {
+        for it in items {
+            match it {
+                crate::source::age_component::ComponentViewItem::For(f) => {
+                    if let crate::source::ast::ExprKind::Field { base, name } = &f.iter.kind {
+                        if matches!(
+                            &base.kind,
+                            crate::source::ast::ExprKind::Var(v) if v.name == "self"
+                        ) {
+                            out.insert(name.name.clone());
+                        }
+                    }
+                    Self::collect_view_iter_names(&f.items, out);
+                }
+                crate::source::age_component::ComponentViewItem::Cond(c) => {
+                    Self::collect_view_iter_names(&c.then_items, out);
+                    Self::collect_view_iter_names(&c.else_items, out);
+                }
+                crate::source::age_component::ComponentViewItem::Element(e) => {
+                    Self::collect_view_iter_names(&e.items, out);
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Legacy handlers can introduce unit messages or payloads pinned by
@@ -6503,6 +6592,43 @@ impl<'a> Engine<'a> {
             };
             let span = data.span;
             let record = super::legacy_record_lists::intern_record(node, span, schema, &mut records, sparse);
+            // PLAN-113（026 真语料）：提升的**裸对象字面量**记录列表元素改写为
+            // 具名构造（`CustomersRow { … }`）——与 114 已交付的作者面构造器
+            // 同型。共享 resolver 把裸对象按同质 map 定型（object-elem），
+            // 异构记录字段（id int + col str）会被拒；CtorNamed 走记录构造
+            // 路由（F-771-R1-02），字段按声明类型逐项承接。
+            let mut init = init;
+            if let ExprKind::ArrayLit(items) = &mut init.kind {
+                for item in items.iter_mut() {
+                    let ExprKind::ObjectLit { fields } = &item.kind else {
+                        continue;
+                    };
+                    let item_span = item.span;
+                    let ctor_fields = fields.iter().map(|f| NamedCtorField {
+                        name: match &f.key {
+                            crate::hir::ObjectKey::Text(name) => Ident {
+                                name: name.clone(),
+                                span: f.span,
+                            },
+                            _ => Ident {
+                                name: String::new(),
+                                span: f.span,
+                            },
+                        },
+                        value: f.value.clone(),
+                        span: f.span,
+                    }).collect();
+                    item.kind = ExprKind::CtorNamed {
+                        ty: Ident {
+                            name: record.name.clone(),
+                            span: item_span,
+                        },
+                        args: Vec::new(),
+                        fields: ctor_fields,
+                    };
+                    item.span = item_span;
+                }
+            }
             fields.push(ComponentField {
                 name: data.name,
                 ty: format!("List<{}>", record.name),

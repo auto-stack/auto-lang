@@ -678,7 +678,7 @@ fn p114_age_package_checks_expanded_ids_as_owned_lists() {
     let source = r#"widget TreePage {
     msg { Expand, Collapse }
     model {
-        expanded List = ["docs", "src"]
+        expanded List<str> = ["docs", "src"]
     }
     on {
         .Expand -> {

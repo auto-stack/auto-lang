@@ -3496,6 +3496,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             }
             alt(profiles: [auto, auto-packages]) { pipegt() dot(same-line: true) ident(field: "member") }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, text, host-console, closures, collections, packages-modules, packages-ct, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { dot(same-line: true) ident(field: "member") }
+            // PLAN-113（026 真语料）：记录字段成员位接受 `type` 保留字
+            //（`c.type`——schema 列记录的字段读；`type` 是全域 token，
+            // 普通 ident 成员位匹配不到；成员位=字段读语义，同 cfg-doc-key）。
+            alt(profiles: [age-component, age-package]) { dot(same-line: true) type-kw(same-line: true, field: "member") }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) double-kw(field: "member", same-line: true) }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) int-lit(field: "member", same-line: true) }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) true-kw(field: "member", same-line: true) }

@@ -208,7 +208,9 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // PLAN-113（026 真语料，同批第三刀）：handler 参数类型注解开组件面
             //（`.PageChanged(ev str)`，msg payload 定型同一条 notation 校验）——
             // 08c8cdbd…→c36f1ec3…；age-package 面规则文本等值（该臂包面本有）。
-            "c36f1ec3850005293cee503ce4dd0a7162cb513d3a436546584895bc24f0bfbe",
+            // PLAN-113（026 真语料，同批第四刀）：postfix 成员位收 `type` 保留字
+            //（`c.type` 记录字段读，AGE 两面）——c36f1ec3…→817d81cf…。
+            "817d81cfd85fd3853d79d0f187637b9c8d2b5b432127a3f710f9c2181d5ac005",
         ),
         (
             SourceProfile::AgeH0,
@@ -342,6 +344,8 @@ fn p981_age_package_grammar_id_is_frozen() {
         //（两 AGE 面同开，同 AgeComponent 行）——6d2df8f9…→b250ed41…。
         // PLAN-113（026 真语料，同批第二刀）：age-on-branch-stmt 增 view-data
         // 列表赋值臂（同 AgeComponent 行）——b250ed41…→4641d973…。
-        "4641d973523cfe91695ee83083d0efb535de127c149882fc49ff577575ef00c2"
+        // PLAN-113（026 真语料，同批第四刀）：postfix 成员位收 `type` 保留字
+        //（同 AgeComponent 行）——4641d973…→9bd00590…。
+        "9bd0059053a36634808737e8a0cdb70746e90bd7c2432da21b242f5aa4a0cc40"
     );
 }
