@@ -473,7 +473,10 @@ fn list_new_mixed_types_reject() {
 }
 
 #[test]
-fn hof_non_int_elements_reject() {
+fn hof_non_int_callback_type_rejects() {
+    // PLAN-1120 migrated the domain rejection: non-i32 elements now run the
+    // typed desugar lane, so the old `source.hof-elem-domain` row becomes a
+    // callback type-mismatch (`fn(int)` against `List<Str>` elements).
     let (stage, code) = diag(concat!(
         "fn main() int {
 ",
@@ -488,8 +491,8 @@ fn hof_non_int_elements_reject() {
     ));
     assert_eq!(
         (stage.as_str(), code.as_str()),
-        ("bind", "source.hof-elem-domain"),
-        "the 972 family is List<int>-instantiated; other elements keep their owner"
+        ("bind", "source.type-mismatch"),
+        "the typed HOF lane rejects a callback whose element parameter mismatches"
     );
 }
 

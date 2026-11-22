@@ -10,6 +10,8 @@ mod component_event_sessions_1106;
 mod plan108_http_component;
 #[path = "cases/plan1106_t01_probe.rs"]
 mod plan1106_t01_probe;
+#[path = "cases/plan1120_generic_list_hof.rs"]
+mod plan1120_generic_list_hof;
 #[path = "cases/plan980_lambda_if.rs"]
 mod plan980_lambda_if;
 #[path = "cases/plan980_web_6o_face.rs"]

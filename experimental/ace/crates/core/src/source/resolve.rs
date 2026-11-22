@@ -13260,6 +13260,27 @@ F:{d}
             "filter" if self.profile.is_auto_language() && elem != VT::I32 && rargs.len() == 1 => {
                 self.filter_typed_list(li, *list, rargs.remove(0), span)
             }
+            // PLAN-1120: the generic HOF family over non-i32 elements rides
+            // the same inline desugar lane as filter (snapshot isolation,
+            // source-order visits, frozen closure/ownership contracts);
+            // List<int> keeps the frozen 972 stdlib graft below.
+            "map" | "find" | "any" | "all"
+                if self.profile.is_auto_language() && elem != VT::I32 && rargs.len() == 1 =>
+            {
+                let arg = rargs.remove(0);
+                match name.name.as_str() {
+                    "map" => self.map_typed_list(li, *list, arg, span),
+                    "find" => self.find_typed_list(li, *list, arg, span),
+                    _ => self.any_all_typed_list(li, *list, arg, name.name == "all", span),
+                }
+            }
+            "reduce"
+                if self.profile.is_auto_language() && elem != VT::I32 && rargs.len() == 2 =>
+            {
+                let init = rargs.remove(0);
+                let fold = rargs.remove(0);
+                self.reduce_typed_list(li, *list, init, fold, span)
+            }
             "map" | "filter" | "find" | "any" | "all" if rargs.len() == 1 => {
                 return self.std_list_hof(name, *list, rargs, span);
             }
@@ -13501,6 +13522,693 @@ F:{d}
                 inner: Box::new(result),
             },
         )
+    }
+
+    /// PLAN-1120: shared callback admission for the typed HOF desugars
+    /// (map/find/any/all/reduce over non-i32 elements) — the same shape
+    /// `filter_typed_list` validates: one positional callback whose single
+    /// parameter is the element type (the `Str` borrowing view is accepted
+    /// for `List<StrOwned>` elements, mirroring filter). Returns the
+    /// callback expression and the borrowed-element flag (records and the
+    /// Str view ride the item read directly; other owned elements get a
+    /// per-visit clone, exactly like filter's predicate argument).
+    fn hof_typed_callback(
+        &mut self,
+        method: &str,
+        elem: VT,
+        arg: ResolvedArg,
+    ) -> Option<(ResolvedExpr, bool)> {
+        if arg.name.is_some() || arg.moved {
+            self.bind_err(
+                "source.argument",
+                format!("{method} takes one positional callback"),
+                arg.span,
+            );
+            return None;
+        }
+        let fidx = match arg.value.vt {
+            VT::Function(index) => self.coll.function_types.get(index).filter(|signature| {
+                signature.params.len() == 1
+                    && (signature.params == [elem]
+                        || (elem == VT::StrOwned && signature.params == [VT::Str]))
+            }),
+            _ => None,
+        };
+        let Some(_) = fidx else {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`{method}` expects a callback taking one {} element",
+                    elem.as_str()
+                ),
+                arg.span,
+            );
+            return None;
+        };
+        let borrowed_element = matches!(elem, VT::Rec(_))
+            || (elem == VT::StrOwned
+                && matches!(arg.value.vt, VT::Function(fi)
+                    if self.coll.function_types[fi].params == [VT::Str]));
+        Some((arg.value, borrowed_element))
+    }
+
+    /// PLAN-1120 (T-02): `map` over a non-i32 element list — the closure may
+    /// produce any `U`; visits every element in source order and pushes the
+    /// mapped value into a fresh `List<U>`.
+    fn map_typed_list(
+        &mut self,
+        list_type: usize,
+        source: ResolvedExpr,
+        mapper: ResolvedArg,
+        span: Span,
+    ) -> ResolvedExpr {
+        let elem = self.coll.lists[list_type];
+        let Some((callback, borrowed)) = self.hof_typed_callback("map", elem, mapper) else {
+            return instances::pending_expression(span);
+        };
+        let result_vt = match callback.vt {
+            VT::Function(fi) => self.coll.function_types[fi].result,
+            _ => VT::I32,
+        };
+        let result_li = self.coll.intern_list(result_vt);
+
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let source = self.eval_once(source);
+        let callback = self.eval_once(callback);
+        let snapshot = self.eval_once(self.clone_collection_value(source));
+        let result = self.eval_once(expr(
+            VT::List(result_li),
+            RExprKind::ListNew { list: result_li },
+        ));
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(snapshot.clone()),
+            },
+        ));
+        let index = self.agg_temp("map_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let value = if owned {
+            self.clone_collection_value(expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            ))
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let item = self.agg_temp("map_item", elem, false, span);
+        let read_item = || expr(elem, RExprKind::ReadLocal(item));
+        // The callback receives the element like filter's predicate does:
+        // records ride the borrowed view lane; owned text elements get a
+        // per-visit clone so the item temp keeps its own owner.
+        let argument = if owned && !borrowed {
+            self.clone_collection_value(read_item())
+        } else {
+            read_item()
+        };
+        let mut mapped = self.resolve_closure_call(
+            callback,
+            vec![ResolvedArg {
+                value: argument,
+                name: None,
+                moved: false,
+                span,
+            }],
+            span,
+        );
+        self.check_push_value(&result_vt, &mut mapped, span);
+        let push = RStmt::ExprStmt {
+            value: expr(
+                VT::Unit,
+                RExprKind::ListPush {
+                    list: Box::new(result.clone()),
+                    value: Box::new(mapped),
+                },
+            ),
+            span,
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::Let {
+                        local: item,
+                        value,
+                        span,
+                    },
+                    push,
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(
+            result.vt,
+            RExprKind::Move {
+                inner: Box::new(result),
+            },
+        )
+    }
+
+    /// PLAN-1120 (T-02): `find` over a non-i32 element list — binds the AV
+    /// `?T` Option contract; the predicate short-circuits at the first hit.
+    fn find_typed_list(
+        &mut self,
+        list_type: usize,
+        source: ResolvedExpr,
+        predicate: ResolvedArg,
+        span: Span,
+    ) -> ResolvedExpr {
+        let elem = self.coll.lists[list_type];
+        if matches!(elem, VT::List(_)) {
+            self.bind_err(
+                "source.hof-elem-domain",
+                "`find` over nested lists is not part of this element domain".to_string(),
+                span,
+            );
+            return instances::pending_expression(span);
+        }
+        let Some((callback, borrowed)) = self.hof_typed_callback("find", elem, predicate) else {
+            return instances::pending_expression(span);
+        };
+        let option_vi = self.coll.intern_variant(
+            "Option",
+            span,
+            vec![("Some".to_string(), Some(elem)), ("None".to_string(), None)],
+        );
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let source = self.eval_once(source);
+        let callback = self.eval_once(callback);
+        let snapshot = self.eval_once(self.clone_collection_value(source));
+        let found = self.agg_temp("find_result", VT::Variant(option_vi), true, span);
+        self.emit_stmt(RStmt::Let {
+            local: found,
+            value: expr(
+                VT::Variant(option_vi),
+                RExprKind::VariantCtor {
+                    variant: option_vi,
+                    disc: 1,
+                    payload: None,
+                },
+            ),
+            span,
+        });
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(snapshot.clone()),
+            },
+        ));
+        let index = self.agg_temp("find_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let value = if owned {
+            self.clone_collection_value(expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            ))
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let item = self.agg_temp("find_item", elem, false, span);
+        let read_item = || expr(elem, RExprKind::ReadLocal(item));
+        let argument = if owned && !borrowed {
+            self.clone_collection_value(read_item())
+        } else {
+            read_item()
+        };
+        let hit = self.resolve_closure_call(
+            callback,
+            vec![ResolvedArg {
+                value: argument,
+                name: None,
+                moved: false,
+                span,
+            }],
+            span,
+        );
+        let payload = if owned {
+            expr(
+                elem,
+                RExprKind::Move {
+                    inner: Box::new(read_item()),
+                },
+            )
+        } else {
+            read_item()
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        let record_hit = RStmt::If {
+            cond: hit,
+            then: RBlock {
+                stmts: vec![
+                    RStmt::Assign {
+                        local: found,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::Variant(option_vi),
+                            RExprKind::VariantCtor {
+                                variant: option_vi,
+                                disc: 0,
+                                payload: Some(Box::new(payload)),
+                            },
+                        ),
+                        span,
+                    },
+                    RStmt::Break {
+                        target: Some(target),
+                        span,
+                    },
+                ],
+                span,
+            },
+            els: None,
+            span,
+        };
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::Let {
+                        local: item,
+                        value,
+                        span,
+                    },
+                    record_hit,
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(
+            VT::Variant(option_vi),
+            RExprKind::ReadLocal(found),
+        )
+    }
+
+    /// PLAN-1120 (T-02): `any`/`all` over a non-i32 element list — the
+    /// predicate short-circuits at the first deciding element.
+    fn any_all_typed_list(
+        &mut self,
+        list_type: usize,
+        source: ResolvedExpr,
+        predicate: ResolvedArg,
+        is_all: bool,
+        span: Span,
+    ) -> ResolvedExpr {
+        let method = if is_all { "all" } else { "any" };
+        let elem = self.coll.lists[list_type];
+        let Some((callback, borrowed)) = self.hof_typed_callback(method, elem, predicate) else {
+            return instances::pending_expression(span);
+        };
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let source = self.eval_once(source);
+        let callback = self.eval_once(callback);
+        let snapshot = self.eval_once(self.clone_collection_value(source));
+        let result = self.agg_temp("anyall_result", VT::Bool, true, span);
+        let initial = if is_all { true } else { false };
+        let decided = !initial;
+        self.emit_stmt(RStmt::Let {
+            local: result,
+            value: expr(VT::Bool, RExprKind::BoolLit(initial)),
+            span,
+        });
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(snapshot.clone()),
+            },
+        ));
+        let index = self.agg_temp("anyall_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let value = if owned {
+            self.clone_collection_value(expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            ))
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let item = self.agg_temp("anyall_item", elem, false, span);
+        let read_item = || expr(elem, RExprKind::ReadLocal(item));
+        let argument = if owned && !borrowed {
+            self.clone_collection_value(read_item())
+        } else {
+            read_item()
+        };
+        let hit = self.resolve_closure_call(
+            callback,
+            vec![ResolvedArg {
+                value: argument,
+                name: None,
+                moved: false,
+                span,
+            }],
+            span,
+        );
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        // `any` stops at the first true predicate; `all` stops at the
+        // first false one — both then break with the deciding value.
+        let stop = if is_all {
+            expr(
+                VT::Bool,
+                RExprKind::Unary {
+                    op: UnaryOp::Not,
+                    operand: Box::new(hit),
+                },
+            )
+        } else {
+            hit
+        };
+        let record_hit = RStmt::If {
+            cond: stop,
+            then: RBlock {
+                stmts: vec![
+                    RStmt::Assign {
+                        local: result,
+                        path: Vec::new(),
+                        value: expr(VT::Bool, RExprKind::BoolLit(decided)),
+                        span,
+                    },
+                    RStmt::Break {
+                        target: Some(target),
+                        span,
+                    },
+                ],
+                span,
+            },
+            els: None,
+            span,
+        };
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::Let {
+                        local: item,
+                        value,
+                        span,
+                    },
+                    record_hit,
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(VT::Bool, RExprKind::ReadLocal(result))
+    }
+
+    /// PLAN-1120 (T-02): `reduce` over a non-i32 element list — the
+    /// accumulator type comes from the init value and may differ from the
+    /// element type (`reduce(int, Note)`); the callback must return the
+    /// accumulator type and visits every element in source order.
+    fn reduce_typed_list(
+        &mut self,
+        list_type: usize,
+        source: ResolvedExpr,
+        init: ResolvedArg,
+        fold: ResolvedArg,
+        span: Span,
+    ) -> ResolvedExpr {
+        let elem = self.coll.lists[list_type];
+        if init.name.is_some() || init.moved {
+            self.bind_err(
+                "source.argument",
+                "reduce takes the initial accumulator positionally".to_string(),
+                init.span,
+            );
+            return instances::pending_expression(span);
+        }
+        let acc_vt = init.value.vt;
+        if fold.name.is_some() || fold.moved {
+            self.bind_err(
+                "source.argument",
+                "reduce takes one positional callback".to_string(),
+                fold.span,
+            );
+            return instances::pending_expression(span);
+        }
+        let signature = match fold.value.vt {
+            VT::Function(index) => self.coll.function_types.get(index).filter(|signature| {
+                signature.params == [acc_vt, elem]
+                    || (elem == VT::StrOwned && signature.params == [acc_vt, VT::Str])
+            }),
+            _ => None,
+        };
+        let Some(signature) = signature else {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`reduce` expects a callback taking ({}, {}) and returning {}",
+                    acc_vt.as_str(),
+                    elem.as_str(),
+                    acc_vt.as_str()
+                ),
+                fold.span,
+            );
+            return instances::pending_expression(span);
+        };
+        let borrowed = matches!(elem, VT::Rec(_))
+            || (elem == VT::StrOwned && signature.params == [acc_vt, VT::Str]);
+        if signature.result != acc_vt {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`reduce` callback must return the accumulator type `{}`",
+                    acc_vt.as_str()
+                ),
+                fold.span,
+            );
+            return instances::pending_expression(span);
+        }
+        let callback = fold.value;
+
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let source = self.eval_once(source);
+        let init = self.eval_once(init.value);
+        let callback = self.eval_once(callback);
+        let snapshot = self.eval_once(self.clone_collection_value(source));
+        let acc = self.agg_temp("reduce_acc", acc_vt, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: acc,
+            value: init,
+            span,
+        });
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(snapshot.clone()),
+            },
+        ));
+        let index = self.agg_temp("reduce_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let value = if owned {
+            self.clone_collection_value(expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            ))
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(snapshot),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let item = self.agg_temp("reduce_item", elem, false, span);
+        let read_item = || expr(elem, RExprKind::ReadLocal(item));
+        let argument = if owned && !borrowed {
+            self.clone_collection_value(read_item())
+        } else {
+            read_item()
+        };
+        let stepped = self.resolve_closure_call(
+            callback,
+            vec![
+                ResolvedArg {
+                    value: expr(acc_vt, RExprKind::ReadLocal(acc)),
+                    name: None,
+                    moved: false,
+                    span,
+                },
+                ResolvedArg {
+                    value: argument,
+                    name: None,
+                    moved: false,
+                    span,
+                },
+            ],
+            span,
+        );
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::Let {
+                        local: item,
+                        value,
+                        span,
+                    },
+                    RStmt::Assign {
+                        local: acc,
+                        path: Vec::new(),
+                        value: stepped,
+                        span,
+                    },
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(acc_vt, RExprKind::ReadLocal(acc))
     }
 
     /// PLAN-1082 (T-03): build the CallFn for a stdlib HOF method — the

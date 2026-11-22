@@ -97,5 +97,11 @@ merge 级门。
 
 - **方法面直调冻结 stdlib**：`map/filter/reduce/find/any/all/pop` on List<int> 经 `compile_language_source` 按需 graft 冻结 `stdlib/ace/asm/list.at`（include_str 身份；`__std_list_` mangle + `pub` 剥离 + 方法形不动；字节稳定单测 `adapter::stdlib_list_graft_tests`）后 `CallFn` 直调——同源同编译器，无第二算法；packages-aggregates-ct 装配线身份/规则零改动。
 - **`List.new(e1..en)` 受检兼容糖**（auto 面）：元素 VT 取自 e1 + 同质校验 + 同 push admission；零参具名拒 `source.list-new-empty`（`List<T>.new()` 承载空表）；不新增任意用户 varargs 语法。
-- **边界**：非 i32 元素 `source.hof-elem-domain`（963 全泛型切片 owner）；`for_each`/`contains`/`sum`/`sort` 等未接方法面（972 集内未列或自由函数面，legacy 迁移以 `find`/`is` 规范化审计在案）；`pop` 保持 None-not-trap 空合同。
+- **边界**：~~非 i32 元素 `source.hof-elem-domain`（963 全泛型切片 owner）~~（PLAN-1120 起非 i32 元素的 map/reduce/find/any/all 走源内 typed 脱糖车道，见 language-parity PLAN-1120 增量；`filter` 已先行同车道；嵌套 List 元素仍具名拒）；`for_each`/`contains`/`sum`/`sort` 等未接方法面（972 集内未列或自由函数面，legacy 迁移以 `find`/`is` 规范化审计在案）；`pop` 保持 None-not-trap 空合同。
 - 证据：`av.parity.1082.hof-real-call`（42）、`hof-family-legacy`（15/4/0/1）、`hof-pipeline-legacy`（60/5/5）、`hof-empty-face`（0/0）、`shims-int-list`（3/20/99/4/30/2/1）。
+
+## PLAN-1120 增量（2026-11-23，非整数元素泛型 HOF 方法面）
+
+- **整数实例限制更新到实测覆盖**：冻结 `list.at` graft 仍只承载 `List<int>` 实例（sum/find_first_gt/pop/total_len/reduce/find/any/all/filter/map/sort 实测公共方法覆盖未变）；非整数元素的 `map/reduce/find/any/all`（及先行落地的 `filter`）不再具名拒 `source.hof-elem-domain`，改由源解析器内联 typed 脱糖（snapshot 隔离 + 源序访问 + 冻结闭包/所有权契约），与整数 graft 车道并存、无第二 stdlib 算法。
+- **回调与持有规则**：回调单参须为元素类型（`List<StrOwned>` 接受 `fn(Str)` 借用视图，同 filter）；记录元素走借用视图车道，其余 owned 元素每次访问克隆；`find` 绑定 AV `?T` Option 合同（Some 载荷 owned 元素 Move 入槽）；`reduce` 累加类型取自 init、可与元素类型不同，回调须返回累加类型；回调类型不符在绑定时具名拒 `source.type-mismatch`；`any/all/find` 短路、空表零回调、reduce 空表保持初值。
+- 证据：`av.parity.1120.generic-list-hof`（`experimental/ace/crates/av/tests/cases/plan1120_generic_list_hof.rs`，9 例：V-01 独立预期 `2 2 world true true 3 1 3 6`、V-02 空表/未命中/短路计数/绑定拒绝、V-03 所有权/分配故障重放/回调失败经 try-catch 后输入可续用、int 近邻 graft 不变）；旧 `source.hof-elem-domain` 负控行迁移为回调类型不匹配负控（plan1082 `hof_non_int_callback_type_rejects`）。

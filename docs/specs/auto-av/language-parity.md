@@ -225,7 +225,7 @@ after`（d01 静默失效债闭） | PASS |
 - **数组/List 字面量任意 rvalue 位**（auto 面专属；962 aggregates 面 init-only 冻结合同不变）：语句 sink 提升（`ListNew`+push 脱糖，源序保持）；嵌套字面量元素以 `Move` 显式转移其合成新值 temp；空 `[]` 语法收录、resolve 具名拒 `bind/source.array-lit-empty`（无元素类型推导；显式 `List<T>.new()` 承载空表）。
 - **place 链赋值/复合赋值**：`ident (.f | [e])* (= | += | -= | *= | /=) e`（CST `place-assign-stmt`，auto 裁剪、置于 path/index-assign 之后仅承混合链/多级索引/复合形，冻结面字节不变）。base/index/RHS 源序各恰一次（合成 temp 提升）；字段链走既有 `RStmt::Assign` 路径写、索引链走 `ListSet`（record List 字段句柄写穿透实测）；复合值 = `ListGet op rhs`（仅 i32 元素，`bind/source.compound-elem-type`）；元素字段尾 `xs[i].f=v` 具名拒 `bind/source.place-elem-field`（LIST_FIELD_SET 源码缝归 records 批）；迭代中结构性写保持 `bind/source.iterate-mutate`。
 - **`List.new(e1..en)` 受检兼容糖**：元素 VT 取自 e1（同数组字面量同质校验+同 push admission）；零参具名拒 `bind/source.list-new-empty`；影子局部/record/variant 优先；非任意 varargs 面。
-- **HOF 方法面**：`map/filter/reduce/find/any/all/pop` on List<int> → 冻结 `stdlib/ace/asm/list.at` 同名 pub fn 直调（`compile_language_source` 按需文本 graft：`__std_list_` mangle、`pub` 剥离、方法形不动、字节稳定单测；同源同编译器，无第二算法）；非 i32 元素具名拒 `bind/source.hof-elem-domain`（stdlib 泛型 owner）。
+- **HOF 方法面**：`map/filter/reduce/find/any/all/pop` on List<int> → 冻结 `stdlib/ace/asm/list.at` 同名 pub fn 直调（`compile_language_source` 按需文本 graft：`__std_list_` mangle、`pub` 剥离、方法形不动、字节稳定单测；同源同编译器，无第二算法）；非 i32 元素自 PLAN-1120 起不再具名拒，走源内 typed 脱糖车道（见下方 PLAN-1120 增量），旧 `bind/source.hof-elem-domain` 行迁移为回调类型不匹配负控。
 - **边界（SEM-02 冻结沿袭）**：越界/负下标/空容器/越界写统一 `run/av.trap.list-index`（先于 buffer 访问）；legacy 负索引 from-end 语义为批准差异分账，绝不冒绿。资源 record（Str/List/Variant 叶，PLAN-1035 F34）经 place 链隐式转移仍拒 `bind/source.move-required`；纯标量 record 按值 Copy 替换。
 
 | case | oracle | 结果 |
@@ -469,3 +469,18 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 - 交付接口 `IF-AV-LANGUAGE-PARITY/1` 绑定普通源/工程、avworker/1.0、
   av.closures/1、MIR lowering 9 与逐 case 真实结果；1068/985 消费本 AV 来源
   补其它端，不新增 M2-A 已签出口硬门。
+
+## PLAN-1120 增量（2026-11-23，AV 泛型 List 高阶方法补齐）
+
+**支持域（普通 AV 链真实执行，`ac-av/language-source-run-v1`）**：
+
+- **非整数元素 HOF 方法面**：`map/reduce/find/any/all` 在 `List<Str>`/`List<StrOwned>`/`List<record>` 上与先行落地的 `filter` 同车道——源解析器内联 typed 脱糖（snapshot 克隆隔离、源序访问、`resolve_closure_call` 冻结闭包），`List<int>` 保持 972 冻结 graft 不变（`hof_int_list_still_runs_the_frozen_stdlib_graft` 钉住 42 近邻）。
+- **回调与持有规则**：回调单参 = 元素类型（`List<StrOwned>` 另接受 `fn(Str)` 借用视图）；记录元素经借用视图车道，其余 owned 元素每访问克隆一次（同 filter 谓词参数契约）；`map` 的 `U` 取自回调结果类型（`map(Note→int)`），push 走 `check_push_value`；`reduce` 累加类型取自 init（`reduce(int, Note)`），回调签名须为 `(acc, elem) -> acc`，不符在绑定时具名拒 `bind/source.type-mismatch`；`find` 绑定 `?T` Option 合同（未命中 None；Some 载荷 owned 元素 Move 入槽），旧 `found.id` 直取字段写法 = `bind/source.type-mismatch`，迁移行须显式 `is` 处理。
+- **求值语义**：`map/filter/reduce` 访问全部元素（源序）；`any/all/find` 短路（首个决定元素后回调不再执行）；空表零回调、`reduce` 空表保持初值、`find` 未命中 None、`any=false`/`all=true`。所有权：快照隔离使原表在调用后仍可用；回调 `fail` 经 try/catch 捕获后临时结果释放、输入可续用（分配/释放经 `assert_released` 与 fail-Nth 故障重放钉住）。
+- **命名拒绝迁移**：旧非 i32 元素 `bind/source.hof-elem-domain` 行退役，代之以回调类型不匹配 `bind/source.type-mismatch`（plan1082 `hof_non_int_callback_type_rejects`）；嵌套 List 元素的 `find` 仍具名拒 `source.hof-elem-domain`。
+
+| case | oracle | 结果 |
+|---|---|---|
+| `av.parity.1120.generic-list-hof`（`experimental/ace/crates/av/tests/cases/plan1120_generic_list_hof.rs` 9 例） | V-01 独立预期 stdout `2 2 world true true 3 1 3 6`（legacy VM 布尔显示 `1` 为具名差异）；V-02 空表/未命中/短路计数/绑定拒绝；V-03 全所有者释放、分配故障重放、回调失败 try/catch 后输入续用；int 近邻 42 | PASS |
+
+复跑入口：`cargo test -p ace-av --test conformance plan1120_generic_list_hof`（9 例）+ plan1082/1086/1088 近邻族。legacy 映射：`legacy.25_method_u64.012_list_hof_value` 行归本计划（`legacy-map.tsv`，canonical `av.parity.1120.generic-list-hof`）。
