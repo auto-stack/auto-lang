@@ -53,13 +53,13 @@ fn v02_admission_taxonomy() {
     assert_eq!(got, want, "store taxonomy");
 }
 
-/// A same-identity page checksum is stable; different payloads differ. The
-/// checksum is blake3 over the exact payload bytes (content NUL is content).
+/// A same-identity page checksum is stable (determinism proof within ONE
+/// program, one Gen0 compile); the expected value is the independent blake3
+/// over the exact payload bytes (content NUL is content).
 #[test]
 fn v02_page_checksum() {
-    let h1 = obs("page_checksum", "page_checksum(\"fn main() int { return 42 }\")");
-    let h2 = obs("page_checksum", "page_checksum(\"fn main() int { return 42 }\")");
-    assert_eq!(h1, h2, "checksum is deterministic");
+    let got = obs("checksum_report", "checksum_report()");
     let expect = blake3::hash(b"fn main() int { return 42 }").to_hex().to_string();
-    assert_eq!(h1, expect, "byte-exact blake3 over the payload bytes");
+    let want = format!("{expect},{expect}");
+    assert_eq!(got, want, "byte-exact blake3 over the payload bytes, deterministic");
 }

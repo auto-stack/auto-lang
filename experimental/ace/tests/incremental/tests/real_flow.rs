@@ -45,14 +45,20 @@ fn run_int_program(tag: &str, src: &str) -> Result<i32, String> {
     }
 }
 
-/// V-04 leg 1: A calls B; B returns 3, then a body-only edit returns 4 —
-/// the SAME caller A, the SAME signature, a changed body.
+/// V-04 leg 1a: A calls B; B returns 3 — one real compile + one real AV
+/// run (a single Gen0 compile per case keeps the per-case budget).
 #[test]
-fn v04_body_edit_changes_result() {
+fn v04_body_edit_b3() {
     let src3 = "fn b() int { return 3 }\nfn a() int { return b() }\nfn main() int { return a() }";
-    let src4 = "fn b() int { return 4 }\nfn a() int { return b() }\nfn main() int { return a() }";
     let v3 = run_int_program("v04-b3", src3).expect("B returns 3 must run");
     assert_eq!(v3, 3, "first compile must produce 3");
+}
+
+/// V-04 leg 1b: the body-only edit makes B return 4 — one real compile +
+/// one real AV run.
+#[test]
+fn v04_body_edit_b4() {
+    let src4 = "fn b() int { return 4 }\nfn a() int { return b() }\nfn main() int { return a() }";
     let v4 = run_int_program("v04-b4", src4).expect("B body edit must run");
     assert_eq!(v4, 4, "body-only edit must produce 4");
 }
@@ -150,10 +156,10 @@ fn v01_real_session_counters() {
     // set did not change (A's read set stays bound) — verified through the
     // Auto neighbour decision (1 = callee-recompute, 0 = caller-reuse).
     assert!(edited.solver_runs >= 1, "edited source must solve at least once");
-    let neighbour = lane::run_int("v01-neighbour", "query", "neighbour_decision", "neighbour_decision(1, 0, 0)")
-        .expect("Auto neighbour decision");
-    assert_eq!(neighbour, 1, "body edit = callee-recompute");
-    let caller = lane::run_int("v01-caller", "query", "neighbour_decision", "neighbour_decision(1, 1, 0)")
-        .expect("Auto caller decision");
-    assert_eq!(caller, 0, "unchanged caller = caller-reuse");
+    // the two neighbour observations in ONE Auto program (one Gen0
+    // compile): body edit = callee-recompute (1), unchanged caller =
+    // caller-reuse (0).
+    let neighbours = lane::run_str("v01-neighbour", "query", "neighbour_report", "neighbour_report()")
+        .expect("Auto neighbour report");
+    assert_eq!(neighbours, "1,0", "body edit = callee-recompute, caller stays warm");
 }

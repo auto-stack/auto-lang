@@ -74,13 +74,14 @@ pub fn package_codes() Str {
 /// different cwd has the same identity; a changed provider invalidates the
 /// affected artifact; a missing external library reports the tool/link
 /// error class and keeps the old closure. Report:
-/// `<lockKey>,<keyOtherCwd>,<decProvider>,<errLib>,<decLib>`.
+/// `<lockKey>,<keyOtherCwd>,<decProvider>,<errLib>,<decLib>` where decLib
+/// is DERIVED from the missing-lib closure decision (5) — never a literal.
 pub fn v05_report(lock_digest Str, packages Str, provider Str) Str {
     let k1 = lock_closure_key(lock_digest.clone(), packages.clone(), provider.clone(), "mn-windows-x64/1", "caps1")
     let k2 = lock_closure_key(lock_digest.clone(), packages.clone(), provider.clone(), "mn-windows-x64/1", "caps1")
     let dec_provider = closure_code(1, 1, 1, 0, 1)
     let err_lib = error_class_tool()
-    let dec_lib = 3
+    let dec_lib = closure_code(1, 1, 1, 1, 0)
     return k1 + "," + k2 + "," + from_int(dec_provider) + "," + from_int(err_lib) + "," + from_int(dec_lib)
 }
 

@@ -141,3 +141,12 @@ pub fn identity_report() Str {
     out = out + "|" + r1 + "," + r2
     return out
 }
+
+/// The page-checksum report: the SAME payload checksummed twice (the
+/// determinism proof) in ONE program — one Gen0 compile for both
+/// observations (test-cost discipline).
+pub fn checksum_report() Str {
+    let h1 = page_checksum("fn main() int { return 42 }")
+    let h2 = page_checksum("fn main() int { return 42 }")
+    return h1 + "," + h2
+}

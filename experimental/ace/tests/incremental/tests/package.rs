@@ -19,7 +19,9 @@ fn codes_bytes(report: &str) -> Vec<u8> {
 /// V-05: the same lock closure re-derived under a different cwd has the
 /// SAME identity (cwd is not part of the key); a provider change
 /// invalidates the affected artifact (4); a missing external library is a
-/// tool/link error (4) and keeps the old closure (3).
+/// tool/link error (4) and the closure decision is the module's own
+/// missing-external-lib refusal (5) — derived from the taxonomy, never a
+/// literal.
 #[test]
 fn v05_lock_closure_cwd_invariance() {
     let got = obs("v05_report", "v05_report(\"lock-a\", \"packages-1\", \"provider-x\")");
@@ -37,7 +39,9 @@ fn v05_lock_closure_cwd_invariance() {
         &lane::axis2("ac1052/lock/v1", "lock-a", "packages-1"),
         &lane::axis2("ac1052/provider-target/v1", "provider-x", "mn-windows-x64/1"),
     ) + "caps1";
-    let want = format!("{k1},{k2},4,4,3");
+    // decProvider=4 (provider-changed), errLib=4 (tool), decLib=5
+    // (missing-external-lib refusal = the keep-old observable in this module)
+    let want = format!("{k1},{k2},4,4,5");
     assert_eq!(got, want, "V-05 lock closure + cwd invariance + ABI change + missing lib");
     assert_eq!(k1, k2, "same lock closure under a different cwd must keep identity");
 }

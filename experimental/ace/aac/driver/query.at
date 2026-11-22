@@ -133,6 +133,15 @@ pub fn negative_flip_report(domain Str, name Str) Str {
     return nk + "," + from_int(dec_neg) + "," + from_int(dec_body)
 }
 
+/// The two neighbour observations of V-01 in ONE program (one Gen0
+/// compile): the body-edit callee decision (1 = callee-recompute) and the
+/// unchanged caller decision (0 = caller-reuse).
+pub fn neighbour_report() Str {
+    let callee = neighbour_decision(1, 0, 0)
+    let caller = neighbour_decision(1, 1, 0)
+    return from_int(callee) + "," + from_int(caller)
+}
+
 /// Positive-read set identity report (V-01): two callees at fixed signature
 /// versions, re-derived (same), one callee's signature moved (different).
 pub fn pos_read_report() Str {
