@@ -29,6 +29,7 @@ pub mod driver;
 pub mod identity;
 pub mod load;
 pub mod probe;
+pub mod receipt;
 pub mod recipe;
 #[cfg(windows)]
 mod rust_project;

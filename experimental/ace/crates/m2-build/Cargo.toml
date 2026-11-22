@@ -79,3 +79,7 @@ path = "tests/a2r_project_1116.rs"
 [[test]]
 name = "a2r_language_lane_1117"
 path = "tests/a2r_language_lane_1117.rs"
+
+[[test]]
+name = "a2r_replacement_receipt_1117"
+path = "tests/a2r_replacement_receipt_1117.rs"
