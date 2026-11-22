@@ -34,10 +34,14 @@ Auto 源副本。它们与 Auto 侧共用同样的固定输入和参数，结果
 ## 运行方式
 
 ```text
-两端用例：cargo t case-av-language-parity case-a2py-language-parity   （先 --prepare-only）
-独立参考：cargo nextest --manifest-path experimental/ace/Cargo.toml -p ace-a2x-python --test py_libraries_1126
-单 Case  ：auto-case module-case --suite crates/auto-lang/test/cases/language.suite.ad --case <id> --out <dir>
+cargo t case-av-language-parity case-a2py-language-parity --prepare-only
+cargo t case-av-language-parity case-a2py-language-parity --run-prepared <prepared.json> --out <dir>
+cargo nextest run --manifest-path experimental/ace/Cargo.toml -p ace-a2x-python --test py_libraries_1126
 ```
+
+单 Case 调试使用 `auto-case module-case --suite crates/auto-lang/test/cases/language.suite.ad --case <id> --out <dir>`。
+先从准备清单加载两组的 `tool_env`（含 AV worker、Python provider 和 A2PY worker），再调用清单中的
+`auto-case`，并沿用声明的 `A2PY_PYTHON`。
 
 ## 环境与 NumPy 来源
 
@@ -56,4 +60,6 @@ Windows x64、CPython 3.14.2、NumPy 2.5.1（`numpy-2.5.1-cp314-cp314-win_amd64.
 - 隔离模式下 `PYTHONUTF8` 不生效；本机 ANSI 代码页为 cp65001，stdout 仍为 UTF-8。参考脚本显式按
   UTF-8 字节输出，不依赖宿主区域设置。
 
-解释器或 NumPy 缺失时两端均具名失败，不静默跳过。
+AV 工具准备发现 CPython 不可用时生成 `py-unavailable` 标记，Python 检查明确记为 `NOT_RUN`，固定组不能通过。
+A2PY 的声明解释器不可用时，`run-py` 给出具名基础设施错误。解释器可用而 NumPy 缺失时，两端均以
+`ModuleNotFoundError`（`python.1`）判定 NumPy 用例失败。
