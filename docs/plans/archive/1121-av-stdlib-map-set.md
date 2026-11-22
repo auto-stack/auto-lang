@@ -167,3 +167,9 @@ stage: goal | plan_id: PLAN-1121 | plan_revision: r1 | round: 3 | from: review |
 stage: merge | plan_id: PLAN-1121 | plan_revision: r1 | outcome: pass | delivery_commit: df4d37940740a384858902e489287e49c7e6106e | canonical_specs: docs/specs/ace-migration/m2-stdlib-core.md, docs/specs/stdlib/design/ace-collections.md | archive_path: docs/plans/archive/1121-av-stdlib-map-set.md | cleanup: 见下（cleaned 记录于归档后）
 
 stage: goal | plan_id: PLAN-1121 | plan_revision: r1 | round: 4 | from: merge | to: merge | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1121/auto-lang | commit: df4d37940740a384858902e489287e49c7e6106e | next: done
+
+**cleaned（2026-11-23 收尾核验）**：`wt-guard.ps1` 双树 clean（auto-lang/auto-down，pwsh）；`git worktree remove` + `git branch -d plan-1121-dev`（was df4d37940）+ 组目录 `D:/autostack/.wt/lang-1121` 已删（0 残留）；plan-artifacts/plan-1121 全目录删除（证据已折叠于本文件 §8/§9 与 work 交接记录；原 t01-probe-evidence.md 要点=本文件 T-01 证据行）；`.retention/policy.json` 已登记 archived/删除/具名持有（D-1121-MAP-PARAM-ANNOTATION）。构建中间产物随 worktree 删除、未回收。任务计数终核：T-01..T-03 完成、T-04 复审 pass、T-05 本记录；current_step 3/3 执行步 + 复审/归档步完成。
+
+**部署观察**：本计划交付物为编译器/stdlib 源码与测试，无生产面制品（backend 发行二进制/前端 bundle）在本范围内；未触发 release 构建或重启——记为 stale-artifact 观察（无受影响制品）。
+
+**批量回归到期核**：`.last-batch-regression.json` last_covered=1118；1121 % 5 ≠ 0 且收据龄 <48h → 不到期，不触发。
