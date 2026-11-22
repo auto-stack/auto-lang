@@ -459,6 +459,7 @@ mod tests {
                     av_channel: None,
                     typed: None,
                     trace: None,
+                    nodes: None,
                 },
                 product_from: None,
                 skip: None,
