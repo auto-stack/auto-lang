@@ -157,3 +157,13 @@ g02 model3d 行+Model3D 资源+GLB 路径符号实参、坏编辑保旧/热更�
 受检前门不刷新 overlay）。原 M1 引擎/收据身份保持 age-examples `ea0fc59` 冻结
 （`gallery.py validate --all` 12 IDs/22 subentries/6 locks；21/22 收据全绑
 296/296 oracle）。
+
+## AGE 视图标签与属性
+
+`age-component` 和 `age-package` 的视图中，`divider` 和 `spacer` 支持裸标签、
+体块和括号属性形。已有的 `sep` 也支持带体块或属性形。`outlet` 保留其裸标签及
+既有属性形。未知裸标签继续在视图准入处报错。
+
+视图属性中的 `for` 与 `to` 按键名投影，因而标签关联和导航目标保留原拼写及值。
+`link` 支持原有路由形以及 `href` 属性形。上述词在其它语法位置的用途保持原合同。
+两条前门共用语法，标准 AAC 文法数据以同一共享源生成。
