@@ -124,11 +124,20 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         module.host_imports.iter().all(|h| {
             h.symbol.starts_with("auto.platform.") || h.symbol.starts_with("auto.console.")
         }) && !module.host_imports.is_empty();
+    // PLAN-108（T-03b M1）：组件事件程序模块携带 Http 效应 host import
+    // （全部=http 族符号）——与 platform/py/sys 车道同纪律：结构准入在此，
+    // per-run grant 由执行侧核。
+    let http_module = module
+        .host_imports
+        .iter()
+        .all(|h| crate::http_client::is_http_symbol(&h.symbol))
+        && !module.host_imports.is_empty();
     if !module.is_host_console_profile()
         && !sched_module
         && !platform_module
         && !py_lane_module
         && !sys_lane_module
+        && !http_module
         && !module.host_imports.is_empty()
     {
         return Err(err(
@@ -192,6 +201,26 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
                 return Err(err(
                     "host.unauthorized",
                     "configuration capability requirement is missing",
+                ));
+            }
+            continue;
+        }
+        // PLAN-108（T-03b M1）：Http 效应族第三条声明类别——类别/能力/预算
+        // 由 http_client 目录核（签名结构已由 mir_verify 的 HttpCall 臂核）。
+        if crate::http_client::is_http_symbol(&h.symbol) {
+            if h.category != crate::http_client::CATEGORY_HTTP
+                || h.capability != crate::http_client::CAP_HTTP
+                || h.max_call_bytes != crate::http_client::MAX_CALL_BYTES as u32
+            {
+                return Err(err(
+                    "host.signature",
+                    "http category/symbol/capability/budget tuple mismatch".into(),
+                ));
+            }
+            if !module.capabilities.iter().any(|c| c == crate::http_client::CATEGORY_HTTP) {
+                return Err(err(
+                    "host.unauthorized",
+                    "http capability requirement is missing",
                 ));
             }
             continue;

@@ -1646,6 +1646,17 @@ fn lower_checked_owned_module(
                     env: None,
                 });
             }
+            // PLAN-108（T-03b M1）：组件面 Http 效应族（`http.client/1`）——
+            // host import 准入（av-core 目录 owns admission；调用点 lower 成
+            // HttpCall；无 provider 时执行器具名 fail-closed）。
+            hir::DefKind::Intrinsic { symbol, ty, .. }
+                if ace_av_core::http_client::is_http_symbol(symbol) =>
+            {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                let h = ace_av_core::http_client::declaration(symbol, sig)
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                out.host_imports.push(h);
+            }
             // PLAN-981 B-W1（IF-981-PROOF-AV）：AGE typed 端口**构造器**是纯值
             // 构造（`material2d.color(r,g,b,a)` = 端口 record 的字段实参）——
             // 按声明准入为 import，调用点 lower 成 Aggregate；`model3d.glb`
@@ -5205,11 +5216,19 @@ k 0
                         hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("auto.console.")
                     );
+                    // PLAN-108（T-03b M1）：Http 效应 callee 走 host-import
+                    // 路径（HttpCall 发射，见下）。
+                    let http_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if ace_av_core::http_client::is_http_symbol(symbol)
+                    );
                     if self.out.is_host_console_profile()
                         || sched_module
                         || platform_callee
                         || config_callee
                         || console_callee
+                        || http_callee
                         // PLAN-1026: the py lane — console/py intrinsics in
                         // a foreign-carrying closures module.
                         || self
@@ -5243,6 +5262,32 @@ k 0
                                     ));
                                 }
                                 return self.emit_py_staged_text(arg_slots[0], sp);
+                            }
+                            if ace_av_core::http_client::is_http_symbol(symbol) {
+                                // PLAN-108（T-03b M1）：Http 效应 = HttpCall
+                                // （host_import 索引；执行器无 provider 时具名
+                                // fail-closed；M2 由 UI 桥注册 provider）。
+                                let host = self
+                                    .out
+                                    .host_imports
+                                    .iter()
+                                    .position(|h| &h.symbol == symbol)
+                                    .ok_or_else(|| {
+                                        AdapterError::inv(
+                                            "host.reference",
+                                            "host declaration missing".into(),
+                                        )
+                                    })? as u32;
+                                let dst = self.temp_ty(ty)?;
+                                self.emit(
+                                    MirInstr::HttpCall {
+                                        dst,
+                                        host,
+                                        args: arg_slots.clone(),
+                                    },
+                                    sp,
+                                )?;
+                                return Ok(dst);
                             }
                             if !(symbol.starts_with("auto.console.")
                                 || symbol.starts_with("auto.platform.")

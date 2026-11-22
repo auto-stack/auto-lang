@@ -40,8 +40,8 @@ fn p108_http_post_json_admitted_and_fail_closed() {
         .dispatch("Load", &[])
         .expect_err("无 http provider 时执行必须 fail-closed");
     assert!(
-        err.contains("foreign"),
-        "fail-closed 须为 foreign 具名拒绝，实际: {err}"
+        err.contains("http.client") && err.contains("fail-closed"),
+        "fail-closed 须为 http.client 具名拒绝，实际: {err}"
     );
     // Bump/Tick 等纯状态 handler 不受准入影响（兄弟保全）。
     session.dispatch("Bump", &[]).expect("Bump 正常派发");

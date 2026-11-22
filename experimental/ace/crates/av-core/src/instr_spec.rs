@@ -879,6 +879,7 @@ pub fn mnemonic_of_instr(i: &MirInstr) -> &'static str {
         MirInstr::SchedPort { .. } => "SCHED_PORT",
         MirInstr::SchedStopping { .. } => "SCHED_STOPPING",
         MirInstr::PlatformCall { .. } => "PLATFORM_CALL",
+        MirInstr::HttpCall { .. } => "HTTP_CALL",
         MirInstr::GlobalGet { .. } => "GLOBAL_GET",
         MirInstr::GlobalSet { .. } => "GLOBAL_SET",
         MirInstr::GlobalTake { .. } => "GLOBAL_TAKE",

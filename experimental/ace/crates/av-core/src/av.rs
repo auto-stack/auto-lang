@@ -4593,6 +4593,15 @@ fn dispatch_with_host<V: ModuleView>(
                 st.trace.reference_pc_lookups += 1;
             }
             match instr {
+                MirInstr::HttpCall { dst, host, args } => {
+                    // PLAN-108（T-03b M1）：Http 效应执行准入——M1 无 provider
+                    // 注册=具名 fail-closed（M2 由 UI 桥经会话 provider 执行；
+                    // 桥级异步：worker 线程派发，UI 线程不阻塞）。
+                    let _ = (dst, host, args);
+                    return Some(ExecOutcome::Infra(
+                        "http.client: no http provider installed in this session lane (plan108 M1 fail-closed)".into(),
+                    ));
+                }
                 MirInstr::ForeignCall {
                     declaration,
                     dst,

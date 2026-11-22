@@ -485,6 +485,15 @@ pub enum MirInstr {
         host: u32,
         args: Vec<SlotId>,
     },
+    /// PLAN-108（T-03b M1）：组件面 UI 异步 HTTP 效应调用
+    /// （`http.client/1`；host=host_imports 索引，(Str[,Str])->StrOwned）。
+    /// M1=准入+具名 fail-closed（无 provider 时执行器 named Infra）；
+    /// M2 由 UI 桥注册 provider（worker 线程派发，桥级异步）。
+    HttpCall {
+        dst: SlotId,
+        host: u32,
+        args: Vec<SlotId>,
+    },
     /// PLAN-960: read a module global cell into `dst`.
     GlobalGet {
         dst: SlotId,
