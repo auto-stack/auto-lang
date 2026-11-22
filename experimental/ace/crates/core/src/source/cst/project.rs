@@ -6370,36 +6370,40 @@ impl<'a> Engine<'a> {
                 );
             }
         }
-        // PLAN-113（026 真语料）：裸 `List` 字面量字段的惰性判定**延后到
-        // view 投影**——未被 view 循环迭代的裸 List 字段（`dbExpanded List =
-        // ["db/app", …]` 树展开态，仅 handler/TreeView 引用）按惰性
-        // view-data 承载（106 B2：不落状态、不发射初值）；**view 循环迭代**的
-        // 裸 List（p114 ids 合同：事件 fn 迭代）保持类型化状态。记录元素在
-        // model 时点已惰性化（上一处）；此处补字符串数组形。
-        let mut view_iterated: BTreeSet<String> = BTreeSet::new();
-        Self::collect_view_iter_names(&component.view.tree, &mut view_iterated);
-        let mut inert_fields: Vec<ComponentField> = Vec::new();
-        component.fields.retain(|f| {
-            if f.ty.trim() == "List"
-                && f.collection_type.is_none()
-                && matches!(f.init.kind, ExprKind::ArrayLit(_))
-                && !view_iterated.contains(f.name.as_str())
-            {
-                inert_fields.push(f.clone());
-                return false;
+        // PLAN-113 r2（2026-11-23 replan 修订，收窄 r1 ⑥后置判定为**组件面
+        // 专属**）：裸 `List` 字面量字段的惰性判定**延后到 view 投影**，且
+        // 只在 age-component 面生效——单模块组件车道 helper 可能不可解析
+        // （026 `toggle_id`），未被 view 循环迭代的裸 List（`dbExpanded`）按
+        // 惰性 view-data 承载（106 B2），其 handler 由组件车道惰性跳过（⑦）；
+        // **age-package 面不做该判定**（多模块 helper 可解析），裸 List 一律
+        // 类型化状态——p114 expanded 合同（handler `.get()/.len()`/helper 传参）
+        // 在包面保持。记录元素在 model 时点惰性化（⑤，上一处，两面同）。
+        if self.cx.profile != SourceProfile::AgePackage {
+            let mut view_iterated: BTreeSet<String> = BTreeSet::new();
+            Self::collect_view_iter_names(&component.view.tree, &mut view_iterated);
+            let mut inert_fields: Vec<ComponentField> = Vec::new();
+            component.fields.retain(|f| {
+                if f.ty.trim() == "List"
+                    && f.collection_type.is_none()
+                    && matches!(f.init.kind, ExprKind::ArrayLit(_))
+                    && !view_iterated.contains(f.name.as_str())
+                {
+                    inert_fields.push(f.clone());
+                    return false;
+                }
+                true
+            });
+            for f in inert_fields {
+                component.view_data.push(
+                    crate::source::age_component::ComponentViewDataField {
+                        name: f.name.clone(),
+                        literal: self
+                            .cx
+                            .spelling_by_range(f.init.span.start as u64, f.init.span.end as u64),
+                        span: f.span,
+                    },
+                );
             }
-            true
-        });
-        for f in inert_fields {
-            component.view_data.push(
-                crate::source::age_component::ComponentViewDataField {
-                    name: f.name.clone(),
-                    literal: self
-                        .cx
-                        .spelling_by_range(f.init.span.start as u64, f.init.span.end as u64),
-                    span: f.span,
-                },
-            );
         }
         component
     }
