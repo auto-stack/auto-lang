@@ -1989,6 +1989,53 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 bindings,
             } => {
                 let target = callee.0 as usize;
+                // PLAN-1116 (T-03): a foreign callee bridges through the
+                // generated wrapper (the SAME checked-shim exports every
+                // other lane binds; A2xResult shape). Text lanes ride as
+                // views; scalars pass plain.
+                if let Some(decl) = self.view.foreign_by_def(target) {
+                    // The bridge domain is validated HERE (the named
+                    // rejection surfaces at lowering, before assembly).
+                    crate::foreign_bridge::wrapper_source(decl).map_err(|r| {
+                        A2xReject::unsupported_expr(format!(
+                            "foreign entry `{}` is outside the A2R bridge domain: {r}",
+                            decl.name
+                        ))
+                    })?;
+                    let wrapper = format!("a2x_foreign_{}", decl.name);
+                    let lanes: Vec<ace_foreign_contract::ResKind> = decl
+                        .resource()
+                        .map(|r| r.params.clone())
+                        .unwrap_or_default();
+                    let mut args = Vec::new();
+                    for (arg, lane) in eval_args.iter().zip(lanes.iter()) {
+                        let a = match lane {
+                            ace_foreign_contract::ResKind::ViewText => {
+                                self.operand_str_view(*arg, out)?
+                            }
+                            _ => self.expr(*arg, out)?,
+                        };
+                        args.push(a);
+                    }
+                    let bool_ret = matches!(
+                        decl.resource().map(|r| &r.form),
+                        Some(ace_foreign_contract::ResourceForm::Pure {
+                            ret: ace_foreign_contract::ResOut::Bool
+                        })
+                    );
+                    let ty = self.view.resolve_use_ty(e.ty)?;
+                    let _ = ty;
+                    let ty_str = if bool_ret { "bool".to_string() } else { "i32".to_string() };
+                    return self.coll_temp(
+                        id,
+                        ty_str,
+                        RExpr::Call {
+                            func: wrapper,
+                            args,
+                        },
+                        out,
+                    );
+                }
                 // PLAN-968: scheduler-surface intrinsics map to the
                 // appended scheduler runtime (the AV-equivalent threads +
                 // bounded channels semantics).

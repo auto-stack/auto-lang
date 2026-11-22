@@ -172,6 +172,21 @@ fn assemble_family_file_set(
     if view.has_sched_ops() || view.has_console_ops() {
         runtime.push_str(include_str!("sched_rt.txt"));
     }
+    // PLAN-1116 (T-03): the foreign bridge (the same checked-shim exports
+    // the other lanes bind) rides the runtime for modules with admitted
+    // foreign declarations. The bridge DOMAIN is validated at lowering
+    // time (the named rejection surfaces before assembly).
+    let mut foreign_bridge = String::new();
+    for decl in view.foreign_declarations() {
+        foreign_bridge.push_str(
+            &crate::foreign_bridge::wrapper_source(decl)
+                .expect("foreign bridge domain validated at lowering"),
+        );
+    }
+    if !foreign_bridge.is_empty() {
+        runtime.push_str("\n\n// PLAN-1116: generated foreign bridge — the checked shim exports.\n");
+        runtime.push_str(&foreign_bridge);
+    }
 
     let mut wrapper = String::new();
     wrapper.push_str(&format!(
@@ -722,7 +737,8 @@ const COLL_TRAPS_FROZEN: &str = "";
 /// PLAN-1115 (T-03): the language channel's dynamic-surface traps —
 /// names align with the AV codes' suffixes (av.dyn.object-missing /
 /// av.trap.dyn-type / av.dyn.object-cycle).
-const LANG_TRAPS: &str = "    ObjectMissing,
+const LANG_TRAPS: &str = "    Foreign(i32),
+    ObjectMissing,
     DynType,
     ObjectCycle,
 ";
@@ -730,6 +746,11 @@ const LANG_TRAPS: &str = "    ObjectMissing,
 fn coll_core(traps: &str) -> String {
     let mut names = String::new();
     if !traps.is_empty() {
+        // PLAN-1116 (T-03): the language channel adds the foreign
+        // fallible-status trap (the checked shim's named trap);
+        // the collections channel keeps its frozen byte identity.
+        names.push_str("            AutoTrap::Foreign(_) => \"Foreign\",
+");
         for name in ["ObjectMissing", "DynType", "ObjectCycle"] {
             names.push_str(&format!("            AutoTrap::{name} => \"{name}\",
 "));

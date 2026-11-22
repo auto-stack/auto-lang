@@ -14,6 +14,10 @@ test-toolchain = []
 
 [dependencies]
 auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
+# PLAN-1116 T-03: the language lane's prepared foreign provider closure
+# (the same importer/digests the AV lane binds; no second importer).
+auto-bindgen = { path = "../../../../crates/auto-bindgen" }
+base64 = "0.22"
 # PLAN-1034: pyrun 解释器内容 hash 流式计算（不整缓存 binary）。
 sha2 = "0.10"
 ace-a2x-c = { path = "../a2x-c" }
@@ -27,7 +31,15 @@ ace-a2x-ts = { path = "../a2x-ts" }
 ace-core = { path = "../core" }
 ace-source-query = { path = "../source-query" }
 ace-source-cte = { path = "../source-cte" }
+ace-foreign-contract = { path = "../foreign-contract" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+# PLAN-1116 T-03: the foreign probe derives the prepared-closure digests
+# with the SAME importer the worker binds (no second importer).
+auto-bindgen = { path = "../../../../crates/auto-bindgen" }
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

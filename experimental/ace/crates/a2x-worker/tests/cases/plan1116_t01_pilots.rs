@@ -20,6 +20,14 @@ fn rustc() -> String {
     std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string())
 }
 
+fn tools_available() -> bool {
+    std::process::Command::new(rustc())
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Walk the chain for one case; return a one-line outcome description.
 fn probe(name: &str, src: &str, caps: &[&str]) -> String {
     let caps_vec: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
@@ -335,6 +343,206 @@ fn t02_probe_generator_listview_debt() {
     assert!(failures.is_empty(), "list-view debt rows still failing:
 {}", failures.join("
 "));
+}
+
+#[test]
+fn t03_probe_use_rs_foreign_real() {
+    // PLAN-1116 T-03 V-02: the SAME `use.rs f0_text` source the AV lane
+    // runs (1093 canonical) through the A2R language lane — checked shim
+    // exports, prepared-closure verification, real rustc link + run.
+    if !tools_available() {
+        return;
+    }
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/a2x-out/lang-1116-t03");
+    let root = base.join("provider");
+    let out = root.join("out");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&out).unwrap();
+    // 1) the prepared provider closure (the frozen f0_text source — the
+    //    same source the AV lane's prepare lane builds).
+    let provider_src = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../abi/rustside/f0_text.rs"),
+    )
+    .expect("frozen f0_text provider source");
+    // The build unit is the FLAT provider+shim closure (the abi prepare
+    // lane's exact shape): the shim re-exports each entry as a plain
+    // `extern "C"` symbol, so the static link resolves without dllimport
+    // thunks.
+    let manifest = auto_bindgen::rust_import::import(&provider_src).expect("provider import");
+    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+    std::fs::write(
+        out.join("lib.rs"),
+        format!("{provider_src}
+// PLAN-967 F0 build unit: provider + generated shim.
+{shim_source}"),
+    )
+    .unwrap();
+    let mut cdylib = Command::new(rustc());
+    cdylib
+        .args(["--edition", "2021", "--crate-type", "cdylib", "--crate-name", "f0_text_provider", "--cap-lints", "allow", "lib.rs", "-o"])
+        .arg(out.join("f0_text_provider.dll"))
+        .current_dir(&out);
+    let built = std::process::Command::new(rustc())
+        .arg("--version")
+        .output()
+        .expect("rustc --version");
+    let rustc_identity = String::from_utf8_lossy(&built.stdout).trim().to_string();
+    let compile = auto_tool_execution::run_command_capture(
+        cdylib,
+        auto_tool_execution::TreeScope::ProcessTree,
+        None,
+    )
+    .expect("spawn rustc cdylib");
+    assert!(
+        compile.kind == auto_tool_execution::ExitKind::Success,
+        "provider cdylib build failed: {}",
+        String::from_utf8_lossy(compile.stderr.as_ref().map(Vec::as_slice).unwrap_or(b""))
+    );
+    // The cdylib build also emits the import library (`X.dll.lib`, MSVC)
+    // carrying the `__imp_` thunks the generated bridge's `extern "C"`
+    // references need — stage it under the conventional `X.lib` name
+    // (the descriptor's `lib` default). The DLL rides the closure too
+    // and loads as the exe's process dependency.
+    let import_lib = out.join("f0_text_provider.dll.lib");
+    assert!(import_lib.is_file(), "import lib produced");
+    std::fs::copy(&import_lib, out.join("f0_text_provider.lib")).unwrap();
+    let dll_bytes = std::fs::read(out.join("f0_text_provider.dll")).unwrap();
+    let artifact_sha256 = sha256_hex(&dll_bytes);
+    let provider_digest = auto_bindgen::rust_import::provider_digest(&provider_src);
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
+    std::fs::write(
+        out.join("f0-build-stamp.txt"),
+        format!("{provider_digest}\n{shim_digest}\n{rustc_identity}\n"),
+    )
+    .unwrap();
+    use base64::Engine as _;
+    let descriptor = serde_json::json!({
+        "schema": "plan1093.provider-descriptor/1",
+        "kind": "rust",
+        "provider": "f0_text",
+        "artifact_sha256": artifact_sha256,
+        "source_b64": base64::engine::general_purpose::STANDARD.encode(provider_src.as_bytes()),
+        "rustc_identity": rustc_identity,
+    });
+    std::fs::write(
+        root.join("f0_text.descriptor.json"),
+        serde_json::to_string(&descriptor).unwrap(),
+    )
+    .unwrap();
+
+    // 2) the SAME source shape the AV corpus rows carry, on the A2R lane.
+    let cases: &[(&str, &str)] = &[
+        ("len-nul-utf8", "fn main() int { return text_byte_len(\"A中\u{1F600}\u{0}\") }"),
+        ("len-empty", "fn main() int { return text_byte_len(\"\") }"),
+        ("first-byte", "fn main() int { return text_first_byte(\"Abc\") }"),
+    ];
+    let worker = env!("CARGO_BIN_EXE_a2x-worker");
+    for (name, body) in cases {
+        let dir = base.join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let request = serde_json::json!({
+            "op": "run-language",
+            "recipe": "ac-a2r/hir-language-run-v1",
+            "source_text": format!("use.rs f0_text\n{body}"),
+            "out_dir": dir,
+            "profile": "language",
+            "entry": "main",
+            "caps": [LANG_CAP, "foreign.scalar", "foreign.resource"],
+            "nonce": "0".repeat(64),
+            "foreign": {
+                "kind": "rust",
+                "provider": "f0_text",
+                "artifact_root": root,
+            },
+        });
+        let run = std::process::Command::new(worker)
+            .arg(serde_json::to_string(&request).unwrap())
+            .output()
+            .expect("spawn a2x-worker");
+        assert!(
+            run.status.success(),
+            "{name}: worker exit {:?}: {} {}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stdout),
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let resp: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&run.stdout).trim()).unwrap();
+        println!("PROBE foreign-{name} => status={} stdout={}", resp["status"], resp["stdout"]);
+        let want = match *name {
+            "len-nul-utf8" => "value:9",
+            "len-empty" => "value:0",
+            _ => "value:65",
+        };
+        assert_eq!(resp["status"], "ok", "{name}: {:?}", resp);
+        assert_eq!(resp["stdout"], want, "{name}");
+    }
+
+    // Negative closure: each identity axis rejects by name.
+    let run_case = |foreign: serde_json::Value, caps: serde_json::Value| -> String {
+        let dir = base.join("neg-case");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let request = serde_json::json!({
+            "op": "run-language",
+            "recipe": "ac-a2r/hir-language-run-v1",
+            "source_text": "use.rs f0_text
+fn main() int { return text_byte_len(\"x\") }",
+            "out_dir": dir,
+            "profile": "language",
+            "entry": "main",
+            "caps": caps,
+            "nonce": "0".repeat(64),
+            "foreign": foreign,
+        });
+        let run = std::process::Command::new(worker)
+            .arg(serde_json::to_string(&request).unwrap())
+            .output()
+            .expect("spawn a2x-worker");
+        format!(
+            "exit={:?} {}",
+            run.status.code(),
+            String::from_utf8_lossy(&run.stdout)
+        )
+    };
+    let good_caps = serde_json::json!([LANG_CAP, "foreign.scalar", "foreign.resource"]);
+    let good = serde_json::json!({"kind": "rust", "provider": "f0_text", "artifact_root": root});
+    // 1) missing capability — the front door's named rejection.
+    let neg = run_case(good.clone(), serde_json::json!([LANG_CAP]));
+    println!("PROBE foreign-neg-cap => {neg}");
+    assert!(neg.contains("source.foreign-capability"), "neg-cap: {neg}");
+    // 2) tampered DLL — the sha pin rejects.
+    let dll = out.join("f0_text_provider.dll");
+    let bytes = std::fs::read(&dll).unwrap();
+    let mut tampered = bytes.clone();
+    tampered[0x400] ^= 0x01;
+    std::fs::write(&dll, &tampered).unwrap();
+    let neg = run_case(good.clone(), good_caps.clone());
+    println!("PROBE foreign-neg-tamper => {neg}");
+    assert!(neg.contains("a2x.foreign-artifact"), "neg-tamper: {neg}");
+    std::fs::write(&dll, &bytes).unwrap();
+    // 3) stale stamp — a provider source edit invalidates the closure.
+    let stamp = out.join("f0-build-stamp.txt");
+    let stamp_text = std::fs::read_to_string(&stamp).unwrap();
+    std::fs::write(&stamp, format!("{stamp_text}stale
+")).unwrap();
+    let neg = run_case(good.clone(), good_caps.clone());
+    println!("PROBE foreign-neg-stale => {neg}");
+    assert!(neg.contains("a2x.foreign-prepared"), "neg-stale: {neg}");
+    std::fs::write(&stamp, &stamp_text).unwrap();
+    // 4) legal upgrade: same-source rebuild is the SAME closure — the
+    //    re-verified run still binds (the pinned identity passes).
+    let neg = run_case(good, good_caps);
+    println!("PROBE foreign-neg-upgrade => {neg}");
+    assert!(neg.contains("value:1"), "neg-upgrade (legal re-verify): {neg}");
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    let mut h = sha2::Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
 }
 
 #[test]
