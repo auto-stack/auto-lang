@@ -166,8 +166,10 @@ fn assemble_family_file_set(
         collections_runtime_source(&program.marks)
     };
     // PLAN-968: append the scheduler runtime for scheduler-surface
-    // programs (the generated __sched calls bind to it).
-    if view.has_sched_ops() {
+    // programs (the generated __sched calls bind to it). PLAN-1116
+    // (T-02): console-only programs print through the same runtime's
+    // print helpers (a bare generator loop has no sched ops).
+    if view.has_sched_ops() || view.has_console_ops() {
         runtime.push_str(include_str!("sched_rt.txt"));
     }
 

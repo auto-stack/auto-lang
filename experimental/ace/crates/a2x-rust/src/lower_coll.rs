@@ -230,6 +230,9 @@ pub fn lower_coll_fn_channel(
         clones: Vec::new(),
         borrow_list_locals: std::collections::HashSet::new(),
         moved_locals: std::collections::HashSet::new(),
+        state_temp_sources: std::collections::HashMap::new(),
+        pending_project: None,
+        pending_writebacks: Vec::new(),
         protected: None,
         lang_channel,
     };
@@ -405,6 +408,21 @@ struct CollLower<'a, 'v> {
     /// record construction (or another consumer) — later error-path and
     /// exit frees of these names are stale (the consumer owns them now).
     moved_locals: std::collections::HashSet<u32>,
+    /// PLAN-1116 (T-02): generator STATE-field unwrap temps (`__gen_v*`
+    /// materializations of a `&mut __ace_iter_*` field) →
+    /// (state local, field, option variant). AV aliases every field read
+    /// through the handle; A2R clones per read, so a mutation through
+    /// such a temp must be written back to its field (the frontend
+    /// re-reads the field per use and never rewraps).
+    state_temp_sources: std::collections::HashMap<String, (String, String, String)>,
+    /// PLAN-1116 (T-02): the VariantProject just lowered out of a
+    /// generator state field — (state local, field, option variant). The
+    /// enclosing `tmp_val = project(...)` Assign registers the write-back
+    /// mapping under its target name.
+    pending_project: Option<(String, String, String)>,
+    /// PLAN-1116 (T-02): state temps mutated by the CURRENT statement's
+    /// `&mut` receivers — written back to their fields right after it.
+    pending_writebacks: Vec<String>,
     /// PLAN-1115 (T-03): the nearest enclosing PROTECTED region's
     /// (kind-local, message-local) names — fallible expressions inside
     /// intercept LangError and break out to the catch arm.
@@ -784,6 +802,22 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     if matches!(p_pre.kind, hir::PlaceKind::Local) {
                         self.moved_locals.remove(&p_pre.local.0);
                     }
+                    // PLAN-1116 (T-02): assigning one OWNED local from
+                    // another (`x = y` on a record/list/owned text) is a
+                    // MOVE in Rust — the source dies (the frontend's
+                    // iterator-swap protocol relies on this: the terminal
+                    // temp must not be freed after it moves into the
+                    // active slot). Copy scalars/views keep plain reads.
+                    let src_read = match &self.f.body.exprs[value.0 as usize].kind {
+                        hir::ExprKind::ReadLocal { local } if Some(*local) != (match &p_pre.kind {
+                            hir::PlaceKind::Local => Some(p_pre.local),
+                            _ => None,
+                        }) =>
+                        {
+                            Some(local.0)
+                        }
+                        _ => None,
+                    };
                     let target_ty = match &p_pre.kind {
                         hir::PlaceKind::Local => self.local_ty(p_pre.local).ok(),
                         hir::PlaceKind::FieldPath(path) => self
@@ -797,6 +831,21 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     } else {
                         self.expr(*value, &mut out)?
                     };
+                    // PLAN-1116 (T-02): `tmp_val = take(state.field)` —
+                    // the target temp becomes the state field's alias;
+                    // mutations through it are written back after the
+                    // mutating statement.
+                    if let Some((state, field, variant)) = self.pending_project.take() {
+                        if matches!(
+                            &self.f.body.exprs[value.0 as usize].kind,
+                            hir::ExprKind::VariantProject { .. }
+                        ) && matches!(p_pre.kind, hir::PlaceKind::Local)
+                        {
+                            let target = self.local_name_of(p_pre.local);
+                            self.state_temp_sources
+                                .insert(target, (state, field, variant));
+                        }
+                    }
                     let p = &self.f.body.places[place.0 as usize];
                     match &p.kind {
                         hir::PlaceKind::Local => {
@@ -818,6 +867,13 @@ impl<'a, 'v> CollLower<'a, 'v> {
                                 name: self.local_name_of(p.local),
                                 value: v,
                             });
+                            if let Some(src) = src_read {
+                                if let Ok(ty) = self.local_ty(hir::LocalId(src)) {
+                                    if self.owned_kind_of_ty(ty).is_some() {
+                                        self.moved_locals.insert(src);
+                                    }
+                                }
+                            }
                         }
                         hir::PlaceKind::FieldPath(path) => {
                             let base_ty = self.local_ty(p.local)?;
@@ -945,6 +1001,16 @@ impl<'a, 'v> CollLower<'a, 'v> {
                             fs.iter()
                                 .filter_map(|r| match r {
                                     FreeRef::Local(l) => {
+                                        // PLAN-1116 (T-02): alias/moved
+                                        // locals keep the same filter as
+                                        // every other free schedule (a
+                                        // state-field temp written back is
+                                        // owned by the field now).
+                                        if self.borrow_list_locals.contains(l)
+                                            || self.moved_locals.contains(l)
+                                        {
+                                            return None;
+                                        }
                                         self.local_ty(hir::LocalId(*l)).ok().and_then(|ty| {
                                             self.owned_kind_of_ty(ty).map(|k| {
                                                 (
@@ -1001,8 +1067,127 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     }
                 }
             }
+            // PLAN-1116 (T-02): write back every generator state-field
+            // temp this statement mutated through a `&mut` receiver (AV
+            // aliases in place; A2R clones per field read).
+            self.drain_state_writebacks(&mut out);
         }
+        self.drain_state_writebacks(&mut out);
         Ok(out)
+    }
+
+    /// PLAN-1116 (T-02): emit `state.field = Some(temp)` for every state
+    /// temp the current statement mutated; the temp's value now lives in
+    /// the field (frees skip it, later field reads see the mutation).
+    fn drain_state_writebacks(&mut self, out: &mut Vec<RStmt>) {
+        if self.pending_writebacks.is_empty() {
+            return;
+        }
+        let temps = std::mem::take(&mut self.pending_writebacks);
+        for t in temps {
+            let Some((state, field, variant)) = self.state_temp_sources.get(&t).cloned() else {
+                continue;
+            };
+            out.push(RStmt::AssignField {
+                name: state,
+                path: vec![field],
+                value: RExpr::VariantCtorExpr {
+                    variant,
+                    arm: "Some".into(),
+                    payload: Some(Box::new(RExpr::Local(t.clone()))),
+                },
+            });
+            if let Some(id) = self.local_id_of_name(&t) {
+                self.moved_locals.insert(id);
+            }
+        }
+    }
+
+    /// PLAN-1116 (T-02): the HIR local id rendering to this name.
+    fn local_id_of_name(&self, name: &str) -> Option<u32> {
+        self.f
+            .body
+            .locals
+            .iter()
+            .enumerate()
+            .find(|(i, _)| self.local_name_of(hir::LocalId(*i as u32)) == name)
+            .map(|(i, _)| i as u32)
+    }
+
+    /// PLAN-1116 (T-02): whether `name` is the `&mut __ace_iter_*` state
+    /// struct parameter of a generator next/close function.
+    fn is_state_struct_local(&self, name: &str) -> bool {
+        let Some(id) = self.local_id_of_name(name) else {
+            return false;
+        };
+        let Some(decl) = self.f.body.locals.get(id as usize) else {
+            return false;
+        };
+        if !matches!(decl.role, hir::LocalRole::Param) {
+            return false;
+        }
+        self.view
+            .resolve_use_ty(decl.ty)
+            .ok()
+            .and_then(|ty| match ty {
+                Ty::Record(rec) => self
+                    .view
+                    .record(rec)
+                    .map(|r| r.name.contains("__ace_iter")),
+                _ => None,
+            })
+            .unwrap_or(false)
+    }
+
+    /// PLAN-1116 (T-02): the HIR initializer expression binding a local
+    /// (`let x = e` / `x = e`), searched across the whole fn body (the
+    /// synthesized generator unwrap temps bind in enclosing blocks).
+    fn hir_local_binding(&self, local: hir::LocalId) -> Option<hir::ExprId> {
+        for b in &self.f.body.blocks {
+            for s in &b.stmts {
+                match s {
+                    hir::Stmt::Let { local: l, value } if *l == local => return Some(*value),
+                    hir::Stmt::Assign { place, value } => {
+                        let p = &self.f.body.places[place.0 as usize];
+                        if matches!(p.kind, hir::PlaceKind::Local) && p.local == local {
+                            return Some(*value);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
+    /// PLAN-1116 (T-02): whether `value` reads one field of the generator
+    /// state struct parameter (`&(state.field)` — the `__gen_r*`
+    /// initializer shape), returning (state local name, field name).
+    fn state_field_of_expr(&self, value: hir::ExprId) -> Option<(String, String)> {
+        let hir::ExprKind::FieldGet { base, path } =
+            &self.f.body.exprs[value.0 as usize].kind
+        else {
+            return None;
+        };
+        if path.len() != 1 {
+            return None;
+        }
+        let hir::ExprKind::ReadLocal { local: bl } =
+            &self.f.body.exprs[base.0 as usize].kind
+        else {
+            return None;
+        };
+        let state = self.local_name_of(*bl);
+        if !self.is_state_struct_local(&state) {
+            return None;
+        }
+        let base_ty = self.local_ty(*bl).ok()?;
+        let (names, _) = self.resolve_field_names(base_ty, path).ok()?;
+        if names.len() == 1 {
+            Some((state, names[0].clone()))
+        } else {
+            None
+        }
     }
 
     /// A reference to a local's value place (for &list / &mut list args).
@@ -1015,6 +1200,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     ));
                 }
                 let n = self.local_name_of(*local);
+                // PLAN-1116 (T-02): a mutation through a generator
+                // state-field temp must be written back to its field
+                // after the current statement (AV aliases in place).
+                if mut_ && self.state_temp_sources.contains_key(&n) {
+                    self.pending_writebacks.push(n.clone());
+                }
                 // PLAN-946: a `&'a mut A2xList` param place passes the name
                 // bare (Rust reborrows at the argument position).
                 // PLAN-1115 (T-02): an ALIAS binding (a `&mut A2xList`
@@ -1579,6 +1770,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 "a2x_sched_reply",
                 vec![wrap(args[0].clone(), &sig_params[0])],
             )
+        } else if rest.starts_with("await_deferred_") {
+            // `await` on a Deferred value (an ask reply future's live port
+            // or a lazy async body) — the runtime discriminates by sign.
+            // Checked BEFORE the plain `await_` prefix (a Deferred's
+            // symbol is `await_deferred_<sig>`).
+            unwrap(plain("a2x_sched_await_any", vec![args[0].clone()]), &ty)
         } else if rest.starts_with("await_") {
             unwrap(plain("a2x_sched_await", vec![args[0].clone()]), &ty)
         } else if rest.starts_with("recv_") {
@@ -1626,6 +1823,107 @@ impl<'a, 'v> CollLower<'a, 'v> {
                 _ => plain("a2x_sched_vec", vals),
             };
             plain("a2x_sched_go", vec![vec_call, RExpr::Local(adapter)])
+        } else if rest.starts_with("future_") {
+            // PLAN-1116 T-02: an async block `~{ ... }`. The desugar hands
+            // the zero-argument thunk as a literal closure; its captures
+            // ride the adapter's argument vec (the same env contract the
+            // task/go adapters use), the thunk runs on its own thread and
+            // the reply port IS the Deferred value.
+            let sig = &rest["future_".len()..];
+            let name: String = sig
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                .collect();
+            let thunk_expr = self
+                .f
+                .body
+                .exprs
+                .get(eval_args[0].0 as usize)
+                .ok_or_else(|| A2xReject::new("a2x.internal", "future thunk expr out of range"))?;
+            let hir::ExprKind::CreateClosure { callee, captures } = &thunk_expr.kind else {
+                return Err(A2xReject::unsupported_expr(format!(
+                    "`{symbol}` requires a literal async body"
+                )));
+            };
+            let f = self.view.fn_by_def(callee.0 as usize).ok_or_else(|| {
+                A2xReject::new("a2x.internal", "future thunk def not in view")
+            })?;
+            let mut env_tys: Vec<Ty> = Vec::new();
+            let mut env_vals: Vec<RExpr> = Vec::new();
+            for c in captures {
+                let ty = self.local_ty(c.local)?;
+                match c.mode {
+                    hir::CaptureMode::Move => {
+                        // The env takes the value: a Move-captured local
+                        // dies here (the verifier's scheduled free is
+                        // filtered by the moved set — same contract as
+                        // every other consuming move site).
+                        self.moved_locals.insert(c.local.0);
+                    }
+                    hir::CaptureMode::Borrow => match ty {
+                        Ty::I32
+                        | Ty::I8
+                        | Ty::U8
+                        | Ty::U32
+                        | Ty::I64
+                        | Ty::U64
+                        | Ty::F32
+                        | Ty::F64
+                        | Ty::Bool
+                        | Ty::Char
+                        | Ty::Str => {}
+                        other => {
+                            return Err(A2xReject::unsupported_op(format!(
+                                "borrow capture of `{}` in an async body awaits the closure-env \
+                                 unit (PLAN-1115 debt: immutable Copy/str-view domain only)",
+                                other.as_str()
+                            )));
+                        }
+                    },
+                    hir::CaptureMode::Shared => {
+                        return Err(A2xReject::unsupported_op(
+                            "shared (var-cell write-through) captures in an async body await \
+                             the closure-env unit (PLAN-1115 debt)",
+                        ));
+                    }
+                }
+                env_tys.push(ty);
+                env_vals.push(wrap(RExpr::Local(self.local_name_of(c.local)), &ty));
+            }
+            if !matches!(f.result, Ty::I32 | Ty::Bool | Ty::Str | Ty::StrOwned) {
+                return Err(A2xReject::unsupported_type(format!(
+                    "an async body returning `{}` is outside the scheduler value domain",
+                    f.result.as_str()
+                )));
+            }
+            let adapter = format!("__sched_future_adapter_{name}");
+            out.push(RStmt::RawFn {
+                text: sched_future_adapter_text(
+                    &name,
+                    &crate::lower::rust_fn_name(f.source_name),
+                    &env_tys,
+                    &f.result,
+                ),
+            });
+            let vec_call = match env_vals.len() {
+                0 => plain("a2x_sched_vec0", Vec::new()),
+                1 => plain("a2x_sched_vec1", env_vals),
+                2 => plain("a2x_sched_vec2", env_vals),
+                3 => plain("a2x_sched_vec3", env_vals),
+                _ => plain("a2x_sched_vec", env_vals),
+            };
+            plain(
+                "a2x_sched_future_lazy",
+                vec![RExpr::Local(adapter), vec_call],
+            )
+        } else if rest.starts_with("await_deferred_") {
+            // `await` on a Deferred value (an ask reply future's live port
+            // or a lazy async body) — the runtime discriminates by sign.
+            unwrap(plain("a2x_sched_await_any", vec![args[0].clone()]), &ty)
+        } else if rest == "detach" {
+            // `go` on a future: the body already runs eagerly; detach only
+            // discards the reply port.
+            plain("a2x_sched_detach", vec![args[0].clone()])
         } else {
             return Err(A2xReject::unsupported_expr(format!(
                 "scheduler intrinsic `{symbol}` is outside the a2r support domain"
@@ -2725,6 +3023,20 @@ impl<'a, 'v> CollLower<'a, 'v> {
             hir::ExprKind::VariantProject { root, disc } => {
                 let (vname, aname, _) = self.variant_arm(root_ty_of(self, root)?, disc)?;
                 let r = self.expr(root, out)?;
+                // PLAN-1116 (T-02): a take out of a generator state field
+                // — resolve the root temp's HIR initializer to its field
+                // (the enclosing Assign's target registers the write-back
+                // mapping). The HIR scan (not the emitted stmts) sees
+                // through nested blocks.
+                if let hir::ExprKind::ReadLocal { local: r } =
+                    &self.f.body.exprs[root.0 as usize].kind
+                {
+                    if let Some(init) = self.hir_local_binding(*r) {
+                        if let Some((state, field)) = self.state_field_of_expr(init) {
+                            self.pending_project = Some((state, field, vname.clone()));
+                        }
+                    }
+                }
                 let call = RExpr::VariantTake {
                     helper: format!("a2x_coll_take_{}_{}", vname, aname),
                     root: Box::new(r),
@@ -2771,7 +3083,25 @@ impl<'a, 'v> CollLower<'a, 'v> {
             });
             return Ok(RExpr::Local(name));
         }
-        self.expr(child, out)
+        // PLAN-1116 (T-02): an owned slot CONSUMES its operand — a local
+        // read here is a move (the yield-value into `Some(..)`, record
+        // fields): the source dies and the verifier's exit-edge frees
+        // must skip it. Marked moved AFTER the read is lowered (the
+        // use-after-move guard must not see this very read).
+        let moved_owned_read = match &ce.kind {
+            hir::ExprKind::ReadLocal { local } => {
+                self.local_ty(*local)
+                    .ok()
+                    .and_then(|ty| self.owned_kind_of_ty(ty))
+                    .map(|_| local.0)
+            }
+            _ => None,
+        };
+        let lowered = self.expr(child, out)?;
+        if let Some(local) = moved_owned_read {
+            self.moved_locals.insert(local);
+        }
+        Ok(lowered)
     }
 
     /// A text operand as a borrowed `&str` view.
@@ -2802,7 +3132,12 @@ impl<'a, 'v> CollLower<'a, 'v> {
                     .locals
                     .get(local.0 as usize)
                     .map(|d| {
-                        matches!(d.role, hir::LocalRole::Param)
+                        // PLAN-1116 T-02: a closure body's CAPTURE params
+                        // render as borrows too (`&'a str`, the same
+                        // mode-legalized contract as plain params) — a
+                        // captured text is already a view; `.as_str()` on
+                        // it is the unstable str method.
+                        matches!(d.role, hir::LocalRole::Param | hir::LocalRole::Capture)
                             && !matches!(d.param_mode, hir::ParamMode::MoveOwn)
                     })
                     .unwrap_or(false),
@@ -2895,11 +3230,37 @@ pub fn lower_coll_variants(view: &SemanticView<'_>) -> Vec<RustVariant> {
         .collect()
 }
 
+/// PLAN-1116 (T-02): find a single-segment field path rooted at a local
+/// inside an expression (the clone receiver `&(state.field)` of a
+/// generator state-field read — possibly under a fallibility Wrap or a
+/// clone call's arguments).
+fn field_path_in(e: &RExpr) -> Option<(String, String)> {
+    match e {
+        RExpr::FieldPath { base, path } => {
+            if let RExpr::Local(state) = &**base {
+                if path.len() == 1 {
+                    return Some((state.clone(), path[0].clone()));
+                }
+            }
+            field_path_in(base)
+        }
+        RExpr::Ref { inner } | RExpr::RefMut { inner } | RExpr::Wrap { inner, .. } => {
+            field_path_in(inner)
+        }
+        RExpr::CollCall { args, .. } | RExpr::Call { args, .. } | RExpr::PlainCall { args, .. } => {
+            args.iter().find_map(field_path_in)
+        }
+        RExpr::Local(_) | RExpr::I32Lit(_) | RExpr::BoolLit(_) | RExpr::StrLit(_)
+        | RExpr::CharLit(_) | RExpr::GlobalRead { .. } | RExpr::GlobalWrite { .. }
+        | RExpr::UnitExpr => None,
+        _ => None,
+    }
+}
+
 /// PLAN-968: the synthesized `fn(Vec<SchedValue>)` adapter that runs a
 /// task's driver with typed initializers (built by plain concatenation —
 /// no brace escaping).
-fn sched_task_adapter_text(task: &str, field_tys: &[Ty]) -> String {
-    let mut b = String::new();
+fn sched_task_adapter_text(task: &str, field_tys: &[Ty]) -> String {    let mut b = String::new();
     b.push_str("fn __sched_task_adapter_");
     b.push_str(task);
     b.push_str("(a: ::std::vec::Vec<crate::a2x_runtime::SchedValue>) {");
@@ -2974,6 +3335,59 @@ fn unwrap_helper(t: &Ty) -> &'static str {
         Ty::Str | Ty::StrOwned => "a2x_un_s",
         _ => "a2x_un_i",
     }
+}
+
+/// PLAN-1116 T-02: the typed wrap helper name for an adapter result.
+fn wrap_helper(t: &Ty) -> &'static str {
+    match t {
+        Ty::Bool => "a2x_v_b",
+        Ty::Str | Ty::StrOwned => "a2x_v_s",
+        _ => "a2x_v_i",
+    }
+}
+
+/// PLAN-1116 T-02: the synthesized `fn(Vec<SchedValue>) -> SchedValue`
+/// adapter that runs an async block's thunk with its captures (the env
+/// rides the argument vec; the result joins the scheduler value domain).
+/// The thunk is fallible like every language-channel function: a trap in
+/// an async body is published as the process-level sched failure (a
+/// catchable cross-thread trap propagation awaits the catch-chain unit,
+/// the PLAN-1115 named debt).
+fn sched_future_adapter_text(name: &str, thunk: &str, env_tys: &[Ty], result: &Ty) -> String {
+    let mut b = String::new();
+    b.push_str("fn __sched_future_adapter_");
+    b.push_str(name);
+    b.push_str(
+        "(a: ::std::vec::Vec<crate::a2x_runtime::SchedValue>) -> crate::a2x_runtime::SchedValue {",
+    );
+    b.push('\n');
+    b.push_str("    let _ = &a;");
+    b.push('\n');
+    b.push_str("    let __result = ");
+    b.push_str(thunk);
+    b.push('(');
+    for (k, t) in env_tys.iter().enumerate() {
+        if k > 0 {
+            b.push_str(", ");
+        }
+        if matches!(t, Ty::Str | Ty::StrOwned) {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone()).as_str()");
+        } else {
+            b.push_str(unwrap_helper(t));
+            b.push_str("(a[");
+            b.push_str(&k.to_string());
+            b.push_str("].clone())");
+        }
+    }
+    b.push_str(");\n");
+    b.push_str("    let __ok = match __result {\n        Ok(v) => v,\n        Err(trap) => a2x_sched_fail(&format!(\"sched: async body trapped: {}\", trap.name())),\n    };\n    ");
+    b.push_str(wrap_helper(result));
+    b.push_str("(__ok)\n}");
+    b.push('\n');
+    b
 }
 
 /// PLAN-973: collect list type-index -> element type over a payload tree

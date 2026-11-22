@@ -31,6 +31,8 @@ mod sched_m2_968;
 
 #[path = "cases/lang_a2r_1115.rs"]
 mod lang_a2r_1115;
+#[path = "cases/plan1116_t01_pilots.rs"]
+mod plan1116_t01_pilots;
 #[path = "cases/aggregates_semantics.rs"]
 mod aggregates_semantics;
 #[path = "cases/boundaries.rs"]
