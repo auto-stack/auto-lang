@@ -1086,9 +1086,6 @@ pub(crate) fn project_packages_front_with_widget_lists(
             // 逐 node 的**执行**脱糖本来就用包级 `node_index`（`instance_stmts`
             // 按 `op.node_scope()` 过滤），故这里删掉局部预检不影响语义。
             for mut node in nodes {
-                // PLAN-113（026 真语料）：视图事件绑定引用的未声明消息变体
-                //（TreeView on_toggle: .DbToggle）——闭包作用域结束后应用。
-                let mut synthetic: Vec<crate::source::age_component::ComponentMsgVariant> = Vec::new();
                 if specializes_legacy_vm {
                     crate::source::age_component::specialize_legacy_vm_guards(&mut node, &mut inactive_hosts);
                 }
@@ -1622,10 +1619,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     }
                     // R59-3 尾项：lifecycle/watch 体内语句——RHS 进唯一 verify，LHS 字段
                     // 必须是本 node 的 model 字段（否则具名拒绝，不静默写不存在的字段）。
-                    // R65-3：widget 形 handler 必须指向本 node 声明的消息。
-                    // PLAN-981 B-W1（IF-981-PARAMS-B）：带参 handler 与载荷槽的
-                    // 绑定在**声明级**核对（形参数 = 载荷槽数、重复形参拒），
-                    // 未派发也核对——取代 A 期“派发时具名拒”的 R65-8 守卫。
+                    // R65-3：widget 形 handler 必须指向本 node 声明的消息（未声明的
+                    // legacy 回调由 project.rs `admit_legacy_widget_handlers` 在投影
+                    // 时按组件面同律合成——026 `on { .DbToggle(id) -> }` 真语料）。
                     for h in &node.handlers {
                         if h.from_widget && !node.messages.iter().any(|m| m.name == h.msg) {
                             return Err(vec![crate::source::age_h0::text_diag(
@@ -1704,9 +1700,6 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     items.extend(handler_check_items);
                     items.extend(event_items);
                     items.extend(scoped_items);
-                } // 闭包作用域结束（check_value 等 drop）——合成消息变体在此应用。
-                for variant in synthetic {
-                    node.messages.push(variant);
                 }
                 crate::source::age_component::check_handler_bindings(&node)?; // PLAN-981（IF-981-ORIGINAL）：场景属性值降级成普通求值函数，
                   // 与文本叶同一机制——共享 verify 检查它，领域行引用其 def id。

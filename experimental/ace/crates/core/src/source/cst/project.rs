@@ -6450,7 +6450,24 @@ impl<'a> Engine<'a> {
             let payload = if handler.params.is_empty() {
                 Some(Vec::new())
             } else {
-                Self::legacy_assignment_payload(fields, handler)
+                Self::legacy_assignment_payload(fields, handler).or_else(|| {
+                    // PLAN-113（026 真语料）：回调 handler 体不是纯透传赋值
+                    //（`on { .DbToggle(id) -> { .dbExpanded = toggle_id(…) } }`
+                    // 调 helper）——按组件面同律以注解优先、缺省 `str` 合成
+                    // 载荷拼写（`check_handler_bindings`/`handler_check_fn` 的
+                    // 未声明回退同款），保证消息名/载荷槽与 handler 形参一致。
+                    Some(
+                        handler
+                            .param_annotations
+                            .iter()
+                            .map(|ann| {
+                                ann.as_ref()
+                                    .map(|(s, _)| s.clone())
+                                    .unwrap_or_else(|| "str".to_string())
+                            })
+                            .collect(),
+                    )
+                })
             };
             if let Some(payload) = payload {
                 messages.push(ComponentMsgVariant {

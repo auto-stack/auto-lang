@@ -187,8 +187,17 @@ widget Chart {
     assert!(messages[1].payload.is_empty());
 
     let payload = source.replace(".HoverOut ->", ".HoverOut(index) ->");
-    let diagnostics = compile_legacy(&payload).expect_err("payload handlers require a signature");
-    assert_eq!(diagnostics[0].code, "source.age.msg-unknown");
+    // PLAN-113（共享写面）：legacy widget 回调 handler 的未声明 **payload**
+    // 消息按组件面同律以注解/缺省 `str` 合成（026 `on { .DbToggle(id) -> }`
+    // 真语料）；纯 unit 消息仍由 legacy 推断注入。规范 `node` 头保持严格。
+    let description =
+        compile_legacy(&payload).expect("legacy widget admits a payload callback by synthesis");
+    let hover_out = description.components[0]
+        .messages
+        .iter()
+        .find(|m| m.name == "HoverOut")
+        .expect("HoverOut admitted with the parameter spelling");
+    assert_eq!(hover_out.payload, vec!["str".to_string()]);
 
     let node = source.replace("widget Chart", "node Chart");
     let diagnostics = compile(&node).expect_err("canonical nodes require a message declaration");

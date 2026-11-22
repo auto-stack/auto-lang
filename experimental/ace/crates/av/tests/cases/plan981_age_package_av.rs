@@ -710,8 +710,15 @@ fn p107_gallery_legacy_assignment_supplies_the_message_payload_type() {
     assert_eq!(observed.components[0].instance_texts, [vec!["indigo"], vec!["ocean"]]);
 
     let ambiguous = source.replace("accent_color = name }", "accent_color = name\n        dark_mode = name }");
-    let errors = compile(&ambiguous, Vec::new()).expect_err("conflicting model fields cannot pin a payload");
-    assert_eq!(errors[0].code, "source.age.msg-unknown");
+    // PLAN-113（共享写面）：冲突模型字段无法钉载荷类型时，按组件面同律回退
+    // 注解/缺省 `str` 合成（026 回调面真语料同款；消息名/槽数与形参一致）。
+    // 合成后体本身类型不自洽（str 载荷赋 bool 字段）由共享 verify 具名拒——
+    // 与组件面同入口同诊断（不再是旧 R65-3 的 msg-unknown）。
+    let errors = compile(&ambiguous, Vec::new()).expect_err("a str payload cannot feed a bool field");
+    assert!(
+        errors.iter().any(|d| d.code == "source.type-mismatch"),
+        "{errors:?}"
+    );
 }
 
 #[test]
