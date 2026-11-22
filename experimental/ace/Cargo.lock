@@ -141,6 +141,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ace-aac-incremental-conformance"
+version = "0.1.0"
+dependencies = [
+ "ace-artifacts",
+ "ace-av",
+ "ace-av-core",
+ "ace-core",
+ "ace-source-query",
+ "blake3",
+]
+
+[[package]]
 name = "ace-aac-support-conformance"
 version = "0.1.0"
 dependencies = [

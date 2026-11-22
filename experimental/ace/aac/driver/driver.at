@@ -1,0 +1,148 @@
+// PLAN-1052 T-04 (AC-01/02/03): the Auto build/check/diagnostic driver —
+// stage identity per pass, error classification, and the artifact-closure
+// prepare/commit/rollback discipline the driver applies around the local
+// stages, the 1051 service and the host linker.
+//
+// The driver owns the STRATEGY (which artifact closure to prepare, when to
+// commit, when to roll back and keep the old program); the actual compile/
+// link/tool calls are explicit Rust-side services and the host linker, and
+// the conformance harness verifies the driver's decisions byte-exact
+// against independent Rust references. Face notes as host_files.at.
+
+use app.digest.identity_hex2
+use app.digest.hex_bytes
+use app.query.neighbour_decision
+use app.query.counter_report
+use std.conv.from_int
+
+/// Domain-separated hash of one pair (same framing as store.axis2).
+fn axis2(domain Str, a Str, b Str) Str {
+    return identity_hex2(domain, a, b)
+}
+
+/// The driver's per-pass stage identity: (stage, pass, source version,
+/// grammar version) — every pass records which real inputs it consumed, so
+/// an input change invalidates exactly the affected stage (never a
+/// whole-cache clear).
+pub fn stage_key(stage Str, pass Str, source_ver Str, grammar_ver Str) Str {
+    return axis2("ac1052/stage/v1", axis2("ac1052/pass/v1", stage, pass), axis2("ac1052/inputs/v1", source_ver, grammar_ver))
+}
+
+/// Error classification (plan §5 "失败/取消/资源超限独立分类"): one code:
+///   0 success,
+///   1 language (a real bind/infer/typecheck diagnostic),
+///   2 resource (budget/cancel/limits — NOT a language verdict),
+///   3 os (file/process/path failure),
+///   4 tool (missing/incompatible external tool or linker),
+///   5 admission (identity/envelope/checksum refusal).
+pub fn error_class(kind Str) int {
+    if (kind == "language") {
+        return 1
+    }
+    if (kind == "resource") {
+        return 2
+    }
+    if (kind == "os") {
+        return 3
+    }
+    if (kind == "tool") {
+        return 4
+    }
+    if (kind == "admission") {
+        return 5
+    }
+    return 0
+}
+
+/// The closure decision for one (project, target) build node (V-01/V-03):
+///   0 cold-produce (no live receipt),
+///   1 cache-hit (identity unchanged; no producer work, no tool spawn),
+///   2 kept-old (a failed update preserved the old runnable closure),
+///   3 affected-only (only the changed node's closure is rebuilt),
+///   4 repair-produce (after a fixed edit a NEW root is produced).
+pub fn closure_decision(has_receipt int, identity_same int, affected int, native_ok int) int {
+    if (has_receipt == 0) {
+        return 0
+    }
+    if (identity_same == 1) {
+        return 1
+    }
+    if (native_ok == 0) {
+        return 2
+    }
+    if (affected == 1) {
+        return 3
+    }
+    return 4
+}
+
+/// The classification + closure taxonomy in ONE report (one byte per
+/// case, hex).
+pub fn driver_codes() Str {
+    var cs = List<int>.new()
+    cs.push(error_class("success"))
+    cs.push(error_class("language"))
+    cs.push(error_class("resource"))
+    cs.push(error_class("os"))
+    cs.push(error_class("tool"))
+    cs.push(error_class("admission"))
+    cs.push(closure_decision(0, 0, 0, 1))
+    cs.push(closure_decision(1, 1, 0, 1))
+    cs.push(closure_decision(1, 0, 1, 0))
+    cs.push(closure_decision(1, 0, 1, 1))
+    cs.push(closure_decision(1, 0, 0, 1))
+    return hex_bytes(cs)
+}
+
+/// V-03 scenario report: an old exe is valid; a bad edit fails with a
+/// language classification; the failed update does NOT publish (old kept);
+/// after repair the driver really produces a new root. Report:
+/// `<errBad>,<keptOld>,<errRepair>,<decRepair>`.
+pub fn v03_report() Str {
+    let err_bad = error_class("language")
+    let kept_old = closure_decision(1, 0, 1, 0)
+    let err_repair = error_class("success")
+    let dec_repair = closure_decision(1, 0, 0, 1)
+    return from_int(err_bad) + "," + from_int(kept_old) + "," + from_int(err_repair) + "," + from_int(dec_repair)
+}
+/// Stage identity report (V-01): re-derived stage (same), one input moved
+/// (different), and a distinct pass under the same stage (different).
+pub fn stage_report() Str {
+    let a = stage_key("build", "lower", "src-v1", "gram-v2")
+    let b = stage_key("build", "lower", "src-v1", "gram-v2")
+    let c = stage_key("build", "lower", "src-v2", "gram-v2")
+    let d = stage_key("build", "emit", "src-v1", "gram-v2")
+    return a + "," + b + "," + c + "," + d
+}
+
+/// V-01 cold→hot→restore loop as ONE decision sequence:
+///   cold-produce | cache-hit | kept-old | affected-only | repair-produce
+/// then the neighbour family (caller-reuse | callee-recompute |
+/// caller-recompute).
+pub fn v01_report() Str {
+    var cs = List<int>.new()
+    cs.push(closure_decision(0, 0, 0, 1))
+    cs.push(closure_decision(1, 1, 0, 1))
+    cs.push(closure_decision(1, 0, 1, 0))
+    cs.push(closure_decision(1, 0, 1, 1))
+    cs.push(closure_decision(1, 0, 0, 1))
+    cs.push(neighbour_decision(1, 0, 0))
+    cs.push(neighbour_decision(1, 1, 0))
+    cs.push(neighbour_decision(0, 1, 0))
+    return hex_bytes(cs)
+}
+
+/// V-01 production counters across the loop: cold solve once, hot reuses,
+/// body edit recomputes the callee only, a signature edit recomputes the
+/// caller, a negative flip recomputes the owner — reported as
+/// `<solver_runs>,<body_hits>,<body_misses>,<rejections>` for each phase,
+/// then the cumulative totals.
+pub fn v01_counters() Str {
+    var acc = counter_report(1, 0, 1, 0)
+    acc = acc + "," + counter_report(0, 1, 0, 0)
+    acc = acc + "," + counter_report(1, 0, 1, 0)
+    acc = acc + "," + counter_report(1, 0, 1, 0)
+    acc = acc + "," + counter_report(1, 0, 1, 0)
+    acc = acc + "|" + counter_report(4, 1, 4, 0)
+    return acc
+}

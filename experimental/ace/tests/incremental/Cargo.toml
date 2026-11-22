@@ -1,0 +1,39 @@
+[package]
+name = "ace-aac-incremental-conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autotests = false
+description = "PLAN-1052 AAC incremental driver & persistent store/restore: the Auto query host, six-axis build identity, store/restore admission and package-closure/FFI decisions compiled by Gen0 on the aggregates lane and executed on the AV executor, byte-exact against independent Rust references"
+
+[dependencies]
+ace-core = { path = "../../crates/core" }
+ace-source-query = { path = "../../crates/source-query" }
+ace-av = { path = "../../crates/av" }
+ace-av-core = { path = "../../crates/av-core" }
+ace-artifacts = { path = "../../crates/artifacts" }
+blake3 = "1"
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[[test]]
+name = "store"
+path = "tests/store.rs"
+
+[[test]]
+name = "query"
+path = "tests/query.rs"
+
+[[test]]
+name = "driver"
+path = "tests/driver.rs"
+
+[[test]]
+name = "package"
+path = "tests/package.rs"
+
+[[test]]
+name = "real_flow"
+path = "tests/real_flow.rs"

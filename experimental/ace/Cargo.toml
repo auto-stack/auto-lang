@@ -40,6 +40,7 @@ members = [
   "tests/aac-syntax",
   "tests/aac-support",
   "tests/aac-host",
+  "tests/incremental",
   "tests/conformance",
   "tests/stdlib",
   "tests/data-runtime",

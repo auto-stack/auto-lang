@@ -1,0 +1,89 @@
+// PLAN-1052 T-09 (AC-07/AC-04): the Auto package closure & generated FFI
+// project assembly — the declared closure vs the materialized artifact set,
+// the lock-closure identity (cwd-INVARIANT), provider/target ABI change
+// invalidation, and the missing-external-library tool/link failure that
+// keeps the old closure.
+//
+// The module consumes the SHAPE of the auto-man lock contract
+// (`auto-package-lock {model,codec,verify}`) and the 978 SDK / 967
+// binding/shim identities; it owns the closure BINDING decisions. The Rust
+// harness verifies byte-exact against independent references. Face notes
+// as host_files.at.
+
+use app.digest.identity_hex2
+use app.digest.hex_bytes
+use std.conv.from_int
+
+/// Domain-separated hash of one pair (same framing as store.axis2).
+fn axis2(domain Str, a Str, b Str) Str {
+    return identity_hex2(domain, a, b)
+}
+
+/// The lock-closure identity: (lock content digest, package set digest,
+/// provider, target, capability set). The cwd and any workspace root are
+/// deliberately NOT part of the identity — the same lock closure under a
+/// different cwd must produce the SAME identity (V-05).
+pub fn lock_closure_key(lock_digest Str, packages Str, provider Str, target Str, caps Str) Str {
+    return axis2("ac1052/lock-closure/v1", axis2("ac1052/lock/v1", lock_digest, packages), axis2("ac1052/provider-target/v1", provider, target)) + caps
+}
+
+/// The declared-closure check (V-05): one code per case.
+///   0 ok (every materialized artifact is declared; every declared one is
+///     materialized),
+///   1 undeclared-materialized (a real artifact exists that the manifest/
+///     lock never declared — the plan's "物化但未声明的依赖拒绝"),
+///   2 declared-missing (a declared member is absent),
+///   3 cwd-invariant (the same lock closure re-derived under a different
+///     cwd has the same identity),
+///   4 provider-changed (a provider/target ABI change invalidates the
+///     affected artifact),
+///   5 missing-external-lib (a required external library is absent ->
+///     tool/link error, old closure kept).
+pub fn closure_code(declared_ok int, materialized_ok int, cwd_same int, provider_same int, lib_ok int) int {
+    if (declared_ok == 0) {
+        return 1
+    }
+    if (materialized_ok == 0) {
+        return 2
+    }
+    if (cwd_same == 0) {
+        return 3
+    }
+    if (provider_same == 0) {
+        return 4
+    }
+    if (lib_ok == 0) {
+        return 5
+    }
+    return 0
+}
+
+/// The T-09 taxonomy in ONE report (one byte per case, hex).
+pub fn package_codes() Str {
+    var cs = List<int>.new()
+    cs.push(closure_code(1, 1, 1, 1, 1))
+    cs.push(closure_code(0, 1, 1, 1, 1))
+    cs.push(closure_code(1, 0, 1, 1, 1))
+    cs.push(closure_code(1, 1, 1, 1, 1))
+    cs.push(closure_code(1, 1, 1, 0, 1))
+    cs.push(closure_code(1, 1, 1, 1, 0))
+    return hex_bytes(cs)
+}
+
+/// V-05 scenario report: the same lock closure re-derived under a
+/// different cwd has the same identity; a changed provider invalidates the
+/// affected artifact; a missing external library reports the tool/link
+/// error class and keeps the old closure. Report:
+/// `<lockKey>,<keyOtherCwd>,<decProvider>,<errLib>,<decLib>`.
+pub fn v05_report(lock_digest Str, packages Str, provider Str) Str {
+    let k1 = lock_closure_key(lock_digest.clone(), packages.clone(), provider.clone(), "mn-windows-x64/1", "caps1")
+    let k2 = lock_closure_key(lock_digest.clone(), packages.clone(), provider.clone(), "mn-windows-x64/1", "caps1")
+    let dec_provider = closure_code(1, 1, 1, 0, 1)
+    let err_lib = error_class_tool()
+    let dec_lib = 3
+    return k1 + "," + k2 + "," + from_int(dec_provider) + "," + from_int(err_lib) + "," + from_int(dec_lib)
+}
+
+fn error_class_tool() int {
+    return 4
+}

@@ -1,0 +1,143 @@
+// PLAN-1052 T-03 (AC-01/02/03): the Auto persistent store & restore
+// admission — six-axis BUILD identity keys, content pages with checksums,
+// references/roots, and the controlled restore admission that must NEVER
+// trust a serialized "checked" flag.
+//
+// The algorithms here are Auto (the subject owns identity/read-set/commit
+// policy); the Rust side of the conformance harness is only the Gen0
+// frontend (compile), the AV executor (run) and the independent oracle
+// (byte-exact reference values). Face notes as host_files.at: no
+// `while`/`const`/`else if`; owned Str moves explicit; list elements are
+// owned cells (consumed via remove/iteration, never indexed as values).
+
+use app.digest.identity_hex2
+use app.digest.blake3_hex_bytes
+use app.digest.utf8_bytes
+use app.digest.hex_bytes
+use std.conv.from_int
+
+/// Domain-separated hash of ONE axis pair — the exact length-prefixed
+/// framing the Rust reference composes (`identity_hex2` = blake3 over
+/// "blake3-1.5\0<family>\0" + two length-prefixed parts).
+fn axis2(domain Str, a Str, b Str) Str {
+    return identity_hex2(domain, a, b)
+}
+
+/// The six-axis BUILD identity key (plan §5/T-03): schema / target /
+/// stdlib / grammar / pass / bridge. Nested pair hashes keep the same
+/// framing the Rust reference mirrors; a change on ANY axis changes the
+/// key, and the key never contains a filesystem path or an absolute span.
+pub fn six_axis_key(schema Str, target Str, stdlib Str, grammar Str, pass Str, bridge Str) Str {
+    let st = axis2("ac1052/axis2/v1", schema, target)
+    let sg = axis2("ac1052/axis2/v1", stdlib, grammar)
+    let pb = axis2("ac1052/axis2/v1", pass, bridge)
+    return axis2("ac1052/build/v1", axis2("ac1052/pair/v1", st, sg), pb)
+}
+
+/// The page identity of ONE content page: owner logical id + signature
+/// axis + body axis + caller capability digest. A body-only edit changes
+/// only the body axis; the signature readers stay warm (V-01/V-04).
+pub fn page_key(owner Str, sig_axis Str, body_axis Str, caps Str) Str {
+    return axis2("ac1052/page/v1", axis2("ac1052/owner/v1", owner, sig_axis), axis2("ac1052/body-caps/v1", body_axis, caps))
+}
+
+/// The content checksum of a page payload: blake3 over the exact payload
+/// bytes (content NUL is content — never a C cut).
+pub fn page_checksum(payload Str) Str {
+    return blake3_hex_bytes(utf8_bytes(payload))
+}
+
+/// The reference edge of one root record: the root binds the page identity
+/// to the artifact set it requires. Same payload under different domains
+/// must never share a key.
+pub fn ref_key(domain Str, page Str, artifact Str) Str {
+    return axis2(domain, page, artifact)
+}
+
+/// Restore admission — ONE code per case (the taxonomy of §6 V-02):
+///   0 admit (envelope ok + checksum ok + coverage ok + no diagnostics +
+///     refs intact),
+///   1 unknown-envelope (producer/schema/algo/profile mismatch),
+///   2 corrupt-page (checksum mismatch),
+///   3 stale-page (page key no longer matches the current source axes),
+///   4 dangling-ref (a required artifact reference is missing),
+///   5 missing-coverage (a node the source walks is not covered by the page),
+///   6 with-diagnostics (the page carries a solver diagnostic).
+pub fn admit_code(envelope_ok int, checksum_ok int, key_fresh int, coverage_ok int, diag_ok int, ref_ok int) int {
+    if (envelope_ok == 0) {
+        return 1
+    }
+    if (checksum_ok == 0) {
+        return 2
+    }
+    if (key_fresh == 0) {
+        return 3
+    }
+    if (ref_ok == 0) {
+        return 4
+    }
+    if (coverage_ok == 0) {
+        return 5
+    }
+    if (diag_ok == 0) {
+        return 6
+    }
+    return 0
+}
+
+/// Publish decision — the artifact-closure prepare/commit/rollback
+/// discipline (plan §5 contract, §6 V-03):
+///   0 commit-ok (candidate validated, current record swapped once),
+///   1 prepare-failed (resource refusal before any publish),
+///   2 commit-failed (OS atomic-replace failure; OLD bytes preserved),
+///   3 rollback-kept-old (native update failed; old closure intact),
+///   4 repair-published (after a fixed edit a NEW root is really produced).
+pub fn publish_code(prepare_ok int, commit_ok int, native_ok int) int {
+    if (prepare_ok == 0) {
+        return 1
+    }
+    if (commit_ok == 0) {
+        return 2
+    }
+    if (native_ok == 0) {
+        return 3
+    }
+    return 0
+}
+
+/// The V-02/V-03 taxonomy in ONE report (one byte per case, hex), so the
+/// conformance test compares the whole family byte-exact.
+pub fn store_codes() Str {
+    var cs = List<int>.new()
+    cs.push(admit_code(1, 1, 1, 1, 1, 1))
+    cs.push(admit_code(0, 1, 1, 1, 1, 1))
+    cs.push(admit_code(1, 0, 1, 1, 1, 1))
+    cs.push(admit_code(1, 1, 0, 1, 1, 1))
+    cs.push(admit_code(1, 1, 1, 1, 1, 0))
+    cs.push(admit_code(1, 1, 1, 0, 1, 1))
+    cs.push(admit_code(1, 1, 1, 1, 0, 1))
+    cs.push(publish_code(1, 1, 1))
+    cs.push(publish_code(0, 1, 1))
+    cs.push(publish_code(1, 0, 1))
+    cs.push(publish_code(1, 1, 0))
+    return hex_bytes(cs)
+}
+
+/// The identity-family report (§6 V-02 identity binding): six-axis key for
+/// a frozen baseline, the SAME key re-derived, a body-axis-only change
+/// (signature readers keep the page), a signature change, and the
+/// cross-family separation proof.
+pub fn identity_report() Str {
+    let base = six_axis_key("aac-build/1", "mn-windows-x64/1", "stdlib-a/1", "grammar-v2/1", "pass-lower/1", "bridge-ac/1")
+    var out = base.clone()
+    out = out + "," + six_axis_key("aac-build/1", "mn-windows-x64/1", "stdlib-a/1", "grammar-v2/1", "pass-lower/1", "bridge-ac/1")
+    out = out + "," + six_axis_key("aac-build/1", "mn-windows-x64/1", "stdlib-b/1", "grammar-v2/1", "pass-lower/1", "bridge-ac/1")
+    out = out + "," + six_axis_key("aac-build/1", "mn-windows-x64/1", "stdlib-a/1", "grammar-v3/1", "pass-lower/1", "bridge-ac/1")
+    let p1 = page_key("logical-A", "sig-v5", "body-v7", "caps1")
+    let p2 = page_key("logical-A", "sig-v5", "body-v8", "caps1")
+    out = out + "|" + p1 + "," + p2
+    let r1 = ref_key("ac1052/ref/required/v1", p1.clone(), "art0001")
+    let r2 = ref_key("ac1052/ref/provenance/v1", p1.clone(), "art0001")
+    out = out + "|" + r1 + "," + r2
+    return out
+}

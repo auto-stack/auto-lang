@@ -1788,6 +1788,17 @@ domain = "ace"
 all = false
 
 [[group]]
+name = "ace-aac-incremental"
+title = "PLAN-1052 AAC增量驱动与持久store：Auto查询host/六轴身份键/store恢复准入/包闭包FFI（aggregates-ct AV车道，独立Rust引用逐字节对账）"
+runner = "nextest"
+workspace = "experimental/ace"
+args = ["-p", "ace-aac-incremental-conformance", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
+expression = "(all()) and not test(/(^|::)performance::/)"
+tools = []
+domain = "ace"
+all = false
+
+[[group]]
 name = "ace-perf"
 title = "ACE性能与压力（串行）"
 runner = "nextest"

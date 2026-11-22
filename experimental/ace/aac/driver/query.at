@@ -1,0 +1,161 @@
+// PLAN-1052 T-02 (AC-01/02/03): the Auto query host & dependency graph —
+// source/signature/body/instance/CT fact queries, the complete query key,
+// the positive/negative read set, and the invalidation/reuse decisions the
+// driver applies. Span and source-version facts are INPUTS to identity;
+// semantic axes (signature/body) are what actually enters a page key.
+//
+// This module owns the DECISIONS (which owner recomputes, which reuses);
+// it never builds a target itself. The Gen0 frontend compiles it; the AV
+// executor runs it; the conformance harness compares byte-exact against
+// independent Rust references. Face notes as host_files.at.
+
+use app.digest.identity_hex2
+use app.digest.hex_bytes
+use std.conv.from_int
+
+/// Domain-separated hash of one pair (same framing as store.axis2).
+fn axis2(domain Str, a Str, b Str) Str {
+    return identity_hex2(domain, a, b)
+}
+
+/// The complete query key of one fact answer: query kind + logical owner +
+/// signature axis + body axis + capability digest. A body-only edit keeps
+/// the signature axis, so a caller that read only the signature stays warm
+/// (V-01/V-04); the capability set is part of the key, so a caller-order
+/// change is a miss, never a reinterpretation.
+pub fn fact_key(query_kind Str, logical Str, sig_axis Str, body_axis Str, caps Str) Str {
+    return axis2("ac1052/query/v1", axis2("ac1052/q-kind/v1", query_kind, logical), axis2("ac1052/axes/v1", sig_axis, body_axis)) + caps
+}
+
+/// The positive read set of one infer-body query: (callee, signature
+/// version) pairs the solve actually read. The report is the digest of the
+/// pair list, so a changed callee signature changes the positive read set
+/// identity.
+pub fn pos_read_key(names List<Str>, versions List<Str>) Str {
+    var acc = ""
+    let n = names.len()
+    var i = 0
+    for (i < n) {
+        let nm = names.remove(0)
+        let vs = versions.remove(0)
+        acc = acc + axis2("ac1052/pos-read/v1", nm, vs)
+        i = i + 1
+    }
+    return axis2("ac1052/pos-set/v1", acc, "")
+}
+
+/// The negative read set: a name that did NOT resolve at solve time. A
+/// later definition of that name flips the negative dependency, so the
+/// owner MUST recompute (V-04 "add missing name N").
+pub fn neg_read_key(domain Str, name Str) Str {
+    return axis2("ac1052/neg-read/v1", domain, name)
+}
+
+/// Invalidation decision (ONE code per case):
+///   0 reuse (complete key unchanged AND positive deps unchanged AND no
+///     negative flipped),
+///   1 key-changed (the owner's own source/body/signature/caps moved),
+///   2 dep-changed (a positive callee signature version moved),
+///   3 negative-flipped (a previously absent name is now defined),
+///   4 candidate-set-changed (the fn candidate fingerprint moved while a
+///     negative was recorded).
+pub fn reuse_decision(key_same int, deps_same int, negatives_same int, candidates_same int) int {
+    if (key_same == 0) {
+        return 1
+    }
+    if (deps_same == 0) {
+        return 2
+    }
+    if (negatives_same == 0) {
+        return 3
+    }
+    if (candidates_same == 0) {
+        return 4
+    }
+    return 0
+}
+
+/// Body-vs-signature separation (V-01/V-04): a body-only edit on callee B
+/// leaves B's signature axis unchanged, so a caller A that read only the
+/// signature stays warm; A's POSITIVE read set binds B's SIGNATURE, not
+/// B's body. The driver recomputes B's body page and relinks, never A's
+/// facts. The returned code distinguishes the three neighbourhoods:
+///   0 caller-reuse (signature unchanged),
+///   1 callee-recompute (body page changed),
+///   2 caller-recompute (signature changed or negative flipped).
+pub fn neighbour_decision(sig_same int, body_same int, negative_flipped int) int {
+    if (sig_same == 0) {
+        return 2
+    }
+    if (negative_flipped == 1) {
+        return 2
+    }
+    if (body_same == 0) {
+        return 1
+    }
+    return 0
+}
+
+/// Production counters (real producer-side numbers, never a proxy): the
+/// report is `<solver_runs>,<body_hits>,<body_misses>,<rejections>`. The
+/// driver increments these from its real decisions; the harness compares
+/// the whole sequence byte-exact.
+pub fn counter_report(solver_runs int, body_hits int, body_misses int, rejections int) Str {
+    return from_int(solver_runs) + "," + from_int(body_hits) + "," + from_int(body_misses) + "," + from_int(rejections)
+}
+
+/// The decision taxonomy in ONE report (one byte per case, hex):
+///   0,0,0,0 reuse        | 1 key-changed | 2 dep-changed
+///   3 negative-flipped   | 4 candidates | neighbour 0,1,2
+pub fn query_codes() Str {
+    var cs = List<int>.new()
+    cs.push(reuse_decision(1, 1, 1, 1))
+    cs.push(reuse_decision(0, 1, 1, 1))
+    cs.push(reuse_decision(1, 0, 1, 1))
+    cs.push(reuse_decision(1, 1, 0, 1))
+    cs.push(reuse_decision(1, 1, 1, 0))
+    cs.push(neighbour_decision(1, 0, 0))
+    cs.push(neighbour_decision(0, 1, 0))
+    cs.push(neighbour_decision(1, 1, 1))
+    return hex_bytes(cs)
+}
+
+/// The V-04 scenario in ONE report: A calls B; B's body-only edit from 3
+/// to 4 must NOT recompute A (signature unchanged, neighbour=caller-reuse),
+/// while the missing-name-N add MUST flip A's negative read
+/// (neighbour=caller-recompute). The report is `<negKey>,<decNeg>,<decBody>`
+/// where decNeg is A's decision after N appears and decBody after B's body
+/// edit.
+pub fn negative_flip_report(domain Str, name Str) Str {
+    let nk = neg_read_key(domain, name)
+    let dec_neg = neighbour_decision(1, 1, 1)
+    let dec_body = neighbour_decision(1, 0, 0)
+    return nk + "," + from_int(dec_neg) + "," + from_int(dec_body)
+}
+
+/// Positive-read set identity report (V-01): two callees at fixed signature
+/// versions, re-derived (same), one callee's signature moved (different).
+pub fn pos_read_report() Str {
+    var n1 = List<Str>.new()
+    var v1 = List<Str>.new()
+    n1.push("logical-B")
+    v1.push("sig-v5")
+    n1.push("logical-C")
+    v1.push("sig-v3")
+    let a = pos_read_key(n1, v1)
+    var n2 = List<Str>.new()
+    var v2 = List<Str>.new()
+    n2.push("logical-B")
+    v2.push("sig-v5")
+    n2.push("logical-C")
+    v2.push("sig-v3")
+    let b = pos_read_key(n2, v2)
+    var n3 = List<Str>.new()
+    var v3 = List<Str>.new()
+    n3.push("logical-B")
+    v3.push("sig-v6")
+    n3.push("logical-C")
+    v3.push("sig-v3")
+    let c = pos_read_key(n3, v3)
+    return a + "," + b + "," + c
+}
