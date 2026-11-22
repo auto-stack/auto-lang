@@ -1154,12 +1154,11 @@ pub const AVRS_PROVIDER_HEADER: &str =
 /// `avrs.duplicate-fn` rejection), built through the same
 /// importer/shim/build chain (dep-carrying fragments route through the
 /// real-dependency cargo builder) and opened as ONE `F0Session`. The
-/// caller receives the assembled inputs for
-/// `compile_assembled_inputs_foreign` — the public `.at` adapters (with
-/// their `use.rs avrs` imports) compile as the same package closure and
-/// execute on the AV lane with REAL foreign dispatch. Named rejections:
-/// `load.discovery`/`load.assembly`/`load.no-provider-impl` (a closure
-/// selecting no rs layer) and the importer/build chain's own codes.
+/// caller receives the assembled inputs (the module closure) and the app
+/// source compiles on the ordinary single-module foreign front door.
+/// Named rejections: `load.discovery`/`load.assembly`/
+/// `load.no-provider-impl` (a closure selecting no rs layer) and the
+/// importer/build chain's own codes.
 pub fn open_assembled_rs_stdlib_session(
     root: &Path,
     entry: &str,
@@ -1168,6 +1167,28 @@ pub fn open_assembled_rs_stdlib_session(
 ) -> Result<
     (
         F0Session,
+        Vec<ace_core::source::packages::PackageModuleInput>,
+    ),
+    String,
+> {
+    let (composed, inputs) = compose_avrs_provider(root, entry, ctx)?;
+    let build = build_avrs_provider(root, &composed)?;
+    let session = open_session_from_build(&build, generation)?;
+    Ok((session, inputs))
+}
+
+/// PLAN-1114: the composition half — discover + assemble + compose the
+/// selected Rs layers under [`AVRS_PROVIDER_HEADER`]. The composed source
+/// is the SAME unit the session builds and the M2Build project lane
+/// consumes (`ProjectInputs::rust_provider`): one identity from selection
+/// to distribution.
+pub fn compose_avrs_provider(
+    root: &Path,
+    entry: &str,
+    ctx: &mut ace_core::source::packages::PackageAssemblyContext,
+) -> Result<
+    (
+        String,
         Vec<ace_core::source::packages::PackageModuleInput>,
     ),
     String,
@@ -1218,36 +1239,31 @@ pub fn open_assembled_rs_stdlib_session(
         composed.push_str(source.trim_end());
         composed.push_str("\n\n");
     }
-    // PLAN-1114: the build root is keyed by the COMPOSED source digest —
-    // the same selection reuses its artifacts (a rebuild would have to
-    // replace a DLL a live session may still have loaded: Windows refuses
-    // with os error 5), and a selected-input edit lands in a fresh root.
-    let deps = provider_deps(&composed);
-    let digest = auto_bindgen::rust_import::provider_digest(&composed);
+    Ok((composed, inputs))
+}
+
+/// PLAN-1114: the build half — the composed source through the same
+/// importer/shim/build chain. The build root is keyed by the COMPOSED
+/// source digest (selection-stable reuse; a selected-input edit lands in
+/// a fresh root), and a dep-carrying unit reuses its cargo artifacts
+/// instead of replacing a DLL a live session may still have loaded.
+pub fn build_avrs_provider(root: &Path, composed: &str) -> Result<RustProviderBuild, String> {
+    let deps = provider_deps(composed);
+    let digest = auto_bindgen::rust_import::provider_digest(composed);
     let build_root = root.join(format!("avrs-build-{digest}"));
     std::fs::create_dir_all(&build_root).map_err(|e| format!("avrs.build-root: {e}"))?;
-    let build = if deps.is_empty() {
-        build_source(&build_root, &composed)?
+    if deps.is_empty() {
+        build_source(&build_root, composed)
     } else {
-        // The cargo unit's output path is fixed; reuse the existing
-        // artifacts for an unchanged composed source instead of asking
-        // cargo to replace a possibly-loaded DLL.
         let (dir_rel, base) = ("cargo-unit/target/debug", "provider_unit");
         let cdylib = build_root.join(dir_rel).join(format!("{base}.dll"));
         let staticlib = build_root.join(dir_rel).join(format!("{base}.lib"));
         if cdylib.is_file() && staticlib.is_file() {
-            describe_rust_provider(
-                &composed,
-                rustc_identity(&build_root)?,
-                cdylib,
-                staticlib,
-            )?
+            describe_rust_provider(composed, rustc_identity(&build_root)?, cdylib, staticlib)
         } else {
-            build_cargo_provider(&build_root, &composed)?
+            build_cargo_provider(&build_root, composed)
         }
-    };
-    let session = open_session_from_build(&build, generation)?;
-    Ok((session, inputs))
+    }
 }
 
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`

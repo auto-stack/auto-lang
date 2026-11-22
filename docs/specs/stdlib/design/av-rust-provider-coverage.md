@@ -6,6 +6,18 @@
 > [Design 60](../../../design/60-ace-rust-route.md) 与
 > [backend-provider-coverage](backend-provider-coverage.md)。
 
+## IF-ACE-AV-RS-STDLIB/1（接口冻结，1115 A2R 消费点）
+
+| 面 | 冻结内容 |
+|---|---|
+| 源树 | `stdlib/ace/avrs/<module>.at`（契约面：`pub spec fn` 公共 API 记录）+ `<module>.rs.at`（`// auto-ffi` 注解 Rust 片段；`dep` 注解=显式外库钉版）|
+| 选源 | `PackageAssemblyContext(Av, Kind(Rs), Windows)` 经 1043 `discover_provider_sources`/`assemble_package_inputs`（语义原样）|
+| 组合/构建/会话 | `compose_avrs_provider` / `build_avrs_provider` / `open_assembled_rs_stdlib_session`（ace-abi）：全部选中 Rs 层 → 单一 `avrs/1` 单元 → 同一 importer/shim/build 链 → 一个 `F0Session`；构建根=组合源摘要键控 |
+| 应用面 | 普通单模块源 `use.rs avrs` + provider 公共名（1093/967 前门）|
+| 帧域 | view 首参 + ≤2 尾随 i32（`ViewI32ToI32` 本 Plan 补）/ 单 i32 完成口（M2Build 执行器）/ owned 三形 / OutBytes 帧 / 回调；边界 B-01..B-11 |
+| 分发 | `M2Build` `ProjectInputs::rust_provider`（组合源）→ ABC+DLL+manifest → SDK 重定位运行（1113 链）|
+| 旧资产 | `stdlib/auto/*.rs.at` 镜像原样保留至 1115/1117 切换；冻结面零改动 |
+
 ## 架构裁定（T-01 冻结）
 
 - **D-1114-01 消费模型**：AV/RS 标准库沿 967 AC-LOAD 交付模型——公共 `.at`
@@ -49,16 +61,40 @@
 | math double 族（sqrt/abs_f/powf/sin/cos）| S | W | 共享 Auto（972 裁定：不复制三份算法、无 libm 委托）| 同上 |
 | collections（list 11 ops/char 7/conv 4/hash 1/bytes 6/map 6）| S | W | 共享 Auto（972 asm 单源；List 值不过受检帧——帧域无集合车道；最终原语=mn arena/底座）| 972/v08 复用 + 适用性说明 |
 
-### 批 2 · I/O/fs/env/time/net（T-03）
+### 批 2 · I/O/fs/env/time/net（T-03，已交付）
 
-（随 T-03 交付填充；console/file/env/time/net 计划行与
-`stdlib/auto/platform/io.rs.at` 占位（1041 等 967——已交，本批填真身）。）
+| 操作 | 来源 | 平台 | Rust 体来源/迁移 | 验证入口 |
+|---|---|---|---|---|
+| console.console_write | R | W | std::io stdout；返回 UTF-8 字节数（计数 oracle：9 vs C-strlen 截断 1/ASCII 4 可区分）| `v02_avrs_console_exact_bytes` |
+| file.file_write_byte / file_append_byte | R | W | std::fs 字节粒度写（帧域单 view：批量双串写=B-09）| `v02_avrs_file_exact_bytes_eof_and_errors` |
+| file.file_read_len / file_read_byte | R | W | std::fs 读；EOF=-1（idx≥len）、缺路径=-8、NUL=内容（byte 8 读回 0）| 同上 |
+| file.file_exists / file_remove | R | W | std::path/std::fs；remove 后 exists 翻转真观察 | 同上 |
+| env.env_get_len / env_has / env_remove | R | W | std::env；未设哨兵 -203（1064 D-05/D-06 同拼写）；env_set=双串（B-09）| `v02_avrs_env_time_and_loopback` |
+| time.clock_open/ms_lo/ms_hi/close | R | W | owned provider 资源（SystemTime lo/hi i32 对；句柄=会话代次绑定的 guest token）| `v02_avrs_owned_handle_generation_and_close_safety` + `v02_avrs_closed_handle_rejected` |
+| time.sleep_ms / now_ms / now_sec | N→B-10 | W | 完成口形属 M2Build 工程执行器（1113 已证；avrs 会话车道不收调度面模块）| sdk_pack 复用 |
+| net.net_loopback_echo | R | W | std::net 真回环（127.0.0.1:0 监听+连接+精确字节写+EOF 读+比对）；-1=内容不符/-8=传输失败 | `v02_avrs_env_time_and_loopback` |
+| 持久 socket 面（platform.net/1 句柄族）| S | W | sys 车道 native owner（973/1051）；Rs 车道交回环证明 | 973 复用 |
 
-### 批 3 · 数据与显式外部模块（T-04）
+### 批 3 · 数据与显式外部模块（T-04，已交付）
 
-（随 T-04 交付填充；json（serde_json 钉版显式外库）/sqlite（967 钉版 3.46.0
-C provider）/redis（RESP2 共享 Auto over TCP 原语）/storage（ACE-KV 共享
-Auto）/rand（OS 熵）。）
+| 操作 | 来源 | 平台 | Rust 体来源/迁移 | 验证入口 |
+|---|---|---|---|---|
+| json.json_is_valid / json_sum_ints | R（显式外库）| W | 钉版 serde_json =1.0.151（`dep` 注解=MIX-07 干净工程规则；坏输入=具名 -1 解析失败值）| `v03_avrs_json_external_library_and_rand` |
+| json 共享算法（escape/parse/path 族）| S | W | 975 std/json.at 纯 Auto 单源（Rs 车道不复制算法）| 975 复用 |
+| rand.rand_next | R | W | splitmix64 非凭据 PRNG 步（Plan 250 裁定：凭据熵不入此面；OS 熵=973 bcrypt native）| 同上（确定性/可区分性断言）|
+| sqlite | X | W | 967 钉版 3.46.0 C provider（975 已交 lane；use.c 面）| db_975 复用 |
+| redis | S + B-11 | W | 975 RESP2 共享 Auto over platform.net；真服务器验证=外部服务依赖（§10 具名 pending）| 975 复用 |
+| storage | S | W | ACE-KV 共享 Auto（1064）；Rs 无资源面义务 | 1064 复用 |
+| image / frame | B-03 | — | 领域 owner 980/OS064 | — |
+
+### 负例与默认近邻（V-03 附加面）
+
+| 面 | 验证 |
+|---|---|
+| 缺点名 Rust 来源（删 json.rs.at）| `v03_avrs_named_rejections`（a）：`source.undefined` 具名拒、点名缺失 op |
+| 错签名注解（ret=bool 对 i32 体）| 同上（b）：importer 具名拒 |
+| 撤权（去 foreign 授予）| `v03_avrs_revoked_grants_rejected`：具名能力拒 |
+| 默认 Auto 近邻（移去全部可选工件）| `v03_avrs_default_auto_neighbor_without_artifacts`：无 provider 链路同 byte 面（`A中😀\0`=9）|
 
 ### 具名边界与非支持面
 
@@ -70,4 +106,8 @@ Auto）/rand（OS 熵）。）
 | B-04 | net TLS/proxy | 974 r2 显式可选 provider 道（未实现不冒充）|
 | B-05 | Linux 腿 | 1063（deferred-required/NOT_RUN，Windows required 全跑）|
 | B-06 | inline.rs.at（旧 C-inline 面，无 `#[rs]`）| 旧 C 内联资产，AV/Rs 无义务面（N；旧轨保留）|
-| B-07 | json.rs.at 旧 `#[rs]` 镜像 parse P6 坏（D-948-04）| 975 已交 std/json.at 共享 Auto 真身；本计划 T-04 交显式外库（serde_json）行后旧镜像退役记录在案 |
+| B-07 | json.rs.at 旧 `#[rs]` 镜像 parse P6 坏（D-948-04）| 975 已交 std/json.at 共享 Auto 真身；T-04 显式外库行已交，旧镜像退役记录在案 |
+| B-08 | 无参 i32 形（now_ms()/now_sec()/rand_seed()）——pure 需 view 首参、complete_sync 需单 i32 入参，均无车道 | 帧域扩展或 owned-unit 形另立增量（time 面以 owned clock 承载观测）|
+| B-09 | 双字符串形（file 批量写、env_set）——帧域每调用至多一个借用 view | 帧域扩展另立增量；当前以字节粒度/单 view 子集交付 |
+| B-10 | 完成口形（complete_sync/async）在 avrs 会话车道把模块变调度面——mir 能力域拒绝 | M2Build 工程执行器承载（1113 已证 sdk_pack）；sleep/now 旧 `#[rs]` 面归该 lane |
+| B-11 | redis 真服务器验证依赖外部服务 | §10 具名 pending（运维输入）；RESP2 算法=975 共享 Auto |
