@@ -342,6 +342,8 @@ fn observe(pg List<int>, src List<int>, ast List<int>, bases List<int>, roots Li
             if (hir_mode == "mir-cfg") { control = 7 }
             if (hir_mode == "mir-change-constant") { control = 8 }
             if (hir_mode == "mir-uninitialized") { control = 9 }
+            if (hir_mode == "mir-aggregate-ty") { control = 10 }
+            if (hir_mode == "mir-field-index") { control = 11 }
             var abc = List<int>.new()
             var entry_name = "main"
             if (ct_deadline > 0i64 && get("AAC1055_CT_TARGET").len() > 0) { entry_name = ct_entry_name() }

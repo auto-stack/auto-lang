@@ -278,6 +278,33 @@ fn main() int { let s = \"xy\"; return takes(s, Pair(enabled: true, number: 7)) 
     ));
 }
 
+/// V-02 数据域部分：对合法 record MIR 的 Aggregate 操作数类型与
+/// field_get 越界字段索引变异被 Auto verifier 阶段定位拒绝，且不发布
+/// ABC；未变异 MIR（合法近邻）仍独立执行得 42。
+#[test]
+fn aac1050_v02_data_face_mutations_reject_with_stage_location() {
+    let source = b"type Pair { number int; enabled bool }
+fn main() int { let p = Pair(enabled: true, number: 42); return p.number }";
+
+    let (report, bytes) =
+        ace_aac_syntax_conformance::run_base_mir_control(source, "mir-aggregate-ty")
+            .expect("Auto aggregate-ty control");
+    assert!(report.starts_with("ERROR mir.type "), "{report}");
+    assert!(bytes.is_none(), "mutated aggregate must not publish ABC");
+
+    let (report, bytes) =
+        ace_aac_syntax_conformance::run_base_mir_control(source, "mir-field-index")
+            .expect("Auto field-index control");
+    assert!(report.starts_with("ERROR mir.reference "), "{report}");
+    assert!(bytes.is_none(), "mutated field index must not publish ABC");
+
+    let original = run(source).expect("Auto MIR original record program");
+    assert!(matches!(
+        execute_owned_auto_mir(&original),
+        ExecOutcome::Success { value: Value::I32(42), .. }
+    ));
+}
+
 fn run(source: &[u8]) -> Result<Vec<u8>, String> {
     ace_aac_syntax_conformance::run_base_mir_case(source)
 }

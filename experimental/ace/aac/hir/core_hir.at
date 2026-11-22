@@ -1,9 +1,11 @@
 use app.atom_data.parse_transport_arena
 use app.atom_data.validate_transport_arena
 use app.base_abc.encode_base_abc
+use app.base_ir.aggregate_instruction
 use app.base_ir.block_stride
 use app.base_ir.call_instruction
 use app.base_ir.copy_instruction
+use app.base_ir.field_get_instruction
 use app.base_ir.function_stride
 use app.base_ir.instruction_stride
 use app.base_ir.invalid_mir_reference
@@ -1739,6 +1741,19 @@ fn mir_control(control int, functions List<int>, blocks List<int>, instrs List<i
         }
         if (control == 9 && instrs.get(at + 1) == copy_instruction()) {
             instrs.set(at + 3, instrs.get(at + 2))
+            return 0
+        }
+        if (control == 10 && instrs.get(at + 1) == aggregate_instruction()) {
+            // V-02 data-face: point an aggregate operand at a slot of the
+            // wrong lane (the field-type check must reject it).
+            let begin = instrs.get(at + 4)
+            if (begin >= 0 && begin < operands.len()) { operands.set(begin, 0) }
+            return 0
+        }
+        if (control == 11 && instrs.get(at + 1) == field_get_instruction()) {
+            // V-02 data-face: an out-of-range field index must be rejected
+            // by the field-path check.
+            instrs.set(at + 5, 4096)
             return 0
         }
         at = at + instruction_stride()
