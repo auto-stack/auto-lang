@@ -44,8 +44,7 @@ value:14
 ```
 
 ### Probe ac-native
-#ignore
-recipe: "ac/mir-native-scalar-v1"
+recipe: "ac-aac-gen1/native-run-v1"
 entry: "d_main"
 exit: 14
 
@@ -62,10 +61,11 @@ final-newline: false
 
 `av.parity.1078.baseline-value` keeps the planned 1078 id (identical Auto
 source to `ace.m1.b01`); the AV check runs the ordinary language chain. The
-ac-native and legacy-reference checks are declared with their original
-oracles and owners, and carry the AV-phase `#ignore` marker (AV-ONLY-1078-1096)
-— they are not executed during this phase and never block the AV gate; their
-backend tasks remove the marker and open them when they land.
+ac-native check is the PLAN-1053 Gen1 takeover: the same source runs through
+the whole-subject Auto compiler (mir) -> 1051 bridge service -> parent-side
+link -> the real PE, judged on the corpus exit oracle in the
+`case-aac-gen1-language-parity` target view (target `gen1`). The
+legacy-reference check keeps its AV-phase `#ignore` marker.
 
 ## Case: short-circuit
 id: "av.parity.1078.short-circuit"

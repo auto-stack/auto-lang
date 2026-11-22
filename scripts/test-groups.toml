@@ -701,6 +701,22 @@ all = false
 
 # PLAN-1115: the public language corpus A2R view — the ordinary-language
 # RUN recipe's rows (same sources, the A2R observation oracle).
+# PLAN-1053: the public language corpus Gen1 AC view — the ac-aac-gen1
+# native-run rows (same sources, the whole-subject Auto compiler chain ->
+# 1051 bridge -> real PE; requires AAC1053_GEN1_DIR + the gen1 worker).
+[[group]]
+name = "case-aac-gen1-language-parity"
+title = "TestCase 公共语言语料 Gen1 AC 视图（PLAN-1053 AAC Gen1 原生运行车道）"
+runner = "case"
+workspace = "."
+args = []
+expression = "all()"
+target = "gen1"
+tools = []
+domain = "ace"
+suite = "crates/auto-lang/test/cases/language.suite.ad"
+all = false
+
 [[group]]
 name = "case-a2r-language-parity"
 title = "TestCase 公共语言语料 A2R 视图（PLAN-1115 普通语言 A2R 运行车道）"

@@ -203,6 +203,11 @@ impl Selection {
                     && check.action == auto_test_case::contract::Action::Run
                     && check.options.probe_recipe.as_deref()
                         == Some("ac-a2r/hir-language-run-v1"),
+                // PLAN-1053: the Gen1 native AAC corpus view (the same
+                // sources through the whole-subject Auto compiler).
+                "gen1" => check.adapter == Adapter::Probe
+                    && check.action == auto_test_case::contract::Action::Run
+                    && check.options.probe_recipe.as_deref() == Some("ac-aac-gen1/native-run-v1"),
                 _ => false,
             })
     }
@@ -285,9 +290,9 @@ fn run_suite_selected_impl(
     if selection
         .target
         .as_deref()
-        .is_some_and(|target| target != "av" && target != "a2r")
+        .is_some_and(|target| !matches!(target, "av" | "a2r" | "gen1"))
     {
-        return Err("bad selector: target must be av or a2r".into());
+        return Err("bad selector: target must be av, a2r or gen1".into());
     }
     let loaded = load_suite(suite_path, limits).map_err(|e| format!("suite load: {}", e))?;
 

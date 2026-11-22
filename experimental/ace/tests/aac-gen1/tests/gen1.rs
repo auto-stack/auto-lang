@@ -795,6 +795,123 @@ fn gen1_negative_controls_stage_codes() {
 }
 
 #[test]
+#[ignore = "manual replay lane (PLAN-1053 T-04): the full shared-language CL matrix rides the Gen1 chain against the corpus AV exit oracles; replayed at T-06/milestones, not in the daily union"]
+fn gen1_cl_matrix_replay() {
+    let started = Instant::now();
+    let compile = prepared_compile()
+        .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
+    // Cross-backend CL matrix (V-01): every single-file corpus case with an
+    // AV exit oracle runs its SAME source bytes through the Gen1 chain;
+    // the real PE's exit must equal the corpus' AV oracle. Pre-backend
+    // refusals are classified with their frozen diagnostic (the named-gap
+    // map for the CL family), never counted as runs.
+    let corpus_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../crates/auto-lang/test/cases/language");
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read corpus dir") {
+            let path = entry.expect("corpus entry").path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|e| e == "ad") {
+                out.push(path);
+            }
+        }
+    }
+    walk(&corpus_root, &mut files);
+    files.sort();
+    let limits = auto_test_case::admission::Limits::defaults();
+    let mut ran = 0usize;
+    let mut matched = 0usize;
+    let mut multi_file = 0usize;
+    let mut no_oracle = 0usize;
+    let mut blocked: Vec<(String, String)> = Vec::new();
+    let mut mismatches: Vec<String> = Vec::new();
+    for case_file in &files {
+        let bytes = std::fs::read(case_file).expect("read the corpus case file");
+        let doc = auto_test_case::document::CaseDocument::parse(&bytes)
+            .expect("the corpus document parses");
+        let rel = case_file
+            .strip_prefix(&corpus_root)
+            .expect("corpus-relative path")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let cases = auto_test_case::author::decode_document(&doc, &rel, &limits)
+            .expect("the corpus cases decode");
+        for authored in &cases {
+            // The AV run oracle is the cross-backend reference for the
+            // SAME source (its own independent delivery contract).
+            let av_exit = authored
+                .spec
+                .checks
+                .iter()
+                .find(|c| {
+                    c.options.probe_recipe.as_deref() == Some("ac-av/language-source-run-v1")
+                        || c.options.probe_recipe.as_deref() == Some("ac-av/core-run-v1")
+                })
+                .and_then(|c| c.expect.exit);
+            let Some(expected) = av_exit else {
+                no_oracle += 1;
+                continue;
+            };
+            let resolved = match auto_test_case::ir::resolve_case(
+                authored.spec.clone(),
+                &doc,
+                case_file.parent().expect("case dir"),
+                &limits,
+            ) {
+                Ok(r) => r,
+                Err(_) => {
+                    no_oracle += 1;
+                    continue;
+                }
+            };
+            if resolved.files.len() != 1 {
+                multi_file += 1;
+                continue;
+            }
+            match gen1_chain_exit(
+                compile,
+                &resolved.files[0].bytes,
+                &format!("aac1053-matrix-{}", authored.spec.id),
+            ) {
+                Ok(ChainOutcome::Ran(observed)) => {
+                    ran += 1;
+                    if observed == expected {
+                        matched += 1;
+                    } else {
+                        mismatches.push(format!(
+                            "{}: gen1 exit {observed} != av oracle {expected}",
+                            authored.spec.id
+                        ));
+                    }
+                }
+                Ok(ChainOutcome::Refused(report)) => {
+                    let head = report.lines().next().unwrap_or("").to_string();
+                    blocked.push((authored.spec.id.clone(), head));
+                }
+                Err(e) => panic!("Gen1 chain failed for {}: {e}", authored.spec.id),
+            }
+        }
+    }
+    blocked.sort();
+    eprintln!(
+        "gen1 CL matrix: files={} ran={ran} matched={matched} blocked={} multi_file={multi_file} no_oracle={no_oracle} wall={:?}",
+        files.len(),
+        blocked.len(),
+        started.elapsed()
+    );
+    for (id, head) in &blocked {
+        eprintln!("  BLOCKED {id}: {head}");
+    }
+    assert!(
+        mismatches.is_empty(),
+        "exit mismatches (a real Gen1/AV semantic divergence): {mismatches:?}"
+    );
+    assert!(ran >= 1, "the matrix must ride at least one case end-to-end");
+}
+
+#[test]
 fn gen1_stale_preparation_is_refused() {
     let started = Instant::now();
     let exe = prepared_gen1().expect("prepared Gen1 exe");
