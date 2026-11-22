@@ -11,8 +11,10 @@
 
 - 一套工程构建身份/缓存/装配/恢复层，五目标：`av | native | a2r | a2c | a2py`。
 - 源码构建 lane：AV 进程内执行（值观测）；native 进程内 cranelift+rust-lld 真
-  PE 构建+进程运行；a2r/a2c/a2py 文件集 emit（真编译属显式 build-lane：
+  PE 构建+进程运行；a2c/a2py 文件集 emit（真编译属显式 build-lane：
   rustc/clang/cl 为构建期工具，禁入日常测试体——2026-11-14 测试裁定）。
+  **PLAN-1117 delta**：a2r 车道发射腿改走普通语言通道（session-less，
+  `auto.a2x.rust.language.fileset/1`），a2c/a2py 不动。
 - 预编译消费 lane（`ac-build run --sdk`）：先 selection 准入→runtime 兼容核对
   →再 dispatch；AV 进程内、native/a2r 走 SDK 内预编译 exe、a2py 经声明解释器
   执行生成的 `a2x_main.py` runner；缺预编译产物=具名拒绝

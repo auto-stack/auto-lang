@@ -63,3 +63,16 @@ rustc → 受控执行，见
 `auto.a2x.rust.language.fileset/1`、cert `ace.a2r-hir.language.cert/1`，
 与标量/record-text/collections 三通道窄通道并列互斥。固定组
 `case-a2r-language-parity`（target=a2r）选择语料 A2R 值行。
+
+## PLAN-1117（v0.5 接管路由）增量
+
+- **宿主桥**：`auto-lang-ace-host::rust_transpile::transpile_scalar_source`
+  （兄弟 CLI `AUTO_ACE_RUST=ace` 注册的渲染器名）改走普通语言通道
+  （准入 cap + 实例化/CT 钩子 + `lower_language_program` + 语言 fileset
+  schema）；标量前门保留在 `transpile_with_profile(.., Scalar)`。包级渲染器
+  （RecordText 族）不动——多模块语言面=具名缺口（见
+  [legacy-replacement](legacy-replacement.md) D-1117-2）。
+- **m2-build A2R 车道**：发射腿走同一语言管线（session-less，D-1117-3），
+  真 rustc/SDK/重定位/恢复沿 1116。
+- 旧公开分母、逐项映射、回滚与接收门冻结在
+  [legacy-replacement](legacy-replacement.md)（`IF-ACE-A2R-V05-REPLACEMENT/1`）。

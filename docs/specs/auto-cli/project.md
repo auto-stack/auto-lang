@@ -99,6 +99,18 @@ graph LR
 
 `auto` 的生产 owner 已迁 auto-man 仓，语言仓原目录已删除。CLI 继续只负责 clap 解析/路由/显示，管理服务在 Man，语言 SDK/协议/owned 执行设施留语言仓，UI 经真实 auto-ui-tool 进程消费。`crates/auto` 持有共享 CLI 源与 full package，`crates/auto-core`+`core/Cargo.toml` 以 Cargo target path 复用同一份源码形成独立 Core workspace/lock/target；Core 命令必须带 `--manifest-path core/Cargo.toml`，因此无 UI 时不解析 full optional path。Core 与 default full 双 profile、33 命令及 orphan 边界、JSON/stdio/寿命保持；独立安装、固定版本和升级恢复见 [man-three-repository-delivery](../repository-boundaries/man-three-repository-delivery.md)。`bp` 的资产注册保留显式 `AUTO_BLUEPRINTS_ROOT` 与项目库优先，Man 占位 `packages/blueprints` 不遮蔽真实库：开发回退语言 owner，安装回退当前安装根的 `sdk/packages/blueprints`；生产与测试共用该入口。
 
+## PLAN-1117：A2R 可选接管（v0.5 候选路由）
+
+- 现役转译/构建命令（`auto trans rust`/`auto rust`/`auto build --render rust`
+  的 ACE 臂）经 `AUTO_ACE_RUST=ace` 显式选择候选（PLAN-982 既有开关，
+  `ace-candidate` feature 装配；未设/未知值保持 legacy，绝不静默切换）；
+  `AUTO_ACE_RUST_PROOF` 写真实 dispatch 回执。
+- PLAN-1117 起候选渲染绑定语言通道（`auto-lang-ace-host` 升级，产物=
+  三件套 fileset + `value:<n>`/`trap:` 协议）；分母、映射、边界（多模块包
+  车道、`auto trans -t rust` 无 `--merge` 臂的开关绕过孔）冻结在
+  [auto-a2r/legacy-replacement](../auto-a2r/legacy-replacement.md)。
+- 安装默认与旧链退役归 986/987；产品 CLI（auto-man 仓）接线由其 owner 接收。
+
 ## PLAN-842：安装来源与 Core
 
 安装 CLI 的 Full profile 可直接从邻接受管 SDK 生成独立 Rust 交付；显式来源为权威，无效不回落，UI owner 与语言 producer 各自记录来源。Core 安装保持无 UI 包/工具，语言 VM 可用，UI 命令具名提示需要 Full。未知或损坏安装、无效 producer 在替换旧产物前拒绝；安装升级与备份恢复见 [三仓交付](../repository-boundaries/man-three-repository-delivery.md)。来源：[PLAN-842](../../plans/archive/842-legacy-compat-and-distribution-retirement.md)
