@@ -337,6 +337,7 @@ impl ComponentEventSessionProgram {
             last_states: Vec::new(),
             audit: SessionAudit::default(),
             http: None,
+            http_wall: None,
         };
         // init 链（首次派发触发；每代一次）。
         let (out, trace) = session.entry(&self.init_def_id, &[]);
@@ -388,6 +389,9 @@ pub struct ComponentEventSession {
     /// PLAN-108（T-03c M2）：宿主 HTTP provider（UI 桥注入；None=HttpCall
     /// 具名 fail-closed）。
     http: Option<std::sync::Arc<std::sync::Mutex<dyn ace_av_core::http_client::HttpProvider>>>,
+    /// PLAN-108：http 车道的执行墙上限放宽（默认 wall 短于 65s 慢端点见证；
+    /// provider 注入时置 300s；只放大不缩小）。
+    http_wall: Option<std::time::Duration>,
 }
 
 impl ComponentEventSession {
@@ -397,10 +401,15 @@ impl ComponentEventSession {
         args: &[EntryArg<'static>],
     ) -> (ExecOutcome, ace_av_core::ExecTrace) {
         let snap = self.snap.as_ref().expect("session is live");
+        // PLAN-108：http 车道放宽执行墙（默认 wall 容不下 65s+ 慢端点）。
+        let mut limits = ace_av_core::ExecLimits::default();
+        if let Some(wall) = self.http_wall {
+            limits.wall = limits.wall.max(wall);
+        }
         execute_program_entry_args_with_http(
             snap,
             def_id,
-            &ace_av_core::ExecLimits::default(),
+            &limits,
             &ace_av_core::CancelFlag::new(false),
             args,
             self.http.clone(),
@@ -414,6 +423,8 @@ impl ComponentEventSession {
         provider: std::sync::Arc<std::sync::Mutex<dyn ace_av_core::http_client::HttpProvider>>,
     ) {
         self.http = Some(provider);
+        // 65s+ 慢端点见证的墙上限（只放大）：http 等待是合法长阻塞。
+        self.http_wall = Some(std::time::Duration::from_secs(300));
     }
 
     /// 会话代次（每次 open 递增；关闭重开必然新代次）。
