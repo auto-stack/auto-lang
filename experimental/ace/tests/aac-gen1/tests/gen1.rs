@@ -677,6 +677,123 @@ fn gen1_corpus_sweep_ac_native_probes() {
     );
 }
 
+/// Run the compile entry with an extra env flag (the 1047 driver's mode
+/// switches) and return the report.
+fn run_compile_flagged(
+    exe: &std::path::Path,
+    input: &std::path::Path,
+    output: &std::path::Path,
+    hir_mode: &str,
+    flag: (&str, &str),
+) -> Result<String, String> {
+    use auto_tool_execution::{run_command_capture, ExitKind, TreeScope};
+    let mut cmd = Command::new(exe);
+    cmd.current_dir(input.parent().expect("input parent"))
+        .env("A2X_RT_BUDGET", "33554432")
+        .env("AAC1047_INPUT", input)
+        .env("AAC1047_OUTPUT", output)
+        .env("AAC1047_TYPED", "1")
+        .env_remove("AAC1047_HIR")
+        .env_remove("AAC1047_PROJECT")
+        .env_remove("AAC1047_STEPS")
+        .env_remove("AAC1047_ARTIFACT")
+        .env_remove("AAC1047_STAGED")
+        .env_remove("AAC1047_FOREIGN_PATH")
+        .env_remove("AAC1047_FOREIGN_AUTHORITY")
+        .env_remove("AAC1055_ABC")
+        .env_remove("AAC1049_RESOURCES")
+        .env(flag.0, flag.1);
+    // The driver distinguishes an ABSENT mode var from a present-empty
+    // one; an explicit mode is only set when the caller names one.
+    if !hir_mode.is_empty() {
+        cmd.env("AAC1047_HIR", hir_mode);
+    }
+    let run = run_command_capture(cmd, TreeScope::ProcessTree, Some(std::time::Duration::from_secs(8)))
+        .map_err(|err| format!("run Gen1 compile: {err}"))?;
+    if !matches!(run.kind, ExitKind::Success) {
+        return Err(format!(
+            "Gen1 compile: {:?} {}",
+            run.kind,
+            run.stderr_lossy().unwrap_or_default()
+        ));
+    }
+    std::fs::read_to_string(output).map_err(|err| format!("read compile report: {err}"))
+}
+
+#[test]
+fn gen1_negative_controls_stage_codes() {
+    let started = Instant::now();
+    let exe = prepared_compile()
+        .expect("prepared Gen1 compile exe (run prepare-gen1, set AAC1053_GEN1_DIR)");
+    let root = scratch("gen1-negatives");
+    let input = root.join("input.at");
+    let output = root.join("report.txt");
+    let abc = root.join("closure.abc");
+    // V-02/V-03 negatives: every illegal source is REFUSED at its own stage
+    // with the frozen contract diagnostic code (the driver's `diagnostic_name`
+    // vocabulary), never a silent empty success, and never a runnable
+    // artifact — emit-as-run and wrong-stage acceptance both fail here.
+    let negatives: &[(&str, &str)] = &[
+        ("bind.unresolved", "fn main() int { return missing_name }\n"),
+        ("bind.immutable", "fn main() int { let x = 1\n x = 2\n return x }\n"),
+        ("type.return", "fn main() int { return true }\n"),
+    ];
+    for (frozen_code, source) in negatives {
+        std::fs::write(&input, source).expect("write negative input");
+        let report = run_compile_flagged(exe, &input, &output, "verify", ("AAC1049_SKIP", "0"))
+            .expect("run negative case");
+        assert!(
+            report.starts_with(&format!("ERROR {frozen_code} ")) || report == format!("ERROR {frozen_code}\n"),
+            "{frozen_code}: report must name the frozen stage code, got {report:?}"
+        );
+        // The refusal must not produce a linkable closure.
+        assert!(
+            !abc.is_file(),
+            "{frozen_code}: a refused source must not emit an ABC closure (emit-as-run)"
+        );
+    }
+    // V-04 resource leg: the driver's own use-after-move audit (real
+    // production point, not a wrapper self-report) names the moved root.
+    // Shapes follow the corpus' current move idiom (`move`-declared
+    // parameter; the 1049 package's original int-let fixture predates the
+    // move-surface tightening and is itself stale — recorded in PLAN-1053
+    // §10). The resources dispatch rides the plain typed path (an explicit
+    // HIR mode routes around the audit).
+    std::fs::write(
+        &input,
+        concat!(
+            "fn f(move x int) int { let y = x.move\n return x }\n",
+            "fn main() int { return 7 }\n",
+        ),
+    )
+    .expect("write use-after-move input");
+    let report = run_compile_flagged(exe, &input, &output, "", ("AAC1049_RESOURCES", "1"))
+        .expect("run resources audit");
+    assert!(
+        report.starts_with("ERROR resource.use-after-move x "),
+        "the resources audit must name the moved root, got {report:?}"
+    );
+    // Legal neighbour: no transfer at all — the audit finds nothing and
+    // the ordinary typed report proceeds (a real observation, not a skip).
+    std::fs::write(
+        &input,
+        concat!("fn f(move x int) int { return x }\n", "fn main() int { return 7 }\n"),
+    )
+    .expect("write legal neighbour input");
+    let report = run_compile_flagged(exe, &input, &output, "", ("AAC1049_RESOURCES", "1"))
+        .expect("run resources audit (legal neighbour)");
+    assert!(
+        report.starts_with("aac.type-report/1") && !report.contains("use-after-move"),
+        "the legal neighbour must proceed past the audit, got {report:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    eprintln!("gen1 negative controls ok in {:?}", started.elapsed());
+    assert!(
+        started.elapsed().as_secs_f64() <= 10.0,
+        "negative-controls case exceeded the 10-second gate"
+    );
+}
+
 #[test]
 fn gen1_stale_preparation_is_refused() {
     let started = Instant::now();
