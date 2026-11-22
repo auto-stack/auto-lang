@@ -1,0 +1,271 @@
+# PLAN-1126 — Python library parity: NumPy and the standard `json` module
+
+Each case has ONE Auto author source. The ordinary AV language entry and the
+A2PY `run-py` leg (1110) run the same `### Auto` bytes against the same frozen
+oracle. The independent native-Python references (they call NumPy / `json`
+directly and never read ACE output) live in
+`crates/auto-lang/test/cases/ace-m2/python-1126/`.
+
+Both ends need a NumPy the interpreter can import. AV loads NumPy from the
+assembled CPython; the A2PY leg runs `python -I -B` in ISOLATED mode (the
+frozen 1042 contract), so its DECLARED interpreter must carry NumPy in its own
+site-packages (a user-site install is invisible there). Missing NumPy is a
+real `ModuleNotFoundError` (`python.1`), never a pass.
+
+A2PY program output goes through the interpreter's text stream, so on
+Windows those lines end in CRLF while the `value:` observation line is raw
+bytes ending in LF; the A2PY stream oracles therefore use `compare: "lf"`.
+The AV stream oracles stay byte-exact (AV writes LF).
+
+## Case: numpy-json
+id: "py.libraries.1126.numpy-json"
+tags: ["av-language-parity", "plan-1126"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py numpy: arange
+use.py builtins: slice
+use.py json: loads, dumps
+
+fn main() int {
+    var base = arange(6).reshape(2, 3)
+    var a = base + arange(3)
+    var shape = a.shape
+    var row = a[1]
+    var selected = row[slice(0, 3, 2)]
+    print(shape[0].to(int))
+    print(shape[1].to(int))
+    print(row[2].to(int))
+    print(a.sum().to(int))
+    print(selected.sum().to(int))
+    print(a.mean().to(float))
+
+    var data = loads("{\"values\":[2,3,5],\"label\":\"雪\",\"meta\":{\"enabled\":true}}")
+    var values = data["values"]
+    var meta = data["meta"]
+    print(values[2].to(int))
+    print(meta["enabled"].to(bool))
+    var encoded = dumps(data, sort_keys: true, ensure_ascii: false)
+    var decoded = loads(encoded)
+    print(decoded["label"].to(str))
+    print(encoded.to(str))
+    print(dumps(decoded, sort_keys: true, ensure_ascii: false).to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+2
+3
+7
+21
+10
+3.5
+5
+true
+雪
+{"label": "雪", "meta": {"enabled": true}, "values": [2, 3, 5]}
+{"label": "雪", "meta": {"enabled": true}, "values": [2, 3, 5]}
+```
+
+#### stderr
+
+```text
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+
+#### stdout
+compare: "lf"
+
+```text
+2
+3
+7
+21
+10
+3.5
+5
+true
+雪
+{"label": "雪", "meta": {"enabled": true}, "values": [2, 3, 5]}
+{"label": "雪", "meta": {"enabled": true}, "values": [2, 3, 5]}
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+NumPy: broadcasting `[[0,2,4],[3,5,7]]`, shape `2,3`, element `7`, total
+`21`, strided slice sum `10` (`row[0:3:2]` is `[3,7]`; dropping the stride
+and summing the whole row gives `15`), mean `3.5`. The arrays stay on the
+Python side; Auto only extracts the six small values. `shape` is an
+attribute-derived object, indexed by int; `row` is indexed by a Python
+`slice` object.
+
+`json`: text-key indexing (`data["values"]`), nested leaf reads, keyword
+arguments, Unicode serialization (`ensure_ascii: false`) and the structural
+round trip — encoding the decoded tree again yields the same fixed UTF-8
+text. The `value:0` line is the A2PY run-observation channel, not output.
+
+## Case: numpy-shape-error-caught
+id: "py.libraries.1126.numpy-shape-error-caught"
+tags: ["av-language-parity", "plan-1126"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py numpy: arange
+fn main() int {
+    var caught = 0
+    try { var bad = arange(6).reshape(4, 2); print(bad.len()) } catch e { caught = caught + 1; print("caught: " + e.to(str)) }
+    print(caught)
+    var ok = arange(6).reshape(2, 3)
+    print(ok.shape[0].to(int))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.5"
+error-span: "76..99"
+
+#### stdout
+
+```text
+caught: PyException ValueError: cannot reshape array of size 6 into shape (4,2)
+1
+2
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "76..99"
+
+#### stdout
+compare: "lf"
+
+```text
+caught: PyException ValueError: cannot reshape array of size 6 into shape (4,2)
+1
+2
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+### Notes
+
+The real NumPy `ValueError` (class 5) raised by `arange(6).reshape(4, 2)`
+unwinds into the Auto handler EXACTLY ONCE (`caught` prints `1`; the
+`bad.len()` print is skipped), and execution continues: the valid reshape
+still runs and prints its first axis. `[76,99)` is the half-open byte range
+of the failing call expression in the author source.
+
+## Case: json-decode-error-uncaught
+id: "py.libraries.1126.json-decode-error-uncaught"
+tags: ["av-language-parity", "plan-1126"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py json: loads
+fn main() int {
+    var data = loads("{")
+    return data["values"].len()
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+stage: "run"
+code: "lang.error"
+message: "PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+error-kind: "python.10"
+error-span: "50..60"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+
+```text
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 1
+error-type: "JSONDecodeError"
+error-kind: "python.10"
+error-span: "50..60"
+
+#### stdout
+
+```text
+```
+
+#### stderr
+compare: "lf"
+
+```text
+PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+```
+
+### Notes
+
+The real `json.JSONDecodeError` from `loads("{")` escapes: AV ends in the
+language-error terminal state with no success value and no partial output;
+the A2PY process exits 1. Both ends classify it `python.10` — the frozen
+class table matches the exact type name, and `JSONDecodeError` is not in it
+(it is a `ValueError` subclass but is NOT mapped to class 5). `[50,60)` is
+the byte range of `loads("{")`.
