@@ -484,3 +484,21 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 | `av.parity.1120.generic-list-hof`（`experimental/ace/crates/av/tests/cases/plan1120_generic_list_hof.rs` 9 例） | V-01 独立预期 stdout `2 2 world true true 3 1 3 6`（legacy VM 布尔显示 `1` 为具名差异）；V-02 空表/未命中/短路计数/绑定拒绝；V-03 全所有者释放、分配故障重放、回调失败 try/catch 后输入续用；int 近邻 42 | PASS |
 
 复跑入口：`cargo test -p ace-av --test conformance plan1120_generic_list_hof`（9 例）+ plan1082/1086/1088 近邻族。legacy 映射：`legacy.25_method_u64.012_list_hof_value` 行归本计划（`legacy-map.tsv`，canonical `av.parity.1120.generic-list-hof`）。
+
+## PLAN-1122 · 字符串转宽无符号整数
+
+普通 AV 用 `text.parse_u64() -> ?u64` 迁移旧 `text.to_uint()`。旧调用在绑定阶段报
+`source.legacy-to-uint`。旧 AutoVM shim 对 trim 后的文本走有符号 i64，并用零表示失败。
+新接面的词法与错误合同见 [标准库核心](../ace-migration/m2-stdlib-core.md)。通过
+`is`、`.?` 或 `.?(fallback)` 显式消费结果，能区分有效零和解析失败。需要沿用
+旧输入的前后空白时，调用方可先按输入规则清理。
+
+解包后 `u64` 可用于局部、参数、项目全局初始化与读写、同型受检运算与比较。
+`u64.to_str()` 和 f-string 插值保留完整十进制。传给 `print` 时可先格式化为文本。
+旧混合算术的浮点样例显式以 `.to(f64)` 进入浮点域。把宽值转至 `i32` 时
+保留 `run/av.trap.int-overflow`。旧 `text.to(int)` 的正负边界保持。
+
+[验收语料](../../../crates/auto-lang/test/cases/language/numbers/wide-unsigned-conversion.case.ad)
+覆盖大于 2^53 的精确差值、最大值往返与旧 001–011 的迁移。
+[逐行映射](../../../crates/auto-lang/test/cases/language/migration/legacy-map.tsv) 保留旧输入及预期。
+[PLAN-1122](../../plans/archive/1122-av-stdlib-wide-unsigned-conversion.md)。

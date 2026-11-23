@@ -404,7 +404,10 @@ fn v08_surface_manifest_and_five_end_exercise() {
                 "to_upper_ascii",
             ],
         ),
-        ("conv", &["from_int", "from_uint", "is_uint", "to_int"]),
+        (
+            "conv",
+            &["from_int", "from_u64", "from_uint", "is_uint", "parse_u64", "to_int"],
+        ),
         ("hash", &["codepoint_hash"]),
         (
             "bytes",

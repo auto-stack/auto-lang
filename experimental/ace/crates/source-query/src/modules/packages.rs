@@ -69,6 +69,8 @@ pub fn compile_package_product_auto_prepared(
     let mut bound = ace_core::source::packages::bind_packages_auto(inputs, entry, &caps, budget)
         .map_err(|e| vec![e])?;
     let profile = SourceProfile::Auto;
+    ace_core::source::adapter::graft_package_u64_parse(&mut bound)
+        .map_err(|d| vec![bound.locate(d)])?;
     ace_core::source::adapter::complete_auto_signatures(&mut bound.program)
         .map_err(|ds| locate_all(&bound, ds))?;
     if bound.program.has_instance_templates() {

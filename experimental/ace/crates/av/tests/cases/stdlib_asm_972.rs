@@ -719,6 +719,9 @@ const CONV_MAIN: &str = r#"
 use std.conv.to_int
 use std.conv.is_uint
 use std.conv.from_uint
+use std.conv.parse_u64
+use std.conv.from_u64
+use std.text.equal
 fn pick(s Str) int {
     let r = to_int(s)
     is r {
@@ -727,6 +730,32 @@ fn pick(s Str) int {
     }
 }
 fn main() int {
+    let wide = parse_u64("18446744073709551615".clone())
+    var n = 0u64
+    is wide {
+        Some(v) -> { n = v }
+        None -> { return -1 }
+    }
+    if (n != 18446744073709551615u64) {
+        return -2
+    }
+    let formatted = from_u64(n)
+    if (!equal(formatted.clone(), "18446744073709551615".clone())) {
+        return -3
+    }
+    let roundtrip = parse_u64(formatted)
+    is roundtrip {
+        Some(v) -> { if (v != n) { return -4 } }
+        None -> { return -5 }
+    }
+    let overflow = parse_u64("18446744073709551616".clone())
+    is overflow {
+        Some(v) -> { return -6 }
+        None -> {}
+    }
+    if (!equal(from_u64(0u64), "0".clone())) {
+        return -7
+    }
     var code = pick("42".clone()) * 10000000
     code = code + (pick("-2147483648".clone()).to(i64) + 2147483648i64).to(i32) * 1000000
     code = code + pick("007".clone()) * 100000

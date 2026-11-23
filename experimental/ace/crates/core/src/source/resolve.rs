@@ -21355,6 +21355,35 @@ F:{d}
                 }
             }
             if recv.vt.is_text() && to_word.is_none() {
+                if name.name == "parse_u64"
+                    && self.sigs.contains_key(super::adapter::STDLIB_PARSE_U64)
+                {
+                    let callee = ast::Ident {
+                        name: super::adapter::STDLIB_PARSE_U64.into(),
+                        span: name.span,
+                    };
+                    let mut arguments = Vec::with_capacity(args.len() + 1);
+                    arguments.push(ResolvedArg {
+                        name: None,
+                        span: recv.span,
+                        value: recv,
+                        moved: false,
+                    });
+                    arguments.extend(args);
+                    return self.resolve_call(&callee, arguments, span);
+                }
+                if name.name == "to_uint" {
+                    self.bind_err(
+                        "source.legacy-to-uint",
+                        "use `.parse_u64()` and handle its `?u64` result",
+                        span,
+                    );
+                    return ResolvedExpr {
+                        span,
+                        vt: VT::I32,
+                        kind: RExprKind::Unit,
+                    };
+                }
                 if name.name == "to_upper" && args.is_empty() {
                     let mut view = recv;
                     self.adapt_argument_type(&mut view, VT::Str);
@@ -21430,7 +21459,7 @@ F:{d}
                     span,
                 );
             }
-            if recv.vt == VT::I32
+            if matches!(recv.vt, VT::I32 | VT::U64)
                 && !self.py_is_object(&recv)
                 && ((name.name == "to" && to_word.is_some_and(|word| vt_of_word(word).is_text()))
                     || (name.name == "to_str" && args.is_empty() && to_word.is_none()))

@@ -118,3 +118,47 @@ fn digits_of64(m i64, acc Str) Str {
     }
     return digits_of64(rest, with_d)
 }
+
+// Unsigned decimal: guard each multiply/add before entering checked arithmetic.
+// A loop keeps leading-zero runs independent of call-stack depth.
+pub fn parse_u64(s Str) ?u64 {
+    let len = s.len()
+    if (len == 0) {
+        return None
+    }
+    var i = 0
+    if (s.char_at(0).to_codepoint() == 43) {
+        i = 1
+    }
+    if (i == len) {
+        return None
+    }
+    var acc = 0u64
+    for (i < len) {
+        let digit = s.char_at(i).to_codepoint() - 48
+        if (digit < 0 || digit > 9) {
+            return None
+        }
+        let d = digit.to(u64)
+        if (acc > 1844674407370955161u64 || (acc == 1844674407370955161u64 && d > 5u64)) {
+            return None
+        }
+        acc = acc * 10u64 + d
+        i = i + 1
+    }
+    return Some(acc)
+}
+
+pub fn from_u64(n u64) Str {
+    return digits_of_u64(n, "")
+}
+
+fn digits_of_u64(n u64, acc Str) Str {
+    let digit = (n % 10u64).to(i32)
+    let rest = n / 10u64
+    let text = digit_str(digit) + acc
+    if (rest == 0u64) {
+        return text
+    }
+    return digits_of_u64(rest, text)
+}

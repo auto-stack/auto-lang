@@ -5,7 +5,7 @@
 > 分层、边界与已裁定偏差。历史与逐轮证据见归档计划
 > [972](../../plans/archive/972-ace-m2-stdlib-core.md)。
 
-## 能力面（62 公共符号，8 模块）
+## 能力面（69 公共符号，8 模块）
 
 装配集 = `stdlib/ace/asm/{list,math,text,char,conv,hash,bytes,map}.at`，
 经 `stdlib_assembled_files()` 冻结身份（include_str! 仓内源；仓外/漂移/
@@ -18,7 +18,7 @@ packages-aggregates-ct 装配线（1043 来源后缀装配合同的消费面）�
 | math | abs/min/max/square/cube；abs_f/sqrt/powf/sin/cos（纯 Auto double 族） |
 | text | byte_len/scalar_len/char_code_at/equal/starts_with/ends_with/contains/repeat/upper_ascii/lower_ascii/find/reverse/trim/replace/split/lines |
 | char | is_digit/is_alpha_ascii/is_alphanum_ascii/is_ident_ascii/is_whitespace/to_upper_ascii/to_lower_ascii（codepoint 形） |
-| conv | to_int/is_uint/from_uint/from_int |
+| conv | to_int/is_uint/from_uint/from_int/parse_u64/from_u64 |
 | hash | codepoint_hash（S-06 裁定：codepoint 域默认） |
 | bytes | byte_at/utf8_len/byte_of/byte_hash（byte 域）/to_hex/to_base64 |
 | map | map_new/put/get/has/len/remove（交错 [k,v] 于 List<int>，引用语义） |
@@ -132,3 +132,14 @@ merge 级门。
   26 例：V-01 旧行逐行承接含两条旧删除红例的成功删除重归类、V-02 覆盖/去重/错型具名拒、
   V-03 缺键协议/owner 存活/释放对账/整数 List 与 Dyn 近邻不回归）；
   旧行映射 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（PLAN-1121 行组）。
+
+## PLAN-1122 · 宽无符号十进制
+
+- `std.conv.parse_u64(s Str) -> ?u64` 接受 ASCII 十进制数字，允许一个前置 `+` 与前导零。
+  有效零返回 `Some(0u64)`。空串、单独正号、负号、空白、其他字符与超出
+  `18446744073709551615` 的输入返回 `None`。在乘加前检验上界。
+- `std.conv.from_u64(n u64) -> Str` 返回规范十进制，零写作 `"0"`，其余值无前导零。
+  装配 AV 对最大值、往返、溢出和零分别断言。原 i32 `to_int` 接面与值域保持。
+- 普通 AV 单文件和工程源码的 `str/Str.parse_u64()` 借用文本，通过同一纯 Auto
+  解析函数返回 Option。工程的解析器来源纳入编译身份和诊断坐标。显示接面见
+  [AV 语言齐平](../auto-av/language-parity.md)。[PLAN-1122](../../plans/archive/1122-av-stdlib-wide-unsigned-conversion.md)。

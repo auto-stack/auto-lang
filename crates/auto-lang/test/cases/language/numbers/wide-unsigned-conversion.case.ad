@@ -1,0 +1,405 @@
+# Wide unsigned decimal conversion on ordinary AV
+
+`parse_u64` produces an Option with a full-width payload. These checks use
+independent decimal, stdout, and diagnostic oracles on the public AV source
+recipe. The unmodified AutoVM sources remain in the legacy corpus.
+
+## Case: checked-u64
+id: "av.parity.1122.checked-u64"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn rejects(text str) bool {
+    let result = text.parse_u64()
+    is result {
+        Some(_) -> { return false }
+        None -> { return true }
+    }
+}
+fn main() int {
+    if "0".parse_u64().?(99u64) != 0u64 { return 1 }
+    if "5000000000".parse_u64().?(0u64) != 5000000000u64 { return 2 }
+    if "9007199254740993".parse_u64().?(0u64) - 9007199254740992u64 != 1u64 { return 3 }
+    let max = "18446744073709551615".parse_u64().?(0u64)
+    if max != 18446744073709551615u64 { return 4 }
+    let formatted = max.to_str()
+    if formatted != "18446744073709551615" { return 5 }
+    if formatted.parse_u64().?(0u64) != max { return 6 }
+    if formatted.len() != 20 { return 7 }
+    if "+00042".parse_u64().?(0u64) != 42u64 { return 8 }
+    if "00000000000000000000000000000000000000000000000".parse_u64().?(99u64) != 0u64 { return 9 }
+    if !rejects("18446744073709551616") { return 10 }
+    if !rejects("184467440737095516150") { return 11 }
+    if !rejects("-1") || !rejects("-0") { return 12 }
+    if !rejects("") || !rejects("+") { return 13 }
+    if !rejects("42x") || !rejects("１２") || !rejects("1_000") { return 14 }
+    if !rejects(" 42") || !rejects("42\t") || !rejects("\u{2003}42") { return 15 }
+    if !rejects("42\u{0}7") || !rejects("++42") { return 16 }
+    if "+18446744073709551615".parse_u64().?(0u64) != max { return 17 }
+    if (0u64).to_str() != "0" { return 18 }
+    if f"max=${max}" != "max=18446744073709551615" { return 19 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: legacy-local
+id: "av.parity.1122.legacy-local"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn number(s str) u64 {
+    return s.parse_u64().?(0u64)
+}
+fn main() int {
+    let s = "42"
+    let n = number(s)
+    print(n.to_str())
+    print((number(s) + 8u64).to_str())
+    print((number(s) - 2u64).to_str())
+    print(number("10").to(f64) + 1.5d)
+    print(number("10").to(f64) * 2.0d)
+    let x u64 = number("100")
+    print(x.to_str())
+    print((x + 23u64).to_str())
+    var y u64 = 0u64
+    y = number("7")
+    print(y.to_str())
+    y = y + number("7")
+    print(y.to_str())
+    let a = number("100")
+    let b = number("45")
+    print((a + b).to_str())
+    print((a - b).to_str())
+    print(a > b)
+    let year = number("2024")
+    print(f"year: ${year}")
+    print(f"next: ${year + 1u64}")
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+42
+50
+40
+11.5
+20
+100
+123
+7
+14
+145
+55
+true
+year: 2024
+next: 2025
+```
+
+### Notes
+
+The stdout slices cover legacy 001–006 in order. Explicit widths and `to(f64)` preserve AV's numeric rules. The comparison prints `true`.
+
+## Case: legacy-neighbors
+id: "av.parity.1122.legacy-neighbors"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let s = "hello"
+    print(s.len())
+    let arr = [1, 2, 3]
+    print(arr.len())
+    print(s.len() + 10)
+    var x = 0
+    x = x + 1
+    print(x)
+    print(2 + 3)
+    print("abc".find("b").?(-1))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+5
+3
+15
+1
+5
+1
+```
+
+### Notes
+
+Legacy 007 and 008. The AV `find` returns an option, so the migrated call extracts its index.
+
+## Case: legacy-exact
+id: "av.parity.1122.legacy-exact"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn number(s str) u64 {
+    return s.parse_u64().?(0u64)
+}
+fn main() int {
+    let s = "5000000000"
+    let n = number(s)
+    print(n.to_str())
+    print((number(s) * 2u64).to_str())
+    print((number(s) + 5000000000u64).to_str())
+    let x u64 = number(s)
+    print(x.to_str())
+    print((x + 1u64).to_str())
+    let big = number("281474976710656")
+    print(big.to_str())
+    let a = number("140737488355328")
+    let b = number("140737488355328")
+    print((a + b).to_str())
+    print(a == b)
+    print(big > a)
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+5000000000
+10000000000
+10000000000
+5000000000
+5000000001
+281474976710656
+281474976710656
+true
+true
+```
+
+### Notes
+
+Legacy 009 and 011 exercise exact local, parameter, arithmetic, and comparison carriers above i32 and across 2^48.
+
+## Case: legacy-global
+id: "av.parity.1122.legacy-global"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use state.first
+use state.second
+use state.update
+fn main() int {
+    let x = first()
+    let y = second()
+    print(x.to_str())
+    print(y.to_str())
+    print((y - x).to_str())
+    update("18446744073709551615")
+    let after = first()
+    print("wide=" + after.to_str())
+    if after != 18446744073709551615u64 { return 1 }
+    return 0
+}
+```
+
+#### state.at
+
+```auto
+var x u64 = "5000000000".parse_u64().?(0u64)
+var y u64 = "10000000000".parse_u64().?(0u64)
+pub fn first() u64 { return x }
+pub fn second() u64 { return y }
+pub fn update(text str) void {
+    x = text.parse_u64().?(0u64)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 0
+
+#### stdout
+
+```text
+5000000000
+10000000000
+5000000000
+wide=18446744073709551615
+```
+
+### Notes
+
+Legacy 010 supplies the first three lines. The following mutation writes the maximum through a parameter and reads and formats it across the module boundary.
+
+## Case: signed-i32-and-narrow-control
+id: "av.parity.1122.signed-i32-and-narrow-control"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    if "2147483647".to(int) != 2147483647 { return 1 }
+    if "-2147483648".to(int) != -2147483647 - 1 { return 2 }
+    let fits = "2147483647".parse_u64().?(0u64)
+    if fits.to(i32) != 2147483647 { return 3 }
+    let zero = "0".parse_u64().?(1u64)
+    if zero.to(i32) != 0 { return 4 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: narrow-overflow
+id: "av.parity.1122.narrow-overflow"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let wide = "2147483648". parse_u64 ().?(0u64)
+    return wide.to(i32)
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "run"
+code: "av.trap.int-overflow"
+
+## Case: legacy-spelling-rejected
+id: "av.parity.1122.legacy-spelling-rejected"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let n = "42".to_uint()
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.legacy-to-uint"
+
+## Case: implicit-float-rejected
+id: "av.parity.1122.implicit-float-rejected"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let n = "42".parse_u64().?(0u64)
+    print(n + 1.5d)
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "resolve"
+code: "source.type-mismatch"
+
+## Case: option-needs-handling
+id: "av.parity.1122.option-needs-handling"
+tags: ["av-language-parity", "plan-1122", "numbers"]
+links: ["PLAN-1122"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let n u64 = "0".parse_u64()
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+stage: "verify"
+code: "source.type-mismatch"

@@ -6,6 +6,7 @@
 suite { schema: "autolang.suite/2", id: "language", include: [
   "language/basics/expressions.case.ad",
   "language/numbers/literals-conversions.case.ad",
+  "language/numbers/wide-unsigned-conversion.case.ad",
   "language/text/interpolation-unicode.case.ad",
   "language/calls/binding-pipeline.case.ad",
   "language/functions/references-closures.case.ad",

@@ -243,10 +243,14 @@ pub fn compile_language_source_with_metadata(
     // method surface dispatches to these REAL public functions (same
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
-    let grafted = graft_stdlib_integer_parse(
+    let mut grafted = graft_stdlib_integer_parse(
         src,
         graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
     );
+    if needs_stdlib_u64_parse(src) {
+        grafted.push('\n');
+        grafted.push_str(&stdlib_u64_parse_source());
+    }
     let profile = SourceProfile::Auto;
     let (mut program, has_instances, metadata) =
         super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
@@ -515,7 +519,63 @@ pub fn text_scan_signature(symbol: &str) -> Option<(&'static [VT], VT)> {
 }
 
 pub(super) const STDLIB_TEXT_TO_INT: &str = "__std_conv_require_int";
+pub(super) const STDLIB_PARSE_U64: &str = "__std_conv_parse_u64";
 const STDLIB_ASM_CONV_AT: &str = include_str!("../../../../../../stdlib/ace/asm/conv.at");
+
+fn needs_stdlib_u64_parse(source: &str) -> bool {
+    source.match_indices('.').any(|(index, _)| {
+        source[index + 1..]
+            .trim_start()
+            .strip_prefix("parse_u64")
+            .is_some_and(|tail| tail.trim_start().starts_with('('))
+    })
+}
+
+fn stdlib_u64_parse_source() -> String {
+    let (_, suffix) = STDLIB_ASM_CONV_AT
+        .split_once("pub fn parse_u64")
+        .expect("stdlib unsigned parse declaration");
+    let (body, _) = suffix
+        .split_once("pub fn from_u64")
+        .expect("stdlib unsigned format declaration");
+    mangle_stdlib_functions(
+        &format!("pub fn parse_u64{body}").replace("s Str", "s str"),
+        &["parse_u64"],
+        "__std_conv_",
+    )
+}
+
+/// Link the same parser in the ordinary package lane. Give the helper its
+/// own source span range and bind the injected source to the package identity.
+pub fn graft_package_u64_parse(bound: &mut super::packages::BoundPackages) -> Result<(), Diagnostic> {
+    if !bound
+        .segments
+        .iter()
+        .any(|segment| needs_stdlib_u64_parse(&segment.source))
+    {
+        return Ok(());
+    }
+    let source = stdlib_u64_parse_source();
+    let mut helpers = super::parse_program_with(&source, SourceProfile::Auto)?;
+    let start = bound.source_len() + 1;
+    for item in &mut helpers.items {
+        let super::ast::Item::Fn(function) = item else {
+            unreachable!("unsigned conversion graft contains one function")
+        };
+        super::cst::shift_fn_item(function, start);
+    }
+    bound.program.items.extend(helpers.items);
+    bound.input_hash = crate::runtime_contract::sha256_hex(
+        format!("package/stdlib-u64/1\n{}\n{source}", bound.input_hash).as_bytes(),
+    );
+    bound.segments.push(super::packages::PackageSegment {
+        package: "__ace".into(),
+        module: "stdlib_u64".into(),
+        source,
+        start,
+    });
+    Ok(())
+}
 
 fn graft_stdlib_integer_parse(user_source: &str, mut source: String) -> String {
     let needs_integer_parse = user_source.match_indices(".to").any(|(index, method)| {
