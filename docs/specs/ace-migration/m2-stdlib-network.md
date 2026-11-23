@@ -40,14 +40,14 @@ r2 合同的显式可选 provider 道由 AV/Rust 标准库的 `tls` 层承接
 | 选择 | 显式选层:整单元或 `str`+`tls` 选择;**plain HTTP 不要求该层**(`net` 层零依赖不变) | `compose_delivered_avrs` |
 | 分工 | provider 只搬运字节(TCP 连接、CONNECT 隧道、受检握手、写请求、读到流尾、关闭);**HTTP 请求构造与响应解析留在调用方 Auto 源**,公共请求/响应合同不变(`status*10000+body_len`) | `tests/fixtures/tls1123/https_app.at` |
 | 公开面 | `tls_exchange(spec)`→owned 交换句柄;`tls_result`/`tls_read_byte`(0..255,尾 -1)/`tls_close` | `stdlib/ace/avrs/tls.at` |
-| spec | `key value` 头块+空行+请求字节:`host`、`port`、`trust file:<path>\|system`(https 必填,**无不安全来源**)、`via <host:port>`、`mode https\|http`、`timeout <ms>`(默认 1500,≤60000)。未知/重复键=具名 `tls.spec` | 同上 |
+| spec | `key value` 头块+空行+请求字节:`host`、`port`、`trust file:<path>\|system`(https 必填,**无不安全来源**)、`via <host:port>`、`mode https\|http`、`timeout <ms>`(默认 1500,≤60000)。未知/重复键、`port 0`=具名 `tls.spec`;`host` 也接受未加方括号的 IPv6 字面量 | 同上 |
 | 信任与主机名 | 证书链须落在**本次** trust 来源内,且证书对 `host` 有效;两者分开具名(`-9 tls.untrusted`/`-10 tls.hostname`),验证失败发生在写任何请求字节之前(对端零请求) | `avrs_tls_1123::v01_verification_failures_are_named_and_send_nothing` |
 | 无跨请求借用 | 每次交换只读本请求 spec;套接字在调用返回前关闭,句柄只拥有响应字节;关闭/旧代次句柄在被调方执行前以 `foreign.handle` 拒 | `handle_lifecycle_closed_and_stale_are_rejected_before_the_callee` |
-| 错误表 | 0 干净流尾;-1 spec、-2 resolve、-3 connect、-4 timeout、-5 proxy.rejected、-6 proxy.closed、-7 proxy.bad、-8 trust 来源缺失/不可读/为空、-9 untrusted、-10 hostname、-11 其它证书失败、-12 握手/握手中对端关闭、-13 write、-14 read、-15 无 close_notify 截断(字节保留)、-16 超限(字节保留;请求 64 KiB、响应 1 MiB) | `stdlib/ace/avrs/tls.at` |
-| 预算关系 | 一次交换=一次 foreign 调用:执行墙钟(`ExecLimits.wall`,默认 2 s)须大于该请求 `timeout`,否则执行器的墙钟结果先于具名 `net.timeout`;默认 1500 ms 因此低于默认墙钟 | `timeout_refused_and_truncated_close_are_named` |
+| 错误表 | 0 干净流尾;-1 spec、-2 resolve、-3 connect、-4 timeout、-5 proxy.rejected、-6 proxy.closed、-7 proxy.bad、-8 trust 来源缺失/不可读/为空、-9 untrusted、-10 hostname、-11 其它证书失败、-12 握手/握手中对端关闭、-13 write、-14 read(如对端复位,不保留字节)、-15 无 close_notify 关闭(字节保留)、-16 超限(请求 >64 KiB 时不发送;响应 >1 MiB 时保留前 1 MiB) | `stdlib/ace/avrs/tls.at` |
+| 预算关系 | 一次交换=一次 foreign 调用:执行墙钟(`ExecLimits.wall`,默认 2 s)须大于该请求 `timeout`,否则执行器的墙钟结果先于具名 `net.timeout`;默认 1500 ms 因此低于默认墙钟。单次调用的字节预算(`MAX_CALL_BYTES`=65536,作用于整个 spec)先于 provider 的 64 KiB 请求上限,故经 Auto 到达的请求不会触发 -16 的请求腿 | `timeout_refused_and_truncated_close_are_named` |
 | Windows 事实 | 被拒 SYN 由栈重试约 2 s:期限不足时拒绝端口表现为 `-4`,期限足够才是 `-3`。名字解析出的不可达首地址只消耗剩余期限的公平份额(在试地址均分) | `refused_connect_is_timeout_then_connect_by_the_deadline` |
 | 预备闭包 | 依赖闭包由显式 `prepare-avrs-tls` 步骤构建一次(`ace-abi/provider-closure/1`:源/shim 摘要、rustc 身份、锁摘要、cdylib 摘要);日常道只校验并打开,缺失/陈旧/损坏=`prepared.missing/stale/corrupt`,**从不编译**。工程道以 `RustProjectInputs.prepared` 采用,源/shim/工具链/声明锁任一不符=`m2build.rust-prepared` | `ace_abi::rust_provider::{verify_provider_closure, prepare_provider_closure}` |
-| 部署依赖 | provider DLL 的真实 PE 导入(12 个系统库:advapi32、api-ms-win-core-synch-l1-2-0、api-ms-win-crt-{heap,runtime,string}-l1-1-0、bcrypt、bcryptprimitives、crypt32、kernel32、ntdll、vcruntime140、ws2_32)由 SDK 打包记为 `system-lib` 运行依赖;`trust system` 另在运行期动态装载 SSPI/Crypt32,不在导入表内 | `tls_project_1123` |
+| 部署依赖 | provider DLL 的真实 PE 导入(12 个系统库:advapi32、api-ms-win-core-synch-l1-2-0、api-ms-win-crt-{heap,runtime,string}-l1-1-0、bcrypt、bcryptprimitives、crypt32、kernel32、ntdll、vcruntime140、ws2_32)由 SDK 打包记为 `system-lib` 运行依赖;`trust system` 读取当前用户的 ROOT 证书库,经 Crypt32——已是上述 12 个静态导入之一;单元不引用任何 SSPI 接口(TLS 由 rustls 完成),导入表之外无其它运行依赖。12 个库中 vcruntime140.dll 属 VC++ 运行库而非操作系统组件,目标机须已安装 | `tls_project_1123` |
 | 分发 | 普通工程 build→run→SDK pack→重定位→删除开发缓存→自迁出 SDK 运行,同一退出码;对端记录两次(各直连+隧道)请求与两次 CONNECT | `tls_project_1123::p1123_tls_project_builds_runs_and_sdk_relocates_from_the_prepared_closure` |
 
 ## 边界(具名开放项,非静默)

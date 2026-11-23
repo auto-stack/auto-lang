@@ -11,6 +11,7 @@
 // bytes. Every field is read from THIS exchange — nothing is carried over
 // from an earlier one (no stale authorization, proxy setting or socket):
 //   host <dns-name | ip | [v6]>   required; also the verified server name
+//                                (a bare IPv6 literal is accepted too)
 //   port <1..65535>               required
 //   trust file:<path> | system    required for https; there is NO insecure
 //                                source (verification cannot be turned off)
@@ -41,17 +42,23 @@
 //   -11 tls.cert       another certificate validation failure
 //   -12 tls.handshake  TLS protocol failure, or the peer closed mid-handshake
 //   -13 net.write      writing the request failed
-//   -14 net.read       reading the response failed
+//   -14 net.read       reading the response failed (e.g. the peer reset the
+//                     connection); no bytes are kept
 //   -15 net.truncated  the peer closed without close_notify (bytes kept)
-//   -16 net.limit      the request exceeds 64 KiB, or the response 1 MiB (bytes kept)
+//   -16 net.limit      the request exceeds 64 KiB (nothing is sent), or the
+//                     response exceeds 1 MiB (its first 1 MiB is kept)
 // A verification failure happens BEFORE any request byte is written.
 //
-// One exchange is one foreign call: the execution wall budget of the
-// running program (`ExecLimits.wall`, 2 s by default) must exceed the
+// One exchange is one foreign call, so two executor budgets apply before
+// the provider sees anything: the per-call byte budget (`MAX_CALL_BYTES`,
+// 65536 bytes for the WHOLE spec) and the execution wall budget
+// (`ExecLimits.wall`, 2 s by default). The byte budget keeps every request
+// that reaches the provider through Auto under its 64 KiB limit (the
+// request leg of -16 is a direct-caller fact); the wall must exceed the
 // request's `timeout`, or the executor's wall-budget outcome preempts the
-// named `net.timeout`. The default stays below that budget on purpose; a
-// longer `timeout` is the caller's explicit choice for a host that raised
-// the wall.
+// named `net.timeout`. The default timeout stays below that budget on
+// purpose; a longer one is the caller's explicit choice for a host that
+// raised the wall.
 pub spec fn tls_exchange(spec str) int
 pub spec fn tls_result(exchange int) int
 pub spec fn tls_read_byte(exchange int) int

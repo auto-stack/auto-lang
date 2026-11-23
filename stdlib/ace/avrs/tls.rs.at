@@ -146,7 +146,13 @@ fn parse_spec(spec: &str) -> Result<(Config, &str), i32> {
                     .unwrap_or(value);
                 host = Some(name.to_string());
             }
-            "port" if port.is_none() => port = Some(value.parse().map_err(|_| SPEC)?),
+            "port" if port.is_none() => {
+                let number: u16 = value.parse().map_err(|_| SPEC)?;
+                if number == 0 {
+                    return Err(SPEC);
+                }
+                port = Some(number);
+            }
             "via" if via.is_none() => via = Some(Endpoint::parse(value).ok_or(SPEC)?),
             "mode" if tls.is_none() => {
                 tls = Some(match value {
@@ -391,10 +397,7 @@ fn exchange_plain(
     stream.write_all(request.as_bytes()).map_err(|_| WRITE)?;
     // a second descriptor of the same socket: timeouts are socket options
     let socket = stream.try_clone().map_err(|_| READ)?;
-    drain(
-        |buffer| stream.read(buffer),
-        || arm(&socket, deadline),
-    )
+    drain(|buffer| stream.read(buffer), || arm(&socket, deadline))
 }
 
 /// Verified TLS: the handshake is checked against this request's trust
@@ -414,8 +417,8 @@ fn exchange_tls(
         .map_err(|_| HANDSHAKE)?
         .with_root_certificates(roots)
         .with_no_client_auth();
-    let name = rustls::pki_types::ServerName::try_from(config.target.host.clone())
-        .map_err(|_| SPEC)?;
+    let name =
+        rustls::pki_types::ServerName::try_from(config.target.host.clone()).map_err(|_| SPEC)?;
     let mut conn = rustls::ClientConnection::new(std::sync::Arc::new(client), name)
         .map_err(handshake_error)?;
     while conn.is_handshaking() {
@@ -434,10 +437,7 @@ fn exchange_tls(
         Err(_) => return Err(WRITE),
     }
     let socket = tls.get_ref().try_clone().map_err(|_| READ)?;
-    let outcome = drain(
-        |buffer| tls.read(buffer),
-        || arm(&socket, deadline),
-    );
+    let outcome = drain(|buffer| tls.read(buffer), || arm(&socket, deadline));
     // The connection never outlives the call: close_notify, then the socket.
     let _ = tls.conn.send_close_notify();
     let _ = tls.get_mut().shutdown(std::net::Shutdown::Both);

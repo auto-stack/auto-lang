@@ -68,7 +68,7 @@ fn p1123_tls_project_builds_runs_and_sdk_relocates_from_the_prepared_closure() {
     let ca_path = root.join("ca-test.pem");
     std::fs::write(&ca_path, peers::CA_TEST_PEM).unwrap();
     let ca = ca_path.to_string_lossy().replace('\\', "/");
-    let server = peers::tls_server(peers::LEAF_OK_SERVER, true);
+    let server = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
     let forwarding = peers::proxy(peers::ProxyBehavior::Forward);
     let via = format!("127.0.0.1:{}", forwarding.addr.port());
     let inputs = project(

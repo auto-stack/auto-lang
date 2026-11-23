@@ -181,7 +181,7 @@ fn v01_direct_https_peer_observes_request_status_and_bytes() {
         let scope = scope("v01");
         let ca_pem = fixture_file(&scope, "ca-test.pem", peers::CA_TEST_PEM);
         let ca_der = fixture_file(&scope, "ca-test.der", peers::CA_TEST_DER);
-        let server = peers::tls_server(peers::LEAF_OK_SERVER, true);
+        let server = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
         let port = server.addr.port();
         let mut session = session(1);
 
@@ -256,9 +256,9 @@ fn v01_verification_failures_are_named_and_send_nothing() {
     timed("v01_verification_negatives", || {
         let scope = scope("v01-neg");
         let ca = fixture_file(&scope, "ca-test.pem", peers::CA_TEST_PEM);
-        let named = peers::tls_server(peers::LEAF_NAME_SERVER, true);
-        let untrusted = peers::tls_server(peers::LEAF_CA_SERVER, true);
-        let trusted = peers::tls_server(peers::LEAF_OK_SERVER, true);
+        let named = peers::tls_server(peers::LEAF_NAME_SERVER, peers::CloseStyle::Notify);
+        let untrusted = peers::tls_server(peers::LEAF_CA_SERVER, peers::CloseStyle::Notify);
+        let trusted = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
         let mut session = session(1);
         let file = format!("file:{ca}");
         let mut send = |port: u16, trust: &str, want: &str| {
@@ -282,6 +282,8 @@ fn v01_verification_failures_are_named_and_send_nothing() {
             send(trusted.addr.port(), &format!("file:{ca}.missing"), ""),
             -8
         );
+        // port 0 is not a port: the spec is malformed before anything is sent
+        assert_eq!(send(0, &file, ""), -1);
         assert!(
             named.received().is_empty()
                 && untrusted.received().is_empty()
@@ -299,7 +301,7 @@ fn v02_proxy_connect_plain_forward_and_verdicts() {
     timed("v02_proxy", || {
         let scope = scope("v02");
         let ca = fixture_file(&scope, "ca-test.pem", peers::CA_TEST_PEM);
-        let server = peers::tls_server(peers::LEAF_OK_SERVER, true);
+        let server = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
         let origin = peers::plain_origin();
         let forwarding = peers::proxy(peers::ProxyBehavior::Forward);
         let via = format!("127.0.0.1:{}", forwarding.addr.port());
@@ -409,6 +411,19 @@ fn v02_proxy_connect_plain_forward_and_verdicts() {
             elapsed >= Duration::from_millis(380) && elapsed < Duration::from_secs(3),
             "the stalled CONNECT times out at its deadline: {elapsed:?}"
         );
+        // a proxy reply that carries no HTTP status is named apart
+        let garbling = peers::proxy(peers::ProxyBehavior::Garbage);
+        let via = format!("127.0.0.1:{}", garbling.addr.port());
+        let garbled = send_main(
+            &format!("tls_spec_via(\"127.0.0.1\", {tls_port}, \"file:{ca}\", \"{via}\")"),
+            tls_port,
+            "",
+        );
+        assert_eq!(
+            exit_code(run(&app(&garbled), &mut session)),
+            -7,
+            "proxy.bad"
+        );
         assert_eq!(
             server.received().len(),
             2,
@@ -510,7 +525,7 @@ fn timeout_refused_and_truncated_close_are_named() {
 
         // the peer closes without close_notify: the outcome is named (-15)
         // and the bytes are kept — this caller observes the complete body
-        let truncating = peers::tls_server(peers::LEAF_OK_SERVER, false);
+        let truncating = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Silent);
         let port = truncating.addr.port();
         let truncated = send_main(
             &format!("tls_spec(\"127.0.0.1\", {port}, \"file:{ca}\")"),
@@ -524,6 +539,20 @@ fn timeout_refused_and_truncated_close_are_named() {
         );
         assert_eq!(truncating.received().len(), 1);
 
+        // the peer resets the connection mid-response: the read failure is
+        // named (-14) and nothing of the partial response is kept
+        let resetting = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Reset);
+        let port = resetting.addr.port();
+        let reset = send_main(
+            &format!("tls_spec(\"127.0.0.1\", {port}, \"file:{ca}\")"),
+            port,
+            "",
+        );
+        assert_eq!(exit_code(run(&app(&reset), &mut session)), -14, "net.read");
+        assert!(
+            resetting.received().is_empty(),
+            "the resetting peer never read the request"
+        );
         // the plain neighbor in the SAME provider unit is untouched
         let plain = "use.rs avrs\nfn main() int { return net_loopback_echo(\"A中😀\0\") }";
         assert_eq!(
@@ -539,7 +568,7 @@ fn handle_lifecycle_closed_and_stale_are_rejected_before_the_callee() {
     timed("handle_lifecycle", || {
         let scope = scope("handles");
         let ca = fixture_file(&scope, "ca-test.pem", peers::CA_TEST_PEM);
-        let server = peers::tls_server(peers::LEAF_OK_SERVER, true);
+        let server = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
         let port = server.addr.port();
         let exchange = format!("tls_exchange(tls_spec(\"127.0.0.1\", {port}, \"file:{ca}\") + \"\\n\" + tls_get_req(\"127.0.0.1\", {port}, \"/ok\"))");
         let mut first = session(1);
@@ -583,7 +612,7 @@ fn v03_revoked_grants_reject_before_any_dispatch() {
     timed("v03_revoked_grants", || {
         let scope = scope("grants");
         let ca = fixture_file(&scope, "ca-test.pem", peers::CA_TEST_PEM);
-        let server = peers::tls_server(peers::LEAF_OK_SERVER, true);
+        let server = peers::tls_server(peers::LEAF_OK_SERVER, peers::CloseStyle::Notify);
         let session = session(1);
         let source = app(&send_main(
             &format!(

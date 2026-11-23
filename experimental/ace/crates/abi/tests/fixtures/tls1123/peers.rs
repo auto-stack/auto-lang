@@ -156,10 +156,33 @@ fn bind() -> (TcpListener, SocketAddr) {
     (listener, addr)
 }
 
-/// A real TLS server presenting `server_pem` (key + certificate). With
-/// `clean_close` it sends close_notify before closing; otherwise it closes
-/// without it (the truncation case).
-pub fn tls_server(server_pem: &[u8], clean_close: bool) -> Peer {
+/// How a TLS peer ends a connection after answering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CloseStyle {
+    /// send close_notify, then close (the clean end of stream)
+    Notify,
+    /// close without close_notify (the graceful truncation case)
+    Silent,
+    /// answer a partial response and close with the request still unread,
+    /// which makes the stack reset the connection (the read failure)
+    Reset,
+}
+
+/// Hands rustls a single byte per read.
+struct OneByte<S> {
+    inner: S,
+}
+
+impl<S: Read> Read for OneByte<S> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let length = buffer.len().min(1);
+        self.inner.read(&mut buffer[..length])
+    }
+}
+
+/// A real TLS server presenting `server_pem` (key + certificate), ending
+/// each connection as `close` says.
+pub fn tls_server(server_pem: &[u8], close: CloseStyle) -> Peer {
     use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
     let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_slice_iter(server_pem)
         .collect::<Result<Vec<_>, _>>()
@@ -181,6 +204,10 @@ pub fn tls_server(server_pem: &[u8], clean_close: bool) -> Peer {
         let Ok(conn) = rustls::ServerConnection::new(config.clone()) else {
             return;
         };
+        if close == CloseStyle::Reset {
+            reset_after_partial_response(conn, socket);
+            return;
+        }
         let mut tls = rustls::StreamOwned::new(conn, socket);
         // The handshake rides the first read: a client that rejects the
         // certificate closes here and NOTHING is recorded.
@@ -195,7 +222,7 @@ pub fn tls_server(server_pem: &[u8], clean_close: bool) -> Peer {
         let response = respond(&request);
         let _ = tls.write_all(&response);
         let _ = tls.flush();
-        if clean_close {
+        if close == CloseStyle::Notify {
             let _ = tls.conn.send_close_notify();
             let _ = tls.write(&[]);
         }
@@ -206,6 +233,43 @@ pub fn tls_server(server_pem: &[u8], clean_close: bool) -> Peer {
         stop,
         requests,
     }
+}
+
+/// Complete the handshake ONE BYTE AT A TIME, so the request — whenever it
+/// arrives — stays unread in the socket; answer a partial response inside
+/// TLS and close. The unread data makes the stack reset the connection
+/// instead of closing gracefully. The request is never recorded.
+fn reset_after_partial_response(mut conn: rustls::ServerConnection, socket: TcpStream) {
+    use std::io::Write as _;
+    let Ok(mut writer) = socket.try_clone() else {
+        return;
+    };
+    let mut reader = OneByte { inner: socket };
+    while conn.is_handshaking() {
+        while conn.wants_write() {
+            if conn.write_tls(&mut writer).is_err() {
+                return;
+            }
+        }
+        match conn.read_tls(&mut reader) {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+        if conn.process_new_packets().is_err() {
+            return;
+        }
+    }
+    let _ = conn
+        .writer()
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 400\r\n\r\npartial bo");
+    while conn.wants_write() {
+        if conn.write_tls(&mut writer).is_err() {
+            return;
+        }
+    }
+    let _ = writer.flush();
+    // let the client's request land in the (never read) socket
+    std::thread::sleep(Duration::from_millis(150));
 }
 
 /// A plaintext origin with the same routing table (the target behind a
@@ -264,6 +328,8 @@ pub enum ProxyBehavior {
     Close,
     /// Never answer a CONNECT.
     Stall,
+    /// Answer CONNECT with a line that carries no HTTP status.
+    Garbage,
 }
 
 /// A real loopback HTTP proxy recording every request head it receives.
@@ -350,6 +416,9 @@ pub fn proxy(behavior: ProxyBehavior) -> Proxy {
             let authority = authority.split(' ').next().unwrap_or("").to_string();
             match behavior {
                 ProxyBehavior::Close => {}
+                ProxyBehavior::Garbage => {
+                    let _ = client.write_all(b"this is not an HTTP status line\r\n\r\n");
+                }
                 ProxyBehavior::Stall => {
                     while !stall_until.load(Ordering::SeqCst) {
                         std::thread::sleep(Duration::from_millis(20));
