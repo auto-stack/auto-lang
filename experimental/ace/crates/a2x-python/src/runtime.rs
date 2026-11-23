@@ -1679,3 +1679,48 @@ def _sys_file_query(op_id, args):
         return _sys_io_error(e)
     return -10
 "#;
+
+#[cfg(test)]
+mod plan1129_tests {
+    /// Which section each PLAN-1129 helper lives in decides the identity
+    /// axis its changes turn over, so neither may drift into the other:
+    ///
+    /// * `a2x_f32_round` is in the runtime BODY. Its SHA-256 is what every
+    ///   generated fragment binds as its runtime dependency
+    ///   (`a2x-py-runtime/1@<digest>`), so a cached fragment produced against
+    ///   an older body is refused by the newer runtime.
+    /// * `a2x_py_text` is one of the object helpers, appended to the runtime
+    ///   of a `use.py` module only (a plain module keeps the body's bytes and
+    ///   identity). The engineering build identity hashes them as their own
+    ///   axis, `python-object-runtime` (`py_project_1107`).
+    #[test]
+    fn each_float_helper_sits_in_the_section_whose_hash_binds_its_identity() {
+        let (body, helpers) = (super::RUNTIME_BODY, super::PY_OBJECT_HELPERS);
+        assert!(
+            body.contains("
+def a2x_f32_round(") && !helpers.contains("a2x_f32_round"),
+            "the f32 rounding helper belongs to the runtime body alone"
+        );
+        assert!(
+            helpers.contains("
+def a2x_py_text(") && !body.contains("def a2x_py_text"),
+            "the text boundary helper belongs to the object helpers alone"
+        );
+        let plain = super::python_runtime_source(&[]);
+        assert!(
+            plain.contains(&format!(
+                "A2X_PY_RUNTIME_BODY_SHA256 = {:?}
+",
+                super::runtime_body_sha256()
+            )),
+            "the emitted runtime declares the body digest the fragment depends on"
+        );
+        assert!(plain.contains("def a2x_f32_round("));
+        assert!(
+            !plain.contains("def a2x_py_text("),
+            "a module without use.py never carries the object helpers"
+        );
+        let with_py = plain + super::py_object_helpers_source();
+        assert!(with_py.contains("def a2x_py_text("));
+    }
+}
