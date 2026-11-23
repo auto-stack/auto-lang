@@ -5034,3 +5034,12 @@ PLAN-1109 冻结 `ace-abi` 运行中 25 条 `source_foreign` 用例失败。以�
 ## D-BATCH-02-PLAN988-ARCHIVE — plan988_byte_consumers 在 prepared archive 运行模式缺 rlib（OPEN，2026-11-22）
 
 批量回归中 auto-generation-core plan988_byte_consumers 5 例红：`newest_rlib` 在 archive 运行模式下从测试二进制解包目录（非 target/debug/deps）找 rlib 失败（expect「Cargo must build the current core dependency before this consumer test」）。owner=批量选择机制（PLAN-1108/D-1051-BATCH-SELECTION 线）与 plan988 字节消费者测试维护方；关闭条件=archive 运行保留 rlib 依赖定位或该组改显式 cargo-parented 上下文，同组复跑全绿。非 PLAN-1050 归因。
+
+## D-1121-MAP-PARAM-ANNOTATION — 迁移 HashMap/HashSet 类型不可作函数形参注解（OPEN，2026-11-23）
+
+[PLAN-1121](archive/1121-av-stdlib-map-set.md) 复审探针发现：普通 Auto 面的迁移容器（`__std_HashMap`/`__std_HashSet`，mangled 嫁接名）
+**无法被用户书写为函数形参/返回注解**——`fn read(m HashMap) …` 的 `HashMap` 类型引用按
+`source.undefined`（rec_index 无此名；grafted 类型名不暴露给用户源）具名拒。变量内联使用
+（构造/方法链/作实参传入）全部正常；该边界不在 1121 首批合同（旧 15 用例无跨函数传递面）。
+owner=普通面迁移容器下一切片（全泛型切片 963 线或暴露稳定容器类型名）；关闭条件=形参/返回可注解
+且跨函数 face 跟踪语义明确，具名用例复跑全绿。非阻塞。

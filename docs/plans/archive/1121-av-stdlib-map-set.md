@@ -1,12 +1,13 @@
 ---
 plan_id: PLAN-1121
 status: archived
+completion_kind: delivered
 feature_name: "AV 标准库 HashMap 与 HashSet 迁移"
 author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 3
+current_step: 5
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1084, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-core.md, docs/specs/stdlib/design/ace-collections.md]
@@ -19,7 +20,7 @@ affects: [stdlib, auto-av, auto-semantics]
 
 ## 0. 变更摘要
 
-2026-11-22 起草。承接 [AV 对 AutoVM 的迁移差额](../design/strategy/av-autovm-language-parity.md)的本领域条目，使用 [PLAN-1096 已交语言基线](archive/1096-av-parity-full-language-certification.md)。
+2026-11-22 起草。承接 [AV 对 AutoVM 的迁移差额](../../design/strategy/av-autovm-language-parity.md)的本领域条目，使用 [PLAN-1096 已交语言基线](1096-av-parity-full-language-certification.md)。
 
 ## 1. 目标
 
@@ -37,7 +38,7 @@ affects: [stdlib, auto-av, auto-semantics]
 
 ## 4. 需求分析与背景调查
 
-[核心标准库](../specs/ace-migration/m2-stdlib-core.md)当前为 `List<int>` 上的整数 map，[1084](archive/1084-av-parity-dynamic-objects-and-null.md)把 typed 容器留给标准库。原 [迁移表](../../crates/auto-lang/test/cases/language/migration/legacy-map.tsv)中 `legacy.13_collections.001–013` 和 `legacy.21_conv.003–004` 为首批；已交付的整数 map、Dyn 对象和其各自行为继续以原用例观察。
+[核心标准库](../../specs/ace-migration/m2-stdlib-core.md)当前为 `List<int>` 上的整数 map，[1084](1084-av-parity-dynamic-objects-and-null.md)把 typed 容器留给标准库。原 [迁移表](../../../crates/auto-lang/test/cases/language/migration/legacy-map.tsv)中 `legacy.13_collections.001–013` 和 `legacy.21_conv.003–004` 为首批；已交付的整数 map、Dyn 对象和其各自行为继续以原用例观察。
 
 取材基线为主检出 `f0d9dcaf3` 及同一检出的活动计划。用户本轮授权在 auto-lang 分类立项，计划状态为草案。
 
@@ -49,12 +50,12 @@ T-01 用字符串键、局部 owned 字符串值与取值后删除验证现有�
 
 | delta_id | 方式 | 目标 | 规则与理由 | 验收 |
 | --- | --- | --- | --- | --- |
-| SD-01 | modify | [`docs/specs/ace-migration/m2-stdlib-core.md`](../specs/ace-migration/m2-stdlib-core.md) | 记录首批公共操作、兼容拼写、已验键值域 | AC-01/02 |
-| SD-02 | modify | [`docs/specs/stdlib/design/ace-collections.md`](../specs/stdlib/design/ace-collections.md) | 补充容器资源、键相等、替换/清空和缺键行为 | AC-01/02 |
+| SD-01 | modify | [`docs/specs/ace-migration/m2-stdlib-core.md`](../../specs/ace-migration/m2-stdlib-core.md) | 记录首批公共操作、兼容拼写、已验键值域 | AC-01/02 |
+| SD-02 | modify | [`docs/specs/stdlib/design/ace-collections.md`](../../specs/stdlib/design/ace-collections.md) | 补充容器资源、键相等、替换/清空和缺键行为 | AC-01/02 |
 
 ## 6. 测试设计
 
-下列验收尚未执行。用例由对应 work 任务落到真实公开入口，沿 [共享 AutoDown 语料合同](../design/testing/ace-feature-organized-autodown-corpus.md)保留唯一作者。旧结果作迁移参照，新增断言使用独立预期。
+用例由对应 work 任务落到真实公开入口，沿 [共享 AutoDown 语料合同](../../design/testing/ace-feature-organized-autodown-corpus.md)保留唯一作者。旧结果作迁移参照，新增断言使用独立预期。执行结果见 §8/§9。
 
 | 用例 | 验收与责任任务 | 输入与路径 | 独立预期 |
 | --- | --- | --- | --- |
@@ -62,14 +63,14 @@ T-01 用字符串键、局部 owned 字符串值与取值后删除验证现有�
 | V-02 | AC-01/02 · T-02 | 相同字符串键覆盖；不同键发生散列冲突时保留独立键；Set 重复插入 | 覆盖不增加大小，冲突键各得原值，集合重复只计一次，错键值类型在适用的静态入口具名拒绝。 |
 | V-03 | AC-02 · T-03 | 删除、清空、缺键、最后 owner 与旧删除红例 | 大小变化、缺键协议、未删另一条、原 owner 存活及最后释放可观察；旧原例按迁移表分类保留。 |
 
-冻结验证命令为 `cargo t ace-stdlib ace-source ace-semantics ace-lowering ace-av case-av-language-parity`。按实际改面核对固定组和下游，分列实跑、原红、排除与未跑。Windows 在 Windows 环境验收，Linux 已有标准库义务进入 [1063](1063-ace-stdlib-linux-deferred-validation.md) 的独立执行台账。
+冻结验证命令为 `cargo t ace-stdlib ace-source ace-semantics ace-lowering ace-av case-av-language-parity`。按实际改面核对固定组和下游，分列实跑、原红、排除与未跑。Windows 在 Windows 环境验收，Linux 已有标准库义务进入 [1063](../1063-ace-stdlib-linux-deferred-validation.md) 的独立执行台账。
 
 ## 7. 验收标准
 
 - [x] AC-01 · owner_stage=work。在普通 AV 包中运行 V-01 和容器近邻，旧 Map/Set 检查逐行承接。（2026-11-23：av.parity.1121.map-set 26 例；旧 13 行 + 2 conv 行逐行绑定，详见 §8 证据）
 - [x] AC-02 · owner_stage=work。V-02/03 的替换、冲突/去重、缺键、生命周期有独立观察，整数 map 和 Dyn 不回归。（2026-11-23：覆盖 9922/去重 2/缺键 71/释放对账/错型 verify.type-mismatch/面冲突与未知面绑定拒；整数 List graft + Dyn 近邻 302）
-- [ ] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
-- [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
+- [x] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。见 §9 T-04 复审及会话限制记录。
+- [x] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。见 §9 T-05 合入及清理记录。
 
 ## 8. 执行步骤
 
@@ -84,9 +85,9 @@ T-01 用字符串键、局部 owned 字符串值与取值后删除验证现有�
 - [x] T-03 补旧用例映射和生命周期证据
   - owner_stage=work。依赖 T-02。运行 V-03、实际整数 map 与 Dyn 近邻，登记各旧行。
   - [✅ 已完成 2026-11-23] V-03 证据：缺键 get=受检 KeyError（catch 后 owner 可续用 71）；remove 未命中=false 且不波及其他（13）；错面 get=绑定期 source.map-face-mismatch（静态拒，graft 内 ValueError 为纵深）；释放对账（arena alloc=release、live=0）；整数 List graft 与 Dyn 对象近邻不回归（302）。15 条旧行 + 2 条 conv 行已登记 legacy-map.tsv（PLAN-1121 行组，canonical=av.parity.1121.map-set）。实际整数 map（asm/map.at 装配线）与 StrBldr 属 972 装配面，由 ace-stdlib 固定组在 T-05 冻结并集覆盖（本面不重复建入口）。SD-01/SD-02 规范增量已写入 worktree 两 spec。
-- [ ] T-04 独立复审
+- [x] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
-- [ ] T-05 冻结验证与归档
+- [x] T-05 冻结验证与归档
   - owner_stage=merge。依赖复审。执行 §6 固定组并集，核规范与主线结果，折叠证据摘要并按生命周期规则收尾。
 
 ## 9. 复审记录
@@ -173,3 +174,7 @@ stage: goal | plan_id: PLAN-1121 | plan_revision: r1 | round: 4 | from: merge | 
 **部署观察**：本计划交付物为编译器/stdlib 源码与测试，无生产面制品（backend 发行二进制/前端 bundle）在本范围内；未触发 release 构建或重启——记为 stale-artifact 观察（无受影响制品）。
 
 **批量回归到期核**：`.last-batch-regression.json` last_covered=1118；1121 % 5 ≠ 0 且收据龄 <48h → 不到期，不触发。
+
+**归档补记（2026-11-23）**：依据 `df4d37940` 的 r1 复审和 `9d3cd9e63` 的收尾记录补齐 AC-03/04、T-04/05 和 5/5 进度，核实本页 10 处相对链接。迁移表实数为 13 条集合用例和 2 条转换用例，共 15 条。核验交付提交与原收尾提交均在 `master` 的历史中，两份规范与交付提交的 Git blob 一致，计划分支、工作树组及暂存目录均已移除，现存材料登记表有归档记录。债务 [D-1121-MAP-PARAM-ANNOTATION](../KNOWN-DEBT-AND-RISKS.md) 随归档补记提交。此次只核验文档和 Git/磁盘状态，复用原功能验证记录。
+
+stage: goal | plan_id: PLAN-1121 | plan_revision: r1 | round: 5 | from: merge | to: done | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1121/auto-lang（已移除） | commit: df4d37940740a384858902e489287e49c7e6106e | next: done
