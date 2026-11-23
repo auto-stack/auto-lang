@@ -8,6 +8,18 @@ use crate::atom_text::Span;
 
 use super::ast::{self, AggArmBody, Arg, ClosureBody, Expr, ExprKind, MatchPattern, Stmt};
 
+// Walk contiguous binary operators left to right without recursive stack growth.
+fn visit_binary_operands(lhs: &Expr, rhs: &Expr, mut visit: impl FnMut(&Expr)) {
+    let mut pending = vec![rhs, lhs];
+    while let Some(expr) = pending.pop() {
+        if let ExprKind::Binary { lhs, rhs, .. } = &expr.kind {
+            pending.extend([rhs.as_ref(), lhs.as_ref()]);
+        } else {
+            visit(expr);
+        }
+    }
+}
+
 // A unary chain introduces no scope or capture before its innermost operand.
 fn innermost_unary_operand(mut expr: &Expr) -> &Expr {
     while let ExprKind::Unary { operand, .. } = &expr.kind {
@@ -151,8 +163,9 @@ pub(crate) fn analyze_capture_uses(
                 }
             }
             ExprKind::Binary { lhs, rhs, .. } => {
-                visit_expr(lhs, outer_locals, scopes, uses, by_name);
-                visit_expr(rhs, outer_locals, scopes, uses, by_name);
+                visit_binary_operands(lhs, rhs, |operand| {
+                    visit_expr(operand, outer_locals, scopes, uses, by_name);
+                });
             }
             ExprKind::Unary { operand, .. } => {
                 visit_expr(
@@ -562,8 +575,7 @@ pub(crate) fn scan_shared_capture_cells(
                 }
             }
             ExprKind::Binary { lhs, rhs, .. } => {
-                visit_expr(lhs, scopes, shared);
-                visit_expr(rhs, scopes, shared);
+                visit_binary_operands(lhs, rhs, |operand| visit_expr(operand, scopes, shared));
             }
             ExprKind::Unary { operand, .. } => {
                 visit_expr(innermost_unary_operand(operand), scopes, shared)
