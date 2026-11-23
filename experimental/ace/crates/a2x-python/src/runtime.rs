@@ -1697,13 +1697,17 @@ mod plan1129_tests {
     fn each_float_helper_sits_in_the_section_whose_hash_binds_its_identity() {
         let (body, helpers) = (super::RUNTIME_BODY, super::PY_OBJECT_HELPERS);
         assert!(
-            body.contains("
-def a2x_f32_round(") && !helpers.contains("a2x_f32_round"),
+            body.contains(
+                "
+def a2x_f32_round("
+            ) && !helpers.contains("a2x_f32_round"),
             "the f32 rounding helper belongs to the runtime body alone"
         );
         assert!(
-            helpers.contains("
-def a2x_py_text(") && !body.contains("def a2x_py_text"),
+            helpers.contains(
+                "
+def a2x_py_text("
+            ) && !body.contains("def a2x_py_text"),
             "the text boundary helper belongs to the object helpers alone"
         );
         let plain = super::python_runtime_source(&[]);

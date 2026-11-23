@@ -115,7 +115,12 @@ pub const PY_SIGN_BIT_OWNER: &str = "__py_chunk_f64";
 /// frozen helper `__py_chunk_words` renders the same three words at run
 /// time).
 pub fn float_words(bits: u64) -> String {
-    format!("{} {} {}", bits >> 43, (bits >> 22) & 0x1F_FFFF, bits & 0x3F_FFFF)
+    format!(
+        "{} {} {}",
+        bits >> 43,
+        (bits >> 22) & 0x1F_FFFF,
+        bits & 0x3F_FFFF
+    )
 }
 
 /// The typed frame text of a float LITERAL whose bits are known at compile

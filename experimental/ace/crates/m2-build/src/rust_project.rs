@@ -332,8 +332,13 @@ fn offer(build: &RustProviderBuild, dll: &[u8]) -> Result<ProviderOffer, M2Rejec
             )));
         }
         offered_symbols.push(
-            symbol_contract(&entry.export, fact, entry.completion, entry.frame.as_deref())
-                .map_err(sdk_error)?,
+            symbol_contract(
+                &entry.export,
+                fact,
+                entry.completion,
+                entry.frame.as_deref(),
+            )
+            .map_err(sdk_error)?,
         );
     }
     let is_multi = build
@@ -632,11 +637,18 @@ pub(crate) fn publish_sdk(
 #[cfg(test)]
 mod frame_identity_1129_tests {
     use super::symbol_contract;
-    use ace_abi::rust_provider::{describe_rust_provider, f0_tframe_provider_source, RustProviderBuild};
+    use ace_abi::rust_provider::{
+        describe_rust_provider, f0_tframe_provider_source, RustProviderBuild,
+    };
 
     fn describe(source: &str) -> RustProviderBuild {
-        describe_rust_provider(source, String::new(), Default::default(), Default::default())
-            .expect("the frame provider describes without a build")
+        describe_rust_provider(
+            source,
+            String::new(),
+            Default::default(),
+            Default::default(),
+        )
+        .expect("the frame provider describes without a build")
     }
 
     fn contract(build: &RustProviderBuild, rust_name: &str) -> crate::compat::SymbolContract {
@@ -665,7 +677,10 @@ mod frame_identity_1129_tests {
         assert_eq!(moved.matches("frame=p967.frame/2").count(), 1);
         let (old, new) = (describe(&frozen), &describe(&moved));
 
-        let (before, after) = (contract(&old, "tframe_sum_i32"), contract(&new, "tframe_sum_i32"));
+        let (before, after) = (
+            contract(&old, "tframe_sum_i32"),
+            contract(&new, "tframe_sum_i32"),
+        );
         assert_eq!(before.name, after.name, "the export name is unchanged");
         assert_ne!(
             before.signature_hash, after.signature_hash,

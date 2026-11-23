@@ -53,7 +53,11 @@ fn reference(name: &str) -> (String, String, Option<i32>) {
         .arg(name)
         .output()
         .expect("run the declared A2PY interpreter");
-    let text = |bytes: &[u8]| String::from_utf8(bytes.to_vec()).expect("utf-8").replace("\r\n", "\n");
+    let text = |bytes: &[u8]| {
+        String::from_utf8(bytes.to_vec())
+            .expect("utf-8")
+            .replace("\r\n", "\n")
+    };
     (
         text(&output.stdout),
         text(&output.stderr),
@@ -63,25 +67,32 @@ fn reference(name: &str) -> (String, String, Option<i32>) {
 
 fn check_reference(name: &str, hash: &str, failing: Option<&str>) {
     let (source, av, a2py) = case_of(name);
-    assert_eq!(sha256_hex(source.as_bytes()), hash, "{name}: author source changed");
+    assert_eq!(
+        sha256_hex(source.as_bytes()),
+        hash,
+        "{name}: author source changed"
+    );
 
     // a program that fails instead of catching ends the run on both ends
     let uncaught = a2py.lines().any(|line| line == "exit: 1");
-    assert_eq!(uncaught, av.contains("code: \"lang.error\""), "{name}: both ends agree");
+    assert_eq!(
+        uncaught,
+        av.contains("code: \"lang.error\""),
+        "{name}: both ends agree"
+    );
     if let Some(expression) = failing {
         // the failing call expression, as a half-open UTF-8 byte range
         let start = source.find(expression).expect("failing expression");
-        let expected = format!(
-            "error-span: \"{}..{}\"",
-            start,
-            start + expression.len()
-        );
+        let expected = format!("error-span: \"{}..{}\"", start, start + expression.len());
         assert!(
             av.contains(&expected) && a2py.contains(&expected),
             "{name}: {expected}"
         );
         for section in [av, a2py] {
-            assert!(section.contains("error-kind: \"python.5\""), "{name}: ValueError class");
+            assert!(
+                section.contains("error-kind: \"python.5\""),
+                "{name}: ValueError class"
+            );
         }
         assert!(a2py.contains("error-type: \"ValueError\""), "{name}");
     }
@@ -89,7 +100,10 @@ fn check_reference(name: &str, hash: &str, failing: Option<&str>) {
     assert_eq!(code, Some(i32::from(uncaught)), "{name}: {stderr}");
     assert_eq!(stdout, fence(av, "text"), "{name}: AV oracle");
     if uncaught {
-        assert!(av.contains(&format!("message: \"{}\"", stderr.trim_end())), "{name}: the AV failure text");
+        assert!(
+            av.contains(&format!("message: \"{}\"", stderr.trim_end())),
+            "{name}: the AV failure text"
+        );
         assert_eq!(fence(a2py, "text"), "", "{name}: no A2PY stdout on failure");
     } else {
         assert_eq!(
@@ -99,7 +113,11 @@ fn check_reference(name: &str, hash: &str, failing: Option<&str>) {
         );
     }
     let (_, a2py_stderr) = a2py.split_once("#### stderr\n").expect("A2PY stderr");
-    assert_eq!(stderr, fence(a2py_stderr, "text"), "{name}: reference stderr");
+    assert_eq!(
+        stderr,
+        fence(a2py_stderr, "text"),
+        "{name}: reference stderr"
+    );
 }
 
 #[test]
@@ -167,6 +185,20 @@ fn native_python_binop_float() {
         "binop-float",
         "7a409039a9ef397867984c17632a236a17e594643951975b4c1cf95efd01aa81",
         None,
+    );
+}
+
+/// An argument whose outermost operator is a unary minus reaches Python
+/// negated (review R-01): a local, a product, a function result, an f32, an
+/// int, a keyword, a double negation, and the `ValueError` of a negated
+/// runtime operand. Before the fix the generated code passed the operand
+/// without its sign.
+#[test]
+fn native_python_negated_operands() {
+    check_reference(
+        "negated-operands",
+        "eb12d896770e157f8cef8331a0976d4ba66f1a4f2557a2aa63224925631d9b2a",
+        Some("sqrt(-seed)"),
     );
 }
 
@@ -243,16 +275,25 @@ fn scratch(name: &str) -> PathBuf {
 fn emit(dir: &Path, src: &str) {
     let contract = py_declaration_contract().expect("declaration contract");
     let caps = vec![SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
-    let compiled = ace_core::source::compile_language_source_with_foreign(src, "main.as", &caps, &contract)
-        .unwrap_or_else(|d| panic!("compile: {d:?}"));
+    let compiled =
+        ace_core::source::compile_language_source_with_foreign(src, "main.as", &caps, &contract)
+            .unwrap_or_else(|d| panic!("compile: {d:?}"));
     let view = SemanticView::from_checked(&compiled.checked).expect("view");
     let provider = PythonTargetProvider;
     provider
         .validate_view(&view)
         .expect("py declarations are language operations");
-    let runtime = provider.runtime_source(&view, Family::Collections).expect("runtime");
-    assert!(runtime.contains("def a2x_f32_round("), "the f32 rounding helper");
-    assert!(runtime.contains("def a2x_py_text("), "the text boundary helper");
+    let runtime = provider
+        .runtime_source(&view, Family::Collections)
+        .expect("runtime");
+    assert!(
+        runtime.contains("def a2x_f32_round("),
+        "the f32 rounding helper"
+    );
+    assert!(
+        runtime.contains("def a2x_py_text("),
+        "the text boundary helper"
+    );
     let fns: Vec<&ace_a2x_core::FnFacts> = view
         .functions()
         .iter()
@@ -296,7 +337,12 @@ fn run_generated(dir: &Path) -> String {
         .arg(dir.join("a2x_main.py"))
         .output()
         .expect("run the generated program");
-    assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8(output.stdout.to_vec())
         .expect("utf-8")
         .replace("\r\n", "\n")
@@ -341,10 +387,7 @@ fn generated_python_passes_the_runtime_value_and_never_a_remembered_literal() {
     for arg in runtime {
         let name = variable(arg);
         assert!(
-            !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
             "{arg} names a variable, not a folded number"
         );
     }
@@ -369,7 +412,10 @@ fn generated_python_passes_the_runtime_value_and_never_a_remembered_literal() {
         .expect("the initializer 0.25f32");
     let local = initializer.split(" = ").next().unwrap().trim();
     assert!(local.contains("again"), "{initializer}");
-    let after = generated.split_once(initializer).expect("after the initializer").1;
+    let after = generated
+        .split_once(initializer)
+        .expect("after the initializer")
+        .1;
     assert!(
         after.contains(&format!("{local} = a2x_f32_bits(1056964608)")),
         "the reassignment to 0.5f32 precedes the call: {after}"
@@ -381,7 +427,10 @@ fn generated_python_passes_the_runtime_value_and_never_a_remembered_literal() {
     );
 
     // f32 arithmetic is rounded at every step
-    assert!(generated.contains("a2x_f32_round(("), "f32 add / sub / mul round");
+    assert!(
+        generated.contains("a2x_f32_round(("),
+        "f32 add / sub / mul round"
+    );
 
     assert_eq!(
         run_generated(&dir),
@@ -406,7 +455,9 @@ fn generated_python_passes_the_runtime_value_and_never_a_remembered_literal() {
         "and the next f32 multiply too: {generated}"
     );
     assert!(
-        generated.contains("t9 = a2x_fdiv(a2x_f64_bits(4591870180066957722), a2x_f64_bits(4613937818241073152))"),
+        generated.contains(
+            "t9 = a2x_fdiv(a2x_f64_bits(4591870180066957722), a2x_f64_bits(4613937818241073152))"
+        ),
         "an f64 division is exact as it stands: {generated}"
     );
     assert_eq!(
@@ -433,6 +484,105 @@ fn generated_python_hands_python_the_text_value() {
         generated.contains(r#"["F:1.25", "__class__"]"#),
         "a text literal stays a literal"
     );
+    assert_eq!(
+        run_generated(&dir),
+        format!("{}value:0\n", fence(av, "text"))
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// How many unary-minus wrappers enclose one generated argument, following
+/// temporaries and locals back to the expression that defines them. An
+/// f64/f32 negation is `-(..)`, an int negation is `a2x_neg(..)`.
+fn negation_depth(generated: &str, arg: &str) -> usize {
+    let arg = variable(arg);
+    for wrapper in ["-(", "a2x_neg("] {
+        if let Some(inner) = arg.strip_prefix(wrapper) {
+            return 1 + negation_depth(generated, inner.trim_end_matches(')'));
+        }
+    }
+    if arg.starts_with('t') || arg.starts_with('l') {
+        // the LAST assignment: a local is declared as `None` before it is set
+        let line = generated
+            .lines()
+            .rev()
+            .find(|line| line.trim_start().starts_with(&format!("{arg} = ")))
+            .unwrap_or_else(|| panic!("no definition of `{arg}`"));
+        return negation_depth(
+            generated,
+            line.trim_start().split_once(" = ").unwrap().1.trim(),
+        );
+    }
+    0
+}
+
+/// Review R-01: an argument whose outermost operator is a unary minus is
+/// emitted negated. The parser gives a unary node the span of its own
+/// operand, so the operand lookup used to hand Python the operand alone
+/// (`pack(">d", -rate)` passed `+0.2`, `sqrt(-seed)` did not raise).
+#[test]
+fn generated_python_negates_an_argument_wrapped_in_unary_minus() {
+    let dir = scratch("negated");
+    let (source, av, _) = case_of("negated-operands");
+    emit(&dir, source);
+    let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
+
+    // six `pack(<fmt>, <value>)` calls in source order
+    let args = pack_arguments(&generated);
+    assert_eq!(args.len(), 6, "{args:?}");
+    let depths: Vec<usize> = args
+        .iter()
+        .map(|arg| negation_depth(&generated, arg))
+        .collect();
+    // `-rate`, `-(rate * 2.0d)`, `-twice(1.0d)`, `-seed`, `-(-seed)`, `bound` (= `-rate`)
+    assert_eq!(depths, [1, 1, 1, 1, 2, 1], "{args:?}");
+    // the f32 negations still take the width conversion at the boundary
+    assert!(args[3].starts_with("a2x_f32_round("), "{args:?}");
+    assert!(args[4].starts_with("a2x_f32_round("), "{args:?}");
+    // each value is a computed temporary or the local that holds one, never
+    // the negated number written out
+    for arg in &args {
+        assert!(!arg.contains("bits"), "{arg} is not a folded number");
+    }
+
+    // the keyword form, the int sibling and the failing call are negated too
+    let named = generated
+        .lines()
+        .find(|line| line.contains(r#"{"ndigits": "#))
+        .expect("round(2.5d, ndigits: -digits)");
+    let named_arg = named
+        .split(r#"{"ndigits": "#)
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap();
+    assert_eq!(negation_depth(&generated, named_arg), 1, "{named}");
+    let int = generated
+        .lines()
+        .find(|line| line.contains("a2x_py_call, l1_repr, None, ["))
+        .expect("repr(-n)");
+    let int_arg = int
+        .split("l1_repr, None, [")
+        .nth(1)
+        .unwrap()
+        .split("], ")
+        .next()
+        .unwrap();
+    assert_eq!(negation_depth(&generated, int_arg), 1, "{int}");
+    let root = generated
+        .lines()
+        .find(|line| line.contains("a2x_py_call, l3_sqrt, None, ["))
+        .expect("sqrt(-seed)");
+    let root_arg = root
+        .split("l3_sqrt, None, [")
+        .nth(1)
+        .unwrap()
+        .split("], ")
+        .next()
+        .unwrap();
+    assert_eq!(negation_depth(&generated, root_arg), 1, "{root}");
+
     assert_eq!(
         run_generated(&dir),
         format!("{}value:0\n", fence(av, "text"))

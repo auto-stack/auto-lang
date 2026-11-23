@@ -111,7 +111,11 @@ pub const PY_OPS: &[PyOpDecl] = &[
         "py_session_close_v1",
         Some((-111, "py.close")),
     ),
-    v1("py_stage_str", "py_stage_str_v1", Some((-109, "py.stage-str"))),
+    v1(
+        "py_stage_str",
+        "py_stage_str_v1",
+        Some((-109, "py.stage-str")),
+    ),
     v1("py_str_word", "py_str_word_v1", None),
     v1("py_to_bool", "py_to_bool_v1", Some((-108, "py.to-bool"))),
     v1("py_to_f64", "py_to_f64_v1", Some((-106, "py.to-f64"))),

@@ -141,14 +141,10 @@ fn p1026_py_bridge_prepared_and_admits() {
     // receive user values declare the typed superset (PLAN-1129), the rest
     // stay on the frozen version-1 frames
     assert!(
-        f0.build
-            .manifest
-            .functions
-            .iter()
-            .all(|f| f
-                .frame
-                .as_deref()
-                .is_some_and(|frame| frame == "p967.frame/1" || frame == "p967.frame/2")),
+        f0.build.manifest.functions.iter().all(|f| f
+            .frame
+            .as_deref()
+            .is_some_and(|frame| frame == "p967.frame/1" || frame == "p967.frame/2")),
         "every py op declares a frozen tag frame"
     );
     let mut typed: Vec<&str> = f0

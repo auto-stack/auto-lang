@@ -20,7 +20,8 @@ type Compile = fn(
     &str,
     &[String],
     &AdmittedForeign,
-) -> Result<ace_core::source::CompiledSource, Vec<ace_core::atom_text::Diagnostic>>;
+)
+    -> Result<ace_core::source::CompiledSource, Vec<ace_core::atom_text::Diagnostic>>;
 
 fn compile_with(src: &str, compile: Compile) -> CheckedModule {
     let caps = [SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
@@ -51,8 +52,14 @@ fn texts(checked: &CheckedModule) -> Vec<String> {
 /// How many frame fragments open with each wire version.
 fn headers(checked: &CheckedModule) -> (usize, usize) {
     let all = texts(checked);
-    let v1 = all.iter().filter(|t| t.starts_with("p967.frame/1\n")).count();
-    let v2 = all.iter().filter(|t| t.starts_with("p967.frame/2\n")).count();
+    let v1 = all
+        .iter()
+        .filter(|t| t.starts_with("p967.frame/1\n"))
+        .count();
+    let v2 = all
+        .iter()
+        .filter(|t| t.starts_with("p967.frame/2\n"))
+        .count();
     (v1, v2)
 }
 
@@ -91,8 +98,16 @@ fn every_float_operand_is_a_float_and_only_a_literal_carries_a_literal() {
             // a runtime computation
             ("lr".to_string(), PyValClass::Float, None),
             // literals keep their exact value — an f32 as its one widening
-            ("0.25d".to_string(), PyValClass::Float, Some(PyLiteral::Float(0.25))),
-            ("0.1".to_string(), PyValClass::Float, Some(PyLiteral::Float(0.1f32 as f64))),
+            (
+                "0.25d".to_string(),
+                PyValClass::Float,
+                Some(PyLiteral::Float(0.25))
+            ),
+            (
+                "0.1".to_string(),
+                PyValClass::Float,
+                Some(PyLiteral::Float(0.1f32 as f64))
+            ),
         ],
         "float operands: class, and a literal only for a literal"
     );
@@ -105,7 +120,11 @@ fn value_carrying_frames_speak_version_two_and_valueless_frames_stay_on_one() {
     let (v1, v2) = headers(&compile(
         "use.py builtins: repr\nfn main() int {\n    print(repr(7).to(str))\n    return 0\n}\n",
     ));
-    assert_eq!((v1, v2), (2, 1), "import + receiver frames on /1, the call on /2");
+    assert_eq!(
+        (v1, v2),
+        (2, 1),
+        "import + receiver frames on /1, the call on /2"
+    );
 
     // no operation that receives a user value: nothing moves to /2
     let (v1, v2) = headers(&compile(
@@ -136,7 +155,10 @@ fn main() int {
     // 0.1f32… of 0.5f32 — and the retired `F:` disguise is nowhere
     let all = texts(&mixed).concat();
     assert!(
-        all.contains(&format!("\n{}", ace_core::source::py::typed_float_text(b'f', u64::from(0.5f32.to_bits())))),
+        all.contains(&format!(
+            "\n{}",
+            ace_core::source::py::typed_float_text(b'f', u64::from(0.5f32.to_bits()))
+        )),
         "a float literal is static typed text: {all:?}"
     );
     assert!(!all.contains("F:"), "no `F:` float-literal text is emitted");
@@ -149,7 +171,15 @@ fn the_typed_payload_is_three_bounded_words_with_one_spelling_per_value() {
     assert_eq!(float_words(u64::MAX), "2097151 2097151 4194303");
     assert_eq!(float_words(1.5f64.to_bits()), "524032 0 0");
     // a value can be read back from its words by the wire rule
-    for bits in [0u64, 1, (1 << 43) - 1, 1 << 43, u64::MAX, 2.25f64.to_bits(), (-0.0f64).to_bits()] {
+    for bits in [
+        0u64,
+        1,
+        (1 << 43) - 1,
+        1 << 43,
+        u64::MAX,
+        2.25f64.to_bits(),
+        (-0.0f64).to_bits(),
+    ] {
         let words: Vec<u64> = float_words(bits)
             .split(' ')
             .map(|w| w.parse().expect("decimal"))
@@ -159,12 +189,16 @@ fn the_typed_payload_is_three_bounded_words_with_one_spelling_per_value() {
         assert_eq!((words[0] << 43) | (words[1] << 22) | words[2], bits);
     }
     assert_eq!(typed_float_text(b'd', 0), "d 5\n0 0 0\n");
-    assert_eq!(typed_float_text(b'f', u64::from(0.5f32.to_bits())), "f 7\n0 252 0\n");
+    assert_eq!(
+        typed_float_text(b'f', u64::from(0.5f32.to_bits())),
+        "f 7\n0 252 0\n"
+    );
 }
 
 #[test]
 fn unsupported_value_kinds_stay_a_named_rejection_at_their_own_span() {
-    let src = "use.py builtins: repr\nfn main() int {\n    print(repr(1i64).to(str))\n    return 0\n}\n";
+    let src =
+        "use.py builtins: repr\nfn main() int {\n    print(repr(1i64).to(str))\n    return 0\n}\n";
     let caps = [SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
     let diags = compile_language_source_with_foreign(src, "main.as", &caps, &contract())
         .expect_err("a 64-bit integer does not cross");
@@ -285,7 +319,10 @@ fn main() int {
     return 0
 }
 ";
-    let checked = compile_with(src, ace_core::source::compile_aggregates_source_with_foreign);
+    let checked = compile_with(
+        src,
+        ace_core::source::compile_aggregates_source_with_foreign,
+    );
     let plan = checked.py_ops().expect("the py lane pins an op plan");
     let pack = plan
         .of_kind(PyOpKind::Call)

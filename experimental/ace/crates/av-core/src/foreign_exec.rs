@@ -335,8 +335,7 @@ pub const FRAME_HEADERS: [&[u8]; 2] = [b"p967.frame/1\n", b"p967.frame/2\n"];
 
 /// Whether `tag` belongs to `version` of the tag-frame vocabulary.
 fn frame_tag_ok(tag: u8, version: u8) -> bool {
-    matches!(tag, b'n' | b'i' | b'b' | b't' | b'o')
-        || (version == 2 && matches!(tag, b'd' | b'f'))
+    matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') || (version == 2 && matches!(tag, b'd' | b'f'))
 }
 
 /// Strictly parse and validate a `p967.frame/1` or `p967.frame/2` wire
@@ -544,7 +543,18 @@ fn check_tag_value(tag: u8, payload: &[u8], version: u8) -> Result<(), &'static 
         b'b' => Err("tag b payload must be 0 or 1"),
         b't' => Ok(()), // any bytes, capped by take_value
         // PLAN-1129: typed floats exist in version 2 only.
-        b'd' | b'f' if version == 2 => check_float_words(payload),
+        b'd' if version == 2 => check_float_words(payload).map(|_| ()),
+        // An f32 is its 32-bit pattern alone: the upper 32 bits of the
+        // 64-bit pattern must be zero, so one f32 has exactly one encoding
+        // (review R-05). A payload that sets them is a named rejection,
+        // never silently truncated.
+        b'f' if version == 2 => check_float_words(payload).and_then(|bits| {
+            if bits >> 32 == 0 {
+                Ok(())
+            } else {
+                Err("typed float f payload exceeds 32 bits")
+            }
+        }),
         _ => Err("unknown tag"),
     }
 }
@@ -553,11 +563,12 @@ fn check_tag_value(tag: u8, payload: &[u8], version: u8) -> Result<(), &'static 
 /// 64-bit pattern split 21 / 21 / 22 bits from the top. Every word is 1..=7
 /// digits and below its bound, so one value has exactly one encoding (the
 /// same acceptance and the same reasons as the shim decoder's
-/// `__f0_float_bits`).
-fn check_float_words(payload: &[u8]) -> Result<(), &'static str> {
+/// `__f0_float_bits`). Returns the pattern.
+fn check_float_words(payload: &[u8]) -> Result<u64, &'static str> {
     const BOUNDS: [u64; 3] = [1 << 21, 1 << 21, 1 << 22];
     let mut words = payload.split(|&b| b == b' ');
-    for bound in BOUNDS {
+    let mut bits = 0u64;
+    for (shift, bound) in [(43u32, BOUNDS[0]), (22, BOUNDS[1]), (0, BOUNDS[2])] {
         let word = words
             .next()
             .ok_or("typed float payload is not `<w2> <w1> <w0>`")?;
@@ -573,11 +584,12 @@ fn check_float_words(payload: &[u8]) -> Result<(), &'static str> {
         if value >= bound {
             return Err("typed float word is out of range");
         }
+        bits |= value << shift;
     }
     if words.next().is_some() {
         return Err("typed float payload is not `<w2> <w1> <w0>`");
     }
-    Ok(())
+    Ok(bits)
 }
 
 fn split_decimal(l: &[u8]) -> Option<(u64, &[u8])> {
@@ -1120,9 +1132,18 @@ impl ForeignStubTable {
         if self.entries[idx].frame {
             if let Err(reason) = validate_frame_wire(bytes) {
                 self.rejected_count += 1;
+                // PLAN-1129: name the wire version the frame actually
+                // carries, read from the header table the validator admits
+                // (a `/2` frame must not be reported as `/1`; a header that
+                // matches no admitted version is reported as unknown).
+                let wire = FRAME_HEADERS
+                    .iter()
+                    .position(|header| bytes.starts_with(header))
+                    .and_then(|index| std::str::from_utf8(FRAME_HEADERS[index]).ok())
+                    .map_or("p967.frame/?", |header| header.trim_end());
                 return Err(reject(
                     "foreign.frame",
-                    format!("p967.frame/1 rejected: {reason}"),
+                    format!("{wire} rejected: {reason}"),
                 ));
             }
         }
@@ -2714,7 +2735,8 @@ mod frame_wire_1129_tests {
         ok(V2, "r n 0\n\np 0\nk 0\n");
         ok(V2, "r n 0\n\np 2\nt 0\n\nd 5\n0 0 0\nk 0\n");
         ok(V2, "r d 23\n2097151 2097151 4194303\np 0\nk 0\n");
-        ok(V2, "r n 0\n\np 0\nk 1\n1\nxf 23\n2097151 2097151 4194303\n");
+        // the keyword `x` carries the f32 pattern of -0.0
+        ok(V2, "r n 0\n\np 0\nk 1\n1\nxf 7\n0 512 0\n");
         // the version-1 tags and rules are unchanged inside a version-2 frame
         ok(V2, &positional("t", "F:2.5"));
         ok(V2, "r n 0\n\np 1\ni 2\n42\nk 0\n");
@@ -2731,33 +2753,81 @@ mod frame_wire_1129_tests {
     fn a_typed_float_payload_is_three_bounded_decimals() {
         for payload in ["0 0 0", "0 0 1", "0 1 0", "2097151 2097151 4194303"] {
             ok(V2, &positional("d", payload));
+        }
+        for payload in ["0 0 0", "0 0 1", "0 1 0"] {
             ok(V2, &positional("f", payload));
         }
         let reason = "typed float payload is not `<w2> <w1> <w0>`";
         for payload in ["0", "0 0", "0 0 0 0", "0 0 0 "] {
             bad(V2, &positional("d", payload), reason);
+            bad(V2, &positional("f", payload), reason);
         }
         for payload in ["0 -1 0", "0 +1 0", "0 0 0x1", "0 1.5 0", "0 0 ٣"] {
-            bad(
-                V2,
-                &positional("d", payload),
-                "typed float word is not a decimal",
-            );
+            for tag in ["d", "f"] {
+                bad(
+                    V2,
+                    &positional(tag, payload),
+                    "typed float word is not a decimal",
+                );
+            }
         }
         for payload in [
-            "",              // a missing word is an empty one
-            "0  0",          // so is a doubled separator
-            "2097152 0 0",   // w2 carries 21 bits
-            "0 2097152 0",   // so does w1
-            "0 0 4194304",   // w0 carries 22
-            "12345678 0 0",  // at most seven digits
+            "",             // a missing word is an empty one
+            "0  0",         // so is a doubled separator
+            "2097152 0 0",  // w2 carries 21 bits
+            "0 2097152 0",  // so does w1
+            "0 0 4194304",  // w0 carries 22
+            "12345678 0 0", // at most seven digits
         ] {
+            for tag in ["d", "f"] {
+                bad(
+                    V2,
+                    &positional(tag, payload),
+                    "typed float word is out of range",
+                );
+            }
+        }
+    }
+
+    /// An f32 is its 32-bit pattern alone (review R-05 of PLAN-1129): the
+    /// three words still bound each part, but the 32 bits above the pattern
+    /// must be zero. One f32 value has exactly one encoding, in every slot.
+    #[test]
+    fn an_f32_payload_is_canonical_or_rejected() {
+        // +0.0, -0.0, the quiet NaN of an f32, 0x7F7FFFFF and its low bits
+        for payload in [
+            "0 0 0",
+            "0 512 0",
+            "0 1023 4194303",
+            "0 509 4194303",
+            "0 0 4194303",
+        ] {
+            ok(V2, &positional("f", payload));
+        }
+        // the same value (+0.0) spelled with any upper bit set is refused
+        const OVER: &str = "typed float f payload exceeds 32 bits";
+        for payload in [
+            "0 1024 0",    // bit 32
+            "0 1048576 0", // bit 42
+            "1 0 0",       // bit 43
+            "2097151 0 0", // bits 43..63
+            "0 2097151 0", // bits 22..42
+            "2097151 2097151 4194303",
+        ] {
+            bad(V2, &positional("f", payload), OVER);
             bad(
                 V2,
-                &positional("f", payload),
-                "typed float word is out of range",
+                &format!("r f {}\n{payload}\np 0\nk 0\n", payload.len()),
+                OVER,
+            );
+            bad(
+                V2,
+                &format!("r n 0\n\np 0\nk 1\n1\nxf {}\n{payload}\n", payload.len()),
+                OVER,
             );
         }
+        // an f64 keeps its whole 64-bit pattern
+        ok(V2, &positional("d", "2097151 2097151 4194303"));
     }
 
     #[test]
@@ -2776,12 +2846,17 @@ mod frame_wire_1129_tests {
             (V1, positional("t", "F:2.5"), true),
             (V1, positional("d", "0 0 0"), false),
             (V2, positional("d", "0 0 2097151"), true),
-            (V2, positional("f", "0 2097151 4194303"), true),
+            (V2, positional("f", "0 1023 4194303"), true),
             (V2, positional("f", "0 4194304 0"), false),
+            (V2, positional("f", "0 1024 0"), false),
+            (V2, positional("f", "2097151 0 0"), false),
             (V2, positional("d", "0 0 "), false),
         ];
         for (version, body, admit) in samples {
-            assert_eq!(validate_frame_wire(format!("{version}{body}").as_bytes()).is_ok(), admit);
+            assert_eq!(
+                validate_frame_wire(format!("{version}{body}").as_bytes()).is_ok(),
+                admit
+            );
         }
     }
 }

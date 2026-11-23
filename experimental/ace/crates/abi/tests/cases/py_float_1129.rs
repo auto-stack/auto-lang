@@ -21,7 +21,12 @@ use super::py_prepared::{py_f0_session, py_session};
 /// `<w2> <w1> <w0>` — a 64-bit pattern as the typed float payload (21 / 21 /
 /// 22 bits from the top).
 fn words(bits: u64) -> String {
-    format!("{} {} {}", bits >> 43, (bits >> 22) & 0x1F_FFFF, bits & 0x3F_FFFF)
+    format!(
+        "{} {} {}",
+        bits >> 43,
+        (bits >> 22) & 0x1F_FFFF,
+        bits & 0x3F_FFFF
+    )
 }
 
 /// One wire value: `(tag, payload)`.
@@ -68,7 +73,10 @@ fn call_op(
         ace_foreign_contract::manual::SOURCE_CAP.to_string(),
         ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
     ];
-    let source = format!("use.rs py\nfn main() int {{ return {op}({}) }}", auto_lit(f));
+    let source = format!(
+        "use.rs py\nfn main() int {{ return {op}({}) }}",
+        auto_lit(f)
+    );
     let mut query = ace_source_query::SourceQuerySession::new("p1129", "m1129");
     query.set_foreign(Some(environment.clone()));
     let product = ace_source_query::compile_text_record_product(
@@ -108,10 +116,13 @@ fn as_i32(out: ExecOutcome, what: &str) -> i32 {
 
 fn is_status_failure(out: &ExecOutcome, what: &str) {
     assert!(
-        matches!(out, ExecOutcome::Trap {
-            kind: ace_av_core::contract::TrapKind::ForeignStatus,
-            ..
-        }),
+        matches!(
+            out,
+            ExecOutcome::Trap {
+                kind: ace_av_core::contract::TrapKind::ForeignStatus,
+                ..
+            }
+        ),
         "{what}: expected the op's status failure, got {out:?}"
     );
 }
@@ -155,7 +166,12 @@ fn import(
             table,
             environment,
             "py_import",
-            &frame(1, ("n", ""), &[], &[("mod", ("t", module)), ("member", ("t", member))]),
+            &frame(
+                1,
+                ("n", ""),
+                &[],
+                &[("mod", ("t", module)), ("member", ("t", member))],
+            ),
         ),
         "import",
     )
@@ -163,7 +179,12 @@ fn import(
 
 fn error_class(table: &mut ForeignStubTable, environment: &AdmittedForeign) -> i32 {
     as_i32(
-        call_op(table, environment, "py_error_class", &frame(1, ("n", ""), &[], &[])),
+        call_op(
+            table,
+            environment,
+            "py_error_class",
+            &frame(1, ("n", ""), &[], &[]),
+        ),
         "error class",
     )
 }
@@ -264,7 +285,11 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
             &frame(
                 2,
                 ("o", &pack.to_string()),
-                &[("t", ""), ("t", ">f"), ("f", &words(u64::from(0.1f32.to_bits())))],
+                &[
+                    ("t", ""),
+                    ("t", ">f"),
+                    ("f", &words(u64::from(0.1f32.to_bits()))),
+                ],
                 &[],
             ),
         ),
@@ -280,7 +305,11 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
         ),
         "packed.hex()",
     );
-    assert_eq!(staged_text(t, env, r), "3dcccccd", "Python got the f32 bits");
+    assert_eq!(
+        staged_text(t, env, r),
+        "3dcccccd",
+        "Python got the f32 bits"
+    );
 
     // legacy emitter artifact: a version-1 frame keeps the `F:` literal decoding
     let r = as_i32(
@@ -288,7 +317,12 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
             t,
             env,
             "py_call",
-            &frame(1, ("o", &sqrt.to_string()), &[("t", ""), ("t", "F:2.25")], &[]),
+            &frame(
+                1,
+                ("o", &sqrt.to_string()),
+                &[("t", ""), ("t", "F:2.25")],
+                &[],
+            ),
         ),
         "sqrt(2.25) via a /1 `F:` literal",
     );
@@ -300,7 +334,12 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
         t,
         env,
         "py_call",
-        &frame(2, ("o", &sqrt.to_string()), &[("t", ""), ("t", "F:2.25")], &[]),
+        &frame(
+            2,
+            ("o", &sqrt.to_string()),
+            &[("t", ""), ("t", "F:2.25")],
+            &[],
+        ),
     );
     is_status_failure(&out, "sqrt('F:2.25')");
     assert_eq!(error_class(t, env), 3, "TypeError: the text stayed a str");
@@ -323,7 +362,11 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
                 &frame(
                     2,
                     ("o", &isclose.to_string()),
-                    &[("t", ""), ("d", &words(a.to_bits())), ("d", &words(b.to_bits()))],
+                    &[
+                        ("t", ""),
+                        ("d", &words(a.to_bits())),
+                        ("d", &words(b.to_bits())),
+                    ],
                     &[("rel_tol", ("d", &words(tolerance.to_bits())))],
                 ),
             ),
@@ -331,7 +374,12 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
         );
         assert_eq!(
             as_i32(
-                call_op(t, env, "py_to_bool", &frame(1, ("o", &r.to_string()), &[], &[])),
+                call_op(
+                    t,
+                    env,
+                    "py_to_bool",
+                    &frame(1, ("o", &r.to_string()), &[], &[])
+                ),
                 "isclose"
             ),
             want,
@@ -350,7 +398,11 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
                 &frame(
                     2,
                     ("o", &copysign.to_string()),
-                    &[("t", ""), ("d", &words(1.0f64.to_bits())), ("d", &words(zero.to_bits()))],
+                    &[
+                        ("t", ""),
+                        ("d", &words(1.0f64.to_bits())),
+                        ("d", &words(zero.to_bits())),
+                    ],
                     &[],
                 ),
             ),
@@ -394,7 +446,12 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
     );
     assert_eq!(
         as_i32(
-            call_op(t, env, "py_to_bool", &frame(1, ("o", &r.to_string()), &[], &[])),
+            call_op(
+                t,
+                env,
+                "py_to_bool",
+                &frame(1, ("o", &r.to_string()), &[], &[])
+            ),
             "isinf"
         ),
         1
@@ -416,27 +473,121 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
     );
     assert_eq!(
         as_i32(
-            call_op(t, env, "py_to_bool", &frame(1, ("o", &r.to_string()), &[], &[])),
+            call_op(
+                t,
+                env,
+                "py_to_bool",
+                &frame(1, ("o", &r.to_string()), &[], &[])
+            ),
             "isnan"
         ),
         1
     );
 
-    // a typed tag never rides a version-1 frame, and the typed payload is strict
+    // a typed tag never rides a version-1 frame, the typed payload is
+    // strict, and an f32 pattern that sets its upper 32 bits is refused
+    // rather than truncated (review R-05). The rejection names the wire
+    // version the frame actually carries (review R-06).
     let before = t.callee_count();
-    for bad in [
-        frame(1, ("o", &sqrt.to_string()), &[("t", ""), ("d", &words(0))], &[]),
-        frame(2, ("o", &sqrt.to_string()), &[("t", ""), ("d", "0 0")], &[]),
-        frame(2, ("o", &sqrt.to_string()), &[("t", ""), ("d", "2097152 0 0")], &[]),
-        frame(2, ("o", &sqrt.to_string()), &[("t", ""), ("d", "-1 0 0")], &[]),
+    let sqrt_token = sqrt.to_string();
+    for (bad, wire_version, reason) in [
+        (
+            frame(1, ("o", &sqrt_token), &[("t", ""), ("d", &words(0))], &[]),
+            1,
+            "unknown tag",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[("t", ""), ("d", "0 0")], &[]),
+            2,
+            "typed float payload is not `<w2> <w1> <w0>`",
+        ),
+        (
+            frame(
+                2,
+                ("o", &sqrt_token),
+                &[("t", ""), ("d", "2097152 0 0")],
+                &[],
+            ),
+            2,
+            "typed float word is out of range",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[("t", ""), ("d", "-1 0 0")], &[]),
+            2,
+            "typed float word is not a decimal",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[("t", ""), ("f", "0 1024 0")], &[]),
+            2,
+            "typed float f payload exceeds 32 bits",
+        ),
+        (
+            frame(
+                2,
+                ("o", &sqrt_token),
+                &[("t", ""), ("f", "2097151 2097151 4194303")],
+                &[],
+            ),
+            2,
+            "typed float f payload exceeds 32 bits",
+        ),
+        (
+            frame(2, ("f", "1 0 0"), &[("t", ""), ("i", "1074")], &[]),
+            2,
+            "typed float f payload exceeds 32 bits",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[], &[("x", ("f", "0 1024 0"))]),
+            2,
+            "typed float f payload exceeds 32 bits",
+        ),
     ] {
         let out = call_op(t, env, "py_call", &bad);
+        let ExecOutcome::Infra(message) = &out else {
+            panic!("a malformed typed frame is the named pre-dispatch rejection: {out:?}")
+        };
         assert!(
-            matches!(&out, ExecOutcome::Infra(m) if m.contains("foreign.frame")),
-            "a malformed typed frame is the named pre-dispatch rejection: {out:?}"
+            message.contains("foreign.frame"),
+            "a malformed typed frame is the named pre-dispatch rejection: {message}"
+        );
+        assert!(
+            message.contains(&format!("p967.frame/{wire_version} rejected: {reason}")),
+            "the rejection names the wire version and the reason: {message}"
         );
     }
-    assert_eq!(t.callee_count(), before, "every malformed frame rejected with dispatch=0");
+    // a header of no admitted version is reported as unknown, never as `/1`
+    let out = call_op(t, env, "py_call", "p967.frame/3\nr n 0\np 0\nk 0\n");
+    let ExecOutcome::Infra(message) = &out else {
+        panic!("an unknown wire version is the named pre-dispatch rejection: {out:?}")
+    };
+    assert!(
+        message.contains("foreign.frame")
+            && message.contains("p967.frame/? rejected: bad magic/version header"),
+        "an unknown wire version is named as such: {message}"
+    );
+    // the control: the same receiver and member with a CANONICAL f32 pattern
+    // is admitted and reaches Python
+    let good = as_i32(
+        call_op(
+            t,
+            env,
+            "py_call",
+            &frame(
+                2,
+                ("o", &sqrt_token),
+                &[("t", ""), ("f", &words(u64::from(2.25f32.to_bits())))],
+                &[],
+            ),
+        ),
+        "sqrt(2.25f32) via a canonical /2 f32",
+    );
+    assert_eq!(f64_of(t, env, good, "sqrt(2.25f32)"), 1.5f64.to_bits());
+    // py_call once, then py_to_f64 and py_f64_lo to read the result back
+    assert_eq!(
+        t.callee_count(),
+        before + 3,
+        "only the canonical frame reached the provider"
+    );
     eprintln!("p1129 typed frames: {} ms", started.elapsed().as_millis());
 }
 
@@ -454,7 +605,7 @@ fn fence<'a>(section: &'a str, language: &str) -> &'a str {
 }
 
 /// Every case of the corpus, in file order.
-const CORPUS_CASES: [&str; 13] = [
+const CORPUS_CASES: [&str; 14] = [
     "runtime-values",
     "types-and-text",
     "order-and-once",
@@ -462,6 +613,7 @@ const CORPUS_CASES: [&str; 13] = [
     "boundaries",
     "signed-zero-f32",
     "binop-float",
+    "negated-operands",
     "containers-and-binop",
     "torch-lr-computed",
     "sqrt-runtime-negative",
@@ -546,10 +698,7 @@ fn p1129_corpus_lists_every_case_in_file_order() {
         .filter_map(|line| line.strip_prefix("## Case: "))
         .collect();
     assert_eq!(headings, CORPUS_CASES);
-    assert_eq!(
-        CORPUS.matches("### Probe av\n").count(),
-        CORPUS_CASES.len()
-    );
+    assert_eq!(CORPUS.matches("### Probe av\n").count(), CORPUS_CASES.len());
 }
 
 // One case per test: each stays well inside the per-case budget even while
@@ -589,6 +738,11 @@ fn p1129_corpus_av_signed_zero_f32() {
 #[test]
 fn p1129_corpus_av_binop_float() {
     assert!(corpus_case_on_av("binop-float"));
+}
+
+#[test]
+fn p1129_corpus_av_negated_operands() {
+    assert!(corpus_case_on_av("negated-operands"));
 }
 
 #[test]
@@ -634,10 +788,7 @@ fn p1129_v04_a_stale_prepared_closure_is_rejected_by_name() {
     let root = std::env::var_os("ACE_AV_PROVIDER_ROOT")
         .map(PathBuf::from)
         .expect("foreign.prepared: run cargo t ace-python --prepare-only");
-    let scratch = std::env::temp_dir().join(format!(
-        "p1129_stale_provider_{}",
-        std::process::id()
-    ));
+    let scratch = std::env::temp_dir().join(format!("p1129_stale_provider_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     let out = scratch.join("out");
     std::fs::create_dir_all(&out).expect("scratch");
@@ -649,7 +800,11 @@ fn p1129_v04_a_stale_prepared_closure_is_rejected_by_name() {
     let stamp_path = out.join("py-build-stamp.txt");
     let live_stamp = std::fs::read_to_string(root.join("out/py-build-stamp.txt")).expect("stamp");
     let lines: Vec<String> = live_stamp.lines().map(str::to_string).collect();
-    assert_eq!(lines.len(), 3, "provider digest / shim digest / rustc identity");
+    assert_eq!(
+        lines.len(),
+        3,
+        "provider digest / shim digest / rustc identity"
+    );
 
     let stale = |what: &str, changed: String| {
         std::fs::write(&stamp_path, format!("{changed}\n")).expect("restamp");
@@ -671,7 +826,11 @@ fn p1129_v04_a_stale_prepared_closure_is_rejected_by_name() {
         other[line].replace_range(0..1, &flipped.to_string());
         assert_ne!(other[line], original);
         stale(
-            ["other provider bytes", "other shim bytes", "another toolchain"][line],
+            [
+                "other provider bytes",
+                "other shim bytes",
+                "another toolchain",
+            ][line],
             other.join("\n"),
         );
     }
@@ -727,8 +886,13 @@ fn p1129_v04_a_provider_without_the_typed_frame_is_refused_before_the_call() {
     let source = ace_abi::rust_provider::py_bridge_provider_source();
     let older = source.replace("frame=p967.frame/2", "frame=p967.frame/1");
     assert_ne!(older, source, "the live source declares the typed frame");
-    let older = describe_rust_provider(&older, String::new(), Default::default(), Default::default())
-        .expect("the older provider still describes");
+    let older = describe_rust_provider(
+        &older,
+        String::new(),
+        Default::default(),
+        Default::default(),
+    )
+    .expect("the older provider still describes");
     assert_ne!(
         older.manual.facts.content_version, f0.build.manual.facts.content_version,
         "the frame annotation is part of the interface identity"

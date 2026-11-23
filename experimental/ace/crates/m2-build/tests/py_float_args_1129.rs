@@ -120,7 +120,10 @@ fn p1129_t04_engineering_entry_passes_the_computed_learning_rate() {
         .find(|line| line.contains(r#""lr": "#))
         .expect("the `SGD(model.parameters(), lr: rate)` call");
     assert!(sgd.contains("a2x_f32_round("), "{sgd}");
-    assert!(!sgd.contains(r#""lr": 0."#), "no folded learning rate: {sgd}");
+    assert!(
+        !sgd.contains(r#""lr": 0."#),
+        "no folded learning rate: {sgd}"
+    );
 
     let run_dir = scratch("run");
     write_tree(&run_dir, &outcome.products);
@@ -131,9 +134,14 @@ fn p1129_t04_engineering_entry_passes_the_computed_learning_rate() {
         .output()
         .expect("run python");
     let elapsed = started.elapsed();
-    let stdout = String::from_utf8_lossy(&out.stdout).to_string().replace("\r\n", "\n");
+    let stdout = String::from_utf8_lossy(&out.stdout)
+        .to_string()
+        .replace("\r\n", "\n");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-    assert!(out.status.success(), "native python run failed: {stderr}\n{generated}");
+    assert!(
+        out.status.success(),
+        "native python run failed: {stderr}\n{generated}"
+    );
     let lines: Vec<&str> = stdout
         .lines()
         .filter(|line| !line.starts_with("value:"))
@@ -144,7 +152,10 @@ fn p1129_t04_engineering_entry_passes_the_computed_learning_rate() {
     assert_eq!(lines[1], "0.03125", "run 1: the optimizer's own lr");
     assert_eq!(lines[6], "0.09375", "run 2: the rate Auto computed");
     assert_eq!(lines[7], "0.09375", "run 2: the optimizer's own lr");
-    assert_ne!(lines[3], lines[9], "the two rates train different loss paths");
+    assert_ne!(
+        lines[3], lines[9],
+        "the two rates train different loss paths"
+    );
     assert_ne!(lines[5], lines[11], "and reach different predictions");
 
     let _ = std::fs::remove_dir_all(&root);

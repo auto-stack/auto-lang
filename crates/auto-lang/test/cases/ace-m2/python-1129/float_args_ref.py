@@ -245,6 +245,29 @@ def sqrt_nested_shifted():
     sqrt_nested_first()
 
 
+def negated_operands():
+    # The outermost operator of an argument is a unary minus. The value that
+    # reaches Python is the negated one: a local, a product, a function
+    # result, an f32, an int, a keyword, and a double negation.
+    print(struct.pack(">d", -0.2).hex())
+    print(struct.pack(">d", -(0.2 * 2.0)).hex())
+    print(struct.pack(">d", -(1.0 * 2.0)).hex())
+    seed = f32(0.4)
+    print(struct.pack(">f", f32(-seed)).hex())
+    print(repr(-3))
+    print(str(round(2.5, -1)))
+    caught = 0
+    try:
+        root = math.sqrt(f32(-seed))
+        print(root)
+    except ValueError as error:
+        caught += 1
+        print(f"PyException ValueError: {error}")
+    print(caught)
+    print(struct.pack(">f", f32(-f32(-seed))).hex())
+    print(struct.pack(">d", -0.2).hex())
+
+
 CASES = {
     "runtime-values": runtime_values,
     "types-and-text": types_and_text,
@@ -253,6 +276,7 @@ CASES = {
     "boundaries": boundaries,
     "signed-zero-f32": signed_zero_f32,
     "binop-float": binop_float,
+    "negated-operands": negated_operands,
     "containers-and-binop": containers_and_binop,
     "torch-lr-computed": torch_lr_computed,
     "sqrt-runtime-negative": sqrt_runtime_negative,

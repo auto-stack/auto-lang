@@ -206,7 +206,7 @@ mod plan106_viewdata_writes;
 
 #[path = "cases/plan980_style_surface.rs"]
 mod plan980_style_surface;
-#[path = "cases/py_slicing_1127.rs"]
-mod py_slicing_1127;
 #[path = "cases/py_float_args_1129.rs"]
 mod py_float_args_1129;
+#[path = "cases/py_slicing_1127.rs"]
+mod py_slicing_1127;

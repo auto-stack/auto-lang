@@ -838,11 +838,24 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
     /// nodes (display/concat/borrow, the AV encoding intrinsics and every
     /// py-lane frame helper) are not values and are skipped; a py-op call
     /// outranks a local read, which outranks a literal.
+    ///
+    /// PLAN-1129 (review R-01): the parser gives a unary node the span of
+    /// its own operand, so `-rate` and `rate` are candidates at the SAME
+    /// span — as are `-twice(1.0d)` and its call, `-(a * b)` and its
+    /// product. The unary node is the value; the operand alone is the value
+    /// with its sign flipped away. So a unary candidate outranks everything
+    /// else at its span, and among unary candidates the LAST one wins: the
+    /// checked body lists an expression after all of its children, so the
+    /// last is the outermost wrapper (`-(-x)`).
     fn py_find_value(&self, span: (u32, u32)) -> Option<hir::ExprId> {
         let mut best: Option<(u8, hir::ExprId)> = None;
+        let mut unary: Option<hir::ExprId> = None;
         for (i, x) in self.facts.body.exprs.iter().enumerate() {
             if (x.span.start as u32, x.span.end as u32) != span {
                 continue;
+            }
+            if matches!(x.kind, hir::ExprKind::Unary { .. }) {
+                unary = Some(hir::ExprId(i as u32));
             }
             let rank = match &x.kind {
                 hir::ExprKind::TextDisplay { .. }
@@ -879,7 +892,7 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 best = Some((rank, hir::ExprId(i as u32)));
             }
         }
-        best.map(|(_, id)| id)
+        unary.or_else(|| best.map(|(_, id)| id))
     }
 
     fn lower_stmt_inner(&mut self, stmt: &hir::Stmt) -> Result<(), A2xReject> {

@@ -551,6 +551,107 @@ value:0
 ```text
 ```
 
+## Case: negated-operands
+id: "py.float-args.1129.negated-operands"
+tags: ["av-language-parity", "plan-1129"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py struct: pack
+use.py builtins: repr, round
+use.py math: sqrt
+
+fn twice(v double) double {
+    return v * 2.0d
+}
+
+fn main() int {
+    var rate = 0.2d
+    print(pack(">d", -rate).hex().to(str))
+    print(pack(">d", -(rate * 2.0d)).hex().to(str))
+    print(pack(">d", -twice(1.0d)).hex().to(str))
+    var seed = 0.4
+    print(pack(">f", -seed).hex().to(str))
+    var n = 3
+    print(repr(-n).to(str))
+    var digits = 1
+    print(round(2.5d, ndigits: -digits).to(str))
+    var caught = 0
+    try {
+        var root = sqrt(-seed)
+        print(root.to(float))
+    } catch e {
+        caught = caught + 1
+        print(e.to(str))
+    }
+    print(caught)
+    print(pack(">f", -(-seed)).hex().to(str))
+    var bound = -rate
+    print(pack(">d", bound).hex().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.5"
+error-span: "520..531"
+
+#### stdout
+
+```text
+bfc999999999999a
+bfd999999999999a
+c000000000000000
+becccccd
+-3
+0.0
+PyException ValueError: expected a nonnegative input, got -0.4000000059604645
+1
+3ecccccd
+bfc999999999999a
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "520..531"
+
+#### stdout
+compare: "lf"
+
+```text
+bfc999999999999a
+bfd999999999999a
+c000000000000000
+becccccd
+-3
+0.0
+PyException ValueError: expected a nonnegative input, got -0.4000000059604645
+1
+3ecccccd
+bfc999999999999a
+value:0
+```
+
+#### stderr
+
+```text
+```
+
 ## Case: containers-and-binop
 id: "py.float-args.1129.containers-and-binop"
 tags: ["av-language-parity", "plan-1129"]

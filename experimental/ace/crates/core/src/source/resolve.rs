@@ -18061,11 +18061,10 @@ impl<'a, 's> FnResolver<'a, 's> {
                 // py_getitem(receiver, index); the result is a Python
                 // object.
                 if self.py_is_object(&recv) {
-                    let mut parts: Vec<PyFramePart> =
-                        vec![PyFramePart::Txt(format!(
-                            "{}r ",
-                            super::py::FRAME_V2_HEADER
-                        ))];
+                    let mut parts: Vec<PyFramePart> = vec![PyFramePart::Txt(format!(
+                        "{}r ",
+                        super::py::FRAME_V2_HEADER
+                    ))];
                     let chunk = self.py_chunk_call("o", &recv);
                     parts.push(PyFramePart::TextExpr(chunk));
                     parts.push(PyFramePart::Txt("p 1\n".to_string()));

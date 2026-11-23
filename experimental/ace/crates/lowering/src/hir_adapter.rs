@@ -4270,7 +4270,13 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         // ---- zero: only the display spells the sign -----------------------
         enter(self, b_zero);
         let narrow = self.temp_ty(tf32)?;
-        self.emit(MirInstr::Conv { dst: narrow, src: v }, sp)?;
+        self.emit(
+            MirInstr::Conv {
+                dst: narrow,
+                src: v,
+            },
+            sp,
+        )?;
         let text = self.temp_ty(tstr)?;
         self.emit(
             MirInstr::TextDisplay {

@@ -421,7 +421,8 @@ fn v_int_1026_named_domain_rejections() {
         .find(|f| f.rust_name == "tframe_sum_i32")
         .expect("tframe_sum_i32");
     assert_eq!(sum.frame.as_deref(), Some("p967.frame/2"));
-    let legacy = auto_bindgen::rust_import::import(src).expect("the frozen /1 source imports");
+    // the frozen /1 source still imports; its identity differs from the typed one
+    auto_bindgen::rust_import::import(src).expect("the frozen /1 source imports");
     assert_ne!(
         auto_bindgen::rust_import::provider_digest(&typed),
         auto_bindgen::rust_import::provider_digest(src),
