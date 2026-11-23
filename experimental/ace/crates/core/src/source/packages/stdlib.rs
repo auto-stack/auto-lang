@@ -30,6 +30,48 @@ pub(crate) fn auto_csv_source() -> &'static str {
     CSV_SOURCE
 }
 
+/// PLAN-1124：普通 Auto 单文件面 `std::json` 的公开名 —— 记录、spec 与函数。
+/// 程序引用了其中之一且未自行声明该名时才嫁接本模块。
+pub(crate) const AUTO_JSON_NAMES: &[&str] = &[
+    "JsonValue",
+    "JsonEncodable",
+    "parse",
+    "parse_strict",
+    "is_valid",
+    "minify",
+    "prettify",
+    "encode",
+    "encode_pretty",
+];
+
+/// PLAN-1124：普通 Auto 单文件面 `std::csv` 的公开名。
+pub(crate) const AUTO_CSV_NAMES: &[&str] = &[
+    "csv_parse",
+    "csv_parse_with_delimiter",
+    "csv_encode",
+    "csv_encode_with_delimiter",
+    "csv_parse_rows",
+    "csv_encode_rows",
+];
+
+/// 两模块的公开函数：程序自行声明的同名函数保持为程序自己的，嫁接体
+/// 不再附加该入口。
+pub(crate) const STDLIB_PUBLIC_ENTRY_POINTS: &[&str] = &[
+    "parse",
+    "parse_strict",
+    "is_valid",
+    "minify",
+    "prettify",
+    "encode",
+    "encode_pretty",
+    "csv_parse",
+    "csv_parse_with_delimiter",
+    "csv_encode",
+    "csv_encode_with_delimiter",
+    "csv_parse_rows",
+    "csv_encode_rows",
+];
+
 pub(super) fn age_math_input() -> PackageModuleInput {
     PackageModuleInput {
         package: STDLIB_PACKAGE.into(),
@@ -336,7 +378,9 @@ mod tests {
         assert!(!is_frozen_auto_std_module(&age_json_input()));
 
         let mut tampered_json = json;
-        tampered_json.source.push_str("\npub fn extra() int { return 0 }\n");
+        tampered_json
+            .source
+            .push_str("\npub fn extra() int { return 0 }\n");
         assert!(!is_frozen_auto_std_module(&tampered_json));
 
         let mut tampered_csv = csv;

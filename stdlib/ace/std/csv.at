@@ -24,9 +24,16 @@ pub fn csv_encode_with_delimiter(data str, delim str) Str {
 
 pub fn csv_parse_rows(text str, delim str = ",") List<List<Str>> {
     let d = __csv_check_delim(delim)
-    let n = text.len()
-    if n > 1048576 {
+    if text.len_bytes() > 1048576 {
         fail("CsvError: input byte budget exceeded")
+    }
+    let n = text.len()
+    // A cell takes at least two characters, so only long input can reach the
+    // cell budget: its separators are counted before any cell is built.
+    if n >= 131071 {
+        if 1 + __csv_separators(text, d) > 65536 {
+            fail("CsvError: cell budget exceeded")
+        }
     }
     var rows = List<List<Str>>.new()
     if n == 0 {
@@ -124,6 +131,69 @@ pub fn csv_encode_rows(rows List<List<Str>>, delim str = ",") Str {
 
 fn __csv_cp(s str, i int) int {
     return s.char_at(i).to_codepoint()
+}
+
+// Separators outside quoted fields: in valid CSV every delimiter and every
+// line break starts one more cell, and a line break that ends the text
+// closes the last record instead.
+//
+// Reading one scalar of a long text costs the whole text each time, so the
+// count walks over short owned pieces and reads those instead. The count
+// stops once the cells must exceed the budget (a final line break takes
+// back at most one).
+fn __csv_separators(text str, d int) int {
+    let n = text.len()
+    var count = 0
+    var quoted = 0
+    var last = 0
+    var p = 0
+    // Cutting a piece costs a pass over the whole text; a longer text
+    // takes longer pieces.
+    var width = 256
+    if n > 262143 {
+        width = 1024
+    }
+    for p < n {
+        var stop = p + width
+        if stop > n {
+            stop = n
+        }
+        let piece Str = text.slice(p, stop).clone()
+        let m = stop - p
+        var i = 0
+        for i < m {
+            let c = piece.char_at(i).to_codepoint()
+            last = c
+            if quoted == 1 {
+                if c == 34 {
+                    quoted = 0
+                }
+            } else {
+                if c == 34 {
+                    quoted = 1
+                } else {
+                    if c == d {
+                        count = count + 1
+                        if count > 65536 {
+                            return count
+                        }
+                    }
+                    if c == 10 {
+                        count = count + 1
+                        if count > 65536 {
+                            return count
+                        }
+                    }
+                }
+            }
+            i = i + 1
+        }
+        p = stop
+    }
+    if last == 10 {
+        count = count - 1
+    }
+    return count
 }
 
 fn __csv_check_delim(delim str) int {
@@ -316,10 +386,10 @@ fn __csv_hex4(s str, i int) int {
 }
 
 fn __csv_json_to_rows(data str) List<List<Str>> {
-    let n = data.len()
-    if n > 1048576 {
+    if data.len_bytes() > 1048576 {
         fail("CsvError: input byte budget exceeded")
     }
+    let n = data.len()
     var p = __csv_ws(data, 0, n)
     if p >= n || __csv_cp(data, p) != 91 {
         fail("CsvError: expected JSON array of string arrays")

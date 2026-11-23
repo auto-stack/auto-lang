@@ -303,7 +303,7 @@ fn __json_int_value(s str, p int, ne int) int {
 }
 
 pub fn is_valid(s str) bool {
-    if s.len() > 1048576 {
+    if s.len_bytes() > 1048576 {
         return false
     }
     let parsed = parse(s)
@@ -323,11 +323,24 @@ pub fn parse(s str) ?JsonValue {
     return result
 }
 
-pub fn parse_strict(s str) JsonValue {
-    let n = s.len()
-    if n > 1048576 {
+// Input admission: the byte budget, then the node budget for input long
+// enough to reach it (a value takes at least two characters, a separator and
+// the value), counted before anything is built.
+fn __json_admit(s str, n int) int {
+    if s.len_bytes() > 1048576 {
         fail("JsonError: input byte budget exceeded")
     }
+    if n >= 131071 {
+        if 1 + __json_members(s) > 65536 {
+            fail("JsonError: node budget exceeded")
+        }
+    }
+    return 0
+}
+
+pub fn parse_strict(s str) JsonValue {
+    let n = s.len()
+    __json_admit(s, n)
     var tags = List<int>.new()
     var ivals = List<int>.new()
     var nvals = List<int>.new()
@@ -547,16 +560,24 @@ pub fn parse_strict(s str) JsonValue {
                                     fail("JsonError: malformed number or unexpected token")
                                 }
                                 let exact_i32 = __json_int_fits(s, p, ne)
+                                var iv_flag = exact_i32
                                 var iv = 0
                                 var fv = 0.0d
                                 if exact_i32 == 1 {
                                     iv = __json_int_value(s, p, ne)
                                     fv = iv.to(f64)
+                                    // A literal `-0` stays an exact integer whose
+                                    // flag 2 remembers the sign for serialization.
+                                    if iv == 0 {
+                                        if json_cp(s, p) == 45 {
+                                            iv_flag = 2
+                                        }
+                                    }
                                 } else {
                                     fv = __json_parse_f64(s, p, ne)
                                 }
                                 tags.push(2)
-                                ivals.push(exact_i32)
+                                ivals.push(iv_flag)
                                 nvals.push(iv)
                                 fvals.push(fv)
                                 svals.push("")
@@ -651,14 +672,16 @@ pub fn parse_strict(s str) JsonValue {
     }
 }
 
+// The formatters re-emit the document's own tokens: a number keeps its text
+// (nothing is lost on the way through an f64) and only whitespace moves.
 pub fn minify(s str) Str {
-    let v = parse_strict(s)
-    return v.minify()
+    parse_strict(s)
+    return __json_reserialize(s, 0)
 }
 
 pub fn prettify(s str) Str {
-    let v = parse_strict(s)
-    return v.prettify()
+    parse_strict(s)
+    return __json_reserialize(s, 1)
 }
 
 pub fn encode<T has JsonEncodable>(value T) Str {
@@ -666,7 +689,7 @@ pub fn encode<T has JsonEncodable>(value T) Str {
 }
 
 pub fn encode_pretty<T has JsonEncodable>(value T) Str {
-    return prettify(value.json_encode())
+    return __json_reserialize(value.json_encode(), 1)
 }
 
 fn __json_tag_name(t int) Str {
@@ -754,108 +777,578 @@ fn __json_decode_str(s str, start int, end int) Str {
     return out
 }
 
-fn __json_pow10(exp int) f64 {
-    var base = 10.0d
-    var res = 1.0d
-    var e = exp
+// ---------- numbers: exact decimal <-> f64 ----------
+//
+// A JSON number is `digits * 10^k`. Small cases go through one IEEE
+// operation on exactly representable operands (correctly rounded by
+// construction); everything else is rounded from exact integer arithmetic.
+// At most 800 significant digits are examined: no double's rounding
+// boundary needs more than 767, and a nonzero remainder is kept as a
+// sticky bit.
+
+// 10^k for 0 <= k <= 22, where the power is exactly representable.
+fn __json_pow10_exact(k int) f64 {
+    var p f64 = 1.0d
+    var e = k
     for e > 0 {
-        if (e % 2) == 1 {
-            res = res * base
-        }
-        e = e / 2
-        if e > 0 {
-            base = base * base
-        }
+        p = p * 10.0d
+        e = e - 1
     }
-    return res
+    return p
 }
 
-fn __json_parse_f64(s str, start int, end int) f64 {
-    var p = start
-    var neg = false
-    if json_cp(s, p) == 45 {
-        neg = true
-        p = p + 1
+// 2^e for -1074 <= e <= 1023, in exact 2^53 steps (the largest power of
+// two with an exact double spelling); subnormals included.
+fn __json_pow2(e_in int) f64 {
+    var p f64 = 1.0d
+    var e = e_in
+    let chunk f64 = 9007199254740992.0d
+    for e >= 53 {
+        p = p * chunk
+        e = e - 53
     }
-    var mant = 0.0d
-    var sig = 0
-    var exp_adj = 0
-    var frac_digits = 0
-    var in_frac = false
-    for p < end {
-        let c = json_cp(s, p)
-        if c == 46 {
-            in_frac = true
-            p = p + 1
-        } else if c == 101 || c == 69 {
-            p = p + 1
+    for e <= -53 {
+        p = p / chunk
+        e = e + 53
+    }
+    for e > 0 {
+        p = p * 2.0d
+        e = e - 1
+    }
+    for e < 0 {
+        p = p / 2.0d
+        e = e + 1
+    }
+    return p
+}
+
+fn __json_pow10_i64(k int) i64 {
+    var p i64 = 1i64
+    var e = k
+    for e > 0 {
+        p = p * 10i64
+        e = e - 1
+    }
+    return p
+}
+
+fn __json_pow2_i64(k int) i64 {
+    var p i64 = 1i64
+    var e = k
+    for e > 0 {
+        p = p * 2i64
+        e = e - 1
+    }
+    return p
+}
+
+fn __json_pow5_i64(k int) i64 {
+    var p i64 = 1i64
+    var e = k
+    for e > 0 {
+        p = p * 5i64
+        e = e - 1
+    }
+    return p
+}
+
+fn __json_zeros(count int) Str {
+    var out Str = ""
+    var k = count
+    for k > 0 {
+        out = out + "0"
+        k = k - 1
+    }
+    return out
+}
+
+// Big integers are base 1e9 limbs, least significant first.
+
+// limbs *= m for m < 1e9; returns the carry, which becomes the new top limb.
+fn __json_limbs_mul(limbs List<i64>, m i64) i64 {
+    var carry i64 = 0i64
+    var i = 0
+    for i < limbs.len() {
+        var acc i64 = limbs.get(i) * m + carry
+        limbs.set(i, acc % 1000000000i64)
+        carry = acc / 1000000000i64
+        i = i + 1
+    }
+    return carry
+}
+
+// limbs /= dv for dv < 1e9; returns the remainder.
+fn __json_limbs_div(limbs List<i64>, dv i64) i64 {
+    var rem i64 = 0i64
+    var i = limbs.len() - 1
+    for i >= 0 {
+        var acc i64 = rem * 1000000000i64 + limbs.get(i)
+        limbs.set(i, acc / dv)
+        rem = acc % dv
+        i = i - 1
+    }
+    return rem
+}
+
+// Index of the highest nonzero limb (0 when every limb is zero).
+fn __json_top_index(limbs List<i64>) int {
+    var i = limbs.len() - 1
+    loop {
+        if i <= 0 {
             break
-        } else {
-            let dig = c - 48
-            if sig == 0 && dig == 0 {
-                if in_frac {
-                    frac_digits = frac_digits + 1
-                }
-            } else if sig < 18 {
-                mant = mant * 10.0d + dig.to(f64)
-                sig = sig + 1
-                if in_frac {
-                    frac_digits = frac_digits + 1
-                }
-            } else if !in_frac {
-                exp_adj = exp_adj + 1
-            }
-            p = p + 1
+        }
+        if limbs.get(i) != 0i64 {
+            break
+        }
+        i = i - 1
+    }
+    return i
+}
+
+// The (at most) three limbs at the top of `limbs` as one integer.
+fn __json_limbs_top(limbs List<i64>) i64 {
+    let hi = __json_top_index(limbs)
+    var out i64 = 0i64
+    var i = hi
+    loop {
+        if i < 0 {
+            break
+        }
+        if i < hi - 2 {
+            break
+        }
+        out = out * 1000000000i64 + limbs.get(i)
+        i = i - 1
+    }
+    return out
+}
+
+// A lower bound on the bit length of a base 1e9 number: every limb below
+// the top one adds at least 29.89 bits.
+fn __json_limb_bits(limbs List<i64>) int {
+    let last = __json_top_index(limbs)
+    var top = limbs.get(last)
+    var tb = 0
+    for top > 0i64 {
+        top = top / 2i64
+        tb = tb + 1
+    }
+    return tb + (2989 * last) / 100 - 1
+}
+
+// limbs /= 2^bits, 29 bits at a time and then the rest. Returns the guard
+// (the highest dropped bit) and folds every lower dropped bit into
+// sticky[0].
+fn __json_shr(limbs List<i64>, bits int, sticky List<int>) int {
+    var last_rem i64 = 0i64
+    var rem_bits = 0
+    var c = bits / 29
+    for c > 0 {
+        if last_rem != 0i64 {
+            sticky.set(0, 1)
+        }
+        last_rem = __json_limbs_div(limbs, 536870912i64)
+        rem_bits = 29
+        c = c - 1
+    }
+    let rest = bits - (bits / 29) * 29
+    if rest > 0 {
+        if last_rem != 0i64 {
+            sticky.set(0, 1)
+        }
+        last_rem = __json_limbs_div(limbs, __json_pow2_i64(rest))
+        rem_bits = rest
+    }
+    var guard = 0
+    if rem_bits > 0 {
+        let half = __json_pow2_i64(rem_bits - 1)
+        if (last_rem / half) % 2i64 == 1i64 {
+            guard = 1
+        }
+        if last_rem % half != 0i64 {
+            sticky.set(0, 1)
         }
     }
-    var explicit_exp = 0
-    var exp_neg = false
-    if p < end {
-        let ec = json_cp(s, p)
-        if ec == 45 {
-            exp_neg = true
-            p = p + 1
-        } else if ec == 43 {
-            p = p + 1
+    return guard
+}
+
+// Correctly rounded value of `d * 10^exp` for a non-negative `d` (digits
+// only; leading zeros are insignificant). Raises JsonError above the
+// finite range; magnitudes below the smallest subnormal round to zero.
+//
+// For k >= 0 the value is the integer `D * 10^k`, whose top 54 bits are
+// taken with a right shift. For k = -m it is `D * 10^-m = Q * 2^s` with
+// `Q = floor(D * 2^t / 5^m)` and `s = -t-m`: t is chosen so Q needs 58..62
+// bits, and any division remainder means Q is short of the true value.
+fn __json_num_core(d str, exp int) f64 {
+    let n = d.len()
+    var k = exp
+    var a = 0
+    var b = n
+    loop {
+        if a >= b {
+            break
         }
-        for p < end {
-            let dc = json_cp(s, p) - 48
-            if explicit_exp < 100000 {
-                explicit_exp = explicit_exp * 10 + dc
-            }
-            p = p + 1
+        if json_cp(d, a) != 48 {
+            break
         }
-        if exp_neg {
-            explicit_exp = 0 - explicit_exp
-        }
+        a = a + 1
     }
-    if mant == 0.0d {
-        if neg { return -0.0d }
+    if a == b {
         return 0.0d
     }
-    let exp10 = explicit_exp - frac_digits + exp_adj
-    var val = mant
-    if exp10 > 308 {
+    loop {
+        if b <= a + 1 {
+            break
+        }
+        if json_cp(d, b - 1) != 48 {
+            break
+        }
+        b = b - 1
+        k = k + 1
+    }
+    var nd = b - a
+    var more = 0
+    if nd > 800 {
+        var q = a + 800
+        loop {
+            if q >= b {
+                break
+            }
+            if json_cp(d, q) != 48 {
+                more = 1
+                break
+            }
+            q = q + 1
+        }
+        k = k + nd - 800
+        b = a + 800
+        nd = 800
+    }
+    // >= 1e309 always overflows; < 1e-326 always rounds to zero.
+    if nd + k >= 310 {
         fail("JsonError: number overflow")
-    } else if exp10 < -324 {
-        val = 0.0d
-    } else if exp10 > 0 {
-        val = mant * __json_pow10(exp10)
-    } else if exp10 < 0 {
-        let neg_e = 0 - exp10
-        if neg_e <= 308 {
-            val = mant / __json_pow10(neg_e)
-        } else {
-            val = (mant / __json_pow10(300)) / __json_pow10(neg_e - 300)
+    }
+    if nd + k <= -326 {
+        return 0.0d
+    }
+    var limbs = List<i64>.new()
+    if more == 0 && nd <= 18 {
+        var v i64 = 0i64
+        var i = a
+        for i < b {
+            v = v * 10i64 + (json_cp(d, i) - 48).to(i64)
+            i = i + 1
+        }
+        if v <= 9007199254740991i64 && k >= -22 && k <= 22 {
+            let f = v.to(f64)
+            if k >= 0 {
+                return f * __json_pow10_exact(k)
+            }
+            return f / __json_pow10_exact(0 - k)
+        }
+        loop {
+            limbs.push(v % 1000000000i64)
+            v = v / 1000000000i64
+            if v == 0i64 {
+                break
+            }
+        }
+    } else {
+        var e = b
+        loop {
+            if e <= a {
+                break
+            }
+            var st = e - 9
+            if st < a {
+                st = a
+            }
+            var limb i64 = 0i64
+            var q = st
+            for q < e {
+                limb = limb * 10i64 + (json_cp(d, q) - 48).to(i64)
+                q = q + 1
+            }
+            limbs.push(limb)
+            e = st
         }
     }
-    if (val - val) != 0.0d {
+    // The value as `limbs * 2^s`, every digit dropped on the way kept in
+    // the sticky bit: `D * 10^k` for k >= 0, else `D * 2^t / 5^-k * 2^(-t-k)`
+    // with t chosen so that the quotient has at least 56 bits.
+    var sticky_box = List<int>.new()
+    sticky_box.push(more)
+    var s = 0
+    if k >= 0 {
+        var z = k / 9
+        if z > 0 {
+            var scaled = List<i64>.new()
+            for z > 0 {
+                scaled.push(0i64)
+                z = z - 1
+            }
+            var i = 0
+            for i < limbs.len() {
+                scaled.push(limbs.get(i))
+                i = i + 1
+            }
+            limbs = scaled.move
+        }
+        if (k % 9) > 0 {
+            let carry = __json_limbs_mul(limbs, __json_pow10_i64(k % 9))
+            if carry > 0i64 {
+                limbs.push(carry)
+            }
+        }
+    } else {
+        var m = 0 - k
+        // 10^(nd-1) <= D < 10^nd bounds log2 D; the quotient needs 56 bits.
+        let num = 232193 * m - 332193 * nd
+        var shift = 0
+        if num > -6000000 {
+            var q = num / 100000
+            if num > 0 {
+                if num % 100000 != 0 {
+                    q = q + 1
+                }
+            }
+            shift = 60 + q
+        }
+        var c = shift / 29
+        for c > 0 {
+            let carry = __json_limbs_mul(limbs, 536870912i64)
+            if carry > 0i64 {
+                limbs.push(carry)
+            }
+            c = c - 1
+        }
+        if (shift % 29) > 0 {
+            let carry2 = __json_limbs_mul(limbs, __json_pow2_i64(shift % 29))
+            if carry2 > 0i64 {
+                limbs.push(carry2)
+            }
+        }
+        var dm = m / 12
+        for dm > 0 {
+            if __json_limbs_div(limbs, 244140625i64) != 0i64 {
+                sticky_box.set(0, 1)
+            }
+            dm = dm - 1
+        }
+        if (m % 12) > 0 {
+            if __json_limbs_div(limbs, __json_pow5_i64(m % 12)) != 0i64 {
+                sticky_box.set(0, 1)
+            }
+        }
+        s = 0 - shift - m
+    }
+    // Keep the top 54+ bits; the shift reports the guard bit.
+    let l_est = __json_limb_bits(limbs)
+    var r = 0
+    var guard = 0
+    if l_est > 54 {
+        r = l_est - 54
+        guard = __json_shr(limbs, r, sticky_box)
+    }
+    var v2 = __json_limbs_top(limbs)
+    var bv = 0
+    var probe = v2
+    for probe > 0i64 {
+        probe = probe / 2i64
+        bv = bv + 1
+    }
+    let bits = bv + r
+    var e0 = bits - 1 + s
+    if e0 < -1075 {
+        return 0.0d
+    }
+    // One rounding to the precision available at this exponent: 53
+    // significant bits for a normal value, fewer below 2^-1022 where the
+    // grid stays 2^-1074.
+    var sticky = sticky_box.get(0)
+    var width = 53
+    if e0 < -1022 {
+        width = e0 + 1075
+    }
+    for bv > width {
+        if guard == 1 {
+            sticky = 1
+        }
+        if v2 % 2i64 == 1i64 {
+            guard = 1
+        } else {
+            guard = 0
+        }
+        v2 = v2 / 2i64
+        bv = bv - 1
+    }
+    // The guard bit rounds up unless it is an exact tie onto an even value.
+    if guard == 1 {
+        if sticky == 1 {
+            v2 = v2 + 1i64
+        } else {
+            if v2 % 2i64 == 1i64 {
+                v2 = v2 + 1i64
+            }
+        }
+    }
+    if width <= 0 {
+        return v2.to(f64) * __json_pow2(-1074)
+    }
+    if v2 >= __json_pow2_i64(width) {
+        v2 = v2 / 2i64
+        e0 = e0 + 1
+    }
+    if e0 > 1023 {
         fail("JsonError: number overflow")
     }
-    if neg {
-        return 0.0d - val
+    return v2.to(f64) * __json_pow2(e0 - width + 1)
+}
+
+// Number token `[start, end)`, already grammar-checked by `json_num_end`.
+fn __json_parse_f64(s str, start int, end int) f64 {
+    var q = start
+    var neg = 0
+    if json_cp(s, q) == 45 {
+        neg = 1
+        q = q + 1
     }
-    return val
+    let int_start = q
+    loop {
+        if q >= end {
+            break
+        }
+        let c = json_cp(s, q)
+        if c == 46 {
+            break
+        }
+        if c == 101 {
+            break
+        }
+        if c == 69 {
+            break
+        }
+        q = q + 1
+    }
+    let int_end = q
+    var frac_start = q
+    var frac_end = q
+    if q < end {
+        if json_cp(s, q) == 46 {
+            q = q + 1
+            frac_start = q
+            loop {
+                if q >= end {
+                    break
+                }
+                let c2 = json_cp(s, q)
+                if c2 == 101 {
+                    break
+                }
+                if c2 == 69 {
+                    break
+                }
+                q = q + 1
+            }
+            frac_end = q
+        }
+    }
+    var k = frac_start - frac_end
+    if q < end {
+        q = q + 1
+        var esign = 1
+        if json_cp(s, q) == 43 {
+            q = q + 1
+        }
+        if json_cp(s, q) == 45 {
+            esign = -1
+            q = q + 1
+        }
+        var ev = 0
+        for q < end {
+            if ev < 1000000 {
+                ev = ev * 10 + (json_cp(s, q) - 48)
+            }
+            q = q + 1
+        }
+        k = k + esign * ev
+    }
+    var digits Str = s.slice(int_start, int_end).clone()
+    if frac_end > frac_start {
+        digits = digits + s.slice(frac_start, frac_end)
+    }
+    let f = __json_num_core(digits.to(str), k)
+    if neg == 1 {
+        return 0.0d - f
+    }
+    return f
+}
+
+// Value separators outside strings: in a valid document every `,` and `:`
+// introduces exactly one value after the root.
+//
+// Reading one scalar of a long text costs the whole text each time, so the
+// count walks over short owned pieces and reads those instead. The count
+// stops at the budget: one more value is already the first excess.
+// String state: 0 outside, 1 inside, 2 inside with the next scalar escaped.
+fn __json_members(s str) int {
+    let n = s.len()
+    var count = 0
+    var state = 0
+    var p = 0
+    // Cutting a piece costs a pass over the whole text; a longer text
+    // takes longer pieces.
+    var width = 256
+    if n > 262143 {
+        width = 1024
+    }
+    for p < n {
+        var stop = p + width
+        if stop > n {
+            stop = n
+        }
+        let piece Str = s.slice(p, stop).clone()
+        let m = stop - p
+        var i = 0
+        for i < m {
+            let c = piece.char_at(i).to_codepoint()
+            if state == 1 {
+                if c == 92 {
+                    state = 2
+                } else {
+                    if c == 34 {
+                        state = 0
+                    }
+                }
+            } else {
+                if state == 2 {
+                    state = 1
+                } else {
+                    if c == 34 {
+                        state = 1
+                    } else {
+                        if c == 44 {
+                            count = count + 1
+                            if count > 65535 {
+                                return count
+                            }
+                        } else {
+                            if c == 58 {
+                                count = count + 1
+                                if count > 65535 {
+                                    return count
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i = i + 1
+        }
+        p = stop
+    }
+    return count
 }
 
 fn __json_extract(
@@ -939,11 +1432,545 @@ fn __json_extract(
     }
 }
 
+// ---------- numbers: shortest text ----------
+//
+// `x = mid * 2^e` is read back from every real between `lo * 2^e` and
+// `hi * 2^e` and from nothing else. The ends are the midpoints to the
+// neighbouring doubles: inclusive when the mantissa is even (a tie rounds to
+// x), exclusive when it is odd. The shortest text is the decimal with the
+// fewest digits inside that interval. The three bounds are held as integers
+// times 10^g: a positive exponent stays a power of two, and `2^-d` becomes
+// `5^d * 10^-d`, so `x = mid-integral * 10^g` exactly. Only the top 18
+// digits of each bound are ever needed; whether the digits after them are
+// all zeros is kept apart, since an exact half decides a tie.
+
+// Base 1e9 limbs of a non-negative integer below 2^62.
+fn __json_limbs_of(v i64) List<i64> {
+    var limbs = List<i64>.new()
+    limbs.push(v % 1000000000i64)
+    var top = v / 1000000000i64
+    if top > 0i64 {
+        limbs.push(top % 1000000000i64)
+        top = top / 1000000000i64
+        if top > 0i64 {
+            limbs.push(top)
+        }
+    }
+    return limbs
+}
+
+// limbs *= every element of `mults` (each below 1e9).
+fn __json_scale_limb_list(limbs List<i64>, mults List<i64>) int {
+    var i = 0
+    for i < mults.len() {
+        let carry = __json_limbs_mul(limbs, mults.get(i))
+        if carry > 0i64 {
+            limbs.push(carry)
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// `limbs` with `count` zero limbs inserted below.
+fn __json_limbs_raised(limbs List<i64>, count int) List<i64> {
+    var out = List<i64>.new()
+    var i = 0
+    for i < count {
+        out.push(0i64)
+        i = i + 1
+    }
+    i = 0
+    for i < limbs.len() {
+        out.push(limbs.get(i))
+        i = i + 1
+    }
+    return out
+}
+
+// a += b.
+fn __json_limbs_add(a List<i64>, b List<i64>) int {
+    var carry i64 = 0i64
+    var i = 0
+    for i < b.len() {
+        var acc i64 = b.get(i) + carry
+        if i < a.len() {
+            acc = acc + a.get(i)
+            a.set(i, acc % 1000000000i64)
+        } else {
+            a.push(acc % 1000000000i64)
+        }
+        carry = acc / 1000000000i64
+        i = i + 1
+    }
+    if carry > 0i64 {
+        a.push(carry)
+    }
+    return 0
+}
+
+// limbs := v * 2^e for e >= 0, in exact 2^29 steps over base 1e9 limbs.
+fn __json_fill_pow2(limbs List<i64>, v i64, e int) int {
+    let parts = __json_limbs_of(v)
+    var i = 0
+    for i < parts.len() {
+        limbs.push(parts.get(i))
+        i = i + 1
+    }
+    var mults = List<i64>.new()
+    var z = e / 29
+    for z > 0 {
+        mults.push(536870912i64)
+        z = z - 1
+    }
+    if (e % 29) > 0 {
+        mults.push(__json_pow2_i64(e % 29))
+    }
+    __json_scale_limb_list(limbs, mults)
+    return 0
+}
+
+// limbs := scale * v for a small integer v (limb by limb, each product
+// raised to its limb's weight).
+fn __json_fill_scaled(limbs List<i64>, scale List<i64>, v i64) int {
+    let parts = __json_limbs_of(v)
+    var i = 0
+    for i < parts.len() {
+        if parts.get(i) > 0i64 {
+            var piece = List<i64>.new()
+            var j = 0
+            for j < scale.len() {
+                piece.push(scale.get(j))
+                j = j + 1
+            }
+            let carry = __json_limbs_mul(piece, parts.get(i))
+            if carry > 0i64 {
+                piece.push(carry)
+            }
+            let raised = __json_limbs_raised(piece, i)
+            __json_limbs_add(limbs, raised)
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// 1 when any of the lowest `drop` limbs is nonzero.
+fn __json_low_nonzero(limbs List<i64>, drop int) int {
+    var i = 0
+    for i < drop {
+        if limbs.get(i) != 0i64 {
+            return 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// 1 when the digits `__json_window` leaves out are not all zeros: the low
+// part of the third limb from the top (below its `lead` kept digits) and
+// every limb under it. Only exact zeros count — a tie is decided here.
+fn __json_dropped_nonzero(limbs List<i64>) int {
+    let n = limbs.len()
+    if n < 3 {
+        return 0
+    }
+    let lead = __json_digit_count(limbs.get(n - 1))
+    if (limbs.get(n - 3) % __json_pow10_i64(lead)) != 0i64 {
+        return 1
+    }
+    return __json_low_nonzero(limbs, n - 3)
+}
+
+// The top (at most 18) decimal digits of the number. A limb holds nine
+// digits, so with three or more limbs the window starts inside the second
+// one, as many digits in as the top limb is long.
+fn __json_window(limbs List<i64>) i64 {
+    let n = limbs.len()
+    let top = limbs.get(n - 1)
+    if n == 1 {
+        return top
+    }
+    if n == 2 {
+        return top * 1000000000i64 + limbs.get(0)
+    }
+    let pair = limbs.get(n - 2) * 1000000000i64 + limbs.get(n - 3)
+    let lead = __json_digit_count(top)
+    return top * __json_pow10_i64(18 - lead) + pair / __json_pow10_i64(lead)
+}
+
+// Decimal digits of the number (its top limb is never zero).
+fn __json_total_digits(limbs List<i64>) int {
+    return 9 * (limbs.len() - 1) + __json_digit_count(limbs.get(limbs.len() - 1))
+}
+
+fn __json_digit_count(v i64) int {
+    var n = 1
+    var t = v
+    for t >= 10i64 {
+        t = t / 10i64
+        n = n + 1
+    }
+    return n
+}
+
+// Shortest decimal text that reads back as exactly `x`: positional for
+// -6 <= k <= 20, otherwise `d.ddde<k>` (k is the exponent of the leading
+// digit, as in ECMAScript).
 fn __json_f64_str(x f64) Str {
-    if (x - x) != 0.0d {
+    if x - x != 0.0d {
         fail("JsonError: non-finite float")
     }
-    return x.to_str()
+    if x == 0.0d {
+        return "0"
+    }
+    var ax = x
+    var neg = 0
+    if x < 0.0d {
+        neg = 1
+        ax = 0.0d - x
+    }
+    // The rounding interval around x, scaled to integers.
+    var lo i64 = 0i64
+    var hi i64 = 0i64
+    var mid i64 = 0i64
+    var e = 0
+    // 1 when both ends are exclusive (the midpoints round to the neighbours).
+    var open_ends = 0
+    if ax < __json_pow2(-1022) {
+        // Below the normal range a double is an integer multiple of 2^-1074
+        // with evenly spaced neighbours.
+        // 2^1074 itself is out of range, so the factor comes in two halves.
+        let scaled f64 = ax * __json_pow2(537) * __json_pow2(537)
+        let msub i64 = scaled.to(i64)
+        lo = 2i64 * msub - 1i64
+        hi = 2i64 * msub + 1i64
+        mid = 2i64 * msub
+        e = -1075
+        if msub % 2i64 == 1i64 {
+            open_ends = 1
+        }
+    } else {
+        // y = ax * 2^s, in exact 2^29 steps, until 2^52 <= y < 2^53: then
+        // ax = m * 2^-s and the interval is [lo, hi] * 2^(-s - 2).
+        var y = ax
+        var s = 0
+        let chunk f64 = 536870912.0d
+        let wide f64 = 288230376151711744.0d
+        let narrow f64 = 8388608.0d
+        for y >= wide {
+            y = y / chunk
+            s = s - 29
+        }
+        for y < narrow {
+            y = y * chunk
+            s = s + 29
+        }
+        for y >= 9007199254740992.0d {
+            y = y / 2.0d
+            s = s - 1
+        }
+        for y < 4503599627370496.0d {
+            y = y * 2.0d
+            s = s + 1
+        }
+        let m = y.to(i64)
+        lo = 4i64 * m - 2i64
+        hi = 4i64 * m + 2i64
+        mid = 4i64 * m
+        e = 0 - s - 2
+        // Just above a power of two the gap to the double below is halved.
+        if m == 4503599627370496i64 {
+            lo = 4i64 * m - 1i64
+        }
+        // An odd mantissa loses both midpoints to its even neighbours.
+        if m % 2i64 == 1i64 {
+            open_ends = 1
+        }
+    }
+    // The bounds as integers times 10^g.
+    var la = List<i64>.new()
+    var lb = List<i64>.new()
+    var lv = List<i64>.new()
+    var g = 0
+    if e >= 0 {
+        __json_fill_pow2(la, lo, e)
+        __json_fill_pow2(lb, hi, e)
+        __json_fill_pow2(lv, mid, e)
+    } else {
+        let d = 0 - e
+        var scale = List<i64>.new()
+        scale.push(1i64)
+        var mults = List<i64>.new()
+        var c = d / 13
+        for c > 0 {
+            mults.push(1220703125i64)
+            c = c - 1
+        }
+        if (d % 13) > 0 {
+            mults.push(__json_pow5_i64(d % 13))
+        }
+        __json_scale_limb_list(scale, mults)
+        __json_fill_scaled(la, scale, lo)
+        __json_fill_scaled(lb, scale, hi)
+        __json_fill_scaled(lv, scale, mid)
+        g = e
+    }
+    let sa = __json_dropped_nonzero(la)
+    let sb = __json_dropped_nonzero(lb)
+    let sv = __json_dropped_nonzero(lv)
+    let ta = __json_window(la)
+    let tb = __json_window(lb)
+    let tv = __json_window(lv)
+    let da = __json_total_digits(la)
+    let db = __json_total_digits(lb)
+    let dv = __json_total_digits(lv)
+    // x = V * 10^g with V a `dv`-digit integer: its leading digit sits at 10^k.
+    var k = dv + g - 1
+    // Fewest digits p such that some p-digit integer `sig` lies in the
+    // interval once read at exponent k - (p - 1).
+    var p = 1
+    var sig i64 = 0i64
+    loop {
+        if p > 17 {
+            break
+        }
+        let w = g - k + p - 1
+        var s_lo i64 = 0i64
+        var s_hi i64 = 0i64
+        var s_v i64 = 0i64
+        if w >= 0 {
+            // Multiplying by 10^w: the bound then has at most p + 1 digits,
+            // so nothing was dropped from its window.
+            if sa + sb + sv > 0 {
+                fail("JsonError: number formatting")
+            }
+            let f = __json_pow10_i64(w)
+            s_lo = ta * f
+            s_hi = tb * f
+            s_v = tv * f
+            if open_ends == 1 {
+                s_lo = s_lo + 1i64
+                s_hi = s_hi - 1i64
+            }
+        } else {
+            // Dividing by 10^q: the lower end rounds up (unless exact) and
+            // the upper end down; x itself goes to the nearer integer.
+            let q = 0 - w
+            let fa = __json_pow10_i64(q - da + __json_digit_count(ta))
+            let fb = __json_pow10_i64(q - db + __json_digit_count(tb))
+            let fv = __json_pow10_i64(q - dv + __json_digit_count(tv))
+            // The lower end rounds up (an exclusive end always past it); the
+            // upper end rounds down (an exclusive end off an exact value).
+            s_lo = ta / fa
+            if open_ends == 1 {
+                s_lo = s_lo + 1i64
+            } else {
+                if sa == 1 {
+                    s_lo = s_lo + 1i64
+                } else {
+                    if ta % fa != 0i64 {
+                        s_lo = s_lo + 1i64
+                    }
+                }
+            }
+            s_hi = tb / fb
+            if open_ends == 1 {
+                if sb == 0 {
+                    if tb % fb == 0i64 {
+                        s_hi = s_hi - 1i64
+                    }
+                }
+            }
+            s_v = tv / fv
+            let twice = 2i64 * (tv % fv)
+            var bump = 0
+            if twice > fv {
+                bump = 1
+            } else {
+                if twice == fv {
+                    if sv == 1 {
+                        bump = 1
+                    } else {
+                        if s_v % 2i64 == 1i64 {
+                            bump = 1
+                        }
+                    }
+                }
+            }
+            s_v = s_v + bump.to(i64)
+        }
+        let unit = __json_pow10_i64(p - 1)
+        let top10 = unit * 10i64
+        if s_lo < unit {
+            s_lo = unit
+        }
+        if s_hi > top10 {
+            s_hi = top10
+        }
+        if s_lo <= s_hi {
+            // The candidate nearest to x, kept inside the interval.
+            sig = s_v
+            if sig < s_lo {
+                sig = s_lo
+            }
+            if sig > s_hi {
+                sig = s_hi
+            }
+            break
+        }
+        p = p + 1
+    }
+    if sig == 0i64 {
+        fail("JsonError: number formatting")
+    }
+    let dp = p
+    // A candidate that rounded up to the next decade is `1` with zeros.
+    if sig == __json_pow10_i64(dp) {
+        sig = sig / 10i64
+        k = k + 1
+    }
+    let dd Str = sig.to(Str)
+    var out Str = ""
+    if k >= -6 && k <= 20 {
+        if k >= dp - 1 {
+            out = dd + __json_zeros(k - (dp - 1))
+        } else {
+            if k >= 0 {
+                out = dd.slice(0, k + 1).clone() + "." + dd.slice(k + 1, dp)
+            } else {
+                out = "0." + __json_zeros(0 - k - 1) + dd
+            }
+        }
+    } else {
+        out = dd.slice(0, 1).clone()
+        if dp > 1 {
+            out = out + "." + dd.slice(1, dp)
+        }
+        out = out + "e" + k.to(Str)
+    }
+    if neg == 1 {
+        let dash Str = "-"
+        out = dash + out
+    }
+    return out
+}
+
+// `json_int_str` negates its argument, which traps on the i32 minimum.
+fn __json_int_text(v int) Str {
+    if v < -2147483647 {
+        return "-2147483648"
+    }
+    return json_int_str(v)
+}
+
+// Line break plus indentation before a member of `depth` open containers.
+fn __json_gap(depth int, pretty int) Str {
+    var out Str = ""
+    if pretty == 1 {
+        out = out + "\n"
+        var i = 0
+        for i < depth {
+            out = out + "  "
+            i = i + 1
+        }
+    }
+    return out
+}
+
+// Re-emit a validated document token by token, copying strings, numbers and
+// literals verbatim and generating all whitespace: none when `pretty` is 0,
+// else one member per line with two-space indentation and `"key": value`.
+// Empty containers stay inline and nothing follows the last bracket.
+fn __json_reserialize(s str, pretty int) Str {
+    var out Str = ""
+    let n = s.len()
+    var p = json_ws(s, 0)
+    var depth = 0
+    var pending = 0
+    loop {
+        if p >= n {
+            break
+        }
+        let c = json_cp(s, p)
+        if c == 123 || c == 91 {
+            let q = json_ws(s, p + 1)
+            let cc = json_cp(s, q)
+            var empty = 0
+            if c == 123 {
+                if cc == 125 {
+                    empty = 1
+                }
+            } else {
+                if cc == 93 {
+                    empty = 1
+                }
+            }
+            if pending == 1 {
+                out = out + __json_gap(depth, pretty)
+                pending = 0
+            }
+            if empty == 1 {
+                out = out + s.slice(p, p + 1).clone() + s.slice(q, q + 1)
+                p = q + 1
+            } else {
+                out = out + s.slice(p, p + 1)
+                depth = depth + 1
+                pending = 1
+                p = p + 1
+            }
+        } else {
+            if c == 125 || c == 93 {
+                depth = depth - 1
+                out = out + __json_gap(depth, pretty)
+                out = out + s.slice(p, p + 1)
+                pending = 0
+                p = p + 1
+            } else {
+                if c == 44 {
+                    out = out + ","
+                    pending = 1
+                    p = p + 1
+                } else {
+                    if c == 58 {
+                        out = out + ":"
+                        if pretty == 1 {
+                            out = out + " "
+                        }
+                        pending = 0
+                        p = p + 1
+                    } else {
+                        if pending == 1 {
+                            out = out + __json_gap(depth, pretty)
+                            pending = 0
+                        }
+                        var qk = p
+                        if c == 34 {
+                            qk = json_str_end(s, p)
+                        } else {
+                            loop {
+                                if qk >= n {
+                                    break
+                                }
+                                let t = json_cp(s, qk)
+                                if t == 32 || t == 9 || t == 10 || t == 13 {
+                                    break
+                                }
+                                if t == 44 || t == 93 || t == 125 {
+                                    break
+                                }
+                                qk = qk + 1
+                            }
+                        }
+                        out = out + s.slice(p, qk)
+                        p = qk
+                    }
+                }
+            }
+        }
+        p = json_ws(s, p)
+    }
+    return out
 }
 
 fn __json_indent(depth int) Str {
@@ -974,7 +2001,10 @@ fn __json_scalar_str(
     }
     if t == 2 {
         if ivals.get(node) == 1 {
-            return json_int_str(nvals.get(node))
+            return __json_int_text(nvals.get(node))
+        }
+        if ivals.get(node) == 2 {
+            return "-0"
         }
         return __json_f64_str(fvals.get(node))
     }

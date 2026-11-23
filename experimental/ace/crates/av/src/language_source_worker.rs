@@ -66,6 +66,7 @@ pub fn serve(request: &Json) -> Result<Json, String> {
         .decode(request["source_b64"].as_str().ok_or("missing source")?)
         .map_err(|e| e.to_string())?;
     let source = String::from_utf8(source).map_err(|e| e.to_string())?;
+    let source_len = source.len();
     let path = match object.get("source_path") {
         None => "probe.at",
         Some(path) => path
@@ -100,6 +101,9 @@ pub fn serve(request: &Json) -> Result<Json, String> {
     let mut script_sources = 0;
     let mut ct_counters = ace_source_cte::CtCounters::default();
     let store_path = request["store_root"].as_str().map(Path::new);
+    // The single-file program with its graft, kept to place a trap or an
+    // error raised inside grafted standard-library text.
+    let mut lowered: Option<MirModule> = None;
     let (result, capture) = if let Some(project) = object.get("project") {
         store_writes = None;
         let project: SourceProject =
@@ -161,26 +165,21 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             ));
         }
         let mut capture = ConsoleCapture::default();
-        let result = crate::foreign_source::run_foreign_chain(
-            &source,
-            path,
-            &caps,
-            &foreign,
-            &mut capture,
-        )
-        .map(|(outcome, trace)| {
-            handled_errors = trace.handled_language_errors;
-            runtime_calls = trace.call_frame_commits;
-            script_sources = 0;
-            let locate = |span: SpanInfo| {
-                (span.start <= span.end && (span.end as usize) <= source.len())
-                    .then(|| json!({"path":path,"start":span.start,"end":span.end}))
-            };
-            if let Some(error) = observed_language_error(&trace, locate) {
-                step["language_error"] = error;
-            }
-            outcome
-        });
+        let result =
+            crate::foreign_source::run_foreign_chain(&source, path, &caps, &foreign, &mut capture)
+                .map(|(outcome, trace)| {
+                    handled_errors = trace.handled_language_errors;
+                    runtime_calls = trace.call_frame_commits;
+                    script_sources = 0;
+                    let locate = |span: SpanInfo| {
+                        in_submitted_source(span, source_len)
+                            .then(|| json!({"path":path,"start":span.start,"end":span.end}))
+                    };
+                    if let Some(error) = observed_language_error(&trace, locate) {
+                        step["language_error"] = error;
+                    }
+                    outcome
+                });
         (result, capture)
     } else {
         let mut capture = ConsoleCapture::default();
@@ -192,12 +191,13 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             &mut capture,
             &mut ct_counters,
         )
-        .map(|(outcome, trace, mode)| {
+        .map(|(outcome, trace, mode, mir)| {
             handled_errors = trace.handled_language_errors;
             runtime_calls = trace.call_frame_commits;
             script_sources = u64::from(mode == SourceMode::Script);
+            lowered = Some(mir);
             let locate = |span: SpanInfo| {
-                (span.start <= span.end && (span.end as usize) <= source.len())
+                in_submitted_source(span, source_len)
                     .then(|| json!({"path":path,"start":span.start,"end":span.end}))
             };
             if let Some(error) = observed_language_error(&trace, locate) {
@@ -257,7 +257,12 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             ExecOutcome::Trap { kind, span } => {
                 step["outcome"] = json!("trap");
                 step["trap"] = json!(kind.code());
-                if let Some(span) = span.filter(|_| step["source_span"].is_null()) {
+                // A span inside grafted standard-library text does not address
+                // the submitted source; the report then names the program's
+                // call that reached the raising function.
+                if let Some(span) = reported_span(span, lowered.as_ref(), source_len)
+                    .filter(|_| step["source_span"].is_null())
+                {
                     step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
                 }
             }
@@ -273,7 +278,11 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             ExecOutcome::Error { message, span } => {
                 step["outcome"] = json!("diag");
                 step["diag"] = json!({"stage":"run","code":"lang.error","message":message});
-                if let Some(span) = span.filter(|_| step["source_span"].is_null()) {
+                // As for traps: an uncaught error raised by grafted library
+                // code is reported at the program's call that reached it.
+                if let Some(span) = reported_span(span, lowered.as_ref(), source_len)
+                    .filter(|_| step["source_span"].is_null())
+                {
                     step["source_span"] = json!({"path":path, "start":span.start, "end":span.end});
                 }
             }
@@ -505,6 +514,12 @@ fn project_source_hash(files: &BTreeMap<String, String>) -> String {
         combined.push('\0');
     }
     sha256_hex(combined.as_bytes())
+}
+
+/// A span that addresses the submitted source itself (the single-file graft
+/// appends standard-library text after it).
+fn in_submitted_source(span: SpanInfo, source_len: usize) -> bool {
+    span.start <= span.end && (span.end as usize) <= source_len
 }
 
 struct ProjectObservation {
@@ -765,7 +780,7 @@ fn run_chain(
     store: Option<&Path>,
     capture: &mut ConsoleCapture,
     ct_counters: &mut ace_source_cte::CtCounters,
-) -> Result<(ExecOutcome, ExecTrace, SourceMode), Json> {
+) -> Result<(ExecOutcome, ExecTrace, SourceMode, MirModule), Json> {
     let (compiled, metadata) = ace_core::source::adapter::compile_language_source_with_metadata(
         source,
         path,
@@ -823,7 +838,82 @@ fn run_chain(
         &CancelFlag::new(false),
         capture,
     );
-    Ok((outcome, trace, metadata.pragmas.mode(path)))
+    Ok((outcome, trace, metadata.pragmas.mode(path), mir))
+}
+
+/// The span to report for a trap or an uncaught error. A span inside grafted
+/// standard-library text does not address the submitted source: the report
+/// then names the program's call that reached the raising function.
+fn reported_span(
+    span: Option<SpanInfo>,
+    lowered: Option<&MirModule>,
+    source_len: usize,
+) -> Option<SpanInfo> {
+    let span = span?;
+    if in_submitted_source(span, source_len) {
+        return Some(span);
+    }
+    library_call_site(lowered?, source_len, span.func)
+}
+
+/// The first call in the submitted source, in source order, to a function
+/// that can reach `raised` — for a trap or an error raised inside grafted
+/// standard-library text. Only a program that calls into the library can
+/// get there, so some such call exists whenever the library ran.
+fn library_call_site(lowered: &MirModule, source_len: usize, raised: u32) -> Option<SpanInfo> {
+    let function_count = lowered.funcs.len();
+    let raised = usize::try_from(raised)
+        .ok()
+        .filter(|f| *f < function_count)?;
+    let in_source = |function: &ace_av_core::mir::MirFunction| {
+        function
+            .spans
+            .iter()
+            .any(|(_, span)| (span.start as usize) < source_len)
+    };
+    // Who calls whom, and where the submitted source calls.
+    let mut callers: Vec<Vec<u32>> = vec![Vec::new(); function_count];
+    let mut sites: Vec<(usize, SpanInfo)> = Vec::new();
+    for (index, function) in lowered.funcs.iter().enumerate() {
+        let own = in_source(function);
+        let mut flat = 0u32;
+        for block in &function.blocks {
+            for instr in &block.instrs {
+                if let MirInstr::Call {
+                    callee: ace_av_core::mir::CalleeRef::Func(callee),
+                    ..
+                } = instr
+                {
+                    let callee = *callee as usize;
+                    callers[callee].push(index as u32);
+                    if own {
+                        if let Ok(at) = function.spans.binary_search_by_key(&flat, |(at, _)| *at) {
+                            sites.push((callee, function.spans[at].1));
+                        }
+                    }
+                }
+                flat += 1;
+            }
+        }
+    }
+    // Everything that can reach `raised`, by calls from the program.
+    let mut reaching = vec![false; function_count];
+    reaching[raised] = true;
+    let mut work = vec![raised];
+    while let Some(function) = work.pop() {
+        for caller in std::mem::take(&mut callers[function]) {
+            let caller = caller as usize;
+            if !reaching[caller] {
+                reaching[caller] = true;
+                work.push(caller);
+            }
+        }
+    }
+    sites
+        .into_iter()
+        .filter(|(callee, _)| reaching[*callee])
+        .map(|(_, span)| span)
+        .min_by_key(|span| span.start)
 }
 
 #[cfg(test)]
@@ -898,6 +988,63 @@ mod compile_time_tests {
             }
         }
     }
+    /// PLAN-1124: an uncaught error raised inside grafted standard-library
+    /// text is reported at the program's call that reached the library, so
+    /// the checker judges it instead of refusing a span outside the
+    /// submitted source; a failing call in the program itself keeps its own
+    /// span.
+    #[test]
+    fn plan1124_uncaught_library_error_is_reported_at_the_call() {
+        let caps = &[AUTO_SOURCE_ADMISSION_CAP];
+        let in_source = |step: &Json, source: &str| {
+            step["source_span"].as_object().is_none_or(|span| {
+                span["end"]
+                    .as_u64()
+                    .is_some_and(|end| end as usize <= source.len())
+            })
+        };
+        let library = "fn main() int {\n    let _a = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n";
+        let step = request(library, caps, None);
+        assert_eq!(step["outcome"], "diag", "{step}");
+        assert_eq!(step["diag"]["code"], "lang.error", "{step}");
+        assert!(
+            step["diag"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("CsvError")),
+            "{step}"
+        );
+        assert!(in_source(&step, library), "{step}");
+        // The report names the program's call that reached the library —
+        // the first such call in source order — never a span in the graft.
+        let call = "csv_parse(\"\\\"unclosed quoted field\")";
+        let call_at = library.find(call).expect("the call is in the program");
+        let (start, end) = (
+            step["source_span"]["start"].as_u64().expect("a start") as usize,
+            step["source_span"]["end"].as_u64().expect("an end") as usize,
+        );
+        assert!(
+            call_at <= start && start < end && end <= call_at + call.len(),
+            "{step}"
+        );
+
+        let twice = "fn main() int {\n    let _a = csv_parse(\"a,b\")\n    let _b = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n";
+        let step = request(twice, caps, None);
+        assert_eq!(step["diag"]["code"], "lang.error", "{step}");
+        let first = twice.find("csv_parse(\"a,b\")").expect("the first call");
+        assert!(
+            step["source_span"]["start"].as_u64().expect("a start") as usize >= first
+                && step["source_span"]["end"].as_u64().expect("an end") as usize
+                    <= first + "csv_parse(\"a,b\")".len(),
+            "{step}"
+        );
+
+        let own = "fn boom(msg str) int {\n    fail(msg)\n}\nfn main() int {\n    boom(\"mine\")\n    return 0\n}\n";
+        let step = request(own, caps, None);
+        assert_eq!(step["diag"]["message"], "mine", "{step}");
+        assert!(step["source_span"].is_object(), "{step}");
+        assert!(in_source(&step, own), "{step}");
+    }
+
     #[test]
     fn ordinary_file_pragmas_use_the_original_path_and_rust_precedence() {
         let caps = &[AUTO_SOURCE_ADMISSION_CAP];

@@ -134,10 +134,8 @@ pub fn compile_package_product_auto_prepared(
             bound.origins.insert(concrete, origin);
         }
     }
-    let _ = ace_core::source::json_encode_synth::synthesize_json_encodable_methods(
-        &mut bound.program,
-    )
-    .map_err(|ds| locate_all(&bound, ds))?;
+    ace_core::source::json_encode_synth::synthesize_json_encodable_methods(&mut bound.program)
+        .map_err(|ds| locate_all(&bound, ds))?;
     for item in &bound.program.items {
         let ace_core::source::ast::Item::Type(record) = item else {
             continue;

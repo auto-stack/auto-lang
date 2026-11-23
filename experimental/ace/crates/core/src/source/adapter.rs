@@ -243,12 +243,22 @@ pub fn compile_language_source_with_metadata(
     // method surface dispatches to these REAL public functions (same
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
+    let profile = SourceProfile::Auto;
+    let (mut program, has_instances, metadata) =
+        super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
+    // PLAN-1124: the JSON and CSV modules have ordinary words as public
+    // names (`parse`, `encode`), so they are grafted on the program's own
+    // references rather than on the spelling of its text.
+    let references = super::stdlib_refs::referenced_names(&program);
+    let declared = super::stdlib_refs::declared_names(&program);
     let mut grafted = graft_stdlib_integer_parse(
         src,
         graft_stdlib_csv(
-            src,
+            &references,
+            &declared,
             graft_stdlib_json(
-                src,
+                &references,
+                &declared,
                 graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
             ),
         ),
@@ -257,9 +267,6 @@ pub fn compile_language_source_with_metadata(
         grafted.push('\n');
         grafted.push_str(&stdlib_u64_parse_source());
     }
-    let profile = SourceProfile::Auto;
-    let (mut program, has_instances, metadata) =
-        super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
     if grafted.len() != src.len() {
         // A script consumes its top-level statement tail. Project the
         // appended declarations separately, preserving user source spans.
@@ -272,26 +279,30 @@ pub fn compile_language_source_with_metadata(
         let text_optimized = helpers.items.iter().any(
             |item| matches!(item, super::ast::Item::Fn(f) if f.name.name == "__av_text_find_at"),
         );
-        let existing_fns: std::collections::BTreeSet<String> = program
-            .items
+        // PLAN-1124: a public entry point the program declares itself stays
+        // the program's own. Everything else the graft adds lives in a
+        // reserved namespace, so a colliding user name keeps the ordinary
+        // duplicate-fn diagnostic.
+        let shadowed: std::collections::BTreeSet<&str> = declared
             .iter()
-            .filter_map(|item| match item {
-                super::ast::Item::Fn(f) => Some(f.name.name.clone()),
-                _ => None,
-            })
+            .map(String::as_str)
+            .filter(|name| super::packages::stdlib::STDLIB_PUBLIC_ENTRY_POINTS.contains(name))
             .collect();
-        let existing_types: std::collections::BTreeSet<String> = program
+        // A grafted function under a name the program also declares is that
+        // duplicate. It is reported on the program's own declaration: the
+        // grafted one lies outside the submitted source.
+        let own_fns: std::collections::BTreeMap<String, Span> = program
             .items
             .iter()
             .filter_map(|item| match item {
-                super::ast::Item::Type(t) => Some(t.name.name.clone()),
+                super::ast::Item::Fn(f) => Some((f.name.name.clone(), f.span)),
                 _ => None,
             })
             .collect();
         for mut item in helpers.items {
             match &mut item {
                 super::ast::Item::Fn(helper) => {
-                    if existing_fns.contains(&helper.name.name) {
+                    if shadowed.contains(helper.name.name.as_str()) {
                         continue;
                     }
                     if text_optimized {
@@ -307,17 +318,24 @@ pub fn compile_language_source_with_metadata(
                             _ => {}
                         }
                     }
+                    if let Some(span) = own_fns.get(helper.name.name.as_str()) {
+                        return Err(vec![Diagnostic::new(
+                            Stage::Bind,
+                            "source.duplicate",
+                            format!(
+                                "function `{}` is declared more than once",
+                                helper.name.name
+                            ),
+                            *span,
+                        )]);
+                    }
                     super::cst::shift_fn_item(helper, src.len());
                 }
                 // PLAN-1121: the migration graft appends the mangled
                 // HashMap/HashSet record types (span-shifted like fns).
                 super::ast::Item::Type(helper) => {
-                    if existing_types.contains(&helper.name.name) {
-                        continue;
-                    }
                     super::cst::shift_type_item(helper, src.len());
                 }
-                super::ast::Item::Enum(_) => continue,
                 _ => unreachable!(
                     "ordinary standard library graft contains only functions and the PLAN-1121 migration record types"
                 ),
@@ -328,7 +346,7 @@ pub fn compile_language_source_with_metadata(
     super::infer::complete(&mut program)?;
     let run_instances = has_instances || program.has_instance_templates();
     if !run_instances {
-        let _ = super::json_encode_synth::synthesize_json_encodable_methods(&mut program)?;
+        super::json_encode_synth::synthesize_json_encodable_methods(&mut program)?;
     }
     prepare(&mut program, &grafted, run_instances)?;
     let parts = compile_program_parts(&program, &grafted, module_path, capabilities, profile)?;
@@ -683,69 +701,191 @@ fn strip_pub_prefix(source: &str) -> String {
     out
 }
 
-fn contains_ident_prefix(src: &str, name: &str) -> bool {
-    let mut start = 0;
-    while let Some(pos) = src[start..].find(name) {
-        let abs = start + pos;
-        let before_ok = src[..abs]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        let after = &src[abs + name.len()..];
-        let after_ok = after
-            .chars()
-            .next()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        if before_ok && after_ok {
-            return true;
+/// PLAN-1124: the single-file JSON and CSV modules carry ordinary words as
+/// public names. Like the list graft they move every free function into a
+/// reserved namespace and re-export the public names as forwarders, so a
+/// program's own `fn parse` or `fn json_cp` can never be mistaken for the
+/// library's, and a user name that collides with a reserved one keeps the
+/// ordinary duplicate-fn diagnostic.
+const STDLIB_JSON_MANGLE: &str = "__std_json_";
+const STDLIB_CSV_MANGLE: &str = "__std_csv_";
+
+/// The generic entry points are not mangled (a generic declaration is not
+/// call-shaped, and nothing in the modules calls them), so they need no
+/// forwarder.
+const STDLIB_JSON_FORWARDERS: &str = r#"
+fn parse(s str) ?JsonValue { return __std_json_parse(s) }
+fn parse_strict(s str) JsonValue { return __std_json_parse_strict(s) }
+fn is_valid(s str) bool { return __std_json_is_valid(s) }
+fn minify(s str) Str { return __std_json_minify(s) }
+fn prettify(s str) Str { return __std_json_prettify(s) }
+"#;
+const STDLIB_CSV_FORWARDERS: &str = r#"
+fn csv_parse(text str) Str { return __std_csv_csv_parse(text) }
+fn csv_parse_with_delimiter(text str, delim str) Str { return __std_csv_csv_parse_with_delimiter(text, delim) }
+fn csv_encode(data str) Str { return __std_csv_csv_encode(data) }
+fn csv_encode_with_delimiter(data str, delim str) Str { return __std_csv_csv_encode_with_delimiter(data, delim) }
+fn csv_parse_rows(text str, delim str = ",") List<List<Str>> { return __std_csv_csv_parse_rows(text, delim) }
+fn csv_encode_rows(rows List<List<Str>>, delim str = ",") Str { return __std_csv_csv_encode_rows(rows, delim) }
+"#;
+
+fn uses_stdlib_names(
+    references: &std::collections::BTreeSet<String>,
+    declared: &std::collections::BTreeSet<String>,
+    names: &[&str],
+) -> bool {
+    references
+        .iter()
+        .any(|name| !declared.contains(name) && names.contains(&name.as_str()))
+}
+
+fn needs_stdlib_json_graft(
+    references: &std::collections::BTreeSet<String>,
+    declared: &std::collections::BTreeSet<String>,
+) -> bool {
+    uses_stdlib_names(
+        references,
+        declared,
+        super::packages::stdlib::AUTO_JSON_NAMES,
+    )
+}
+
+fn needs_stdlib_csv_graft(
+    references: &std::collections::BTreeSet<String>,
+    declared: &std::collections::BTreeSet<String>,
+) -> bool {
+    uses_stdlib_names(
+        references,
+        declared,
+        super::packages::stdlib::AUTO_CSV_NAMES,
+    )
+}
+
+/// `mangle_stdlib_functions` over a module that also declares record
+/// methods: an indented `fn name(` is a method and keeps its name, while
+/// the calls in its body are renamed like every other call site.
+fn mangle_stdlib_module(source: &str, functions: &[&str], prefix: &str) -> String {
+    source
+        .lines()
+        .map(|line| {
+            let method_decl = line.starts_with(' ') && line.trim_start().starts_with("fn ");
+            if method_decl {
+                line.to_string()
+            } else {
+                mangle_stdlib_functions(line, functions, prefix)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The module with its plain-named free functions under `prefix`, followed
+/// by `forwarders`.
+fn stdlib_module_graft(source: &str, prefix: &str, forwarders: &str) -> String {
+    let plain: Vec<&str> = source
+        .lines()
+        .filter_map(|line| {
+            let rest = line
+                .strip_prefix("pub fn ")
+                .or_else(|| line.strip_prefix("fn "))?;
+            let at = rest.find(['(', '<'])?;
+            let generic = rest.as_bytes()[at] == b'<';
+            let name = &rest[..at];
+            (!generic && !name.starts_with("__")).then_some(name)
+        })
+        .collect();
+    format!(
+        "{}\n{}\n",
+        mangle_stdlib_module(&strip_pub_prefix(source), &plain, prefix),
+        forwarders
+    )
+}
+
+/// The JSON module's record type. A program that declares the same name
+/// keeps its own: the grafted record then moves into the reserved
+/// namespace, as the free functions always do.
+const STDLIB_JSON_RECORD: &str = "JsonValue";
+
+/// Every whole identifier `from` in `src` becomes `to`. In the JSON module
+/// the record's name appears only where it names the type.
+fn rename_identifier(src: &str, from: &str, to: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b.is_ascii_alphanumeric() || b == b'_' {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            if &src[start..i] == from {
+                out.push_str(to);
+            } else {
+                out.push_str(&src[start..i]);
+            }
+        } else {
+            let ch = src[i..].chars().next().expect("character boundary");
+            out.push(ch);
+            i += ch.len_utf8();
         }
-        start = abs + name.len();
     }
-    false
+    out
 }
 
-fn needs_stdlib_json_graft(src: &str) -> bool {
-    [
-        "JsonValue",
-        "JsonEncodable",
-        "parse_strict",
-        "encode",
-        "encode_pretty",
-        "minify",
-        "prettify",
-        "json_str",
-        "json_is_valid",
-        "json_escape",
-    ]
-    .iter()
-    .any(|tok| contains_ident_prefix(src, tok))
+fn stdlib_json_graft_text(declared: &std::collections::BTreeSet<String>) -> &'static str {
+    static PLAIN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static RENAMED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    if !declared.contains(STDLIB_JSON_RECORD) {
+        return PLAIN.get_or_init(|| {
+            stdlib_module_graft(
+                super::packages::stdlib::auto_json_source(),
+                STDLIB_JSON_MANGLE,
+                STDLIB_JSON_FORWARDERS,
+            )
+        });
+    }
+    RENAMED.get_or_init(|| {
+        rename_identifier(
+            &stdlib_module_graft(
+                super::packages::stdlib::auto_json_source(),
+                STDLIB_JSON_MANGLE,
+                STDLIB_JSON_FORWARDERS,
+            ),
+            STDLIB_JSON_RECORD,
+            &format!("{STDLIB_JSON_MANGLE}{STDLIB_JSON_RECORD}"),
+        )
+    })
 }
 
-fn graft_stdlib_json(user_source: &str, mut src: String) -> String {
-    if needs_stdlib_json_graft(user_source) {
+fn graft_stdlib_json(
+    references: &std::collections::BTreeSet<String>,
+    declared: &std::collections::BTreeSet<String>,
+    mut src: String,
+) -> String {
+    if needs_stdlib_json_graft(references, declared) {
         src.push('\n');
-        src.push_str(&strip_pub_prefix(super::packages::stdlib::auto_json_source()));
+        src.push_str(stdlib_json_graft_text(declared));
     }
     src
 }
 
-fn needs_stdlib_csv_graft(src: &str) -> bool {
-    [
-        "csv_parse(",
-        "csv_parse_with_delimiter(",
-        "csv_encode(",
-        "csv_encode_with_delimiter(",
-        "csv_parse_rows(",
-        "csv_encode_rows(",
-    ]
-    .iter()
-    .any(|tok| src.contains(tok))
-}
-
-fn graft_stdlib_csv(user_source: &str, mut src: String) -> String {
-    if needs_stdlib_csv_graft(user_source) {
+fn graft_stdlib_csv(
+    references: &std::collections::BTreeSet<String>,
+    declared: &std::collections::BTreeSet<String>,
+    mut src: String,
+) -> String {
+    if needs_stdlib_csv_graft(references, declared) {
+        static GRAFT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        let graft = GRAFT.get_or_init(|| {
+            stdlib_module_graft(
+                super::packages::stdlib::auto_csv_source(),
+                STDLIB_CSV_MANGLE,
+                STDLIB_CSV_FORWARDERS,
+            )
+        });
         src.push('\n');
-        src.push_str(&strip_pub_prefix(super::packages::stdlib::auto_csv_source()));
+        src.push_str(graft);
     }
     src
 }
@@ -802,6 +942,240 @@ fn map("));
         let hit = graft_stdlib_mapset("fn main() int { var s = HashSet.new()
  return 0 }");
         assert!(hit.contains("type __std_HashSet {"));
+    }
+
+    fn names(
+        src: &str,
+    ) -> (
+        std::collections::BTreeSet<String>,
+        std::collections::BTreeSet<String>,
+    ) {
+        let (program, _, _) = crate::source::parser::parse_auto_program_for_instances(src)
+            .expect("test source parses");
+        (
+            crate::source::stdlib_refs::referenced_names(&program),
+            crate::source::stdlib_refs::declared_names(&program),
+        )
+    }
+
+    /// Bind through the shared front door. The generic `encode` of a JSON
+    /// graft is a template: as in the ordinary pipeline, the templates leave
+    /// before binding (their instances are the consumer's pass).
+    fn compiles(src: &str) -> Result<(), Vec<Diagnostic>> {
+        compile_language_source_with(src, "main.at", &[], |program| {
+            program.items.retain(
+                |item| !matches!(item, crate::source::ast::Item::Fn(f) if !f.type_params.is_empty()),
+            );
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// Declaring a reserved name of a graft must be an ordinary clash.
+    const RESERVED: &str =
+        "fn __json_num_core() int { return 1 }\nfn __std_csv_csv_parse() int { return 1 }\n";
+
+    /// PLAN-1124: a name inside a comment or a string literal, or a name the
+    /// program declares itself, is not a reference to the library.
+    #[test]
+    fn stdlib_json_csv_graft_follows_references() {
+        let (refs, own) = names(
+            "// encode minify prettify parse_strict JsonValue csv_parse(\n\
+             fn label() Str { return \"prettify and minify and csv_parse(\" }\n\
+             fn main() int { return 0 }\n",
+        );
+        assert!(refs.is_empty(), "{refs:?}");
+        assert_eq!(
+            own.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["label", "main"]
+        );
+        assert!(!needs_stdlib_json_graft(&refs, &own));
+        assert!(!needs_stdlib_csv_graft(&refs, &own));
+
+        let (refs, own) = names(
+            "type JsonValue { v int }\n\
+             fn parse(s Str) Str { return s }\n\
+             // encode\n\
+             fn main() int {\n\
+                 let j JsonValue = JsonValue { v: 3 }\n\
+                 let t Str = parse(\"x\")\n\
+                 return j.v + t.len()\n\
+             }\n",
+        );
+        // The program's own declarations are referenced, not the library's.
+        // A method name (`len`) belongs to its type and is no reference.
+        assert!(
+            refs.contains("JsonValue") && refs.contains("parse"),
+            "{refs:?}"
+        );
+        assert!(!refs.contains("len"), "{refs:?}");
+        assert!(own.contains("JsonValue") && own.contains("parse"));
+        assert!(!needs_stdlib_json_graft(&refs, &own));
+
+        let (refs, own) = names("fn main() int {\n    let v = parse_strict(\"1\")\n    return v.as_int()\n}\nfn f() int { let _u = csv_encode(csv_parse(\"a,b\")) \n return 0 }");
+        assert!(needs_stdlib_json_graft(&refs, &own));
+        assert!(needs_stdlib_csv_graft(&refs, &own));
+
+        let (refs, own) = names("type Item as JsonEncodable { x int }\nfn main() int { return 0 }");
+        assert!(needs_stdlib_json_graft(&refs, &own));
+
+        // A reference nested in every syntactic position counts.
+        for src in [
+            "fn f(v JsonValue) int { return 1 }",
+            "fn f() ?JsonValue { return None }",
+            "fn f() int { var xs = List<JsonValue>.new() \n return xs.len() }",
+            "fn f() int { let a = [minify(\"1\")] \n return a.len() }",
+            "fn f() int { if parse_strict(\"1\").is_object() { return 1 } else { return 0 } }",
+            "fn f() int { for 0 < 1 { if is_valid(\"1\") { break } } \n return 0 }",
+            "fn f() int { try { let _u = encode(1) } catch e { } \n return 0 }",
+            "fn f() int { let g = prettify \n return 0 }",
+            "enum E { A(Str) }\nfn f() int { return 0 }",
+        ] {
+            let (refs, own) = names(src);
+            let wants_json = !src.starts_with("enum");
+            assert_eq!(needs_stdlib_json_graft(&refs, &own), wants_json, "{src}");
+        }
+    }
+
+    #[test]
+    fn stdlib_json_csv_graft_keeps_the_programs_own_names() {
+        // Nothing grafted: a reserved library name stays free to declare.
+        compiles(&format!(
+            "{RESERVED}\
+             // encode minify prettify parse_strict JsonValue\n\
+             type JsonValue {{ v int }}\n\
+             fn parse(s Str) Str {{ return s }}\n\
+             fn json_cp(s str, i int) int {{ return 65 }}\n\
+             fn main() int {{\n\
+                 let j JsonValue = JsonValue {{ v: 3 }}\n\
+                 let t Str = parse(j.v.to(Str))\n\
+                 return t.len() + json_cp(\"ab\", 0) - 65\n\
+             }}\n"
+        ))
+        .expect("no library name is referenced, so nothing is grafted");
+
+        // The program's `parse` and `minify` stay its own next to the library.
+        compiles(
+            "fn parse(s Str) Str { return \"mine\" }\n\
+             fn minify(s Str) Str { return \"mine\" }\n\
+             fn main() int {\n\
+                 let v = parse_strict(\"[1.5]\")\n\
+                 let a = v.at(0)\n\
+                 if a.as_f64() != 1.5d { return 1 }\n\
+                 if is_valid(\"{\") { return 2 }\n\
+                 if minify(\"x\") != \"mine\" { return 3 }\n\
+                 if parse(\"x\") != \"mine\" { return 4 }\n\
+                 return 0\n\
+             }\n",
+        )
+        .expect("the program's own entry points coexist with the library");
+
+        // The program's own record under the library's record name stays its
+        // own while the library is in use.
+        compiles(
+            "type JsonValue { v int }\n\
+             fn main() int {\n\
+                 let j = JsonValue { v: 3 }\n\
+                 let doc = parse_strict(\"[1,2]\")\n\
+                 if doc.len() + j.v != 5 { return 1 }\n\
+                 return 0\n\
+             }\n",
+        )
+        .expect("the library's record moves aside for the program's own");
+
+        // A user function under a reserved library name is an ordinary clash,
+        // for the JSON module, the CSV module and the list module alike. The
+        // diagnostic addresses the program's declaration, not the graft.
+        for src in [
+            format!(
+                "{RESERVED}\
+                 fn main() int {{ let v = parse_strict(\"[1.5]\") \n return v.len() }}\n"
+            ),
+            format!(
+                "{RESERVED}\
+                 fn main() int {{ let _t = csv_parse(\"a,b\") \n return 0 }}\n"
+            ),
+            "fn __std_list_map(xs List<int>) int { return 1 }\n\
+             fn main() int { let xs = List.new(1, 2) \n return xs[0] }\n"
+                .to_string(),
+        ] {
+            let err = compiles(&src).expect_err("the graft adds the reserved name");
+            let duplicate = err
+                .iter()
+                .find(|d| d.code.contains("duplicate"))
+                .unwrap_or_else(|| panic!("ordinary duplicate diagnostic, got {err:?}"));
+            assert!(
+                duplicate.span.end <= src.len(),
+                "the span addresses the submitted source, got {:?}",
+                duplicate.span
+            );
+        }
+    }
+
+    /// PLAN-1124: the graft moves plain-named free functions into the
+    /// reserved namespace, re-exports the public ones as forwarders and
+    /// leaves record methods and `__`-prefixed helpers alone.
+    #[test]
+    fn stdlib_module_graft_shape() {
+        let json = stdlib_json_graft_text(&Default::default());
+        for line in [
+            "fn __std_json_parse_strict(s str) JsonValue {",
+            "fn __std_json_json_str(value Str) Str {",
+            "fn parse_strict(s str) JsonValue { return __std_json_parse_strict(s) }",
+            "    fn minify() Str {",
+            "fn __json_num_core(d str, exp int) f64 {",
+            "fn encode<T has JsonEncodable>(value T) Str {",
+            "type JsonValue as JsonEncodable {",
+        ] {
+            assert!(json.contains(line), "missing {line:?}");
+        }
+        // The plain name survives once, as the forwarder.
+        assert_eq!(json.matches("\nfn parse_strict(").count(), 1);
+        assert!(!json.contains("\nfn json_str("));
+        assert!(!json.contains("pub "));
+        // A record method keeps its name and still reaches the `__`-prefixed
+        // helpers, which never move.
+        assert!(json.contains("    fn kind() Str {"));
+        assert!(json.contains("        return __json_tag_name(.tags.get(.root))"));
+        assert!(json.contains("__std_json_json_str("));
+
+        // A program that declares the record's name gets the same graft with
+        // that one identifier moved into the reserved namespace.
+        let taken = stdlib_json_graft_text(&[STDLIB_JSON_RECORD.to_string()].into_iter().collect());
+        assert_eq!(
+            taken,
+            rename_identifier(
+                json,
+                STDLIB_JSON_RECORD,
+                &format!("{STDLIB_JSON_MANGLE}{STDLIB_JSON_RECORD}")
+            )
+        );
+        assert!(taken.contains("type __std_json_JsonValue as JsonEncodable {"));
+        assert!(taken.contains(
+            "fn parse_strict(s str) __std_json_JsonValue { return __std_json_parse_strict(s) }"
+        ));
+        assert_eq!(
+            rename_identifier(taken, "__std_json_JsonValue", "R")
+                .matches(STDLIB_JSON_RECORD)
+                .count(),
+            0
+        );
+
+        let csv = stdlib_module_graft(
+            crate::source::packages::stdlib::auto_csv_source(),
+            STDLIB_CSV_MANGLE,
+            STDLIB_CSV_FORWARDERS,
+        );
+        for line in [
+            "fn __std_csv_csv_parse(text str) Str {",
+            "return __std_csv_csv_parse_with_delimiter(text, \",\")",
+            "fn csv_parse_rows(text str, delim str = \",\") List<List<Str>> { return __std_csv_csv_parse_rows(text, delim) }",
+            "fn __csv_check_delim(delim str) int {",
+        ] {
+            assert!(csv.contains(line), "missing {line:?}");
+        }
+        // The plain name survives once, as the forwarder.
+        assert_eq!(csv.matches("\nfn csv_encode(").count(), 1);
     }
 }
 

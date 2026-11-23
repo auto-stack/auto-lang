@@ -1215,7 +1215,7 @@ pub(crate) fn instantiate_auto_program_scoped(
             program,
             &record_templates,
         )?);
-        let _ = ace_core::source::json_encode_synth::synthesize_json_encodable_methods(program)?;
+        ace_core::source::json_encode_synth::synthesize_json_encodable_methods(program)?;
         for item in &mut program.items {
             if let Item::Type(record) = item {
                 register_auto_methods(

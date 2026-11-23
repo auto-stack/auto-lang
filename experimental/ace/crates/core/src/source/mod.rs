@@ -53,6 +53,8 @@ pub mod platform_io;
 pub mod py;
 pub mod resolve;
 pub mod sched_desugar;
+/// PLAN-1124：单文件标准库嫁接的按名引用分析（JSON/CSV 公开名）。
+mod stdlib_refs;
 pub mod typecheck;
 
 pub use adapter::{

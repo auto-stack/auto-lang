@@ -4,6 +4,7 @@ Public language corpus coverage for ordinary Auto AV stdlib data formats:
 - Dynamic `JsonValue` parsing (`parse`, `parse_strict`, `is_valid`, `minify`, `prettify`), type inspection, insertion-ordered `keys()` with last-member-wins duplicate-key deduplication, typed extractors, and catchable errors;
 - Schema-driven `spec JsonEncodable` / `encode` / `encode_pretty` over primitives, wide numeric types, optionals, lists, nested records, empty records, and custom overrides;
 - Pure-Auto RFC-4180 `std.csv` parsing/encoding (`csv_parse`, `csv_encode`, custom delimiters, `csv_parse_rows`, `csv_encode_rows`, `std.encoding.csv` compatibility) including quoted commas, escaped quotes, embedded newlines, CRLF, and empty trailing fields.
+- Review r1 repair: exact number text (correct rounding, shortest round-trip form, verbatim formatter tokens, the i32 minimum), the frozen indented layout with `as_array()`, a program's own names next to the grafted library, and a record's own `json_encode` as a list element.
 
 ## Case: json-dynamic-tree
 id: "av.parity.1124.json-dynamic-tree"
@@ -223,6 +224,173 @@ fn main() int {
         if e.contains("CsvError") { caught = caught + 1 }
     }
     if caught != 2 { return 7 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: numbers-exact
+id: "av.parity.1124.numbers-exact"
+tags: ["av-language-parity", "plan-1124", "stdlib", "json"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    if minify(" [ 1e-10 , 5e-324 , 0.9999999996 ] ") != "[1e-10,5e-324,0.9999999996]" { return 1 }
+    let tiny = parse_strict("1e-10")
+    if tiny.json_encode() != "1e-10" { return 2 }
+    let almost = parse_strict("0.9999999996")
+    if almost.json_encode() != "0.9999999996" { return 3 }
+    let huge = parse_strict("1e100")
+    if huge.json_encode() != "1e100" { return 4 }
+    let least = parse_strict("5e-324")
+    if least.json_encode() != "5e-324" { return 5 }
+    let wide = parse_strict("9007199254740993")
+    if wide.json_encode() != "9007199254740992" { return 6 }
+    let edges = parse_strict("[-2147483648, -0]")
+    if edges.json_encode() != "[-2147483648,-0]" { return 7 }
+    if minify("-2147483648") != "-2147483648" { return 8 }
+    var caught = 0
+    try {
+        let over = parse_strict("1e400")
+    } catch e {
+        if e.contains("JsonError") { caught = caught + 1 }
+    }
+    if caught != 1 { return 9 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: pretty-bytes
+id: "av.parity.1124.pretty-bytes"
+tags: ["av-language-parity", "plan-1124", "stdlib", "json"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let text Str = "{\"b\":2,\"a\":[1,true,{\"c\":[],\"d\":{}}],\"e\":-1.5}"
+    let layout Str = "{
+  \"b\": 2,
+  \"a\": [
+    1,
+    true,
+    {
+      \"c\": [],
+      \"d\": {}
+    }
+  ],
+  \"e\": -1.5
+}"
+    if prettify(text) != layout { return 1 }
+    if minify(prettify(text)) != text { return 2 }
+    let doc = parse_strict(text)
+    if doc.prettify() != layout { return 3 }
+    let v = parse_strict("[1,2,3]")
+    let arr = v.as_array()
+    if arr.len() != 3 { return 4 }
+    let last = arr.remove(2)
+    if last.as_int() != 3 { return 5 }
+    if arr.len() != 2 { return 6 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: graft-own-names
+id: "av.parity.1124.graft-own-names"
+tags: ["av-language-parity", "plan-1124", "stdlib", "graft"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// this module will encode nothing at all
+fn parse(s Str) Str {
+    return "P:" + s
+}
+
+type JsonValue {
+    v int
+}
+
+fn json_cp(s str, i int) int {
+    return 65
+}
+
+fn main() int {
+    let j = JsonValue { v: 3 }
+    if j.v != 3 { return 1 }
+    if parse("x") != "P:x" { return 2 }
+    if json_cp("ab", 0) != 65 { return 3 }
+    let doc = parse_strict("[1,2]")
+    if doc.minify() != "[1,2]" { return 4 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: override-list
+id: "av.parity.1124.override-list"
+tags: ["av-language-parity", "plan-1124", "stdlib", "json"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Custom as JsonEncodable {
+    x int
+    fn json_encode() Str {
+        return "{\"custom\":" + .x.to(Str) + "}"
+    }
+}
+
+type Holder as JsonEncodable {
+    customs List<Custom>
+}
+
+fn main() int {
+    var rows = List<Custom>.new()
+    rows.push(Custom { x: 1 })
+    rows.push(Custom { x: 2 })
+    let h = Holder { customs: rows.move }
+    if encode(h) != "{\"customs\":[{\"custom\":1},{\"custom\":2}]}" { return 1 }
+    let one = encode(Custom { x: 3 })
+    if one != "{\"custom\":3}" { return 2 }
+    let layout = "{\n  \"customs\": [\n    {\n      \"custom\": 1\n    },\n    {\n      \"custom\": 2\n    }\n  ]\n}"
+    if encode_pretty(h) != layout { return 3 }
     return 42
 }
 ```
