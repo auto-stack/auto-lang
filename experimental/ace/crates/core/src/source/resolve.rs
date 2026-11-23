@@ -23467,11 +23467,16 @@ impl<'a, 's> FnResolver<'a, 's> {
                 },
             };
         }
-        // PLAN-1129: the frozen float helpers read a float's sign bit
+        // PLAN-1129: the frozen float helper reads a float's sign bit
         // through the one primitive plain source cannot write (see
-        // `py_ops::PY_SIGN_BIT`). Only the py lane admits the name, and
-        // only on one `double`.
+        // `py_ops::PY_SIGN_BIT`). Only the py lane admits the name, only
+        // inside the frozen helper, and only on one float. A user call of
+        // the name falls through to the ordinary unknown-callee diagnostic:
+        // the AV lane would run it, a source-generating target has no
+        // lowering for it, so admitting it anywhere else would split the
+        // two ends of one program.
         if self.py_context
+            && self.owner_name == super::py::PY_SIGN_BIT_OWNER
             && callee.name == super::py::PY_SIGN_BIT
             && !self.sigs.contains_key(&callee.name)
         {

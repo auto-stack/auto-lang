@@ -231,6 +231,40 @@ fn the_float_helpers_belong_to_the_py_lane_only() {
     }
 }
 
+/// The sign-bit primitive belongs to the frozen helper alone. A user call of
+/// the name is not a value the language defines: the shared front door
+/// refuses it like any unknown callee, so no target ever sees it. (Before
+/// this admission the AV lane ran `__py_sign_bit(-1.0d)` and printed `1`
+/// while the A2PY worker failed on the same program.)
+#[test]
+fn the_sign_bit_primitive_is_not_user_callable() {
+    for (call, what) in [
+        ("__py_sign_bit(-1.0d)", "one double"),
+        ("__py_sign_bit(-1.0)", "one float"),
+        ("__py_sign_bit(0.0d, 0.0d)", "two doubles"),
+        ("__py_sign_bit(1)", "an int"),
+        ("__py_sign_bit()", "no argument"),
+    ] {
+        let src = format!(
+            "use.py builtins: repr\nfn probe(v double) int {{\n    return {call}\n}}\nfn main() int {{\n    var s = probe(0.0d)\n    print(s)\n    print(repr(0.5).to(str))\n    return 0\n}}\n"
+        );
+        let caps = [SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
+        let diags = compile_language_source_with_foreign(&src, "main.as", &caps, &contract())
+            .err()
+            .unwrap_or_else(|| panic!("{what}: a user call of `{call}` must not resolve"));
+        let at_call = diags.iter().any(|d| {
+            d.span.end > d.span.start
+                && src[d.span.start as usize..d.span.end as usize].contains("__py_sign_bit")
+        });
+        assert!(
+            at_call,
+            "{what}: the refusal names the user call, got {diags:?}"
+        );
+    }
+    // the ordinary float forms still cross: the helper itself keeps the name
+    compile("use.py builtins: repr\nfn main() int {\n    print(repr(0.5 + 0.25).to(str))\n    return 0\n}\n");
+}
+
 #[test]
 fn the_aggregates_entry_admits_runtime_float_operands() {
     // The 1026 product entry and the 978 engineering lane compile `use.py`

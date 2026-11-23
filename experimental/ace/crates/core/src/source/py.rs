@@ -99,9 +99,15 @@ pub const FRAME_V1_HEADER: &str = "p967.frame/1\n";
 /// decoding).
 pub const FRAME_V2_HEADER: &str = "p967.frame/2\n";
 
-/// The AV-lane primitive the frozen float helpers call for a float's sign
-/// bit; the lowering emits it inline. It never appears at a user call site.
+/// The AV-lane primitive the frozen float helper calls for a float's sign
+/// bit; the lowering emits it inline. The resolver admits the name only
+/// inside the frozen helper [`PY_SIGN_BIT_OWNER`]: a user call of it is an
+/// unknown callee, on every target alike (the 1026 reconstruction
+/// intrinsics are not user-callable either).
 pub use crate::py_ops::PY_SIGN_BIT;
+/// The one function whose body may call [`PY_SIGN_BIT`] — the frozen helper
+/// `__py_chunk_f64` above.
+pub const PY_SIGN_BIT_OWNER: &str = "__py_chunk_f64";
 
 /// `<w2> <w1> <w0>`: a 64-bit pattern as three unsigned decimals, 21 / 21 /
 /// 22 bits from the top — the wire payload of a typed float. Every word fits
@@ -244,4 +250,35 @@ pub fn front_door(program: &mut Program, user_source_len: usize) -> usize {
     }
     script.body.stmts.splice(0..0, hoisted);
     count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HELPERS, PY_SIGN_BIT, PY_SIGN_BIT_OWNER};
+
+    /// The admission the resolver grants — `PY_SIGN_BIT` inside
+    /// `PY_SIGN_BIT_OWNER` — names the helper that actually calls it: the
+    /// owner is one defined helper and holds the primitive's only call site.
+    #[test]
+    fn the_sign_bit_owner_is_the_one_helper_that_calls_it() {
+        assert_eq!(
+            HELPERS.matches(&format!("fn {PY_SIGN_BIT_OWNER}(")).count(),
+            1,
+            "the owner is one defined helper"
+        );
+        assert_eq!(
+            HELPERS.matches(&format!("{PY_SIGN_BIT}(")).count(),
+            1,
+            "the primitive has exactly one call site"
+        );
+        let owner = HELPERS
+            .split(&format!("fn {PY_SIGN_BIT_OWNER}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\nfn ").next())
+            .expect("the owner's body");
+        assert!(
+            owner.contains(&format!("{PY_SIGN_BIT}(")),
+            "the call site is inside the owner's body"
+        );
+    }
 }
