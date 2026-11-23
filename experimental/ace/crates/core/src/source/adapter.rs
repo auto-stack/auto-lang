@@ -1055,6 +1055,36 @@ fn graft_stdlib_csv(graft: bool, mut src: String) -> String {
 }
 
 #[cfg(test)]
+mod plan118_package_graft_tests {
+    use super::*;
+
+    /// PLAN-118 件①：包面文本接枝集含 substr（master text.at 既有 fn），
+    /// 且 mangle 后声明恰好一次。
+    #[test]
+    fn package_text_graft_includes_substr() {
+        let m = mangle_stdlib_functions(STDLIB_ASM_TEXT_AT, &graft_fns(), STDLIB_TEXT_MANGLE);
+        let decl = format!("fn {STDLIB_TEXT_MANGLE}substr(");
+        assert_eq!(
+            m.matches(&decl).count(),
+            1,
+            "grafted substr declaration must appear exactly once"
+        );
+    }
+
+    /// PLAN-118 件③：`.to(int)` 触发词形检测（成对/空白变体）+ 接枝源含
+    /// require_int/bad_int 两个 helper。
+    #[test]
+    fn integer_parse_graft_trigger_and_source() {
+        assert!(needs_integer_parse("var n = s.to(int)"));
+        assert!(needs_integer_parse("f( x.to( int ) )"));
+        assert!(!needs_integer_parse("var n = s.to(str)"));
+        let src = stdlib_integer_parse_source();
+        assert!(src.contains(STDLIB_TEXT_TO_INT));
+        assert!(src.contains("__std_conv_bad_int"));
+        assert!(src.contains("__std_conv_to_int"));
+    }
+}
+
 mod stdlib_list_graft_tests {
     use super::*;
 
