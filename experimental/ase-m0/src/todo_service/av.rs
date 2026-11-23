@@ -1,3 +1,4 @@
+use super::storage::{Snapshot, Store};
 use super::{Argument, Operation, Reply, ServiceError, Todo, MAX_TEXT_BYTES, MAX_TODOS};
 use crate::registry::{Registry, RegistryApp};
 use crate::source::read_sources;
@@ -8,28 +9,38 @@ use ace_av_core::{execute_program_entry_args, CancelFlag, EntryArg, ExecLimits};
 use ace_core::source::cst::FrontBudget;
 use ace_core::source::packages::{global_symbol, type_symbol, PackageModuleInput};
 use ace_source_query::modules::packages::compile_package_product_auto;
+use std::cell::Cell;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 pub(super) const MAX_STEPS: u64 = 1_000_000;
 pub(super) const MAX_AV_WALL: Duration = Duration::from_millis(500);
 
-pub(super) struct Owner {
+pub(super) struct Owner<'a> {
     target: PackageAvTarget,
     entries: [String; 5],
     list_cell: usize,
+    durable: Option<Durable<'a>>,
+    pub(super) writes: Cell<u64>,
     pub(super) source_hash: String,
+}
+
+struct Durable<'a> {
+    store: Store<'a>,
+    next_id_cell: usize,
 }
 
 fn initialization(detail: impl ToString) -> ServiceError {
     ServiceError::Initialization(detail.to_string())
 }
 
-impl Owner {
+impl<'a> Owner<'a> {
     pub(super) fn load(
         registry: &Registry,
         app: &RegistryApp,
         path: &Path,
+        store: Option<Store<'a>>,
     ) -> Result<Self, ServiceError> {
         let sources = read_sources(registry, app).map_err(initialization)?;
         let inputs: Vec<_> = sources
@@ -150,20 +161,110 @@ impl Owner {
         {
             return Err(initialization("the Todo service declares host imports"));
         }
-        let global = global_symbol(&app.package, "db", "todos");
-        let list_cell = target
-            .current
-            .globals()
-            .iter()
-            .position(|cell| cell.name == global)
-            .ok_or_else(|| initialization("the admitted Todo state cell is missing"))?;
+        let state_cell = |name| {
+            let global = global_symbol(&app.package, "db", name);
+            target
+                .current
+                .globals()
+                .iter()
+                .position(|cell| cell.name == global)
+                .ok_or_else(|| {
+                    initialization(format!("the admitted Todo state cell {name} is missing"))
+                })
+        };
+        let list_cell = state_cell("todos")?;
+        let durable = store
+            .map(|store| -> Result<_, ServiceError> {
+                Ok(Durable {
+                    store,
+                    next_id_cell: state_cell("nextid")?,
+                })
+            })
+            .transpose()?;
         let source_hash = target.source.clone();
-        Ok(Self {
+        let owner = Self {
             target,
             entries,
             list_cell,
+            durable,
+            writes: Cell::new(0),
             source_hash,
-        })
+        };
+        if let Some(storage) = &owner.durable {
+            let restore_entry = |name, params: &[MirType]| -> Result<String, ServiceError> {
+                let (def, _) = product
+                    .bound
+                    .origins
+                    .iter()
+                    .find(|(_, (package, unit, original))| {
+                        package == &app.package && unit == "db" && original == name
+                    })
+                    .ok_or_else(|| initialization(format!("missing restore entry {name}")))?;
+                let entry = format!("d_{def}");
+                let code = owner
+                    .target
+                    .current
+                    .find_code(&entry)
+                    .ok_or_else(|| initialization(format!("unlinked restore entry {name}")))?;
+                let unit = code.unit().module();
+                let signature = unit
+                    .sig_of(unit.funcs[0].sig)
+                    .ok_or_else(|| initialization(format!("invalid restore entry {name}")))?;
+                if !signature
+                    .params
+                    .iter()
+                    .map(|&ty| &unit.types[ty as usize])
+                    .eq(params)
+                    || unit.types[signature.result as usize] != MirType::Bool
+                {
+                    return Err(initialization(format!("signature mismatch for {name}")));
+                }
+                Ok(entry)
+            };
+            let reset = restore_entry("restore_todo_snapshot", &[MirType::I32])?;
+            let row = restore_entry(
+                "restore_todo_item",
+                &[MirType::I32, MirType::StrView, MirType::Bool],
+            )?;
+            if let Some(snapshot) = storage.store.load()? {
+                owner.restore(snapshot, &reset, &row)?;
+            }
+        }
+        Ok(owner)
+    }
+
+    fn restore(&self, snapshot: Snapshot, reset: &str, row: &str) -> Result<(), ServiceError> {
+        let limits = ExecLimits {
+            max_steps: MAX_STEPS,
+            wall: MAX_AV_WALL,
+            ..ExecLimits::default()
+        };
+        let cancel = CancelFlag::default();
+        let invoke = |entry, args: &[EntryArg<'_>]| {
+            let (outcome, _) =
+                execute_program_entry_args(&self.target.current, entry, &limits, &cancel, args);
+            match outcome {
+                ExecOutcome::Success {
+                    value: Value::Bool(true),
+                    ..
+                } => Ok(()),
+                other => Err(initialization(format!(
+                    "Todo restore rejected {entry}: {other:?}"
+                ))),
+            }
+        };
+        invoke(reset, &[EntryArg::Value(Value::I32(snapshot.next_id))])?;
+        for todo in snapshot.todos {
+            invoke(
+                row,
+                &[
+                    EntryArg::Value(Value::I32(todo.id)),
+                    EntryArg::Text(todo.text.as_bytes().into()),
+                    EntryArg::Value(Value::Bool(todo.done)),
+                ],
+            )?;
+        }
+        Ok(())
     }
 
     pub(super) fn initialized(&self) -> bool {
@@ -255,6 +356,35 @@ impl Owner {
             };
             if list.len() > MAX_TODOS {
                 return Err(ServiceError::Budget("todo.list-items"));
+            }
+            if let Some(durable) = &self.durable {
+                if matches!(
+                    &reply,
+                    Reply::Created(_) | Reply::Updated(Some(_)) | Reply::Flag(true)
+                ) {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(ServiceError::Cancelled {
+                            may_have_committed: false,
+                        });
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(ServiceError::TimedOut {
+                            may_have_committed: false,
+                        });
+                    }
+                    let Some(Value::I32(next_id)) = cells.get(durable.next_id_cell) else {
+                        return Err(result_type());
+                    };
+                    let todos = list
+                        .rc
+                        .borrow()
+                        .elems
+                        .iter()
+                        .map(decode_todo)
+                        .collect::<Result<_, _>>()?;
+                    durable.store.save(&Snapshot::new(*next_id, todos))?;
+                    self.writes.set(self.writes.get() + 1);
+                }
             }
             Ok(reply)
         };

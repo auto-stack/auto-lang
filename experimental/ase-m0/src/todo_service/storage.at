@@ -1,0 +1,5 @@
+use std.file.replace_atomic
+
+pub fn main(staging str, destination str) int {
+    return replace_atomic(staging.clone(), destination.clone())
+}

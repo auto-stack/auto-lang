@@ -4,6 +4,7 @@
 //! AV references across that boundary.
 
 mod av;
+mod storage;
 
 use crate::{parse_app_uri, Registry, RegistryApp};
 use av::Owner;
@@ -14,6 +15,7 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+use storage::StorageGrant;
 
 pub const TODO_APP: &str = "auto.demo.todo";
 pub const TODO_SERVICE: &str = "todo";
@@ -46,7 +48,8 @@ pub enum Argument {
     Bool(bool),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Todo {
     pub id: i32,
     pub text: String,
@@ -74,6 +77,9 @@ pub enum ServiceError {
     TimedOut { may_have_committed: bool },
     Initialization(String),
     Execution(String),
+    Storage(String),
+    StorageCorrupt(String),
+    StorageVersion(u8),
     Cleanup(String),
 }
 
@@ -95,6 +101,7 @@ pub struct Inventory {
     pub links: u64,
     pub initializations: u64,
     pub executions: u64,
+    pub durable_writes: u64,
     pub suppressed: u64,
     pub last_package_hash: Option<String>,
 }
@@ -154,9 +161,39 @@ pub struct ServiceBinding(Arc<Shared>);
 
 impl ServiceBinding {
     pub fn new(registry: Registry, store_root: PathBuf) -> Self {
+        Self::configured(registry, store_root, None)
+    }
+
+    /// Prepare checked storage code for one Realm's existing private data root.
+    /// The code is immutable and shared. A worker owns its own linked snapshot,
+    /// and each storage execution owns a fresh platform resource ledger.
+    pub fn with_persistence(
+        registry: Registry,
+        store_root: PathBuf,
+        realm: RealmId,
+        data_root: &Path,
+    ) -> Result<Self, ServiceError> {
+        std::fs::create_dir_all(&store_root).map_err(store_error)?;
+        let code = store_root.join(format!("todo-storage-{}-{}", std::process::id(), next_id()));
+        std::fs::create_dir(&code).map_err(store_error)?;
+        let prepared = StorageGrant::prepare(data_root, &code);
+        std::fs::remove_dir_all(&code).map_err(|error| ServiceError::Cleanup(error.to_string()))?;
+        Ok(Self::configured(
+            registry,
+            store_root,
+            Some((realm, prepared?)),
+        ))
+    }
+
+    fn configured(
+        registry: Registry,
+        store_root: PathBuf,
+        storage: Option<(RealmId, StorageGrant)>,
+    ) -> Self {
         Self(Arc::new(Shared {
             registry,
             store_root,
+            storage,
             changed: Condvar::new(),
             state: Mutex::new(State::default()),
             #[cfg(test)]
@@ -186,6 +223,11 @@ impl ServiceBinding {
             || app.sources.len() != 2
             || !app.sources.iter().any(|file| file == "api.at")
             || !app.sources.iter().any(|file| file == "db.at")
+            || self
+                .0
+                .storage
+                .as_ref()
+                .is_some_and(|(granted, _)| *granted != realm)
         {
             return Err(ServiceError::Unauthorized);
         }
@@ -569,6 +611,7 @@ impl State {
 struct Shared {
     registry: Registry,
     store_root: PathBuf,
+    storage: Option<(RealmId, StorageGrant)>,
     changed: Condvar,
     state: Mutex<State>,
     #[cfg(test)]
@@ -687,6 +730,9 @@ fn serve(shared: Arc<Shared>, realm: RealmId, generation: Generation) {
                 Ok(prepared) => {
                     state.instances.get_mut(&realm).unwrap().owner = true;
                     state.facts.links += 1;
+                    if prepared.initialized() {
+                        state.facts.initializations += 1;
+                    }
                     state.facts.last_package_hash = Some(prepared.source_hash.clone());
                     owner = Some(prepared);
                 }
@@ -717,6 +763,7 @@ fn serve(shared: Arc<Shared>, realm: RealmId, generation: Generation) {
         let max_steps = av::MAX_STEPS;
         #[cfg(test)]
         let max_steps = shared.controls.steps(&job).unwrap_or(max_steps);
+        let writes_before = owner.writes.get();
         let (result, execution) = owner.call(
             job.operation,
             &job.arguments,
@@ -728,6 +775,7 @@ fn serve(shared: Arc<Shared>, realm: RealmId, generation: Generation) {
         shared.controls.after(&job);
         let initialized = owner.initialized();
         let mut state = shared.state.lock().unwrap();
+        state.facts.durable_writes += owner.writes.get() - writes_before;
         if initialized && !previously_initialized {
             state.facts.initializations += 1;
         }
@@ -763,12 +811,17 @@ fn serve(shared: Arc<Shared>, realm: RealmId, generation: Generation) {
     shared.changed.notify_all();
 }
 
-fn load(shared: &Shared, path: &Path) -> Result<Owner, ServiceError> {
+fn load<'a>(shared: &'a Shared, path: &Path) -> Result<Owner<'a>, ServiceError> {
     let app: &RegistryApp = shared
         .registry
         .lookup(TODO_APP)
         .expect("admitted registration");
-    Owner::load(&shared.registry, app, path)
+    let storage = shared
+        .storage
+        .as_ref()
+        .map(|(_, grant)| grant.activate())
+        .transpose()?;
+    Owner::load(&shared.registry, app, path, storage)
 }
 
 #[cfg(test)]
