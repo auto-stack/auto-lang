@@ -80,6 +80,10 @@ plan811_media_consumers`（Man 真实消费）+ 777 strict / 792 driver
 Web运行时和HTTP生成消费该单源；renderer/纹理留UI。原资源、ID/断言/条件不重置。
 来源：[四仓合同](../repository-boundaries/web-four-repository-delivery.md)（plan-890）。
 
+## 照片令牌与查看器的媒体授权（PLAN-117）
+
+照片索引按目录更新已发放的令牌。恢复已保存的配置时，只恢复当前根目录中仍有效的登记路径。解析令牌时，服务核对当前根目录及文件可用性。查看器的媒体读取属于签发请求的文件授权和私有运行时。替换、撤销授权或关闭会话时回收对应的私有运行时。
+
 ## 固定测试 fixture 清单（PLAN-1014 SD-05）
 
 `tests/fixtures/`（7 原件 + `manifest.json` + `PROVENANCE.md`）是**固定只读测试

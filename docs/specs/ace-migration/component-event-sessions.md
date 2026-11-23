@@ -112,3 +112,7 @@ get/get_json/post/post_json/put/put_json/patch/patch_json/delete；
 - 已验入口：av `cargo test -p ace-av --test conformance plan108_http_component`
   （7 例：准入/fail-closed/三具名拒/遮蔽/落账-交错-保留/取消隔离）；
   AV 生产宿主 65s 慢端点双窗实窗见证见 PLAN-108 §9（归档）。
+
+## 受检媒体包的 HTTP 与定时器（PLAN-117）
+
+受检 UI `Http.get_json` 成功返回解析后的 JSON 值，文本动词成功返回响应文本。已发起的请求发生传输、协议或非 2xx 响应时，对应语言错误可由外层 `catch` 捕获。缺 provider、宿主拒绝、取消和 JSON 解码失败沿各自的失败路径传播。已标记元素视图能力的 Collections 模块携带受检宿主段。普通 Collections 采用既有线格式。受检包的定时器按活动 widget 实例调度。

@@ -206,3 +206,7 @@ g02 model3d 行+Model3D 资源+GLB 路径符号实参、坏编辑保旧/热更�
 **配套 additive 辅助**：`a2r_std::sqlite::clear_error()`（op 前清粘性
 `LAST_ERROR`、op 后读——既有 op 成功不清错的 by-design 行为不变；宿主桥
 per-op 诊断消费）。
+
+## 7. 受检媒体组件的语法与投影（PLAN-117）
+
+受检 AGE 组件表达式支持命名字段记录构造，条件和循环的块边界保持独立。顶层与结构化 handler 块共用列表赋值投影，记录字段表达式按目标列表的模型绑定。旧组件的惰性列表仍由视图数据投影消费。Rust 与 AAC 的 `LineText` 使用相同的 matcher tag，并优先匹配较长的字面运算符。行文本在关闭界符或换行时结束。语法标识以 `plan981_grammar_scope` 冻结值为准。
