@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-20
 updated_at: 2026-11-23
 plan_revision: 2
-current_step: 7
+current_step: 8
 total_steps: 8
 depends_on: [PLAN-1111, PLAN-1109, PLAN-973, PLAN-975, PLAN-1064, auto-ui/PLAN-105]
 supersedes_spec_components: [docs/specs/ase/local-service-binding.md]
@@ -20,7 +20,7 @@ affects: [ase, ace/source, ace/av, age/autoui-runtime]
 
 ## 0. 变更摘要
 
-消费 [PLAN-1111](1111-ase-local-todo-service.md) 的本地绑定，在 AutoScape 原生验证宿主运行 Gallery 原 013 Todo。Windows 真窗完整业务和独立进程重启复验通过，成本对照与消费者回归结果已记入 §9。两仓已合入并验证规范源，归档后清理计划目录，当前 7/8。
+消费 [PLAN-1111](1111-ase-local-todo-service.md) 的本地绑定，在 AutoScape 原生验证宿主运行 Gallery 原 013 Todo。Windows 真窗完整业务和独立进程重启复验通过，成本对照与消费者回归结果见 §9。两仓已合入、规范已验证、计划已归档，专用工作树和暂存材料已清理。完成 8/8。
 
 ## 1. 目标
 
@@ -83,7 +83,7 @@ AutoUI 保有真实工程装载、Store 和呈现所有权。ASE 管理 tab、�
 
 ## 6. 测试设计
 
-以下用例和入口均待执行。确定性失败由 provider/队列接缝注入，业务、存储、ACE 与原生 UI 路径使用真实实现。
+以下是冻结测试设计，实际入口、执行结果和排除项见 §9。确定性失败使用 provider/队列接缝，业务、存储、ACE 与原生 UI 路径使用真实实现。
 
 | ID | 入口与判别断言 |
 |---|---|
@@ -110,7 +110,7 @@ AutoUI 保有真实工程装载、Store 和呈现所有权。ASE 管理 tab、�
 有原生任务工具时，开始实施前按以下 ID 登记任务。
 
 - [x] T-01 冻结可比行为与上游消费接缝
-  - owner_stage: work。已冻结 013/Gallery 源及操作、可比样本条件与存储 profile。已编译对照 Counter 和原 013 包，验证当前 AGE 包无法装载 013 跨单元 Store，T-03 待上游。V-01，AC-01。见 §9。
+  - owner_stage: work。已冻结 013/Gallery 源及操作、可比样本条件与存储 profile。开工时 Counter 正控通过，原 013 的跨单元 Store 准入失败，该反例由 T-03 修复。V-01，AC-01。见 §9。
 - [x] T-02 接入 Realm 数据根与真实存储
   - owner_stage: work；依赖 T-01 存储条目及 1111 正式绑定。保留 1111 的默认内存路径，完成显式耐久模式和 V-02 的真实进程验证。AC-02 的原生窗口部分留 T-04。见 §9。
 - [x] T-03 接通 013 原生包与本地完成
@@ -120,10 +120,10 @@ AutoUI 保有真实工程装载、Store 和呈现所有权。ASE 管理 tab、�
 - [x] T-05 同业务对照与受影响组验证
   - owner_stage: work；依赖 T-04。完成 V-05/06，记录可比行及异常，整理数据、服务、窗口证据。
 - [x] T-06 冻结交接与规范候选
-  - owner_stage: work；依赖 T-05。逐条对账 AC-01–04 与 SD-01/02，明确其它 demo、完整 G2/G3 和默认接线的边界。
+  - owner_stage: work；依赖 T-05。逐条对账 AC-01–04 与 SD-01–03，核定该切片的覆盖范围。
 - [x] T-07 独立复审
   - owner_stage: review；依赖 T-06。查原工程消费、磁盘/执行器终态、拒绝/恢复与可比口径，复验关键正反控。AC-05。
-- [ ] T-08 正式落地
+- [x] T-08 正式落地
   - owner_stage: merge；依赖 T-07 pass。核冻结组和正式规范、归档、清理及路线链接。AC-06。
 
 ## 9. 复审记录
@@ -252,6 +252,12 @@ stage: merge | checkpoint: canonical_verified | plan_id: PLAN-1112 | plan_revisi
 
 stage: merge | checkpoint: archived | plan_id: PLAN-1112 | plan_revision: r2 | completion_kind: delivered | archive_path: `docs/plans/archive/1112-ase-native-todo-and-persistence.md` | next: guarded cleanup
 
+stage: merge | checkpoint: cleaned | plan_id: PLAN-1112 | plan_revision: r2 | outcome: pass | archive_commit: `d5bde07dbb69b875d18d38dd8776b9773096b110` | task_ids: T-08 / AC-06 | cleanup: 四个 worktree、两个合入分支、空组目录及唯一暂存 scope | holds: 无 | next: done
+
+归档提交前核实计划中 16 个 Markdown 链接。工作区 Gallery 草案中指向旧计划路径的 1112 段已更新至归档路径，非本计划草案内容和其他未提交改动保留。四个工作树均在确认冻结 HEAD、无未提交及未跟踪源变更、无活动计划进程后，逐一以 `pwsh -NoProfile -File D:/autostack/wt-guard.ps1 <path>` 得到 `clean`，再由原仓 `git worktree remove` 移除。AutoLang、AutoUI 的 `plan-1112-dev` 均以 `git branch -d` 删除，AutoDown/AutoWeb 为 detached。删除空组目录 `D:/autostack/.wt/lang-1112`；AutoLang worktree 的 `target`、`experimental/ace/target`、`experimental/ase-m0/target` 与 `scripts/full-regression-driver/target` 随之清理。
+
+核对外置 target、准备态、测试临时根、真窗收据及数据、旧 Gallery 的拷贝/浏览器 profile/VM 日志、临时探针和主线 smoke，均在 `D:/autostack/plan-artifacts/plan-1112` 或上述工作树。按配置、命令和日志核对输出根，并检查工作区及系统临时目录中的具名 1112/Todo 输出，无需迁移或继续持有。归档已提交且不存在活动计划进程后，按已登记 scope 调用保留工具的隔离删除，删除 39,714 个文件、5,271 个目录和 363 个 reparse 入口（仅删除链接本身），回收独占文件数据 8,474,778,830 字节。scope 已不存在，留存 0 字节，由 `.retention/policy.json` 登记本归档最终版本及 SHA-256。
+
 ## 10. 待澄清事项
 
 无必须先由用户裁定的选项。T-01 确认 105 的正式消费点、支持的原输入/视图操作、1111 持久 owner 接缝和确需提交的存储预算。超出签名或涉及通用能力的缺口由对应 owner 给出范围与复验，不扩大或弱化本计划验收。
@@ -262,4 +268,4 @@ stage: merge | checkpoint: archived | plan_id: PLAN-1112 | plan_revision: r2 | c
 
 T-03 的上游阻塞已复现。当前正式 AGE 包准入拒绝 013 的 App/TodoList 使用跨单元 `TodoStore`。AutoUI 105 收据只覆盖其内存后端改写入口，输入和载荷行为仍有具名边界。按 §5 的 owner 约定，需要 ACE/AGE 包面和 AutoUI 原生桥交付并复验原 013 的共享 Store、带实参输入/列表事件及 1111 本地结果的消费接缝。若由 1112 承接这些生产者通用能力，需要用户授权修订实施范围。两仓检查点保持在专用分支，后续真窗、成本对照、复审与合并仍未执行。
 
-r2 已获用户授权，r1 的实施范围阻塞解除。T-03 准入反例作为待修输入保留。
+r2 已获用户授权，r1 的实施范围阻塞解除。T-03 已修复原 013 跨单元准入及 1111 回传，真窗、成本对照、复审与合入结果见 §9。
