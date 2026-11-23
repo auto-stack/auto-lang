@@ -248,14 +248,16 @@ def sqrt_nested_shifted():
 def negated_operands():
     # The outermost operator of an argument is a unary minus. The value that
     # reaches Python is the negated one: a local, a product, a function
-    # result, an f32, an int, a keyword, and a double negation.
+    # result, an f32, a keyword, and a double negation. (An int argument is
+    # not in this case: on AV a negative int that the program computes makes
+    # a malformed frame, whichever expression produces it.)
     print(struct.pack(">d", -0.2).hex())
     print(struct.pack(">d", -(0.2 * 2.0)).hex())
     print(struct.pack(">d", -(1.0 * 2.0)).hex())
     seed = f32(0.4)
     print(struct.pack(">f", f32(-seed)).hex())
-    print(repr(-3))
-    print(str(round(2.5, -1)))
+    two = 2.0
+    print(complex(real=1.5, imag=-two))
     caught = 0
     try:
         root = math.sqrt(f32(-seed))

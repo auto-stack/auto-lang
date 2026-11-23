@@ -167,7 +167,9 @@ AV 从其装配的 CPython 解析同组包。环境配法见
 - **取负实参**：实参最外层运算符是一元负号时（`-rate`、`-(rate * 2.0d)`、`-twice(1.0d)`、
   `ndigits: -digits`、`-(-seed)`），Python 收到取反后的值。解析器给一元节点的是其操作数的 span，
   两者同 span；按 span 取表达式时取最外层的取负节点，而不是与它同 span 的操作数——取操作数会把
-  符号丢掉（`pack(“>d”, -rate)` 曾传出 `+0.2`，`sqrt(-seed)` 曾不抛异常）。`a2x_neg` 负责整数。
+  符号丢掉（`pack(“>d”, -rate)` 曾传出 `+0.2`，`sqrt(-seed)` 曾不抛异常）。`a2x_neg` 负责整数：
+`repr(-n)` 得 `-3`，`round(2.5d, ndigits: -digits)` 得 `0.0`。整数形态只在 A2PY 侧钉住——AV 对
+程序算出的负整数实参另有早于本计划的缺陷（D-1129-01，见 AV 规范的已知边界）。
 - **f32 精度**：Python 浮点是双精度，A2PY 此前对 `float` 算术不舍入，f32 类型的值实际携带
   双精度。现在 `float` 的 `+ - * /` 每一步经 `a2x_f32_round` 舍入（ties-to-even，溢出为
   `+/-inf`），与 TypeScript 目标既有的“每步 round”规则一致；传入 Python 调用的 f32 操作数在
@@ -181,7 +183,8 @@ AV 从其装配的 CPython 解析同组包。环境配法见
 - **对照**：语料 `python-float-args.case.ad` 的十四个 Case 在 `case-a2py-language-parity`
   逐行匹配冻结预期；`ace-a2x-python` 的 `py_float_args_1129` 用独立原生 Python 参考产生
   同一组预期，断言生成的 Python 以变量而非折算数字传递运行时学习率，并沿临时值追到定义处、
-  断言取负实参外面确实套着一元负号（`negated-operands`）。
+  断言取负实参外面确实套着一元负号（`negated-operands`）；整数形态由
+  `generated_python_negates_an_int_argument` 单独钉住。
 - **工程入口**：`M2Build::build(TargetKind::A2py, …)` 编译同一份 PyTorch 源，`ace-m2-build`
   的 `py_float_args_1129` 运行生成程序并核对优化器自报的学习率。
 - **缓存身份**：`a2x_f32_round` 进入基础运行时，运行时内容哈希随之变化，既有片段缓存按身份

@@ -562,7 +562,7 @@ syntax: "auto-script"
 
 ```auto
 use.py struct: pack
-use.py builtins: repr, round
+use.py builtins: complex
 use.py math: sqrt
 
 fn twice(v double) double {
@@ -576,10 +576,8 @@ fn main() int {
     print(pack(">d", -twice(1.0d)).hex().to(str))
     var seed = 0.4
     print(pack(">f", -seed).hex().to(str))
-    var n = 3
-    print(repr(-n).to(str))
-    var digits = 1
-    print(round(2.5d, ndigits: -digits).to(str))
+    var two = 2.0d
+    print(complex(real: 1.5d, imag: -two))
     var caught = 0
     try {
         var root = sqrt(-seed)
@@ -603,7 +601,7 @@ caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "consol
 foreign: { kind: "rust", provider: "py" }
 exit: 0
 error-kind: "python.5"
-error-span: "520..531"
+error-span: "468..479"
 
 #### stdout
 
@@ -612,8 +610,7 @@ bfc999999999999a
 bfd999999999999a
 c000000000000000
 becccccd
--3
-0.0
+(1.5-2j)
 PyException ValueError: expected a nonnegative input, got -0.4000000059604645
 1
 3ecccccd
@@ -628,7 +625,7 @@ caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
 exit: 0
 error-type: "ValueError"
 error-kind: "python.5"
-error-span: "520..531"
+error-span: "468..479"
 
 #### stdout
 compare: "lf"
@@ -638,8 +635,7 @@ bfc999999999999a
 bfd999999999999a
 c000000000000000
 becccccd
--3
-0.0
+(1.5-2j)
 PyException ValueError: expected a nonnegative input, got -0.4000000059604645
 1
 3ecccccd

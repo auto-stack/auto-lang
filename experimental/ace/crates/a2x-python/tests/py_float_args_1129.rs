@@ -189,15 +189,15 @@ fn native_python_binop_float() {
 }
 
 /// An argument whose outermost operator is a unary minus reaches Python
-/// negated (review R-01): a local, a product, a function result, an f32, an
-/// int, a keyword, a double negation, and the `ValueError` of a negated
-/// runtime operand. Before the fix the generated code passed the operand
-/// without its sign.
+/// negated (review R-01): a local, a product, a function result, an f32, a
+/// keyword, a double negation, and the `ValueError` of a negated runtime
+/// operand. Before the fix the generated code passed the operand without its
+/// sign. (Floats only: see `generated_python_negates_an_int_argument`.)
 #[test]
 fn native_python_negated_operands() {
     check_reference(
         "negated-operands",
-        "eb12d896770e157f8cef8331a0976d4ba66f1a4f2557a2aa63224925631d9b2a",
+        "651e5093f7e22e09807c9f8f6e3dc9a5dfb8b46589143278c922593d5530b099",
         Some("sqrt(-seed)"),
     );
 }
@@ -545,37 +545,25 @@ fn generated_python_negates_an_argument_wrapped_in_unary_minus() {
         assert!(!arg.contains("bits"), "{arg} is not a folded number");
     }
 
-    // the keyword form, the int sibling and the failing call are negated too
+    // the keyword form and the failing call are negated too
     let named = generated
         .lines()
-        .find(|line| line.contains(r#"{"ndigits": "#))
-        .expect("round(2.5d, ndigits: -digits)");
+        .find(|line| line.contains(r#""imag": "#))
+        .expect("complex(real: 1.5d, imag: -two)");
     let named_arg = named
-        .split(r#"{"ndigits": "#)
+        .split(r#""imag": "#)
         .nth(1)
         .unwrap()
         .split('}')
         .next()
         .unwrap();
     assert_eq!(negation_depth(&generated, named_arg), 1, "{named}");
-    let int = generated
-        .lines()
-        .find(|line| line.contains("a2x_py_call, l1_repr, None, ["))
-        .expect("repr(-n)");
-    let int_arg = int
-        .split("l1_repr, None, [")
-        .nth(1)
-        .unwrap()
-        .split("], ")
-        .next()
-        .unwrap();
-    assert_eq!(negation_depth(&generated, int_arg), 1, "{int}");
     let root = generated
         .lines()
-        .find(|line| line.contains("a2x_py_call, l3_sqrt, None, ["))
+        .find(|line| line.contains(", None, [a2x_f32_round(") && !line.contains("l0_pack"))
         .expect("sqrt(-seed)");
     let root_arg = root
-        .split("l3_sqrt, None, [")
+        .split(", None, [")
         .nth(1)
         .unwrap()
         .split("], ")
@@ -587,5 +575,52 @@ fn generated_python_negates_an_argument_wrapped_in_unary_minus() {
         run_generated(&dir),
         format!("{}value:0\n", fence(av, "text"))
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review R-01, the int sibling: an int argument whose outermost operator
+/// is a unary minus is emitted through `a2x_neg`, so Python receives the
+/// negative number (`repr(-n)` used to return `3`). Pinned on A2PY alone: on
+/// AV any int argument that the program computes to be negative makes a
+/// malformed frame — the frozen `__py_dlen` counts the digits of a
+/// non-negative value only — whichever expression produces it. That
+/// predates this Plan and is recorded as a debt candidate, so the int form
+/// has no place in the two-ended corpus.
+#[test]
+fn generated_python_negates_an_int_argument() {
+    let dir = scratch("negated-int");
+    let source = "use.py builtins: repr, round\n\nfn main() int {\n    var n = 3\n    print(repr(-n).to(str))\n    var digits = 1\n    print(round(2.5d, ndigits: -digits).to(str))\n    return 0\n}\n";
+    emit(&dir, source);
+    let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
+
+    let repr_call = generated
+        .lines()
+        .find(|line| line.contains("a2x_py_call") && !line.contains(r#""ndigits""#))
+        .expect("repr(-n)");
+    let repr_arg = repr_call
+        .split(", None, [")
+        .nth(1)
+        .unwrap()
+        .split("], ")
+        .next()
+        .unwrap();
+    assert!(
+        generated.contains(&format!("{repr_arg} = a2x_neg(")),
+        "the int argument is negated: {repr_call}"
+    );
+    let named = generated
+        .lines()
+        .find(|line| line.contains(r#""ndigits": "#))
+        .expect("round(2.5d, ndigits: -digits)");
+    let named_arg = named
+        .split(r#""ndigits": "#)
+        .nth(1)
+        .unwrap()
+        .split('}')
+        .next()
+        .unwrap();
+    assert_eq!(negation_depth(&generated, named_arg), 1, "{named}");
+
+    assert_eq!(run_generated(&dir), "-3\n0.0\nvalue:0\n");
     let _ = std::fs::remove_dir_all(&dir);
 }
