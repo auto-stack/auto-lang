@@ -4544,6 +4544,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                     | MirType::U32
                                     | MirType::I64
                                     | MirType::U64
+                                    | MirType::F64
                             )
                         ))
                     // PLAN-117（round-36 ②）：json 值链的 Dyn 标量显示

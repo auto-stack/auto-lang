@@ -89,7 +89,10 @@ pub fn compile_package_product_auto_prepared(
             &caps,
             |symbol| {
                 let (package, module, name) = &origins[symbol];
-                let version = version_by_module[&(package.as_str(), module.as_str())];
+                let version = version_by_module
+                    .get(&(package.as_str(), module.as_str()))
+                    .copied()
+                    .unwrap_or("1.0.0");
                 crate::ident::sq_hash(
                     "ac1088/package-template/v1",
                     &[
@@ -129,6 +132,27 @@ pub fn compile_package_product_auto_prepared(
                 bound.origins[&format!("{record}.{method}")].clone()
             });
             bound.origins.insert(concrete, origin);
+        }
+    }
+    let _ = ace_core::source::json_encode_synth::synthesize_json_encodable_methods(
+        &mut bound.program,
+    )
+    .map_err(|ds| locate_all(&bound, ds))?;
+    for item in &bound.program.items {
+        let ace_core::source::ast::Item::Type(record) = item else {
+            continue;
+        };
+        if let Some((pkg, module, short)) = bound.type_origins.get(&record.name.name).cloned() {
+            for method in &record.methods {
+                if method.name.name == "json_encode" {
+                    bound
+                        .origins
+                        .entry(format!("{}.json_encode", record.name.name))
+                        .or_insert_with(|| {
+                            (pkg.clone(), module.clone(), format!("{short}.json_encode"))
+                        });
+                }
+            }
         }
     }
     prepare(&mut bound).map_err(|ds| locate_all(&bound, ds))?;

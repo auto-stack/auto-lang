@@ -8610,9 +8610,12 @@ impl<'a, 's> FnResolver<'a, 's> {
             e.vt = VT::StrOwned;
             return e;
         }
+        if e.vt == VT::Str {
+            return Self::own_dynamic_text(e);
+        }
         if matches!(
             e.vt,
-            VT::I32 | VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::Bool | VT::Char | VT::Str
+            VT::I32 | VT::I8 | VT::U8 | VT::U32 | VT::I64 | VT::U64 | VT::Bool | VT::Char
         ) {
             return ResolvedExpr {
                 span,
@@ -18858,6 +18861,40 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if want == VT::StrOwned && self.coll.legacy_age_widget_at(v.span) {
                         v = Self::clone_text_element(v);
                     }
+                    if let VT::Variant(want_vi) = want {
+                        if self.coll.variants[want_vi].name == "Option" {
+                            let want_pl = self.coll.variants[want_vi]
+                                .arms
+                                .first()
+                                .and_then(|a| a.1);
+                            if let RExprKind::VariantCtor {
+                                variant,
+                                disc,
+                                payload,
+                            } = &mut v.kind
+                            {
+                                if self.coll.variants[*variant].name == "Option" {
+                                    if *disc == 1 && payload.is_none() {
+                                        *variant = want_vi;
+                                        v.vt = want;
+                                    } else if *disc == 0 {
+                                        if let (Some(want_pl_vt), Some(pl)) = (want_pl, payload.as_mut()) {
+                                            if want_pl_vt == VT::StrOwned
+                                                && pl.vt == VT::Str
+                                                && matches!(pl.kind, RExprKind::StrLit(_))
+                                            {
+                                                pl.vt = VT::StrOwned;
+                                            }
+                                            if pl.vt == want_pl_vt {
+                                                *variant = want_vi;
+                                                v.vt = want;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if v.vt != want {
                         // nominal records name both sides (identical shapes
                         // still mismatch — PLAN-771 §5.1)
@@ -22291,7 +22328,10 @@ impl<'a, 's> FnResolver<'a, 's> {
                     span,
                 );
             }
-            if matches!(recv.vt, VT::I32 | VT::U64)
+            if (matches!(recv.vt, VT::I32 | VT::U64)
+                || (self.profile.is_auto_language()
+                    && (vt_is_float(recv.vt)
+                        || matches!(recv.vt, VT::I8 | VT::U8 | VT::U32 | VT::I64))))
                 && !self.py_is_object(&recv)
                 && ((name.name == "to" && to_word.is_some_and(|word| vt_of_word(word).is_text()))
                     || (name.name == "to_str" && args.is_empty() && to_word.is_none()))

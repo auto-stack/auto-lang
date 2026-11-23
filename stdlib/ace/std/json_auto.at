@@ -1,0 +1,1085 @@
+// PLAN-1124: Dynamic JSON value tree, formatting, and generic record
+// encoding for ordinary Auto AV (`SourceProfile::Auto`).
+// Composes with `stdlib/ace/std/json.at` (PLAN-975 low-level primitives)
+// without altering the frozen TextRecord / AGE `std::json` identity.
+
+spec JsonEncodable {
+    fn json_encode() Str
+}
+
+pub type JsonValue as JsonEncodable {
+    root int
+    tags List<int>
+    ivals List<int>
+    nvals List<int>
+    fvals List<f64>
+    svals List<Str>
+    kvals List<Str>
+    first_child List<int>
+    next_sibling List<int>
+
+    fn kind() Str {
+        return __json_tag_name(.tags.get(.root))
+    }
+
+    fn type_of() Str {
+        return __json_tag_name(.tags.get(.root))
+    }
+
+    fn is_null() bool {
+        return .tags.get(.root) == 0
+    }
+
+    fn is_bool() bool {
+        return .tags.get(.root) == 1
+    }
+
+    fn is_number() bool {
+        return .tags.get(.root) == 2
+    }
+
+    fn is_string() bool {
+        return .tags.get(.root) == 3
+    }
+
+    fn is_array() bool {
+        return .tags.get(.root) == 4
+    }
+
+    fn is_object() bool {
+        return .tags.get(.root) == 5
+    }
+
+    fn as_bool() bool {
+        if .tags.get(.root) != 1 {
+            fail("TypeError: json value is not a bool")
+        }
+        return .ivals.get(.root) != 0
+    }
+
+    fn as_int() int {
+        if .tags.get(.root) != 2 || .ivals.get(.root) == 0 {
+            fail("TypeError: json value is not an integer")
+        }
+        return .nvals.get(.root)
+    }
+
+    fn as_number() f64 {
+        if .tags.get(.root) != 2 {
+            fail("TypeError: json value is not a number")
+        }
+        return .fvals.get(.root)
+    }
+
+    fn as_f64() f64 {
+        if .tags.get(.root) != 2 {
+            fail("TypeError: json value is not a number")
+        }
+        return .fvals.get(.root)
+    }
+
+    fn as_string() Str {
+        if .tags.get(.root) != 3 {
+            fail("TypeError: json value is not a string")
+        }
+        return .svals.get(.root).clone()
+    }
+
+    fn as_str() Str {
+        if .tags.get(.root) != 3 {
+            fail("TypeError: json value is not a string")
+        }
+        return .svals.get(.root).clone()
+    }
+
+    fn len() int {
+        let t = .tags.get(.root)
+        if t != 4 && t != 5 {
+            fail("TypeError: json value is not an array or object")
+        }
+        return .ivals.get(.root)
+    }
+
+    fn has_key(key str) bool {
+        if .tags.get(.root) != 5 {
+            return false
+        }
+        return __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key) >= 0
+    }
+
+    fn get(key str) ?JsonValue {
+        if .tags.get(.root) != 5 {
+            return None
+        }
+        let found = __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key)
+        if found < 0 {
+            return None
+        }
+        return Some(__json_extract(.tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, found))
+    }
+
+    fn get_str(key str) Str {
+        if .tags.get(.root) != 5 {
+            fail("TypeError: json value is not an object")
+        }
+        let found = __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key)
+        if found < 0 {
+            fail("JsonError: missing object key")
+        }
+        if .tags.get(found) != 3 {
+            fail("TypeError: json field is not a string")
+        }
+        return .svals.get(found).clone()
+    }
+
+    fn get_int(key str) int {
+        if .tags.get(.root) != 5 {
+            fail("TypeError: json value is not an object")
+        }
+        let found = __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key)
+        if found < 0 {
+            fail("JsonError: missing object key")
+        }
+        if .tags.get(found) != 2 || .ivals.get(found) == 0 {
+            fail("TypeError: json field is not an integer")
+        }
+        return .nvals.get(found)
+    }
+
+    fn get_f64(key str) f64 {
+        if .tags.get(.root) != 5 {
+            fail("TypeError: json value is not an object")
+        }
+        let found = __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key)
+        if found < 0 {
+            fail("JsonError: missing object key")
+        }
+        if .tags.get(found) != 2 {
+            fail("TypeError: json field is not a number")
+        }
+        return .fvals.get(found)
+    }
+
+    fn get_bool(key str) bool {
+        if .tags.get(.root) != 5 {
+            fail("TypeError: json value is not an object")
+        }
+        let found = __json_find_key_idx(.kvals, .first_child, .next_sibling, .root, key)
+        if found < 0 {
+            fail("JsonError: missing object key")
+        }
+        if .tags.get(found) != 1 {
+            fail("TypeError: json field is not a bool")
+        }
+        return .ivals.get(found) != 0
+    }
+
+    fn get_at(index int) ?JsonValue {
+        if .tags.get(.root) != 4 || index < 0 {
+            return None
+        }
+        var cur = .first_child.get(.root)
+        var i = 0
+        for cur >= 0 {
+            if i == index {
+                return Some(__json_extract(.tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, cur))
+            }
+            cur = .next_sibling.get(cur)
+            i = i + 1
+        }
+        return None
+    }
+
+    fn at(index int) JsonValue {
+        if .tags.get(.root) != 4 {
+            fail("TypeError: json value is not an array")
+        }
+        if index < 0 {
+            fail("JsonError: array index out of bounds")
+        }
+        var cur = .first_child.get(.root)
+        var i = 0
+        for cur >= 0 {
+            if i == index {
+                return __json_extract(.tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, cur)
+            }
+            cur = .next_sibling.get(cur)
+            i = i + 1
+        }
+        fail("JsonError: array index out of bounds")
+    }
+
+    fn keys() List<Str> {
+        if .tags.get(.root) != 5 {
+            fail("TypeError: json value is not an object")
+        }
+        var out = List<Str>.new()
+        var cur = .first_child.get(.root)
+        for cur >= 0 {
+            out.push(.kvals.get(cur).clone())
+            cur = .next_sibling.get(cur)
+        }
+        return out
+    }
+
+    fn as_array() List<JsonValue> {
+        if .tags.get(.root) != 4 {
+            fail("TypeError: json value is not an array")
+        }
+        var out = List<JsonValue>.new()
+        var cur = .first_child.get(.root)
+        for cur >= 0 {
+            var child = __json_extract(.tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, cur)
+            out.push(child.move)
+            cur = .next_sibling.get(cur)
+        }
+        return out
+    }
+
+    fn minify() Str {
+        return __json_serialize(.root, .tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, false)
+    }
+
+    fn prettify() Str {
+        return __json_serialize(.root, .tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, true)
+    }
+
+    fn to_json() Str {
+        return __json_serialize(.root, .tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, false)
+    }
+
+    fn json_encode() Str {
+        return __json_serialize(.root, .tags, .ivals, .nvals, .fvals, .svals, .kvals, .first_child, .next_sibling, false)
+    }
+}
+
+fn __json_int_fits(s str, p int, ne int) int {
+    var q = p
+    if json_cp(s, q) == 45 {
+        q = q + 1
+    }
+    for q < ne {
+        let d = json_cp(s, q)
+        if d < 48 || d > 57 {
+            return 0
+        }
+        q = q + 1
+    }
+    var r = p
+    var lim = 7
+    if json_cp(s, r) == 45 {
+        r = r + 1
+        lim = 8
+    }
+    var acc = 0
+    for r < ne {
+        let dig = json_cp(s, r) - 48
+        if acc < -214748364 || (acc == -214748364 && dig > lim) {
+            return 0
+        }
+        acc = acc * 10 - dig
+        r = r + 1
+    }
+    return 1
+}
+
+fn __json_int_value(s str, p int, ne int) int {
+    var r = p
+    var neg = false
+    if json_cp(s, r) == 45 {
+        neg = true
+        r = r + 1
+    }
+    var acc = 0
+    for r < ne {
+        let dig = json_cp(s, r) - 48
+        acc = acc * 10 - dig
+        r = r + 1
+    }
+    if neg {
+        return acc
+    }
+    return 0 - acc
+}
+
+pub fn is_valid(s str) bool {
+    if s.len() > 1048576 {
+        return false
+    }
+    let parsed = parse(s)
+    is parsed {
+        Some(_) -> { return true }
+        None -> { return false }
+    }
+}
+
+pub fn parse(s str) ?JsonValue {
+    var result ?JsonValue = None
+    try {
+        result = Some(parse_strict(s))
+    } catch _err {
+        result = None
+    }
+    return result
+}
+
+pub fn parse_strict(s str) JsonValue {
+    let n = s.len()
+    if n > 1048576 {
+        fail("JsonError: input byte budget exceeded")
+    }
+    var tags = List<int>.new()
+    var ivals = List<int>.new()
+    var nvals = List<int>.new()
+    var fvals = List<f64>.new()
+    var svals = List<Str>.new()
+    var kvals = List<Str>.new()
+    var first_child = List<int>.new()
+    var next_sibling = List<int>.new()
+
+    var stk_node = List<int>.new()
+    var stk_kind = List<int>.new()
+    var stk_last = List<int>.new()
+    // state: 0=start/empty container, 1=expect comma or close, 2=expect next object key, 3=value
+    var stk_state = List<int>.new()
+    var stk_key = List<Str>.new()
+    var sp = 0
+
+    var p = json_ws(s, 0)
+    if p >= n {
+        fail("JsonError: empty input")
+    }
+    var root = -1
+    var pending_scalar = false
+    loop {
+        if sp == 0 && root >= 0 {
+            break
+        }
+        var parse_val_here = false
+        var val_key Str = ""
+        var parent_node = -1
+        var parent_kind = 0
+        var parent_last = -1
+        var parent_top = -1
+        if sp > 0 {
+            let top = sp - 1
+            let sk = stk_kind.get(top)
+            let st = stk_state.get(top)
+            p = json_ws(s, p)
+            if p >= n {
+                fail("JsonError: unexpected end of input")
+            }
+            let ch = json_cp(s, p)
+            if st == 0 {
+                if sk == 4 && ch == 93 {
+                    p = p + 1
+                    sp = sp - 1
+                    if sp > 0 {
+                        stk_state.set(sp - 1, 1)
+                    }
+                } else {
+                    if sk == 5 && ch == 125 {
+                        p = p + 1
+                        sp = sp - 1
+                        if sp > 0 {
+                            stk_state.set(sp - 1, 1)
+                        }
+                    } else {
+                        if sk == 5 {
+                            if ch != 34 {
+                                fail("JsonError: expected object key string")
+                            }
+                            let ke = json_str_end(s, p)
+                            if ke < 0 {
+                                fail("JsonError: malformed object key string")
+                            }
+                            let key_str Str = __json_decode_str(s, p, ke)
+                            p = json_ws(s, ke)
+                            if p >= n || json_cp(s, p) != 58 {
+                                fail("JsonError: expected ':' after object key")
+                            }
+                            p = json_ws(s, p + 1)
+                            val_key = key_str.move
+                        }
+                        parse_val_here = true
+                        parent_top = top
+                        parent_node = stk_node.get(top)
+                        parent_kind = sk
+                        parent_last = stk_last.get(top)
+                    }
+                }
+            } else {
+                if st == 1 {
+                    if ch == 44 {
+                        p = json_ws(s, p + 1)
+                        if p >= n {
+                            fail("JsonError: unexpected end after ','")
+                        }
+                        if sk == 5 {
+                            let ch2 = json_cp(s, p)
+                            if ch2 != 34 {
+                                fail("JsonError: expected object key string after ','")
+                            }
+                            let ke = json_str_end(s, p)
+                            if ke < 0 {
+                                fail("JsonError: malformed object key string")
+                            }
+                            let key_str Str = __json_decode_str(s, p, ke)
+                            p = json_ws(s, ke)
+                            if p >= n || json_cp(s, p) != 58 {
+                                fail("JsonError: expected ':' after object key")
+                            }
+                            p = json_ws(s, p + 1)
+                            val_key = key_str.move
+                        }
+                        parse_val_here = true
+                        parent_top = top
+                        parent_node = stk_node.get(top)
+                        parent_kind = sk
+                        parent_last = stk_last.get(top)
+                    } else {
+                        if (sk == 4 && ch == 93) || (sk == 5 && ch == 125) {
+                            p = p + 1
+                            sp = sp - 1
+                            if sp > 0 {
+                                stk_state.set(sp - 1, 1)
+                            }
+                        } else {
+                            fail("JsonError: expected ',' or closing bracket")
+                        }
+                    }
+                }
+            }
+        } else {
+            parse_val_here = true
+        }
+
+        if parse_val_here {
+            if p >= n {
+                fail("JsonError: unexpected end of input")
+            }
+            if tags.len() >= 65536 {
+                fail("JsonError: node budget exceeded")
+            }
+            let node_idx = tags.len()
+            let c = json_cp(s, p)
+            var pushed_container = false
+            var ctag = 4
+            if c == 123 || c == 91 {
+                if sp >= 128 {
+                    fail("JsonError: nesting depth exceeded")
+                }
+                if c == 123 { ctag = 5 }
+                tags.push(ctag)
+                ivals.push(0)
+                nvals.push(0)
+                fvals.push(0.0d)
+                svals.push("")
+                kvals.push(val_key.clone())
+                first_child.push(-1)
+                next_sibling.push(-1)
+                p = p + 1
+                pushed_container = true
+            } else {
+                if c == 110 {
+                    if p + 4 <= n && json_cp(s, p + 1) == 117 && json_cp(s, p + 2) == 108 && json_cp(s, p + 3) == 108 {
+                        tags.push(0)
+                        ivals.push(0)
+                        nvals.push(0)
+                        fvals.push(0.0d)
+                        svals.push("")
+                        kvals.push(val_key.clone())
+                        first_child.push(-1)
+                        next_sibling.push(-1)
+                        p = p + 4
+                    } else {
+                        fail("JsonError: invalid literal")
+                    }
+                } else {
+                    if c == 116 {
+                        if p + 4 <= n && json_cp(s, p + 1) == 114 && json_cp(s, p + 2) == 117 && json_cp(s, p + 3) == 101 {
+                            tags.push(1)
+                            ivals.push(1)
+                            nvals.push(0)
+                            fvals.push(0.0d)
+                            svals.push("")
+                            kvals.push(val_key.clone())
+                            first_child.push(-1)
+                            next_sibling.push(-1)
+                            p = p + 4
+                        } else {
+                            fail("JsonError: invalid literal")
+                        }
+                    } else {
+                        if c == 102 {
+                            if p + 5 <= n && json_cp(s, p + 1) == 97 && json_cp(s, p + 2) == 108 && json_cp(s, p + 3) == 115 && json_cp(s, p + 4) == 101 {
+                                tags.push(1)
+                                ivals.push(0)
+                                nvals.push(0)
+                                fvals.push(0.0d)
+                                svals.push("")
+                                kvals.push(val_key.clone())
+                                first_child.push(-1)
+                                next_sibling.push(-1)
+                                p = p + 5
+                            } else {
+                                fail("JsonError: invalid literal")
+                            }
+                        } else {
+                            if c == 34 {
+                                let se = json_str_end(s, p)
+                                if se < 0 {
+                                    fail("JsonError: malformed string")
+                                }
+                                let decoded Str = __json_decode_str(s, p, se)
+                                tags.push(3)
+                                ivals.push(0)
+                                nvals.push(0)
+                                fvals.push(0.0d)
+                                svals.push(decoded.move)
+                                kvals.push(val_key.clone())
+                                first_child.push(-1)
+                                next_sibling.push(-1)
+                                p = se
+                            } else {
+                                let ne = json_num_end(s, p)
+                                if ne < 0 {
+                                    fail("JsonError: malformed number or unexpected token")
+                                }
+                                let exact_i32 = __json_int_fits(s, p, ne)
+                                var iv = 0
+                                var fv = 0.0d
+                                if exact_i32 == 1 {
+                                    iv = __json_int_value(s, p, ne)
+                                    fv = iv.to(f64)
+                                } else {
+                                    fv = __json_parse_f64(s, p, ne)
+                                }
+                                tags.push(2)
+                                ivals.push(exact_i32)
+                                nvals.push(iv)
+                                fvals.push(fv)
+                                svals.push("")
+                                kvals.push(val_key.clone())
+                                first_child.push(-1)
+                                next_sibling.push(-1)
+                                p = ne
+                            }
+                        }
+                    }
+                }
+            }
+            if parent_top < 0 {
+                root = node_idx
+            } else {
+                var replaced = false
+                var next_last = node_idx
+                if parent_kind == 5 {
+                    let wanted Str = val_key.move
+                    var prev = -1
+                    var cur = first_child.get(parent_node)
+                    for cur >= 0 {
+                        if kvals.get(cur).clone() == wanted {
+                            let nxt = next_sibling.get(cur)
+                            next_sibling.set(node_idx, nxt)
+                            if prev < 0 {
+                                first_child.set(parent_node, node_idx)
+                            } else {
+                                next_sibling.set(prev, node_idx)
+                            }
+                            if cur == parent_last {
+                                next_last = node_idx
+                            } else {
+                                next_last = parent_last
+                            }
+                            replaced = true
+                            break
+                        }
+                        prev = cur
+                        cur = next_sibling.get(cur)
+                    }
+                }
+                if !replaced {
+                    if parent_last < 0 {
+                        first_child.set(parent_node, node_idx)
+                    } else {
+                        next_sibling.set(parent_last, node_idx)
+                    }
+                    ivals.set(parent_node, ivals.get(parent_node) + 1)
+                }
+                stk_last.set(parent_top, next_last)
+                stk_state.set(parent_top, 1)
+            }
+            if pushed_container {
+                if sp == stk_node.len() {
+                    stk_node.push(node_idx)
+                    stk_kind.push(ctag)
+                    stk_last.push(-1)
+                    stk_state.push(0)
+                    stk_key.push("")
+                } else {
+                    stk_node.set(sp, node_idx)
+                    stk_kind.set(sp, ctag)
+                    stk_last.set(sp, -1)
+                    stk_state.set(sp, 0)
+                    stk_key.set(sp, "")
+                }
+                sp = sp + 1
+            } else if parent_top < 0 {
+                pending_scalar = true
+                if pending_scalar {
+                    break
+                }
+            }
+        }
+    }
+
+    p = json_ws(s, p)
+    if p != n || root < 0 {
+        fail("JsonError: trailing characters after JSON value")
+    }
+    return JsonValue {
+        root: root,
+        tags: tags,
+        ivals: ivals,
+        nvals: nvals,
+        fvals: fvals,
+        svals: svals,
+        kvals: kvals,
+        first_child: first_child,
+        next_sibling: next_sibling
+    }
+}
+
+pub fn minify(s str) Str {
+    let v = parse_strict(s)
+    return v.minify()
+}
+
+pub fn prettify(s str) Str {
+    let v = parse_strict(s)
+    return v.prettify()
+}
+
+pub fn encode<T has JsonEncodable>(value T) Str {
+    return value.json_encode()
+}
+
+pub fn encode_pretty<T has JsonEncodable>(value T) Str {
+    return prettify(value.json_encode())
+}
+
+fn __json_tag_name(t int) Str {
+    if t == 0 { return "null" }
+    if t == 1 { return "bool" }
+    if t == 2 { return "number" }
+    if t == 3 { return "string" }
+    if t == 4 { return "array" }
+    return "object"
+}
+
+fn __json_find_key_idx(kvals List<Str>, first_child List<int>, next_sibling List<int>, obj int, key str) int {
+    let wanted Str = key.to(Str)
+    var cur = first_child.get(obj)
+    for cur >= 0 {
+        if kvals.get(cur).clone() == wanted {
+            return cur
+        }
+        cur = next_sibling.get(cur)
+    }
+    return -1
+}
+
+fn __json_decode_str(s str, start int, end int) Str {
+    var out Str = ""
+    var run = start + 1
+    var p = start + 1
+    let stop = end - 1
+    for p < stop {
+        let c = json_cp(s, p)
+        if c == 92 {
+            out = out + s.slice(run, p)
+            let e = json_cp(s, p + 1)
+            var step = 2
+            if e == 34 {
+                out = out + "\""
+            } else if e == 92 {
+                out = out + "\\"
+            } else if e == 47 {
+                out = out + "/"
+            } else if e == 98 {
+                out = out + "\u{8}"
+            } else if e == 102 {
+                out = out + "\u{c}"
+            } else if e == 110 {
+                out = out + "\n"
+            } else if e == 114 {
+                out = out + "\r"
+            } else if e == 116 {
+                out = out + "\t"
+            } else if e == 117 {
+                let cp = json_hex4(s, p + 2)
+                if cp < 0 {
+                    fail("JsonError: invalid unicode escape")
+                }
+                if cp >= 55296 && cp <= 56319 {
+                    if p + 11 >= stop + 1 || json_cp(s, p + 6) != 92 || json_cp(s, p + 7) != 117 {
+                        fail("JsonError: unpaired high surrogate")
+                    }
+                    let lo = json_hex4(s, p + 8)
+                    if lo < 56320 || lo > 57343 {
+                        fail("JsonError: invalid low surrogate")
+                    }
+                    let full = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+                    let piece Str = char.from_codepoint(full).to(Str)
+                    out = out + piece
+                    step = 12
+                } else if cp >= 56320 && cp <= 57343 {
+                    fail("JsonError: unpaired low surrogate")
+                } else {
+                    let piece Str = char.from_codepoint(cp).to(Str)
+                    out = out + piece
+                    step = 6
+                }
+            } else {
+                fail("JsonError: invalid string escape")
+            }
+            p = p + step
+            run = p
+        } else {
+            p = p + 1
+        }
+    }
+    out = out + s.slice(run, stop)
+    return out
+}
+
+fn __json_pow10(exp int) f64 {
+    var base = 10.0d
+    var res = 1.0d
+    var e = exp
+    for e > 0 {
+        if (e % 2) == 1 {
+            res = res * base
+        }
+        e = e / 2
+        if e > 0 {
+            base = base * base
+        }
+    }
+    return res
+}
+
+fn __json_parse_f64(s str, start int, end int) f64 {
+    var p = start
+    var neg = false
+    if json_cp(s, p) == 45 {
+        neg = true
+        p = p + 1
+    }
+    var mant = 0.0d
+    var sig = 0
+    var exp_adj = 0
+    var frac_digits = 0
+    var in_frac = false
+    for p < end {
+        let c = json_cp(s, p)
+        if c == 46 {
+            in_frac = true
+            p = p + 1
+        } else if c == 101 || c == 69 {
+            p = p + 1
+            break
+        } else {
+            let dig = c - 48
+            if sig == 0 && dig == 0 {
+                if in_frac {
+                    frac_digits = frac_digits + 1
+                }
+            } else if sig < 18 {
+                mant = mant * 10.0d + dig.to(f64)
+                sig = sig + 1
+                if in_frac {
+                    frac_digits = frac_digits + 1
+                }
+            } else if !in_frac {
+                exp_adj = exp_adj + 1
+            }
+            p = p + 1
+        }
+    }
+    var explicit_exp = 0
+    var exp_neg = false
+    if p < end {
+        let ec = json_cp(s, p)
+        if ec == 45 {
+            exp_neg = true
+            p = p + 1
+        } else if ec == 43 {
+            p = p + 1
+        }
+        for p < end {
+            let dc = json_cp(s, p) - 48
+            if explicit_exp < 100000 {
+                explicit_exp = explicit_exp * 10 + dc
+            }
+            p = p + 1
+        }
+        if exp_neg {
+            explicit_exp = 0 - explicit_exp
+        }
+    }
+    if mant == 0.0d {
+        if neg { return -0.0d }
+        return 0.0d
+    }
+    let exp10 = explicit_exp - frac_digits + exp_adj
+    var val = mant
+    if exp10 > 308 {
+        fail("JsonError: number overflow")
+    } else if exp10 < -324 {
+        val = 0.0d
+    } else if exp10 > 0 {
+        val = mant * __json_pow10(exp10)
+    } else if exp10 < 0 {
+        let neg_e = 0 - exp10
+        if neg_e <= 308 {
+            val = mant / __json_pow10(neg_e)
+        } else {
+            val = (mant / __json_pow10(300)) / __json_pow10(neg_e - 300)
+        }
+    }
+    if (val - val) != 0.0d {
+        fail("JsonError: number overflow")
+    }
+    if neg {
+        return 0.0d - val
+    }
+    return val
+}
+
+fn __json_extract(
+    src_tags List<int>,
+    src_ivals List<int>,
+    src_nvals List<int>,
+    src_fvals List<f64>,
+    src_svals List<Str>,
+    src_kvals List<Str>,
+    src_first List<int>,
+    src_next List<int>,
+    start_node int
+) JsonValue {
+    var tags = List<int>.new()
+    var ivals = List<int>.new()
+    var nvals = List<int>.new()
+    var fvals = List<f64>.new()
+    var svals = List<Str>.new()
+    var kvals = List<Str>.new()
+    var first_child = List<int>.new()
+    var next_sibling = List<int>.new()
+
+    tags.push(src_tags.get(start_node))
+    ivals.push(src_ivals.get(start_node))
+    nvals.push(src_nvals.get(start_node))
+    fvals.push(src_fvals.get(start_node))
+    svals.push(src_svals.get(start_node).clone())
+    kvals.push("")
+    first_child.push(-1)
+    next_sibling.push(-1)
+
+    var work_src = List<int>.new()
+    var work_dst = List<int>.new()
+    var qh = 0
+    let st = src_tags.get(start_node)
+    if st == 4 || st == 5 {
+        work_src.push(start_node)
+        work_dst.push(0)
+    }
+    for qh < work_src.len() {
+        let sc = work_src.get(qh)
+        let dc = work_dst.get(qh)
+        qh = qh + 1
+        var last = -1
+        var cur = src_first.get(sc)
+        for cur >= 0 {
+            let ni = tags.len()
+            let ct = src_tags.get(cur)
+            tags.push(ct)
+            ivals.push(src_ivals.get(cur))
+            nvals.push(src_nvals.get(cur))
+            fvals.push(src_fvals.get(cur))
+            svals.push(src_svals.get(cur).clone())
+            kvals.push(src_kvals.get(cur).clone())
+            first_child.push(-1)
+            next_sibling.push(-1)
+            if last < 0 {
+                first_child.set(dc, ni)
+            } else {
+                next_sibling.set(last, ni)
+            }
+            last = ni
+            if ct == 4 || ct == 5 {
+                work_src.push(cur)
+                work_dst.push(ni)
+            }
+            cur = src_next.get(cur)
+        }
+    }
+
+    return JsonValue {
+        root: 0,
+        tags: tags,
+        ivals: ivals,
+        nvals: nvals,
+        fvals: fvals,
+        svals: svals,
+        kvals: kvals,
+        first_child: first_child,
+        next_sibling: next_sibling
+    }
+}
+
+fn __json_f64_str(x f64) Str {
+    if (x - x) != 0.0d {
+        fail("JsonError: non-finite float")
+    }
+    return x.to_str()
+}
+
+fn __json_indent(depth int) Str {
+    var out Str = ""
+    var i = 0
+    for i < depth {
+        out = out + "  "
+        i = i + 1
+    }
+    return out
+}
+
+fn __json_scalar_str(
+    node int,
+    tags List<int>,
+    ivals List<int>,
+    nvals List<int>,
+    fvals List<f64>,
+    svals List<Str>
+) Str {
+    let t = tags.get(node)
+    if t == 0 {
+        return "null"
+    }
+    if t == 1 {
+        if ivals.get(node) != 0 { return "true" }
+        return "false"
+    }
+    if t == 2 {
+        if ivals.get(node) == 1 {
+            return json_int_str(nvals.get(node))
+        }
+        return __json_f64_str(fvals.get(node))
+    }
+    return json_str(svals.get(node).clone())
+}
+
+fn __json_serialize(
+    root int,
+    tags List<int>,
+    ivals List<int>,
+    nvals List<int>,
+    fvals List<f64>,
+    svals List<Str>,
+    kvals List<Str>,
+    first_child List<int>,
+    next_sibling List<int>,
+    pretty bool
+) Str {
+    let rt = tags.get(root)
+    if rt != 4 && rt != 5 {
+        return __json_scalar_str(root, tags, ivals, nvals, fvals, svals)
+    }
+    if first_child.get(root) < 0 {
+        if rt == 4 { return "[]" }
+        return "{}"
+    }
+    var out Str = if rt == 4 { "[" } else { "{" }
+    var sp = 0
+    var stk_node = List<int>.new()
+    var stk_child = List<int>.new()
+    var stk_first = List<int>.new()
+    stk_node.push(root)
+    stk_child.push(first_child.get(root))
+    stk_first.push(1)
+    sp = 1
+    for sp > 0 {
+        let top = sp - 1
+        let node = stk_node.get(top)
+        let child = stk_child.get(top)
+        if child < 0 {
+            let nt = tags.get(node)
+            sp = sp - 1
+            if pretty {
+                out = out + "\n" + __json_indent(sp)
+            }
+            if nt == 4 {
+                out = out + "]"
+            } else {
+                out = out + "}"
+            }
+        } else {
+            if stk_first.get(top) == 0 {
+                out = out + ","
+            } else {
+                stk_first.set(top, 0)
+            }
+            if pretty {
+                out = out + "\n" + __json_indent(sp)
+            }
+            if tags.get(node) == 5 {
+                if pretty {
+                    out = out + json_str(kvals.get(child).clone()) + ": "
+                } else {
+                    out = out + json_str(kvals.get(child).clone()) + ":"
+                }
+            }
+            stk_child.set(top, next_sibling.get(child))
+            let ct = tags.get(child)
+            if (ct == 4 || ct == 5) && first_child.get(child) >= 0 {
+                if ct == 4 {
+                    out = out + "["
+                } else {
+                    out = out + "{"
+                }
+                if sp == stk_node.len() {
+                    stk_node.push(child)
+                    stk_child.push(first_child.get(child))
+                    stk_first.push(1)
+                } else {
+                    stk_node.set(sp, child)
+                    stk_child.set(sp, first_child.get(child))
+                    stk_first.set(sp, 1)
+                }
+                sp = sp + 1
+            } else if ct == 4 {
+                out = out + "[]"
+            } else if ct == 5 {
+                out = out + "{}"
+            } else {
+                out = out + __json_scalar_str(child, tags, ivals, nvals, fvals, svals)
+            }
+        }
+    }
+    return out
+}
+
+pub fn __std_json_bool_str(v bool) Str {
+    if v { return "true" }
+    return "false"
+}
+
+pub fn __std_json_f64_str(x f64) Str {
+    return __json_f64_str(x)
+}
+
+pub fn __std_json_f32_str(x f32) Str {
+    return __json_f64_str(x.as(f64))
+}

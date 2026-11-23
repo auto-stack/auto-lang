@@ -685,6 +685,41 @@ fn for_each_stmt_mut(s: &mut Stmt, f: &mut impl FnMut(&mut Expr)) {
             for_each_expr_mut(iter, f);
             for_each_block_mut(body, f);
         }
+        Stmt::AggIsMatch {
+            scrutinee, arms, ..
+        } => {
+            for_each_expr_mut(scrutinee, f);
+            for arm in arms.iter_mut() {
+                if let Some(g) = &mut arm.guard {
+                    for_each_expr_mut(g, f);
+                }
+                match &mut arm.body {
+                    ace_core::source::ast::AggArmBody::Expr(e) => for_each_expr_mut(e, f),
+                    ace_core::source::ast::AggArmBody::Block(b) => for_each_block_mut(b, f),
+                }
+            }
+        }
+        Stmt::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
+            for_each_block_mut(body, f);
+            if let Some(c) = catch {
+                for_each_block_mut(&mut c.body, f);
+            }
+            if let Some(fin) = finally {
+                for_each_block_mut(fin, f);
+            }
+        }
+        Stmt::With { expr, body, .. } => {
+            for_each_expr_mut(expr, f);
+            for_each_block_mut(body, f);
+        }
+        Stmt::Yield { value, .. } => {
+            for_each_expr_mut(value, f);
+        }
         _ => {}
     }
 }
@@ -1180,6 +1215,7 @@ pub(crate) fn instantiate_auto_program_scoped(
             program,
             &record_templates,
         )?);
+        let _ = ace_core::source::json_encode_synth::synthesize_json_encodable_methods(program)?;
         for item in &mut program.items {
             if let Item::Type(record) = item {
                 register_auto_methods(

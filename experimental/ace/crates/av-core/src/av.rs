@@ -8567,6 +8567,7 @@ fn dispatch_with_host<V: ModuleView>(
                         Value::I64(value) => value.to_string().into_bytes(),
                         Value::U64(value) => value.to_string().into_bytes(),
                         Value::F32(value) => value.to_string().into_bytes(),
+                        Value::F64(value) => fmt_console_f64(value).into_bytes(),
                         // PLAN-117（round-36 ②）：json 值链的 Dyn 标量显示
                         //（`p.sort_key.str()`——成员读的 Dyn 标量落文本）。
                         Value::Dyn(d) => match d.as_value() {

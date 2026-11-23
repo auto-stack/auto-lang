@@ -1,0 +1,234 @@
+# PLAN-1124 — Dynamic JSON, Generic Schema Encoding, and RFC-4180 CSV (`std.json` / `std.csv`)
+
+Public language corpus coverage for ordinary Auto AV stdlib data formats:
+- Dynamic `JsonValue` parsing (`parse`, `parse_strict`, `is_valid`, `minify`, `prettify`), type inspection, insertion-ordered `keys()` with last-member-wins duplicate-key deduplication, typed extractors, and catchable errors;
+- Schema-driven `spec JsonEncodable` / `encode` / `encode_pretty` over primitives, wide numeric types, optionals, lists, nested records, empty records, and custom overrides;
+- Pure-Auto RFC-4180 `std.csv` parsing/encoding (`csv_parse`, `csv_encode`, custom delimiters, `csv_parse_rows`, `csv_encode_rows`, `std.encoding.csv` compatibility) including quoted commas, escaped quotes, embedded newlines, CRLF, and empty trailing fields.
+
+## Case: json-dynamic-tree
+id: "av.parity.1124.json-dynamic-tree"
+tags: ["av-language-parity", "plan-1124", "stdlib", "json"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let raw = "{\"n\":null,\"a\":[1.5,\"中\",true,false,-42,{}],\"k\":1,\"k\":2,\"u\":\"hi\\n\\\"q\\\"\\u0041\"}"
+    if !is_valid(raw) { return 1 }
+    if is_valid("{bad") { return 2 }
+    if is_valid("[1,]") { return 3 }
+
+    let bad = parse("{bad")
+    is bad {
+        Some(_) -> { return 4 }
+        None -> {}
+    }
+
+    let v = parse_strict(raw)
+    if !(v.is_object()) || v.kind() != "object" || v.type_of() != "object" { return 5 }
+    if !(v.has_key("n")) || v.has_key("missing") { return 6 }
+
+    let keys = v.keys()
+    if keys.len() != 4 { return 7 }
+    if keys.get(0).clone() != "n" || keys.get(1).clone() != "a" || keys.get(2).clone() != "k" || keys.get(3).clone() != "u" { return 8 }
+    if v.get_int("k") != 2 { return 9 }
+    if v.get_str("u") != "hi\n\"q\"A" { return 10 }
+
+    let arr = v.get("a") ?? parse_strict("[]")
+    if arr.len() != 6 { return 11 }
+    if arr.at(0).as_f64() != 1.5d { return 12 }
+    if arr.at(1).as_str() != "中" { return 13 }
+    if !(arr.at(2).as_bool()) || arr.at(3).as_bool() { return 14 }
+    if arr.at(4).as_int() != -42 || !(arr.at(5).is_object()) { return 15 }
+
+    let pretty = prettify("{\"b\":2,\"a\":[1,true]}")
+    if minify(pretty) != "{\"b\":2,\"a\":[1,true]}" { return 16 }
+
+    var caught = 0
+    try {
+        let _x = v.get_str("n")
+    } catch e {
+        if e.contains("TypeError") { caught = caught + 1 }
+    }
+    try {
+        let _y = v.get_int("missing")
+    } catch e {
+        if e.contains("JsonError") { caught = caught + 1 }
+    }
+    if caught != 2 { return 17 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: json-encodable-schema
+id: "av.parity.1124.json-encodable-schema"
+tags: ["av-language-parity", "plan-1124", "stdlib", "json"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+type Empty as JsonEncodable {}
+
+type Custom as JsonEncodable {
+    x int
+    fn json_encode() Str {
+        return "{\"custom\":" + .x.to(Str) + "}"
+    }
+}
+
+type Tag as JsonEncodable {
+    name Str
+    rank u32
+}
+
+type Record as JsonEncodable {
+    id i64
+    score f64
+    ratio f32
+    ok bool
+    note ?Str
+    tags List<Tag>
+}
+
+fn main() int {
+    if encode(Empty()) != "{}" { return 1 }
+    if encode(Custom { x: 7 }) != "{\"custom\":7}" { return 2 }
+
+    var ts = List<Tag>.new()
+    ts.push(Tag { name: "a\"b", rank: 9u32 })
+    let rec = Record {
+        id: -123456i64,
+        score: 2.25d,
+        ratio: 1.5f32,
+        ok: true,
+        note: None,
+        tags: ts.move
+    }
+    let raw = encode(rec)
+    let doc = parse_strict(raw)
+    if doc.get_int("id") != -123456 { return 3 }
+    if doc.get_f64("score") != 2.25d { return 4 }
+    if doc.get_f64("ratio") != 1.5d { return 5 }
+    if !doc.get_bool("ok") { return 6 }
+    let note_node = doc.get("note") ?? parse_strict("1")
+    if !note_node.is_null() { return 7 }
+    let dtags = doc.get("tags") ?? parse_strict("[]")
+    if dtags.len() != 1 { return 8 }
+    if dtags.at(0).get_str("name") != "a\"b" { return 9 }
+    if dtags.at(0).get_int("rank") != 9 { return 10 }
+    if encode(doc) != raw { return 11 }
+    if !(encode_pretty(rec).contains("\n")) { return 12 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: json-csv-packages
+id: "av.parity.1124.json-csv-packages"
+tags: ["av-language-parity", "plan-1124", "stdlib", "packages"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+use model.Item
+use std.json: encode, parse_strict
+use std.csv: csv_encode, csv_parse_with_delimiter
+use std.encoding.csv.csv_parse
+
+fn main() int {
+    let it = Item { code: "sku-9", qty: 3, price: 4.5d }
+    let doc = parse_strict(encode(it))
+    if doc.get_str("code") != "sku-9" || doc.get_int("qty") != 3 { return 1 }
+
+    let j = csv_parse("k,v\nx,\"1,2\"")
+    if csv_encode(j) != "k,v\nx,\"1,2\"" { return 2 }
+    let tsv = csv_parse_with_delimiter("a\tb\n1\t2", "\t")
+    if tsv != "[[\"a\",\"b\"],[\"1\",\"2\"]]" { return 3 }
+    return 42
+}
+```
+
+#### model.at
+
+```auto
+use std.json.JsonEncodable
+
+pub type Item as JsonEncodable {
+    code Str
+    qty int
+    price f64
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: csv-rfc4180
+id: "av.parity.1124.csv-rfc4180"
+tags: ["av-language-parity", "plan-1124", "stdlib", "csv"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+fn main() int {
+    let raw = "a,,\"b,c\"\r\n\"x\"\"y\",\"l1\nl2\","
+    let rows = csv_parse_rows(raw)
+    if rows.len() != 2 || rows.get(0).len() != 3 { return 1 }
+    if rows.get(0).get(0).clone() != "a" || rows.get(0).get(1).clone() != "" || rows.get(0).get(2).clone() != "b,c" { return 2 }
+    if rows.get(1).get(0).clone() != "x\"y" || rows.get(1).get(1).clone() != "l1\nl2" || rows.get(1).get(2).clone() != "" { return 3 }
+
+    let encoded = csv_encode_rows(rows)
+    let json_text = csv_parse(encoded)
+    if csv_encode(json_text) != encoded { return 4 }
+
+    let semi_json = csv_parse_with_delimiter("h1;h2\n\"v;1\";", ";")
+    if semi_json != "[[\"h1\",\"h2\"],[\"v;1\",\"\"]]" { return 5 }
+    if csv_encode_with_delimiter(semi_json, ";") != "h1;h2\n\"v;1\";" { return 6 }
+
+    var caught = 0
+    try {
+        let _e1 = csv_parse("\"unclosed")
+    } catch e {
+        if e.contains("CsvError") { caught = caught + 1 }
+    }
+    try {
+        let _e2 = csv_parse_with_delimiter("a,b", "\"")
+    } catch e {
+        if e.contains("CsvError") { caught = caught + 1 }
+    }
+    if caught != 2 { return 7 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42

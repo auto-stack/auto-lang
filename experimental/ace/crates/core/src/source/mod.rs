@@ -43,6 +43,7 @@ pub mod field_manifest;
 pub mod fstr;
 /// PLAN-1080：普通 Auto 面无类型签名补全遍（parse 与 resolve 之间）。
 pub(crate) mod infer;
+pub mod json_encode_synth;
 #[cfg(any(test, feature = "legacy-syntax-oracle"))]
 pub mod lexer;
 pub mod modules;

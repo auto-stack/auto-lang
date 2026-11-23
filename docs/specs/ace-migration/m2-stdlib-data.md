@@ -1,6 +1,6 @@
-# ACE M2 标准库数据域（PLAN-975）
+# ACE M2 标准库数据域（PLAN-975 / PLAN-1124）
 
-来源：[PLAN-975](../../plans/archive/975-ace-m2-stdlib-data.md)（r10 合同，M2-A 终态交付）。本文件沉淀**已验证**的 M2-A 规范与实现边界。
+来源：[PLAN-975](../../plans/archive/975-ace-m2-stdlib-data.md)（r10 合同，M2-A 终态交付）、[PLAN-1124](../../plans/1124-av-stdlib-json-and-csv.md)（r1 合同，M2-B 动态 JSON、`JsonEncodable` 泛型编码与纯 Auto CSV）。本文件沉淀**已验证**的 M2 数据域规范与实现边界。
 
 ## B1 原语切片：`char.to(Str)` 物化（T-B1-D 沉淀，2026-11-16）
 
@@ -65,7 +65,26 @@ staleness）——设计如此。
 
 - `json975_v_load_module_closure` 与 `db975_sqlite_at_packages_module_face` 验证跨模块 `json_cp` `source.module-private` 拒绝、`json.at`/`redis.at`/`sqlite.at` `pub`-stripped 镜面 RED、伪造 `std::json` `ace.stdlib-reserved` 拒绝、`PackageStore::prepare`/`restore` 篡改拒与私有函数体修改移动 `input_hash`。
 
+## M2-B 增量交付：动态 `JsonValue`、模式驱动 `encode<T>` 与纯 Auto CSV（PLAN-1124，2026-11-23）
+
+### 1. 动态 JSON 树与格式化（`stdlib/ace/std/json_auto.at`）
+
+在不改写冻结的 PLAN-975 原语模块 `stdlib/ace/std/json.at` 字节的前提下，`json_auto.at` 与之组合为普通 Auto AV（单文件与 `packages` 跨模块）提供完整的动态 JSON 树：
+
+- **扁平 LCRS 树与入口**：`JsonValue`（实现 `JsonEncodable`）、`parse(s str) ?JsonValue`（失败返回 `None`）、`parse_strict(s str) JsonValue`（严格抛 `JsonError: ...`）、`is_valid(s str) bool`、`minify(s str) Str`、`prettify(s str) Str`。
+- **预算与数值精度**：显式冻结上限 `1 MiB`（`1_048_576` B）输入、`65536` 节点、`128` 层嵌套（越界抛 `JsonError` 且局部 arena 零泄漏）；纯整数字面量在 `i32` 范围内保留精确整型槽位，超出或含小数/指数解析为 `f64`；序列化时遇到非有限浮点抛出 `JsonError: non-finite float`。
+- **去重与访问器**：对象 `keys()` 保持插入顺序，重复键采用 **后成员胜出（last-member-wins）** 原地覆写值且不重复键名；提供 `.kind()` / `.type_of()`、`.is_null()`..`.is_object()`、`.len()`、`.has_key(key)`、`.get(key) ?JsonValue`、`.get_at(i) ?JsonValue`、`.at(i) JsonValue`、`.get_str`/`.get_int`/`.get_f64`/`.get_bool`、`.as_bool`/`.as_int`/`.as_number`/`.as_f64`/`.as_string`/`.as_str`/`.as_array`（类型错抛 `TypeError`，缺键/越界抛 `JsonError`）。
+
+### 2. 模式驱动泛型 JSON 编码（`spec JsonEncodable` / `json_encode_synth.rs`）
+
+- **契约与推导**：`spec JsonEncodable { fn json_encode() Str }` 搭配泛型入口 `encode<T has JsonEncodable>(v T) Str`、`encode_pretty<T has JsonEncodable>(v T) Str`。未显式声明 `fn json_encode() Str` 的 `type R as JsonEncodable` 由编译器从 `TypeItem.fields` 声明序自动合成分段编码（含跨模块 `pub type` 导出与字段重命名自动反映）；用户显式 `fn json_encode() Str` 优先保留。
+- **字段域与负控**：支持 `Str`/`str`、全宽整数（`i8`/`u8`/`i32`/`u32`/`i64`/`u64`）、`f32`/`f64`、`bool`、`?T`（`null`/内值）、`List<T>`（含 `List<Record>` 的元素视图字段投影）、嵌套 `JsonEncodable` 记录与空记录 `{}`。未实现 `JsonEncodable` 的记录被泛型边界拒绝（`source.instances-bound`）；不支持字段（`char`、嵌套未合规记录、循环引用、嵌套 `List<List<...>>`/`List<?T>`）在编译期被拒绝并诊断 `source.json-encode-unsupported`；伪造 `package std` 声明被 `ace.stdlib-reserved` 拒绝。
+
+### 3. 纯 Auto RFC-4180 CSV（`stdlib/ace/std/csv.at`）
+
+- **入口与兼容别名**：纯 Auto 实现（无 `use.c`/FFI），自动或经 `use std.csv` / `use std.encoding.csv` 加载；导出 `csv_parse`/`csv_parse_with_delimiter`（返回 `List<List<Str>>` 的 JSON 二维数组文本）、`csv_encode`/`csv_encode_with_delimiter`、`csv_parse_rows`/`csv_encode_rows`（直接操作 `List<List<Str>>`）。
+- **语法与错误边界**：严格遵循 RFC-4180（引号字段内逗号、`""` 转义、`""` 跨行换行、`\r\n` 与 `\n` 行尾、尾随空字段）；自定义单字符分隔符（如 `;`、`"\t"`）拒绝空串、引号、换行及多字节分隔符（`CsvError`）；未闭合引号与字段内裸引号抛出可捕获 `CsvError` 且 arena 零泄漏。
+
 ## 具名边界与跨 Plan 承接（不冒已支持）
 
-- **M2-B / 后续扩展边界**：动态 `JsonValue` AST 对象（`keys`/`as_array`/`as_number`/`prettify`/`minify`）、泛型 `encode[T]`/`encode_pretty[T]` 与按字段名/类型遍历反射（`966` A 切片仅提供字段数与 `has_field`）；`stdlib/auto/encoding/csv.at` 仍为未迁移占位（`KNOWN-DEBT-AND-RISKS.md`）。
-- **外部归属边界**：SQLite 宿主磁盘文件持久化/崩溃恢复归 **`PLAN-973`/`PLAN-1064`**；`packages` 跨模块 `p967_*` provider 执行装配归 **`PLAN-1043`**；schema 迁移策略归 **`PLAN-986`**；Linux 实跑 `L-01..L-05` 归 **`PLAN-1063`**（`deferred-required / NOT_RUN`，不在 Windows 跑）。
+- **外部归属边界**：SQLite 宿主磁盘文件持久化/崩溃恢复归 **`PLAN-973`/`PLAN-1064`**；`packages` 跨模块 `p967_*` provider 执行装配归 **`PLAN-1043`**；schema 迁移策略归 **`PLAN-986`**；Linux 实跑 `L-01..L-05` 归 **`PLAN-1063`**（`deferred-required / NOT_RUN`，不在 Windows 跑）；`KNOWN-DEBT-AND-RISKS.md` 记录跨仓待办，旧 `stdlib/auto/encoding/csv.at` 注释占位不参与 AV 加载。

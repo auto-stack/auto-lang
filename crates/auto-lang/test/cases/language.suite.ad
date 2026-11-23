@@ -35,5 +35,6 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/functions/source-change.case.ad",
   "language/errors/uncaught.case.ad",
   "language/domain/node-values.case.ad",
+  "language/stdlib/json-csv.case.ad",
 ] }
 ```

@@ -172,7 +172,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             handled_errors = trace.handled_language_errors;
             runtime_calls = trace.call_frame_commits;
             script_sources = 0;
-            let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
+            let locate = |span: SpanInfo| {
+                (span.start <= span.end && (span.end as usize) <= source.len())
+                    .then(|| json!({"path":path,"start":span.start,"end":span.end}))
+            };
             if let Some(error) = observed_language_error(&trace, locate) {
                 step["language_error"] = error;
             }
@@ -193,7 +196,10 @@ pub fn serve(request: &Json) -> Result<Json, String> {
             handled_errors = trace.handled_language_errors;
             runtime_calls = trace.call_frame_commits;
             script_sources = u64::from(mode == SourceMode::Script);
-            let locate = |span: SpanInfo| json!({"path":path,"start":span.start,"end":span.end});
+            let locate = |span: SpanInfo| {
+                (span.start <= span.end && (span.end as usize) <= source.len())
+                    .then(|| json!({"path":path,"start":span.start,"end":span.end}))
+            };
             if let Some(error) = observed_language_error(&trace, locate) {
                 step["language_error"] = error;
             }
@@ -512,7 +518,10 @@ struct ProjectObservation {
     language_error: Option<Json>,
 }
 
-fn observed_language_error(trace: &ExecTrace, locate: impl Fn(SpanInfo) -> Json) -> Option<Json> {
+fn observed_language_error(
+    trace: &ExecTrace,
+    locate: impl Fn(SpanInfo) -> Option<Json>,
+) -> Option<Json> {
     let origin = trace.last_language_error?;
     let kind = match origin.kind {
         LanguageErrorKind::Explicit => "explicit".to_string(),
@@ -520,7 +529,7 @@ fn observed_language_error(trace: &ExecTrace, locate: impl Fn(SpanInfo) -> Json)
         LanguageErrorKind::Http => "http.client".to_string(),
         LanguageErrorKind::Python(class) => format!("python.{class}"),
     };
-    Some(json!({"kind":kind,"span":origin.span.map(locate)}))
+    Some(json!({"kind":kind,"span":origin.span.and_then(locate)}))
 }
 
 fn run_project(
@@ -663,7 +672,21 @@ fn run_project(
                 })
             })
             .count() as u64,
-        language_error: observed_language_error(&trace, locate),
+        language_error: observed_language_error(&trace, |span| {
+            let located = compiled.bound.locate(Diagnostic::new(
+                ace_core::atom_text::Stage::Text,
+                "",
+                "",
+                ace_core::atom_text::Span {
+                    start: span.start as usize,
+                    end: span.end as usize,
+                },
+            ));
+            paths.get(&located.module).map(|path| {
+                let lspan = located.diagnostic.span;
+                json!({"path": path, "start": lspan.start, "end": lspan.end})
+            })
+        }),
     })
 }
 

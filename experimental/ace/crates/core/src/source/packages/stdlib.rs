@@ -15,7 +15,20 @@ const TEXT_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/text
 const LIST_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/list.at");
 const AGE_MATH_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/age/math.at");
 const JSON_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/json.at");
+const JSON_AUTO_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/json_auto.at");
+const CSV_SOURCE: &str = include_str!("../../../../../../../stdlib/ace/std/csv.at");
 pub(super) const AGE_MATH_MODULE: &str = "std::age_math";
+
+pub(crate) fn auto_json_source() -> &'static str {
+    static COMBINED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    COMBINED
+        .get_or_init(|| format!("{JSON_SOURCE}\n{JSON_AUTO_SOURCE}"))
+        .as_str()
+}
+
+pub(crate) fn auto_csv_source() -> &'static str {
+    CSV_SOURCE
+}
 
 pub(super) fn age_math_input() -> PackageModuleInput {
     PackageModuleInput {
@@ -49,6 +62,36 @@ pub(super) fn is_age_math_input(input: &PackageModuleInput) -> bool {
 pub(crate) fn is_frozen_age_json_module(input: &PackageModuleInput) -> bool {
     input.package == STDLIB_PACKAGE && input.id == "json" && input.version == STDLIB_VERSION
         && input.source == JSON_SOURCE && input.provider.is_none()
+}
+
+/// Ordinary Auto (`Faces::Auto`) source-owned JSON module composing `json.at` primitives and `json_auto.at`.
+pub(crate) fn auto_json_input() -> PackageModuleInput {
+    PackageModuleInput {
+        package: STDLIB_PACKAGE.into(),
+        version: STDLIB_VERSION.into(),
+        id: "json".into(),
+        source: auto_json_source().into(),
+        provider: None,
+    }
+}
+
+/// Ordinary Auto (`Faces::Auto`) source-owned RFC-4180 CSV module (`stdlib/ace/std/csv.at`).
+pub(crate) fn auto_csv_input() -> PackageModuleInput {
+    PackageModuleInput {
+        package: STDLIB_PACKAGE.into(),
+        version: STDLIB_VERSION.into(),
+        id: "csv".into(),
+        source: auto_csv_source().into(),
+        provider: None,
+    }
+}
+
+pub(crate) fn is_frozen_auto_std_module(input: &PackageModuleInput) -> bool {
+    input.package == STDLIB_PACKAGE
+        && input.version == STDLIB_VERSION
+        && input.provider.is_none()
+        && (matches!(input.id.as_str(), "json" if input.source == auto_json_source())
+            || matches!(input.id.as_str(), "csv" if input.source == CSV_SOURCE))
 }
 
 /// 冻结 stdlib 输入（math/text 两模块，plain packages 面的原契约——
@@ -282,5 +325,55 @@ mod tests {
         assert!(unwired_reason("std::math", "square").is_none());
         assert!(unwired_reason("std::text", "min").is_none());
         assert!(unwired_reason("app::math", "min").is_none());
+    }
+
+    #[test]
+    fn auto_json_and_csv_inputs_match_frozen_sources() {
+        let json = auto_json_input();
+        let csv = auto_csv_input();
+        assert!(is_frozen_auto_std_module(&json));
+        assert!(is_frozen_auto_std_module(&csv));
+        assert!(!is_frozen_auto_std_module(&age_json_input()));
+
+        let mut tampered_json = json;
+        tampered_json.source.push_str("\npub fn extra() int { return 0 }\n");
+        assert!(!is_frozen_auto_std_module(&tampered_json));
+
+        let mut tampered_csv = csv;
+        tampered_csv.version = "2.0.0".into();
+        assert!(!is_frozen_auto_std_module(&tampered_csv));
+    }
+
+    #[test]
+    fn auto_json_and_csv_parse_cleanly_in_packages_and_single_file_profiles() {
+        let budget = crate::source::cst::FrontBudget::WORK_OWNED_64MIB;
+        if let Err(ds) = crate::source::cst::parse_packages_front_auto(auto_json_source(), budget) {
+            let d = &ds[0];
+            let s = d.span.start.saturating_sub(60);
+            let e = (d.span.end + 60).min(auto_json_source().len());
+            panic!(
+                "packages auto_json parse failed: {ds:?}\naround span: {:?}",
+                &auto_json_source()[s..e]
+            );
+        }
+        crate::source::cst::parse_packages_front_auto(auto_csv_source(), budget)
+            .unwrap_or_else(|ds| panic!("packages auto_csv parse failed: {ds:?}"));
+
+        let mut single_json = String::new();
+        for line in auto_json_source().lines() {
+            single_json.push_str(line.strip_prefix("pub ").unwrap_or(line));
+            single_json.push('\n');
+        }
+        if let Err(d) = crate::source::parser::parse_program_with(
+            &single_json,
+            crate::source::SourceProfile::Auto,
+        ) {
+            let s = d.span.start.saturating_sub(60);
+            let e = (d.span.end + 60).min(single_json.len());
+            panic!(
+                "single auto_json failed: {d:?}\naround span: {:?}",
+                &single_json[s..e]
+            );
+        }
     }
 }

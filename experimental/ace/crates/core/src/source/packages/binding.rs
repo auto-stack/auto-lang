@@ -281,6 +281,8 @@ enum Target {
     /// PLAN-981（IF-981-ORIGINAL）：导入的是 AGE **node 声明**（领域引用目标）。
     /// 带稳定符号，但**不**进入值/类型命名空间。
     Node(String),
+    /// PLAN-1124: spec declaration import (e.g., `use std.json.JsonEncodable`).
+    Spec,
 }
 
 struct BoundImport {
@@ -550,9 +552,11 @@ fn bind_packages_face_with(
         }
         // PLAN-945：包名 `std` 保留给冻结公共标准库切片。
         let age_json = face == Faces::Age && super::stdlib::is_frozen_age_json_module(input);
+        let auto_std = face == Faces::Auto && super::stdlib::is_frozen_auto_std_module(input);
         if input.package == super::stdlib::STDLIB_PACKAGE
             && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
             && !age_json
+            && !auto_std
         {
             return Err(fail(
                 &key,
@@ -681,6 +685,58 @@ fn bind_packages_face_with(
             })?;
         units.insert(key, syntax);
         augmented.push(json);
+    }
+    if face == Faces::Auto
+        && !units.contains_key("std::json")
+        && units.values().any(|unit| {
+            unit.imports.iter().any(|import| {
+                matches!(import.path.as_slice(), [pkg, mod_name, ..] if pkg == "std" && mod_name == "json")
+            }) || unit.program.items.iter().any(|item| {
+                matches!(
+                    item,
+                    Item::Type(t) if t.conforms.iter().any(|c| c.name.name == "JsonEncodable")
+                )
+            })
+        })
+    {
+        let json = super::stdlib::auto_json_input();
+        let key = unit_key(&json.package, &json.id);
+        total = total
+            .checked_add(json.source.len())
+            .filter(|total| *total <= budget.work_bytes)
+            .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
+        let syntax = crate::source::cst::parse_packages_front_auto(&json.source, budget).map_err(
+            |mut diagnostics| PackageDiagnostic {
+                module: key.clone(),
+                diagnostic: diagnostics.remove(0),
+            },
+        )?;
+        units.insert(key, syntax);
+        augmented.push(json);
+    }
+    if face == Faces::Auto
+        && !units.contains_key("std::csv")
+        && units.values().any(|unit| {
+            unit.imports.iter().any(|import| {
+                matches!(import.path.as_slice(), [pkg, mod_name, ..] if pkg == "std" && mod_name == "csv")
+                    || matches!(import.path.as_slice(), [pkg, s1, s2, ..] if pkg == "std" && s1 == "encoding" && s2 == "csv")
+            })
+        })
+    {
+        let csv = super::stdlib::auto_csv_input();
+        let key = unit_key(&csv.package, &csv.id);
+        let _ = total
+            .checked_add(csv.source.len())
+            .filter(|total| *total <= budget.work_bytes)
+            .ok_or_else(|| fail(&key, "source.resource", "module input byte budget", zero))?;
+        let syntax = crate::source::cst::parse_packages_front_auto(&csv.source, budget).map_err(
+            |mut diagnostics| PackageDiagnostic {
+                module: key.clone(),
+                diagnostic: diagnostics.remove(0),
+            },
+        )?;
+        units.insert(key, syntax);
+        augmented.push(csv);
     }
     let inputs = if augmented.is_empty() {
         inputs
@@ -1008,9 +1064,11 @@ fn bind_package_syntax_inner(
         // PLAN-972（T-02）：装配 aggregates 线另认装配标准库集的冻结身份
         //（同包名 lane 分离；仓外来源两线都不认）。
         let age_json = face == Faces::Age && super::stdlib::is_frozen_age_json_module(input);
+        let auto_std = face == Faces::Auto && super::stdlib::is_frozen_auto_std_module(input);
         if input.package == super::stdlib::STDLIB_PACKAGE
             && !super::stdlib::is_frozen_std_module(&input.id, &input.version, &input.source)
             && !age_json
+            && !auto_std
             && !(aggregates
                 && in_face
                 && super::stdlib::is_frozen_std_assembled_module(
@@ -1256,6 +1314,13 @@ fn bind_package_syntax_inner(
             let (mut target_key, item) = match path.len() {
                 2 => (unit_key(owner_pkg, &path[0]), path[1].clone()),
                 3 => (unit_key(&path[0], &path[1]), path[2].clone()),
+                4 if face == Faces::Auto
+                    && path[0] == super::stdlib::STDLIB_PACKAGE
+                    && path[1] == "encoding"
+                    && path[2] == "csv" =>
+                {
+                    (unit_key(&path[0], "csv"), path[3].clone())
+                }
                 _ => {
                     return Err(fail(
                         owner,
@@ -1373,6 +1438,9 @@ fn bind_package_syntax_inner(
             {
                 return Ok(Target::Node(age_node_symbol(&cursor.0, &cursor.1)));
             }
+            if face == Faces::Auto && cursor.0 == "std::json" && cursor.1 == "JsonEncodable" {
+                return Ok(Target::Spec);
+            }
             if d.stores.contains_key(&cursor.1) {
                 return Err(fail(
                     owner,
@@ -1463,6 +1531,31 @@ fn bind_package_syntax_inner(
                 edges.get_mut(key).unwrap().insert(target_key);
                 continue;
             }
+            if face == Faces::Auto
+                && ((i.path.len() == 2
+                    && i.path[0] == super::stdlib::STDLIB_PACKAGE
+                    && matches!(i.path[1].as_str(), "json" | "csv"))
+                    || (i.path.len() == 3
+                        && i.path[0] == super::stdlib::STDLIB_PACKAGE
+                        && i.path[1] == "encoding"
+                        && i.path[2] == "csv"))
+            {
+                let mod_id = i.path.last().expect("non-empty path");
+                let target_key = unit_key(&i.path[0], mod_id);
+                if units.contains_key(&target_key) {
+                    binds.insert(
+                        i.bound_name().to_string(),
+                        BoundImport {
+                            symbol: target_key.clone(),
+                            is_type: false,
+                            is_const: false,
+                            is_module: true,
+                        },
+                    );
+                    edges.get_mut(key).unwrap().insert(target_key);
+                    continue;
+                }
+            }
             let (target_key, item) = resolve_path(key, &i.path, i.span)?;
             if target_key == *key {
                 return Err(fail(
@@ -1474,6 +1567,7 @@ fn bind_package_syntax_inner(
             }
             let target = public_target(key, &target_key, &item, i.span, i.reexport)?;
             let b = match target {
+                Target::Spec => continue,
                 Target::Fn(s) => BoundImport {
                     symbol: s,
                     is_type: false,

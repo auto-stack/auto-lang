@@ -245,7 +245,13 @@ pub fn compile_language_source_with_metadata(
     // hit the source compiles byte-identically (zero graft, zero drift).
     let mut grafted = graft_stdlib_integer_parse(
         src,
-        graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
+        graft_stdlib_csv(
+            src,
+            graft_stdlib_json(
+                src,
+                graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
+            ),
+        ),
     );
     if needs_stdlib_u64_parse(src) {
         grafted.push('\n');
@@ -266,9 +272,28 @@ pub fn compile_language_source_with_metadata(
         let text_optimized = helpers.items.iter().any(
             |item| matches!(item, super::ast::Item::Fn(f) if f.name.name == "__av_text_find_at"),
         );
+        let existing_fns: std::collections::BTreeSet<String> = program
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                super::ast::Item::Fn(f) => Some(f.name.name.clone()),
+                _ => None,
+            })
+            .collect();
+        let existing_types: std::collections::BTreeSet<String> = program
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                super::ast::Item::Type(t) => Some(t.name.name.clone()),
+                _ => None,
+            })
+            .collect();
         for mut item in helpers.items {
             match &mut item {
                 super::ast::Item::Fn(helper) => {
+                    if existing_fns.contains(&helper.name.name) {
+                        continue;
+                    }
                     if text_optimized {
                         // Select the AV assembly implementations of these helpers.
                         // Other text helpers and their public call sites stay shared.
@@ -287,8 +312,12 @@ pub fn compile_language_source_with_metadata(
                 // PLAN-1121: the migration graft appends the mangled
                 // HashMap/HashSet record types (span-shifted like fns).
                 super::ast::Item::Type(helper) => {
+                    if existing_types.contains(&helper.name.name) {
+                        continue;
+                    }
                     super::cst::shift_type_item(helper, src.len());
                 }
+                super::ast::Item::Enum(_) => continue,
                 _ => unreachable!(
                     "ordinary standard library graft contains only functions and the PLAN-1121 migration record types"
                 ),
@@ -297,7 +326,11 @@ pub fn compile_language_source_with_metadata(
         }
     }
     super::infer::complete(&mut program)?;
-    prepare(&mut program, &grafted, has_instances)?;
+    let run_instances = has_instances || program.has_instance_templates();
+    if !run_instances {
+        let _ = super::json_encode_synth::synthesize_json_encodable_methods(&mut program)?;
+    }
+    prepare(&mut program, &grafted, run_instances)?;
     let parts = compile_program_parts(&program, &grafted, module_path, capabilities, profile)?;
     let checked = crate::verify::verify_auto_language(parts.bundle)?;
     let compiled = CompiledSource {
@@ -637,6 +670,82 @@ fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
             STDLIB_TEXT_MANGLE,
         ));
         src.push_str(AV_TEXT_HELPERS);
+    }
+    src
+}
+
+fn strip_pub_prefix(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for line in source.lines() {
+        out.push_str(line.strip_prefix("pub ").unwrap_or(line));
+        out.push('\n');
+    }
+    out
+}
+
+fn contains_ident_prefix(src: &str, name: &str) -> bool {
+    let mut start = 0;
+    while let Some(pos) = src[start..].find(name) {
+        let abs = start + pos;
+        let before_ok = src[..abs]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        let after = &src[abs + name.len()..];
+        let after_ok = after
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + name.len();
+    }
+    false
+}
+
+fn needs_stdlib_json_graft(src: &str) -> bool {
+    [
+        "JsonValue",
+        "JsonEncodable",
+        "parse_strict",
+        "encode",
+        "encode_pretty",
+        "minify",
+        "prettify",
+        "json_str",
+        "json_is_valid",
+        "json_escape",
+    ]
+    .iter()
+    .any(|tok| contains_ident_prefix(src, tok))
+}
+
+fn graft_stdlib_json(user_source: &str, mut src: String) -> String {
+    if needs_stdlib_json_graft(user_source) {
+        src.push('\n');
+        src.push_str(&strip_pub_prefix(super::packages::stdlib::auto_json_source()));
+    }
+    src
+}
+
+fn needs_stdlib_csv_graft(src: &str) -> bool {
+    [
+        "csv_parse(",
+        "csv_parse_with_delimiter(",
+        "csv_encode(",
+        "csv_encode_with_delimiter(",
+        "csv_parse_rows(",
+        "csv_encode_rows(",
+    ]
+    .iter()
+    .any(|tok| src.contains(tok))
+}
+
+fn graft_stdlib_csv(user_source: &str, mut src: String) -> String {
+    if needs_stdlib_csv_graft(user_source) {
+        src.push('\n');
+        src.push_str(&strip_pub_prefix(super::packages::stdlib::auto_csv_source()));
     }
     src
 }

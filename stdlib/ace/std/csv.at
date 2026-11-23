@@ -1,0 +1,463 @@
+// PLAN-1124: Pure Auto RFC-4180 CSV parser & encoder for ordinary Auto AV.
+// Preserves the four legacy public operations of `stdlib/auto/encoding/csv.at`
+// (`csv_parse`, `csv_parse_with_delimiter`, `csv_encode`,
+// `csv_encode_with_delimiter`) plus typed 2D row helpers.
+
+pub fn csv_parse(text str) Str {
+    return csv_parse_with_delimiter(text, ",")
+}
+
+pub fn csv_parse_with_delimiter(text str, delim str) Str {
+    let rows = csv_parse_rows(text, delim)
+    return __csv_rows_to_json(rows)
+}
+
+pub fn csv_encode(data str) Str {
+    return csv_encode_with_delimiter(data, ",")
+}
+
+pub fn csv_encode_with_delimiter(data str, delim str) Str {
+    let d = __csv_check_delim(delim)
+    let rows = __csv_json_to_rows(data)
+    return __csv_encode_rows_code(rows, d)
+}
+
+pub fn csv_parse_rows(text str, delim str = ",") List<List<Str>> {
+    let d = __csv_check_delim(delim)
+    let n = text.len()
+    if n > 1048576 {
+        fail("CsvError: input byte budget exceeded")
+    }
+    var rows = List<List<Str>>.new()
+    if n == 0 {
+        return rows
+    }
+    var cells = 0
+    var p = 0
+    for p < n {
+        var row = List<Str>.new()
+        var in_row = true
+        for in_row {
+            if cells >= 65536 {
+                fail("CsvError: cell budget exceeded")
+            }
+            if p < n && __csv_cp(text, p) == 34 {
+                p = p + 1
+                var field Str = ""
+                var run = p
+                var closed = false
+                for p < n {
+                    let c = __csv_cp(text, p)
+                    if c == 34 {
+                        field = field + text.slice(run, p)
+                        if p + 1 < n && __csv_cp(text, p + 1) == 34 {
+                            let qq Str = "\""
+                            field = field + qq
+                            p = p + 2
+                            run = p
+                        } else {
+                            closed = true
+                            p = p + 1
+                            break
+                        }
+                    } else {
+                        p = p + 1
+                    }
+                }
+                if !closed {
+                    fail("CsvError: unterminated quoted field")
+                }
+                if p < n {
+                    let after = __csv_cp(text, p)
+                    if after != d && after != 10 && after != 13 {
+                        fail("CsvError: unexpected character after closing quote")
+                    }
+                }
+                row.push(field.move)
+                cells = cells + 1
+            } else {
+                let start = p
+                for p < n {
+                    let c = __csv_cp(text, p)
+                    if c == 34 {
+                        fail("CsvError: unexpected quote in unquoted field")
+                    }
+                    if c == d || c == 10 || c == 13 {
+                        break
+                    }
+                    p = p + 1
+                }
+                var field Str = text.slice(start, p).clone()
+                row.push(field.move)
+                cells = cells + 1
+            }
+
+            if p < n && __csv_cp(text, p) == d {
+                p = p + 1
+                if p >= n {
+                    if cells >= 65536 {
+                        fail("CsvError: cell budget exceeded")
+                    }
+                    row.push("".to(Str))
+                    cells = cells + 1
+                    in_row = false
+                }
+            } else {
+                if p < n && __csv_cp(text, p) == 13 {
+                    p = p + 1
+                }
+                if p < n && __csv_cp(text, p) == 10 {
+                    p = p + 1
+                }
+                in_row = false
+            }
+        }
+        rows.push(row.move)
+    }
+    return rows
+}
+
+pub fn csv_encode_rows(rows List<List<Str>>, delim str = ",") Str {
+    let d = __csv_check_delim(delim)
+    return __csv_encode_rows_code(rows, d)
+}
+
+fn __csv_cp(s str, i int) int {
+    return s.char_at(i).to_codepoint()
+}
+
+fn __csv_check_delim(delim str) int {
+    if delim.len() != 1 {
+        fail("CsvError: invalid delimiter")
+    }
+    let d = __csv_cp(delim, 0)
+    if d == 34 || d == 10 || d == 13 {
+        fail("CsvError: invalid delimiter")
+    }
+    return d
+}
+
+fn __csv_encode_rows_code(rows List<List<Str>>, d int) Str {
+    var out Str = ""
+    var r = 0
+    let rn = rows.len()
+    for r < rn {
+        if r > 0 {
+            let nl Str = "\n"
+            out = out + nl
+        }
+        var c = 0
+        let cn = rows.get(r).len()
+        for c < cn {
+            if c > 0 {
+                let sep Str = char.from_codepoint(d).to(Str)
+                out = out + sep
+            }
+            let cell Str = rows.get(r).get(c).clone()
+            out = out + __csv_quote_field(cell, d)
+            c = c + 1
+        }
+        r = r + 1
+    }
+    return out
+}
+
+fn __csv_quote_field(field str, d int) Str {
+    let n = field.len()
+    var needs_quote = false
+    var i = 0
+    for i < n {
+        let c = __csv_cp(field, i)
+        if c == d || c == 34 || c == 10 || c == 13 {
+            needs_quote = true
+            break
+        }
+        i = i + 1
+    }
+    if !needs_quote {
+        return field.to(Str)
+    }
+    var out Str = "\""
+    var run = 0
+    var j = 0
+    for j < n {
+        if __csv_cp(field, j) == 34 {
+            out = out + field.slice(run, j)
+            let dq Str = "\"\""
+            out = out + dq
+            run = j + 1
+        }
+        j = j + 1
+    }
+    out = out + field.slice(run, n)
+    let q Str = "\""
+    return out + q
+}
+
+fn __csv_rows_to_json(rows List<List<Str>>) Str {
+    var out Str = "["
+    var r = 0
+    let rn = rows.len()
+    for r < rn {
+        if r > 0 {
+            let comma Str = ","
+            out = out + comma
+        }
+        let open_arr Str = "["
+        out = out + open_arr
+        var c = 0
+        let cn = rows.get(r).len()
+        for c < cn {
+            if c > 0 {
+                let comma2 Str = ","
+                out = out + comma2
+            }
+            let cell Str = rows.get(r).get(c).clone()
+            out = out + __csv_json_str(cell)
+            c = c + 1
+        }
+        let close_arr Str = "]"
+        out = out + close_arr
+        r = r + 1
+    }
+    let end_arr Str = "]"
+    return out + end_arr
+}
+
+fn __csv_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+fn __csv_hex_low(d int) Str {
+    if d == 10 { return "a" }
+    if d == 11 { return "b" }
+    if d == 12 { return "c" }
+    if d == 13 { return "d" }
+    if d == 14 { return "e" }
+    if d == 15 { return "f" }
+    return __csv_digit(d)
+}
+
+fn __csv_json_str(s str) Str {
+    var out Str = "\""
+    var run = 0
+    var i = 0
+    let n = s.len()
+    for i < n {
+        let code = __csv_cp(s, i)
+        if code == 34 || code == 92 || code == 10 || code == 13 || code == 9 || code < 32 {
+            out = out + s.slice(run, i)
+            if code == 34 {
+                out = out + "\\\""
+            } else if code == 92 {
+                out = out + "\\\\"
+            } else if code == 10 {
+                out = out + "\\n"
+            } else if code == 13 {
+                out = out + "\\r"
+            } else if code == 9 {
+                out = out + "\\t"
+            } else {
+                let prefix Str = "\\u00"
+                let high = code / 16
+                out = out + prefix + __csv_digit(high) + __csv_hex_low(code - high * 16)
+            }
+            run = i + 1
+        }
+        i = i + 1
+    }
+    out = out + s.slice(run, n)
+    let q Str = "\""
+    return out + q
+}
+
+fn __csv_ws(s str, p int, n int) int {
+    var i = p
+    for i < n {
+        let c = __csv_cp(s, i)
+        if c == 32 || c == 9 || c == 10 || c == 13 {
+            i = i + 1
+        } else {
+            break
+        }
+    }
+    return i
+}
+
+fn __csv_hex4(s str, i int) int {
+    var v = 0
+    var k = 0
+    for k < 4 {
+        let c = __csv_cp(s, i + k)
+        var d = -1
+        if c >= 48 && c <= 57 {
+            d = c - 48
+        } else if c >= 97 && c <= 102 {
+            d = c - 87
+        } else if c >= 65 && c <= 70 {
+            d = c - 55
+        }
+        if d < 0 {
+            return -1
+        }
+        v = v * 16 + d
+        k = k + 1
+    }
+    return v
+}
+
+fn __csv_json_to_rows(data str) List<List<Str>> {
+    let n = data.len()
+    if n > 1048576 {
+        fail("CsvError: input byte budget exceeded")
+    }
+    var p = __csv_ws(data, 0, n)
+    if p >= n || __csv_cp(data, p) != 91 {
+        fail("CsvError: expected JSON array of string arrays")
+    }
+    p = __csv_ws(data, p + 1, n)
+    var rows = List<List<Str>>.new()
+    if p < n && __csv_cp(data, p) == 93 {
+        p = __csv_ws(data, p + 1, n)
+        if p != n {
+            fail("CsvError: trailing characters in JSON input")
+        }
+        return rows
+    }
+    var cells = 0
+    var row_go = true
+    for row_go {
+        p = __csv_ws(data, p, n)
+        if p >= n || __csv_cp(data, p) != 91 {
+            fail("CsvError: expected JSON array row")
+        }
+        p = __csv_ws(data, p + 1, n)
+        var row = List<Str>.new()
+        if p < n && __csv_cp(data, p) == 93 {
+            p = p + 1
+        } else {
+            var cell_go = true
+            for cell_go {
+                if cells >= 65536 {
+                    fail("CsvError: cell budget exceeded")
+                }
+                p = __csv_ws(data, p, n)
+                if p >= n || __csv_cp(data, p) != 34 {
+                    fail("CsvError: expected JSON string cell")
+                }
+                p = p + 1
+                var cell Str = ""
+                var run = p
+                var closed = false
+                for p < n {
+                    let c = __csv_cp(data, p)
+                    if c < 32 {
+                        fail("CsvError: unescaped control character in JSON string")
+                    }
+                    if c == 34 {
+                        cell = cell + data.slice(run, p)
+                        p = p + 1
+                        closed = true
+                        break
+                    }
+                    if c == 92 {
+                        cell = cell + data.slice(run, p)
+                        if p + 1 >= n {
+                            fail("CsvError: unterminated JSON escape")
+                        }
+                        let e = __csv_cp(data, p + 1)
+                        var step = 2
+                        if e == 34 {
+                            cell = cell + "\""
+                        } else if e == 92 {
+                            cell = cell + "\\"
+                        } else if e == 47 {
+                            cell = cell + "/"
+                        } else if e == 98 {
+                            cell = cell + "\u{8}"
+                        } else if e == 102 {
+                            cell = cell + "\u{c}"
+                        } else if e == 110 {
+                            cell = cell + "\n"
+                        } else if e == 114 {
+                            cell = cell + "\r"
+                        } else if e == 116 {
+                            cell = cell + "\t"
+                        } else if e == 117 {
+                            if p + 5 >= n {
+                                fail("CsvError: incomplete unicode escape")
+                            }
+                            let cp = __csv_hex4(data, p + 2)
+                            if cp < 0 {
+                                fail("CsvError: invalid unicode escape")
+                            }
+                            if cp >= 55296 && cp <= 56319 {
+                                if p + 11 >= n || __csv_cp(data, p + 6) != 92 || __csv_cp(data, p + 7) != 117 {
+                                    fail("CsvError: unpaired high surrogate")
+                                }
+                                let lo = __csv_hex4(data, p + 8)
+                                if lo < 56320 || lo > 57343 {
+                                    fail("CsvError: invalid low surrogate")
+                                }
+                                let full = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+                                let piece Str = char.from_codepoint(full).to(Str)
+                                cell = cell + piece
+                                step = 12
+                            } else if cp >= 56320 && cp <= 57343 {
+                                fail("CsvError: unpaired low surrogate")
+                            } else {
+                                let piece Str = char.from_codepoint(cp).to(Str)
+                                cell = cell + piece
+                                step = 6
+                            }
+                        } else {
+                            fail("CsvError: invalid JSON escape")
+                        }
+                        p = p + step
+                        run = p
+                    } else {
+                        p = p + 1
+                    }
+                }
+                if !closed {
+                    fail("CsvError: unterminated JSON string")
+                }
+                row.push(cell.move)
+                cells = cells + 1
+                p = __csv_ws(data, p, n)
+                if p < n && __csv_cp(data, p) == 44 {
+                    p = p + 1
+                } else if p < n && __csv_cp(data, p) == 93 {
+                    p = p + 1
+                    cell_go = false
+                } else {
+                    fail("CsvError: expected ',' or ']' in JSON row")
+                }
+            }
+        }
+        rows.push(row.move)
+        p = __csv_ws(data, p, n)
+        if p < n && __csv_cp(data, p) == 44 {
+            p = p + 1
+        } else if p < n && __csv_cp(data, p) == 93 {
+            p = p + 1
+            row_go = false
+        } else {
+            fail("CsvError: expected ',' or ']' in JSON outer array")
+        }
+    }
+    p = __csv_ws(data, p, n)
+    if p != n {
+        fail("CsvError: trailing characters in JSON input")
+    }
+    return rows
+}

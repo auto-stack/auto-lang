@@ -2092,7 +2092,7 @@ impl<'c, 'a> Walker<'c, 'a> {
     fn is_raw(&self, g: u32) -> bool {
         let k = self.k();
         // PLAN-981：AGE 作者面合法使用浮点字面量，本面不把 affix-num 当裸 token。
-        let affix = g == k.tok_affix_num && !self.cx.age_face;
+        let affix = g == k.tok_affix_num && !self.cx.age_face && !self.cx.profile.is_numeric();
         affix || g == k.tok_str_lit || g == k.tok_char_lit || g == k.tok_block_open
     }
 
@@ -2842,6 +2842,18 @@ impl<'c, 'a> Walker<'c, 'a> {
                 || g == k.tok_int_kw
                 || g == k.tok_i32
                 || g == k.tok_bool
+                || (self.cx.profile.is_numeric()
+                    && (k.tok_i8_kw == Some(g)
+                        || k.tok_u8_kw == Some(g)
+                        || k.tok_byte_kw == Some(g)
+                        || k.tok_uint_kw == Some(g)
+                        || k.tok_u32_kw == Some(g)
+                        || k.tok_i64_kw == Some(g)
+                        || k.tok_u64_kw == Some(g)
+                        || k.tok_float_kw == Some(g)
+                        || k.tok_f32_kw == Some(g)
+                        || k.tok_double_kw == Some(g)
+                        || k.tok_f64_kw == Some(g)))
                 || text == ","
                 || text == "?")
             {
@@ -2892,7 +2904,9 @@ impl<'c, 'a> Walker<'c, 'a> {
                     ))),
                 };
             };
-            if g == k.tok_int_lit {
+            if g == k.tok_int_lit
+                || (g == k.tok_affix_num && (self.cx.profile.is_numeric() || self.cx.age_face))
+            {
                 self.i += 1;
             } else if text == "-" {
                 match self.at(self.i + 1) {
@@ -15390,6 +15404,7 @@ fn apply_spec_conformance(
         let mut claims: Vec<(&SpecDecl, Vec<&SpecDecl>, BTreeMap<String, TypeAnn>)> = Vec::new();
         // 关联类型名 → 绑定类型（跨 spec 汇总；实现者方法/字段里的 assoc 名按此替换）。
         let mut assoc_bound: BTreeMap<String, TypeAnn> = BTreeMap::new();
+        let mut builtin_json_encodable = false;
         for conform in t.conforms.iter() {
             let spec_ident = &conform.name;
             if seen.contains(&spec_ident.name) {
@@ -15405,6 +15420,39 @@ fn apply_spec_conformance(
             }
             seen.push(spec_ident.name.clone());
             let Some(spec) = by_name.get(spec_ident.name.as_str()).copied() else {
+                if ordinary_auto && spec_ident.name == "JsonEncodable" {
+                    if !conform.args.is_empty() || !conform.assoc.is_empty() {
+                        diags.push(Diagnostic::new(
+                            Stage::Text,
+                            "source.unsupported",
+                            "spec `JsonEncodable` does not accept type or associated-type arguments",
+                            spec_ident.span,
+                        ));
+                        continue;
+                    }
+                    if let Some(f) = t.methods.iter().find(|f| {
+                        f.name.name == "json_encode" && f.receiver == Receiver::View
+                    }) {
+                        let ok = f.params.is_empty()
+                            && matches!(
+                                f.ret.kind,
+                                TypeRef::Builtin(TypeWord::StrOwned | TypeWord::Str)
+                            );
+                        if !ok {
+                            diags.push(Diagnostic::new(
+                                Stage::Text,
+                                "source.unsupported",
+                                format!(
+                                    "type `{owner}` does not implement `fn json_encode` required by spec `JsonEncodable`"
+                                ),
+                                f.name.span,
+                            ));
+                            continue;
+                        }
+                    }
+                    builtin_json_encodable = true;
+                    continue;
+                }
                 let sp = spec_ident.span;
                 let n = spec_ident.name.clone();
                 diags.push(Diagnostic::new(
@@ -15613,6 +15661,12 @@ fn apply_spec_conformance(
                             test_attribute: None,
                         }),
                         None => {
+                            if ordinary_auto
+                                && spec.name.name == "JsonEncodable"
+                                && m.name.name == "json_encode"
+                            {
+                                continue;
+                            }
                             let sp = m.name.span;
                             let mn = m.name.name.clone();
                             let sn = spec.name.name.clone();
@@ -15630,6 +15684,9 @@ fn apply_spec_conformance(
             }
         }
         t.methods.extend(injected);
+        if builtin_json_encodable && !done.iter().any(|d| d == "JsonEncodable") {
+            done.push("JsonEncodable".into());
+        }
         if ordinary_auto {
             t.spec_memberships = done;
         }
@@ -15665,6 +15722,9 @@ fn materialize_spec_values(items: &mut Vec<Item>, specs: &[SpecDecl]) -> Vec<Dia
         }
     }
     for spec in specs {
+        if spec.name.name == "JsonEncodable" {
+            continue;
+        }
         let Some(records) = witnesses.get(spec.name.name.as_str()) else {
             continue;
         };

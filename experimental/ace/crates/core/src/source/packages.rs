@@ -484,7 +484,7 @@ pub use provider_sources::{
     ProviderCandidates, ProviderChoice, ProviderFileKind, ProviderKind, ProviderSelection,
     ProviderSourceError, TargetOs, PROVIDER_SOURCE_SCHEMA,
 };
-mod stdlib;
+pub(crate) mod stdlib;
 pub use stdlib::{
     is_frozen_std_assembled_module, is_frozen_std_module, is_frozen_std_sys_module,
     stdlib_aggregates_inputs, stdlib_assembled_files, stdlib_inputs,
