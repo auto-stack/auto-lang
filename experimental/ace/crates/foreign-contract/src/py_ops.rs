@@ -34,7 +34,15 @@ pub const PY_CONTRACT_PROVIDER: &str = "py";
 /// Logical symbol namespace of the provider table.
 pub const PY_CONTRACT_LOGICAL: &str = "rust/py";
 /// Content version of the frozen table (bumped only with a semantic change).
-pub const PY_CONTRACT_CONTENT_VERSION: &str = "p1107-py-ops-v1";
+/// v2 (PLAN-1129): `py_call`, `py_getitem` and `py_binop` carry typed float
+/// values (`p967.frame/2`), so their argument domain widened.
+pub const PY_CONTRACT_CONTENT_VERSION: &str = "p1107-py-ops-v2";
+
+/// The wire frame versions a declaration may name (see [`PyOpDecl::frame`]).
+pub const PY_FRAME_V1: &str = "p967.frame/1";
+/// The typed-value superset: adds the float tags `d` (f64) and `f` (f32),
+/// each carrying its exact bit pattern; in it text is text.
+pub const PY_FRAME_V2: &str = "p967.frame/2";
 
 /// One frozen Python op declaration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,39 +53,69 @@ pub struct PyOpDecl {
     pub symbol: &'static str,
     /// `Some((status code, reason))` for the fallible form, `None` for pure.
     pub error: Option<(i32, &'static str)>,
+    /// The newest wire frame version the op's single view-text parameter
+    /// carries (it also accepts every older one). An op that receives user
+    /// VALUES names [`PY_FRAME_V2`]: typed floats cross by their bit
+    /// pattern and a text payload is always text. Bookkeeping and extraction
+    /// ops only ever receive [`PY_FRAME_V1`] frames.
+    pub frame: &'static str,
 }
 
-const fn op(name: &'static str, symbol: &'static str, error: Option<(i32, &'static str)>) -> PyOpDecl {
+const fn op(
+    name: &'static str,
+    symbol: &'static str,
+    error: Option<(i32, &'static str)>,
+    frame: &'static str,
+) -> PyOpDecl {
     PyOpDecl {
         name,
         symbol,
         error,
+        frame,
     }
+}
+
+/// A declaration whose frames never carry typed values.
+const fn v1(
+    name: &'static str,
+    symbol: &'static str,
+    error: Option<(i32, &'static str)>,
+) -> PyOpDecl {
+    op(name, symbol, error, PY_FRAME_V1)
+}
+
+/// A value-carrying declaration: typed floats and plain text.
+const fn v2(
+    name: &'static str,
+    symbol: &'static str,
+    error: Option<(i32, &'static str)>,
+) -> PyOpDecl {
+    op(name, symbol, error, PY_FRAME_V2)
 }
 
 /// The 17 frozen provider ops (PLAN-1026 §4). Order is the declaration order.
 pub const PY_OPS: &[PyOpDecl] = &[
-    op("py_admission", "py_admission_v1", Some((-100, "py.init"))),
-    op("py_alive", "py_alive_v1", None),
-    op("py_binop", "py_binop_v1", Some((-104, "py.binop"))),
-    op("py_call", "py_call_v1", Some((-103, "py.call"))),
-    op("py_error_class", "py_error_class_v1", None),
-    op("py_error_stage", "py_error_stage_v1", None),
-    op("py_f64_lo", "py_f64_lo_v1", None),
-    op("py_getattr", "py_getattr_v1", Some((-102, "py.attr"))),
-    op("py_getitem", "py_getitem_v1", Some((-105, "py.index"))),
-    op("py_import", "py_import_v1", Some((-101, "py.import"))),
-    op("py_release", "py_release_v1", Some((-110, "py.release"))),
-    op(
+    v1("py_admission", "py_admission_v1", Some((-100, "py.init"))),
+    v1("py_alive", "py_alive_v1", None),
+    v2("py_binop", "py_binop_v1", Some((-104, "py.binop"))),
+    v2("py_call", "py_call_v1", Some((-103, "py.call"))),
+    v1("py_error_class", "py_error_class_v1", None),
+    v1("py_error_stage", "py_error_stage_v1", None),
+    v1("py_f64_lo", "py_f64_lo_v1", None),
+    v1("py_getattr", "py_getattr_v1", Some((-102, "py.attr"))),
+    v2("py_getitem", "py_getitem_v1", Some((-105, "py.index"))),
+    v1("py_import", "py_import_v1", Some((-101, "py.import"))),
+    v1("py_release", "py_release_v1", Some((-110, "py.release"))),
+    v1(
         "py_session_close",
         "py_session_close_v1",
         Some((-111, "py.close")),
     ),
-    op("py_stage_str", "py_stage_str_v1", Some((-109, "py.stage-str"))),
-    op("py_str_word", "py_str_word_v1", None),
-    op("py_to_bool", "py_to_bool_v1", Some((-108, "py.to-bool"))),
-    op("py_to_f64", "py_to_f64_v1", Some((-106, "py.to-f64"))),
-    op("py_to_i32", "py_to_i32_v1", Some((-107, "py.to-i32"))),
+    v1("py_stage_str", "py_stage_str_v1", Some((-109, "py.stage-str"))),
+    v1("py_str_word", "py_str_word_v1", None),
+    v1("py_to_bool", "py_to_bool_v1", Some((-108, "py.to-bool"))),
+    v1("py_to_f64", "py_to_f64_v1", Some((-106, "py.to-f64"))),
+    v1("py_to_i32", "py_to_i32_v1", Some((-107, "py.to-i32"))),
 ];
 
 /// The frozen op names in declaration order.
@@ -239,6 +277,27 @@ mod tests {
         codes.sort_unstable();
         codes.dedup();
         assert_eq!(codes.len(), 12, "twelve fallible ops, unique status codes");
+    }
+
+    #[test]
+    fn exactly_the_value_carrying_ops_speak_the_typed_frame() {
+        // PLAN-1129: the three ops that receive user values declare the
+        // typed superset; everything else stays on the frozen v1 frames.
+        let typed: Vec<&str> = PY_OPS
+            .iter()
+            .filter(|o| o.frame == PY_FRAME_V2)
+            .map(|o| o.name)
+            .collect();
+        let mut want = vec!["py_binop", "py_call", "py_getitem"];
+        want.sort_unstable();
+        assert_eq!(typed, want);
+        for o in PY_OPS {
+            assert!(
+                o.frame == PY_FRAME_V1 || o.frame == PY_FRAME_V2,
+                "{} names an unknown frame version",
+                o.name
+            );
+        }
     }
 
     #[test]

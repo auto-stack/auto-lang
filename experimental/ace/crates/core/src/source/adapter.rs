@@ -5320,6 +5320,9 @@ impl<'p> Emitter<'p> {
             } else if *sym == "__py_staged_text" {
                 // PLAN-1026: (int) -> Str word readback.
                 (self.ty_use_ref(VT::I32), self.ty_use_ref(VT::StrOwned))
+            } else if *sym == super::py::PY_SIGN_BIT {
+                // PLAN-1129: (double) -> 1 when the sign bit is set.
+                (self.ty_use_ref(VT::F64), self.ty_use_ref(VT::I32))
             } else if let Some((params, res)) = sched_intrinsic_signature(self.program, sym) {
                 let ps: Vec<String> = params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 let rs = match res {

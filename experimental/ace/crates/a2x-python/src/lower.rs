@@ -821,13 +821,23 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                 ),
             )
         })?;
-        self.lower_expr(id)
+        let text = self.lower_expr(id)?;
+        // PLAN-1129: the value AND its representation cross together. An
+        // `f32` operand reaches Python as its exact widening and an Auto
+        // text value as the Python `str` it holds — stated here at the
+        // boundary, whatever produced the value (a local read, a call, an
+        // expression), never as a remembered literal.
+        match self.expr_ty(id) {
+            Ok(Ty::F32) => Ok(format!("a2x_f32_round({text})")),
+            Ok(Ty::Str | Ty::StrOwned) => Ok(format!("a2x_py_text({text})")),
+            _ => Ok(text),
+        }
     }
 
     /// The checked VALUE expression at exactly `span`. Frame-construction
-    /// nodes (display/concat/borrow and the AV encoding intrinsics/helper)
-    /// are not values and are skipped; a py-op call outranks a local read,
-    /// which outranks a literal.
+    /// nodes (display/concat/borrow, the AV encoding intrinsics and every
+    /// py-lane frame helper) are not values and are skipped; a py-op call
+    /// outranks a local read, which outranks a literal.
     fn py_find_value(&self, span: (u32, u32)) -> Option<hir::ExprId> {
         let mut best: Option<(u8, hir::ExprId)> = None;
         for (i, x) in self.facts.body.exprs.iter().enumerate() {
@@ -843,8 +853,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                         continue; // AV encoding intrinsic
                     }
                     if let Some(f) = self.view.fn_by_def(callee.0 as usize) {
-                        if f.name == "sf___py_dlen" {
-                            continue; // the frame length helper
+                        // A frame helper shares its argument's span (the
+                        // resolver anchors it there); it is never the value.
+                        if crate::provider::is_py_lane_helper(f.name) {
+                            continue;
                         }
                     }
                     if self
@@ -1542,11 +1554,22 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
     ) -> Result<String, A2xReject> {
         use hir::NumOpKind as K;
         let is_float = matches!(ty, hir::BuiltinType::F32 | hir::BuiltinType::F64);
+        // PLAN-1129: an f32 result is rounded at EVERY step (the rule the
+        // TypeScript target already keeps). Python floats are doubles, so
+        // without this an `f32`-typed value would silently carry double
+        // precision and reach a Python call as a number Auto never held.
+        let round = |expr: String| {
+            if ty == hir::BuiltinType::F32 {
+                format!("a2x_f32_round({expr})")
+            } else {
+                expr
+            }
+        };
         match (op, is_float) {
-            (K::Add, true) => Ok(format!("({l} + {r})")),
-            (K::Sub, true) => Ok(format!("({l} - {r})")),
-            (K::Mul, true) => Ok(format!("({l} * {r})")),
-            (K::Div, true) => Ok(format!("a2x_fdiv({l}, {r})")),
+            (K::Add, true) => Ok(round(format!("({l} + {r})"))),
+            (K::Sub, true) => Ok(round(format!("({l} - {r})"))),
+            (K::Mul, true) => Ok(round(format!("({l} * {r})"))),
+            (K::Div, true) => Ok(round(format!("a2x_fdiv({l}, {r})"))),
             (K::Lt, _) => Ok(format!("({l} < {r})")),
             (K::Le, _) => Ok(format!("({l} <= {r})")),
             (K::Gt, _) => Ok(format!("({l} > {r})")),

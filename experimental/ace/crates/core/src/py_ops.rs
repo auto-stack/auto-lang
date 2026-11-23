@@ -32,6 +32,30 @@ use crate::atom_text::Span;
 /// The admitted foreign provider identity of the frozen Python op set.
 pub const PY_PROVIDER: &str = "py";
 
+/// The 1026 reconstruction intrinsics (`__py_f64_bits(hi, lo)` rebuilds an
+/// exact f64, `__py_staged_text(len)` reads a staged text back).
+pub const PY_INTRINSIC_F64_BITS: &str = "__py_f64_bits";
+pub const PY_INTRINSIC_STAGED_TEXT: &str = "__py_staged_text";
+/// PLAN-1129: the one AV-lane primitive the frozen float helpers need and
+/// plain Auto cannot write — `__py_sign_bit(v)` is 1 when the f64 `v` has
+/// its sign bit set, -0.0 included. (IEEE comparisons cannot tell `-0.0`
+/// from `0.0`, and Auto's float `/` traps on a zero divisor.) Every other
+/// step of reading a float's bit pattern is ordinary source in the frozen
+/// helper; a call site is one plain call of that helper, so the operand is
+/// evaluated exactly once.
+pub const PY_SIGN_BIT: &str = "__py_sign_bit";
+
+/// Whether `symbol` is a py-lane ENCODING intrinsic. These appear only in
+/// the checked bodies of a Python program, never as source operations: a
+/// target lowers the operations through the op plan (facts), so the list
+/// exists to keep those bodies admissible — never to expose the AV wire.
+pub fn is_py_lane_intrinsic(symbol: &str) -> bool {
+    matches!(
+        symbol,
+        PY_INTRINSIC_F64_BITS | PY_INTRINSIC_STAGED_TEXT | PY_SIGN_BIT
+    )
+}
+
 /// The 17 frozen `p967.frame/1` provider ops of PLAN-1026 (declaration
 /// identity). Consumers use this list to recognise the provider's ops, not to
 /// guess from source text.
@@ -132,7 +156,7 @@ impl PyOpKind {
     }
 }
 
-/// The admitted value class of one operand (what the frame encoder admits).
+/// The admitted value class of one operand (what a frame carries).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PyValClass {
     /// A Python object (opaque handle in the AV lane; a native object in a
@@ -142,9 +166,12 @@ pub enum PyValClass {
     Int,
     /// An exact `bool` literal.
     Bool,
-    /// A text literal.
+    /// A text literal or dynamic text value.
     Text,
-    /// An exact float literal (compile-time `F:` encoding for AV).
+    /// An `f32`/`f64` value: a literal, a local read or a runtime
+    /// expression (PLAN-1129). AV carries its exact bit pattern in a typed
+    /// `p967.frame/2` tag; a source-generating target passes the native
+    /// float. An f32 reaches Python as its exact widening.
     Float,
     /// Python None for an omitted slice bound.
     None,
@@ -193,11 +220,12 @@ impl PyRole {
     }
 }
 
-/// The exact literal payload of an operand that the AV frame encoder bakes
-/// into the frame TEXT (compile-time `i`/`b`/`t`/`F:` encodings). A
-/// source-generating target needs the VALUE, not its frame spelling, so the
-/// fact carries it: `None` means the operand is a runtime expression (found
-/// by its span).
+/// The exact literal payload of an operand that IS a literal (the AV lane
+/// carries an int/bool/text literal in its frame text and a float literal as
+/// its typed bit pattern). A source-generating target needs the VALUE, not
+/// the frame spelling, so the fact carries it: `None` means the operand is a
+/// runtime expression (found by its span). An `f32` literal is recorded as
+/// its exact widening — the one Python `float` it becomes on every target.
 #[derive(Clone, PartialEq, Debug)]
 pub enum PyLiteral {
     Int(i32),

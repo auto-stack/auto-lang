@@ -674,8 +674,9 @@ fn lower_checked_collection_family(
                 // family def path as imports; console spellings become
                 // host imports (task-handler stdout). Everything else
                 // keeps the historical rejection.
-                // PLAN-1026: the two py reconstruction intrinsics — the
-                // call sites emit their MIR directly; no CalleeRef.
+                // PLAN-1026: the py encoding intrinsics (the reconstruction
+                // pair and the PLAN-1129 bit-pattern readers) — the call
+                // sites emit their MIR directly; no CalleeRef.
                 if auto_language && ace_core::source::adapter::text_scan_signature(symbol).is_some()
                 {
                     let cap = if matches!(symbol.as_str(), "__ace_text_upper" | "__ace_text_lower") {
@@ -688,7 +689,7 @@ fn lower_checked_collection_family(
                     }
                     continue;
                 }
-                if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
+                if ace_core::py_ops::is_py_lane_intrinsic(symbol) {
                     continue;
                 }
                 // PLAN-117（round-35）：`module.global.` cell 访问器在
@@ -4203,6 +4204,103 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
         Ok(dst)
     }
 
+    /// PLAN-1129: `__py_sign_bit(v)` — 1 when the f64 `v` has its sign bit
+    /// set, 0 otherwise, `-0.0` included. Emitted inline with the frozen
+    /// numeric MIR only (no new instruction), and only inside the frozen
+    /// float helper: every call site of a Python operation is one plain call
+    /// of that helper, so this body never multiplies through user code.
+    ///
+    /// `v < 0.0` settles every negative value but `-0.0`, which compares
+    /// equal to `0.0`. The sign of a zero is the one bit IEEE comparisons
+    /// cannot see and Auto's float `/` traps on a zero divisor, so the zero
+    /// arm reads it from the display of the exact f32 narrowing — which
+    /// spells it `"0"` or `"-0"` (two bytes).
+    ///
+    /// Blocks are created in layout order; there is no back edge.
+    fn emit_py_sign_bit(
+        &mut self,
+        v: SlotId,
+        sp: Option<SpanInfo>,
+    ) -> Result<SlotId, AdapterError> {
+        type R<T> = Result<T, AdapterError>;
+        let tf = self.out.intern_type(MirType::F64);
+        let tf32 = self.out.intern_type(MirType::F32);
+        let tstr = self.out.intern_type(MirType::Str);
+        let t32 = self.t_i32;
+        let tb = self.t_bool;
+        let fcmp = |me: &mut Self, op: NumOp, l: SlotId, r: SlotId| -> R<SlotId> {
+            me.py_bin(BinOp::Num { op, ty: NumTy::F64 }, tb, l, r, sp)
+        };
+        let enter = |me: &mut Self, block: BlockId| {
+            me.cur = block;
+            me.terminated = false;
+        };
+        // `dst = <const>` straight into an existing slot
+        let set = |me: &mut Self, dst: SlotId, c: MirConst| -> R<()> {
+            let k = me.scalar_const(c)?;
+            me.emit(MirInstr::Const { dst, value: k }, sp)
+        };
+
+        // Assigned on every path that reaches the end.
+        let dst = self.temp_ty(t32)?;
+        let f_zero = self.py_k(tf, MirConst::F64Bits(0.0f64.to_bits()), sp)?;
+        let n_two = self.py_k(t32, MirConst::I32(2), sp)?;
+        let negative = fcmp(self, NumOp::Lt, v, f_zero)?;
+        let is_zero = fcmp(self, NumOp::Eq, v, f_zero)?;
+
+        // Every block, created in layout order.
+        let b_zero = self.new_block()?;
+        let b_nz = self.new_block()?;
+        let b_one = self.new_block()?;
+        let b_zero_val = self.new_block()?;
+        let done = self.new_block()?;
+
+        self.set_term(Terminator::Branch {
+            cond: is_zero,
+            then: b_zero,
+            else_: b_nz,
+        });
+        // ---- non-zero: the comparison already saw the sign ----------------
+        enter(self, b_nz);
+        self.set_term(Terminator::Branch {
+            cond: negative,
+            then: b_one,
+            else_: b_zero_val,
+        });
+        // ---- zero: only the display spells the sign -----------------------
+        enter(self, b_zero);
+        let narrow = self.temp_ty(tf32)?;
+        self.emit(MirInstr::Conv { dst: narrow, src: v }, sp)?;
+        let text = self.temp_ty(tstr)?;
+        self.emit(
+            MirInstr::TextDisplay {
+                dst: text,
+                src: narrow,
+            },
+            sp,
+        )?;
+        let view = self.py_view(text, sp)?;
+        let len = self.temp_ty(t32)?;
+        self.emit(MirInstr::StrLenBytes { dst: len, view }, sp)?;
+        self.emit(MirInstr::BorrowEnd { token: view }, sp)?;
+        let neg_zero = self.py_bin(BinOp::EqI32, tb, len, n_two, sp)?;
+        self.set_term(Terminator::Branch {
+            cond: neg_zero,
+            then: b_one,
+            else_: b_zero_val,
+        });
+        // ---- the two outcomes ----------------------------------------------
+        enter(self, b_one);
+        set(self, dst, MirConst::I32(1))?;
+        self.set_term(Terminator::Jump { target: done });
+        enter(self, b_zero_val);
+        set(self, dst, MirConst::I32(0))?;
+        self.set_term(Terminator::Jump { target: done });
+
+        enter(self, done);
+        Ok(dst)
+    }
+
     /// `__py_staged_text(len)` — the word-wise readback loop: an owned Str
     /// assembled from `py_str_word` calls. PLAN-1094: the staged lane is
     /// CODEPOINT-wise (UTF-32-LE words), so one word is exactly one Unicode
@@ -5402,6 +5500,17 @@ k 0
                                     ));
                                 }
                                 return self.emit_py_staged_text(arg_slots[0], sp);
+                            }
+                            // PLAN-1129: the float sign-bit primitive — the
+                            // MIR is emitted right here as well.
+                            if symbol == ace_core::py_ops::PY_SIGN_BIT {
+                                if arg_slots.len() != 1 {
+                                    return Err(AdapterError::inv(
+                                        "py.intrinsic",
+                                        "__py_sign_bit needs (v)".into(),
+                                    ));
+                                }
+                                return self.emit_py_sign_bit(arg_slots[0], sp);
                             }
                             if ace_av_core::http_client::is_http_symbol(symbol) {
                                 // PLAN-108（T-03b M1）：Http 效应 = HttpCall

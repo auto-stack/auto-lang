@@ -68,6 +68,8 @@ mod py_protocol_1107;
 mod py_session_1026;
 #[path = "cases/py_session_1107.rs"]
 mod py_session_1107;
+#[path = "cases/py_float_1129.rs"]
+mod py_float_1129;
 #[path = "cases/rust_f0.rs"]
 mod rust_f0;
 #[path = "cases/scalar_bridge.rs"]

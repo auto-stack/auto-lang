@@ -5,11 +5,17 @@
 //! source build closure). Every op rides the checked `p967.frame/1` tag
 //! frame; Python objects live ONLY here (a u64 registry, the single
 //! owner) while AV holds i32 tokens — never a PyO3 handle, never a
-//! second resource ledger. Floats cross as an exact f64 bits pair
+//! second resource ledger. Floats cross OUT as an exact f64 bits pair
 //! (T-01-frozen marshaling: non-finite/subnormal values are named
-//! rejections, never truncated); display text crosses word-wise (4 ASCII
-//! bytes per i32 lane, cap 256). v1 supported boundary: one serial
-//! session per process, GIL-enabled CPython 3.14, trusted host.
+//! rejections, never truncated). Floats cross IN as typed `p967.frame/2`
+//! values (PLAN-1129): an `f64`/`f32` tag carries the exact bit pattern
+//! (three 21/21/22-bit decimal words) and becomes one Python `float` (an
+//! `f32` is widened exactly); text is text. A version-1 frame keeps the 1026
+//! compile-time `F:` float-literal text decoding, selected by the frame's
+//! version only. Display text
+//! crosses word-wise (4 ASCII bytes per i32 lane, cap 256). v1 supported
+//! boundary: one serial session per process, GIL-enabled CPython 3.14,
+//! trusted host.
 
 // auto-ffi dep pyo3 0.29.3
 
@@ -129,24 +135,39 @@ fn resolve(py: Python<'_>, token: u64) -> Option<Bound<'_, PyAny>> {
         .map(|o| o.bind(py).clone())
 }
 
-/// One frame value -> one Python object (the frozen v1 domain: exact
-/// i32/bool scalars, text (with the `F:` float-literal encoding used by
-/// the compiler for compile-time-frozen kwargs), opaque tokens).
-fn to_python(py: Python<'_>, v: &F0Val) -> PyResult<Py<PyAny>> {
+/// One frame value -> one Python object.
+///
+/// `legacy` is `frame.version == 1`: only a version-1 frame carries the
+/// 1026 compile-time `F:<decimal>` float-literal TEXT encoding, so only
+/// there does a `t` payload with that prefix become a float. In a
+/// version-2 frame text is text and floats arrive as their typed tags
+/// (PLAN-1129) — the plain text `"F:1.25"` stays the string it is.
+fn to_python(py: Python<'_>, v: &F0Val, legacy: bool) -> PyResult<Py<PyAny>> {
     match v {
         F0Val::None => Ok(py.None()),
         F0Val::I32(n) => Ok(n.into_pyobject(py)?.unbind().into_any()),
         F0Val::Bool(b) => Ok(pyo3::types::PyBool::new(py, *b).to_owned().into_any().unbind()),
         F0Val::Text(t) => {
-            if let Some(dec) = t.strip_prefix("F:") {
-                let f: f64 = dec
-                    .parse()
-                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("bad F: float literal"))?;
-                Ok(f.into_pyobject(py)?.unbind().into_any())
-            } else {
-                Ok(t.into_pyobject(py)?.unbind().into_any())
+            if legacy {
+                if let Some(dec) = t.strip_prefix("F:") {
+                    let f: f64 = dec.parse().map_err(|_| {
+                        pyo3::exceptions::PyValueError::new_err("bad F: float literal")
+                    })?;
+                    return Ok(f.into_pyobject(py)?.unbind().into_any());
+                }
             }
+            Ok(t.into_pyobject(py)?.unbind().into_any())
         }
+        // Exact bit pattern -> Python float: an f64 is the double itself, an
+        // f32 is widened exactly (every f32 is representable).
+        F0Val::F64(bits) => Ok(f64::from_bits(*bits)
+            .into_pyobject(py)?
+            .unbind()
+            .into_any()),
+        F0Val::F32(bits) => Ok(f64::from(f32::from_bits(*bits))
+            .into_pyobject(py)?
+            .unbind()
+            .into_any()),
         F0Val::Opaque(o) => registry()
             .lock()
             .unwrap()
@@ -171,7 +192,11 @@ fn run_guarded<T>(f: impl FnOnce(Python<'_>) -> PyResult<T>) -> Option<T> {
 //
 // Frame schemas (frozen, T-01): the receiver is the target object token
 // (`n` for py_import/admission); positionals[0] is a text member/label
-// where noted; kwargs carry named scalars. All fallible ops return None
+// where noted; kwargs carry named scalars. `py_call`, `py_getitem` and
+// `py_binop` carry user VALUES, so they declare `p967.frame/2` and decode
+// both wire versions (typed floats + plain text in /2, the legacy `F:`
+// literal text in /1); the bookkeeping and extraction ops only ever
+// receive version-1 frames. All fallible ops return None
 // on the first failure (the shim maps it to the op's single frozen
 // status); the class+text lanes recover the specifics.
 
@@ -235,7 +260,7 @@ pub fn py_getattr(frame: &F0Frame) -> Option<i32> {
     })
 }
 
-// auto-ffi fn py_call symbol=py.call.v1 form=fallible errors=py.call:-103 frame=p967.frame/1
+// auto-ffi fn py_call symbol=py.call.v1 form=fallible errors=py.call:-103 frame=p967.frame/2
 pub fn py_call(frame: &F0Frame) -> Option<i32> {
     let token = match &frame.receiver {
         F0Val::Opaque(o) => *o,
@@ -253,6 +278,7 @@ pub fn py_call(frame: &F0Frame) -> Option<i32> {
         }
     };
     let args = &frame.positionals[1.min(frame.positionals.len())..];
+    let legacy = frame.version == 1;
     run_guarded(|py| {
         let target = resolve(py, token).ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err("py.dead-object")
@@ -263,11 +289,11 @@ pub fn py_call(frame: &F0Frame) -> Option<i32> {
             target.getattr(member.as_str())?
         };
         let py_args: PyResult<Vec<Py<PyAny>>> =
-            args.iter().map(|v| to_python(py, v)).collect();
+            args.iter().map(|v| to_python(py, v, legacy)).collect();
         let args_tuple = PyTuple::new(py, py_args?)?;
         let kwargs = PyDict::new(py);
         for k in &frame.kwargs {
-            let v = to_python(py, &k.value)?;
+            let v = to_python(py, &k.value, legacy)?;
             kwargs.set_item(k.name.as_str(), v)?;
         }
         let result = callable.call(&args_tuple, Some(&kwargs))?;
@@ -275,7 +301,7 @@ pub fn py_call(frame: &F0Frame) -> Option<i32> {
     })
 }
 
-// auto-ffi fn py_getitem symbol=py.getitem.v1 form=fallible errors=py.index:-105 frame=p967.frame/1
+// auto-ffi fn py_getitem symbol=py.getitem.v1 form=fallible errors=py.index:-105 frame=p967.frame/2
 pub fn py_getitem(frame: &F0Frame) -> Option<i32> {
     let token = match &frame.receiver {
         F0Val::Opaque(o) => *o,
@@ -284,12 +310,13 @@ pub fn py_getitem(frame: &F0Frame) -> Option<i32> {
             return None;
         }
     };
+    let legacy = frame.version == 1;
     run_guarded(|py| {
         let obj = resolve(py, token).ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err("py.dead-object")
         })?;
         let key = if let Some(key) = frame.positionals.first() {
-            to_python(py, key)?.into_bound(py)
+            to_python(py, key, legacy)?.into_bound(py)
         } else if let [start, stop, step] = frame.kwargs.as_slice() {
             if start.name != "start" || stop.name != "stop" || step.name != "step" {
                 return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -299,9 +326,9 @@ pub fn py_getitem(frame: &F0Frame) -> Option<i32> {
             // The CPython type accepts arbitrary Python objects, including None.
             // The key stays local to this call and never gets a session token.
             py.get_type::<PySlice>().call1((
-                to_python(py, &start.value)?,
-                to_python(py, &stop.value)?,
-                to_python(py, &step.value)?,
+                to_python(py, &start.value, legacy)?,
+                to_python(py, &stop.value, legacy)?,
+                to_python(py, &step.value, legacy)?,
             ))?
         } else {
             return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -313,7 +340,7 @@ pub fn py_getitem(frame: &F0Frame) -> Option<i32> {
     })
 }
 
-// auto-ffi fn py_binop symbol=py.binop.v1 form=fallible errors=py.binop:-104 frame=p967.frame/1
+// auto-ffi fn py_binop symbol=py.binop.v1 form=fallible errors=py.binop:-104 frame=p967.frame/2
 pub fn py_binop(frame: &F0Frame) -> Option<i32> {
     let token = match &frame.receiver {
         F0Val::Opaque(o) => *o,
@@ -341,12 +368,13 @@ pub fn py_binop(frame: &F0Frame) -> Option<i32> {
         }
     };
     let operand = frame.positionals.first()?;
+    let legacy = frame.version == 1;
     run_guarded(|py| {
         let obj = resolve(py, token).ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err("py.dead-object")
         })?;
         let method = obj.getattr(dunder)?;
-        let arg = to_python(py, operand)?;
+        let arg = to_python(py, operand, legacy)?;
         let result = method.call1((arg.bind(py),))?;
         Ok(store(py, result) as i32)
     })

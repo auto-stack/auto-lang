@@ -9,6 +9,14 @@
 //!   domain is unreachable by construction) — the f64/text reconstruction
 //!   lives in the lowering emitters (`__py_f64_bits`/`__py_staged_text`
 //!   intrinsics), NOT in user-surface helpers;
+//! * the frozen float helpers `__py_chunk_*` (PLAN-1129). A float operand
+//!   of a Python operation is ONE call of `__py_chunk_d`/`__py_chunk_f`, so
+//!   it is evaluated exactly once. These helpers read the float's exact bit
+//!   pattern with ordinary Auto arithmetic and render it as three
+//!   21/21/22-bit decimal words — only i32 is ever displayed, so they
+//!   resolve under every profile the py lane serves. The single step plain
+//!   source cannot write — the sign bit of a `-0.0` — is the AV-lane
+//!   intrinsic [`PY_SIGN_BIT`], which only these helpers call;
 //! * one hoisted `var <member> = py_import("<static frame>")` per
 //!   imported member, prepended to the script body (each import runs
 //!   exactly once at entry, in source order — R-01/V-03).
@@ -44,7 +52,75 @@ fn __py_chunk_b(n int) Str {
 return f"b 1\n$n\n" }
 fn __py_chunk_t(v Str) Str {
 return f"t ${v.len_bytes()}\n$v\n" }
+fn __py_chunk_d(v double) Str {
+var p = __py_chunk_words(__py_chunk_f64(v))
+return f"d ${p.len_bytes()}\n$p\n" }
+fn __py_chunk_f(v float) Str {
+var p = __py_chunk_words(__py_chunk_f32(v))
+return f"f ${p.len_bytes()}\n$p\n" }
+fn __py_chunk_words(b u64) Str {
+var w0 = (b & 0x3FFFFFu64).as(i32)
+var w1 = (b.shr(22u64) & 0x1FFFFFu64).as(i32)
+var w2 = b.shr(43u64).as(i32)
+return f"$w2 $w1 $w0" }
+fn __py_chunk_f64(v double) u64 {
+if v != v { return 0x7FF8000000000000u64 }
+var a = v
+if v < 0.0d { a = -v }
+var mag = 0u64
+if a != 0.0d {
+if a * 2.0d == a { mag = 0x7FF0000000000000u64 } else {
+var e = 0i64
+for a >= 2.0d { a = a * 0.5d; e = e + 1i64 }
+for a < 1.0d { a = a * 2.0d; e = e - 1i64 }
+var m = ((a - 1.0d) * 4503599627370496.0d).as(u64)
+var big = e + 1023i64
+if big <= 0i64 { mag = (m + 0x10000000000000u64).shr((1i64 - big).as(u64)) } else { mag = (big.shl(52i64) | m.as(i64)).as(u64) } } }
+return __py_sign_bit(v).as(u64).shl(63u64) | mag }
+fn __py_chunk_f32(v float) u64 {
+var b = __py_chunk_f64(v.as(double))
+var exp = b.shr(52u64) & 0x7FFu64
+var frac = b & 0xFFFFFFFFFFFFFu64
+var sign = b.shr(63u64)
+if exp == 0x7FFu64 { if frac == 0u64 { return sign.shl(31u64) | 0x7F800000u64 } else { return 0x7FC00000u64 } }
+if exp == 0u64 { return sign.shl(31u64) }
+if exp >= 897u64 { return sign.shl(31u64) | (exp - 896u64).shl(23u64) | frac.shr(29u64) }
+return sign.shl(31u64) | (frac | 0x10000000000000u64).shr(926u64 - exp) }
 "#;
+
+/// The `p967.frame/1` wire header: frames that carry no user value (the
+/// static import frame, receiver-only extraction frames).
+pub const FRAME_V1_HEADER: &str = "p967.frame/1\n";
+/// The `p967.frame/2` wire header (PLAN-1129): every frame the resolver
+/// builds around user VALUES — a Python call's arguments, an index key, a
+/// binary operand. It is the `/1` superset: floats cross as the typed tags
+/// `d`/`f` (payload `<w2> <w1> <w0>`, the 64-bit pattern split 21 / 21 / 22
+/// bits from the top) and a text payload is always text (no `F:` literal
+/// decoding).
+pub const FRAME_V2_HEADER: &str = "p967.frame/2\n";
+
+/// The AV-lane primitive the frozen float helpers call for a float's sign
+/// bit; the lowering emits it inline. It never appears at a user call site.
+pub use crate::py_ops::PY_SIGN_BIT;
+
+/// `<w2> <w1> <w0>`: a 64-bit pattern as three unsigned decimals, 21 / 21 /
+/// 22 bits from the top — the wire payload of a typed float. Every word fits
+/// an `i32` and stays below its bound, so one value has one encoding (the
+/// frozen helper `__py_chunk_words` renders the same three words at run
+/// time).
+pub fn float_words(bits: u64) -> String {
+    format!("{} {} {}", bits >> 43, (bits >> 22) & 0x1F_FFFF, bits & 0x3F_FFFF)
+}
+
+/// The typed frame text of a float LITERAL whose bits are known at compile
+/// time: `<tag> <len>\n<w2> <w1> <w0>\n` (`tag` is `d` for an f64, `f` for
+/// an f32). Static text, exactly like every other literal in a frame — a
+/// literal costs the running program nothing. A float the program computes
+/// is never written this way; it crosses through the frozen helper instead.
+pub fn typed_float_text(tag: u8, bits: u64) -> String {
+    let payload = float_words(bits);
+    format!("{} {}\n{}\n", tag as char, payload.len(), payload)
+}
 
 /// One `p967.frame/1` static import frame (the frozen wire layout for a
 /// module path + member name; every payload LF-terminated, a kwarg name

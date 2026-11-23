@@ -69,6 +69,10 @@ name = "py_project_1107"
 path = "tests/py_project_1107.rs"
 
 [[test]]
+name = "py_float_args_1129"
+path = "tests/py_float_args_1129.rs"
+
+[[test]]
 name = "avrs_project_1114"
 path = "tests/avrs_project_1114.rs"
 

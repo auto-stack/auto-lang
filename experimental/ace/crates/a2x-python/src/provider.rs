@@ -40,8 +40,9 @@ pub const PY_RT_RECIPE: &str = "a2py-hir-record-text-python-3.11";
 pub const PY_COLL_RECIPE: &str = "a2py-hir-collections-python-3.11";
 
 /// PLAN-1107: whether a module function is a py-lane frame helper
-/// (`__py_dlen`, `__py_chunk_*`). These build the AV `p967.frame/1` wire text;
-/// a source-generating target lowers the operations from the shared `py_ops`
+/// (`__py_dlen`, `__py_chunk_*`). These build the AV tag-frame wire text
+/// (`p967.frame/1` and the typed `p967.frame/2`); a source-generating target
+/// lowers the operations from the shared `py_ops`
 /// facts and never calls them, so emitters skip them.
 pub fn is_py_lane_helper(name: &str) -> bool {
     name == "sf___py_dlen" || name.starts_with("sf___py_chunk_")

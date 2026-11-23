@@ -331,15 +331,10 @@ fn offer(build: &RustProviderBuild, dll: &[u8]) -> Result<ProviderOffer, M2Rejec
                 entry.export
             )));
         }
-        let sig = match entry.completion {
-            Some(mode) => serde_json::to_vec(&(fact, mode)),
-            None => serde_json::to_vec(fact),
-        }
-        .map_err(sdk_error)?;
-        offered_symbols.push(SymbolContract {
-            name: entry.export.clone(),
-            signature_hash: sha256_hex(&sig),
-        });
+        offered_symbols.push(
+            symbol_contract(&entry.export, fact, entry.completion, entry.frame.as_deref())
+                .map_err(sdk_error)?,
+        );
     }
     let is_multi = build
         .manifest
@@ -354,6 +349,30 @@ fn offer(build: &RustProviderBuild, dll: &[u8]) -> Result<ProviderOffer, M2Rejec
         semantic_owner: build.manual.facts.logical.clone(),
         threading: if is_multi { "multi" } else { "single" }.into(),
         runtime_dependencies: libraries,
+    })
+}
+
+/// One offered symbol: its export name and the hash of its signature.
+///
+/// PLAN-1129: a frame-typed declaration's wire version is part of its
+/// interface capability. The logical form of `py_call` is the same in
+/// `p967.frame/1` and `/2`; hashing the version keeps a typed-float
+/// requirement from matching a provider that never declared it.
+fn symbol_contract<C: Serialize>(
+    name: &str,
+    fact: &ace_foreign_contract::FnFact,
+    completion: Option<C>,
+    frame: Option<&str>,
+) -> Result<SymbolContract, serde_json::Error> {
+    let sig = match (completion, frame) {
+        (Some(mode), Some(frame)) => serde_json::to_vec(&(fact, mode, frame)),
+        (Some(mode), None) => serde_json::to_vec(&(fact, mode)),
+        (None, Some(frame)) => serde_json::to_vec(&(fact, frame)),
+        (None, None) => serde_json::to_vec(fact),
+    }?;
+    Ok(SymbolContract {
+        name: name.to_string(),
+        signature_hash: sha256_hex(&sig),
     })
 }
 
@@ -608,4 +627,89 @@ pub(crate) fn publish_sdk(
         fs::remove_dir_all(&backup).map_err(sdk_error)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod frame_identity_1129_tests {
+    use super::symbol_contract;
+    use ace_abi::rust_provider::{describe_rust_provider, f0_tframe_provider_source, RustProviderBuild};
+
+    fn describe(source: &str) -> RustProviderBuild {
+        describe_rust_provider(source, String::new(), Default::default(), Default::default())
+            .expect("the frame provider describes without a build")
+    }
+
+    fn contract(build: &RustProviderBuild, rust_name: &str) -> crate::compat::SymbolContract {
+        let index = build
+            .manifest
+            .functions
+            .iter()
+            .position(|f| f.rust_name == rust_name)
+            .unwrap_or_else(|| panic!("`{rust_name}` is declared"));
+        symbol_contract(
+            &build.manifest.functions[index].export,
+            &build.manual.facts.functions[index],
+            build.manifest.functions[index].completion,
+            build.manifest.functions[index].frame.as_deref(),
+        )
+        .expect("every declaration hashes")
+    }
+
+    /// The frozen generic frame provider, described twice: as delivered,
+    /// and with ONE function's annotation moved to the typed superset. That
+    /// one symbol's signature changes and nothing else's does.
+    #[test]
+    fn the_frame_version_is_part_of_only_the_typed_symbols_signature() {
+        let frozen = f0_tframe_provider_source().to_string();
+        let moved = frozen.replacen("frame=p967.frame/1", "frame=p967.frame/2", 1);
+        assert_eq!(moved.matches("frame=p967.frame/2").count(), 1);
+        let (old, new) = (describe(&frozen), &describe(&moved));
+
+        let (before, after) = (contract(&old, "tframe_sum_i32"), contract(&new, "tframe_sum_i32"));
+        assert_eq!(before.name, after.name, "the export name is unchanged");
+        assert_ne!(
+            before.signature_hash, after.signature_hash,
+            "the wire version is part of the signature a consumer requires"
+        );
+        for untouched in [
+            "tframe_text_len",
+            "tframe_opaque_store",
+            "tframe_opaque_read",
+            "tframe_panic_probe",
+        ] {
+            assert_eq!(
+                contract(&old, untouched).signature_hash,
+                contract(&new, untouched).signature_hash,
+                "{untouched} offers exactly what it did"
+            );
+        }
+    }
+
+    /// A declaration that names no frame keeps the hash it always had: the
+    /// version is hashed only when the declaration declares one.
+    #[test]
+    fn an_undeclared_frame_changes_no_signature() {
+        let fact = ace_foreign_contract::FnFact {
+            symbol: "s".into(),
+            form: ace_foreign_contract::FnForm::Pure {
+                params: Vec::new(),
+                ret: ace_foreign_contract::LaneKind::I32,
+            },
+            error_model: None,
+            semantic_ref: None,
+            resource: None,
+        };
+        let plain = symbol_contract::<u8>("s", &fact, None, None).unwrap();
+        assert_eq!(
+            plain.signature_hash,
+            ace_a2x_core::sha256::sha256_hex(&serde_json::to_vec(&fact).unwrap()),
+            "no frame, no completion: the hash is the bare fact's"
+        );
+        assert_ne!(
+            plain.signature_hash,
+            symbol_contract::<u8>("s", &fact, None, Some("p967.frame/1"))
+                .unwrap()
+                .signature_hash
+        );
+    }
 }

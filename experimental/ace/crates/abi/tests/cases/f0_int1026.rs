@@ -395,14 +395,40 @@ fn v_int_1026_named_domain_rejections() {
     };
     assert!(err2.contains("rust-import.frame"), "{err2}");
 
-    // a wrong frame version is a named rejection too
+    // a wrong frame version is a named rejection too (PLAN-1129 made
+    // `p967.frame/2` the typed-value superset; the next spelling is unknown)
     let broken3 = src.replace(
         "frame=p967.frame/1\npub fn tframe_sum_i32",
-        "frame=p967.frame/2\npub fn tframe_sum_i32",
+        "frame=p967.frame/3\npub fn tframe_sum_i32",
     );
     let err3 = match ace_abi::rust_provider::build_source(&scope("int1026-rej-c"), &broken3) {
         Err(e) => e,
         Ok(_) => panic!("an unknown frame version must reject"),
     };
     assert!(err3.contains("rust-import.frame"), "{err3}");
+    assert!(err3.contains("p967.frame/1 | p967.frame/2"), "{err3}");
+
+    // ...while the typed superset itself imports, and a declaration naming
+    // it keeps the version as part of its interface identity
+    let typed = src.replace(
+        "frame=p967.frame/1\npub fn tframe_sum_i32",
+        "frame=p967.frame/2\npub fn tframe_sum_i32",
+    );
+    let manifest = auto_bindgen::rust_import::import(&typed).expect("a /2 annotation imports");
+    let sum = manifest
+        .functions
+        .iter()
+        .find(|f| f.rust_name == "tframe_sum_i32")
+        .expect("tframe_sum_i32");
+    assert_eq!(sum.frame.as_deref(), Some("p967.frame/2"));
+    let legacy = auto_bindgen::rust_import::import(src).expect("the frozen /1 source imports");
+    assert_ne!(
+        auto_bindgen::rust_import::provider_digest(&typed),
+        auto_bindgen::rust_import::provider_digest(src),
+        "the frame version is part of the provider identity"
+    );
+    // one decoder serves both versions: the prelude is emitted once
+    let shim = auto_bindgen::rust_import::generate_shim(&manifest);
+    assert_eq!(shim.matches("fn __f0_frame_decode").count(), 1);
+    assert!(shim.contains("p967.frame/2\\n"));
 }

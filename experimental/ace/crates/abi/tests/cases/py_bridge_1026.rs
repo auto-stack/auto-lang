@@ -137,14 +137,33 @@ fn p1026_py_bridge_prepared_and_admits() {
     let t0 = std::time::Instant::now();
     let mut f0 = session();
     let prep_ms = t0.elapsed().as_millis();
-    // the frame axis is real metadata on every py op
+    // the frame axis is real metadata on every py op: the three ops that
+    // receive user values declare the typed superset (PLAN-1129), the rest
+    // stay on the frozen version-1 frames
     assert!(
         f0.build
             .manifest
             .functions
             .iter()
-            .all(|f| f.frame.as_deref() == Some("p967.frame/1")),
-        "every py op declares p967.frame/1"
+            .all(|f| f
+                .frame
+                .as_deref()
+                .is_some_and(|frame| frame == "p967.frame/1" || frame == "p967.frame/2")),
+        "every py op declares a frozen tag frame"
+    );
+    let mut typed: Vec<&str> = f0
+        .build
+        .manifest
+        .functions
+        .iter()
+        .filter(|f| f.frame.as_deref() == Some("p967.frame/2"))
+        .map(|f| f.rust_name.as_str())
+        .collect();
+    typed.sort_unstable();
+    assert_eq!(
+        typed,
+        ["py_binop", "py_call", "py_getitem"],
+        "exactly the value-carrying ops declare p967.frame/2"
     );
     assert_eq!(f0.build.manifest.provider, "py");
     // admission through the real AV lane

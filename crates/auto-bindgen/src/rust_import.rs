@@ -123,6 +123,15 @@ impl RustProviderManifest {
 
 /// The frozen tag-frame encoding identity (IF-CALL physical projection).
 pub const FRAME_FORMAT: &str = "p967.frame/1";
+/// PLAN-1129: the typed-value superset of [`FRAME_FORMAT`]. Same layout;
+/// adds the float tags `d` (f64) and `f` (f32). A declaration naming this
+/// version accepts BOTH wire versions — the annotation is the provider's
+/// statement that it decodes typed floats, and (as manifest content) it is
+/// part of the interface identity a consumer is admitted against.
+pub const FRAME_FORMAT_V2: &str = "p967.frame/2";
+/// Every frame version an annotation may name (the decoded shim and the AV
+/// admission accept exactly these two wire headers).
+pub const FRAME_FORMATS: [&str; 2] = [FRAME_FORMAT, FRAME_FORMAT_V2];
 
 /// One parameter shape of an imported Rust function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -427,11 +436,12 @@ fn parse_fn_annotation(body: &str, idx: usize) -> Result<FnAnnotation, ImportErr
                 ));
             }
         } else if let Some(v) = part.strip_prefix("frame=") {
-            if v != FRAME_FORMAT {
+            if !FRAME_FORMATS.contains(&v) {
                 return Err(err(
                     "rust-import.frame",
                     format!(
-                        "frame `{v}` is not the frozen tag-frame encoding `{FRAME_FORMAT}` (line {})",
+                        "frame `{v}` is not a frozen tag-frame encoding ({}) (line {})",
+                        FRAME_FORMATS.join(" | "),
                         idx + 1
                     ),
                 ));
@@ -1052,14 +1062,24 @@ fn emit_owned_fn(out: &mut String, f: &RustFnEntry, owned: &RustOwnedEntry) {
     ));
 }
 
-/// The p967.frame/1 tag-frame shim prelude (generated; DO NOT EDIT).
+/// The p967 tag-frame shim prelude (generated; DO NOT EDIT).
+///
+/// One decoder serves two wire versions (PLAN-1129). `p967.frame/1` is the
+/// frozen 967 encoding (`n`/`i`/`b`/`t`/`o`). `p967.frame/2` is its superset
+/// and adds the typed float tags `d` (f64 bits) and `f` (f32 bits), whose
+/// payload is `<w2> <w1> <w0>` — three unsigned decimals carrying the 64-bit
+/// pattern 21 / 21 / 22 bits from the top. A `/1` frame never carries
+/// `d`/`f`. The decoded `version` is the frame's interface identity: a
+/// provider that still serves old emitters selects its legacy decoding mode
+/// (the py bridge's `F:` float-literal text) by this field and by nothing
+/// else.
 const FRAME_SHIM_PRELUDE: &str = r####"
 #[derive(Debug, Clone)]
-pub enum F0Val { None, I32(i32), Bool(bool), Text(String), Opaque(u64) }
+pub enum F0Val { None, I32(i32), Bool(bool), Text(String), Opaque(u64), F64(u64), F32(u32) }
 #[derive(Debug, Clone)]
 pub struct F0Kwarg { pub name: String, pub value: F0Val }
 #[derive(Debug, Clone)]
-pub struct F0Frame { pub receiver: F0Val, pub positionals: Vec<F0Val>, pub kwargs: Vec<F0Kwarg> }
+pub struct F0Frame { pub version: u8, pub receiver: F0Val, pub positionals: Vec<F0Val>, pub kwargs: Vec<F0Kwarg> }
 fn __f0_take_line<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
     let n = cur.iter().position(|&b| b == b'\n').ok_or("unterminated header line")?;
     let (l, tail) = cur.split_at(n);
@@ -1079,10 +1099,14 @@ fn __f0_decimal(l: &[u8]) -> Option<(u64, &[u8])> {
     if i == d { return None; }
     Some((n, &l[i..]))
 }
-fn __f0_take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static str> {
+fn __f0_tag_ok(tag: u8, version: u8) -> bool {
+    matches!(tag, b'n' | b'i' | b'b' | b't' | b'o')
+        || (version == 2 && matches!(tag, b'd' | b'f'))
+}
+fn __f0_take_value<'a>(cur: &mut &'a [u8], version: u8) -> Result<(u8, &'a [u8]), &'static str> {
     let header = __f0_take_line(cur)?;
     let tag = *header.first().ok_or("missing tag")?;
-    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') { return Err("unknown tag"); }
+    if !__f0_tag_ok(tag, version) { return Err("unknown tag"); }
     let tail = header[1..].strip_prefix(b" ").ok_or("tag not followed by a length")?;
     let (len, tail) = __f0_decimal(tail).ok_or("bad length")?;
     if !tail.is_empty() { return Err("length not the header end"); }
@@ -1093,6 +1117,32 @@ fn __f0_take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static st
     let tail = tail.strip_prefix(b"\n").ok_or("payload not LF-terminated")?;
     *cur = tail;
     Ok((tag, payload))
+}
+/// The typed float payload `<w2> <w1> <w0>`: three unsigned decimals, the
+/// 64-bit pattern split 21 / 21 / 22 bits from the top (`w0` is the low 22
+/// bits; bits = `w2 << 43 | w1 << 22 | w0`). Every word has a range bound,
+/// so one value has exactly one encoding.
+fn __f0_float_bits(payload: &[u8]) -> Result<u64, &'static str> {
+    let mut words = payload.split(|&b| b == b' ');
+    let mut value: u64 = 0;
+    let bounds = [(43u32, 1u64 << 21), (22u32, 1u64 << 21), (0u32, 1u64 << 22)];
+    for (shift, limit) in bounds {
+        let w = words.next().ok_or("typed float payload is not `<w2> <w1> <w0>`")?;
+        if !w.iter().all(|b| b.is_ascii_digit()) {
+            return Err("typed float word is not a decimal");
+        }
+        if w.is_empty() || w.len() > 7 {
+            return Err("typed float word is out of range");
+        }
+        match __f0_decimal(w) {
+            Some((n, rest)) if rest.is_empty() && n < limit => value |= n << shift,
+            _ => return Err("typed float word is out of range"),
+        }
+    }
+    if words.next().is_some() {
+        return Err("typed float payload is not `<w2> <w1> <w0>`");
+    }
+    Ok(value)
 }
 fn __f0_take_name(cur: &mut &[u8]) -> Result<String, &'static str> {
     let header = __f0_take_line(cur)?;
@@ -1108,7 +1158,7 @@ fn __f0_take_name(cur: &mut &[u8]) -> Result<String, &'static str> {
         None => Err("kwarg name is not UTF-8"),
     }
 }
-fn __f0_val(tag: u8, payload: &[u8]) -> Result<F0Val, &'static str> {
+fn __f0_val(tag: u8, payload: &[u8], version: u8) -> Result<F0Val, &'static str> {
     match tag {
         b'n' if payload.is_empty() => Ok(F0Val::None),
         b'i' => std::str::from_utf8(payload).ok().and_then(|t| t.parse::<i32>().ok()).map(F0Val::I32).ok_or("tag i payload is not an i32"),
@@ -1116,19 +1166,31 @@ fn __f0_val(tag: u8, payload: &[u8]) -> Result<F0Val, &'static str> {
         b'b' if payload == b"0" => Ok(F0Val::Bool(false)),
         b'b' if payload == b"1" => Ok(F0Val::Bool(true)),
         b't' => std::str::from_utf8(payload).ok().map(|t| F0Val::Text(t.to_string())).ok_or("tag t payload is not UTF-8"),
+        b'd' if version == 2 => Ok(F0Val::F64(__f0_float_bits(payload)?)),
+        b'f' if version == 2 => Ok(F0Val::F32(__f0_float_bits(payload)? as u32)),
         _ => Err("bad tagged value"),
     }
 }
-/// Decode a p967.frame/1 wire frame (the AV admission validated the
-/// structure pre-dispatch; this decode is the defensive second gate).
+/// Decode a p967.frame/1 or p967.frame/2 wire frame (the AV admission
+/// validated the structure pre-dispatch; this decode is the defensive
+/// second gate). `F0Frame::version` records which wire header was read.
 fn __f0_frame_decode(bytes: &[u8]) -> Result<F0Frame, &'static str> {
     let mut cur = bytes;
-    let magic = b"p967.frame/1\n";
-    if cur.len() < magic.len() || &cur[..magic.len()] != magic { return Err("bad magic/version header"); }
-    cur = &cur[magic.len()..];
+    let v1 = b"p967.frame/1\n";
+    let v2 = b"p967.frame/2\n";
+    let version = if cur.len() >= v1.len() && &cur[..v1.len()] == v1 {
+        cur = &cur[v1.len()..];
+        1
+    } else if cur.len() >= v2.len() && &cur[..v2.len()] == v2 {
+        cur = &cur[v2.len()..];
+        2
+    } else {
+        return Err("bad magic/version header");
+    };
     let rh = __f0_take_line(&mut cur)?;
     let rh = rh.strip_prefix(b"r ").ok_or("expected the receiver value header")?;
     let rtag = *rh.first().ok_or("missing tag")?;
+    if !__f0_tag_ok(rtag, version) { return Err("unknown tag"); }
     let rtail = rh[1..].strip_prefix(b" ").ok_or("tag not followed by a length")?;
     let (rlen, rtail) = __f0_decimal(rtail).ok_or("bad length")?;
     if !rtail.is_empty() || rlen > 4096 { return Err("bad receiver header"); }
@@ -1137,15 +1199,15 @@ fn __f0_frame_decode(bytes: &[u8]) -> Result<F0Frame, &'static str> {
     let (rpayload, t2) = cur.split_at(rlen);
     let t2 = t2.strip_prefix(b"\n").ok_or("payload not LF-terminated")?;
     cur = t2;
-    let receiver = __f0_val(rtag, rpayload)?;
+    let receiver = __f0_val(rtag, rpayload, version)?;
     let header = __f0_take_line(&mut cur)?;
     if header[0] != b'p' { return Err("expected the positional count line"); }
     let (n, tail) = __f0_decimal(header[1..].strip_prefix(b" ").ok_or("count not delimited")?).ok_or("bad count")?;
     if !tail.is_empty() || n > 8 { return Err("count over the frame cap"); }
     let mut positionals = Vec::with_capacity(n as usize);
     for _ in 0..n {
-        let (tag, payload) = __f0_take_value(&mut cur)?;
-        positionals.push(__f0_val(tag, payload)?);
+        let (tag, payload) = __f0_take_value(&mut cur, version)?;
+        positionals.push(__f0_val(tag, payload, version)?);
     }
     let header = __f0_take_line(&mut cur)?;
     if header[0] != b'k' { return Err("expected the kwarg count line"); }
@@ -1154,11 +1216,11 @@ fn __f0_frame_decode(bytes: &[u8]) -> Result<F0Frame, &'static str> {
     let mut kwargs = Vec::with_capacity(n as usize);
     for _ in 0..n {
         let name = __f0_take_name(&mut cur)?;
-        let (tag, payload) = __f0_take_value(&mut cur)?;
-        kwargs.push(F0Kwarg { name, value: __f0_val(tag, payload)? });
+        let (tag, payload) = __f0_take_value(&mut cur, version)?;
+        kwargs.push(F0Kwarg { name, value: __f0_val(tag, payload, version)? });
     }
     if !cur.is_empty() { return Err("trailing bytes after the frame"); }
-    Ok(F0Frame { receiver, positionals, kwargs })
+    Ok(F0Frame { version, receiver, positionals, kwargs })
 }
 "####;
 

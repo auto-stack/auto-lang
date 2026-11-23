@@ -137,6 +137,11 @@ def a2x_py_to_bool(v) -> bool:
 def a2x_py_to_str(v) -> bytes:
     return str(v).encode("utf-8")
 
+def a2x_py_text(v) -> str:
+    # An Auto text VALUE reaches Python as the `str` it holds — never as the
+    # runtime's own Str wrapper or its raw bytes (PLAN-1129).
+    return a2x_as_bytes(v).decode("utf-8")
+
 # ---- console print lanes (Plan 403 formatting parity) --------------------
 # Same spellings the AV console lane uses: NaN/Infinity, whole numbers without
 # a decimal part, shortest round-trip otherwise; one line per call.
@@ -413,6 +418,25 @@ def a2x_f64_bits(bits: int) -> float:
 
 def a2x_cast_f32(v) -> float:
     return a2x_f32_bits(struct.unpack("<I", struct.pack("<f", float(v)))[0])
+
+
+_A2X_F32_MAX = 3.4028234663852886e38
+_A2X_F32_OVERFLOW = 2.0 ** 128 - 2.0 ** 103
+
+
+def a2x_f32_round(v) -> float:
+    x = float(v)
+    if x != x:
+        return x
+    if x >= _A2X_F32_OVERFLOW:
+        return math.inf
+    if x <= -_A2X_F32_OVERFLOW:
+        return -math.inf
+    if x > _A2X_F32_MAX:
+        return _A2X_F32_MAX
+    if x < -_A2X_F32_MAX:
+        return -_A2X_F32_MAX
+    return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
 def a2x_fdiv(a: float, b: float) -> float:

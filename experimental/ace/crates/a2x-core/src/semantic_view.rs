@@ -293,11 +293,12 @@ pub struct SemanticView<'a> {
     /// `a2x_gfx_*` 宿主 extern；A2R 在自身 lowering 具名拒（AC/C 宿主车道
     /// 才是消费方）。
     gfx_defs: Vec<(usize, String)>,
-    /// PLAN-1107 T-02: py-lane extraction intrinsics present (def_index →
-    /// symbol: `__py_f64_bits` / `__py_staged_text`). Admitted only when the
-    /// shared `py_ops` plan is present; a target lowers the OPERATIONS via
-    /// the plan, so this list exists to keep the checked bodies admissible
-    /// rather than to expose an AV encoding.
+    /// PLAN-1107 T-02: py-lane encoding intrinsics present (def_index →
+    /// symbol; `ace_core::py_ops::is_py_lane_intrinsic`: the 1026
+    /// reconstruction pair and the PLAN-1129 bit-pattern readers). Admitted
+    /// only when the shared `py_ops` plan is present; a target lowers the
+    /// OPERATIONS via the plan, so this list exists to keep the checked
+    /// bodies admissible rather than to expose an AV encoding.
     py_defs: Vec<(usize, String)>,
     /// PLAN-981（D-981-MODULE-GLOBAL-A2R）：module.global.get/set 的 def
     /// （索引、global 符号、是否 set）。仅当 facts plan 在场（AGE 包前门）
@@ -713,9 +714,9 @@ impl<'a> SemanticView<'a> {
         self.py_ops
     }
 
-    /// PLAN-1107 T-02: the py-lane extraction intrinsics present in the
-    /// admitted bodies (`__py_f64_bits` / `__py_staged_text`), with their def
-    /// indices. Present only together with `py_ops()`.
+    /// PLAN-1107 T-02: the py-lane encoding intrinsics present in the
+    /// admitted bodies (see `ace_core::py_ops::is_py_lane_intrinsic`), with
+    /// their def indices. Present only together with `py_ops()`.
     pub fn py_defs(&self) -> &[(usize, String)] {
         &self.py_defs
     }
@@ -1911,9 +1912,9 @@ fn collect_trace_defs(
                 sched_defs.push((def_index, symbol.clone()));
                 continue;
             }
-            // PLAN-1107 T-02: py-lane extraction intrinsics, only with the op plan
-            // present (see `py_defs` above).
-            if allow_py_lane && matches!(symbol.as_str(), "__py_f64_bits" | "__py_staged_text") {
+            // PLAN-1107 T-02: py-lane encoding intrinsics, only with the op
+            // plan present (see `py_defs` above).
+            if allow_py_lane && ace_core::py_ops::is_py_lane_intrinsic(symbol) {
                 py_defs.push((def_index, symbol.clone()));
                 continue;
             }

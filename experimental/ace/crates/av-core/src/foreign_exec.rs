@@ -312,6 +312,16 @@ impl ForeignStub {
 //   NOTHING may follow (exact consume).
 // tags: `n` (len 0) | `i` (i32 decimal) | `b` (`0`/`1`, len 1)
 //       | `t` (any bytes, len 0..=4096)  | `o` (u64 decimal)
+//
+// PLAN-1129: the same layout carries a second wire version, `p967.frame/2`
+// LF, which is the superset above plus the typed float tags
+//   `d` (f64 bits) | `f` (f32 bits): payload `<w2> <w1> <w0>` — three
+//   unsigned decimals (1..=7 digits each) carrying the 64-bit pattern
+//   21 / 21 / 22 bits from the top; every word stays below its bound.
+// A `/1` frame never carries `d`/`f`; a `/1` `t` payload keeps whatever the
+// provider's legacy mode makes of it. This validator and the generated shim
+// decoder (`auto_bindgen::rust_import::FRAME_SHIM_PRELUDE`) accept the same
+// byte set — change them together.
 // ---------------------------------------------------------------------------
 
 /// Frame caps (frozen with the encoding).
@@ -320,24 +330,43 @@ pub const FRAME_MAX_KWARGS: usize = 8;
 pub const FRAME_MAX_TEXT: usize = 4096;
 pub const FRAME_MAX_NAME: usize = 64;
 
-/// Strictly parse and validate a `p967.frame/1` wire frame. Guest-supplied
-/// tags/lengths are never trusted: every structural violation is `Err`
-/// with a stable reason (the caller rejects with `foreign.frame` BEFORE
-/// dispatch — callee_count stays unchanged). The parse is CURSOR-driven:
-/// headers are ASCII lines; payloads are read EXACTLY by length and may
-/// contain any byte (including LF).
+/// The two wire headers of the tag frame, in version order.
+pub const FRAME_HEADERS: [&[u8]; 2] = [b"p967.frame/1\n", b"p967.frame/2\n"];
+
+/// Whether `tag` belongs to `version` of the tag-frame vocabulary.
+fn frame_tag_ok(tag: u8, version: u8) -> bool {
+    matches!(tag, b'n' | b'i' | b'b' | b't' | b'o')
+        || (version == 2 && matches!(tag, b'd' | b'f'))
+}
+
+/// Strictly parse and validate a `p967.frame/1` or `p967.frame/2` wire
+/// frame. Guest-supplied tags/lengths are never trusted: every structural
+/// violation is `Err` with a stable reason (the caller rejects with
+/// `foreign.frame` BEFORE dispatch — callee_count stays unchanged). The
+/// parse is CURSOR-driven: headers are ASCII lines; payloads are read
+/// EXACTLY by length and may contain any byte (including LF).
 pub fn validate_frame_wire(bytes: &[u8]) -> Result<(), &'static str> {
     let mut cur = bytes;
-    take_literal(&mut cur, b"p967.frame/1\n")?;
+    let mut version = 0u8;
+    for (index, header) in FRAME_HEADERS.iter().enumerate() {
+        if cur.len() >= header.len() && &cur[..header.len()] == *header {
+            cur = &cur[header.len()..];
+            version = index as u8 + 1;
+            break;
+        }
+    }
+    if version == 0 {
+        return Err("bad magic/version header");
+    }
     // receiver: 'r' SP tag SP len LF + payload LF (the 'r ' prefix marks
     // the receiver slot inside the value header)
-    let (tag, payload) = take_prefixed_value(&mut cur, b"r ")?;
-    check_tag_value(tag, payload)?;
+    let (tag, payload) = take_prefixed_value(&mut cur, b"r ", version)?;
+    check_tag_value(tag, payload, version)?;
     // positionals: 'p' SP count LF then count values
     let count = take_count(&mut cur)?;
     for _ in 0..count {
-        let (tag, payload) = take_value(&mut cur)?;
-        check_tag_value(tag, payload)?;
+        let (tag, payload) = take_value(&mut cur, version)?;
+        check_tag_value(tag, payload, version)?;
     }
     // kwargs: 'k' SP count LF then count (namelen LF name, value)
     let count = take_count_kw(&mut cur)?;
@@ -346,21 +375,13 @@ pub fn validate_frame_wire(bytes: &[u8]) -> Result<(), &'static str> {
         if name.is_empty() {
             return Err("empty kwarg name");
         }
-        let (tag, payload) = take_value(&mut cur)?;
+        let (tag, payload) = take_value(&mut cur, version)?;
         let _ = name;
-        check_tag_value(tag, payload)?;
+        check_tag_value(tag, payload, version)?;
     }
     if !cur.is_empty() {
         return Err("trailing bytes after the frame");
     }
-    Ok(())
-}
-
-fn take_literal(cur: &mut &[u8], lit: &[u8]) -> Result<(), &'static str> {
-    if cur.len() < lit.len() || &cur[..lit.len()] != lit {
-        return Err("bad magic/version header");
-    }
-    *cur = &cur[lit.len()..];
     Ok(())
 }
 
@@ -378,11 +399,11 @@ fn take_line<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
     Ok(l)
 }
 
-/// tag SP len LF + exactly len payload bytes.
-fn take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static str> {
+/// tag SP len LF + exactly len payload bytes (`version` selects the tag set).
+fn take_value<'a>(cur: &mut &'a [u8], version: u8) -> Result<(u8, &'a [u8]), &'static str> {
     let header = take_line(cur)?;
     let tag = *header.first().ok_or("missing tag")?;
-    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') {
+    if !frame_tag_ok(tag, version) {
         return Err("unknown tag");
     }
     let tail = &header[1..];
@@ -415,13 +436,14 @@ fn take_value<'a>(cur: &mut &'a [u8]) -> Result<(u8, &'a [u8]), &'static str> {
 fn take_prefixed_value<'a>(
     cur: &mut &'a [u8],
     prefix: &[u8],
+    version: u8,
 ) -> Result<(u8, &'a [u8]), &'static str> {
     let header = take_line(cur)?;
     let rest = header
         .strip_prefix(prefix)
         .ok_or("expected the receiver value header")?;
     let tag = *rest.first().ok_or("missing tag")?;
-    if !matches!(tag, b'n' | b'i' | b'b' | b't' | b'o') {
+    if !frame_tag_ok(tag, version) {
         return Err("unknown tag");
     }
     let tail = &rest[1..];
@@ -504,7 +526,7 @@ fn take_name<'a>(cur: &mut &'a [u8]) -> Result<&'a [u8], &'static str> {
 /// dispatch path that skips the view gate must fold the UTF-8 check
 /// into this function to keep the two implementations of the frozen
 /// spec aligned.
-fn check_tag_value(tag: u8, payload: &[u8]) -> Result<(), &'static str> {
+fn check_tag_value(tag: u8, payload: &[u8], version: u8) -> Result<(), &'static str> {
     match tag {
         b'n' if payload.is_empty() => Ok(()),
         b'n' => Err("tag n must carry no payload"),
@@ -521,8 +543,41 @@ fn check_tag_value(tag: u8, payload: &[u8]) -> Result<(), &'static str> {
         b'b' if payload == b"0" || payload == b"1" => Ok(()),
         b'b' => Err("tag b payload must be 0 or 1"),
         b't' => Ok(()), // any bytes, capped by take_value
+        // PLAN-1129: typed floats exist in version 2 only.
+        b'd' | b'f' if version == 2 => check_float_words(payload),
         _ => Err("unknown tag"),
     }
+}
+
+/// The typed float payload `<w2> <w1> <w0>`: three unsigned decimals, the
+/// 64-bit pattern split 21 / 21 / 22 bits from the top. Every word is 1..=7
+/// digits and below its bound, so one value has exactly one encoding (the
+/// same acceptance and the same reasons as the shim decoder's
+/// `__f0_float_bits`).
+fn check_float_words(payload: &[u8]) -> Result<(), &'static str> {
+    const BOUNDS: [u64; 3] = [1 << 21, 1 << 21, 1 << 22];
+    let mut words = payload.split(|&b| b == b' ');
+    for bound in BOUNDS {
+        let word = words
+            .next()
+            .ok_or("typed float payload is not `<w2> <w1> <w0>`")?;
+        if !word.iter().all(|b| b.is_ascii_digit()) {
+            return Err("typed float word is not a decimal");
+        }
+        if word.is_empty() || word.len() > 7 {
+            return Err("typed float word is out of range");
+        }
+        let value = word
+            .iter()
+            .fold(0u64, |value, b| value * 10 + u64::from(b - b'0'));
+        if value >= bound {
+            return Err("typed float word is out of range");
+        }
+    }
+    if words.next().is_some() {
+        return Err("typed float payload is not `<w2> <w1> <w0>`");
+    }
+    Ok(())
 }
 
 fn split_decimal(l: &[u8]) -> Option<(u64, &[u8])> {
@@ -2607,6 +2662,126 @@ mod tests {
                 ForeignExecError::Cancelled => "foreign.cancelled",
                 ForeignExecError::Wall => "foreign.wall",
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod frame_wire_1129_tests {
+    //! PLAN-1129: the two wire versions of the tag frame as the AV admission
+    //! sees them (the generated shim decoder accepts the same bytes).
+    use super::validate_frame_wire;
+
+    const V1: &str = "p967.frame/1\n";
+    const V2: &str = "p967.frame/2\n";
+
+    fn ok(version: &str, body: &str) {
+        assert_eq!(
+            validate_frame_wire(format!("{version}{body}").as_bytes()),
+            Ok(()),
+            "{version:?}{body:?} must be admitted"
+        );
+    }
+
+    fn bad(version: &str, body: &str, reason: &'static str) {
+        assert_eq!(
+            validate_frame_wire(format!("{version}{body}").as_bytes()),
+            Err(reason),
+            "{version:?}{body:?}"
+        );
+    }
+
+    /// A positional value with an exact length header.
+    fn positional(tag: &str, payload: &str) -> String {
+        format!("r n 0\n\np 1\n{tag} {}\n{payload}\nk 0\n", payload.len())
+    }
+
+    #[test]
+    fn version_one_keeps_exactly_its_five_tags() {
+        ok(V1, "r n 0\n\np 0\nk 0\n");
+        ok(V1, "r o 1\n7\np 0\nk 0\n");
+        ok(V1, &positional("t", "F:2.5"));
+        ok(V1, "r n 0\n\np 0\nk 2\n2\nxli 1\n5\n1\nyi 1\n6\n");
+        for tag in ["d", "f"] {
+            bad(V1, &positional(tag, "0 0 0"), "unknown tag");
+        }
+        bad(V1, "r d 5\n0 0 0\np 0\nk 0\n", "unknown tag");
+        bad(V1, "r n 0\n\np 0\nk 1\n1\nxf 5\n0 0 0\n", "unknown tag");
+    }
+
+    #[test]
+    fn version_two_admits_typed_floats_in_every_value_slot() {
+        ok(V2, "r n 0\n\np 0\nk 0\n");
+        ok(V2, "r n 0\n\np 2\nt 0\n\nd 5\n0 0 0\nk 0\n");
+        ok(V2, "r d 23\n2097151 2097151 4194303\np 0\nk 0\n");
+        ok(V2, "r n 0\n\np 0\nk 1\n1\nxf 23\n2097151 2097151 4194303\n");
+        // the version-1 tags and rules are unchanged inside a version-2 frame
+        ok(V2, &positional("t", "F:2.5"));
+        ok(V2, "r n 0\n\np 1\ni 2\n42\nk 0\n");
+        bad(V2, "r x 1\n1\np 0\nk 0\n", "unknown tag");
+        bad(V2, "r n 0\n\np 9\nk 0\n", "count over the frame cap");
+        bad(
+            V2,
+            &format!("{}garbage", positional("d", "0 0 0")),
+            "trailing bytes after the frame",
+        );
+    }
+
+    #[test]
+    fn a_typed_float_payload_is_three_bounded_decimals() {
+        for payload in ["0 0 0", "0 0 1", "0 1 0", "2097151 2097151 4194303"] {
+            ok(V2, &positional("d", payload));
+            ok(V2, &positional("f", payload));
+        }
+        let reason = "typed float payload is not `<w2> <w1> <w0>`";
+        for payload in ["0", "0 0", "0 0 0 0", "0 0 0 "] {
+            bad(V2, &positional("d", payload), reason);
+        }
+        for payload in ["0 -1 0", "0 +1 0", "0 0 0x1", "0 1.5 0", "0 0 ٣"] {
+            bad(
+                V2,
+                &positional("d", payload),
+                "typed float word is not a decimal",
+            );
+        }
+        for payload in [
+            "",              // a missing word is an empty one
+            "0  0",          // so is a doubled separator
+            "2097152 0 0",   // w2 carries 21 bits
+            "0 2097152 0",   // so does w1
+            "0 0 4194304",   // w0 carries 22
+            "12345678 0 0",  // at most seven digits
+        ] {
+            bad(
+                V2,
+                &positional("f", payload),
+                "typed float word is out of range",
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_wire_version_is_rejected_before_its_body() {
+        for header in ["p967.frame/3\n", "p967.frame/12\n", "p967.frame/\n", ""] {
+            bad(header, "r n 0\n\np 0\nk 0\n", "bad magic/version header");
+        }
+    }
+
+    #[test]
+    fn the_decoder_and_the_admission_accept_the_same_bytes() {
+        // The generated shim decoder is compiled into every provider; its
+        // source is the one prelude, so a sample of the admission's verdicts
+        // is replayed against the same acceptance spelled once more here.
+        let samples = [
+            (V1, positional("t", "F:2.5"), true),
+            (V1, positional("d", "0 0 0"), false),
+            (V2, positional("d", "0 0 2097151"), true),
+            (V2, positional("f", "0 2097151 4194303"), true),
+            (V2, positional("f", "0 4194304 0"), false),
+            (V2, positional("d", "0 0 "), false),
+        ];
+        for (version, body, admit) in samples {
+            assert_eq!(validate_frame_wire(format!("{version}{body}").as_bytes()).is_ok(), admit);
         }
     }
 }

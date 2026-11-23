@@ -4956,7 +4956,6 @@ pub(crate) fn resolve_lambda_in_context(
             moved_locals: BTreeSet::new(),
             py_locals: BTreeSet::new(),
             py_context: env.sigs.contains_key("py_import"),
-            py_lit_locals: BTreeMap::new(),
             borrowed_closure_locals: BTreeSet::new(),
             records: &env.program.records,
             rec_index: &env.rec_index,
@@ -6487,9 +6486,6 @@ struct FnResolver<'a, 's> {
     /// PLAN-1026: this program entered through the use.py front door (the
     /// py lane admits the console print intrinsics under Aggregates).
     py_context: bool,
-    /// PLAN-1026: float locals whose initializer is an exact typed literal
-    /// (folded into the frozen `F:` frame encoding at the call site).
-    py_lit_locals: BTreeMap<LocalRef, (VT, u64)>,
     stmt_sinks: Vec<Vec<RStmt>>,
     ctrl_frames: Vec<CtrlFrame>,
     ctrl_state: Option<AggCtrlLocals>,
@@ -6719,7 +6715,6 @@ fn resolve_fn_reuse<'a, 's>(
                     .unwrap_or(false)
             })
             .unwrap_or(false),
-        py_lit_locals: BTreeMap::new(),
         borrowed_closure_locals: BTreeSet::new(),
         records,
         rec_index,
@@ -7015,24 +7010,21 @@ impl<'a, 's> FnResolver<'a, 's> {
         match &v.kind {
             RExprKind::StrLit(_) => PyValClass::Text,
             RExprKind::BoolLit(_) => PyValClass::Bool,
-            RExprKind::TypedLit {
-                vt: VT::F64 | VT::F32,
-                ..
-            } => PyValClass::Float,
-            RExprKind::ReadLocal(l)
-                if matches!(v.vt, VT::F64 | VT::F32) && self.py_lit_locals.contains_key(l) =>
-            {
-                PyValClass::Float
-            }
+            // PLAN-1129: every f32/f64 operand is a float — a literal, a
+            // local read or a runtime expression. No operand is classified
+            // by what a local was initialized with.
+            _ if matches!(v.vt, VT::F32 | VT::F64) => PyValClass::Float,
             _ if v.vt == VT::I32 => PyValClass::Int,
             _ if v.vt == VT::Bool => PyValClass::Bool,
             _ => PyValClass::Other,
         }
     }
 
-    /// PLAN-1107 T-02: the exact literal payload an operand bakes into the AV
-    /// frame text (`i`/`b`/`t`/`F:` encodings), carried in the fact so a
-    /// source-generating target never has to decode frame text.
+    /// PLAN-1107 T-02: the exact literal payload of an operand that IS a
+    /// literal, carried in the fact so a source-generating target never has
+    /// to decode frame text. PLAN-1129: a local read is never a literal
+    /// here, whatever its initializer was — a target lowers the checked
+    /// expression at the operand's span instead.
     fn py_operand_literal(&self, v: &ResolvedExpr) -> Option<PyLiteral> {
         match &v.kind {
             RExprKind::IntLit(n) => Some(PyLiteral::Int(*n)),
@@ -7044,17 +7036,24 @@ impl<'a, 's> FnResolver<'a, 's> {
             RExprKind::TypedLit { vt: VT::F32, bits } => {
                 Some(PyLiteral::Float(f32::from_bits(*bits as u32) as f64))
             }
-            RExprKind::ReadLocal(l) if matches!(v.vt, VT::F64 | VT::F32) => {
-                self.py_lit_locals.get(l).map(|(vt, bits)| {
-                    PyLiteral::Float(if *vt == VT::F64 {
-                        f64::from_bits(*bits)
-                    } else {
-                        f32::from_bits(*bits as u32) as f64
-                    })
-                })
-            }
             _ => None,
         }
+    }
+
+    /// PLAN-1129: the typed frame value of one float operand — ONE call of
+    /// the frozen helper `__py_chunk_d`/`__py_chunk_f`, exactly like the
+    /// int/text/object chunks, so the operand is evaluated exactly once and
+    /// in source order. The helper reads the exact bit pattern and renders
+    /// `<tag> <len>\n<w2> <w1> <w0>\n`. A source-generating target lowers
+    /// neither the helper nor [`super::py::PY_SIGN_BIT`] — it takes the
+    /// checked expression from the fact's span.
+    fn py_float_chunk(&mut self, v: &ResolvedExpr) -> ResolvedExpr {
+        let chunk = if v.vt == VT::F64 {
+            "__py_chunk_d"
+        } else {
+            "__py_chunk_f"
+        };
+        self.py_op_call(chunk, v.span, v.clone())
     }
 
     /// Call a foreign py op (or a helper fn) by name with ONE positional
@@ -7162,47 +7161,22 @@ impl<'a, 's> FnResolver<'a, 's> {
             RExprKind::StrLit(t) => {
                 parts.push(PyFramePart::Txt(format!("t {}\n{t}\n", t.len())));
             }
-            // PLAN-1026: an exact float literal — the frozen `F:<decimal>`
-            // text encoding (compile-time; the provider parses it back to
-            // an exact Python float; dynamic float args stay v1-rejected).
+            // PLAN-1129: a float LITERAL has its exact bits at compile time,
+            // so it is static text under its typed tag — like every other
+            // literal, it costs the running program nothing. The 1026 `F:`
+            // text disguise is no longer emitted.
             RExprKind::TypedLit { vt: VT::F64, bits } => {
-                let d = f64::from_bits(*bits).to_string();
-                parts.push(PyFramePart::Txt(format!(
-                    "t {}
-F:{d}
-",
-                    d.len() + 2
-                )));
+                parts.push(PyFramePart::Txt(super::py::typed_float_text(b'd', *bits)));
             }
             RExprKind::TypedLit { vt: VT::F32, bits } => {
-                let d = (f32::from_bits(*bits as u32) as f64).to_string();
-                parts.push(PyFramePart::Txt(format!(
-                    "t {}
-F:{d}
-",
-                    d.len() + 2
-                )));
+                parts.push(PyFramePart::Txt(super::py::typed_float_text(b'f', *bits)));
             }
-            // PLAN-1026: a float local bound to an exact literal — the
-            // frozen `F:` compile-time encoding (the ONLY dynamic-float
-            // form v1 admits).
-            RExprKind::ReadLocal(l)
-                if matches!(v.vt, VT::F64 | VT::F32) && self.py_lit_locals.contains_key(l) =>
-            {
-                let (vt, bits) = self.py_lit_locals[l];
-                let d = if vt == VT::F64 {
-                    f64::from_bits(bits).to_string()
-                } else {
-                    (f32::from_bits(bits as u32) as f64).to_string()
-                };
-                let payload = format!("F:{d}");
-                parts.push(PyFramePart::Txt(format!(
-                    "t {}
-{}
-",
-                    payload.len(),
-                    payload
-                )));
+            // any OTHER float — a local read, a call, an expression — is ONE
+            // typed value produced by ONE call of the frozen helper, so the
+            // operand is evaluated exactly once.
+            _ if matches!(v.vt, VT::F32 | VT::F64) => {
+                let chunk = self.py_float_chunk(v);
+                parts.push(PyFramePart::TextExpr(chunk));
             }
             // a py object — dynamic "o <dlen>\n<token>\n". PLAN-1107: ONE
             // evaluation through the chunk helper (the operand may be an
@@ -7227,11 +7201,12 @@ F:{d}
                 let chunk = self.py_chunk_call("t", v);
                 parts.push(PyFramePart::TextExpr(chunk));
             }
-            // v1 boundary: dynamic floats/text/other types do not cross
+            // boundary: int, bool, text, float and Python objects cross;
+            // every other value kind is a named rejection
             _ => {
                 self.bind_err(
                     "source.py-domain",
-                    "this value kind cannot cross into a Python call (v1: int/bool/text literals and Python objects)",
+                    "this value kind cannot cross into a Python call (int, bool, text, float and Python objects cross)",
                     v.span,
                 );
                 parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
@@ -7249,7 +7224,7 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         let mut parts = vec![
-            PyFramePart::Txt("p967.frame/1\nr ".to_string()),
+            PyFramePart::Txt(format!("{}r ", super::py::FRAME_V2_HEADER)),
             PyFramePart::TextExpr(self.py_chunk_call("o", recv)),
             PyFramePart::Txt("p 0\nk 3\n".to_string()),
         ];
@@ -7289,7 +7264,12 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         let mut parts: Vec<PyFramePart> = Vec::new();
-        parts.push(PyFramePart::Txt("p967.frame/1\nr ".to_string()));
+        // PLAN-1129: a call frame carries user values, so it is a version-2
+        // frame (typed floats; text is text).
+        parts.push(PyFramePart::Txt(format!(
+            "{}r ",
+            super::py::FRAME_V2_HEADER
+        )));
         if self.py_is_object(recv) {
             let chunk = self.py_chunk_call("o", &recv);
             parts.push(PyFramePart::TextExpr(chunk));
@@ -16605,15 +16585,10 @@ F:{d}
                     if self.py_is_object(&value) {
                         self.py_locals.insert(lref);
                     }
-                    // PLAN-1026: an exact float literal binding folds into
-                    // the frozen `F:` frame encoding at py call sites.
-                    if let RExprKind::TypedLit {
-                        vt: vt @ (VT::F64 | VT::F32),
-                        bits,
-                    } = &value.kind
-                    {
-                        self.py_lit_locals.insert(lref, (*vt, *bits));
-                    }
+                    // PLAN-1129: a float local is a RUNTIME value at every py
+                    // call site. The 1026 initializer-literal table is gone:
+                    // it survived reassignment, so both targets passed the
+                    // initializer where the program held a newer value.
                     if matches!(
                         &value.kind,
                         RExprKind::CreateClosure { captures, .. }
@@ -18087,7 +18062,10 @@ F:{d}
                 // object.
                 if self.py_is_object(&recv) {
                     let mut parts: Vec<PyFramePart> =
-                        vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
+                        vec![PyFramePart::Txt(format!(
+                            "{}r ",
+                            super::py::FRAME_V2_HEADER
+                        ))];
                     let chunk = self.py_chunk_call("o", &recv);
                     parts.push(PyFramePart::TextExpr(chunk));
                     parts.push(PyFramePart::Txt("p 1\n".to_string()));
@@ -21473,8 +21451,10 @@ F:{d}
                         };
                         match opname {
                             Some(opname) => {
-                                let mut parts: Vec<PyFramePart> =
-                                    vec![PyFramePart::Txt("p967.frame/1\nr ".to_string())];
+                                let mut parts: Vec<PyFramePart> = vec![PyFramePart::Txt(format!(
+                                    "{}r ",
+                                    super::py::FRAME_V2_HEADER
+                                ))];
                                 let chunk = self.py_chunk_call("o", &l);
                                 parts.push(PyFramePart::TextExpr(chunk));
                                 parts.push(PyFramePart::Txt("p 1\n".to_string()));
@@ -23484,6 +23464,63 @@ F:{d}
                 kind: RExprKind::CallIntrinsic {
                     symbol,
                     args: vec![arg],
+                },
+            };
+        }
+        // PLAN-1129: the frozen float helpers read a float's sign bit
+        // through the one primitive plain source cannot write (see
+        // `py_ops::PY_SIGN_BIT`). Only the py lane admits the name, and
+        // only on one `double`.
+        if self.py_context
+            && callee.name == super::py::PY_SIGN_BIT
+            && !self.sigs.contains_key(&callee.name)
+        {
+            let one_double = matches!(
+                rargs.as_slice(),
+                [ResolvedArg {
+                    name: None,
+                    value: ResolvedExpr {
+                        vt: VT::F64 | VT::F32,
+                        ..
+                    },
+                    ..
+                }]
+            );
+            if !one_double {
+                self.bind_err(
+                    "source.py-domain",
+                    "`__py_sign_bit` takes exactly one float argument",
+                    call_span,
+                );
+                return ResolvedExpr {
+                    span: call_span,
+                    vt: VT::I32,
+                    kind: RExprKind::Unit,
+                };
+            }
+            let value = rargs.remove(0).value;
+            // the intrinsic is declared on a double; an f32 widens exactly
+            let value = if value.vt == VT::F32 {
+                ResolvedExpr {
+                    span: value.span,
+                    vt: self.node_ty(value.span, VT::F64),
+                    kind: RExprKind::Method {
+                        recv: Box::new(value),
+                        method: BuiltinMethod::NumTo,
+                        to: Some(VT::F64),
+                        args: Vec::new(),
+                    },
+                }
+            } else {
+                value
+            };
+            self.used_intrinsics.insert(super::py::PY_SIGN_BIT);
+            return ResolvedExpr {
+                span: call_span,
+                vt: VT::I32,
+                kind: RExprKind::CallIntrinsic {
+                    symbol: super::py::PY_SIGN_BIT,
+                    args: vec![value],
                 },
             };
         }
