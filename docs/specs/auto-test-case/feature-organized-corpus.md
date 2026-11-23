@@ -224,3 +224,23 @@ A2PY 另检查原异常名、捕获次数和实际退出码。
 [独立原生 Python 参考](../../../crates/auto-lang/test/cases/ace-m2/python-1127/slicing_ref.py)
 与两组固定预期逐行对照。来源见
 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。
+
+## Python 运行时浮点实参语料（PLAN-1129）
+
+[python-float-args.case.ad](../../../crates/auto-lang/test/cases/language/script/python-float-args.case.ad)
+是十三个浮点实参 Case 的唯一 Auto 作者文件，由 `language.suite.ad` 引用。
+每个 Case 的 `av` 与 `a2py` 检查读取同一 `main.as` 字节和源身份，分别调用 AV 普通语言运行
+和 A2PY `run-py`。固定输出覆盖：运行时 `f32/f64` 的精确位值与 Python 实际收到的类型；
+`f32` 先舍入再提升；重赋值后的当前值；普通文本 `F:1.25` 保持文本；实参的求值顺序与
+单次求值；次正规、无穷、NaN 与两种宽度的有符号零（含程序算出的 f32 负零）；Python 对象
+运算符右侧的运行时浮点操作数（`py_binop`，以标准库 `fractions.Fraction` 观察）；CPU PyTorch
+按运行时输入计算的学习率（核对优化器
+自报的 `param_groups[0]["lr"]`、两轮各自的 loss 轨迹、终态预测与形状）；以及运行时负值触发
+`math.sqrt` `ValueError` 的捕获后继续、未捕获失败、嵌套实参先失败和带 UTF-8 前缀的源位移。
+错误检查包含分类与原始半开字节范围，A2PY 另检查原异常名、捕获次数和实际退出码。
+[独立原生 Python 参考](../../../crates/auto-lang/test/cases/ace-m2/python-1129/float_args_ref.py)
+以 `python -I -B float_args_ref.py <case>` 逐个 Case 产生固定预期，训练用例直接调用 CPU
+PyTorch；`ace-a2x-python` 的 `py_float_args_1129` 把参考输出与两组固定预期逐行对照并钉住
+全部源码指纹。`torch-lr-computed` 含 torch 导入，AV 端受普通入口 2 秒执行预算约束，
+机器有并行构建时须隔离重放。其他视图（A2R/AC）不选择本文件的检查。
+来源见 [PLAN-1129](../../plans/archive/1129-ace-python-runtime-float-arguments.md)。

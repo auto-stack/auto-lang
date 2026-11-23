@@ -26,8 +26,8 @@ main.at (use.py …)
   A2PY 只消费该表，不依赖 PyO3/provider 源码；AV provider 声明与中立契约由 abi 一致性
   测试钉住（`py_ops_1107`）。
 - **求值恰一次**：帧的操作数由 `__py_chunk_i/_o/_b(n)` 一次求值生成
-  `"tag <len>\n<value>\n"`；内联 py 调用不会被求值两次（PLAN-1107 修复；此前两位 token
-  会出现声明长度与 payload 不符、并重复副作用）。
+  `"tag <len>\n<value>\n"`；浮点操作数由 `__py_chunk_d/_f(v)` 一次求值（PLAN-1129）；内联 py 调用
+  不会被求值两次（PLAN-1107 修复；此前两位 token 会出现声明长度与 payload 不符、并重复副作用）。
 
 ## 2. 两端语义（实测）
 
@@ -52,7 +52,7 @@ main.at (use.py …)
 | AV 解释器 | 进程内 CPython 3.14.2（967 provider） | V-01/V-02 AV 运行 | 其他 3.x 版本 |
 | A2PY 解释器 | CPython 3.14.2。`run_sdk`：PATH 上的 `python`，`-B`；`run-py`：`A2PY_PYTHON`（缺省依次探测 `python3`/`python`/`py -3`），`-I -B` 隔离运行（§7） | A2PY 原生运行、`run_sdk`、`case-a2py-language-parity` | 其他版本；`run_sdk` 缺解释器 → `m2build.run.interpreter-failed`，`run-py` 候选耗尽 → 具名失败 |
 | 第三方包 | torch 2.14.0+cpu（CPU 线性回归）、numpy 2.5.1、标准库（list/len/repr/round、`json`） | 共享用例；PLAN-1126 `python-libraries` 语料（§7） | CUDA/其他 torch 构建；未声明包 → `m2build.run.runtime-dependency` |
-| 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法；int/文本/Python 对象（`slice`）键索引与属性派生对象的继续索引（PLAN-1126，未新增操作） | 端到端 | 容器/记录跨边界、动态浮点实参（仅字面量编码） |
+| 语言面 | 17 操作、int/bool/text 字面量与 py 对象、`.to(int/bool/float/str)`、嵌套调用、kwarg、绑定方法；int/文本/Python 对象（`slice`）键索引与属性派生对象的继续索引（PLAN-1126，未新增操作）；运行时 `f32/f64` 实参与 Auto 文本值（PLAN-1129） | 端到端 | 容器/记录跨边界 |
 | 目标 | AV（in-process）、A2PY（原生 Python 文件集）、978 SDK A2py | T-01/T-03/T-05 | 其他 978 目标不变 |
 | 失败 | 缺解释器/包/工件/授权 → 具名 `m2build.*`；未捕获异常 → 两端非 PASS；A2PY Python 异常 → Auto 错误类型 + 原始位置（`ValueError`→`python.5`、`IndexError`→`python.4`，PLAN-1110） | V-04/V-07；1110 语料 V-01..04 | 其余异常类按 `A2xPythonError` 类别表归 `python.10`（other），映射矩阵未逐类实测验交（`json.JSONDecodeError`→`python.10` 已实测，PLAN-1126） |
 
@@ -66,7 +66,7 @@ main.at (use.py …)
 
 ## 5. 未交与边界
 
-- 不支持：容器/记录跨边界、动态浮点实参、属性派生值、CPython 版本矩阵、Linux 腿。
+- 不支持：容器/记录跨边界、属性派生值、CPython 版本矩阵、Linux 腿。
   PLAN-1126 实测的是属性读取的**结果仍为 Python 对象**，可继续索引、调用并显式提取叶子（§7）；
   属性结果不进入 Auto 值域，容器/记录仍不跨边界，本条边界不据此改写。
 - 异常映射仅覆盖受检 py 操作运行中实际抛出的普通 `Exception`；`A2xTrap`、进程级中断
@@ -151,3 +151,34 @@ AV 从其装配的 CPython 解析同组包。环境配法见
 [原生参考目录](../../../crates/auto-lang/test/cases/ace-m2/python-1127/README.md)。
 
 来源见 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。
+
+## 运行时浮点实参（PLAN-1129，已交并实测）
+
+- **共享语义**：Python 调用的浮点实参不再限于字面量。A2PY 与 AV 消费同一份共享事实——
+  每个浮点操作数记为 `Float`，只有字面量才带字面量值，对局部变量的读取一律不带。事实
+  随 `ace-foreign-contract::py_ops` 的中立契约 `p1107-py-ops-v2` 一起换代：三个带值的
+  操作（`py_call`、`py_getitem`、`py_binop`）逐条记录其线路版本，AV provider 源的注解与
+  之逐项一致，由 `py_float_1129` 钉住。
+- **A2PY 运行时值**：字面量按自身宽度发射为 Python 字面量，`float` 字面量是其加宽后的
+  精确值（`0.1` 发射为 `0.10000000149011612`），有符号零保留符号。其余浮点按 span 取受检
+  表达式原生 lowering，变量在调用处按当前值读取。此前事实给初始化为字面量的局部变量带上
+  旧字面量，重赋值后两端都传旧值；该缺陷随本次一并修掉。
+- **f32 精度**：Python 浮点是双精度，A2PY 此前对 `float` 算术不舍入，f32 类型的值实际携带
+  双精度。现在 `float` 的 `+ - * /` 每一步经 `a2x_f32_round` 舍入（ties-to-even，溢出为
+  `+/-inf`），与 TypeScript 目标既有的“每步 round”规则一致；传入 Python 调用的 f32 操作数在
+  边界再显式经 `a2x_f32_round`。于是十个 `0.1f` 累加在 A2PY 上得到 `3f800001`，与 AV 相同，
+  而非双精度累加后一次转换的 `3f800000`。
+- **文本值**：程序计算的 Auto 文本作为实参时，经 `a2x_py_text` 以它所保存的 Python `str`
+  传入；此前传的是运行时自己的 Str 包装对象。文本字面量仍按字面量发射。
+- **非有限值**：`+/-inf` 与 NaN 原生传入，与 AV 的保留合同一致（AV 的 NaN 为规范静默 NaN）。
+- **对照**：语料 `python-float-args.case.ad` 的十三个 Case 在 `case-a2py-language-parity`
+  逐行匹配冻结预期；`ace-a2x-python` 的 `py_float_args_1129` 用独立原生 Python 参考产生
+  同一组预期，并断言生成的 Python 以变量而非折算数字传递运行时学习率。
+- **工程入口**：`M2Build::build(TargetKind::A2py, …)` 编译同一份 PyTorch 源，`ace-m2-build`
+  的 `py_float_args_1129` 运行生成程序并核对优化器自报的学习率。
+- **缓存身份**：`a2x_f32_round` 进入基础运行时，运行时内容哈希随之变化，既有片段缓存按身份
+  自然换代。
+- **已知边界**：A2PY 的操作数查找把文本拼接表达式与帧构造节点一并跳过，拼接表达式须先绑定
+  局部变量再作为实参（早于本计划）。
+
+来源见 [PLAN-1129](../../plans/archive/1129-ace-python-runtime-float-arguments.md)。

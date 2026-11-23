@@ -133,6 +133,17 @@ provider；跨 provider 递交=具名 bad-handle 拒绝）。独立通用 provid
 （标量/text 含 NUL/opaque 注册表/kwargs/panic 探针，绝非 Torch）；`f0_int1026` 2 案
 （8 类坏帧 dispatch=0、过期代次拒 admission、panic=host 失败）。
 
+**版本化超集 `p967.frame/2`（PLAN-1129）**。布局不变，在 `/1` 的五种标签之外新增带类型的
+浮点值：`d`（f64）与 `f`（f32），payload 为 `<w2> <w1> <w0>`——三个无符号十进制字，把 64 位
+位型按 21/21/22 位自高位拆开，每字有界，故一个值只有一种编码；畸形 payload 是具名
+`foreign.frame` 拒绝，派发前生效。`/1` 帧永不携带 `d`/`f`。fn 注解可写
+`frame=p967.frame/2`，该声明同时接受两个线路版本（旧模式只由帧头选择）。生成的 shim 类型随之
+增加 `F0Val::F64(u64)`、`F0Val::F32(u32)` 与 `F0Frame::version`（1 或 2，解码器按帧头填写）。
+注解是 provider manifest 内容，因而帧版本进入接口身份：`RuntimeCompatibility` 的逐符号签名
+哈希对带帧声明显式纳入版本，`/2` 需求遇 `/1` 供给是具名 `m2build.compat.symbol-signature`。
+AV 校验器与 shim 解码器是同一字节集的双实现，仍须同步修改（`frame_wire_1129_tests`、
+`f0_int1026`、`py_float_1129`）。未声明帧的符号签名哈希不变。
+
 ## AC-LOAD：1043 来源装配的 Rs 消费（V-LOAD）
 
 `open_assembled_rs_provider_session(root, entry, ctx, generation)`：原样消费 1043 交付 API

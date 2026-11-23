@@ -17,10 +17,11 @@ C 头文件/manifest 生成器：为 Auto 的 C FFI 生成 C 头文件与绑定 
 
 - **Rust**（`auto.bindgen.rust-provider/1`）：`//! auto-ffi provider <id>/<ver> target= profile=`
   头 + `// auto-ffi fn <name> symbol= form= ret=|errors=` 条目 + `// auto-ffi dep <name> <spec>`
-  依赖注解（cargo 单元消费）+ `frame=p967.frame/1` tag 帧轴（恰一 `frame: &F0Frame` 参数）。
+  依赖注解（cargo 单元消费）+ `frame=p967.frame/1` 或 `p967.frame/2` tag 帧轴（恰一
+  `frame: &F0Frame` 参数；`/2` 是带类型浮点值的超集，PLAN-1129，其他版本仍具名拒绝）。
   参数域 view+i32/bool 混合（≤4）；域外形状（泛型/owned String/Vec/Result/async/trait对象/
-  &mut）逐项具名拒绝 `rust-import.*`。产出中性 manifest + 生成 C 兼容 shim（含 p967.frame/1
-  帧类型与游标解码器）+ 共享 `ace.foreign.manual/2` 投影。冻结 target 校验。
+  &mut）逐项具名拒绝 `rust-import.*`。产出中性 manifest + 生成 C 兼容 shim（含两版 tag 帧的
+  `F0Val/F0Kwarg/F0Frame` 类型与同一游标解码器）+ 共享 `ace.foreign.manual/2` 投影。冻结 target 校验。
 - **C**（`auto-ffi-c` 注解头）：真 cl /EP 预处理闭包解析（record/enum/callback/view/out/
   opaque/static-inline/常量；varargs/union/bitfield/packing 具名拒绝）；inline shim 重发与
   enum 常量提取。

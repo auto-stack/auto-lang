@@ -106,8 +106,10 @@ GPU/CUDA、任意 Python 包零配置、模型序列化/热迁移、全部 Pytho
 
 已知 v1 前端边界（不得当成已支持，也不得当成已证拒绝）：嵌套调用结果直接作位置实参
 **未验证**（`py_is_object` 接受内联 py-op 结果、`py_frame_val` 可封送此类值，故要主张
-拒绝须先补反例）；动态浮点关键字实参**已证拒绝**（`source.py-domain`）。文本显示
-ASCII ≤256B；非正规/非有限浮点不可过界。
+拒绝须先补反例）；动态浮点关键字实参在 1026 的 v1 帧**已证拒绝**（`source.py-domain`）——
+PLAN-1129 起经 `p967.frame/2` 交付，见下文《运行时浮点实参》。文本显示
+ASCII ≤256B；非正规/非有限浮点不可过界（指 Python → Auto 的 `.to(float/double)` 提取，
+PLAN-1129 未改这一出站合同）。
 
 ## 7. 证据与消费方
 
@@ -142,7 +144,7 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
    Success，stdout 不发布部分输出（`p1107_v04_…`）。
 4. **本轮实际消费的源面**：`use.py` 多成员、`l.append/count/pop` 绑定方法、嵌套调用、
    关键字实参（如 `round(2.5, ndigits: 0)`）、循环/分支内的 py 值流与 `.to(int/bool/float/str)`。
-   仍未交：容器/记录跨边界、动态浮点实参、属性派生值。
+   仍未交：容器/记录跨边界、动态浮点实参（PLAN-1129 已交）、属性派生值。
 5. **AV 帧 helper 不再被源生成目标发射**：`__py_dlen`/`__py_chunk_*` 只服务 AV 帧文本，
    A2PY 与 978 组装按 `is_py_lane_helper` 过滤，避免为生成目标引入不可 lower 的帧构造。
 
@@ -218,3 +220,54 @@ Python 对象绑定重赋值须保持对象来源，裸标量、普通复合赋�
 索引失败保留原异常类和半开 UTF-8 字节范围，覆盖接收者开头（含括号）
 至本次右方括号。接收者或槽位先失败时保留其内层失败范围。
 来源见 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。
+
+## 运行时浮点实参（PLAN-1129）
+
+Auto → Python 的浮点实参不再限于字面量。`float`（f32）与 `double`（f64）值可以来自
+参数、运行时计算、变量重赋值、函数返回或 `.to(float/double)` 的提取结果，用在受检调用的
+位置槽与具名槽；索引键与二元运算的操作数走同一编码。Python → Auto 的 `.to(float/double)`
+出站合同不变（非正规/非有限值仍在 provider 侧具名拒绝）。
+
+**线路**。带用户值的帧（`py_call`、`py_getitem`、`py_binop`）使用 `p967.frame/2`，它是
+`/1` 的超集，布局相同：
+
+- `d <len>\n<w2> <w1> <w0>\n` 是 f64，`f` 同形而是 f32；位型按 21/21/22 位自高位拆成三个
+  无符号十进制字，每字有界，故一个值只有一种编码。畸形 payload 是具名 `foreign.frame`
+  拒绝，派发前生效。
+- `/2` 帧中的 `t` 恒为文本。普通文本 `"F:1.25"` 不再被当作浮点（此前 AV 与 A2PY 在这一点
+  上不一致）。
+- `/1` 帧保留五种标签与 1026 的 `F:<decimal>` 字面量解码，供旧发射件使用。不带用户值的帧
+  （导入帧、仅接收者的提取帧）仍为 `/1`。解码模式只由帧版本决定。
+
+**发射**。浮点字面量在编译期即为静态 typed 文本，运行期零成本。其余浮点是对冻结 helper
+`__py_chunk_d(v)`/`__py_chunk_f(v)` 的一次普通调用，因此操作数恰求值一次并保持源序。
+helper 以普通 Auto 算术读取位型；唯一无法用源码表达的一步——`-0.0` 的符号位——由
+`__py_sign_bit(v)` 提供，lowering 内联发射，不新增 MIR 指令或 wire tag。共享事实把每个
+浮点操作数记为 `Float`；只有字面量才带字面量值，对局部变量的读取一律不带，这修掉了
+重赋值后仍传初始化字面量的旧缺陷。
+
+**值合同**。有限数（含次正规）与有符号零逐位保留；`+/-inf` 逐位保留；NaN 以 NaN 通过，
+AV 传规范静默 NaN（`0x7FF8000000000000`、`0x7FC00000`），不主张 payload。
+
+**能力与兼容**。`py_call`、`py_getitem`、`py_binop` 的注解升为 `frame=p967.frame/2`，
+同时接受两个版本。注解是 provider manifest 内容的一部分，因此接口身份随之变化：
+
+| 场景 | 承载机制 | 结果 |
+|---|---|---|
+| 旧工件（`/1` 帧）配旧 provider | 代码未动 | 按原样运行 |
+| `/1` 帧字节到达新 provider | 解码器同时接受两版，旧解码只按帧版本选择 | 值与原先相同 |
+| 新工件配未声明 typed 帧的 provider | stub 表按接口身份查找 | 用户调用前具名 `foreign.signature` |
+| 已准备的 provider 闭包过期 | 戳记核对 provider 摘要、shim 摘要、rustc 身份与 DLL SHA256 | 具名 `foreign.prepared` |
+| SDK 运行兼容 | 逐符号签名哈希对带帧声明纳入帧版本 | `m2build.compat.symbol-signature` |
+
+未带 `use.py` 的程序不注入浮点 helper，不产生 `/2` 帧。
+
+**证据**。语料 `crates/auto-lang/test/cases/language/script/python-float-args.case.ad`，
+参考见 [原生参考目录](../../../crates/auto-lang/test/cases/ace-m2/python-1129/README.md)；
+`ace-abi` 的 `py_float_1129` 覆盖 typed 帧的精确值与兼容身份。
+
+**已知边界**。普通语言入口的执行墙钟预算为 2 秒，含 torch 导入；训练类 Case 在机器有
+其他构建时可能超预算，须在空闲环境隔离重放，不改预算。1026 产品入口与 978 的 Aggregates
+语法不解析 `.to(str)`，也不解析同一实参列表中紧随文本字面量的浮点字面量，二者均早于本计划。
+
+来源见 [PLAN-1129](../../plans/archive/1129-ace-python-runtime-float-arguments.md)。

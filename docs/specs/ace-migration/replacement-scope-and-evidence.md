@@ -431,5 +431,6 @@ final=`0.1013089045882225` / pred0=`0.4728480279445648` / shape=`torch.Size([4, 
 
 **边界**：AV-only（CPU、串行单解释器、Windows x64 冻结环境、GIL 标准 CPython 3.14.x）；
 GPU/CUDA、跨线程/回调 Python、async 中 Python 抢占、模型序列化、全部 Python 协议均不在
-本切片。v1 前端边界：动态浮点关键字实参已证拒绝（`source.py-domain`），嵌套调用结果直接
-作位置实参未验证（既不主张支持也不主张拒绝）。
+本切片。v1 前端边界：动态浮点关键字实参已证拒绝（`source.py-domain`；PLAN-1129 起经
+`p967.frame/2` 交付运行时浮点实参，见 [python-interop](../auto-av/python-interop.md)），嵌套
+调用结果直接作位置实参未验证（既不主张支持也不主张拒绝）。
