@@ -549,15 +549,25 @@ pub fn ensure_python_dll_path() {
 }
 
 /// The prepared py-bridge build: a persistent build root under the OS
-/// temp dir shared across test processes (the first run on a machine
-/// compiles the pinned pyo3 closure once; later runs are cargo no-ops),
+/// temp dir keyed by the provider and generated shim bytes,
 /// guarded by a lock file so concurrent runners cannot race the unit.
 pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
     static BUILD: std::sync::OnceLock<Result<RustProviderBuild, String>> =
         std::sync::OnceLock::new();
     BUILD
         .get_or_init(|| {
-            let root = std::env::temp_dir().join("p1026-py-bridge-unit");
+            let source = py_bridge_provider_source();
+            let manifest = auto_bindgen::rust_import::import(source)
+                .map_err(|e| format!("{}: {}", e.code, e.message))?;
+            let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+            let provider_digest = auto_bindgen::rust_import::provider_digest(source);
+            let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
+            let cache_key = auto_bindgen::rust_import::provider_digest(
+                &format!("{provider_digest}:{shim_digest}"),
+            );
+            let root = std::env::temp_dir()
+                .join("p1026-py-bridge-unit")
+                .join(cache_key);
             std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
             let lock = root.join(".build-lock");
             let stale_after = std::time::Duration::from_secs(600);
@@ -590,22 +600,15 @@ pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
                     Err(e) => return Err(e.to_string()),
                 }
             }
-            // Idempotent fast path: the provider source is FROZEN — once
-            // the cdylib exists, skip the rebuild (parallel test processes
-            // would otherwise rewrite a DLL another process has loaded,
-            // which Windows refuses and cargo fails).
+            // The source-bound path avoids rewriting a DLL another process has loaded.
             let cdylib = root.join("cargo-unit/target/debug/provider_unit.dll");
-            let built = if cdylib.is_file() {
-                let manifest = auto_bindgen::rust_import::import(py_bridge_provider_source())
-                    .map_err(|e| format!("{}: {}", e.code, e.message))?;
-                let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
-                let provider_digest =
-                    auto_bindgen::rust_import::provider_digest(py_bridge_provider_source());
+            let staticlib = root.join("cargo-unit/target/debug/provider_unit.lib");
+            let built = if cdylib.is_file() && staticlib.is_file() {
                 let manual = auto_bindgen::rust_import::to_manual_manifest(
                     &manifest,
                     "f0-rust-provider/1",
                     &provider_digest,
-                    &auto_bindgen::rust_import::shim_digest(&shim_source),
+                    &shim_digest,
                 )?;
                 let (code, out, _err) = run_rustc(&["--version"], &root)?;
                 if code != 0 {
@@ -613,7 +616,7 @@ pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
                 }
                 RustProviderBuild {
                     cdylib,
-                    staticlib: root.join("cargo-unit/target/debug/provider_unit.lib"),
+                    staticlib,
                     manifest,
                     shim_source,
                     manual,
@@ -621,7 +624,7 @@ pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
                     rustc_identity: out.trim().to_string(),
                 }
             } else {
-                build_cargo_provider(&root, py_bridge_provider_source())?
+                build_cargo_provider(&root, source)?
             };
             let _ = std::fs::remove_file(&lock);
             Ok(built)

@@ -574,6 +574,7 @@ fn walk_expr<'a>(
                 span: e.span,
             });
         }
+        ExprKind::PySlice { .. } => unsupported("python-slice", e.span)?,
         ExprKind::Index { .. } => {
             return Err(WalkError::Unsupported {
                 what: "index-expression",

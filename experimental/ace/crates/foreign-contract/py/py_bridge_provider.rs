@@ -14,7 +14,7 @@
 // auto-ffi dep pyo3 0.29.3
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, PySlice, PyTuple};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -284,13 +284,31 @@ pub fn py_getitem(frame: &F0Frame) -> Option<i32> {
             return None;
         }
     };
-    let key = frame.positionals.first()?;
     run_guarded(|py| {
         let obj = resolve(py, token).ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err("py.dead-object")
         })?;
-        let key_obj = to_python(py, key)?;
-        let result = obj.get_item(key_obj.bind(py))?;
+        let key = if let Some(key) = frame.positionals.first() {
+            to_python(py, key)?.into_bound(py)
+        } else if let [start, stop, step] = frame.kwargs.as_slice() {
+            if start.name != "start" || stop.name != "stop" || step.name != "step" {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "py.getitem: expected start, stop and step",
+                ));
+            }
+            // The CPython type accepts arbitrary Python objects, including None.
+            // The key stays local to this call and never gets a session token.
+            py.get_type::<PySlice>().call1((
+                to_python(py, &start.value)?,
+                to_python(py, &stop.value)?,
+                to_python(py, &step.value)?,
+            ))?
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "py.getitem: key required",
+            ));
+        };
+        let result = obj.get_item(&key)?;
         Ok(store(py, result) as i32)
     })
 }

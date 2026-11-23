@@ -7064,14 +7064,24 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// The runtime frame: an FStr of static text parts + I32 displays,
     /// then `.to(str)` (the view param form).
     fn py_frame(&mut self, span: Span, parts: Vec<PyFramePart>) -> ResolvedExpr {
-        let mut fparts: Vec<FStrPart> = Vec::with_capacity(parts.len() * 2);
+        let mut fparts: Vec<FStrPart> = Vec::with_capacity(parts.len());
         for p in parts {
             match p {
-                PyFramePart::Txt(t) => fparts.push(FStrPart::Text(ResolvedExpr {
-                    span,
-                    vt: VT::Str,
-                    kind: RExprKind::StrLit(t),
-                })),
+                PyFramePart::Txt(t) => {
+                    if let Some(FStrPart::Text(ResolvedExpr {
+                        kind: RExprKind::StrLit(text),
+                        ..
+                    })) = fparts.last_mut()
+                    {
+                        text.push_str(&t);
+                    } else {
+                        fparts.push(FStrPart::Text(ResolvedExpr {
+                            span,
+                            vt: VT::Str,
+                            kind: RExprKind::StrLit(t),
+                        }));
+                    }
+                }
                 PyFramePart::Disp(e) => fparts.push(FStrPart::Expr(ResolvedExpr {
                     span,
                     vt: VT::StrOwned,
@@ -7195,6 +7205,46 @@ F:{d}
                 parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
             }
         }
+    }
+
+    /// Encode a slice key in getitem's zero-positional frame. Older providers
+    /// require a positional key and reject this shape instead of indexing with
+    /// a bound. The runtime constructs the slice inside the getitem call.
+    fn py_slice_getitem(
+        &mut self,
+        recv: &ResolvedExpr,
+        bounds: &[Option<Expr>; 3],
+        span: Span,
+    ) -> ResolvedExpr {
+        let mut parts = vec![
+            PyFramePart::Txt("p967.frame/1\nr ".to_string()),
+            PyFramePart::TextExpr(self.py_chunk_call("o", recv)),
+            PyFramePart::Txt("p 0\nk 3\n".to_string()),
+        ];
+        let mut fact = PyOpFact::new(PyOpKind::GetItem, span)
+            .operand(PyRole::Receiver, recv.span, PyValClass::Object);
+        for (slot, (name, bound)) in ["start", "stop", "step"].into_iter().zip(bounds).enumerate() {
+            parts.push(PyFramePart::Txt(format!("{}\n{name}", name.len())));
+            let role = PyRole::SliceSlot(slot as u32);
+            if let Some(bound) = bound {
+                let value = self.expr_iterative(bound);
+                self.py_frame_val(&mut parts, &value);
+                fact = fact.operand_lit(
+                    role,
+                    value.span,
+                    self.py_val_class(&value),
+                    self.py_operand_literal(&value),
+                );
+            } else {
+                parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
+                fact = fact.operand_lit(role, span, PyValClass::None, Some(PyLiteral::None));
+            }
+        }
+        if crate::py_ops::recording_active() {
+            crate::py_ops::record(fact);
+        }
+        let frame = self.py_frame(span, parts);
+        self.py_op_call("py_getitem", span, frame)
     }
 
     /// The py_call sugar: receiver + optional member label + source-order
@@ -7554,7 +7604,7 @@ F:{d}
             // PLAN-963（T-04）：值实参调用由实例层重绑；closures 面不产
             // ConstCall，本臂仅为穷尽性。
             ExprKind::ConstCall { .. } => VT::I32,
-            ExprKind::Index { .. } => VT::I32,
+            ExprKind::Index { .. } | ExprKind::PySlice { .. } => VT::I32,
             // PLAN-962 (T-08): a grid never reaches closure inference.
             ExprKind::GridLit { .. } => VT::I32,
             // PLAN-962: tuples resolve through the statement walker.
@@ -17154,6 +17204,18 @@ F:{d}
             // path `.get(i)` resolves through (value element = ListGet;
             // owned element = the tainted whole-element view). PLAN-964:
             // an object receiver `obj[k]` reads by Str key (ObjectGet).
+            ExprKind::PySlice { base, bounds } => {
+                let recv = self.expr_iterative(base);
+                if !self.py_context || !self.py_is_object(&recv) {
+                    self.bind_err(
+                        "source.py-slice-receiver",
+                        "a colon slice requires a checked Python object receiver",
+                        base.span,
+                    );
+                    return self.dummy_of(VT::I32, e.span);
+                }
+                self.py_slice_getitem(&recv, bounds, e.span)
+            }
             ExprKind::Index { base, index } => {
                 // A literal key on a named record uses the same path and
                 // borrow rules as its dot spelling, including loop views.

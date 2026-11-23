@@ -596,6 +596,12 @@ fn for_each_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
             for_each_expr_mut(base, f);
             for_each_expr_mut(index, f);
         }
+        ExprKind::PySlice { base, bounds } => {
+            for_each_expr_mut(base, f);
+            for bound in bounds.iter_mut().flatten() {
+                for_each_expr_mut(bound, f);
+            }
+        }
         ExprKind::Range { start, end, .. } => {
             for_each_expr_mut(start, f);
             for_each_expr_mut(end, f);

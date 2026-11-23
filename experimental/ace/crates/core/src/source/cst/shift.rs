@@ -119,6 +119,12 @@ pub(super) fn shift_expr(e: &mut Expr, delta: i64) {
             shift_expr(base, delta);
             shift_expr(index, delta);
         }
+        ExprKind::PySlice { base, bounds } => {
+            shift_expr(base, delta);
+            for bound in bounds.iter_mut().flatten() {
+                shift_expr(bound, delta);
+            }
+        }
         ExprKind::IntLit(_)
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)

@@ -65,6 +65,10 @@ macro_rules! tree_walk {
                     | ExprKind::UnwrapOr { inner: lhs, fallback: rhs } => {
                         pending.extend([Node::Value(lhs), Node::Value(rhs)]);
                     }
+                    ExprKind::PySlice { base, bounds } => {
+                        pending.push(Node::Value(base));
+                        pending.extend(bounds.$iter().flatten().map(Node::Value));
+                    }
                     ExprKind::Unary { operand, .. }
                     | ExprKind::HashExpr { expr: operand }
                     | ExprKind::Field { base: operand, .. }

@@ -28,6 +28,7 @@ suite { schema: "autolang.suite/2", id: "language", include: [
   "language/ffi/imports-callbacks.case.ad",
   "language/script/python-context.case.ad",
   "language/script/python-libraries.case.ad",
+  "language/script/python-slicing.case.ad",
   "language/composition/ordinary-projects.case.ad",
   "language/composition/control-effects.case.ad",
   "language/functions/source-change.case.ad",

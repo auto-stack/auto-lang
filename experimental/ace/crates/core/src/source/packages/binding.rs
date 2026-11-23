@@ -2497,6 +2497,12 @@ fn shift_expr(e: &mut Expr, offset: usize) {
             shift_expr(base, offset);
             shift_expr(index, offset);
         }
+        ExprKind::PySlice { base, bounds } => {
+            shift_expr(base, offset);
+            for bound in bounds.iter_mut().flatten() {
+                shift_expr(bound, offset);
+            }
+        }
         ExprKind::IntLit(_)
         | ExprKind::BoolLit(_)
         | ExprKind::StrLit(_)
@@ -3264,6 +3270,13 @@ impl<'a> Walker<'a> {
             ExprKind::Index { base, index } => {
                 self.walk_expr_inner(base, locals)?;
                 self.walk_expr_inner(index, locals)
+            }
+            ExprKind::PySlice { base, bounds } => {
+                self.walk_expr_inner(base, locals)?;
+                for bound in bounds.iter_mut().flatten() {
+                    self.walk_expr_inner(bound, locals)?;
+                }
+                Ok(())
             }
             ExprKind::IntLit(_)
             | ExprKind::BoolLit(_)

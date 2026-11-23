@@ -599,6 +599,11 @@ pub enum ExprKind {
         base: Box<Expr>,
         index: Box<Expr>,
     },
+    /// Python protocol read with optional start, stop and step, in source order.
+    PySlice {
+        base: Box<Expr>,
+        bounds: Box<[Option<Expr>; 3]>,
+    },
     /// PLAN-964 (L-16/L-20): a bare object literal `{ k: v, ... }` —
     /// keys are idents or string literals, values homogeneous. The
     /// resolver types it `Object{elem}` and lowers to HIR ObjectCtor.
@@ -1187,6 +1192,10 @@ impl Drop for Expr {
                 ExprKind::Field { base, .. } => {
                     let b = std::mem::replace(base.as_mut(), dummy());
                     stack.push(b);
+                }
+                ExprKind::PySlice { base, bounds } => {
+                    stack.push(std::mem::replace(base.as_mut(), dummy()));
+                    stack.extend(bounds.iter_mut().filter_map(Option::take));
                 }
                 ExprKind::CtorNamed { fields, .. } => {
                     for f in fields.iter_mut() {

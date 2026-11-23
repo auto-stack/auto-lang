@@ -117,6 +117,12 @@ pub(crate) fn analyze_capture_uses(
                 visit_expr(base, outer_locals, scopes, uses, by_name);
                 visit_expr(index, outer_locals, scopes, uses, by_name);
             }
+            ExprKind::PySlice { base, bounds } => {
+                visit_expr(base, outer_locals, scopes, uses, by_name);
+                for bound in bounds.iter().flatten() {
+                    visit_expr(bound, outer_locals, scopes, uses, by_name);
+                }
+            }
             ExprKind::Var(id) => record(id, false, outer_locals, scopes, uses, by_name),
             ExprKind::Call { callee, args } => {
                 record(callee, false, outer_locals, scopes, uses, by_name);
@@ -529,6 +535,12 @@ pub(crate) fn scan_shared_capture_cells(
             ExprKind::Index { base, index } => {
                 visit_expr(base, scopes, shared);
                 visit_expr(index, scopes, shared);
+            }
+            ExprKind::PySlice { base, bounds } => {
+                visit_expr(base, scopes, shared);
+                for bound in bounds.iter().flatten() {
+                    visit_expr(bound, scopes, shared);
+                }
             }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}

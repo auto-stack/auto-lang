@@ -1,0 +1,546 @@
+# Python object slicing
+
+Each case supplies the same Auto source to the ordinary AV run and the A2PY run-py check. The independent Python reference and required interpreter setup live in the python-1127 fixture directory.
+
+## Case: numpy-torch
+id: "py.slicing.1127.numpy-torch"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: range
+use.py numpy: array
+use.py torch: arange
+
+fn main() int {
+    var n = array(range(6))
+    var axis_source = 0
+    for axis_source < 2 {
+        var row = n
+        if axis_source == 1 {
+            row = arange(6)
+        }
+        print(row[0:3:2].tolist().to(str))
+        print(row[:3].tolist().to(str))
+        print(row[2:].tolist().to(str))
+        print(row[:].tolist().to(str))
+        print(row[1:4:].tolist().to(str))
+        print(row[::2].tolist().to(str))
+        print(row[-3:].tolist().to(str))
+        if axis_source == 0 {
+            print(row[::-1].tolist().to(str))
+            print(row[4:0:-2].tolist().to(str))
+            print(row[::-1][0].to(int))
+        }
+        axis_source = axis_source + 1
+    }
+
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+[0, 2]
+[0, 1, 2]
+[2, 3, 4, 5]
+[0, 1, 2, 3, 4, 5]
+[1, 2, 3]
+[0, 2, 4]
+[3, 4, 5]
+[5, 4, 3, 2, 1, 0]
+[4, 2]
+5
+[0, 2]
+[0, 1, 2]
+[2, 3, 4, 5]
+[0, 1, 2, 3, 4, 5]
+[1, 2, 3]
+[0, 2, 4]
+[3, 4, 5]
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+
+#### stdout
+compare: "lf"
+
+```text
+[0, 2]
+[0, 1, 2]
+[2, 3, 4, 5]
+[0, 1, 2, 3, 4, 5]
+[1, 2, 3]
+[0, 2, 4]
+[3, 4, 5]
+[5, 4, 3, 2, 1, 0]
+[4, 2]
+5
+[0, 2]
+[0, 1, 2]
+[2, 3, 4, 5]
+[0, 1, 2, 3, 4, 5]
+[1, 2, 3]
+[0, 2, 4]
+[3, 4, 5]
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+## Case: order-compatibility
+id: "py.slicing.1127.order-compatibility"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py builtins: range, slice
+use.py numpy: array
+use.py json: loads
+
+fn mark(label_text str, n int) int {
+    print(label_text)
+    return n
+}
+
+fn main() int {
+    var n = array(range(6))
+    print(n[slice(0, 3, 2)].tolist().to(str))
+    print(n[n[1]:n[4]].tolist().to(str))
+    print(n.reshape(2, 3)[0][::2].tolist().to(str))
+
+    var xs = [4, 5]
+    print(xs[0])
+    var s = "abcd"
+    print(s[1..3])
+    var data = loads("{\"key\":42}")
+    print(data["key"].to(int))
+    if true {
+        var slice = 99
+        var row = array(range(mark("recv", 6)))[mark(label_text: "start", n: 0):mark("stop", 3):mark("step", 2)]
+        print(row.tolist().to(str))
+        print(slice)
+    }
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+
+#### stdout
+
+```text
+[0, 2]
+[1, 2, 3]
+[0, 2]
+4
+bc
+42
+recv
+start
+stop
+step
+[0, 2]
+99
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+
+#### stdout
+compare: "lf"
+
+```text
+[0, 2]
+[1, 2, 3]
+[0, 2]
+4
+bc
+42
+recv
+start
+stop
+step
+[0, 2]
+99
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+## Case: numpy-zero
+id: "py.slicing.1127.numpy-zero"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py numpy: arange
+fn main() int {
+    var row = arange(6)
+    var zero = 0
+    var caught = 0
+    try { var bad = row[::zero]; print(bad.tolist().to(str)) } catch e { caught = caught + 1; print(e.to(str)) }
+    print(caught)
+    print(row[1:4:2].tolist().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.5"
+error-span: "117..128"
+
+#### stdout
+
+```text
+PyException ValueError: slice step cannot be zero
+1
+[1, 3]
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "117..128"
+
+#### stdout
+compare: "lf"
+
+```text
+PyException ValueError: slice step cannot be zero
+1
+[1, 3]
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+## Case: torch-zero
+id: "py.slicing.1127.torch-zero"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py torch: arange
+fn main() int {
+    var row = arange(6)
+    print(row[::0].tolist().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+stage: "run"
+code: "lang.error"
+message: "PyException ValueError: slice step cannot be zero"
+error-kind: "python.5"
+error-span: "71..79"
+
+#### stdout
+
+```text
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 1
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "71..79"
+
+#### stdout
+compare: "lf"
+
+```text
+```
+
+#### stderr
+compare: "lf"
+
+```text
+PyException ValueError: slice step cannot be zero
+```
+
+## Case: torch-negative
+id: "py.slicing.1127.torch-negative"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py torch: arange
+fn main() int {
+    var row = arange(6)
+    var caught = 0
+    try { var bad = row[::-1]; print(bad.tolist().to(str)) } catch e { caught = caught + 1; print(e.to(str)) }
+    print(caught)
+    print(row[1:4:2].tolist().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.5"
+error-span: "100..109"
+
+#### stdout
+
+```text
+PyException ValueError: step must be greater than zero
+1
+[1, 3]
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "ValueError"
+error-kind: "python.5"
+error-span: "100..109"
+
+#### stdout
+compare: "lf"
+
+```text
+PyException ValueError: step must be greater than zero
+1
+[1, 3]
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+## Case: bound-error
+id: "py.slicing.1127.bound-error"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+use.py numpy: arange
+use.py json: loads
+fn mark(label_text str, n int) int {
+    print(label_text)
+    return n
+}
+
+fn main() int {
+    var caught = 0
+    try {
+        var bad = arange(mark("recv", 6))[mark("start", 0):loads("{").to(int):mark("step", 0)]
+        print(bad.tolist().to(str))
+    } catch e {
+        caught = caught + 1
+        print(e.to(str))
+    }
+    print(caught)
+    print(arange(3)[::2].tolist().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.10"
+error-span: "219..229"
+
+#### stdout
+
+```text
+recv
+start
+PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+1
+[0, 2]
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "JSONDecodeError"
+error-kind: "python.10"
+error-span: "219..229"
+
+#### stdout
+compare: "lf"
+
+```text
+recv
+start
+PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+1
+[0, 2]
+value:0
+```
+
+#### stderr
+
+```text
+```
+
+## Case: bound-error-shifted
+id: "py.slicing.1127.bound-error-shifted"
+tags: ["av-language-parity", "plan-1127"]
+entry-mode: "program"
+
+### Auto
+path: "main.as"
+syntax: "auto-script"
+
+```auto
+// 雪: UTF-8 prefix
+use.py numpy: arange
+use.py json: loads
+fn mark(label_text str, n int) int {
+    print(label_text)
+    return n
+}
+
+fn main() int {
+    var caught = 0
+    try {
+        var bad = arange(mark("recv", 6))[mark("start", 0):loads("{").to(int):mark("step", 0)]
+        print(bad.tolist().to(str))
+    } catch e {
+        caught = caught + 1
+        print(e.to(str))
+    }
+    print(caught)
+    print(arange(3)[::2].tolist().to(str))
+    return 0
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource", "console.stdout", "console.stderr"]
+foreign: { kind: "rust", provider: "py" }
+exit: 0
+error-kind: "python.10"
+error-span: "240..250"
+
+#### stdout
+
+```text
+recv
+start
+PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+1
+[0, 2]
+```
+
+### Probe a2py
+recipe: "ac-a2py/hir-stdlib-run-v1"
+profile: "python-script"
+entry: "main"
+caps: ["ac.source.language.av/v1", "foreign.scalar", "foreign.resource"]
+exit: 0
+error-type: "JSONDecodeError"
+error-kind: "python.10"
+error-span: "240..250"
+
+#### stdout
+compare: "lf"
+
+```text
+recv
+start
+PyException JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+1
+[0, 2]
+value:0
+```
+
+#### stderr
+
+```text
+```

@@ -3220,6 +3220,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         place-step(profiles: [auto, auto-packages]) {
             alt { dot(same-line: true) ident(field: "field") }
+            // Recognize slice writes so the source projector can reject them.
+            alt { py-slice-subscript(field: "py_slice") }
             alt { lbracket(same-line: true) expr(field: "index") rbracket() {} }
         }
         place-assign-op(profiles: [auto, auto-packages]) {
@@ -3525,6 +3527,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
                 opt(profiles: [auto, auto-packages]) { expr(field: "slice_end") }
                 rbracket() {}
             }
+            alt(profiles: [auto, auto-packages]) { py-slice-subscript(field: "py_slice") }
             alt(profiles: [aggregates, auto, closures, scheduler, config-document, age-component, age-package, auto-packages]) { lbracket(same-line: true) expr(field: "index") rbracket() {} }
             // PLAN-965 (M2-A): `.?(fallback)` and `.?` error/option propagation steps.
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotquestion(same-line: true) lparen(same-line: true) expr(field: "fallback") rparen() {} }
@@ -3553,6 +3556,18 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) num-ty-word(field: "word") rparen() {} }
             alt(profiles: [auto, auto-packages]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) ident(field: "word") rparen() {} }
             alt(profiles: [age-package]) { dot(same-line: true) r-to(same-line: true, field: "member") lparen(same-line: true) int-kw(field: "word") rparen() {} }
+        }
+        py-slice-subscript(profiles: [auto, auto-packages]) {
+            lbracket(same-line: true)
+            opt { expr(field: "start") }
+            colon() {}
+            opt { expr(field: "stop") }
+            py-slice-stride(field: "stride", repeat: "opt")
+            rbracket() {}
+        }
+        py-slice-stride(profiles: [auto, auto-packages]) {
+            colon() {}
+            opt { expr(field: "step") }
         }
         // 调用收尾后的点后缀续读（pratt `postfix:` 引用）：`f().len()`、
         // `xs.get(0).name.len()`——primary 的 postfix-expr 只覆盖 atom 起始链，

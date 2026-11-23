@@ -65,7 +65,7 @@ pub enum PyOpKind {
     Call,
     /// Attribute read (`obj.name`).
     GetAttr,
-    /// Integer index read (`obj[i]`).
+    /// Index read with a single key or a constructed slice.
     GetItem,
     /// Arithmetic on a Python object; `member` carries the frozen op word
     /// (`add`/`sub`/`mul`/`truediv`).
@@ -146,6 +146,8 @@ pub enum PyValClass {
     Text,
     /// An exact float literal (compile-time `F:` encoding for AV).
     Float,
+    /// Python None for an omitted slice bound.
+    None,
     /// A value class outside the admitted frame classes (never produced by an
     /// admitted frame; kept so a recorder never has to guess a class).
     Other,
@@ -159,6 +161,7 @@ impl PyValClass {
             Self::Bool => "bool",
             Self::Text => "text",
             Self::Float => "float",
+            Self::None => "none",
             Self::Other => "other",
         }
     }
@@ -173,6 +176,8 @@ pub enum PyRole {
     /// The `n`-th positional argument after the receiver (for [`PyOpKind::Call`]
     /// the member label is NOT an operand — it is the fact's `member`).
     Positional(u32),
+    /// One of the start, stop and step slots of a slice key, numbered 0 to 2.
+    SliceSlot(u32),
     /// A named argument (`name: value`).
     Kwarg(String),
 }
@@ -182,6 +187,7 @@ impl PyRole {
         match self {
             Self::Receiver => "receiver".to_string(),
             Self::Positional(i) => format!("pos:{i}"),
+            Self::SliceSlot(i) => format!("slice:{i}"),
             Self::Kwarg(name) => format!("kwarg:{name}"),
         }
     }
@@ -198,6 +204,7 @@ pub enum PyLiteral {
     Bool(bool),
     Text(String),
     Float(f64),
+    None,
 }
 
 /// One operand slot of an operation.

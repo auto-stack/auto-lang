@@ -12556,10 +12556,12 @@ impl<'a> Engine<'a> {
     /// PLAN-964: whether a postfix step is a bracket index step (`[expr]`,
     /// no dot member) rather than a member/call step.
     fn step_is_index(&self, step: u32) -> bool {
-        self.cx
-            .children(step)
-            .into_iter()
-            .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket)
+        self.cx.field_child(step, "py_slice").is_some()
+            || self
+                .cx
+                .children(step)
+                .into_iter()
+                .any(|c| self.cx.tree.kind(c) == self.cx.k.tok_lbracket)
     }
 
     /// PLAN-965: whether a postfix step is `.?` or `.?(fallback)`.
@@ -12603,6 +12605,20 @@ impl<'a> Engine<'a> {
                 span,
                 kind: ExprKind::Propagate {
                     inner: Box::new(recv),
+                },
+            };
+        }
+        if let Some(slice) = self.cx.field_child(step, "py_slice") {
+            let start = self.cx.field_child(slice, "start");
+            let stop = self.cx.field_child(slice, "stop");
+            let step = self.cx.field_child(slice, "stride")
+                .and_then(|node| self.cx.field_child(node, "step"));
+            let bounds = [start, stop, step].map(|node| node.map(|n| self.project_expr_sync(n)));
+            return Expr {
+                span: recv.span.join(self.cx.span_of(slice)),
+                kind: ExprKind::PySlice {
+                    base: Box::new(recv),
+                    bounds: Box::new(bounds),
                 },
             };
         }
@@ -13316,7 +13332,17 @@ impl<'a> Engine<'a> {
             let mut steps: Vec<PlaceStep> = first.into_iter().collect();
             let mut index_nodes: Vec<u32> = Vec::new();
             for &sn in &step_nodes {
-                if let Some(f) = self.cx.field_child(sn, "field") {
+                if let Some(slice) = self.cx.field_child(sn, "py_slice") {
+                    let span = self.cx.span_of(slice);
+                    self.cx.reject(span, || {
+                        Diagnostic::new(
+                            Stage::Text,
+                            "source.py-slice-write",
+                            "Python colon slices are read-only in Auto source",
+                            span,
+                        )
+                    });
+                } else if let Some(f) = self.cx.field_child(sn, "field") {
                     steps.push(PlaceStep::Field(ident_of(&mut self.cx, f)));
                 } else if let Some(ix) = self.cx.field_child(sn, "index") {
                     index_nodes.push(ix);
@@ -16126,6 +16152,12 @@ impl GenericExpand {
             ExprKind::Index { base, index } => {
                 self.resolve_typed_ctors_in_expr(base);
                 self.resolve_typed_ctors_in_expr(index);
+            }
+            ExprKind::PySlice { base, bounds } => {
+                self.resolve_typed_ctors_in_expr(base);
+                for bound in bounds.iter_mut().flatten() {
+                    self.resolve_typed_ctors_in_expr(bound);
+                }
             }
             ExprKind::Range { start, end, .. } => {
                 self.resolve_typed_ctors_in_expr(start);

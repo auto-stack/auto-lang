@@ -357,6 +357,7 @@ fn py_text_arg(s: &str) -> String {
 /// in Python's value representation at the foreign boundary.
 fn py_literal_text(lit: &PyLiteral) -> String {
     match lit {
+        PyLiteral::None => "None".to_string(),
         PyLiteral::Int(v) => format!("{v}"),
         PyLiteral::Bool(b) => if *b { "True" } else { "False" }.to_string(),
         PyLiteral::Text(t) => py_text_arg(t),
@@ -732,15 +733,18 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
                     py_text_arg(&fact.member)
                 ),
             ),
-            PyOpKind::GetItem => op(
-                fact,
-                "a2x_py_getitem",
-                &format!(
-                    "{}, {}",
-                    self.py_operand(fact, PyRole::Receiver)?,
+            PyOpKind::GetItem => {
+                let recv = self.py_operand(fact, PyRole::Receiver)?;
+                let key = if fact.operands.iter().any(|o| o.role == PyRole::SliceSlot(0)) {
+                    let start = self.py_operand(fact, PyRole::SliceSlot(0))?;
+                    let stop = self.py_operand(fact, PyRole::SliceSlot(1))?;
+                    let step = self.py_operand(fact, PyRole::SliceSlot(2))?;
+                    format!("slice({start}, {stop}, {step})")
+                } else {
                     self.py_operand(fact, PyRole::Positional(0))?
-                ),
-            ),
+                };
+                op(fact, "a2x_py_getitem", &format!("{recv}, {key}"))
+            }
             PyOpKind::BinOp => op(
                 fact,
                 "a2x_py_binop",

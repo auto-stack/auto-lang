@@ -665,6 +665,9 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::Index { .. } => InputExprKind::Unsupported {
             what: "index-expression",
         },
+        core_ast::ExprKind::PySlice { .. } => InputExprKind::Unsupported {
+            what: "python-slice",
+        },
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
         core_ast::ExprKind::Call { callee, args } => InputExprKind::Call {
