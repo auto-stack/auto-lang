@@ -35,6 +35,781 @@ fn caps() -> Vec<String> {
 }
 
 #[test]
+fn age_package_forwarded_empty_list_remains_writable_widget_state() {
+    use ace_av::age_package::{evaluate_widget_view, ExecLimits, WidgetViewItem};
+
+    let parent = r#"
+widget Gallery {
+    use { package: official from "../official" }
+    msg { Load }
+    model {
+        var photos = []
+        var static_rows = ["static"]
+    }
+    on {
+        .Load -> {
+            var next List = []
+            next.push({ label: "新照片" })
+            .photos = next
+        }
+    }
+    view { PhotoList (rows: .photos) {} }
+}
+"#;
+    let child = r#"
+fn title(rows List) Str {
+    if rows.len() == 0 { return "empty" }
+    return rows[0].label ?? "missing"
+}
+widget PhotoList (rows: List = []) {
+    view { text title(.rows) {} }
+}
+"#;
+    let compiled = compile_age_package_with_scenario(
+        &[input("app", parent), PackageModuleInput {
+            package: "official".into(),
+            ..input("photos", child)
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario {
+            instances: 2,
+            ops: vec![ScenarioOp::Send { instance: 1, msg: "Load".into() }],
+        },
+    ).expect("bind the writable model list to the child with an empty default");
+    let parent = &compiled.description.components[0];
+    assert!(parent.fields.iter().any(|(name, _)| name == "photos"));
+    assert!(!parent.fields.iter().any(|(name, _)| name == "static_rows"));
+    let child = compiled.first_widget_ref().expect("authored PhotoList site");
+    for (instance, expected) in ["empty", "新照片"].into_iter().enumerate() {
+        let view = evaluate_widget_view(&compiled, child, instance, &ExecLimits::default())
+            .expect("execute the child view with the parent's checked state");
+        assert_eq!(view, [WidgetViewItem::Text(expected.into())]);
+    }
+}
+
+#[test]
+fn age_package_nested_if_value_evaluates_only_the_selected_branch() {
+    let source = r#"
+fn invalid_value() Str {
+    let decoded = json.parse("{")
+    return decoded.label ?? "unreachable"
+}
+widget Gallery {
+    msg { PreferFirst, Read }
+    model {
+        var first bool = false
+        var second bool = true
+        var label Str = ""
+    }
+    computed {
+        choice => if .first { "first" } else if .second { "second" } else { invalid_value() }
+    }
+    on {
+        .PreferFirst -> { .first = true }
+        .Read -> {
+            var rows List = []
+            rows.push({label: .choice})
+            .label = rows[0].label ?? "missing"
+        }
+    }
+    view { text .label {} }
+}
+"#;
+    let checked = compile_age_package_with_scenario(
+        &[input("app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario {
+            instances: 2,
+            ops: vec![
+                ScenarioOp::Send { instance: 0, msg: "PreferFirst".into() },
+                ScenarioOp::Send { instance: 0, msg: "Read".into() },
+                ScenarioOp::Send { instance: 1, msg: "Read".into() },
+            ],
+        },
+    ).expect("lower the nested if value through checked control flow");
+    let observed = ace_av::age_package::observe_age_package(&checked, 2)
+        .expect("the unselected JSON call must not execute");
+    assert_eq!(observed.components[0].instance_texts, [vec!["first"], vec!["second"]]);
+}
+
+#[test]
+fn live_age_package_catches_errors_in_dynamic_handlers() {
+    use ace_av::age_package::{
+        live_session::WidgetProgram, ExecLimits, WidgetViewItem,
+    };
+    use ace_core::source::age_package::compile_age_package_widget_runtime;
+
+    let source = r#"
+fn invalid_value() int {
+    let values = [1]
+    return values[9]
+}
+widget Gallery {
+    msg { Read, Reject }
+    model { var label Str = "pending" }
+    on {
+        .Read -> {
+            var rows List = []
+            rows.push({label: "first"})
+            try {
+                .label = f"${invalid_value()}"
+            } catch {
+                .label = rows[0].label ?? "missing"
+            }
+        }
+        .Reject -> {
+            .label = "uncommitted"
+            .label = f"${invalid_value()}"
+        }
+    }
+    view { text .label {} }
+}
+"#;
+    let compiled = compile_age_package_widget_runtime(
+        &[input("app", source)], "app::app", LegacyWidgetAlias::Accept, &caps(),
+    ).expect("check a live AGE handler with dynamic rows and error recovery");
+    let program = WidgetProgram::prepare(&compiled, "app::app")
+        .expect("link checked widget error control flow");
+    let limits = ExecLimits::default();
+    let session = program.open(1, &limits).unwrap();
+    session.dispatch("Read", &[], &limits).unwrap();
+    let expected = vec![WidgetViewItem::Text("first".into())];
+    assert_eq!(session.view(&limits).unwrap(), expected);
+    let failure = session.dispatch("Reject", &[], &limits).unwrap_err();
+    assert!(failure.contains("Trap { kind: ListIndex"), "{failure}");
+    assert_eq!(session.view(&limits).unwrap(), expected);
+}
+
+#[test]
+fn live_age_package_renders_replaced_legacy_model_rows() {
+    use ace_av::age_component::ComponentFieldValue;
+    use ace_av::age_package::{live_session::WidgetProgram, ExecLimits, WidgetViewItem};
+    use ace_core::source::age_package::compile_age_package_widget_runtime;
+
+    let source = r#"
+use selection: check
+fn names() List<Str> {
+    let values List<Str> = json.parse("[\"目录\"]")
+    return values
+}
+widget Viewer {
+    msg { Sample, Directory, Select(int) }
+    model {
+        var rows = [{ id: 0, name: "initial", src: "" }]
+        var selected int = -1
+    }
+    on {
+        .Sample -> { .rows = [{ id: 4, name: "sample", src: "" }] }
+        .Directory -> {
+            let labels = names()
+            var next = []
+            next.push({ id: 7, name: labels[0], src: "" })
+            .rows = next
+        }
+        .Select(id int) -> {
+            if .selected < 0 {
+                check(id)
+                .selected = id
+            }
+        }
+    }
+    view {
+        col {
+            if .selected < 0 {
+                for item in .rows {
+                    button item.name { onclick: .Select(item.id) }
+                }
+            }
+        }
+    }
+}
+"#;
+    let selection = r#"
+pub fn check(id int) Str {
+    let accepted = [7]
+    return f"${accepted[id - 7]}"
+}
+"#;
+    let compiled = compile_age_package_widget_runtime(
+        &[input("app", source), input("selection", selection)],
+        "app::app", LegacyWidgetAlias::Accept, &caps(),
+    ).expect("check the model replacement and the row-scoped label and payload");
+    let node = compiled.entry_node().unwrap();
+    assert!(node.fields.iter().any(|field| field.name == "rows"));
+    let program = WidgetProgram::prepare(&compiled, "app::app").unwrap();
+    let limits = ExecLimits::default();
+    let session = program.open(1, &limits).unwrap();
+    let check_row = |label, id| {
+        let view = session.view(&limits).unwrap();
+        let [WidgetViewItem::Element(row)] = view.as_slice() else {
+            panic!("expected the visible thumbnail row: {view:?}");
+        };
+        let [WidgetViewItem::Element(button)] = row.children.as_slice() else {
+            panic!("expected one thumbnail button: {row:?}");
+        };
+        assert_eq!(button.label.as_deref(), Some(label));
+        let [event] = button.events.as_slice() else {
+            panic!("expected the thumbnail's click event: {button:?}");
+        };
+        assert_eq!(event.message, "Select");
+        assert_eq!(event.args, [ComponentFieldValue::Int(id)]);
+        event.args.clone()
+    };
+    check_row("initial", 0);
+    session.dispatch("Sample", &[], &limits).unwrap();
+    check_row("sample", 4);
+    session.dispatch("Directory", &[], &limits).unwrap();
+    let args = check_row("目录", 7);
+    let rejected = session.dispatch("Select", &[ComponentFieldValue::Int(8)], &limits).unwrap_err();
+    assert!(rejected.contains("ListIndex"), "{rejected}");
+    check_row("目录", 7);
+    session.dispatch("Select", &args, &limits).unwrap();
+    let view = session.view(&limits).unwrap();
+    let [WidgetViewItem::Element(container)] = view.as_slice() else {
+        panic!("expected the viewer container: {view:?}");
+    };
+    assert!(container.children.is_empty());
+}
+
+#[test]
+fn live_age_package_checks_view_revisions_and_materializes_json_numbers() {
+    use ace_av::age_package::{live_session::WidgetProgram, ExecLimits, WidgetViewItem};
+    use ace_core::source::age_package::compile_age_package_widget_runtime;
+
+    let source = r#"
+widget Viewer {
+    msg { Accept, Stale, Reject }
+    model {
+        var revision int = 1
+        var status Str = "Waiting"
+        var zoom float = 1.0
+        var offset float = 2.0
+    }
+    on {
+        .Accept -> {
+            let req = json.parse("{\"baseRevision\":1,\"direction\":\"next\",\"other\":null,\"zoom\":1.25,\"offset\":0}")
+            if req.baseRevision == .revision && "next" == req.direction && req.other == null {
+                let zoom float = req.zoom
+                .zoom = zoom
+                .offset = req.offset
+                .revision = .revision + 1
+                .status = "Accepted"
+            }
+        }
+        .Stale -> {
+            let req = json.parse("{\"baseRevision\":1}")
+            if .revision != req.baseRevision {
+                .status = "Stale"
+            }
+        }
+        .Reject -> {
+            let req = json.parse("{\"zoom\":1e40}")
+            .zoom = req.zoom
+        }
+    }
+    view { text f"${.status}:${.zoom}:${.offset}" {} }
+}
+"#;
+    let compiled = compile_age_package_widget_runtime(
+        &[input("app", source)], "app::app", LegacyWidgetAlias::Accept, &caps(),
+    ).unwrap();
+    let program = WidgetProgram::prepare(&compiled, "app::app").unwrap();
+    let limits = ExecLimits::default();
+    let session = program.open(1, &limits).unwrap();
+    session.dispatch("Accept", &[], &limits).unwrap();
+    assert_eq!(session.view(&limits).unwrap(), [WidgetViewItem::Text("Accepted:1.25:0".into())]);
+    session.dispatch("Stale", &[], &limits).unwrap();
+    let stale = [WidgetViewItem::Text("Stale:1.25:0".into())];
+    assert_eq!(session.view(&limits).unwrap(), stale);
+    let failure = session.dispatch("Reject", &[], &limits).unwrap_err();
+    assert!(failure.contains("expected a finite f32 JSON number"), "{failure}");
+    assert_eq!(session.view(&limits).unwrap(), stale);
+}
+
+#[test]
+fn live_age_package_displays_dynamic_row_scalars() {
+    use ace_av::age_package::{live_session::WidgetProgram, ExecLimits, WidgetViewItem};
+    use ace_core::source::age_package::compile_age_package_widget_runtime;
+
+    let source = r#"
+widget Gallery {
+    msg { Read }
+    model { var label Str = "" }
+    on {
+        .Read -> {
+            var photos List = []
+            photos.push({ sort_key: 20261123 })
+            photos.push({ sort_key: "未知" })
+            .label = photos[0].sort_key.str() + "/" + photos[1].sort_key.str()
+        }
+    }
+    view { text .label {} }
+}
+"#;
+    let compiled = compile_age_package_widget_runtime(
+        &[input("app", source)], "app::app", LegacyWidgetAlias::Accept, &caps(),
+    ).expect("check text display for dynamic photo row members");
+    let program = WidgetProgram::prepare(&compiled, "app::app")
+        .expect("link live text display");
+    let limits = ExecLimits::default();
+    let session = program.open(1, &limits).unwrap();
+    session.dispatch("Read", &[], &limits).unwrap();
+    assert_eq!(session.view(&limits).unwrap(), [WidgetViewItem::Text("20261123/未知".into())]);
+}
+
+#[test]
+fn age_package_infers_widget_list_from_an_imported_computed_result() {
+    use ace_av::age_package::{evaluate_widget_view, WidgetViewItem};
+
+    let app = r#"
+use folders: adapt
+widget App {
+    use { package: official from "../official" }
+    model { var name str = "照片" }
+    computed { folders => adapt(.name) }
+    view { Tree (nodes: .folders) {} }
+}
+"#;
+    let derive = r#"pub fn adapt(label str) List {
+        var nodes List = []
+        nodes.push({id: "folder", label: label, children: []})
+        return nodes
+    }"#;
+    let child = r#"
+fn label(nodes List, disabled List) Str {
+    if disabled.len() > 0 { return "disabled" }
+    return nodes[0].label ?? "missing"
+}
+widget Tree (nodes: List = [], disabled: List = []) {
+    computed { caption => label(.nodes, .disabled) }
+    view { text .caption {} }
+}
+"#;
+    let checked = compile_age_package_with_scenario(
+        &[
+            input("app", app),
+            input("folders", derive),
+            PackageModuleInput { package: "official".into(), ..input("tree", child) },
+        ],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    ).expect("the computed calls supply the list types of the Tree input and empty default");
+    let tree = checked.first_widget_ref().expect("authored Tree site");
+    let view = evaluate_widget_view(&checked, tree, 0, &Default::default())
+        .expect("execute Tree with the computed record list");
+    assert_eq!(view, [WidgetViewItem::Text("照片".into())]);
+}
+
+#[test]
+fn age_package_checks_dynamic_row_ids_as_text_event_arguments() {
+    use ace_av::age_package::{evaluate_package_view, WidgetViewItem};
+    use ace_av::age_component::ComponentFieldValue;
+
+    let app = r#"widget App {
+        use { package: official from "../official" }
+        view { Tree {} }
+    }"#;
+    let tree = r#"fn rows() List {
+        var result List = []
+        result.push({id: "目录"})
+        return result
+    }
+    widget Tree {
+        msg { Pick(str) }
+        model { var selected str = "" }
+        on { .Pick(id str) -> { .selected = id } }
+        view {
+            button "Select" { onclick: .Pick(rows()[0].id) }
+        }
+    }"#;
+    let compile = |source| compile_age_package_with_scenario(
+        &[input("app", app), PackageModuleInput {
+            package: "official".into(),
+            ..input("tree", source)
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    );
+    let checked = compile(tree).expect("the message declaration supplies the row ID type");
+    let malformed = tree.replace("id: \"目录\"", "id: 17");
+    let view = evaluate_package_view(&checked, 0, &Default::default())
+        .expect("materialize the checked text argument");
+    let [WidgetViewItem::Element(tree)] = view.as_slice() else {
+        panic!("expected Tree in {view:?}");
+    };
+    let [WidgetViewItem::Element(button)] = tree.children.as_slice() else {
+        panic!("expected a matching row in {tree:?}");
+    };
+    assert_eq!(button.events[0].args, [ComponentFieldValue::Str("目录".into())]);
+    let checked = compile(&malformed).expect("the dynamic record binds before evaluation");
+    assert!(evaluate_package_view(&checked, 0, &Default::default()).is_err());
+}
+
+#[test]
+fn age_package_image_surface_keeps_native_event_payloads_deferred() {
+    use ace_av::age_package::{evaluate_package_view, WidgetViewItem};
+    use ace_core::source::age_package::ImageSurfaceEventPayload;
+
+    let app = r#"widget App {
+        use { package: official from "../official" }
+        view { Preview {} }
+    }"#;
+    // The package loader normalizes the original $event and $0/$1/$2 spellings.
+    let preview = r#"widget Preview {
+        msg { Wheel(float), Pan(float, float, str), Reset }
+        model { pan_phase str = "" }
+        on {
+            .Wheel(d float) -> { .pan_phase = "wheel" }
+            .Pan(dx float, dy float, phase str) -> { .pan_phase = phase }
+            .Reset -> { .pan_phase = "" }
+        }
+        view {
+            image_surface (
+                onwheel: .Wheel(nevent.deltaY),
+                onpan: .Pan(n0, n1, n2),
+                ondblclick: .Reset
+            ) {}
+        }
+    }"#;
+    let compile = |source| compile_age_package_with_scenario(
+        &[input("app", app), PackageModuleInput {
+            package: "official".into(),
+            ..input("preview", source)
+        }],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    );
+    let checked = compile(preview).expect("check both native payload shapes");
+    let view = evaluate_package_view(&checked, 0, &Default::default())
+        .expect("the AV view materializes without native input");
+    let [WidgetViewItem::Element(preview_site)] = view.as_slice() else {
+        panic!("expected the Preview site in {view:?}");
+    };
+    let [WidgetViewItem::Element(surface)] = preview_site.children.as_slice() else {
+        panic!("expected the image surface in {preview_site:?}");
+    };
+    assert_eq!(
+        surface.events.iter().map(|event| (event.message.as_str(), event.image_surface_payload))
+            .collect::<Vec<_>>(),
+        [
+            ("Wheel", Some(ImageSurfaceEventPayload::Wheel)),
+            ("Pan", Some(ImageSurfaceEventPayload::Pan)),
+            ("Reset", None),
+        ],
+    );
+    assert!(surface.events.iter().all(|event| event.args.is_empty()));
+
+    let mismatched = preview.replace("Wheel(float)", "Wheel(int)").replace(".Wheel(d float)", ".Wheel(d int)");
+    let errors = compile(&mismatched).expect_err("image wheel input requires a float");
+    assert!(errors.iter().any(|err| err.code == "source.age.image-surface-payload"), "{errors:?}");
+}
+
+#[test]
+fn age_package_handlers_read_current_computed_members() {
+    let source = r#"
+widget App {
+    msg {
+        Enable
+        Attempt
+    }
+    model {
+        var error str = "invalid view"
+        var count int = 0
+    }
+    computed { can_move => .error == "" }
+    on {
+        .Enable -> { .error = "" }
+        .Attempt -> {
+            var snapshots List = []
+            snapshots.push({allowed: .can_move})
+            if .can_move && (snapshots[0].allowed ?? false) { .count = .count + 1 }
+        }
+    }
+    view { text .count {} }
+}
+"#;
+    let checked = compile_age_package_with_scenario(
+        &[input("app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario {
+            instances: 2,
+            ops: vec![
+                ScenarioOp::Send { instance: 1, msg: "Attempt".into() },
+                ScenarioOp::Send { instance: 1, msg: "Enable".into() },
+                ScenarioOp::Send { instance: 0, msg: "Attempt".into() },
+                ScenarioOp::Send { instance: 1, msg: "Attempt".into() },
+            ],
+        },
+    ).expect("bind a computed predicate in the authored handler");
+    let observed = ace_av::age_package::observe_age_package(&checked, 2)
+        .expect("execute both instances with their current state");
+    assert_eq!(observed.components[0].instance_texts, [vec!["0"], vec!["1"]]);
+}
+
+#[test]
+fn age_package_empty_list_preserves_private_handler_state() {
+    let source = r#"
+widget Gallery {
+    msg {
+        Restore
+        Count
+    }
+    model {
+        var favorites = []
+        var total int = 0
+    }
+    on {
+        .Restore -> {
+            var saved List = []
+            saved.push({ id: "sunrise" })
+            .favorites = saved
+        }
+        .Count -> {
+            var i int = 0
+            for i < .favorites.len() {
+                i = i + 1
+            }
+            .total = i
+        }
+    }
+    view { text .total {} }
+}
+"#;
+    let compiled = compile_age_package_with_scenario(
+        &[input("app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario {
+            instances: 2,
+            ops: vec![
+                ScenarioOp::Send { instance: 1, msg: "Restore".into() },
+                ScenarioOp::Send { instance: 0, msg: "Count".into() },
+                ScenarioOp::Send { instance: 1, msg: "Count".into() },
+            ],
+        },
+    ).expect("bind the private collection in both handlers");
+    assert!(
+        compiled.description.components[0].fields.iter().any(|(field, _)| field == "favorites"),
+        "the replacement and read make the list a live model field"
+    );
+    let observed = ace_av::age_package::observe_age_package(&compiled, 2)
+        .expect("read the restored collection in a later event");
+    assert_eq!(observed.components[0].instance_texts, [vec!["0"], vec!["1"]]);
+}
+
+#[test]
+fn age_package_collection_path_keeps_checked_json_and_http_imports() {
+    use ace_av_core::abc::{decode_abc, encode_abc};
+    use ace_av_core::contract::SHARED_COLLECTION_ARGS_CAPABILITY;
+    use ace_av_core::{http_client, json_value};
+
+    let source = r#"
+fn request(url str) Str {
+    return Http.get(url)
+}
+fn saved_label() Str {
+    var rows List = []
+    rows.push(json.parse("{\"label\":\"album\"}"))
+    return rows[0].label ?? "missing"
+}
+widget App {
+    computed { label => saved_label() }
+    view { text .label {} }
+}
+"#;
+    let compiled = compile_age_package_with_scenario(
+        &[input("app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    ).expect("the collection path binds both AGE host namespaces");
+    let entry = &compiled.description.components[0].texts[0].def_id;
+    let mut mir = ace_lowering::lower_checked_age_package(&compiled.checked, entry, 0x981)
+        .expect("lower the package with its HTTP and JSON contracts");
+    let wire = encode_abc(&mir).expect("encode the checked host imports");
+    let decoded = decode_abc(&wire.to_flat()).expect("decode the checked host imports");
+    let imports = &decoded.module.host_imports;
+    assert_eq!(imports.len(), 2);
+    assert!(imports.iter().any(|import| http_client::is_http_symbol(&import.symbol)));
+    assert!(imports.iter().any(|import| json_value::is_json_symbol(&import.symbol)));
+
+    mir.capabilities.retain(|cap| cap != SHARED_COLLECTION_ARGS_CAPABILITY);
+    let error = encode_abc(&mir)
+        .err().expect("ordinary dynamic modules cannot carry these host imports");
+    assert!(format!("{error:?}").contains("abc.encode.host-section"), "{error:?}");
+
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("JSON executes through the checked package observation entry");
+    assert_eq!(observed.components[0].instance_texts, [vec!["album"]]);
+}
+
+#[test]
+fn live_age_package_resumes_http_on_a_scoped_worker() {
+    use ace_av::age_package::{live_session::WidgetProgram, ExecLimits, WidgetViewItem};
+    use ace_av::component_event_sessions::{HttpFailure, HttpProvider};
+    use ace_core::source::age_package::compile_age_package_widget_runtime;
+    use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
+    use std::time::Duration;
+
+    let source = r#"
+widget Gallery {
+    msg { Load }
+    model {
+        var label Str = "waiting"
+        var rows List<int> = [7]
+    }
+    on {
+        .Load -> {
+            try {
+                .label = "uncommitted"
+                let row = Http.get_json("/api/photos/scan")
+                .label = row.label ?? "missing"
+                .rows = [9]
+            } catch {
+                .label = "scan failed"
+                .rows = []
+            }
+        }
+    }
+    view {
+        text .label {}
+        text .rows.len().str() {}
+    }
+}
+"#;
+    let compiled = compile_age_package_widget_runtime(
+        &[input("app", source)], "app::app", LegacyWidgetAlias::Accept, &caps(),
+    ).expect("check an HTTP event with a dynamic JSON reply");
+    let program = WidgetProgram::prepare(&compiled, "app::app").expect("verify the event");
+    assert!(program.uses_http());
+    let limits = ExecLimits::default();
+    let session = program.open(1, &limits).unwrap();
+    let text = |label: &str, count: &str| {
+        [WidgetViewItem::Text(label.into()), WidgetViewItem::Text(count.into())]
+    };
+    let error = session.dispatch("Load", &[], &limits).unwrap_err();
+    assert!(error.contains("no http provider installed"), "{error}");
+    assert_eq!(session.view(&limits).unwrap(), text("waiting", "1"));
+
+    #[derive(Default)]
+    struct Provider {
+        starts: usize,
+        polls: usize,
+        cancel_on_poll: Option<Arc<AtomicBool>>,
+        failure: Option<HttpFailure>,
+    }
+    impl HttpProvider for Provider {
+        fn http_start(&mut self, verb: &str, url: &str, body: Option<&str>) -> u64 {
+            assert_eq!((verb, url, body), ("auto.http.get-json.v1", "/api/photos/scan", None));
+            self.starts += 1;
+            self.polls = 0;
+            self.starts as u64
+        }
+        fn http_poll(&mut self, job: u64) -> Option<Result<String, HttpFailure>> {
+            assert_eq!(job, self.starts as u64);
+            self.polls += 1;
+            if let Some(cancel) = &self.cancel_on_poll {
+                cancel.store(true, Ordering::Relaxed);
+                return None;
+            }
+            (self.polls > 2).then(|| match self.failure.take() {
+                Some(failure) => Err(failure),
+                None => Ok(r#"{"label":"相册"}"#.into()),
+            })
+        }
+    }
+    let provider = Arc::new(Mutex::new(Provider::default()));
+    provider.lock().unwrap().failure = Some(HttpFailure::Request("HTTP 503".into()));
+    let cancel = Arc::new(AtomicBool::new(false));
+    session.with_http_worker(
+        provider.clone(), cancel, Duration::from_secs(1),
+        || session.dispatch("Load", &[], &limits),
+    ).unwrap();
+    assert_eq!(session.view(&limits).unwrap(), text("scan failed", "0"));
+    assert_eq!(provider.lock().unwrap().starts, 1);
+    assert_eq!(provider.lock().unwrap().polls, 3);
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    session.with_http_worker(
+        provider.clone(), cancel, Duration::from_secs(1),
+        || session.dispatch("Load", &[], &limits),
+    ).unwrap();
+    assert_eq!(session.view(&limits).unwrap(), text("相册", "1"));
+
+    provider.lock().unwrap().failure = Some(HttpFailure::Rejected("request rejected".into()));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let error = session.with_http_worker(
+        provider.clone(), cancel, Duration::from_secs(1),
+        || session.dispatch("Load", &[], &limits),
+    ).unwrap_err();
+    assert!(error.contains("http.client: request rejected"), "{error}");
+    assert_eq!(session.view(&limits).unwrap(), text("相册", "1"));
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    provider.lock().unwrap().cancel_on_poll = Some(cancel.clone());
+    let error = session.with_http_worker(
+        provider.clone(), cancel, Duration::from_secs(1),
+        || session.dispatch("Load", &[], &limits),
+    ).unwrap_err();
+    assert!(error.contains("Cancelled"), "{error}");
+    assert_eq!(provider.lock().unwrap().starts, 4);
+    assert_eq!(session.view(&limits).unwrap(), text("相册", "1"));
+    assert!(session.dispatch("Load", &[], &limits).unwrap_err().contains("no http provider installed"));
+    assert_eq!(provider.lock().unwrap().starts, 4);
+}
+
+#[test]
+fn age_package_bare_list_preserves_dynamic_records_through_av() {
+    let source = r#"
+fn build_rows() List {
+    var rows List = []
+    rows.push({ id: "folder", label: "计划", selected: true })
+    return rows
+}
+fn label_at(rows List) Str {
+    let row = rows[0]
+    return row.label ?? "missing"
+}
+widget App {
+    computed { label => label_at(build_rows()) }
+    view { text .label {} }
+}
+"#;
+    let compiled = compile_age_package_with_scenario(
+        &[input("app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario { instances: 1, ops: Vec::new() },
+    ).expect("the checked package admits the legacy signatures");
+    let observed = ace_av::age_package::observe_age_package(&compiled, 1)
+        .expect("the package's dynamic collection is admitted and evaluated");
+    assert_eq!(observed.components[0].instance_texts, [vec!["计划"]]);
+
+    let entry = &compiled.description.components[0].texts[0].def_id;
+    let mut mir = ace_lowering::lower_checked_age_package(&compiled.checked, entry, 0x981)
+        .expect("lower the checked AGE package");
+    mir.capabilities.retain(|cap| cap != ace_av_core::contract::SHARED_COLLECTION_ARGS_CAPABILITY);
+    let error = ace_av_core::mir_verify::verify_mir(&mir)
+        .err().expect("plain dynamic profile still rejects the added collection surface");
+    assert!(format!("{error:?}").contains("mir.type.list-elem"), "{error:?}");
+}
+
+#[test]
 fn p107_legacy_chart_memo_preserves_view_and_disjoint_list_transfers() {
     use ace_av::age_package::{evaluate_widget_view, WidgetViewItem};
 

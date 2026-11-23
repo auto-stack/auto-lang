@@ -2083,6 +2083,7 @@ impl<'a, 'v> CollLower<'a, 'v> {
                         "__ace_text_find" => "a2x_str_find",
                         "__ace_text_trim" => "a2x_str_trim",
                         "__ace_text_trim_len" => "a2x_str_trim_len",
+                        "__ace_text_lower" => "a2x_str_lower",
                         _ => "a2x_str_upper",
                     };
                     let mut sargs = Vec::new();

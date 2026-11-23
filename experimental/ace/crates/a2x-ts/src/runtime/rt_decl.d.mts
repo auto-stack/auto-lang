@@ -85,6 +85,8 @@ export declare function a2x_rt_snapshot(): {
 
 /** Charge `units` against the execution budget (traps `Budget`). */
 export declare function a2x_bill(units: number): void;
+/** Recover a checked language failure's message or rethrow any other error. */
+export declare function a2x_catch_failure(error: unknown): A2xOwnedStr;
 
 // --- i32 family ------------------------------------------------------------
 
@@ -178,6 +180,8 @@ export declare function a2x_str_lit(s: string | Uint8Array): A2xBorrowedText;
 /** Decode a text value to a JS string (diagnostics / trap details). */
 export declare function a2x_str_utf8(x: A2xText): string;
 export declare function a2x_str_find(text: A2xText, pattern: A2xText, start: number): number;
+/** Convert text to lowercase using Unicode full-string casing. */
+export declare function a2x_str_lower(x: A2xText): A2xOwnedStr;
 /** Unicode scalar (code point) count. */
 export declare function a2x_str_len(x: A2xText): number;
 /** UTF-8 byte count. */

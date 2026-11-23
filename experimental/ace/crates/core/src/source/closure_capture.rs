@@ -93,6 +93,24 @@ pub(crate) fn analyze_capture_uses(
             ExprKind::Await(inner) | ExprKind::Go(inner) => {
                 visit_expr(inner, outer_locals, scopes, uses, by_name)
             }
+            // PLAN-117（U05 029 真语料）：if 表达式捕获 cond/then/链/els。
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                visit_expr(cond, outer_locals, scopes, uses, by_name);
+                visit_expr(then, outer_locals, scopes, uses, by_name);
+                for (c, t) in else_chain {
+                    visit_expr(c, outer_locals, scopes, uses, by_name);
+                    visit_expr(t, outer_locals, scopes, uses, by_name);
+                }
+                if let Some(e) = els {
+                    visit_expr(e, outer_locals, scopes, uses, by_name);
+                }
+            }
             // PLAN-961: a typed literal captures nothing.
             ExprKind::TypedLit { .. } => {}
             // PLAN-962: a range captures through its bounds.
@@ -515,6 +533,24 @@ pub(crate) fn scan_shared_capture_cells(
             // PLAN-968: await/go share through their operand.
             ExprKind::Await(inner) | ExprKind::Go(inner) => {
                 visit_expr(inner, scopes, shared)
+            }
+            // PLAN-117（U05 029 真语料）：if 表达式 share cond/then/链/els。
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                visit_expr(cond, scopes, shared);
+                visit_expr(then, scopes, shared);
+                for (c, t) in else_chain {
+                    visit_expr(c, scopes, shared);
+                    visit_expr(t, scopes, shared);
+                }
+                if let Some(e) = els {
+                    visit_expr(e, scopes, shared);
+                }
             }
             // PLAN-962: a range captures through its bounds.
             ExprKind::Range { start, end, .. } => {

@@ -2504,7 +2504,6 @@ fn verify_collection_family_inner(
     };
     v.check_bundle(&bundle);
     for m in &bundle.modules {
-        v.check_module(m);
         v.check_collections_rules(m, None, ordinary_auto);
     }
     if v.diags.is_empty() {
@@ -2514,10 +2513,11 @@ fn verify_collection_family_inner(
         // the ac_rt text runtime).
         let mut plan = crate::collections_facts::CollectionsPlan::default();
         for (mi, m) in bundle.modules.iter().enumerate() {
+            let classifier = crate::collections_facts::TypeClassifier::build(m);
             for (bi, body) in m.bodies.iter().enumerate() {
                 plan.bodies.insert(
                     (mi, bi as u32),
-                    crate::collections_facts::compute_body_facts(m, body),
+                    crate::collections_facts::compute_body_facts_with_classifier(&classifier, body),
                 );
             }
         }
@@ -3265,7 +3265,10 @@ impl Verifier {
                             // Expression graph verification diagnoses invalid operands.
                             continue;
                         };
-                        if !ordinary_auto {
+                        // PLAN-117（round-40 ②）：元素视图面（collections 域
+                        // AGE 场景/事件道）的 OwnedClone 同样放行——view-data
+                        // 快照常量的 List 克隆（普通 Clone 指令下沉）。
+                        if !ordinary_auto && !self.elem_view_owned {
                             self.error(
                                 "verify.profile-op",
                                 "owned clone requires the ordinary Auto profile",

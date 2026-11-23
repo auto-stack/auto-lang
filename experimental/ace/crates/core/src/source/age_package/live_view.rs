@@ -28,6 +28,49 @@ pub fn widget_timer_fn_name_at(node: usize, instance: usize, timer: usize) -> St
     format!("{AGE_PACKAGE_HIDDEN_PREFIX}widget_timer_{node}_{instance}_{timer}")
 }
 
+/// Input supplied by the native image surface when the event fires.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageSurfaceEventPayload {
+    Wheel,
+    Pan,
+}
+
+impl ImageSurfaceEventPayload {
+    pub fn from_binding(tag: &str, key: &str) -> Option<Self> {
+        if !matches!(tag, "image_surface" | "image-surface" | "imagesurface") {
+            return None;
+        }
+        match key {
+            "onwheel" => Some(Self::Wheel),
+            "onpan" => Some(Self::Pan),
+            _ => None,
+        }
+    }
+
+    pub(super) fn matches_arguments(self, args: &[Arg]) -> bool {
+        match (self, args) {
+            (Self::Wheel, [Arg::Pos(value)]) => {
+                matches!(&value.kind, ExprKind::Field { base, name }
+                    if name.name == "deltaY"
+                        && matches!(&base.kind, ExprKind::Var(name) if name.name == "nevent"))
+            }
+            (Self::Pan, [Arg::Pos(dx), Arg::Pos(dy), Arg::Pos(phase)]) => {
+                [dx, dy, phase].into_iter().zip(["n0", "n1", "n2"]).all(|(value, slot)|
+                    matches!(&value.kind, ExprKind::Var(name) if name.name == slot))
+            }
+            _ => false,
+        }
+    }
+
+    pub(super) fn matches_types(self, payload: &[String]) -> bool {
+        let expected: &[TypeWord] = match self {
+            Self::Wheel => &[TypeWord::Float],
+            Self::Pan => &[TypeWord::Float, TypeWord::Float, TypeWord::StrOwned],
+        };
+        payload.iter().map(|ty| payload_type(ty)).eq(expected.iter().copied().map(Some))
+    }
+}
+
 pub(super) fn add_widget_views(
     components: &[PackagedAgeComponent],
     units: &mut BTreeMap<String, PackageSyntax>,
@@ -446,7 +489,7 @@ impl ViewBody<'_> {
         let span = entry.span;
         let prop = |value| [literal(&entry.key, span), value];
         if entry.is_event && !matches!(entry.value, ComponentEntryValue::ChildEvent(_)) {
-            return self.event(entry, scope, stmts);
+            return self.event(entry, element_tag, scope, stmts);
         }
         let boolean = matches!((element_tag, entry.key.as_str()),
             ("drawer" | "alert-dialog", "open") | ("button" | "input", "disabled")
@@ -569,6 +612,7 @@ impl ViewBody<'_> {
     fn event(
         &mut self,
         entry: &ComponentViewEntry,
+        element_tag: &str,
         scope: &ViewScope<'_>,
         stmts: &mut Vec<Stmt>,
     ) -> Result<(), Vec<Diagnostic>> {
@@ -586,6 +630,15 @@ impl ViewBody<'_> {
             }
             _ => return Err(view_error("this event binding", span)),
         };
+        if ImageSurfaceEventPayload::from_binding(element_tag, &entry.key)
+            .is_some_and(|payload| payload.matches_arguments(args))
+        {
+            self.emit(stmts, "image-surface-event", [
+                literal(&entry.key, span),
+                literal(&name.name, span),
+            ]);
+            return Ok(());
+        }
         self.emit(
             stmts,
             "event",
@@ -615,7 +668,26 @@ impl ViewBody<'_> {
                         self.emit(&mut els, "bool", [literal("false", span)]);
                         stmts.push(if_stmt(value, then, els, span));
                     }
-                    Some(TypeWord::StrOwned | TypeWord::I32) => {
+                    Some(TypeWord::StrOwned) => {
+                        let arg_span = value.span;
+                        let name = ident(&format!("{}_event_text_{}", self.symbol, self.cells), arg_span);
+                        self.cells += 1;
+                        stmts.push(Stmt::Let {
+                            kw: arg_span,
+                            name: name.clone(),
+                            ann: Some(TypeAnn { kind: TypeRef::Builtin(TypeWord::StrOwned), span: arg_span }),
+                            mutable: false,
+                            value,
+                            span: arg_span,
+                        });
+                        self.emit(stmts, ty, [display(read(&name))]);
+                    }
+                    Some(TypeWord::I32) => {
+                        self.emit(stmts, ty, [display(value)]);
+                    }
+                    // PLAN-117（U05 031 真语料）：`OnWheel(float)` / `OnPan(float,…)`
+                    // 事件载荷——float/f64 与 int 同列显示发射（AV cell 域有 F32）。
+                    Some(TypeWord::Float | TypeWord::Double | TypeWord::F64) => {
                         self.emit(stmts, ty, [display(value)]);
                     }
                     _ => return Err(view_error("this event payload type", span)),

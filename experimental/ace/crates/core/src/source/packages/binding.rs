@@ -665,8 +665,8 @@ fn bind_packages_face_with(
     if face == Faces::Age
         && !units.contains_key("std::json")
         && units.values().any(|unit| unit.imports.iter().any(|import| {
-            matches!(import.path.as_slice(), [package, module, _] if package == "std" && module == "json")
-                && (import.reexport || unit.referenced.contains(import.bound_name()))
+            matches!(import.path.as_slice(), [package, module, ..] if package == "std" && module == "json")
+                && (import.reexport || unit.referenced.contains(import.bound_name()) || import.path.len() == 2)
         }))
     {
         let json = super::stdlib::age_json_input();
@@ -1422,8 +1422,19 @@ fn bind_package_syntax_inner(
             // import. Declares the module edge (cycle detection, cold
             // identity); members stay qualified `demo.item` through the
             // existing module_prefix/cross_call visibility path.
-            if i.path.len() == 1 {
-                let target_key = unit_key(&split_key(key).0, &i.path[0]);
+            // PLAN-117（U05 031 真语料）：AGE 包面的 `use std.json` 同为
+            // 模块导入——`std` 是保留标准库包名，两段路径必为跨包
+            // [pkg, module]（与 resolve_path 的包内成员语义区分）。
+            let module_import = i.path.len() == 1
+                || (face == Faces::Age
+                    && i.path.len() == 2
+                    && i.path[0] == super::stdlib::STDLIB_PACKAGE);
+            if module_import {
+                let target_key = if i.path.len() == 1 {
+                    unit_key(&split_key(key).0, &i.path[0])
+                } else {
+                    unit_key(&i.path[0], &i.path[1])
+                };
                 if target_key == *key {
                     return Err(fail(
                         key,
@@ -2529,6 +2540,24 @@ fn shift_expr(e: &mut Expr, offset: usize) {
         ExprKind::Await(inner) | ExprKind::Go(inner) => {
             shift_expr(inner, offset);
         }
+        // PLAN-117（U05 029 真语料）：if 表达式各段同步平移。
+        ExprKind::If {
+            cond,
+            then,
+            else_chain,
+            els,
+            ..
+        } => {
+            shift_expr(cond, offset);
+            shift_expr(then, offset);
+            for (c, t) in else_chain {
+                shift_expr(c, offset);
+                shift_expr(t, offset);
+            }
+            if let Some(e) = els {
+                shift_expr(e, offset);
+            }
+        }
         // PLAN-962：范围界同步平移。
         ExprKind::Range { start, end, .. } => {
             shift_expr(start, offset);
@@ -3175,7 +3204,7 @@ impl<'a> Walker<'a> {
                     catch,
                     finally,
                     ..
-                } if self.auto_language => {
+                } if self.auto_language || self.age => {
                     stack.push(Frame {
                         stmts: rest,
                         locals: next_locals.clone(),
@@ -3303,6 +3332,25 @@ impl<'a> Walker<'a> {
         match &mut e.kind {
             // PLAN-968：await/go 递归走读。
             ExprKind::Await(inner) | ExprKind::Go(inner) => self.walk_expr_inner(inner, locals),
+            // PLAN-117（U05 029 真语料）：if 表达式各段递归走读。
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                self.walk_expr_inner(cond, locals)?;
+                self.walk_expr_inner(then, locals)?;
+                for (c, t) in else_chain {
+                    self.walk_expr_inner(c, locals)?;
+                    self.walk_expr_inner(t, locals)?;
+                }
+                if let Some(e) = els {
+                    self.walk_expr_inner(e, locals)?;
+                }
+                Ok(())
+            }
             // PLAN-962：范围界递归走读。
             ExprKind::Range { start, end, .. } => {
                 self.walk_expr_inner(start, locals)?;
@@ -3984,6 +4032,35 @@ mod tests {
             &[PACKAGES_CAPABILITY.into()],
             FrontBudget::WORK_OWNED_64MIB,
         )
+    }
+
+    #[test]
+    fn age_json_is_loaded_by_a_bare_module_import() {
+        let use_json = |source| input("app", "main", source);
+        let bind_age = |inputs: &[PackageModuleInput]| {
+            bind_packages_age(
+                inputs,
+                "app::main",
+                &[PACKAGES_CAPABILITY.into()],
+                FrontBudget::WORK_OWNED_64MIB,
+                &crate::source::age_component::ComponentScenario {
+                    instances: 0,
+                    ops: Vec::new(),
+                },
+            )
+        };
+        // 裸模块导入 `use std.json`（非成员导入）：装配必须发生，否则
+        // 绑定器在 imports 循环报 unknown module std。
+        let used = use_json(
+            r#"use std.json
+widget App {
+    msg { Init }
+    view { col { text "h" {} } }
+    on { .Init -> { } }
+}"#,
+        );
+        let result = bind_age(&[used]).unwrap();
+        assert!(result.bound.units.contains_key("std::json"));
     }
 
     #[test]

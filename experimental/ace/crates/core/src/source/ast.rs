@@ -642,6 +642,17 @@ pub enum ExprKind {
     },
     BoolLit(bool),
     Var(Ident),
+    /// PLAN-117（U05 029 真语料）：if 表达式操作数（computed 值
+    /// `c => if … { … } else { … }`、design 值、handler RHS）——AGE 作者面
+    /// 表达式里 `if <cond> { <then> } else { <else> }` 的三段式；`els`
+    /// 携带 else-if 链（(cond, value) 对，源序）与末 else。
+    If {
+        cond: Box<Expr>,
+        then: Box<Expr>,
+        else_chain: Vec<(Expr, Box<Expr>)>,
+        els: Option<Box<Expr>>,
+        span: Span,
+    },
     /// Decoded string literal (text profile, PLAN-770); cross-line breaks
     /// are part of the value.
     StrLit(String),

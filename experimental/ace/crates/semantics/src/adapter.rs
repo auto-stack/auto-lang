@@ -648,6 +648,11 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::Go(_) => InputExprKind::Unsupported {
             what: "go-expression",
         },
+        // PLAN-117（U05 029 真语料）：if 表达式是 AGE 作者面操作数形式，
+        // 查询面（named）不承载——显式拒（若泄漏即诊断）。
+        core_ast::ExprKind::If { .. } => InputExprKind::Unsupported {
+            what: "if-expression",
+        },
         // PLAN-962: literals/index reads are aggregates-surface forms,
         // named-unsupported on the query surface.
         core_ast::ExprKind::ArrayLit(_) | core_ast::ExprKind::ArrayConditionalElem { .. } => {

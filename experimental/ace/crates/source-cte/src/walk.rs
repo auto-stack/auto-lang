@@ -93,6 +93,25 @@ macro_rules! tree_walk {
                         pending.push(Node::Value(scrutinee));
                         pending.extend(arms.$iter().map(|arm| arm_body(&$($borrow)* arm.body)));
                     }
+                    // PLAN-117（U05 029 真语料）：if 表达式——cond/then/链/末
+                    // else 逐支走读（CT 需求发现与冻结回填不跳过条件侧）。
+                    ExprKind::If {
+                        cond,
+                        then,
+                        else_chain,
+                        els,
+                        ..
+                    } => {
+                        pending.push(Node::Value(cond));
+                        pending.push(Node::Value(then));
+                        for (c, t) in else_chain.$iter() {
+                            pending.push(Node::Value(c));
+                            pending.push(Node::Value(t));
+                        }
+                        if let Some(e) = els {
+                            pending.push(Node::Value(e));
+                        }
+                    }
                     ExprKind::IntLit(_) | ExprKind::BoolLit(_) | ExprKind::TypedLit { .. }
                     | ExprKind::NilLit | ExprKind::Var(_) | ExprKind::StrLit(_) | ExprKind::CharLit(_)
                     | ExprKind::TypeWordArg(_) | ExprKind::GenericType { .. }

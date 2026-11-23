@@ -234,6 +234,7 @@ pub const OP_GLOBAL_SET: u8 = 0x39;
 pub const OP_STR_FIND: u8 = 0x4E;
 pub const OP_STR_TRIM: u8 = 0x4F;
 pub const OP_STR_UPPER: u8 = 0x53;
+pub const OP_STR_LOWER: u8 = 0x59;
 pub const OP_GLOBAL_TAKE: u8 = 0x4D;
 pub const TERM_JUMP: u8 = 0x10;
 pub const TERM_BRANCH: u8 = 0x11;
@@ -437,12 +438,23 @@ impl WireFamily {
     fn allows_closures_tags(&self) -> bool {
         matches!(self, WireFamily::Closures)
     }
+    fn carries_host_section(&self, has_event_extension: bool) -> bool {
+        matches!(self, WireFamily::HostConsole | WireFamily::Closures | WireFamily::Owned)
+            || has_event_extension
+    }
     fn allows_dynamic_tags(&self) -> bool {
         // PLAN-964: the object/nil dynamic-value surface rides the
         // closures wire family too (the aggregates/closures source domain
         // lowers to the closures profile; the Object/Nil types and the
         // OBJECT_* instructions are admitted there).
-        matches!(self, WireFamily::Dynamic | WireFamily::Closures)
+        // PLAN-117（B-05 S1b）：Owned 线族放行 Dyn/Nil/Object——组件事件
+        // 程序的 json 值链（json.parse → Object/Nil/标量值）。值的 drop
+        // 记账（Object cell 引用计数 / Nil 零宽）由执行器既有 per-type
+        // 释放路径承载。
+        matches!(
+            self,
+            WireFamily::Dynamic | WireFamily::Closures | WireFamily::Owned
+        )
     }
     /// PLAN-862: the Unit type tag and the entry-kind header byte exist
     /// only in the entry-unit family.
@@ -836,14 +848,24 @@ fn encode_preflight_scratch(m: &MirModule) -> usize {
     largest.saturating_mul(3).saturating_add(4096)
 }
 
-/// PLAN-108（T-03b M1）：模块的全部 host import 是否均为 Http 效应族
-/// （`http.client/1`）——Owned 线族的 HOST section 窄开口（非 AVHC/Closures
-/// 的既有门对其余 host import 不变）。
-fn all_http_host_imports(m: &MirModule) -> bool {
+/// PLAN-117（round-25 ⑤）：029 真形同一 handler 混用 `Http.get_json`（http
+/// 族）与 `json.parse`（json 族）——组件事件程序的 host import 闭合于
+/// **http ∪ json 两族并集**即放行（不再是全 http 或全 json 的二选一）。
+/// 取代 PLAN-108 的全 http 窄开口与 S1b 的全 json 窄开口（语义并集不变）。
+fn all_event_host_imports(m: &MirModule) -> bool {
     !m.host_imports.is_empty()
-        && m.host_imports
-            .iter()
-            .all(|h| crate::http_client::is_http_symbol(&h.symbol))
+        && m.host_imports.iter().all(|h| event_host_symbol(&h.symbol))
+}
+
+fn event_host_symbol(symbol: &str) -> bool {
+    crate::http_client::is_http_symbol(symbol) || crate::json_value::is_json_symbol(symbol)
+}
+
+fn dynamic_event_host_capabilities(capabilities: &[String]) -> bool {
+    capabilities.iter().any(|cap| cap == crate::contract::SHARED_COLLECTION_ARGS_CAPABILITY)
+        && capabilities.iter().any(|cap| {
+            cap == crate::http_client::CATEGORY_HTTP || cap == crate::json_value::CATEGORY
+        })
 }
 
 fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, AbcDecodeError> {
@@ -874,6 +896,21 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
             ))
         }
     };
+    // PLAN-117（round-26）：Owned 线族的 List 指令门标记（元素视图面能力）。
+    let elem_view_owned = family == WireFamily::Owned
+        && m.capabilities
+            .iter()
+            .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
+    // PLAN-117（round-41）：Collections 线族的同款标记（json 值链的
+    // Dyn/Object/Nil 类型行、DYN 指令与 PlatformCall）。
+    let elem_view_collections = family == WireFamily::Collections
+        && m.capabilities
+            .iter()
+            .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
+    let dynamic_event_hosts = family == WireFamily::Dynamic
+        && dynamic_event_host_capabilities(&m.capabilities)
+        && all_event_host_imports(m);
+    let host_section = family.carries_host_section(elem_view_collections || dynamic_event_hosts);
     if (!m.host_imports.is_empty()
         && family != WireFamily::HostConsole
         // PLAN-968: scheduler-surface modules (closures family) carry
@@ -881,7 +918,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
         && family != WireFamily::Closures
         // PLAN-108（T-03b M1）：组件事件程序（Owned 线族）携带 Http 效应
         // host import（全部=http 族符号才放行；其余 host import 门不变）。
-        && !(family == WireFamily::Owned && all_http_host_imports(m)))
+        // PLAN-117（round-25 ⑤）：真形混用 http+json 两族——并集闭合放行。
+        // PLAN-117（round-41 ②）：collections 线族（元素视图面场景道）同
+        // 放行 http ∪ json 混合族（与 Owned 门同一并集口径）。
+        && !(family == WireFamily::Owned && all_event_host_imports(m))
+        && !(elem_view_collections && all_event_host_imports(m))
+        && !dynamic_event_hosts)
         || m.host_imports.len() > crate::platform_io::MAX_TOTAL_HOST_IMPORTS
     {
         return Err(AbcDecodeError::fmt_err(
@@ -948,14 +990,8 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
         w.push(b);
     }
 
-    // PLAN-968: scheduler modules (closures family) carry the same HOST
-    // section (console host imports).
-    if family == WireFamily::HostConsole
-        || family == WireFamily::Closures
-        // PLAN-108（T-03b M1）：Owned 线族恒携 HOST section（n 可为 0；
-        //  admission 门只放 http 族 import——见上）。编解码两侧同条件。
-        || family == WireFamily::Owned
-    {
+    // The Collections element-view extension carries the section even with no imports.
+    if host_section {
         w.push(b"HOST");
         put_u16(&mut w, m.host_imports.len() as u16);
         for h in &m.host_imports {
@@ -1194,8 +1230,15 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 }
             }
             // PLAN-822: collections-only types.
+            // PLAN-117（round-26）：组件**事件道**（Owned 线族）携带元素视图
+            // 面标记时放行 List 类型（view-data 初值 `[]` 物化 = List(Dyn)）；
+            // 既有线族门不变。
             MirType::List(l) => {
-                if !family.allows_collections_tags() {
+                let elem_view_owned = family == WireFamily::Owned
+                    && m.capabilities
+                        .iter()
+                        .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
+                if !family.allows_collections_tags() && !elem_view_owned {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
                         "list type in a non-collections-profile module".to_string(),
@@ -1261,7 +1304,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 put_u32(&mut w, l.elem);
             }
             MirType::Dyn => {
-                if !family.allows_dynamic_tags() {
+                if !family.allows_dynamic_tags() && !elem_view_collections {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
                         "the erased Dyn type in a non-dynamic-profile module".to_string(),
@@ -1270,7 +1313,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 put_u8(&mut w, TY_DYN);
             }
             MirType::Nil => {
-                if !family.allows_dynamic_tags() {
+                if !family.allows_dynamic_tags() && !elem_view_collections {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
                         "the nil type in a non-dynamic-profile module".to_string(),
@@ -1279,7 +1322,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                 put_u8(&mut w, TY_NIL);
             }
             MirType::Object { elem } => {
-                if !family.allows_dynamic_tags() {
+                if !family.allows_dynamic_tags() && !elem_view_collections {
                     return Err(AbcDecodeError::fmt_err(
                         "abc.encode.profile",
                         "the object type in a non-dynamic-profile module".to_string(),
@@ -1586,9 +1629,12 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         // PLAN-973: the closures family (packages-aggregates
                         // lane, std system-library modules) rides the same
                         // platform-call seam as AVHC.
-                        if (family != WireFamily::HostConsole && family != WireFamily::Closures)
-                            || args.len() > 8
-                        {
+                        // PLAN-117（B-05 S1b）：Owned 线族的 json 值原语走同
+                        // 一 PlatformCall 截面（host section 已按 json 族
+                        // 放行；arity 界不变）。
+                        // PLAN-117（round-41）：collections 线族同放行
+                        //（json 原语 PlatformCall 随内联体进入）。
+                        if !host_section || args.len() > 8 {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "platform call requires AVHC and bounded arity".into(),
@@ -1901,14 +1947,19 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *view);
                     }
-                    MirInstr::StrUpper { dst, view } => {
+                    MirInstr::StrUpper { dst, view } | MirInstr::StrLower { dst, view } => {
                         if !family.allows_owned_tags() {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "text conversion in a non-owned profile".into(),
                             ));
                         }
-                        put_u8(&mut w, OP_STR_UPPER);
+                        let opcode = if matches!(instr, MirInstr::StrLower { .. }) {
+                            OP_STR_LOWER
+                        } else {
+                            OP_STR_UPPER
+                        };
+                        put_u8(&mut w, opcode);
                         put_u32(&mut w, *dst);
                         put_u32(&mut w, *view);
                     }
@@ -2029,7 +2080,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     // PLAN-822 collections instructions (collections
                     // generation only).
                     MirInstr::ListNew { dst, list_ty, cap } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2041,7 +2092,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *cap);
                     }
                     MirInstr::ListLen { dst, src } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2052,7 +2103,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *src);
                     }
                     MirInstr::ListCap { dst, src } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2063,7 +2114,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *src);
                     }
                     MirInstr::ListGet { dst, base, index } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2075,7 +2126,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *index);
                     }
                     MirInstr::ListPush { root, value } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2086,7 +2137,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *value);
                     }
                     MirInstr::ListInsert { root, index, value } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2098,7 +2149,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *value);
                     }
                     MirInstr::ListSet { root, index, value } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2110,7 +2161,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *value);
                     }
                     MirInstr::ListRemove { dst, root, index } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2127,7 +2178,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         index,
                         path,
                     } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2148,7 +2199,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         index,
                         path,
                     } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2169,7 +2220,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         path,
                         value,
                     } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "list operations in a non-collections-profile module".to_string(),
@@ -2271,7 +2322,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         }
                     }
                     MirInstr::ListPlace { dst, base, index } => {
-                        if !family.allows_collections_tags() {
+                        if !family.allows_collections_tags() && !elem_view_owned {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "place operations in a non-collections-profile module".to_string(),
@@ -2368,7 +2419,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     }
                     // -- PLAN-824 dynamic surface (encode) -----------------
                     MirInstr::DynPack { dst, src } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "DYN operations in a non-dynamic-profile module".to_string(),
@@ -2379,7 +2430,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *src);
                     }
                     MirInstr::DynIs { dst, src, ty } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "DYN operations in a non-dynamic-profile module".to_string(),
@@ -2391,7 +2442,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *ty);
                     }
                     MirInstr::DynTake { dst, src, ty } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "DYN operations in a non-dynamic-profile module".to_string(),
@@ -2404,7 +2455,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                     }
                     // -- PLAN-964 object/dynamic surface (encode) -----------
                     MirInstr::ObjectNew { dst, keys, vals } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "OBJECT operations in a non-dynamic-profile module".to_string(),
@@ -2432,7 +2483,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         key,
                         elem,
                     } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "OBJECT operations in a non-dynamic-profile module".to_string(),
@@ -2445,7 +2496,7 @@ fn encode_abc_mode(m: &MirModule, expected: Option<usize>) -> Result<AbcBytes, A
                         put_u32(&mut w, *elem);
                     }
                     MirInstr::ObjectSet { obj, key, value } => {
-                        if !family.allows_dynamic_tags() {
+                        if !family.allows_dynamic_tags() && !elem_view_collections {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.encode.profile",
                                 "OBJECT operations in a non-dynamic-profile module".to_string(),
@@ -2925,6 +2976,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
     }
 
     let mut capabilities = Vec::with_capacity(n_caps);
+
     for _ in 0..n_caps {
         let n = c.u16()? as usize;
         decode_mem!(n, "a capability string");
@@ -2937,13 +2989,16 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
         })?);
     }
     let mut host_imports = Vec::new();
-    // PLAN-968: scheduler modules (closures family) carry the HOST section.
-    // PLAN-108（T-03b M1）：Owned 线族的 Http host import 同截面（编码侧
-    // 同条件，见上）。
-    if family == WireFamily::HostConsole
-        || family == WireFamily::Closures
-        || family == WireFamily::Owned
-    {
+    // Dynamic packages without host imports keep the existing wire layout.
+    let dynamic_event_hosts = family == WireFamily::Dynamic
+        && dynamic_event_host_capabilities(&capabilities)
+        && c.data[c.pos..].starts_with(b"HOST");
+    let elem_view_collections = family == WireFamily::Collections
+        && capabilities
+            .iter()
+            .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
+    let host_section = family.carries_host_section(elem_view_collections || dynamic_event_hosts);
+    if host_section {
         if c.take(4)? != b"HOST" {
             return Err(AbcDecodeError::fmt_err(
                 "abc.decode.host-section",
@@ -2990,6 +3045,14 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 sig: c.u32()?,
                 max_call_bytes: c.u32()?,
             });
+        }
+        if dynamic_event_hosts
+            && (host_imports.is_empty() || !host_imports.iter().all(|h| event_host_symbol(&h.symbol)))
+        {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.decode.host-section",
+                "dynamic event imports must belong to the HTTP or JSON contracts".into(),
+            ));
         }
     }
     let owner_schema = match family {
@@ -3047,6 +3110,15 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
     // NOTE: owner identity is envelope-level (probe cache); the wire carries
     // structural content. The probe re-stamps owner before verify.
 
+    // PLAN-117（round-26）：Owned 线族的 List 类型门标记（capabilities 已入
+    // module——类型表解码前取布尔）。
+    let elem_view_owned =
+        family == WireFamily::Owned
+            && module
+                .capabilities
+                .iter()
+                .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
+
     // Types.
     for _ in 0..n_types {
         let tag = c.u8()?;
@@ -3070,6 +3142,9 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 module.types.push(MirType::Fn(FnSig { params, result }));
             }
             TY_CHAR if family.allows_owned_tags() => module.types.push(MirType::Char),
+            // PLAN-117（round-41）：f32 类型行（collections 面经 uses_f32
+            // 发射；PLAN-981 f32 面——文本/集合 descriptor 均已收录）。
+            TY_F32 if family.allows_owned_tags() => module.types.push(MirType::F32),
             TY_STR if family.allows_owned_tags() => module.types.push(MirType::Str),
             TY_STRVIEW if family.allows_owned_tags() => module.types.push(MirType::StrView),
             TY_MUTREF if family.allows_owned_tags() => module.types.push(MirType::MutRef),
@@ -3183,7 +3258,9 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 }));
             }
             // PLAN-822: collections-only type tags.
-            TY_LIST if family.allows_collections_tags() => {
+            // PLAN-117（round-26）：Owned 线族 + 元素视图面标记放行（事件道
+            // view-data 集合初值；capabilities 先于类型表解码，可核）。
+            TY_LIST if family.allows_collections_tags() || elem_view_owned => {
                 let elem = c.u32()?;
                 module.types.push(MirType::List(ListTypeRef { elem }));
             }
@@ -3275,7 +3352,15 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
             }
             // PLAN-824: the opaque erased Dyn type (no operands — the
             // runtime type lives in the value, not the type table).
-            TY_DYN if family.allows_dynamic_tags() => {
+            // PLAN-117（round-41）：元素视图面（collections 场景道）的
+            // Dyn/Object/Nil 类型行——capabilities 已在此前入 module。
+            TY_DYN if family.allows_dynamic_tags()
+                || (family == WireFamily::Collections
+                    && module
+                        .capabilities
+                        .iter()
+                        .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY)) =>
+            {
                 module.types.push(MirType::Dyn);
             }
             // PLAN-862: the zero-width Unit RESULT type (no operands).
@@ -3285,12 +3370,16 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 module.types.push(MirType::Unit);
             }
             // PLAN-964: the null value type (no operands).
-            TY_NIL if family.allows_dynamic_tags() => {
+            TY_NIL if family.allows_dynamic_tags()
+                || (family == WireFamily::Collections
+                    && module.capabilities.iter().any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY)) => {
                 module.types.push(MirType::Nil);
             }
             // PLAN-964: the shared mutable object cell type — `elem` is the
             // entry value type index (homogeneous).
-            TY_OBJECT if family.allows_dynamic_tags() => {
+            TY_OBJECT if family.allows_dynamic_tags()
+                || (family == WireFamily::Collections
+                    && module.capabilities.iter().any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY)) => {
                 let elem = c.u32()?;
                 module.types.push(MirType::Object { elem });
             }
@@ -3485,6 +3574,13 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                 });
             }
             let mut instrs = Vec::with_capacity(ninstrs);
+            // PLAN-117（round-41）：decode 侧元素视图标记（Collections 线族
+            // 场景道——DYN/OBJECT 指令；capabilities 已入 module）。
+            let elem_view_dyn = family == WireFamily::Collections
+                && module
+                    .capabilities
+                    .iter()
+                    .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY);
             for _ in 0..ninstrs {
                 let op = c.u8()?;
                 let instr = match op {
@@ -3826,7 +3922,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                     OP_PLATFORM_CALL => {
                         // PLAN-973: the closures family rides the same
                         // platform-call seam (packages std system library).
-                        if family != WireFamily::HostConsole && family != WireFamily::Closures {
+                        // PLAN-117（B-05 S1b）：Owned 线族 json 值原语同截面。
+                        // PLAN-117（round-41）：collections 线族同放行
+                        //（json 原语 PlatformCall 随内联体进入）。
+                        if !host_section {
                             return Err(AbcDecodeError::fmt_err(
                                 "abc.decode.profile",
                                 "platform opcode in a legacy family".into(),
@@ -3967,6 +4066,10 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         dst: c.u32()?,
                         view: c.u32()?,
                     },
+                    OP_STR_LOWER if family.allows_owned_tags() => MirInstr::StrLower {
+                        dst: c.u32()?,
+                        view: c.u32()?,
+                    },
                     OP_STR_CHAR_AT if family.allows_owned_tags() => {
                         let dst = c.u32()?;
                         let view = c.u32()?;
@@ -4040,46 +4143,46 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         MirInstr::FieldMove { dst, root, path }
                     }
                     // PLAN-822 collections opcodes.
-                    OP_LIST_NEW if family.allows_collections_tags() => {
+                    OP_LIST_NEW if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let list_ty = c.u32()?;
                         let cap = c.u32()?;
                         MirInstr::ListNew { dst, list_ty, cap }
                     }
-                    OP_LIST_LEN if family.allows_collections_tags() => {
+                    OP_LIST_LEN if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let src = c.u32()?;
                         MirInstr::ListLen { dst, src }
                     }
-                    OP_LIST_CAP if family.allows_collections_tags() => {
+                    OP_LIST_CAP if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let src = c.u32()?;
                         MirInstr::ListCap { dst, src }
                     }
-                    OP_LIST_GET if family.allows_collections_tags() => {
+                    OP_LIST_GET if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let base = c.u32()?;
                         let index = c.u32()?;
                         MirInstr::ListGet { dst, base, index }
                     }
-                    OP_LIST_PUSH if family.allows_collections_tags() => {
+                    OP_LIST_PUSH if family.allows_collections_tags() || elem_view_owned => {
                         let root = c.u32()?;
                         let value = c.u32()?;
                         MirInstr::ListPush { root, value }
                     }
-                    OP_LIST_INSERT if family.allows_collections_tags() => {
+                    OP_LIST_INSERT if family.allows_collections_tags() || elem_view_owned => {
                         let root = c.u32()?;
                         let index = c.u32()?;
                         let value = c.u32()?;
                         MirInstr::ListInsert { root, index, value }
                     }
-                    OP_LIST_SET if family.allows_collections_tags() => {
+                    OP_LIST_SET if family.allows_collections_tags() || elem_view_owned => {
                         let root = c.u32()?;
                         let index = c.u32()?;
                         let value = c.u32()?;
                         MirInstr::ListSet { root, index, value }
                     }
-                    OP_LIST_REMOVE if family.allows_collections_tags() => {
+                    OP_LIST_REMOVE if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let root = c.u32()?;
                         let index = c.u32()?;
@@ -4198,7 +4301,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             payload,
                         }
                     }
-                    OP_LIST_PLACE if family.allows_collections_tags() => {
+                    OP_LIST_PLACE if family.allows_collections_tags() || elem_view_owned => {
                         let dst = c.u32()?;
                         let base = c.u32()?;
                         let index = c.u32()?;
@@ -4265,24 +4368,24 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         MirInstr::EnvGet { dst, field }
                     }
                     // -- PLAN-824 dynamic surface (decode) -----------------
-                    OP_DYN_PACK if family.allows_dynamic_tags() => {
+                    OP_DYN_PACK if family.allows_dynamic_tags() || elem_view_dyn => {
                         let dst = c.u32()?;
                         let src = c.u32()?;
                         MirInstr::DynPack { dst, src }
                     }
-                    OP_DYN_IS if family.allows_dynamic_tags() => {
+                    OP_DYN_IS if family.allows_dynamic_tags() || elem_view_dyn => {
                         let dst = c.u32()?;
                         let src = c.u32()?;
                         let ty = c.u32()?;
                         MirInstr::DynIs { dst, src, ty }
                     }
-                    OP_DYN_TAKE if family.allows_dynamic_tags() => {
+                    OP_DYN_TAKE if family.allows_dynamic_tags() || elem_view_dyn => {
                         let dst = c.u32()?;
                         let src = c.u32()?;
                         let ty = c.u32()?;
                         MirInstr::DynTake { dst, src, ty }
                     }
-                    OP_OBJECT_NEW if family.allows_dynamic_tags() => {
+                    OP_OBJECT_NEW if family.allows_dynamic_tags() || elem_view_dyn => {
                         let dst = c.u32()?;
                         let n = c.u16()? as usize;
                         decode_mem!(
@@ -4301,7 +4404,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                         }
                         MirInstr::ObjectNew { dst, keys, vals }
                     }
-                    OP_OBJECT_GET if family.allows_dynamic_tags() => {
+                    OP_OBJECT_GET if family.allows_dynamic_tags() || elem_view_dyn => {
                         let dst = c.u32()?;
                         let obj = c.u32()?;
                         let key = c.u32()?;
@@ -4313,7 +4416,7 @@ pub fn decode_abc_limited(bytes: &[u8], maximum: usize) -> Result<DecodedAbc, Ab
                             elem,
                         }
                     }
-                    OP_OBJECT_SET if family.allows_dynamic_tags() => {
+                    OP_OBJECT_SET if family.allows_dynamic_tags() || elem_view_dyn => {
                         let obj = c.u32()?;
                         let key = c.u32()?;
                         let value = c.u32()?;

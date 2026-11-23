@@ -80,6 +80,7 @@ pub fn mtag_charset() int { return 1 }
 pub fn mtag_line() int { return 2 }
 pub fn mtag_block() int { return 3 }
 pub fn mtag_strlit() int { return 4 }
+pub fn mtag_line_text() int { return 5 }
 pub fn atom_adjacent_tag() int { return 4 }
 
 // Error codes (decode/validate refusals; 0 = ok).
@@ -448,7 +449,7 @@ fn get_matcher(b List<int>, pos List<int>, pool List<int>, cstab List<int>, scan
         scan.push(c_non_ascii)
         return true
     }
-    if (mtag == mtag_line()) {
+    if (mtag == mtag_line() || mtag == mtag_line_text()) {
         var so = List<int>.new()
         var sl = List<int>.new()
         so.push(0)
@@ -457,10 +458,23 @@ fn get_matcher(b List<int>, pos List<int>, pool List<int>, cstab List<int>, scan
             return false
         }
         pos.set(0, pos.get(0) + 4 + sl.get(0))
+        var close = 0
+        if (mtag == mtag_line_text()) {
+            if (pos.get(0) >= b.len()) {
+                err.set(0, e_truncated())
+                return false
+            }
+            close = rd_u8(b, pos.get(0))
+            pos.set(0, pos.get(0) + 1)
+            if (sl.get(0) == 0 || close >= 128 || close == 10 || close == 13) {
+                err.set(0, e_bad_tag())
+                return false
+            }
+        }
         scan.push(mtag)
         scan.push(so.get(0))
         scan.push(sl.get(0))
-        scan.push(0)
+        scan.push(close)
         scan.push(0)
         scan.push(0)
         return true

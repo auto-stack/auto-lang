@@ -1373,12 +1373,16 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                         }
                     }
                     // ListNewline：第二项起需 `;`（已消费）/`}`/换行 分隔——
-                    // 已消费分隔符即满足（`; x` 同行合法）。
+                    // 已消费分隔符即满足（`; x` 同行合法）。PLAN-117（U05 029
+                    // 真语料）：语句级 `;` 收尾（push/pop 的 opt semi）同样满足
+                    // 分隔——`for u < hn { used.push(false); u = u + 1 }` 单行
+                    // 多语句（否则第二句被误判「第二项需分隔」直接结束）。
                     if kind == 2
                         && self.stack.last().unwrap().list_started
                         && self.p.newline.significant
                         && self.bracket == 0
                         && !consumed_sep
+                        && !self.last_significant_is_sep()
                     {
                         if let Some(pk) = self.peek() {
                             let stmt_end = self.p.newline.stmt_end.contains(&pk.token);
@@ -1552,8 +1556,31 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
         false // alt 末尾（EOF/外层接管）
     }
 
-    fn end_list_step(&mut self) {
-        if self.peek().is_none() {
+    /// PLAN-117（U05 029 真语料）：当前光标前的最后一个非 trivia token 是否
+    /// 是分隔符（`;`）——语句级 `;` 收尾（如 push/pop 的 opt semi）被语句
+    /// 消费后，list-nl 的分隔检查看不到它，但列表分隔语义已满足。
+    fn last_significant_is_sep(&self) -> bool {
+        if self.i == 0 {
+            return false;
+        }
+        let mut j = self.i;
+        while j > 0 {
+            let t = &self.toks[j - 1];
+            let is_trivia = t.token != u32::MAX
+                && self
+                    .trivia_tok
+                    .get(t.token as usize)
+                    .copied()
+                    .unwrap_or(false);
+            if !is_trivia {
+                return self.p.newline.sep_consume.contains(&t.token);
+            }
+            j -= 1;
+        }
+        false
+    }
+
+    fn end_list_step(&mut self) {        if self.peek().is_none() {
             // EOF：flush 尾部 trivia 到当前 frame。
             let trivia: Vec<u32> = self.pending.drain(..).collect();
             if !trivia.is_empty() {
@@ -1568,7 +1595,12 @@ impl<'p, 'a, 't> Machine<'p, 'a, 't> {
                 }
             }
         }
-        self.stack.last_mut().unwrap().step += 1;
+        let f = self.stack.last_mut().unwrap();
+        // PLAN-117（U05 029 真语料）：列表结束须重置 `list_started`——同一
+        // 规则帧内的第二个列表步骤（`try { … } catch { … }` 的 catch 体）
+        // 否则把第一项误判为"第二项需分隔"直接结束，catch 体永不解析。
+        f.list_started = false;
+        f.step += 1;
     }
 
     fn fail_alt(&mut self) {

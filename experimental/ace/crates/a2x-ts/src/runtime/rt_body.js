@@ -98,6 +98,12 @@ function _trap(code, detail, port_id) {
   throw new A2xTrap(code, detail === undefined ? "" : detail, port_id);
 }
 
+/** Recover the owned message of a checked language failure. */
+export function a2x_catch_failure(error) {
+  if (!(error instanceof A2xTrap) || error.code !== "Fail") throw error;
+  return new A2xOwnedStr(_encoder.encode(error.detail));
+}
+
 function _show(v) {
   if (v === null) return "null";
   if (v === undefined) return "undefined";
@@ -790,6 +796,15 @@ export function a2x_str_lit(s) {
 /** Decode a text value to a JS string (diagnostics / `fail` details). */
 export function a2x_str_utf8(x) {
   return _decodeUtf8Strict(_asBytes(x));
+}
+
+/** Unicode lowercase of text, including contextual case mappings. */
+export function a2x_str_lower(x) {
+  const bytes = _asBytes(x);
+  a2x_bill(bytes.length);
+  const result = _encoder.encode(_decodeUtf8Strict(bytes).toLowerCase());
+  a2x_bill(result.length);
+  return new A2xOwnedStr(result);
 }
 
 /** Find a text sequence from a Unicode scalar offset. */

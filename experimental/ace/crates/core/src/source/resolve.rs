@@ -450,6 +450,15 @@ pub enum RExprKind {
         op: UnaryOp,
         operand: Box<ResolvedExpr>,
     },
+    /// PLAN-117（U05 029 真语料）：if 表达式（computed/design/handler RHS
+    /// 操作数位）。类型=then 支收敛；链与末 else 走读供诊断（值与类型
+    /// 一致性留 lowering/verify）。
+    If {
+        cond: Box<ResolvedExpr>,
+        then: Box<ResolvedExpr>,
+        else_chain: Vec<(ResolvedExpr, ResolvedExpr)>,
+        els: Option<Box<ResolvedExpr>>,
+    },
     // -- record profile (PLAN-771) --
     /// Positional construction `Pair(1, true)` — args in source order,
     /// bound to declaration fields by position.
@@ -748,6 +757,27 @@ impl Drop for ResolvedExpr {
                 for a in args.iter_mut() {
                     let v = std::mem::replace(&mut a.value, dummy());
                     stack.push(v);
+                }
+            }
+            // PLAN-117（U05 029 真语料）：if 表达式——cond/then boxed 与
+            // 链/末 else 全部 detach。
+            RExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+            } => {
+                let c = std::mem::replace(cond.as_mut(), dummy());
+                stack.push(c);
+                let t = std::mem::replace(then.as_mut(), dummy());
+                stack.push(t);
+                for (c, t) in else_chain.drain(..) {
+                    stack.push(c);
+                    stack.push(t);
+                }
+                if let Some(e) = els {
+                    let e = std::mem::replace(e.as_mut(), dummy());
+                    stack.push(e);
                 }
             }
             // PLAN-864: collection/variant nodes hold boxed children.
@@ -5928,6 +5958,8 @@ fn vt_of_ann_coll(
         }
         ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
             Some(&i) => VT::Rec(i),
+            // Legacy AGE helpers leave the element type unspecified.
+            None if coll.age_package && id.name == "List" => VT::List(coll.intern_list(VT::Dyn)),
             None if coll.variant_by_name(&id.name).is_some() => {
                 if matches!(pos, TypePos::Field | TypePos::Param) && !coll.aggregates_admission {
                     return reject(
@@ -7595,6 +7627,26 @@ F:{d}
                 let _ = self.infer_closure_expr(inner, locals);
                 VT::Unit
             }
+            // PLAN-117（U05 029 真语料）：if 表达式类型 = 各支收敛
+            //（宽松：取 then 支；链/els 仅走读供诊断）。
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                let _ = self.infer_closure_expr(cond, locals);
+                let t = self.infer_closure_expr(then, locals);
+                for (c, e) in else_chain {
+                    let _ = self.infer_closure_expr(c, locals);
+                    let _ = self.infer_closure_expr(e, locals);
+                }
+                if let Some(e) = els {
+                    let _ = self.infer_closure_expr(e, locals);
+                }
+                t
+            }
             // PLAN-962: a range is only a for-in iterable, never a value.
             ExprKind::Range { .. } => VT::I32,
             // PLAN-962: literals/indexes never reach closure inference
@@ -9045,6 +9097,61 @@ F:{d}
         (stmts, val, div)
     }
 
+    fn resolve_age_if_value(
+        &mut self,
+        cond: &Expr,
+        then: &Expr,
+        else_chain: &[(Expr, Box<Expr>)],
+        els: Option<&Expr>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let Some(els) = els else {
+            self.bind_err("source.age.if-value", "an if value requires an else branch", span);
+            return self.dummy_of(VT::I32, span);
+        };
+
+        // Retain every condition and value prelude in its own branch. An
+        // unselected condition or value can contain a checked host effect.
+        let mut branches = Vec::with_capacity(else_chain.len() + 1);
+        for (condition, expression) in std::iter::once((cond, then))
+            .chain(else_chain.iter().map(|(condition, expression)| (condition, expression.as_ref())))
+        {
+            let (prelude, test, _) =
+                self.resolve_in_branch(|resolver| resolver.resolve_condition(condition));
+            branches.push((prelude, test, self.resolve_expr_in_branch(expression, None)));
+        }
+        let fallback = self.resolve_expr_in_branch(els, None);
+        let result_vt = branches.iter().map(|(_, _, value)| value)
+            .chain(std::iter::once(&fallback))
+            .find(|(_, _, diverges)| !diverges)
+            .map_or(VT::I32, |(_, value, _)| {
+                if value.vt == VT::Str { VT::StrOwned } else { value.vt }
+            });
+        let result = self.agg_temp("if_value", result_vt, true, span);
+        let initial = self.dummy_of(result_vt, span);
+        self.emit_stmt(RStmt::Let { local: result, value: initial, span });
+        let store = |(mut stmts, value, diverges): (Vec<RStmt>, ResolvedExpr, bool)| {
+            let span = value.span;
+            if !diverges {
+                let mut value = Self::own_dynamic_text(value);
+                retag_literal(&mut value, result_vt);
+                let value = Self::coerce_dynamic(value, result_vt);
+                stmts.push(RStmt::Assign { local: result, path: Vec::new(), value, span });
+            }
+            RBlock { stmts, span }
+        };
+        let mut tail = store(fallback);
+        for (mut prelude, cond, value) in branches.into_iter().rev() {
+            let branch_span = cond.span;
+            prelude.push(RStmt::If { cond, then: store(value), els: Some(tail), span: branch_span });
+            tail = RBlock { stmts: prelude, span: branch_span };
+        }
+        for stmt in std::mem::take(&mut tail.stmts) {
+            self.emit_stmt(stmt);
+        }
+        ResolvedExpr { span, vt: result_vt, kind: RExprKind::ReadLocal(result) }
+    }
+
     /// Comparing a local Option with its empty constructor reads the tag
     /// without transferring or materializing its payload.
     fn compare_empty_option(
@@ -9337,15 +9444,149 @@ F:{d}
     /// verb / 参数不匹配 = 具名拒绝（不静默退回普通解析——那只会产出
     /// `no local named Http` 噪音诊断）。`get_msg` 不在闭合族（消息桥语义
     /// 需 http_msg_subscription 机械，另案）。
+    /// PLAN-117（B-05 S1a）：checked 域 JSON 值原语拦截（`json.<verb>(…)`）。
+    /// 镜像 [`Self::try_resolve_http_effect`]：模块 receiver `json`（用户遮蔽
+    /// 让位——同名局部/record/variant 存在时走普通解析，std.json 的字符串级
+    /// 函数族照旧按模块导入解析）。结果 = `VT::Dyn`（PLAN-964/824 动态值；
+    /// 成员读经既有 Dyn-object 机制）。执行 fail-closed（S1a 无 provider）。
+    fn try_resolve_json_value(&mut self, e: &ast::Expr) -> Option<ResolvedExpr> {
+        if !self.admits_age_host_primitives() {
+            return None;
+        }
+        let ExprKind::MethodCall {
+            recv,
+            name,
+            args,
+            instance: None,
+        } = &e.kind
+        else {
+            return None;
+        };
+        let ExprKind::Var(id) = &recv.kind else {
+            return None;
+        };
+        if id.name != "json" {
+            return None;
+        }
+        // 用户遮蔽让位：std.json 模块导入或同名局部/record/variant 存在时
+        // 走普通解析（模块成员 `json.parse` 的字符串级函数族不受影响）。
+        if self.lookup("json").is_some()
+            || self.rec_index.contains_key("json")
+            || self.coll.variant_by_name("json").is_some()
+        {
+            return None;
+        }
+        let dotted = super::json_ops::dotted(&id.name, &name.name);
+        if !super::json_ops::is_callee(&dotted) {
+            self.bind_err(
+                "source.json-unsupported",
+                format!(
+                    "unsupported json value primitive `{dotted}` (closed set: parse;                      stringify lands with the B-05 record-serialization slice)"
+                ),
+                e.span,
+            );
+            return Some(ResolvedExpr {
+                span: e.span,
+                vt: VT::Dyn,
+                kind: RExprKind::Unit,
+            });
+        }
+        if args
+            .iter()
+            .any(|a| !matches!(a, ast::Arg::Pos(_) | ast::Arg::MovePos(_)))
+        {
+            self.bind_err(
+                "source.json-argument",
+                format!("json value primitive `{dotted}` takes positional arguments only"),
+                e.span,
+            );
+            return Some(ResolvedExpr {
+                span: e.span,
+                vt: VT::Dyn,
+                kind: RExprKind::Unit,
+            });
+        }
+        let mut rargs = Vec::with_capacity(args.len());
+        for a in args {
+            let x = match a {
+                ast::Arg::Pos(x) | ast::Arg::MovePos(x) => x,
+                _ => unreachable!("positional checked above"),
+            };
+            rargs.push(self.expr_iterative(x));
+        }
+        // PLAN-117（round-23④）：先按原始 VT 选重载（json.parse 的文本参
+        // 不动）；无匹配时按 **Dyn 期望** coerce 后重试（json.stringify 的
+        // 对象字面量 Object/标量 → Dyn）。
+        let vts: Vec<VT> = rargs.iter().map(|r| r.vt).collect();
+        let folded = |rs: &mut Vec<ResolvedExpr>| {
+            for arg in rs.iter_mut() {
+                if arg.vt != VT::Dyn {
+                    *arg = Self::coerce_dynamic(arg.clone(), VT::Dyn);
+                }
+            }
+            let cts: Vec<VT> = rs.iter().map(|r| r.vt).collect();
+            super::json_ops::lookup_callee(&dotted, &cts)
+        };
+        match super::json_ops::lookup_callee(&dotted, &vts) {
+            Some(op) => {
+                self.used_intrinsics.insert(op.symbol);
+                Some(ResolvedExpr {
+                    span: e.span,
+                    vt: op.result,
+                    kind: RExprKind::CallIntrinsic {
+                        symbol: op.symbol,
+                        args: rargs,
+                    },
+                })
+            }
+            None if !vts.is_empty() => match folded(&mut rargs) {
+                Some(op) => {
+                    self.used_intrinsics.insert(op.symbol);
+                    Some(ResolvedExpr {
+                        span: e.span,
+                        vt: op.result,
+                        kind: RExprKind::CallIntrinsic {
+                            symbol: op.symbol,
+                            args: rargs,
+                        },
+                    })
+                }
+                None => {
+                    let got = vts.iter().map(|v| v.as_str()).collect::<Vec<_>>().join(", ");
+                    self.bind_err(
+                        "source.json-argument",
+                        format!("json value primitive `{dotted}` has no overload for ({got})"),
+                        e.span,
+                    );
+                    Some(ResolvedExpr {
+                        span: e.span,
+                        vt: VT::Dyn,
+                        kind: RExprKind::Unit,
+                    })
+                }
+            }
+            None => {
+                let got = vts
+                    .iter()
+                    .map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.bind_err(
+                    "source.json-argument",
+                    format!("json value primitive `{dotted}` has no overload for ({got})"),
+                    e.span,
+                );
+                Some(ResolvedExpr {
+                    span: e.span,
+                    vt: VT::Dyn,
+                    kind: RExprKind::Unit,
+                })
+            }
+        }
+    }
+
     fn try_resolve_http_effect(&mut self, e: &ast::Expr) -> Option<ResolvedExpr> {
-        if !matches!(
-            self.profile,
-            SourceProfile::TextRecord
-                | SourceProfile::Collections
-                | SourceProfile::AgeComponent
-                | SourceProfile::AgePackage
-                | SourceProfile::AgeH0
-        ) {
+        if !self.admits_age_host_primitives() {
             return None;
         }
         let ExprKind::MethodCall {
@@ -9439,6 +9680,21 @@ F:{d}
                 })
             }
         }
+    }
+
+    fn admits_age_host_primitives(&self) -> bool {
+        matches!(
+            self.profile,
+            SourceProfile::TextRecord
+                | SourceProfile::Collections
+                | SourceProfile::AgeComponent
+                | SourceProfile::AgePackage
+                | SourceProfile::AgeH0
+        ) || (self.coll.age_package && self.profile.is_auto_language())
+    }
+
+    fn is_checked_age_execution(&self) -> bool {
+        self.coll.age_package || self.coll.elem_view_admission
     }
 
     /// the same push admission; desugars to ListNew + push (hoisted via
@@ -9742,6 +9998,19 @@ F:{d}
                 args: Vec::new(),
             },
         }
+    }
+
+    fn coerce_expected_dynamic(&mut self, value: ResolvedExpr, expected: VT) -> ResolvedExpr {
+        if self.coll.age_package && value.vt == VT::Dyn && expected == VT::F32 {
+            let op = super::json_ops::JSON_NUMBER_F32;
+            self.used_intrinsics.insert(op.symbol);
+            return ResolvedExpr {
+                span: value.span,
+                vt: op.result,
+                kind: RExprKind::CallIntrinsic { symbol: op.symbol, args: vec![value] },
+            };
+        }
+        Self::coerce_dynamic(value, expected)
     }
 
     fn coerce_dynamic(value: ResolvedExpr, expected: VT) -> ResolvedExpr {
@@ -10170,7 +10439,13 @@ F:{d}
         let ast::PlaceStep::Index(idx_ast) = &pa.steps[li] else {
             unreachable!("rposition guarantees an index here");
         };
-        let index = self.expr_iterative(idx_ast);
+        let mut index = self.expr_iterative(idx_ast);
+        // PLAN-117（round-29 ②）：json 值链的索引位 coerce——`hits[i]` 的 i
+        // 若来自 Dyn 成员读，按 DYN_TAKE 物化为 i32（非 Dyn 的非 i32 仍具
+        // 名拒，合同不变）。
+        if index.vt == VT::Dyn {
+            index = Self::coerce_dynamic(index, VT::I32);
+        }
         if index.vt != VT::I32 {
             self.bind_err(
                 "source.index-type",
@@ -10325,6 +10600,57 @@ F:{d}
         span: Span,
     ) -> ResolvedExpr {
         if !self.profile.is_aggregates() {
+            // PLAN-117（U05 029 真语料）：文本/集合（AGE 执行）面的 `??`。
+            // 这些面没有可空标量——非空左操作数按 VM 语义折叠为自身（右侧
+            // 仅在旁支类型核验，不发射——null 不可能出现，fallback 不运行）。
+            // 可空形态（Dyn/Nil/Variant——JSON 值域 B-05 的落点）具名拒，
+            // 不再走 `unreachable!` panic（bin_op_vt）。
+            if self.profile.is_text() || self.profile.is_collections() {
+                let lhs = self.expr_with_context(lhs_ast, None, false);
+                match lhs.vt {
+                    // PLAN-117（B-05 S1a）：Dyn 左值（json.parse 链）走运行时
+                    // null 判等折叠——resolve_dyn_coalesce 既有机制（PLAN-964/
+                    // 824 语义：动态值的 Nil 态）。右操作数在旁支解析（类型
+                    // 核验），fallback 语句随折叠发射。
+                    VT::Dyn => {
+                        // 期望类型透传旁支：`data.entries ?? []` 的空数组
+                        // fallback 需要赋值位的 List 期望才可构造（无期望的
+                        // 空数组字面量在该面具名拒——既有规则）。
+                        let (fallback_stmts, fallback, diverges) =
+                            self.resolve_expr_in_branch(rhs_ast, expect);
+                        return self.resolve_dyn_coalesce(
+                            lhs,
+                            fallback_stmts,
+                            fallback,
+                            diverges,
+                            span,
+                        );
+                    }
+                    // Nil 型左值恒空——折叠为右操作数（类型核验同 faces）。
+                    VT::Nil => {
+                        return self.expr_with_context(rhs_ast, None, false);
+                    }
+                    // Object cell 恒非空（PLAN-964 共享 cell）——折叠为左值；
+                    // 右操作数旁支核验不发射。
+                    VT::Object(_) => {
+                        let _ = self.resolve_expr_in_branch(rhs_ast, None);
+                        return lhs;
+                    }
+                    VT::Variant(_) => {
+                        self.bind_err(
+                            "source.unsupported",
+                            "`??` on a variant value requires full aggregates lowering"
+                                .to_string(),
+                            span,
+                        );
+                        return lhs;
+                    }
+                    _ => {
+                        let _ = self.resolve_expr_in_branch(rhs_ast, Some(lhs.vt));
+                        return lhs;
+                    }
+                }
+            }
             self.bind_err(
                 "source.unsupported",
                 "`??` / `.?(default)` requires full aggregates lowering".to_string(),
@@ -11513,6 +11839,141 @@ F:{d}
             expr_out
         };
         (out_stmts, expr_out)
+    }
+
+    /// PLAN-117：文本/AGE 执行面的 `try`/`catch` lowering——与 aggregates 版
+    /// [`Self::resolve_try_stmt`] 同构（Loop+unwind 接错误边，catch 按
+    /// `kind == 4` 判定），但不触碰 aggregates 的 ctrl 帧与返回值状态
+    ///（文本面 handler 返回观测类型，避免 Option variant 面外依赖）。
+    /// AGE 脱糖只产无绑定 catch 且无 finally（见调用点守卫）；AGE 语句面
+    /// 无 break/continue，`Loop` 目标只服务本 lowering 的出环。
+    fn resolve_try_stmt_text(
+        &mut self,
+        body: &ast::Block,
+        catch: Option<&ast::CatchClause>,
+        span: Span,
+    ) -> Vec<RStmt> {
+        let mut out = Vec::new();
+        let kind = self.agg_temp("tk", VT::I32, true, span);
+        let err = self.agg_temp("te", VT::StrOwned, true, span);
+        // 确定初始化（verify.uninitialized-read）：unwind 边只在错误路径写
+        // 这对临时，catch 判定读它们前必须先有零值/空串初值。
+        out.push(RStmt::Let {
+            local: kind,
+            value: ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            },
+            span,
+        });
+        out.push(RStmt::Let {
+            local: err,
+            value: ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::StrLit(String::new()),
+            },
+            span,
+        });
+        let try_loop = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        let mut r_try = self.resolve_body(body, false);
+        r_try.stmts.push(RStmt::Break {
+            target: Some(try_loop),
+            span,
+        });
+        out.push(RStmt::Loop {
+            body: r_try,
+            span,
+            target: try_loop,
+            unwind: Some((kind, err)),
+        });
+        if let Some(cc) = catch {
+            let err_l = self.agg_temp("tce", VT::StrOwned, false, cc.span);
+            let catch_loop = LoopRef(self.loop_count);
+            self.loop_count += 1;
+            self.scopes.push(Scope {
+                names: BTreeMap::new(),
+                views: BTreeMap::new(),
+                text_mut_aliases: BTreeMap::new(),
+            });
+            let mut r_catch = self.resolve_body(&cc.body, false);
+            r_catch.stmts.push(RStmt::Break {
+                target: Some(catch_loop),
+                span: cc.span,
+            });
+            self.scopes.pop();
+            let mut catch_wrapper = vec![
+                RStmt::Assign {
+                    local: kind,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::I32,
+                        kind: RExprKind::IntLit(0),
+                    },
+                    span: cc.span,
+                },
+                RStmt::Let {
+                    local: err_l,
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::Move {
+                            inner: Box::new(ResolvedExpr {
+                                span: cc.span,
+                                vt: VT::StrOwned,
+                                kind: RExprKind::ReadLocal(err),
+                            }),
+                        },
+                    },
+                    span: cc.span,
+                },
+                RStmt::Assign {
+                    local: err,
+                    path: Vec::new(),
+                    value: ResolvedExpr {
+                        span: cc.span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::StrLit(String::new()),
+                    },
+                    span: cc.span,
+                },
+            ];
+            catch_wrapper.push(RStmt::Loop {
+                body: r_catch,
+                span: cc.span,
+                target: catch_loop,
+                unwind: Some((kind, err)),
+            });
+            out.push(RStmt::If {
+                cond: ResolvedExpr {
+                    span: cc.span,
+                    vt: VT::Bool,
+                    kind: RExprKind::Binary {
+                        op: BinOp::Eq,
+                        lhs: Box::new(ResolvedExpr {
+                            span: cc.span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(kind),
+                        }),
+                        rhs: Box::new(ResolvedExpr {
+                            span: cc.span,
+                            vt: VT::I32,
+                            kind: RExprKind::IntLit(4),
+                        }),
+                    },
+                },
+                then: RBlock {
+                    stmts: catch_wrapper,
+                    span: cc.span,
+                },
+                els: None,
+                span: cc.span,
+            });
+        }
+        out
     }
 
     fn resolve_try_stmt(
@@ -13061,7 +13522,14 @@ F:{d}
         if let Some(http) = self.try_resolve_http_effect(v) {
             return http;
         }
-        if self.profile.is_aggregates() {
+        // PLAN-117（B-05 S1a）：checked 域 JSON 值语义拦截（`json.<verb>(…)`）。
+        if let Some(json) = self.try_resolve_json_value(v) {
+            return json;
+        }
+        if self.profile.is_aggregates()
+            || self.profile.is_text()
+            || self.profile.is_collections()
+        {
             match &v.kind {
                 ExprKind::Binary {
                     op: BinOp::NullCoalesce,
@@ -13126,10 +13594,16 @@ F:{d}
                     }
                     Some(expected)
                         if recover_dynamic
-                            && self.profile == SourceProfile::Auto
+                            && (self.profile == SourceProfile::Auto
+                                // PLAN-117（round-31 ②）：AGE 执行面（文本/集合
+                                // 域）的 json 值链消费位同律——Dyn 值落到具体
+                                // 期望位按 DYN_TAKE 物化（round-28 绑定位同机
+                                // 制；029 真语料的成员读/比较/实参/条件位）。
+                                || self.profile.is_text()
+                                || self.profile.is_collections())
                             && expected != VT::Unit =>
                     {
-                        Self::coerce_dynamic(value, expected)
+                        self.coerce_expected_dynamic(value, expected)
                     }
                     _ => value,
                 }
@@ -14365,10 +14839,13 @@ F:{d}
         publish_script_result: bool,
         explicit_list: Option<usize>,
     ) -> ResolvedExpr {
-        // PLAN-1082: rvalue admission is the ORDINARY (auto) face
-        // only; the frozen narrow profiles keep the 962 init-only
-        // contract (`source.array-lit-position`).
-        if !self.profile.is_auto_language() {
+        // PLAN-117（round-20，029 真语料①）：文本/集合（AGE 执行）面的数组
+        // 字面量放行到**任意 rvalue 位**（与 Auto 面同一 ListNew+push 链）。
+        // 空/无期望型的元素默认 `List(Dyn)`（json 值域的容器；元素异构按
+        // Dyn 承载）。frozen 窄面的 init-only 合同对 AGE 执行面豁免——
+        // 029 的 handler 体即此语料。
+        let age_exec = self.is_checked_age_execution();
+        if !self.profile.is_auto_language() && !age_exec {
             self.bind_err(
                 "source.array-lit-position",
                 "an array literal is only a let/var initializer in this profile (bind it to a name, then use the list)"
@@ -14381,7 +14858,7 @@ F:{d}
                 kind: RExprKind::IntLit(0),
             };
         }
-        if elems.is_empty() && explicit_list.is_none() {
+        if elems.is_empty() && explicit_list.is_none() && !age_exec {
             self.bind_err(
                 "source.array-lit-empty",
                 "an empty array literal has no element type; write List<T>.new() instead"
@@ -14411,6 +14888,11 @@ F:{d}
             rs.push(value);
         }
         let li = explicit_list.unwrap_or_else(|| {
+            if rs.is_empty() && age_exec {
+                // PLAN-117：空字面量在 AGE 执行面默认 `List(Dyn)`——json 值
+                // 域的容器（元素异构/未知时承载）。
+                return self.coll.intern_list(VT::Dyn);
+            }
             let elem_vt = self.array_element_type(&mut rs);
             self.coll.intern_list(elem_vt)
         });
@@ -14746,6 +15228,28 @@ F:{d}
                 span: Span,
                 target: LoopRef,
             },
+            /// PLAN-117：文本/AGE 面 try 体帧——闭合时补 Break 并铸
+            /// `Loop { unwind }`，catch 存在时继续推 catch 体帧。
+            TryBody {
+                kind: LocalRef,
+                err: LocalRef,
+                try_loop: LoopRef,
+                catch: Option<&'a ast::CatchClause>,
+                span: Span,
+            },
+            /// PLAN-117：文本/AGE 面 catch 体帧——闭合时先交回 try Loop
+            /// 语句，再铸 catch Loop 与 wrapper、`kind == 4` 判定 If。
+            /// wrapper 只含 `kind ← 0`：AGE catch 恒为无绑定形（bind=None），
+            /// aggregates 版的 err 存/清两步对 AGE 无消费者，且
+            /// `Move(err)+Assign err←""` 会自我触发 owned-walk 的
+            /// reassign-after-move 拒（b8/b10 实证）。
+            TryCatch {
+                kind: LocalRef,
+                err: LocalRef,
+                try_stmt: RStmt,
+                catch_loop: LoopRef,
+                span: Span,
+            },
         }
         self.scopes.push(Scope {
             names: BTreeMap::new(),
@@ -14869,6 +15373,123 @@ F:{d}
                             self.emit_post_frame_dispatch(span, parent);
                         }
                     }
+                    // PLAN-117：try 体闭合——Break 尾注 + `Loop { unwind }`
+                    // 铸造；catch 存在时推 catch 体帧（同栈机制——语句级
+                    // hoist/splice 与 While/If 全程共用一套，不再重入
+                    // resolve_body）。
+                    RCont::TryBody {
+                        kind,
+                        err,
+                        try_loop,
+                        catch,
+                        span,
+                    } => {
+                        let mut body_block = block;
+                        body_block.stmts.push(RStmt::Break {
+                            target: Some(try_loop),
+                            span,
+                        });
+                        let try_stmt = RStmt::Loop {
+                            body: body_block,
+                            span,
+                            target: try_loop,
+                            unwind: Some((kind, err)),
+                        };
+                        let Some(cc) = catch else {
+                            stack
+                                .last_mut()
+                                .expect("parent frame")
+                                .stmts
+                                .push(try_stmt);
+                            continue;
+                        };
+                        let catch_loop = LoopRef(self.loop_count);
+                        self.loop_count += 1;
+                        self.scopes.push(Scope {
+                            names: BTreeMap::new(),
+                            views: BTreeMap::new(),
+                            text_mut_aliases: BTreeMap::new(),
+                        });
+                        stack.push(RFrame {
+                            src: &cc.body,
+                            idx: 0,
+                            stmts: Vec::new(),
+                            cont: RCont::TryCatch {
+                                kind,
+                                err,
+                                try_stmt,
+                                catch_loop,
+                                span: cc.span,
+                            },
+                        });
+                    }
+                    // PLAN-117：catch 体闭合——wrapper（kind 清零 / err 转
+                    // err_l / err 清空）+ catch Loop + `kind == 4` If 铸造
+                    // 交回父帧（语句形与 aggregates 版同构）。
+                    RCont::TryCatch {
+                        kind,
+                        err,
+                        try_stmt,
+                        catch_loop,
+                        span,
+                    } => {
+                        let mut catch_block = block;
+                        catch_block.stmts.push(RStmt::Break {
+                            target: Some(catch_loop),
+                            span,
+                        });
+                        let catch_stmt = RStmt::Loop {
+                            body: catch_block,
+                            span,
+                            target: catch_loop,
+                            unwind: Some((kind, err)),
+                        };
+                        let wrapper = vec![RStmt::Assign {
+                            local: kind,
+                            path: Vec::new(),
+                            value: ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::IntLit(0),
+                            },
+                            span,
+                        }];
+                        let mut then_stmts = wrapper;
+                        then_stmts.push(catch_stmt);
+                        {
+                            let parent = stack.last_mut().expect("parent frame");
+                            parent.stmts.push(try_stmt);
+                        }
+                        stack
+                            .last_mut()
+                            .expect("parent frame")
+                            .stmts
+                            .push(RStmt::If {
+                                cond: ResolvedExpr {
+                                    span,
+                                    vt: VT::Bool,
+                                    kind: RExprKind::Binary {
+                                        op: BinOp::Eq,
+                                        lhs: Box::new(ResolvedExpr {
+                                            span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::ReadLocal(kind),
+                                        }),
+                                        rhs: Box::new(ResolvedExpr {
+                                            span,
+                                            vt: VT::I32,
+                                            kind: RExprKind::IntLit(4),
+                                        }),
+                                    },
+                                },
+                                then: RBlock {
+                                    stmts: then_stmts,
+                                    span,
+                                },
+                                els: None,
+                                span,
+                            });
+                    }
                 }
                 continue;
             };
@@ -14919,6 +15540,89 @@ F:{d}
                             has_following,
                         );
                         stack.last_mut().expect("resolve frame").stmts.extend(stmts);
+                    } else if self.profile.is_text() || self.profile.is_collections() {
+                        // PLAN-117（U05 029 真语料）：文本/集合/AGE 执行面的
+                        // `try { … } catch { … }`——029 的 json.parse/宿主
+                        // 效应失败恢复族。这些面的 AST 里 Try 只能来自 AGE
+                        // 组件脱糖（hook_stmts_lower；各文本/集合 profile
+                        // 文法不产出 try 语句），故此处是纯能力新增，不改
+                        // 变既有源的行为。finally/catch 绑定形不在这条脱
+                        // 糖里，具名拒（fail-closed）。
+                        if finally.is_some() {
+                            self.bind_err(
+                                "source.unsupported",
+                                "`finally` requires full aggregates lowering".to_string(),
+                                *span,
+                            );
+                        } else if catch.as_ref().is_some_and(|cc| cc.bind.is_some()) {
+                            self.bind_err(
+                                "source.unsupported",
+                                "`catch` error binding requires full aggregates lowering"
+                                    .to_string(),
+                                *span,
+                            );
+                        } else {
+                            // PLAN-117：同栈帧形态——try/catch 体走 RCont 帧
+                            // （与 While/If 同一 hoist/splice 机制），不再重入
+                            // resolve_body（嵌套重入会丢语句级 sink hoist——
+                            // b6/b9 实证）。
+                            let kind = self.agg_temp("tk", VT::I32, true, *span);
+                            let err = self.agg_temp("te", VT::StrOwned, true, *span);
+                            // 确定初始化（verify.uninitialized-read）：unwind
+                            // 边只在错误路径写这对临时，catch 判定读它们前
+                            // 必须先有零值/空串初值。
+                            let init = vec![
+                                RStmt::Let {
+                                    local: kind,
+                                    value: ResolvedExpr {
+                                        span: *span,
+                                        vt: VT::I32,
+                                        kind: RExprKind::IntLit(0),
+                                    },
+                                    span: *span,
+                                },
+                                RStmt::Let {
+                                    local: err,
+                                    value: ResolvedExpr {
+                                        span: *span,
+                                        vt: VT::StrOwned,
+                                        kind: RExprKind::StrLit(String::new()),
+                                    },
+                                    span: *span,
+                                },
+                            ];
+                            let try_loop = LoopRef(self.loop_count);
+                            self.loop_count += 1;
+                            {
+                                let frame = stack.last_mut().expect("resolve frame");
+                                frame.stmts.extend(init);
+                            }
+                            // PLAN-117（帧边界修复）：本语句分派前置的
+                            // `pending_splice`+`push_sink` 必须配对回收——
+                            // `continue` 跳过栈顶 apply 会让 sink 栈失衡，
+                            // 后续 hoist 语句拼进错误帧（实证：catch 体赋值
+                            // 直排进 try 体块）。空 sink 丢弃、splice 作废。
+                            let _ = self.pop_sink();
+                            pending_splice = None;
+                            self.scopes.push(Scope {
+                                names: BTreeMap::new(),
+                                views: BTreeMap::new(),
+                                text_mut_aliases: BTreeMap::new(),
+                            });
+                            stack.push(RFrame {
+                                src: body,
+                                idx: 0,
+                                stmts: Vec::new(),
+                                cont: RCont::TryBody {
+                                    kind,
+                                    err,
+                                    try_loop,
+                                    catch: catch.as_ref(),
+                                    span: *span,
+                                },
+                            });
+                            continue;
+                        }
                     } else {
                         self.bind_err(
                             "source.unsupported",
@@ -15234,7 +15938,11 @@ F:{d}
                         continue;
                     };
                     let elem = self.coll.lists[li];
-                    let index = self.expr_iterative(&ia.index);
+                    let mut index = self.expr_iterative(&ia.index);
+                    // PLAN-117（round-29 ②）：索引位 Dyn coerce（同下标读位）。
+                    if index.vt == VT::Dyn {
+                        index = Self::coerce_dynamic(index, VT::I32);
+                    }
                     let mut value = self.expr_with_expect(&ia.value, Some(elem));
                     if index.vt != VT::I32 {
                         self.bind_err(
@@ -15634,6 +16342,11 @@ F:{d}
                                 (self.profile.is_auto_language(), expected)
                             {
                                 li
+                            } else if self.profile.is_text() || self.profile.is_collections() {
+                                // PLAN-117（round-20，029 真语料①）：AGE 执行
+                                // 面的空字面量默认 `List(Dyn)`（json 值域容器；
+                                // `var x = []` 无类型局部按此承载）。
+                                self.coll.intern_list(VT::Dyn)
                             } else {
                                 self.bind_err(
                                     "source.array-lit-empty",
@@ -15762,7 +16475,44 @@ F:{d}
                     if legacy_widget && *mutable && ann_vt == Some(VT::Str) {
                         ann_vt = Some(VT::StrOwned);
                     }
+
                     let mut value = self.expr_with_expect(value, ann_vt);
+                    // PLAN-117（round-38 ②）：view-data 读物化局部（`__age_s_*`
+                    // 只读常量）的读取一律克隆（`var source = .photos` 的
+                    // owned move 会消费只读常量，后续读者撞 use-after-move）。
+                    if let RExprKind::ReadLocal(l) = &value.kind {
+                        // PLAN-117（round-40 ②）：view-data 读物化局部（`__age_s_*`
+                        // 只读快照常量）的读取一律克隆——文本用 `.clone()`
+                        //（text_clone），List 用 OwnedClone（泛型 Clone 下沉，
+                        // 既有 filter/list 路径同机制）。
+                        if self.locals.get(l.0).map(|d| d.name.starts_with("__age_s_") && !d.mutable).unwrap_or(false) {
+                            if value.vt.is_text() {
+                                value = ResolvedExpr {
+                                    span: value.span,
+                                    vt: value.vt,
+                                    kind: RExprKind::Method {
+                                        recv: Box::new(value.clone()),
+                                        method: BuiltinMethod::Clone,
+                                        to: None,
+                                        args: Vec::new(),
+                                    },
+                                };
+                            } else {
+                                value = self.clone_collection_value(value);
+                            }
+                        }
+                    }
+                    // PLAN-117（round-28 ②，029 真语料）：注解位 **Dyn coerce**
+                    // ——`var meta str = e.size_str`（json 值链成员读 = Dyn）
+                    // 落到 str/Str/int/bool 注解局部，绑定期按注解 coerce
+                    // （DynCast→DYN_TAKE 物化，与 json 实参位同一机制）。
+                    if value.vt == VT::Dyn {
+                        if let Some(target) = ann_vt {
+                            if target != VT::Dyn {
+                                value = self.coerce_expected_dynamic(value, target);
+                            }
+                        }
+                    }
                     if self.coll.script_errors && self.expr_diverged {
                         let frame = stack.last_mut().expect("resolve frame");
                         frame.idx = frame.src.stmts.len();
@@ -15787,6 +16537,16 @@ F:{d}
                         };
                     }
                     self.reject_elem_view_use(&value, "the bound value");
+                    // PLAN-117（round-32 ②）：AGE 执行面上注解 `str` 而初值
+                    // 已是 owned `Str` 的局部——注解随值提升（借用 str 在这
+                    // 些面没有局部形态；值侧为借用视图的局部保持借用，
+                    // json_975 的 slice/index 消费位不受扰）。
+                    if (self.profile.is_collections() || self.profile.is_text())
+                        && ann_vt == Some(VT::Str)
+                        && value.vt == VT::StrOwned
+                    {
+                        ann_vt = Some(VT::StrOwned);
+                    }
                     let mut rule = match ann_vt {
                         Some(v) => v,
                         None => value.vt,
@@ -17105,6 +17865,36 @@ F:{d}
                     kind: RExprKind::Unit,
                 }
             }
+            ExprKind::If { cond, then, else_chain, els, .. } if self.coll.age_package =>
+                self.resolve_age_if_value(cond, then, else_chain, els.as_deref(), e.span),
+            // PLAN-117（U05 029 真语料）：if 表达式——cond/then/链/els 各自
+            // 解析；vt=then 支（宽松收敛），链与末 else 走读供诊断。
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                let cond_r = self.expr_iterative(cond);
+                let then_r = self.expr_iterative(then);
+                let chain_r = else_chain
+                    .iter()
+                    .map(|(c, t)| (self.expr_iterative(c), self.expr_iterative(t)))
+                    .collect();
+                let els_r = els.as_ref().map(|e| self.expr_iterative(e));
+                let vt = then_r.vt.clone();
+                ResolvedExpr {
+                    span: e.span,
+                    vt,
+                    kind: RExprKind::If {
+                        cond: Box::new(cond_r),
+                        then: Box::new(then_r),
+                        else_chain: chain_r,
+                        els: els_r.map(Box::new),
+                    },
+                }
+            }
             ExprKind::Propagate { inner } => {
                 if self.profile.is_aggregates() {
                     self.resolve_propagate(inner, e.span)
@@ -17278,7 +18068,11 @@ F:{d}
                     }
                 }
                 let recv = self.expr_iterative(base);
-                let idx = self.expr_iterative(index);
+                let mut idx = self.expr_iterative(index);
+                // PLAN-117（round-29 ②）：索引位 Dyn coerce（list 下标读位）。
+                if idx.vt == VT::Dyn {
+                    idx = Self::coerce_dynamic(idx, VT::I32);
+                }
                 if self.coll.script_errors && recv.vt == VT::Nil {
                     self.eval_for_effect(recv);
                     self.eval_for_effect(idx);
@@ -17405,7 +18199,11 @@ F:{d}
                 let mut args = Vec::with_capacity(fields.len());
                 let mut keys = Vec::with_capacity(fields.len());
                 let ordinary = self.profile == SourceProfile::Auto;
-                let mut elem = ordinary.then_some(VT::Dyn);
+                // PLAN-117（round-21，029 真语料③）：AGE 执行面（文本/集合）
+                // 的对象字面量按 **Dyn elem** 承载（异构字段合法——json 值域
+                // 容器，与 Auto 面同律）；frozen 窄面保持同元素型合同。
+                let erased_values = ordinary || self.is_checked_age_execution();
+                let mut elem = erased_values.then_some(VT::Dyn);
                 let mut dup = std::collections::HashSet::new();
                 for f in fields {
                     let value = self.expr_iterative(&f.value);
@@ -17416,7 +18214,7 @@ F:{d}
                             f.span,
                         );
                     }
-                    let value = if ordinary {
+                    let value = if erased_values {
                         Self::coerce_dynamic(value, VT::Dyn)
                     } else {
                         value
@@ -19452,101 +20250,11 @@ F:{d}
                             );
                             continue;
                         }
-                        // PLAN-108（T-03b M1）：组件面 Http 效应族——
-                        // `Http.<verb>(...)` 在 AGE component/package/h0
-                        // profile 内经 http_ops 目录解析为受检 host 原语
-                        // （CallIntrinsic + 固定符号；receiver 被用户遮蔽时
-                        // 让位）。未知 verb/参数不匹配=具名拒绝。get_msg 不在族。
-                        if matches!(
-                            self.profile,
-                            SourceProfile::TextRecord
-                                | SourceProfile::Collections
-                                | SourceProfile::AgeComponent
-                                | SourceProfile::AgePackage
-                                | SourceProfile::AgeH0
-                        ) && instance.is_none()
-                            && matches!(&recv.kind, ExprKind::Var(id) if id.name == "Http"
-                                && self.lookup(&id.name).is_none()
-                                && !self.rec_index.contains_key(&id.name)
-                                && self.coll.variant_by_name(&id.name).is_none())
+                        if let Some(host_call) = self
+                            .try_resolve_http_effect(node)
+                            .or_else(|| self.try_resolve_json_value(node))
                         {
-                            let dotted = super::http_ops::dotted("Http", &name.name);
-                            let mut rargs: Vec<ResolvedExpr> = Vec::with_capacity(args.len());
-                            let mut positional = true;
-                            for a in args {
-                                match a {
-                                    ast::Arg::Pos(x) | ast::Arg::MovePos(x) => {
-                                        rargs.push(self.expr_iterative(x));
-                                    }
-                                    _ => {
-                                        positional = false;
-                                        break;
-                                    }
-                                }
-                            }
-                            if !positional {
-                                self.bind_err(
-                                    "source.http-argument",
-                                    format!(
-                                        "Http effect `{dotted}` takes positional arguments only"
-                                    ),
-                                    node.span,
-                                );
-                                out[slot] = ResolvedExpr {
-                                    span: node.span,
-                                    vt: VT::StrOwned,
-                                    kind: RExprKind::Unit,
-                                };
-                                continue;
-                            }
-                            if !super::http_ops::is_callee(&dotted) {
-                                self.bind_err(
-                                    "source.http-unsupported",
-                                    format!(
-                                        "unsupported Http effect `{dotted}` (closed set:                                          get/get_json/post/post_json/put/put_json/                                         patch/patch_json/delete)"
-                                    ),
-                                    node.span,
-                                );
-                                out[slot] = ResolvedExpr {
-                                    span: node.span,
-                                    vt: VT::StrOwned,
-                                    kind: RExprKind::Unit,
-                                };
-                                continue;
-                            }
-                            let vts: Vec<VT> = rargs.iter().map(|r| r.vt).collect();
-                            match super::http_ops::lookup_callee(&dotted, &vts) {
-                                Some(op) => {
-                                    self.used_intrinsics.insert(op.symbol);
-                                    out[slot] = ResolvedExpr {
-                                        span: node.span,
-                                        vt: op.result,
-                                        kind: RExprKind::CallIntrinsic {
-                                            symbol: op.symbol,
-                                            args: rargs,
-                                        },
-                                    };
-                                }
-                                None => {
-                                    let got = vts
-                                        .iter()
-                                        .map(|v| v.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    self.bind_err(
-                                        "source.http-argument",
-                                        format!(
-                                            "Http effect `{dotted}` has no overload for ({got})"
-                                        ),
-                                        node.span,
-                                    );
-                                    out[slot] = ResolvedExpr {
-                                        span: node.span,
-                                        vt: VT::StrOwned,
-                                        kind: RExprKind::Unit,
-                                    };
-                                }
-                            }
+                            out[slot] = host_call;
                             continue;
                         }
                         if self.profile.is_auto_language() && instance.is_none() {
@@ -19885,12 +20593,20 @@ F:{d}
                             });
                         }
                     } else if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
-                        if self.profile.is_aggregates() {
+                        if self.profile.is_aggregates()
+                            || self.profile.is_text()
+                            || self.profile.is_collections()
+                        {
                             if *op == BinOp::NullCoalesce {
                                 out[slot] = self.resolve_unwrap_or(lhs, rhs, None, node.span);
                                 continue;
                             }
-                            if matches!(op, BinOp::And | BinOp::Or) {
+                            // Keep temporary owners live across ordinary logical
+                            // expressions. Checked AGE uses explicit branch statements.
+                            if matches!(op, BinOp::And | BinOp::Or)
+                                && (self.profile.is_aggregates()
+                                    || self.is_checked_age_execution())
+                            {
                                 out[slot] =
                                     self.resolve_short_circuit_bin(*op, lhs, rhs, node.span);
                                 continue;
@@ -20041,7 +20757,13 @@ F:{d}
                         out[dest] = self.py_op_call("py_getattr", name.span, frame);
                         continue;
                     }
-                    if self.profile == SourceProfile::Auto {
+                    // PLAN-117（B-05 S1a）：Dyn/Object 成员读放行到文本/集合
+                    //（AGE 执行）面——json.parse 结果的 `.field` 成员访问。
+                    // 语义与 Auto 面同一 PATH-964/824 机制（Dyn→Object(Dyn)
+                    // coerce + ObjectGet；elem=Dyn）。AGE 对象字面量仍是
+                    // 单元素型（heterogeneous 装载是 S1 后续件），此处只放行
+                    // json 值链的读。
+                    if self.profile == SourceProfile::Auto || self.is_checked_age_execution() {
                         if base.vt.is_text() && name.name == "len" {
                             out[dest] = self.resolve_method(&name, base, Vec::new(), None, span);
                             continue;
@@ -20627,12 +21349,24 @@ F:{d}
                 } => {
                     let mut l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let mut r = std::mem::replace(&mut out[rslot], dummy_resolved());
-                    if self.profile.is_auto_language()
+                    // PLAN-117（B-05 S1a）：Dyn/Nil 判空比较放行文本/集合
+                    //（AGE 执行）面——029 形 `saved != null` 的 JSON 判空。
+                    if (self.profile.is_auto_language()
+                        || self.profile.is_text()
+                        || self.profile.is_collections())
                         && matches!(op, BinOp::Eq | BinOp::Ne)
                         && (l.vt == VT::Nil || r.vt == VT::Nil)
                     {
                         out[dest] = self.compare_null(l, r, op, span);
                         continue;
+                    }
+                    // PLAN-117（round-31 ②）：json 值链操作数位 coerce——单侧
+                    // Dyn 按对侧具体类型 DYN_TAKE（Eq/Ne 判空已分流；结果型
+                    // 运算随对侧类型参与统一）。
+                    if l.vt == VT::Dyn && r.vt != VT::Dyn && r.vt != VT::Unit {
+                        l = Self::coerce_dynamic(l, r.vt);
+                    } else if r.vt == VT::Dyn && l.vt != VT::Dyn && l.vt != VT::Unit {
+                        r = Self::coerce_dynamic(r, l.vt);
                     }
                     if self.profile.is_auto_language() && matches!(op, BinOp::Eq | BinOp::Ne) {
                         if let Some(guard) = self
@@ -20850,8 +21584,12 @@ F:{d}
                             l = display_int(l);
                         }
                     }
-                    if self.profile.is_auto_language()
-                        && matches!(op, BinOp::Add | BinOp::Eq | BinOp::Ne)
+                    if (self.profile.is_auto_language()
+                        // PLAN-117（round-37）：collections 面的文本
+                        // 比较/拼接同律——owned 文本操作数先克隆（view-data
+                        // 读物化局部是多读者只读常量）。
+                        || (self.profile.is_collections()
+                            && matches!(op, BinOp::Add | BinOp::Eq | BinOp::Ne)))
                         && l.vt.is_text()
                         && r.vt.is_text()
                     {
@@ -20977,6 +21715,14 @@ F:{d}
                         continue;
                     }
                     let o = if op == UnaryOp::Not {
+                        // PLAN-117（round-34 ②）：json 值链操作数 coerce——
+                        // `!used[bi]` 的 List(Dyn) 元素读按 DYN_TAKE 物化
+                        // 为 Bool（条件值统一）。
+                        let o = if o.vt == VT::Dyn {
+                            Self::coerce_dynamic(o, VT::Bool)
+                        } else {
+                            o
+                        };
                         self.condition_value(o)
                     } else {
                         o
@@ -21481,15 +22227,20 @@ F:{d}
                         kind: RExprKind::Unit,
                     };
                 }
-                if name.name == "to_upper" && args.is_empty() {
+                if matches!(name.name.as_str(), "to_upper" | "to_lower" | "lower") && args.is_empty() {
+                    let symbol = if name.name == "to_upper" {
+                        "__ace_text_upper"
+                    } else {
+                        "__ace_text_lower"
+                    };
                     let mut view = recv;
                     self.adapt_argument_type(&mut view, VT::Str);
-                    self.used_intrinsics.insert("__ace_text_upper");
+                    self.used_intrinsics.insert(symbol);
                     return ResolvedExpr {
                         span,
                         vt: VT::StrOwned,
                         kind: RExprKind::CallIntrinsic {
-                            symbol: "__ace_text_upper",
+                            symbol,
                             args: vec![view],
                         },
                     };
@@ -21778,6 +22529,28 @@ F:{d}
                 };
             }
         }
+        // Checked AGE JSON reads can share an erased value. Numeric receivers
+        // still reject `.clone()`, including the synthetic text-leaf check.
+        if recv.vt == VT::Dyn
+            && self.is_checked_age_execution()
+            && name.name == "clone"
+            && args.is_empty()
+            && to_word.is_none()
+        {
+            return recv;
+        }
+        // PLAN-117（round-28 ②）：**Dyn 接收者**的 `.str()` = 显示物化（json
+        // 值链成员读的数字/字符串落文本——`e.height.str()`；与数值接收者
+        // round-22 同节点 TextDisplay，执行器按值渲染）。
+        if recv.vt == VT::Dyn && name.name == "str" && args.is_empty() && to_word.is_none() {
+            return ResolvedExpr {
+                span,
+                vt: VT::StrOwned,
+                kind: RExprKind::TextDisplay {
+                    operand: Box::new(recv),
+                },
+            };
+        }
         // PLAN-961: numeric-receiver builtins — shifts take one
         // same-type amount; `.as(T)`/`.to(T)` convert to the numeric
         // target word (frozen matrix; checked narrowing at runtime).
@@ -21869,6 +22642,18 @@ F:{d}
                             method: BuiltinMethod::NumTo,
                             to: Some(target),
                             args,
+                        },
+                    };
+                }
+                "str" if args.is_empty() => {
+                    // PLAN-117（round-22，029 真语料②）：数值接收者的
+                    // `.str()` = 显示物化（PLAN-105 TextDisplay 同节点——
+                    // `text .n` 的 int→str 显示）。
+                    return ResolvedExpr {
+                        span,
+                        vt: VT::StrOwned,
+                        kind: RExprKind::TextDisplay {
+                            operand: Box::new(recv),
                         },
                     };
                 }
@@ -22894,6 +23679,27 @@ F:{d}
                     Some(i)
                 };
                 if let Some(pos) = pos.filter(|&p| p < sig.params.len()) {
+                    // A materialized AGE state read is a snapshot. The original
+                    // state cell must remain available to subsequent readers.
+                    let age_state_read = matches!(&a.value.kind, RExprKind::ReadLocal(local)
+                        if self.locals.get(local.0).is_some_and(|def| def.name.starts_with("__age_s_")));
+                    if self.is_checked_age_execution()
+                        && !a.moved
+                        && age_state_read
+                        && sig.params[pos] == VT::StrOwned
+                        && a.value.vt == VT::StrOwned
+                    {
+                        a.value = ResolvedExpr {
+                            span: a.value.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::Method {
+                                recv: Box::new(a.value.clone()),
+                                method: BuiltinMethod::Clone,
+                                to: None,
+                                args: Vec::new(),
+                            },
+                        };
+                    }
                     self.adapt_argument_type(&mut a.value, sig.params[pos]);
                 }
             }
@@ -23875,6 +24681,13 @@ F:{d}
     fn adapt_argument_type(&self, value: &mut ResolvedExpr, want: VT) {
         retag_literal(value, want);
         self.adapt_spec_value(value, want);
+        // PLAN-117（round-34 ②）：json 值链实参 coerce——Dyn 实参落到 callee
+        // 的具体形参类型按 DYN_TAKE 物化（029 真语料 helper 调用：
+        // `__p117_str_lower(p.title)` 的成员读实参；round-31 期望位机制
+        // 延伸到实参位）。
+        if value.vt == VT::Dyn && want != VT::Dyn && want != VT::Unit {
+            *value = Self::coerce_dynamic(value.clone(), want);
+        }
         if self.profile.is_auto_language() && want == VT::Str && value.vt == VT::StrOwned {
             let span = value.span;
             let owned = std::mem::replace(

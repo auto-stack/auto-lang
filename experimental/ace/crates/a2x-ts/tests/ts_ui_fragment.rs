@@ -13,8 +13,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use ace_a2x_ts::{
-    emit_expr_fragment, emit_stmt_fragment, innermost_expr_in_span, script_runtime_body,
-    FragmentProgramContext, ScriptLang,
+    emit_expr_fragment, emit_function_body_fragment, emit_stmt_fragment, innermost_expr_in_span,
+    runtime_export_names, script_runtime_body, ts_fn_name, FragmentProgramContext, ScriptLang,
 };
 
 fn find_node() -> String {
@@ -75,6 +75,108 @@ fn run_driver(dir: &PathBuf, lang: ScriptLang, driver: &str) -> (i32, String, St
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+#[test]
+fn checked_script_lowercases_unicode_text_with_context() {
+    let source = "fn lowercase(title str) Str { return title.to_lower() }";
+    let checked = ace_core::source::compile_language_source(source, "lowercase.at", &[])
+        .expect("checked text method");
+    let view = ace_a2x_core::SemanticView::from_checked(&checked.checked).expect("semantic view");
+    let function = view
+        .functions()
+        .iter()
+        .find(|function| function.source_name == "lowercase")
+        .expect("lowercase function");
+    let context = FragmentProgramContext::from_view(&view);
+    let imports = runtime_export_names().join(", ");
+    let dir = scratch_dir("lowercase");
+    for lang in [ScriptLang::JavaScript, ScriptLang::TypeScript] {
+        let code = emit_function_body_fragment(lang, &view, function, &context)
+            .expect("emit lowercase");
+        let param = &code.locals.iter().find(|local| local.role == "param").unwrap().emitted_name;
+        let body = code.text.join("\n");
+        let driver = format!(r#"
+import assert from 'node:assert/strict';
+import {{ {imports} }} from './a2x_rt.mjs';
+function lowercase({param}) {{
+{body}
+}}
+const input = a2x_str_lit("İSTANBUL ΟΣ ΣΟ Ж");
+const result = lowercase(input);
+assert.equal(a2x_str_utf8(result), "i̇stanbul ος σο ж");
+assert.equal(a2x_str_utf8(input), "İSTANBUL ΟΣ ΣΟ Ж");
+a2x_str_free(result);
+assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+"#);
+        let (exit, _, stderr) = run_driver(&dir, lang, &driver);
+        assert_eq!(exit, 0, "{lang:?}: {stderr}");
+    }
+}
+
+#[test]
+fn checked_script_protected_loop_catches_only_language_failures() {
+    let source = r#"
+fn scan(mode int) int {
+    if mode == 1 { fail("扫描需重试") }
+    if mode == 3 { fail("") }
+    return 8 / mode
+}
+
+fn recover(mode int) Str {
+    var status Str = ""
+    try {
+        let count = scan(mode)
+        if count == 4 { status = "loaded" }
+    } catch error {
+        status = error.clone()
+    }
+    return status
+}
+"#;
+    let checked = ace_core::source::compile_language_source(source, "scan.at", &[])
+        .expect("check source with a protected region");
+    let view = ace_a2x_core::SemanticView::from_checked(&checked.checked).expect("semantic view");
+    let ctx = FragmentProgramContext::from_view(&view);
+    let imports = runtime_export_names().join(", ");
+    let recover = ts_fn_name("recover");
+    let dir = scratch_dir("protected-loop");
+    for lang in [ScriptLang::JavaScript, ScriptLang::TypeScript] {
+        let mut functions = String::new();
+        for function in view.functions() {
+            let code = emit_function_body_fragment(lang, &view, function, &ctx)
+                .expect("emit a checked function");
+            let params = code
+                .locals
+                .iter()
+                .filter(|local| local.role == "param")
+                .map(|local| local.emitted_name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let name = ts_fn_name(&function.source_name);
+            functions.push_str(&format!(
+                "function {name}({params}) {{\n{}\n}}\n",
+                code.text.join("\n")
+            ));
+        }
+        let script = format!(
+            r#"
+import assert from 'node:assert/strict';
+import {{ {imports} }} from './a2x_rt.mjs';
+{functions}
+for (const [mode, expected] of [[1, '扫描需重试'], [2, 'loaded'], [3, '']]) {{
+  const text = {recover}(mode);
+  assert.equal(a2x_str_utf8(text), expected);
+  a2x_str_free(text);
+  assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+}}
+assert.throws(() => {recover}(0), error => error instanceof A2xTrap && error.code === 'DivByZero');
+assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+"#
+        );
+        let (exit, _, stderr) = run_driver(&dir, lang, &script);
+        assert_eq!(exit, 0, "{lang:?}: {stderr}");
+    }
 }
 
 #[test]

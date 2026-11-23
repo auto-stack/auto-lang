@@ -648,6 +648,11 @@ pub enum MirInstr {
         dst: SlotId,
         view: SlotId,
     },
+    /// Unicode lowercase of a borrowed view, materialized as owned text.
+    StrLower {
+        dst: SlotId,
+        view: SlotId,
+    },
     StrCharAt {
         dst: SlotId,
         view: SlotId,
@@ -1076,6 +1081,7 @@ impl MirBlock {
             | MirInstr::ListGet { dst, .. }
             | MirInstr::ListPlace { dst, .. }
             | MirInstr::ForeignCall { dst, .. }
+            | MirInstr::HttpCall { dst, .. }
             | MirInstr::SchedAwait { dst, .. } => Some(*dst),
             _ => None,
         }

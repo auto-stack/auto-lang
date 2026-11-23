@@ -24,7 +24,7 @@
 use ace_a2x_core::{A2xReject, FnFacts, SemanticView, Ty};
 use ace_core::hir;
 
-use crate::lower::{lower_single_fn, prepare_body_cx, LowerFamily};
+use crate::lower::{lower_single_fn_in_host, prepare_body_cx, LowerFamily};
 use crate::target::ScriptLang;
 
 /// The explicit program context the host declares around the fragment
@@ -217,10 +217,30 @@ pub fn emit_function_body_fragment(
     facts: &FnFacts<'_>,
     ctx: &FragmentProgramContext,
 ) -> Result<FragmentOut, A2xReject> {
+    emit_function_body_in_host(lang, view, facts, ctx, false)
+}
+
+/// Emit for the checked Vue widget host. A body marked by
+/// `SemanticView::age_http_suspends` requires a generator function wrapper.
+pub fn emit_widget_function_body_fragment(
+    view: &SemanticView<'_>,
+    facts: &FnFacts<'_>,
+    ctx: &FragmentProgramContext,
+) -> Result<FragmentOut, A2xReject> {
+    emit_function_body_in_host(ScriptLang::JavaScript, view, facts, ctx, true)
+}
+
+fn emit_function_body_in_host(
+    lang: ScriptLang,
+    view: &SemanticView<'_>,
+    facts: &FnFacts<'_>,
+    ctx: &FragmentProgramContext,
+    widget_http: bool,
+) -> Result<FragmentOut, A2xReject> {
     validate_view_admission(view)?;
     validate_context(view, facts, ctx)?;
     let family = LowerFamily::for_profile(view.profile);
-    let text = lower_single_fn(lang, view, facts, family)?.body;
+    let text = lower_single_fn_in_host(lang, view, facts, family, widget_http)?.body;
     let names = prepare_body_cx(lang, view, facts, family, false)?;
     Ok(FragmentOut {
         helpers: collect_helpers(&text),

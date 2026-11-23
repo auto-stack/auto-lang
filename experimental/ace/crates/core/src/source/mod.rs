@@ -33,6 +33,7 @@ pub mod config_document;
 pub mod config_ops;
 pub mod console;
 pub mod http_ops;
+pub mod json_ops;
 pub mod cst;
 pub mod decl_env;
 pub mod domain;

@@ -662,6 +662,11 @@ fn put_matcher(w: &mut Vec<u8>, m: &Matcher) {
             w.push(*quote);
             w.push(*escape as u8);
         }
+        Matcher::LineText { start, close } => {
+            w.push(5);
+            put_str(w, start);
+            w.push(*close);
+        }
     }
 }
 
@@ -698,6 +703,10 @@ fn get_matcher(r: &mut Reader, charged: &mut Charge) -> Result<Matcher, RtError>
             let escape = r.u8()? != 0;
             Matcher::StringLit { quote, escape }
         }
+        5 => Matcher::LineText {
+            start: r.str(charged)?,
+            close: r.u8()?,
+        },
         t => return Err(RtError::InvalidProgram(format!("bad matcher tag {t}"))),
     })
 }
@@ -722,6 +731,20 @@ mod tests {
         let mut trailing = bytes.clone();
         trailing.push(0);
         assert!(program_codec::decode_canonical(&trailing).is_err());
+    }
+
+    #[test]
+    fn line_text_matcher_roundtrips_canonically() {
+        let mut program = testkit::mini_program();
+        let rule = &mut program.scanner.rules[0];
+        rule.matcher = crate::program::Matcher::LineText {
+            start: "|".into(),
+            close: b'}',
+        };
+        let bytes = program_codec::encode_canonical(&program);
+        let recovered = program_codec::decode_canonical(&bytes).expect("decode line-text matcher");
+        assert_eq!(program.scanner.rules[0], recovered.scanner.rules[0]);
+        assert_eq!(bytes, program_codec::encode_canonical(&recovered));
     }
 
     /// PLAN-1029 ADM-01：坏 count 在巨大预留前受控拒绝（每表最小合法前缀 +

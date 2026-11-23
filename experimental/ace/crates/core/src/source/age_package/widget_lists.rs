@@ -5,11 +5,11 @@ use crate::atom_text::Span;
 use super::super::age_component::{
     model_type, ComponentEntryValue, ComponentParam, ComponentScenario, ComponentViewItem,
 };
-use super::super::ast::{Expr, ExprKind, FieldDecl, Ident, Item, TypeAnn, TypeRef};
+use super::super::ast::{Arg, Expr, ExprKind, FieldDecl, FnItem, Ident, Item, Receiver, TypeAnn, TypeRef};
 use super::super::cst::{project_packages_front_with_widget_lists, PackagesFace};
-use super::super::packages::{PackageDiagnostic, PackageSyntax, PackagedAgeComponent};
+use super::super::packages::{unit_key, PackageDiagnostic, PackageSyntax, PackagedAgeComponent};
 use super::{
-    list_element, walk_widget_sites, WidgetArgumentSite, WidgetSiteTargets,
+    is_bare_list_annotation, list_element, walk_widget_sites, WidgetArgumentSite, WidgetSiteTargets,
     AGE_PACKAGE_HIDDEN_PREFIX,
 };
 
@@ -46,6 +46,11 @@ impl WidgetListProjection {
         mut ty: TypeAnn,
         span: Span,
     ) -> Option<(String, Ident)> {
+        if is_bare_list_annotation(&ty) {
+            let kind = TypeRef::Record(Ident { name: "List".into(), span });
+            self.inputs.insert(span.start, TypeAnn { kind, span });
+            return None;
+        }
         let TypeRef::Generic { name: list, args } = &mut ty.kind else { unreachable!() };
         // Retain the caller's nominal identity, but locate generated type
         // positions in the widget source where the parameter was declared.
@@ -108,7 +113,11 @@ impl SelectorInput {
 }
 
 fn needs_type(param: &ComponentParam) -> bool {
-    param.ty == "List" && param.collection_type.is_none() && param.default.is_none()
+    param.ty == "List"
+        && param.collection_type.is_none()
+        && param.default.as_ref().is_none_or(|value| {
+            matches!(&value.kind, ExprKind::ArrayLit(items) if items.is_empty())
+        })
 }
 
 fn supplied_value<'a>(site: &WidgetArgumentSite<'a>, property: &str) -> Option<&'a Expr> {
@@ -129,20 +138,88 @@ fn supplied_model_field<'a>(site: &WidgetArgumentSite<'a>, property: &str) -> Op
     matches!(&base.kind, ExprKind::Var(root) if root.name == "self").then_some(name)
 }
 
-fn caller_list_type(component: &PackagedAgeComponent, field: &Ident) -> Option<TypeAnn> {
-    let field = component
-        .node
-        .fields
-        .iter()
-        .find(|candidate| candidate.name == field.name)?;
-    let ty = model_type(field, true).ok()?;
+fn caller_list_type(
+    component: &PackagedAgeComponent,
+    field: &Ident,
+    units: &BTreeMap<String, PackageSyntax>,
+) -> Option<TypeAnn> {
+    let ty = if let Some(field) = component.node.fields.iter().find(|candidate| candidate.name == field.name) {
+        model_type(field, true).ok()?
+    } else {
+        computed_bare_list_type(component, field, units)?
+    };
+    if is_bare_list_annotation(&ty) {
+        return Some(ty);
+    }
     match &list_element(&ty)?.kind {
         TypeRef::Builtin(_) | TypeRef::Record(_) => Some(ty),
         _ => None,
     }
 }
 
-/// A bare required List can take its element type from an authored model field
+fn computed_bare_list_type(
+    component: &PackagedAgeComponent,
+    field: &Ident,
+    units: &BTreeMap<String, PackageSyntax>,
+) -> Option<TypeAnn> {
+    let computed = component.node.members.iter()
+        .find(|row| row.role == "computed" && row.name == field.name)?;
+    let ExprKind::Call { callee, .. } = &computed.value.as_ref()?.kind else { return None };
+    let ty = &declared_helper(component, callee, units)?.ret;
+    is_bare_list_annotation(ty).then(|| ty.clone())
+}
+
+fn declared_helper<'a>(
+    component: &PackagedAgeComponent,
+    callee: &Ident,
+    units: &'a BTreeMap<String, PackageSyntax>,
+) -> Option<&'a FnItem> {
+    fn free_function<'a>(unit: &'a PackageSyntax, name: &str) -> Option<&'a FnItem> {
+        unit.program.items.iter().find_map(|item| match item {
+            Item::Fn(function) if function.name.name == name
+                && matches!(function.receiver, Receiver::Free) => Some(function),
+            _ => None,
+        })
+    }
+
+    let caller = &units[&component.module];
+    if let Some(function) = free_function(caller, &callee.name) {
+        return Some(function);
+    }
+    let import = caller.imports.iter().find(|import| import.bound_name() == callee.name)?;
+    let (package, _) = component.module.split_once("::")?;
+    let (key, name) = match import.path.as_slice() {
+        [module, name] => (unit_key(package, module), name),
+        [package, module, name] => (unit_key(package, module), name),
+        _ => return None,
+    };
+    let unit = units.get(&key)?;
+    // This is a type hint. The package binder still resolves and checks the
+    // actual import and the arguments to the computed call.
+    unit.exports.contains(name).then(|| free_function(unit, name)).flatten()
+}
+
+fn computed_argument_list_type(
+    component: &PackagedAgeComponent,
+    param: &ComponentParam,
+    units: &BTreeMap<String, PackageSyntax>,
+) -> Option<TypeAnn> {
+    if param.default.is_none() {
+        return None;
+    }
+    component.node.members.iter().filter(|row| row.role == "computed").find_map(|row| {
+        let ExprKind::Call { callee, args } = &row.value.as_ref()?.kind else { return None };
+        let function = declared_helper(component, callee, units)?;
+        let index = args.iter().position(|arg| matches!(arg,
+            Arg::Pos(Expr { kind: ExprKind::Field { base, name }, .. })
+                if name.name == param.name
+                    && matches!(&base.kind, ExprKind::Var(root) if root.name == "self")))?;
+        let ty = &function.params.get(index)?.ty;
+        is_bare_list_annotation(ty).then(|| ty.clone())
+    })
+}
+
+/// A bare List can take its type from an authored model field or computed call
 /// at a resolved widget site. The other arguments are still checked at each
 /// site against the inferred signature by the ordinary package checker.
 pub(crate) fn bind(
@@ -202,7 +279,7 @@ pub(crate) fn bind(
         let exact = site.loops.is_empty().then(|| {
             let inputs = target.node.params.iter().filter(|param| needs_type(param)).map(|param| {
                 let field = supplied_model_field(&site, &param.name)?;
-                let ty = caller_list_type(site.component, field)?;
+                let ty = caller_list_type(site.component, field, units)?;
                 Some((ty, param.ty_span))
             }).collect::<Option<Vec<_>>>()?;
             let selectors = target.node.params.iter().filter_map(|param| {
@@ -217,6 +294,8 @@ pub(crate) fn bind(
     variants.retain(|_, group| group.len() > 1 && group.iter().all(Option::is_some));
 
     let mut inferred = BTreeMap::<WidgetParamKey, (String, TypeAnn, Span)>::new();
+    let mut computed_defaults = BTreeMap::new();
+    let mut explicitly_supplied = BTreeSet::new();
     let mut callers = BTreeMap::<WidgetParamKey, BTreeSet<String>>::new();
     let mut selectors = BTreeMap::<WidgetParamKey, Option<SelectorInput>>::new();
     walk_widget_sites(components, available_packages, scenario.instances.max(1), &sites, |site, target| {
@@ -254,13 +333,21 @@ pub(crate) fn bind(
             if inferred.contains_key(&key) {
                 continue;
             }
+            if supplied_value(&site, &param.name).is_some() {
+                explicitly_supplied.insert(key.clone());
+            } else if let Some(ty) = computed_argument_list_type(target, param, units) {
+                computed_defaults.insert(key.clone(), (target.module.clone(), ty, param.ty_span));
+            }
             let field = supplied_model_field(&site, &param.name);
-            if let Some(ty) = field.and_then(|field| caller_list_type(site.component, field)) {
+            if let Some(ty) = field.and_then(|field| caller_list_type(site.component, field, units)) {
                 inferred.insert(key, (caller.clone(), ty, param.ty_span));
             }
         }
         Ok(())
     })?;
+    // With no authored value at any site, a computed call can give the
+    // empty default its list type. Supplied values still take precedence.
+    inferred.extend(computed_defaults.into_iter().filter(|(key, _)| !explicitly_supplied.contains(key)));
 
     let mut typed_widgets = BTreeSet::new();
     let mut records = RecordOrigins::new();

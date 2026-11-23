@@ -16,6 +16,10 @@ pub(crate) fn has_focus(node: &ComponentNode) -> bool {
                 requests(then) || els.as_deref().is_some_and(requests)
             }
             ComponentStmt::While { body, .. } => requests(body),
+            // PLAN-117（U05 029 真语料）：try 体同样可含 focus 请求。
+            ComponentStmt::Try { body, catch, .. } => {
+                requests(body) || requests(catch)
+            }
             _ => false,
         })
     }
@@ -34,6 +38,10 @@ pub(crate) fn has_messages(node: &ComponentNode) -> bool {
                 emits(then, node) || els.as_ref().is_some_and(|branch| emits(branch, node))
             }
             ComponentStmt::While { body, .. } => emits(body, node),
+            // PLAN-117（U05 029 真语料）：try/catch 体同样可承载对外发送
+            //（`try { ."queryRequested"(…) } catch { }`）——漏判会把
+            // has_messages 判 false，handler 的 outbound 发送被误拒。
+            ComponentStmt::Try { body, catch, .. } => emits(body, node) || emits(catch, node),
             _ => false,
         })
     }

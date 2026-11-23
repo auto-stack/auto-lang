@@ -76,6 +76,8 @@ pub enum Matcher {
     },
     /// 行注释：start 字面量到（不含）换行。
     LineComment(String),
+    /// A literal prefix followed by raw text up to a line break or closing delimiter.
+    LineText { start: String, close: u8 },
     /// 块注释：start..end，可嵌套（interface-mini 的 /* */ 嵌套）。
     BlockComment {
         start: String,

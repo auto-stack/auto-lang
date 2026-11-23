@@ -23,10 +23,11 @@
 //! cache keys must not move).
 
 use ace_core::hir;
+use ace_core::source::{http_ops, json_ops};
 use ace_core::source::SourceParts;
 use ace_core::text_resources::TextResourcePlan;
 use ace_core::verify::{CheckedFunction, CheckedModule, ModuleGlobalsPlan};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::A2xReject;
 
@@ -244,6 +245,7 @@ pub struct SemanticView<'a> {
     /// The source profile identity this domain corresponds to.
     pub profile: &'static str,
     age_package: bool,
+    http_suspending: BTreeSet<usize>,
     functions: Vec<FnFacts<'a>>,
     /// Signature-only functions (single-body fragments; see `ExternalFn`).
     externals: Vec<ExternalFn>,
@@ -359,7 +361,12 @@ impl<'a> SemanticView<'a> {
         let records = collect_records(module)?;
         let variants = collect_variants(module)?;
         let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs, py_defs) =
-            collect_trace_defs(module, bundle, checked.py_ops().is_some())?;
+            collect_trace_defs(module, bundle, checked.py_ops().is_some(), age_package)?;
+        let http_suspending = if age_package {
+            checked_http_callers(module, &functions)?
+        } else {
+            BTreeSet::new()
+        };
         // PLAN-981：全局访问器只在**事实在场**时放行（AGE 包前门钉的
         // plan）——无 plan 的路径维持旧的 compute-surface 拒绝。
         let globals_plan = checked.module_globals();
@@ -382,6 +389,7 @@ impl<'a> SemanticView<'a> {
             domain,
             profile,
             age_package,
+            http_suspending,
             functions,
             externals: Vec::new(),
             records,
@@ -483,7 +491,7 @@ impl<'a> SemanticView<'a> {
             ));
         }
         let (trace_defs, platform_defs, sched_defs, global_defs, gfx_defs, py_defs) =
-            collect_trace_defs(module, bundle, false)?;
+            collect_trace_defs(module, bundle, false, false)?;
         // PLAN-902 T-03: the credential's OWN verified resource plan
         // serves the one admitted function (lookup-checked by body
         // index — a mismatched plan can never leak to another body).
@@ -503,6 +511,7 @@ impl<'a> SemanticView<'a> {
             domain,
             profile,
             age_package: false,
+            http_suspending: BTreeSet::new(),
             functions,
             externals: collect_externals(module, credential.def_id_text())?,
             records: collect_records(module)?,
@@ -752,6 +761,25 @@ impl<'a> SemanticView<'a> {
             Some(hir::DefKind::Intrinsic { symbol, .. }) if symbol == "__ace_text_find")
     }
 
+    pub fn age_json_op(&self, def_index: usize) -> Option<&'static json_ops::JsonSourceOp> {
+        if !self.age_package {
+            return None;
+        }
+        match &self.module.defs.get(def_index)?.kind {
+            hir::DefKind::Intrinsic { symbol, .. } => json_ops::by_symbol(symbol),
+            _ => None,
+        }
+    }
+
+    pub fn age_widget_http_op(&self, def_index: usize) -> Option<&'static http_ops::HttpSourceOp> {
+        self.age_package.then(|| widget_http_op(self.module, def_index)).flatten()
+    }
+
+    /// Checked direct call paths that can suspend for a browser HTTP read.
+    pub fn age_http_suspends(&self, def_index: usize) -> bool {
+        self.http_suspending.contains(&def_index)
+    }
+
     /// PLAN-1115 (T-05): the checked text-scan intrinsic family's symbol
     /// (the assembled stdlib's text helpers call them).
     pub fn text_scan_symbol(&self, def_index: usize) -> Option<&'static str> {
@@ -764,6 +792,7 @@ impl<'a> SemanticView<'a> {
             "__ace_text_trim" => Some("__ace_text_trim"),
             "__ace_text_trim_len" => Some("__ace_text_trim_len"),
             "__ace_text_upper" => Some("__ace_text_upper"),
+            "__ace_text_lower" => Some("__ace_text_lower"),
             _ => None,
         }
     }
@@ -1242,6 +1271,8 @@ impl<'a> SemanticView<'a> {
                     || self.is_text_find(target)
                     // PLAN-1115 (T-05): the whole checked text-scan family.
                     || self.text_scan_symbol(target).is_some()
+                    || self.age_json_op(target).is_some()
+                    || self.age_widget_http_op(target).is_some()
                     || self.external_by_def(target).is_some()
                     || self.foreign_by_def(target).is_some()
                     // PLAN-981: module.global accessors reach the targets'
@@ -1744,10 +1775,61 @@ fn collect_variants(module: &hir::Module) -> Result<Vec<VariantFacts>, A2xReject
     Ok(variants)
 }
 
+fn widget_http_op(module: &hir::Module, index: usize) -> Option<&'static http_ops::HttpSourceOp> {
+    match &module.defs.get(index)?.kind {
+        hir::DefKind::Intrinsic { symbol, .. } if http_ops::is_widget_http_symbol(symbol) => {
+            http_ops::by_symbol(symbol)
+        }
+        _ => None,
+    }
+}
+
+fn checked_http_callers(
+    module: &hir::Module,
+    functions: &[FnFacts<'_>],
+) -> Result<BTreeSet<usize>, A2xReject> {
+    let mut callers = BTreeMap::<usize, Vec<usize>>::new();
+    let mut pending = Vec::new();
+    for function in functions {
+        for expr in &function.body.exprs {
+            if let hir::ExprKind::Call { callee, .. } = expr.kind {
+                let target = callee.0 as usize;
+                if widget_http_op(module, target).is_some() {
+                    pending.push(function.def_index);
+                } else {
+                    callers.entry(target).or_default().push(function.def_index);
+                }
+            }
+        }
+    }
+    let mut suspending = BTreeSet::new();
+    while let Some(index) = pending.pop() {
+        if suspending.insert(index) {
+            pending.extend(callers.remove(&index).into_iter().flatten());
+        }
+    }
+    for function in functions {
+        for expr in &function.body.exprs {
+            let target = match expr.kind {
+                hir::ExprKind::CreateClosure { callee, .. } => callee.0 as usize,
+                hir::ExprKind::CallbackRef { def } => def.0 as usize,
+                _ => continue,
+            };
+            if suspending.contains(&target) || widget_http_op(module, target).is_some() {
+                return Err(A2xReject::unsupported_expr(
+                    "a suspending widget HTTP function cannot be used as a callback or closure",
+                ));
+            }
+        }
+    }
+    Ok(suspending)
+}
+
 fn collect_trace_defs(
     module: &hir::Module,
     bundle: &hir::Bundle,
     allow_py_lane: bool,
+    age_package: bool,
 ) -> Result<
     (
         Vec<(usize, &'static str)>,
@@ -1779,7 +1861,29 @@ fn collect_trace_defs(
     let mut global_defs: Vec<(usize, String, bool)> = Vec::new();
     for (def_index, def) in module.defs.iter().enumerate() {
         if let hir::DefKind::Intrinsic { symbol, .. } = &def.kind {
-            if symbol == "__ace_text_find" && bundle.domain == hir::HirDomain::Closures {
+            if age_package && http_ops::is_widget_http_symbol(symbol) {
+                for required in std::iter::once(http_ops::HTTP_CAPABILITY)
+                    .chain(http_ops::is_get_json_symbol(symbol).then_some(json_ops::JSON_CAPABILITY))
+                {
+                    if !bundle.requires.iter().any(|capability| capability == required) {
+                        return Err(A2xReject::unauthorized_intrinsic(format!(
+                            "HTTP intrinsic `{symbol}` requires `{required}`",
+                        )));
+                    }
+                }
+                continue;
+            }
+            if age_package && json_ops::by_symbol(symbol).is_some() {
+                if !bundle.requires.iter().any(|capability| capability == json_ops::JSON_CAPABILITY) {
+                    return Err(A2xReject::unauthorized_intrinsic(format!(
+                        "JSON intrinsic `{symbol}` requires `{}`", json_ops::JSON_CAPABILITY,
+                    )));
+                }
+                continue;
+            }
+            if symbol == "__ace_text_lower"
+                || (symbol == "__ace_text_find" && bundle.domain == hir::HirDomain::Closures)
+            {
                 continue;
             }
             if let Some(rest) = symbol.strip_prefix("module.global.get:") {

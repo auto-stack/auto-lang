@@ -183,10 +183,16 @@ fn owned_of_use(kind: &BTreeMap<u32, Option<OwnedKind>>, u: &TypeUse) -> Option<
 /// collections verifier rules (C2..C10); this walk never re-derives
 /// legality, only the cleanup schedule.
 pub fn compute_body_facts(module: &hir::Module, body: &hir::Body) -> CollectionsBodyFacts {
-    let classifier = TypeClassifier::build(module);
+    compute_body_facts_with_classifier(&TypeClassifier::build(module), body)
+}
+
+pub(crate) fn compute_body_facts_with_classifier(
+    classifier: &TypeClassifier,
+    body: &hir::Body,
+) -> CollectionsBodyFacts {
     let mut w = Walker {
         body,
-        classifier: &classifier,
+        classifier,
         facts: CollectionsBodyFacts::default(),
         live: BTreeSet::new(),
         def_block: BTreeMap::new(),

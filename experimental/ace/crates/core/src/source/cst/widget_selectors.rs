@@ -142,6 +142,10 @@ impl ListEscapes {
                         pending.push(then);
                         pending.extend(els.as_deref());
                     }
+                    ComponentStmt::Try { body, catch, .. } => {
+                        pending.push(body);
+                        pending.push(catch);
+                    }
                 }
             }
         }
@@ -345,6 +349,10 @@ fn specialize_body(
                 if let Some(otherwise) = els {
                     specialize_body(otherwise, inputs, writes, locals.clone());
                 }
+            }
+            ComponentStmt::Try { body, catch, .. } => {
+                specialize_body(body, inputs, writes, locals.clone());
+                specialize_body(catch, inputs, writes, locals.clone());
             }
         }
     }

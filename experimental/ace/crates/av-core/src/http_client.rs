@@ -73,6 +73,14 @@ pub fn declaration(symbol: &str, sig: u32) -> Result<MirHostImport, AdmissionErr
     })
 }
 
+/// Failed HTTP completion. Only failures from an attempted request are
+/// delivered to an enclosing source catch handler.
+#[derive(Clone, Debug)]
+pub enum HttpFailure {
+    Request(String),
+    Rejected(String),
+}
+
 /// PLAN-108（T-03c M3）：宿主 HTTP 执行器（job 式——执行器挂起语义）。
 /// UI 桥实现：`start` 把真实请求派发上 worker 线程立即返回 job id；
 /// `poll` 非阻塞查完成（None=在途）。执行器首过 start+挂起 `LoopState`，
@@ -82,5 +90,5 @@ pub trait HttpProvider: Send {
     /// 启动请求；返回 job id（桥侧单调分配）。
     fn http_start(&mut self, verb: &str, url: &str, body: Option<&str>) -> u64;
     /// 非阻塞完成查询：None=在途；Some=终值（Ok=响应体文本，VM shim 同语义）。
-    fn http_poll(&mut self, job: u64) -> Option<Result<String, String>>;
+    fn http_poll(&mut self, job: u64) -> Option<Result<String, HttpFailure>>;
 }

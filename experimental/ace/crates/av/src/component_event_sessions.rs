@@ -41,7 +41,7 @@ use std::sync::Arc;
 // 消费者（UI 桥）经本模块取值域，不必直接依赖 ace-av 的场景观察面。
 pub use crate::age_component::ComponentFieldValue;
 // PLAN-108（T-03c M2）：宿主 HTTP provider trait 随会话面再出口（UI 桥注入）。
-pub use ace_av_core::http_client::HttpProvider;
+pub use ace_av_core::http_client::{HttpFailure, HttpProvider};
 
 /// 会话级观察口（执行层 oracle；真实调用边界计数）。
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -173,8 +173,18 @@ impl ComponentEventSessionProgram {
     /// 编译（一次）：先带文本叶；lowering 失败（f-string 叶在 av.owned/1 的
     /// 既有边界）时按 states-only 重试并把原因留痕——与场景车道的
     /// states-only 边界同一形状，不是静默 fallback。
+    /// PLAN-117 诊断：函数码（abc 解码单元）只读访问（MIR 层 trap-edge
+    /// 勘察用；不属交付 API 面，随本计划的探针生命周期）。
+    pub fn codes(&self) -> &[std::sync::Arc<FunctionCode>] {
+        &self.codes
+    }
+
     pub fn compile(src: &str, module_path: &str, alias: LegacyWidgetAlias) -> Result<Self, String> {
-        let caps = ["ac.runtime.text.v1".to_string()];
+        // PLAN-117（B-05 S1b）：json.value/1 随默认授予集（checked 域 JSON 值
+        // 面的组件事件道标准能力；与 http.client/1 的生产授予同纪律——后者
+        // 在桥按需授予，这里 http 未入默认集因 provider 按注册生效；json
+        // 解析纯本域无宿主依赖，默认集安全）。
+        let caps = ["ac.runtime.text.v1".to_string(), "json.value/1".to_string()];
         let attempt = |emit_texts: bool| -> Result<CoreEventProgram, String> {
             let core =
                 compile_component_event_program(src, module_path, alias, &caps, None, emit_texts)
@@ -558,7 +568,6 @@ impl ComponentEventSession {
         self.generation
     }
 
-    /// 观察口（执行层 oracle）。
     pub fn audit(&self) -> &SessionAudit {
         &self.audit
     }

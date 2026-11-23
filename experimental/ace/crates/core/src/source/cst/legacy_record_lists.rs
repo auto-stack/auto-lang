@@ -229,6 +229,10 @@ impl HandlerLists {
                 }
                 ComponentStmt::While { body, .. } => self.collect(body, state, &scope),
                 ComponentStmt::AssignLocal { .. } | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
+                ComponentStmt::Try { body, catch, .. } => {
+                    self.collect(body, state, &scope);
+                    self.collect(catch, state, &scope);
+                }
             }
         }
     }

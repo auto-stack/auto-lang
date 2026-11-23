@@ -1023,6 +1023,16 @@ impl<'a> ResourceWalk<'a> {
             .unwrap_or("<unknown>")
     }
 
+    /// PLAN-117（round-25）：编译器合成临时（`__agg_*`，resolve `agg_temp`
+    /// 家族——dyn_coalesce 结果等）的裸读**就是其唯一消费**——把这样的临时
+    /// 转移进字段/local 写不产生任何源级可见的 moved-out 洞，隐式转移拒
+    /// 豁免（用户命名局部仍一律要求 `.move`/`.clone()`）。
+    fn is_compiler_temp(local: Option<&hir::LocalDef>) -> bool {
+        local
+            .map(|l| l.name.starts_with("__agg_"))
+            .unwrap_or(false)
+    }
+
     /// Emit one exit point's free schedule (PLAN-782 T-04): the plain-Str
     /// roots keep a 770-compatible `exit_frees` entry; the UNIFIED
     /// `buffer_frees` list carries every buffer to free — roots in reverse
@@ -1820,6 +1830,7 @@ impl<'a> ResourceWalk<'a> {
                                         self.body.exprs.get(value.0 as usize).map(|e| &e.kind),
                                         Some(hir::ExprKind::ReadLocal { local })
                                             if self.owned.contains(&local.0)
+                                                && !Self::is_compiler_temp(self.body.locals.get(local.0 as usize))
                                                 && !scan.wrapper_moves.iter().any(|(w, _)| {
                                                     matches!(
                                                         self.body.exprs.get(w.0 as usize).map(|e| &e.kind),
@@ -1898,6 +1909,7 @@ impl<'a> ResourceWalk<'a> {
                                         self.body.exprs.get(value.0 as usize).map(|e| &e.kind),
                                         Some(hir::ExprKind::ReadLocal { local })
                                             if self.owned.contains(&local.0)
+                                                && !Self::is_compiler_temp(self.body.locals.get(local.0 as usize))
                                                 && !scan.wrapper_moves.iter().any(|(w, _)| {
                                                     matches!(
                                                         self.body.exprs.get(w.0 as usize).map(|e| &e.kind),

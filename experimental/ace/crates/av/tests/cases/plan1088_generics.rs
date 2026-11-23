@@ -3,7 +3,10 @@ use ace_av_core::abc_verify::{verify_abc_bytes, LoadedModule};
 use ace_av_core::av::{
     execute_observed, execute_sched, execute_with_arena, CancelFlag, ExecLimits, ExecTrace,
 };
-use ace_av_core::contract::{ExecOutcome, ResourceKind, Value, TEXT_CASE_CAPABILITY};
+use ace_av_core::contract::{
+    ExecOutcome, ResourceKind, Value, AV_DYNAMIC_PROFILE, MIR_DYNAMIC_SCHEMA,
+    SHARED_COLLECTION_ARGS_CAPABILITY, TEXT_CASE_CAPABILITY,
+};
 use ace_av_core::host::{ConsoleHost, HostError, Stream};
 use ace_av_core::mir::{MirInstr, MirModule};
 use ace_av_core::owned_text::StrArena;
@@ -110,6 +113,50 @@ fn assert_released(trace: ExecTrace) -> usize {
     assert_eq!(allocations, releases);
     assert_eq!(arena.live(), 0);
     allocations.len()
+}
+
+#[test]
+fn lowercase_roundtrips_the_wire_and_preserves_contextual_unicode() {
+    let source = r#"
+fn main() int {
+    let title = "xİSTANBUL ΟΣ ΣΟ Жz".clone()
+    let folded = title.slice(1, title.len() - 1).to_lower()
+    let other = "ΟΣ".lower()
+    if folded == "i̇stanbul ος σο ж" && other == "ος" && title == "xİSTANBUL ΟΣ ΣΟ Жz" {
+        return 1
+    }
+    return 0
+}
+"#;
+    let mut mir = lower(source);
+    assert!(mir
+        .funcs
+        .iter()
+        .flat_map(|function| &function.blocks)
+        .flat_map(|block| &block.instrs)
+        .any(|instr| matches!(instr, MirInstr::StrLower { .. })));
+    for shared_widget_profile in [false, true] {
+        if shared_widget_profile {
+            mir.profile = AV_DYNAMIC_PROFILE.into();
+            mir.owner.schema = MIR_DYNAMIC_SCHEMA.into();
+            mir.capabilities.push(SHARED_COLLECTION_ARGS_CAPABILITY.into());
+            for function in &mut mir.funcs {
+                function.owner.schema.clone_from(&mir.owner.schema);
+            }
+        }
+        mir.capabilities.retain(|cap| cap != TEXT_CASE_CAPABILITY);
+        let error = ace_av_core::verify_mir(&mir).expect_err("lowercase requires explicit admission");
+        assert_eq!(error.code(), "mir.profile-instr");
+        mir.capabilities.push(TEXT_CASE_CAPABILITY.into());
+        let module = load(&mir);
+        let (outcome, trace) =
+            execute_observed(&module, &ExecLimits::default(), &CancelFlag::new(false));
+        assert!(
+            matches!(outcome, ExecOutcome::Success { value: Value::I32(1), .. }),
+            "{outcome:?}"
+        );
+        assert!(assert_released(trace) >= 3);
+    }
 }
 
 #[test]

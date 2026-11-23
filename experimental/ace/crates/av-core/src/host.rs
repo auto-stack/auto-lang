@@ -132,12 +132,31 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         .iter()
         .all(|h| crate::http_client::is_http_symbol(&h.symbol))
         && !module.host_imports.is_empty();
+    // PLAN-117（B-05 S1b）：json 值原语族——与 http 车道同纪律（结构准入在
+    // 此，per-run 能力由 validate 的 capabilities 臂核）。
+    let json_module = module
+        .host_imports
+        .iter()
+        .all(|h| crate::json_value::is_json_symbol(&h.symbol))
+        && !module.host_imports.is_empty();
+    // PLAN-117（round-35 ②）：组件事件程序的 http ∪ json 混合族——与
+    // abc 线族门同一并集口径（029 真形同一模块两族并用）。
+    let event_mixed_module = module
+        .host_imports
+        .iter()
+        .all(|h| {
+            crate::http_client::is_http_symbol(&h.symbol)
+                || crate::json_value::is_json_symbol(&h.symbol)
+        })
+        && !module.host_imports.is_empty();
     if !module.is_host_console_profile()
         && !sched_module
         && !platform_module
         && !py_lane_module
         && !sys_lane_module
         && !http_module
+        && !json_module
+        && !event_mixed_module
         && !module.host_imports.is_empty()
     {
         return Err(err(
@@ -207,6 +226,26 @@ pub fn validate(module: &MirModule) -> Result<(), AdmissionError> {
         }
         // PLAN-108（T-03b M1）：Http 效应族第三条声明类别——类别/能力/预算
         // 由 http_client 目录核（签名结构已由 mir_verify 的 HttpCall 臂核）。
+        // PLAN-117（B-05 S1b）：json 值原语族第四条声明类别——类别/能力/
+        // 预算由 json_value 目录核（调用点走 PlatformCall，与 config 同通道）。
+        if crate::json_value::is_json_symbol(&h.symbol) {
+            if h.category != crate::json_value::CATEGORY
+                || h.capability != crate::json_value::CAPABILITY
+                || h.max_call_bytes != crate::json_value::MAX_CALL_BYTES as u32
+            {
+                return Err(err(
+                    "host.signature",
+                    "json category/symbol/capability/budget tuple mismatch".into(),
+                ));
+            }
+            if !module.capabilities.iter().any(|c| c == crate::json_value::CATEGORY) {
+                return Err(err(
+                    "host.unauthorized",
+                    "json capability requirement is missing",
+                ));
+            }
+            continue;
+        }
         if crate::http_client::is_http_symbol(&h.symbol) {
             if h.category != crate::http_client::CATEGORY_HTTP
                 || h.capability != crate::http_client::CAP_HTTP

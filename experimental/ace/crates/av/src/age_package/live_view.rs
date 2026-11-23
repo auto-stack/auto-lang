@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use ace_core::source::age_package::{AgePackageDescription, AgeWidgetRef, AgeWidgetRefs};
+use ace_core::source::age_package::{
+    AgePackageDescription, AgeWidgetRef, AgeWidgetRefs, ImageSurfaceEventPayload,
+};
 
 use super::{
     execute_bound_widget, widget_component, widget_view_fn_name_at, AgePackageCompilation,
@@ -35,6 +37,7 @@ pub struct WidgetEvent {
     pub key: String,
     pub message: String,
     pub args: Vec<ComponentFieldValue>,
+    pub image_surface_payload: Option<ImageSurfaceEventPayload>,
 }
 
 // A widget value is invoked through one entry. Sibling projections can carry
@@ -359,7 +362,7 @@ pub(super) fn decode_view(result: Value) -> Result<Vec<WidgetViewItem>, String> 
                     .ok_or_else(|| invalid("invalid timer interval"))?;
                 root.push(WidgetViewItem::Timer(WidgetTimer { message, every_ms }));
             }
-            "label" | "property" | "event" => {
+            "label" | "property" | "event" | "image-surface-event" => {
                 let current = frames
                     .last_mut()
                     .ok_or_else(|| invalid("attribute without an element"))?;
@@ -369,6 +372,18 @@ pub(super) fn decode_view(result: Value) -> Result<Vec<WidgetViewItem>, String> 
                         .properties
                         .push((next(&mut cells)?.to_owned(), next(&mut cells)?.to_owned())),
                     "event" => current.events.push(event(&mut cells)?),
+                    "image-surface-event" => {
+                        let key = next(&mut cells)?.to_owned();
+                        let message = next(&mut cells)?.to_owned();
+                        let payload = ImageSurfaceEventPayload::from_binding(&current.tag, &key)
+                            .ok_or_else(|| invalid("invalid image surface event"))?;
+                        current.events.push(WidgetEvent {
+                            key,
+                            message,
+                            args: Vec::new(),
+                            image_surface_payload: Some(payload),
+                        });
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -399,7 +414,7 @@ fn event<'a>(cells: &mut impl Iterator<Item = &'a Value>) -> Result<WidgetEvent,
         let ty = next(cells)?;
         args.push(scalar(ty, next(cells)?)?);
     }
-    Ok(WidgetEvent { key, message, args })
+    Ok(WidgetEvent { key, message, args, image_surface_payload: None })
 }
 
 pub(super) fn payload<'a, 'b>(

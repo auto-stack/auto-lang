@@ -210,7 +210,12 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // 08c8cdbd…→c36f1ec3…；age-package 面规则文本等值（该臂包面本有）。
             // PLAN-113（026 真语料，同批第四刀）：postfix 成员位收 `type` 保留字
             //（`c.type` 记录字段读，AGE 两面）——c36f1ec3…→817d81cf…。
-            "817d81cfd85fd3853d79d0f187637b9c8d2b5b432127a3f710f9c2181d5ac005",
+            // PLAN-117: checked handlers and coalescing, component imports, Carousel
+            // properties, inline text and message lists. All neighboring profiles
+            // retain the canonical bytes computed from master.
+            // PLAN-117: restore named record constructors in component values
+            // without committing on a bare name followed by a block.
+            "5aed2a9d4d0292758baa5a1ceeb020acd1052c5a3fc68b9d15ce37277f7c53fb",
         ),
         (
             SourceProfile::AgeH0,
@@ -347,6 +352,8 @@ fn p981_age_package_grammar_id_is_frozen() {
         // PLAN-113（026 真语料，同批第五刀）：view-stmt 调用语句臂开包面
         //（tab 按钮 `onclick: () => { .SelectTab("data") }` lambda 体）——
         // 9bd00590…→2308100f…；age-component 面编译字节不变（该臂组件面本有）。
-        "2308100fece7a7a906670a35017d9edf39524eb43db5e0e42f5c7dfe5feb4f02"
+        // PLAN-117: checked handlers and coalescing, Carousel properties,
+        // inline text and message lists, including the PLAN-113 package additions.
+        "c7d31df87db770819dcc1cf27db1c64f4490998fb5842961a5dc6e83dce49324"
     );
 }

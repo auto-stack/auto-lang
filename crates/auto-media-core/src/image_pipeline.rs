@@ -1167,7 +1167,11 @@ pub fn media_surface_status(uri: &str) -> MediaSurfaceStatus {
     let Some((id, revision)) = parse_media_path(uri) else {
         return MediaSurfaceStatus::Failed("media uri is not a well-formed ticket path".into());
     };
-    match global_media_registry().lookup(id, revision) {
+    ticket_surface_status(global_media_registry(), id, revision)
+}
+
+fn ticket_surface_status(registry: &MediaAssetRegistry, id: MediaAssetId, revision: u64) -> MediaSurfaceStatus {
+    match registry.lookup(id, revision) {
         MediaLookup::Ready(_) => MediaSurfaceStatus::Ready,
         MediaLookup::Pending => MediaSurfaceStatus::Pending,
         MediaLookup::Failed(e) => MediaSurfaceStatus::Failed(e.to_string()),
@@ -1249,6 +1253,41 @@ pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
 enum MediaSource {
     Path(PathBuf),
     Bytes(Arc<[u8]>),
+    Reader(MediaReadSource),
+}
+
+type ReadMedia = dyn Fn() -> Result<Arc<[u8]>, MediaAssetError> + Send + Sync;
+
+/// Bytes supplied by a trusted host reader on the existing decode worker.
+/// The reader owns any capability checks necessary for each read.
+#[derive(Clone)]
+pub struct MediaReadSource {
+    name: String,
+    identity: u64,
+    read: Arc<ReadMedia>,
+}
+
+impl MediaReadSource {
+    pub fn new(
+        name: String,
+        read: impl Fn() -> Result<Arc<[u8]>, MediaAssetError> + Send + Sync + 'static,
+    ) -> Self {
+        static NEXT_SOURCE: AtomicU64 = AtomicU64::new(1);
+        Self {
+            name,
+            identity: NEXT_SOURCE.fetch_add(1, Ordering::Relaxed),
+            read: Arc::new(read),
+        }
+    }
+}
+
+impl fmt::Debug for MediaReadSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MediaReadSource")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1533,6 +1572,7 @@ fn run_decode_worker(inner: Arc<WorkerInner>) {
                         .map_err(|_| MediaAssetError::Rejected("image read failed".into()))?,
                 ),
                 MediaSource::Bytes(bytes) => bytes.clone(),
+                MediaSource::Reader(source) => (source.read)()?,
             };
             let metadata = inspect_image_metadata(&encoded)?;
             inner
@@ -1689,11 +1729,12 @@ impl Drop for MediaWorkerPool {
 /// stable session id; paths and tickets remain in this bounded table and are
 /// never serialized into Auto state or media URLs.
 const MAX_MEDIA_SESSIONS: usize = 32;
-const MAX_SESSION_ENTRIES: usize = 256;
+/// Maximum number of files in one viewer session.
+pub const MAX_SESSION_ENTRIES: usize = 256;
 
 #[derive(Debug)]
 struct MediaSessionEntry {
-    path: PathBuf,
+    source: MediaSource,
     ticket: MediaAssetTicket,
     name: String,
 }
@@ -1704,7 +1745,7 @@ struct MediaSession {
     /// Kept for debug/inspection of the session origin; deliberately not
     /// exposed through any public read path (verbatim migration shape).
     #[allow(dead_code)]
-    root: PathBuf,
+    root: Option<PathBuf>,
     entries: Vec<MediaSessionEntry>,
     selected: usize,
     generation: u64,
@@ -1753,17 +1794,38 @@ impl RuntimeInner {
         priority: MediaPriority,
         revision: u64,
     ) -> MediaAssetTicket {
+        self.queue_source(MediaSource::Path(path), spec, priority, revision, revision)
+    }
+
+    fn queue_source(
+        &self,
+        source: MediaSource,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        generation: u64,
+        revision: u64,
+    ) -> MediaAssetTicket {
+        let source_fingerprint = match &source {
+            MediaSource::Path(path) => path.to_string_lossy().into_owned(),
+            MediaSource::Bytes(bytes) => format!("\0bytes:{}", blake3::hash(bytes).to_hex()),
+            MediaSource::Reader(reader) => format!("\0host-reader:{}", reader.identity),
+        };
         let key = MediaAssetKey {
-            source_fingerprint: path.to_string_lossy().into_owned(),
+            source_fingerprint,
             orientation: MediaOrientation::Normal,
             rendition: spec.clone(),
             revision,
         };
         let ticket = self.registry.queue(key, MediaMetadata::default());
-        if !self
-            .workers
-            .submit_path(ticket, path, spec, priority, revision, revision)
-        {
+        if !self.workers.submit(MediaWorkItem {
+            id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed),
+            ticket,
+            source,
+            spec,
+            priority,
+            generation,
+            view_revision: revision,
+        }) {
             let _ = self.registry.fail(
                 ticket.id,
                 MediaAssetError::Rejected("media queue is full".into()),
@@ -1773,23 +1835,13 @@ impl RuntimeInner {
     }
 
     fn queue_path(&self, path: PathBuf, priority: MediaPriority) -> MediaAssetTicket {
-        let key = MediaAssetKey {
-            source_fingerprint: path.to_string_lossy().into_owned(),
-            orientation: MediaOrientation::Normal,
-            rendition: RenditionSpec::original(),
-            revision: 1,
-        };
-        let ticket = self.registry.queue(key, MediaMetadata::default());
-        if !self
-            .workers
-            .submit_path(ticket, path, RenditionSpec::original(), priority, 0, 1)
-        {
-            let _ = self.registry.fail(
-                ticket.id,
-                MediaAssetError::Rejected("media queue is full".into()),
-            );
-        }
-        ticket
+        self.queue_source(
+            MediaSource::Path(path),
+            RenditionSpec::original(),
+            priority,
+            0,
+            1,
+        )
     }
 }
 
@@ -1937,10 +1989,37 @@ impl MediaRuntime {
     /// runtime admits no new session and returns `""` (callers treat it as
     /// unknown, matching `close_session`/snapshot semantics for dead ids).
     pub fn open_session(&self, root: impl Into<PathBuf>) -> String {
-        if self.is_closed() {
+        if self.inner.closing.load(Ordering::Acquire) {
             return String::new();
         }
         let root = root.into();
+        self.open_session_with_producer(Some(root.clone()), move |inner, id| {
+            populate_media_session(inner, id, root);
+        })
+    }
+
+    /// Open a viewer session backed by the supplied host readers. New
+    /// renditions use the same reader, including any current grant check.
+    pub fn open_read_session(&self, sources: Vec<MediaReadSource>) -> String {
+        self.open_session_with_producer(None, move |inner, id| {
+            for source in sources.into_iter().take(MAX_SESSION_ENTRIES) {
+                if inner.closing.load(Ordering::Acquire) {
+                    return;
+                }
+                let name = source.name.clone();
+                append_session_entry(&inner, &id, name, MediaSource::Reader(source));
+            }
+        })
+    }
+
+    fn open_session_with_producer(
+        &self,
+        root: Option<PathBuf>,
+        populate: impl FnOnce(Arc<RuntimeInner>, String) + Send + 'static,
+    ) -> String {
+        if self.is_closed() {
+            return String::new();
+        }
         let id = format!(
             "image-session-{}",
             MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -1968,7 +2047,7 @@ impl MediaRuntime {
             }
             sessions.push_back(MediaSession {
                 id: id.clone(),
-                root: root.clone(),
+                root,
                 entries: Vec::new(),
                 selected: 0,
                 generation: 1,
@@ -1976,7 +2055,7 @@ impl MediaRuntime {
         }
         let worker_id = id.clone();
         if !spawn_tracked_producer(&self.inner, "media-session-open", move |inner| {
-            populate_media_session(inner, worker_id, root)
+            populate(inner, worker_id)
         }) {
             // No populate thread can exist for this row (spawn refused — the
             // runtime closed underneath us, or the OS refused the thread).
@@ -2045,6 +2124,48 @@ impl MediaRuntime {
             .unwrap_or_default()
     }
 
+    /// Serve only a ticket still held by a live viewer in this runtime.
+    pub fn session_media_response(
+        &self,
+        method: &str,
+        path: &str,
+        if_none_match: Option<&str>,
+    ) -> Option<MediaHttpResponse> {
+        if !matches!(method, "GET" | "HEAD") {
+            return None;
+        }
+        self.with_session_media(path, |_, _| {
+            media_http_response(self.registry(), method, path, if_none_match)
+        })
+    }
+
+    pub fn session_media_status(&self, path: &str) -> Option<MediaSurfaceStatus> {
+        self.with_session_media(path, |id, revision| {
+            ticket_surface_status(self.registry(), id, revision)
+        })
+    }
+
+    pub fn session_media_render(&self, path: &str) -> Option<(MediaAssetId, u32, u32, Arc<[u8]>)> {
+        self.with_session_media(path, |id, revision| {
+            if !matches!(self.registry().lookup(id, revision), MediaLookup::Ready(_)) {
+                return None;
+            }
+            self.worker_pool().decoded_pixels(id).map(|(w, h, rgba)| (id, w, h, rgba))
+        }).flatten()
+    }
+
+    fn with_session_media<T>(
+        &self,
+        path: &str,
+        use_ticket: impl FnOnce(MediaAssetId, u64) -> T,
+    ) -> Option<T> {
+        let (id, revision) = parse_media_path(path)?;
+        let sessions = self.inner.sessions.lock().ok()?;
+        sessions.iter().flat_map(|session| &session.entries).any(|entry| {
+            entry.ticket.id == id && entry.ticket.revision == revision
+        }).then(|| use_ticket(id, revision))
+    }
+
     /// Return bounded display names for the current directory session. Names
     /// are metadata only; the corresponding media URI is still resolved by
     /// index.
@@ -2095,7 +2216,7 @@ impl MediaRuntime {
         height: i32,
         quality: i32,
     ) -> String {
-        let (path, generation) = {
+        let (source, generation) = {
             let Ok(mut sessions) = self.inner.sessions.lock() else {
                 return "{\"error\":\"session_lock\"}".into();
             };
@@ -2108,7 +2229,7 @@ impl MediaRuntime {
             session.selected = index.clamp(0, session.entries.len() as i32 - 1) as usize;
             session.generation = session.generation.saturating_add(1);
             (
-                session.entries[session.selected].path.clone(),
+                session.entries[session.selected].source.clone(),
                 session.generation,
             )
         };
@@ -2119,7 +2240,13 @@ impl MediaRuntime {
             quality: quality.clamp(1, 100) as u8,
             original_pixels: false,
         };
-        let ticket = self.queue_rendition(path, spec, MediaPriority::SettledCurrent, generation);
+        let ticket = self.inner.queue_source(
+            source,
+            spec,
+            MediaPriority::SettledCurrent,
+            generation,
+            generation,
+        );
         if let Ok(mut sessions) = self.inner.sessions.lock() {
             if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
                 let old_ticket = session.entries[session.selected].ticket;
@@ -2256,16 +2383,19 @@ fn spawn_tracked_producer(
     }
 }
 
-fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathBuf) {
-    if !supported_media_path(&path) {
-        return;
-    }
-    let ticket = inner.queue_path(path.clone(), MediaPriority::Thumbnail);
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("image")
-        .to_owned();
+fn append_session_entry(
+    inner: &Arc<RuntimeInner>,
+    session_id: &str,
+    name: String,
+    source: MediaSource,
+) {
+    let ticket = inner.queue_source(
+        source.clone(),
+        RenditionSpec::original(),
+        MediaPriority::Thumbnail,
+        0,
+        1,
+    );
     let mut sessions = match inner.sessions.lock() {
         Ok(sessions) => sessions,
         Err(_) => {
@@ -2274,9 +2404,7 @@ fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathB
         }
     };
     let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
-        // Session closed while the populate worker was scanning: release the
-        // ticket immediately — a late callback never resurrects a closed
-        // session or re-feeds another one.
+        // Session closed while the producer was scanning. Do not revive it.
         inner.registry.release(ticket.id);
         return;
     };
@@ -2284,9 +2412,11 @@ fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathB
         inner.registry.release(ticket.id);
         return;
     }
-    session
-        .entries
-        .push(MediaSessionEntry { path, ticket, name });
+    session.entries.push(MediaSessionEntry {
+        source,
+        ticket,
+        name,
+    });
 }
 
 fn populate_media_session(inner: Arc<RuntimeInner>, session_id: String, root: PathBuf) {
@@ -2312,7 +2442,14 @@ fn populate_media_session(inner: Arc<RuntimeInner>, session_id: String, root: Pa
         if inner.closing.load(Ordering::Acquire) {
             return;
         }
-        append_session_entry(&inner, &session_id, path);
+        if supported_media_path(&path) {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("image")
+                .to_owned();
+            append_session_entry(&inner, &session_id, name, MediaSource::Path(path));
+        }
     }
 }
 

@@ -513,7 +513,7 @@ pub fn text_scan_signature(symbol: &str) -> Option<(&'static [VT], VT)> {
         "__ace_text_find" => Some((&[VT::Str, VT::Str, VT::I32], VT::I32)),
         "__ace_text_trim" => Some((&[VT::Str], VT::StrOwned)),
         "__ace_text_trim_len" => Some((&[VT::Str], VT::I32)),
-        "__ace_text_upper" => Some((&[VT::Str], VT::StrOwned)),
+        "__ace_text_upper" | "__ace_text_lower" => Some((&[VT::Str], VT::StrOwned)),
         _ => None,
     }
 }
@@ -1929,10 +1929,6 @@ fn compile_program_observed_inner(
     let mut em = Emitter::new(&resolved, eff_len, profile);
     em.plan_module();
     let atom_text = em.render(module_path);
-    if let Some(o) = observer.as_deref_mut() {
-        o.stage(SourceStage::Emit, &[]);
-    }
-
     let descriptor = profile_descriptor(profile);
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -2260,6 +2256,14 @@ enum EKind {
     },
     /// PLAN-862: the unit value — a Unit body's return operand.
     Unit,
+    /// PLAN-117（U05 029 真语料）：if 表达式操作数（computed 值等）——
+    /// cond/then 为表达式索引，else_chain 为 (cond,then) 对源序，els 为末 else。
+    IfExpr {
+        cond: usize,
+        then: usize,
+        else_chain: Vec<(usize, usize)>,
+        els: Option<usize>,
+    },
     Read(usize),
     Bin(BinOp, usize, usize),
     /// Lazy boolean short-circuit (PLAN-767): `&&`/`||` surface Binary
@@ -3653,6 +3657,33 @@ impl PlanCtx<'_> {
             RExprKind::HashExpr { .. } | RExprKind::MetaQuery { .. } => {
                 unreachable!("unserved CT demands are rejected by the typecheck walk")
             }
+            // PLAN-117（U05 029 真语料）：if 表达式在叶位——递归规划各支
+            //（条件/then/链/末 else），发射三目 if 节点。
+            RExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+            } => {
+                let cond_i = self.plan_expr(plan, f, cond);
+                let then_i = self.plan_expr(plan, f, then);
+                let chain_its: Vec<(usize, usize)> = else_chain
+                    .iter()
+                    .map(|(c, t)| (self.plan_expr(plan, f, c), self.plan_expr(plan, f, t)))
+                    .collect();
+                let els_i = els.as_ref().map(|e| self.plan_expr(plan, f, e));
+                plan.exprs.push(ENode {
+                    kind: EKind::IfExpr {
+                        cond: cond_i,
+                        then: then_i,
+                        else_chain: chain_its,
+                        els: els_i,
+                    },
+                    vt: e.vt.clone(),
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
             RExprKind::IntLit(v) => {
                 plan.exprs.push(ENode {
                     kind: EKind::Const(*v),
@@ -4785,11 +4816,21 @@ impl<'p> Emitter<'p> {
                 .or_else(|| super::config_ops::capability_of(sym))
                 // PLAN-108（T-03b M1）：组件面 Http 原语自带 `http.client/1` 能力键。
                 .or_else(|| super::http_ops::capability_of(sym))
+                // PLAN-117（B-05 S1b）：json 值原语自带 `json.value/1` 能力键。
+                .or_else(|| super::json_ops::capability_of(sym))
                 // PLAN-981：AGE 资源服务自带能力键。
                 .or_else(|| super::age_resources::by_symbol(sym).map(|op| op.capability))
                 .unwrap_or(TRACE_CAPABILITY);
             if !requires.contains(&cap) {
                 requires.push(cap);
+            }
+            // PLAN-117（round-25 ⑤）：`Http.get_json` 组件面结果是 json 值
+            //（Dyn）——其消费面（成员读/`??`/判空）按 `json.value/1` 门控，
+            // 与 `http.client/1` 同授（029 真源 Init 形）。
+            if super::http_ops::is_get_json_symbol(sym)
+                && !requires.contains(&super::json_ops::JSON_CAPABILITY)
+            {
+                requires.push(super::json_ops::JSON_CAPABILITY);
             }
         }
         if self.profile.is_text() && self.plans.iter().any(|p| p.has_text_ops) {
@@ -4826,7 +4867,8 @@ impl<'p> Emitter<'p> {
         // PLAN-981（D-981-AGE-F32-SURFACE）：text-record 面按**实际使用**补
         // `t_f32`（组件场景的 f32 状态与积分）。无 f32 的程序逐字节不变，既有
         // Atom 文本/身份不受扰动；age-package 面另行无条件声明（资源分量）。
-        let uses_f32 = self.profile == super::SourceProfile::TextRecord
+        let uses_f32 = (self.profile == super::SourceProfile::TextRecord
+            || self.profile.is_collections())
             && (self
                 .plans
                 .iter()
@@ -5066,7 +5108,13 @@ impl<'p> Emitter<'p> {
         let uses_dyn = self
             .plans
             .iter()
-            .any(|p| p.exprs.iter().any(|e| e.vt == VT::Dyn));
+            .any(|p| p.exprs.iter().any(|e| e.vt == VT::Dyn))
+            // PLAN-117（round-26）：List/Object 的 **Dyn elem** 在类型表行里
+            // 引用 `t_dyn`（t_list_dyn 的 elem: t_dyn）——声明了这样的容器就
+            // 必须有 elem 行，否则悬空引用（view-data 初值 `[]` = List(Dyn)
+            // 的事件道文档首证）。
+            || self.program.lists.iter().any(|l| *l == VT::Dyn)
+            || self.program.objects.iter().any(|o| *o == VT::Dyn);
         if uses_dyn {
             frag!("type t_dyn dyn {}", program_span);
             spans.types.push(program_span);
@@ -5076,7 +5124,13 @@ impl<'p> Emitter<'p> {
             .plans
             .iter()
             .any(|p| p.exprs.iter().any(|e| matches!(e.kind, EKind::NilLit)));
-        if (self.profile.is_aggregates() || self.profile.is_closures())
+        // PLAN-117（B-05 S1a）：nil/object 类型发射放行文本/集合（AGE 执行）
+        // 面——json 值链（json.parse → Dyn → ObjectGet）的 t_nil/t_object_N
+        // 声明；uses_nil/objects 空时零发射，既有面逐字节不变。
+        if (self.profile.is_aggregates()
+            || self.profile.is_closures()
+            || self.profile.is_text()
+            || self.profile.is_collections())
             && (uses_nil || !self.program.objects.is_empty())
         {
             if uses_nil {
@@ -5220,6 +5274,11 @@ impl<'p> Emitter<'p> {
                 (ps.join(", "), rs)
             } else if let Some(op) = super::http_ops::by_symbol(sym) {
                 // PLAN-108（T-03b M1）：Http 原语签名 = 目录里的精确参数 VT
+                // + 结果 VT（与 resolve 侧同一声明行，不另写一份）。
+                let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
+                (ps.join(", "), self.ty_use_ref(op.result))
+            } else if let Some(op) = super::json_ops::by_symbol(sym) {
+                // PLAN-117（B-05 S1a）：json 值原语签名 = 目录里的精确参数 VT
                 // + 结果 VT（与 resolve 侧同一声明行，不另写一份）。
                 let ps: Vec<String> = op.params.iter().map(|t| self.ty_use_ref(*t)).collect();
                 (ps.join(", "), self.ty_use_ref(op.result))
@@ -5688,6 +5747,22 @@ impl<'p> Emitter<'p> {
                         }
                         // PLAN-862: the unit value carries only its type.
                         EKind::Unit => format!("expr e{} unit {{ type: {} }}", ei, ty),
+                        // PLAN-117（U05 029 真语料）：if 表达式渲染 cond/then
+                        // 索引（链与末 else 走读留诊断）。
+                        EKind::IfExpr {
+                            cond,
+                            then,
+                            else_chain,
+                            els,
+                        } => format!(
+                            "expr e{} if {{ type: {}; cond: e{}; then: e{}; chain: {}; els: {} }}",
+                            ei,
+                            ty,
+                            cond,
+                            then,
+                            else_chain.len(),
+                            els.map_or_else(|| "none".to_string(), |e| format!("e{e}"))
+                        ),
                         EKind::Read(l) => {
                             format!("expr e{} read_local {{ type: {}; local: l{} }}", ei, ty, l)
                         }
@@ -6323,9 +6398,18 @@ impl<'p> Emitter<'p> {
             // source, so interior spans can exceed the original length.
             // They are approximate (an M2-A documented boundary): clamp
             // them into the original source so the pipeline never rejects.
+            // PLAN-117（round-35）：prep 注入块使投影 span 在多字节源上
+            // 偏移到非字符边界——对齐到前一个边界（与 FSTR 的 clamp 同
+            // 精度等级：拒绝逃逸 span，容忍 1-2 字节的投影不精确）。
+            let snap = |mut i: usize| -> usize {
+                while i > 0 && !boundary(i) {
+                    i -= 1;
+                }
+                i
+            };
             let s = Span {
-                start: s.start.min(source_len),
-                end: s.end.min(source_len),
+                start: snap(s.start.min(source_len)),
+                end: snap(s.end.min(source_len)),
             };
             if s.start > source_len || s.end > source_len {
                 return Err(internal_diag(format!(
@@ -6599,6 +6683,12 @@ fn intrinsic_id_suffix(sym: &str) -> String {
         // 会让 `color`/`quad`/`circle` 全塌成 `v1`，同一模块两处调用即重复 id。
         // 服务符号用全名（与 console/platform 同纪律）。
         || sym.starts_with("age.")
+        // PLAN-117（B-05 S1a）+ PLAN-108 隐患修复：`auto.http.get-json.v1` 与
+        // `auto.json.parse.v1` 的末段同为 `v1`——同模块混用 Http 与 json 原语
+        //（029 真语料）即 id 相撞；http 多动词同模块（get+post）同理。两族
+        // 符号都用全名。
+        || sym.starts_with("auto.http.")
+        || sym.starts_with("auto.json.")
     {
         sym.replace('.', "_").replace('-', "_")
     } else {

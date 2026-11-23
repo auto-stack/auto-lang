@@ -364,6 +364,7 @@ fn render_instr(m: &MirModule, i: &MirInstr) -> Result<String, MnError> {
         }
         MirInstr::StrTrim { dst, view } => format!("strtrim {dst} {view}"),
         MirInstr::StrUpper { dst, view } => format!("strupper {dst} {view}"),
+        MirInstr::StrLower { dst, view } => format!("strlower {dst} {view}"),
         MirInstr::CharToCodepoint { dst, ch } => format!("char2cp {dst} {ch}"),
         MirInstr::CharFromCodepoint { dst, code } => format!("cp2char {dst} {code}"),
         // PLAN-821 R2-F08' widening: the write-back extraction renders;

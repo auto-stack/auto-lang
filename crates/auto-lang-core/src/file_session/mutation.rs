@@ -19,13 +19,21 @@ impl std::str::FromStr for FileWritePermissions {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let mut permissions = Self::default();
-        for operation in value.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+        for operation in value
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
             match operation {
                 "create" => permissions.create = true,
                 "copy" => permissions.copy = true,
                 "rename" => permissions.rename = true,
                 "delete" => permissions.delete = true,
-                _ => return Err(format!("Unknown File Manager write permission: {operation}")),
+                _ => {
+                    return Err(format!(
+                        "Unknown File Manager write permission: {operation}"
+                    ))
+                }
             }
         }
         Ok(permissions)
@@ -169,26 +177,19 @@ pub(super) fn with_open_target<T>(
     path: &Path,
     launch: impl FnOnce(&Path) -> io::Result<T>,
 ) -> Result<T, FileAccessError> {
-    let entry = entry_parts(grant, path)?.open_parent(&grant.directory, None)?;
-    let mut options = OpenOptions::new();
-    options.read(true).follow(FollowSymlinks::No);
-    #[cfg(unix)]
-    cap_fs_ext::OpenOptionsSyncExt::nonblock(&mut options, true);
     #[cfg(windows)]
-    {
+    let options = {
         use cap_std::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
         // Keep this name from being removed or replaced before the launcher
         // has consumed it. Other readers and writers can still open the file.
+        let mut options = read_options();
         options.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
-    }
-    if !entry.parent.symlink_metadata(entry.name)?.is_file() {
-        return Err(io::Error::new(ErrorKind::InvalidInput, "open requires a regular file").into());
-    }
-    let file = entry.parent.open_with(entry.name, &options)?;
-    if !file.metadata()?.is_file() {
-        return Err(io::Error::new(ErrorKind::InvalidInput, "open requires a regular file").into());
-    }
+        options
+    };
+    #[cfg(not(windows))]
+    let options = read_options();
+    let file = open_regular_file(grant, path, &options)?;
     let handle = Handle::from_file(file.into_std())?;
     let resolved = path.canonicalize()?;
     // A desktop association takes a path. Check that the ambient name still
@@ -197,6 +198,34 @@ pub(super) fn with_open_target<T>(
         return Err(FileAccessError::OutsideRoot);
     }
     launch(&resolved).map_err(Into::into)
+}
+
+pub(super) fn open_read_file(grant: &DirectoryGrant, path: &Path) -> Result<File, FileAccessError> {
+    open_regular_file(grant, path, &read_options())
+}
+
+fn read_options() -> OpenOptions {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    cap_fs_ext::OpenOptionsSyncExt::nonblock(&mut options, true);
+    options
+}
+
+fn open_regular_file(
+    grant: &DirectoryGrant,
+    path: &Path,
+    options: &OpenOptions,
+) -> Result<File, FileAccessError> {
+    let entry = entry_parts(grant, path)?.open_parent(&grant.directory, None)?;
+    if !entry.parent.symlink_metadata(entry.name)?.is_file() {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "open requires a regular file").into());
+    }
+    let file = entry.parent.open_with(entry.name, options)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "open requires a regular file").into());
+    }
+    Ok(file)
 }
 
 fn reject_copy_into_self(directory: &Dir, source: Option<&Handle>) -> io::Result<()> {

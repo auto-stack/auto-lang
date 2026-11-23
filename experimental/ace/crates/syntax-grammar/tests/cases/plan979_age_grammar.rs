@@ -67,6 +67,27 @@ impl<'s> ace_syntax_runtime::parse::CtxTokenText for TextSource<'s> {
 }
 
 #[test]
+fn age_package_computed_conditional_accepts_block_branches() {
+    let grammar = Grammar::load("age-package");
+    let source = r#"widget App {
+    msg { Init }
+    model { var error str = "" }
+    computed {
+        failed => if .error != "" { true } else { false }
+    }
+    view { text "gallery" {} }
+}
+"#;
+    let valid = grammar.parse(source);
+    assert!(valid.tree.diags.is_empty(), "{:?}", valid.tree.diags);
+    assert!(!valid.tree.has_errors());
+    assert_eq!(valid.tree.decls.len(), 1);
+
+    let invalid = grammar.parse(&source.replace("else { false }", "else { false"));
+    assert!(invalid.tree.has_errors(), "reject an unclosed computed branch");
+}
+
+#[test]
 fn p979_age_h0_literal_source_parses_as_one_declaration() {
     let g = Grammar::load("age-h0");
     let out = g.parse(H0_LITERAL);

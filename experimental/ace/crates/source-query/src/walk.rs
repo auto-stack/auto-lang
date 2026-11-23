@@ -561,6 +561,14 @@ fn walk_expr<'a>(
                 span: e.span,
             });
         }
+        // PLAN-117（U05 029 真语料）：if 表达式是 AGE 作者面操作数形式，
+        // 查询面（named）不承载——显式拒。
+        ExprKind::If { .. } => {
+            return Err(WalkError::Unsupported {
+                what: "if-expression",
+                span: e.span,
+            });
+        }
         // PLAN-962: aggregates-surface forms, named-unsupported here.
         ExprKind::TupleLit(_) => {
             return Err(WalkError::Unsupported {

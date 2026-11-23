@@ -208,11 +208,15 @@ struct Verifier<'a, 'r> {
 }
 
 impl<'a, 'r> Verifier<'a, 'r> {
+    fn accepts_language_values(&self) -> bool {
+        self.is_closures || (self.is_dynamic && self.module.shares_collection_arguments())
+    }
+
     /// The collections feature surface (List/Variant/Place and their
     /// instructions): admitted by `av.collections/1` and its dynamic
     /// successor (PLAN-824 subsumption).
     fn language_values(&self) -> bool {
-        self.is_closures
+        self.accepts_language_values()
             && self
                 .module
                 .capabilities
@@ -221,7 +225,32 @@ impl<'a, 'r> Verifier<'a, 'r> {
     }
 
     fn dynamic_values(&self) -> bool {
-        self.is_dynamic || self.language_values()
+        self.is_dynamic
+            || self.language_values()
+            // PLAN-117（B-05 S1b）：checked 域 JSON 值面——`json.value/1`
+            // 模块能力准入 Dyn/Nil/Object 面（AGE 事件道的 json.parse 链；
+            // 静态规则仍由共享 verify 持有）。
+            || self.json_values_surface()
+            // PLAN-117（round-26）：元素视图面标记（collections 域组件事件
+            // 道）——view-data 集合初值 `[]` = List(Dyn)，Dyn 词表随面准入。
+            || self.elem_view_surface()
+    }
+
+    /// PLAN-117（round-26）：模块是否承载元素视图面标记（AGE 组件事件道的
+    /// collections 形状在 av.owned 车道）。
+    fn elem_view_surface(&self) -> bool {
+        self.module
+            .capabilities
+            .iter()
+            .any(|c| c == crate::contract::AGE_ELEM_VIEW_CAPABILITY)
+    }
+
+    /// PLAN-117（B-05 S1b）：模块是否承载 checked 域 JSON 值面。
+    fn json_values_surface(&self) -> bool {
+        self.module
+            .capabilities
+            .iter()
+            .any(|c| c == crate::json_value::CATEGORY)
     }
 
     fn collections_surface(&self) -> bool {
@@ -524,7 +553,19 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
                 // PLAN-822: the List/Variant/Place surface is
                 // collections-only (and its dynamic successor).
-                MirType::List(_) | MirType::Variant(_) | MirType::Place(_)
+                MirType::List(_)
+                    if !self.collections_surface() && !self.elem_view_surface() =>
+                {
+                    return Err(MirVerifyError::uns(
+                        "mir.profile-type",
+                        format!(
+                            "type #{ti} ({:?} …) exists only in the `{}`+ profiles",
+                            t,
+                            crate::contract::AV_COLLECTIONS_PROFILE
+                        ),
+                    ));
+                }
+                MirType::Variant(_) | MirType::Place(_)
                     if !self.collections_surface() =>
                 {
                     return Err(MirVerifyError::uns(
@@ -816,6 +857,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // 符号注册表在 ace-core `source::age_resources`（本 crate
                         // 不依赖它，字面量与注册表冻结同步）。
                         || imp.symbol.starts_with("module.global.")
+                        // PLAN-117（round-35 ②）：http/json 目录符号随内联体
+                        // 进入 collections 车道的 import 缝（def 侧身份——
+                        // 调用点按符号分流到 host import 通道）。
+                        || crate::http_client::is_http_symbol(&imp.symbol)
+                        || crate::json_value::is_json_symbol(&imp.symbol)
                         || matches!(
                             imp.symbol.as_str(),
                             "age.material2d.color.v1"
@@ -863,11 +909,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 // widened composite element domain in this verifier).
                 || c == "av.aggregates/1"
                 || (self.is_dynamic && c == crate::contract::SHARED_COLLECTION_ARGS_CAPABILITY)
-                || (self.is_closures && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
+                || (self.accepts_language_values() && c == crate::contract::LANGUAGE_VALUES_CAPABILITY)
                 || (self.is_closures && c == crate::contract::GLOBAL_TAKE_CAPABILITY)
                 || ((self.is_closures || (self.is_dynamic && self.module.shares_collection_arguments()))
                     && c == crate::contract::TEXT_SCAN_CAPABILITY)
-                || (self.is_closures && c == crate::contract::TEXT_CASE_CAPABILITY)
+                || (self.accepts_language_values() && c == crate::contract::TEXT_CASE_CAPABILITY)
                 || c == ace_foreign_contract::manual::SOURCE_CAP
                 || self.module.funcs.iter().any(|f| f.blocks.iter().any(|b| b.instrs.iter().any(|i|
                     matches!(i, MirInstr::ForeignCall { declaration, .. } if declaration.capabilities.contains(c)))))
@@ -966,6 +1012,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
                         // 执行侧核，不在此处授权）。
                         | crate::http_client::CATEGORY_HTTP
                         | crate::http_client::CAP_HTTP
+                        // PLAN-117（B-05 S1b）：checked 域 JSON 值面能力
+                        // （`json.value/1` 目录=已知准入；解析纯本域无宿主
+                        // 依赖，执行在 PlatformCall 分流内）。
+                        | crate::json_value::CATEGORY
                 )
             };
             if !known {
@@ -1489,7 +1539,10 @@ impl<'a, 'r> Verifier<'a, 'r> {
             Some(MirType::List(_)) if aggregates => true,
             Some(MirType::Dyn)
                 if matches!(code, "mir.type.list-elem" | "mir.type.variant-payload")
-                    && self.language_values() =>
+                    && (self.language_values()
+                        // PLAN-117（round-26）：元素视图面标记——view-data 集合
+                        // 初值的 List(Dyn) 元素位（AGE 组件事件道）。
+                        || self.elem_view_surface()) =>
             {
                 true
             }
@@ -1596,7 +1649,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
         }
         go(
             self.module,
-            self.language_values(),
+            self.dynamic_values(),
             root,
             1,
             &mut Vec::new(),
@@ -2924,10 +2977,38 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     .host_imports
                     .iter()
                     .any(|h| h.symbol.starts_with("auto.platform."));
-                if !self.module.is_host_console_profile() && !sys_platform_module {
+                // PLAN-117（B-05 S1b）：json 值原语的 PlatformCall——模块全部
+                // =json 族 host import 时放行（类别/能力由 host::validate 的
+                // json 臂核）。
+                let json_module = !self.module.host_imports.is_empty()
+                    && self
+                        .module
+                        .host_imports
+                        .iter()
+                        .all(|h| crate::json_value::is_json_symbol(&h.symbol));
+                // PLAN-117（round-35 ②）：http ∪ json 混合族（组件事件程序
+                // 的 collections 车道——与 abc 线族门同一并集口径）。
+                let event_mixed_module = !self.module.host_imports.is_empty()
+                    && self
+                        .module
+                        .host_imports
+                        .iter()
+                        .all(|h| {
+                            crate::http_client::is_http_symbol(&h.symbol)
+                                || crate::json_value::is_json_symbol(&h.symbol)
+                        });
+                if !self.module.is_host_console_profile()
+                    && !sys_platform_module
+                    && !json_module
+                    && !event_mixed_module
+                {
+                    let syms: Vec<&str> =
+                        self.module.host_imports.iter().map(|h| h.symbol.as_str()).collect();
                     return Err(err(
                         "host.profile",
-                        "platform call requires host-console profile".into(),
+                        format!(
+                            "platform call requires host-console profile (host_imports={syms:?})"
+                        ),
                     ));
                 }
                 let h = self
@@ -2937,6 +3018,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     .ok_or_else(|| err("host.reference", "platform index out of range".into()))?;
                 if !crate::platform_io::is_platform_symbol(&h.symbol)
                     && !crate::config_document::is_config_symbol(&h.symbol)
+                    // PLAN-117（B-05 S1b）：json 值原语第三条 PlatformCall
+                    // 类别（符号/签名由 json_value 目录核）。
+                    && !crate::json_value::is_json_symbol(&h.symbol)
                 {
                     return Err(err(
                         "host.category",
@@ -3373,7 +3457,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             // -- PLAN-822 collections surface (typing arms) --------
             MirInstr::ListNew { dst, list_ty, cap } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_NEW exists only in the collections profile".to_string(),
@@ -3407,7 +3491,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::ListLen { dst, src } | MirInstr::ListCap { dst, src } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_LEN/LIST_CAP exist only in the collections profile".to_string(),
@@ -3429,7 +3513,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::ListGet { dst, base, index } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_GET exists only in the collections profile".to_string(),
@@ -3455,7 +3539,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 }
             }
             MirInstr::ListPush { root, value } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_PUSH exists only in the collections profile".to_string(),
@@ -3472,7 +3556,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             MirInstr::ListInsert { root, index, value }
             | MirInstr::ListSet { root, index, value } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_INSERT/LIST_SET exist only in the collections profile".to_string(),
@@ -3502,8 +3586,16 @@ impl<'a, 'r> Verifier<'a, 'r> {
     ) -> Result<TypeIdx, MirVerifyError> {
         let ty = slot_ty_of(f, slot, span, "object")?;
         match self.module.types.get(ty as usize) {
-            Some(MirType::Object { elem }) if self.collections_surface() => Ok(*elem),
-            Some(MirType::Dyn) if self.language_values() => Ok(ty),
+            Some(MirType::Object { elem })
+                if self.collections_surface() || self.json_values_surface() =>
+            {
+                Ok(*elem)
+            }
+            Some(MirType::Dyn)
+                if self.language_values() || self.json_values_surface() =>
+            {
+                Ok(ty)
+            }
             _ => Err(MirVerifyError::Invalid {
                 code: "mir.object-type".into(),
                 message: "object instruction requires an object slot".into(),
@@ -3545,7 +3637,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
         };
         match instr {
             MirInstr::ListRemove { dst, root, index } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_REMOVE exists only in the collections profile".to_string(),
@@ -3567,7 +3659,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 index,
                 path,
             } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_FIELD_GET exists only in the collections profile".to_string(),
@@ -3662,7 +3754,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 path,
                 value,
             } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_FIELD_SET exists only in the collections profile".to_string(),
@@ -3823,7 +3915,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
             }
             // -- PLAN-822 R2 index-place surface (typing arms) -----
             MirInstr::ListPlace { dst, base, index } => {
-                if !self.collections_surface() {
+                if !self.collections_surface() && !self.elem_view_surface() {
                     return Err(err(
                         "mir.profile-instr",
                         "LIST_PLACE exists only in the collections profile".to_string(),
@@ -4453,7 +4545,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                                     | MirType::I64
                                     | MirType::U64
                             )
-                        ));
+                        ))
+                    // PLAN-117（round-36 ②）：json 值链的 Dyn 标量显示
+                    //（元素视图面的 `.str()`；执行器按 Dyn 内标量渲染）。
+                    || ((self.elem_view_surface() || self.language_values())
+                        && matches!(source, Some(MirType::Dyn)));
                 if !displayable || self.module.types.get(output as usize) != Some(&MirType::Str) {
                     return Err(err(
                         "mir.text-display",
@@ -4484,8 +4580,9 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     ));
                 }
             }
-            MirInstr::StrUpper { dst, view } => {
-                if !self.is_closures
+            MirInstr::StrUpper { dst, view } | MirInstr::StrLower { dst, view } => {
+                let name = crate::instr_spec::mnemonic_of_instr(instr);
+                if !self.accepts_language_values()
                     || !self
                         .module
                         .capabilities
@@ -4494,15 +4591,15 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 {
                     return Err(err(
                         "mir.profile-instr",
-                        "STR_UPPER requires av.text.case/1".into(),
+                        format!("{name} requires av.text.case/1"),
                     ));
                 }
-                let dst_ty = slot_ty_of(f, *dst, sp, "STR_UPPER destination")?;
-                let src_ty = slot_ty_of(f, *view, sp, "STR_UPPER view")?;
+                let dst_ty = slot_ty_of(f, *dst, sp, &format!("{name} destination"))?;
+                let src_ty = slot_ty_of(f, *view, sp, &format!("{name} view"))?;
                 if self.module.types.get(dst_ty as usize) != Some(&MirType::Str)
                     || self.module.types.get(src_ty as usize) != Some(&MirType::StrView)
                 {
-                    return Err(err("mir.operand-type", "STR_UPPER slot type mismatch".into()));
+                    return Err(err("mir.operand-type", format!("{name} slot type mismatch")));
                 }
             }
             MirInstr::StrCharAt { dst, view, index } => {
@@ -4934,7 +5031,11 @@ impl<'a, 'r> Verifier<'a, 'r> {
                     unwind,
                     message,
                 } => {
-                    if !self.is_closures {
+                    // PLAN-117（round-36）：元素视图面（collections 域 AGE
+                    // 场景/事件道）的 try 保护体内联体——fallible 指令的
+                    // Invoke 着陆边与 closures 面同机制（执行器按帧级
+                    // normal/unwind 边通用处理），随面标记准入。
+                    if !self.accepts_language_values() && !self.elem_view_surface() {
                         return Err(err(
                             "mir.invoke-profile",
                             "invoke requires the closures profile".into(),
@@ -4977,7 +5078,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 } => {
                     let mt = slot_ty_of(f, *message, sp, "raise message")?;
                     let dt = slot_ty_of(f, *destination, sp, "raise destination")?;
-                    if !self.is_closures
+                    if !self.accepts_language_values()
                         || start > end
                         || *target as usize >= f.blocks.len()
                         || mt != dt
@@ -4989,7 +5090,7 @@ impl<'a, 'r> Verifier<'a, 'r> {
                 Terminator::LangFail { message, source } => {
                     let _ = slot_ty_of(f, *message, sp, "lang fail message")?;
                     if let Some((start, end)) = source {
-                        if start > end || !self.is_closures {
+                        if start > end || !self.accepts_language_values() {
                             return Err(err(
                                 "mir.lang-fail-span",
                                 "invalid ordinary Auto failure span".into(),
@@ -5056,6 +5157,7 @@ impl MirInstr {
             | MirInstr::StrFind { dst, .. }
             | MirInstr::StrTrim { dst, .. }
             | MirInstr::StrUpper { dst, .. }
+            | MirInstr::StrLower { dst, .. }
             | MirInstr::StrCharAt { dst, .. }
             | MirInstr::StrSlice { dst, .. }
             | MirInstr::StrConcat { dst, .. }
@@ -5210,7 +5312,9 @@ impl MirInstr {
                 start,
                 ..
             } => vec![*text, *pattern, *start],
-            MirInstr::StrTrim { view, .. } | MirInstr::StrUpper { view, .. } => vec![*view],
+            MirInstr::StrTrim { view, .. }
+            | MirInstr::StrUpper { view, .. }
+            | MirInstr::StrLower { view, .. } => vec![*view],
             MirInstr::StrCharAt { view, index, .. } => vec![*view, *index],
             MirInstr::StrSlice {
                 view, start, end, ..

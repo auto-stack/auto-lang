@@ -14,7 +14,8 @@
 //!
 //! Security boundary mirrors media_service: only blake3 tokens of relative
 //! paths ever leave the backend; tokens resolve through a per-root registry
-//! populated by `list_directory` scans, so a request can never address a
+//! populated by `list_directory` scans and restored from per-user snapshots,
+//! so a request can never address a
 //! file outside the scanned set, and `sanitize_rel_dir` keeps user-supplied
 //! navigation segments inside the root (no `..`/absolute/drive-letter).
 //!
@@ -25,8 +26,12 @@
 //! navigates like a file browser, it does not flat-render the whole tree.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+mod token_index;
 
 /// Extensions offered as *candidates* (image crate decoder set). HEIC and
 /// RAW formats are deliberately absent — the `image` crate cannot decode
@@ -150,6 +155,26 @@ fn count_direct_images(dir: &Path) -> usize {
         .count()
 }
 
+fn photo_directory(root: &Path, relative: &str) -> io::Result<PathBuf> {
+    let mut directory = root.to_path_buf();
+    for part in relative.split('/').filter(|part| !part.is_empty()) {
+        directory.push(part);
+        if !std::fs::symlink_metadata(&directory)?.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                "invalid photo directory",
+            ));
+        }
+    }
+    if !relative.is_empty() && !directory.canonicalize()?.starts_with(root.canonicalize()?) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "photo directory escapes its root",
+        ));
+    }
+    Ok(directory)
+}
+
 /// One-level directory listing (non-recursive browsing model). Returns the
 /// images directly inside `rel` plus its immediate subdirectories. Never
 /// follows symlinks (media_service precedent). Errors when the directory
@@ -157,11 +182,7 @@ fn count_direct_images(dir: &Path) -> usize {
 pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
     let dir_rel = sanitize_rel_dir(rel)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "illegal dir segment"))?;
-    let dir = if dir_rel.is_empty() {
-        root.to_path_buf()
-    } else {
-        root.join(dir_rel.replace('/', std::path::MAIN_SEPARATOR_STR))
-    };
+    let dir = photo_directory(root, &dir_rel)?;
     let rd = std::fs::read_dir(&dir)?;
     let mut images: Vec<(PathBuf, u64, i64)> = Vec::new();
     let mut dirs: Vec<PhotoDir> = Vec::new();
@@ -253,57 +274,89 @@ pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
             mtime,
         });
     }
-    // token → 相对路径注册表（thumb/full 反查用），按 root 分桶。
+    let index = token_index::directory(root);
     if let Ok(mut reg) = token_registry().lock() {
-        reg.insert(
-            root.to_string_lossy().to_string(),
-            listing
-                .images
-                .iter()
-                .map(|e| (e.id.clone(), e.relative_path.clone()))
-                .collect(),
-        );
+        let tokens = reg
+            .entry(root.to_path_buf())
+            .or_insert_with(|| index.as_deref().map(token_index::load).unwrap_or_default());
+        tokens.register(&listing);
+        if let Some(index) = index {
+            // A failed state write must not make an otherwise usable gallery empty.
+            let _ = token_index::save(&index, &listing);
+        }
     }
     Ok(listing)
 }
 
-/// token → root-relative path registry. Bucketed by root so two photo apps
-/// with identical relative paths never collide. Rebuilt wholesale per scan
-/// (bounded by the scanned dir's image count).
-fn token_registry() -> &'static std::sync::Mutex<
-    std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-> {
-    static REG: std::sync::OnceLock<
-        std::sync::Mutex<
-            std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-        >,
-    > = std::sync::OnceLock::new();
-    &REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+#[derive(Default)]
+struct PhotoTokens {
+    paths: HashMap<String, String>,
+    directory_ids: HashMap<String, Vec<String>>,
+}
+
+impl PhotoTokens {
+    fn register(&mut self, listing: &PhotoListing) {
+        self.replace(
+            &listing.dir_rel,
+            listing
+                .images
+                .iter()
+                .map(|entry| (entry.id.clone(), entry.relative_path.clone())),
+        );
+    }
+
+    fn replace(&mut self, relative_dir: &str, entries: impl IntoIterator<Item = (String, String)>) {
+        if let Some(previous) = self.directory_ids.remove(relative_dir) {
+            for id in previous {
+                self.paths.remove(&id);
+            }
+        }
+        let mut ids = Vec::new();
+        for (id, path) in entries {
+            ids.push(id.clone());
+            self.paths.insert(id, path);
+        }
+        if !ids.is_empty() {
+            self.directory_ids.insert(relative_dir.to_owned(), ids);
+        }
+    }
+}
+
+/// Keep the latest set issued by each scanned directory of a configured root.
+fn token_registry() -> &'static Mutex<HashMap<PathBuf, PhotoTokens>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, PhotoTokens>>> = OnceLock::new();
+    REGISTRY.get_or_init(Mutex::default)
 }
 
 /// Resolve a photo token against the registry for `root`. Returns the
 /// root-relative path (`/` separators) only when the token was issued by a
 /// scan of this same root — otherwise None (404 arm).
 pub fn resolve_token(root: &Path, token: &str) -> Option<String> {
-    let reg = token_registry().lock().ok()?;
-    reg.get(&root.to_string_lossy().to_string())?
-        .get(token)
-        .cloned()
+    let mut reg = token_registry().lock().ok()?;
+    if let Some(tokens) = reg.get(root) {
+        return tokens.paths.get(token).cloned();
+    }
+    let tokens = token_index::load(&token_index::directory(root)?);
+    let path = tokens.paths.get(token).cloned();
+    reg.insert(root.to_path_buf(), tokens);
+    path
 }
 
 /// Rebuild a `PhotoEntry` for a root-relative path (thumb/full 端点的
 /// token 反查臂——只服务扫描过的文件，路径永不来自请求体）。
 pub fn photo_from_rel(root: &Path, rel: &str) -> Option<PhotoEntry> {
-    let path = rel_to_path(root, rel);
+    let (rel_dir, name) = rel.rsplit_once('/').unwrap_or(("", rel));
+    if rel.starts_with('/')
+        || sanitize_rel_dir(rel_dir)?.as_str() != rel_dir
+        || Path::new(name).file_name()?.to_str()? != name
+    {
+        return None;
+    }
+    let path = photo_directory(root, rel_dir).ok()?.join(name);
     let meta = std::fs::symlink_metadata(&path).ok()?;
     if !meta.is_file() || !is_supported(&path) {
         return None;
     }
-    let name = path.file_name()?.to_string_lossy().to_string();
-    let rel_dir = rel
-        .rsplit_once('/')
-        .map(|(d, _)| d.to_string())
-        .unwrap_or_default();
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -312,9 +365,9 @@ pub fn photo_from_rel(root: &Path, rel: &str) -> Option<PhotoEntry> {
     let (width, height) = header_dimensions(&path);
     Some(PhotoEntry {
         id: blake3::hash(rel.as_bytes()).to_hex().to_string(),
-        name,
+        name: name.to_string(),
         relative_path: rel.to_string(),
-        rel_dir,
+        rel_dir: rel_dir.to_string(),
         extension,
         bytes: meta.len(),
         width,
@@ -554,8 +607,11 @@ mod tests {
     use super::*;
 
     fn tmp_tree() -> PathBuf {
-        let base = std::env::temp_dir().join(format!("p043_photo_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = std::env::temp_dir().join(format!(
+            "p043_photo_{}_{:016x}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
         std::fs::create_dir_all(base.join("Screenshots")).unwrap();
         std::fs::create_dir_all(base.join("Trip")).unwrap();
         // Tiny valid PNGs (1x1) so header dimension parsing has real input.
@@ -669,6 +725,64 @@ mod tests {
     }
 
     #[test]
+    fn scanning_another_directory_preserves_issued_photo_tokens() {
+        let base = tmp_tree();
+        let untouched = blake3::hash(b"Trip/t1.webp").to_hex().to_string();
+        let root = list_directory(&base, "").unwrap();
+        let child = list_directory(&base, "Screenshots").unwrap();
+        let first = &child.images[0];
+        assert!(resolve_token(&base, &untouched).is_none());
+        assert_eq!(
+            resolve_token(&base, &root.images[0].id).as_deref(),
+            Some(root.images[0].relative_path.as_str())
+        );
+
+        list_directory(&base, "Trip").unwrap();
+        assert_eq!(
+            resolve_token(&base, &first.id).as_deref(),
+            Some(first.relative_path.as_str())
+        );
+        let file = rel_to_path(&base, &first.relative_path);
+        std::fs::remove_file(&file).unwrap();
+        assert!(photo_from_rel(&base, &first.relative_path).is_none());
+        list_directory(&base, "Screenshots").unwrap();
+        assert!(resolve_token(&base, &first.id).is_none());
+        assert!(resolve_token(&base, &child.images[1].id).is_some());
+        assert!(resolve_token(&base, &untouched).is_some());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn saved_directory_scans_rebuild_the_issued_token_set() {
+        let base = tmp_tree();
+        let index = base.join("test-index");
+        let root = list_directory(&base, "").unwrap();
+        let child = list_directory(&base, "Screenshots").unwrap();
+        token_index::save(&index, &root).unwrap();
+        token_index::save(&index, &child).unwrap();
+
+        let tokens = token_index::load(&index);
+        for entry in root.images.iter().chain(&child.images) {
+            assert_eq!(tokens.paths.get(&entry.id), Some(&entry.relative_path));
+        }
+        let unscanned = blake3::hash(b"Trip/t1.webp").to_hex().to_string();
+        assert!(!tokens.paths.contains_key(&unscanned));
+        assert!(token_index::load(&base.join("other-index"))
+            .paths
+            .is_empty());
+
+        let removed = &child.images[0];
+        std::fs::remove_file(rel_to_path(&base, &removed.relative_path)).unwrap();
+        let refreshed = list_directory(&base, "Screenshots").unwrap();
+        token_index::save(&index, &refreshed).unwrap();
+        let tokens = token_index::load(&index);
+        assert!(!tokens.paths.contains_key(&removed.id));
+        assert!(tokens.paths.contains_key(&child.images[1].id));
+        assert!(tokens.paths.contains_key(&root.images[0].id));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
     fn photo_from_rel_rebuilds_entry() {
         let base = tmp_tree();
         list_directory(&base, "").unwrap();
@@ -676,6 +790,8 @@ mod tests {
         assert_eq!(e.name, "a.png");
         assert_eq!((e.width, e.height), (1, 1));
         assert!(photo_from_rel(&base, "notes.txt").is_none(), "非图片不重建");
+        assert!(photo_from_rel(&base, "Screenshots/../a.png").is_none());
+        assert!(photo_from_rel(&base, "/a.png").is_none());
         let _ = std::fs::remove_dir_all(&base);
     }
 

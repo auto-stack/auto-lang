@@ -26,6 +26,8 @@ use crate::ports::{default_stdlib_port_catalog, PortContract};
 use crate::runtime::RUNTIME_BODY;
 use crate::target::ScriptLang;
 
+mod widget_json;
+
 /// Structural nesting budget (same constant and rejection discipline as the
 /// Python leg so both providers reject identical inputs).
 pub const MAX_STRUCTURE_DEPTH: usize = 64;
@@ -262,6 +264,7 @@ pub(crate) struct Cx<'v, 'a> {
     view: &'v SemanticView<'a>,
     facts: &'v FnFacts<'a>,
     family: LowerFamily,
+    widget_http: bool,
     pub(crate) local_names: HashMap<u32, String>,
     pub(crate) local_tys: HashMap<u32, Ty>,
     pub(crate) owned_locals: BTreeSet<u32>,
@@ -357,6 +360,24 @@ impl<'v, 'a> Cx<'v, 'a> {
         }
     }
 
+    fn assign_local(&mut self, name: &str, ty: Ty, value: &str) {
+        if is_owned_ty(ty) {
+            let old = self.fresh_temp();
+            self.emit(&format!("const {old} = {name};"));
+            self.emit(&format!("{name} = {value};"));
+            if let Some(free) = self.free_stmt(&old, ty) {
+                self.open(&format!(
+                    "if ({old} !== null && {old} !== {name} && {old} !== {})",
+                    self.skip_var
+                ));
+                self.emit(&free);
+                self.close();
+            }
+        } else {
+            self.emit(&format!("{name} = {value};"));
+        }
+    }
+
     fn lower_block(&mut self, block_id: hir::BlockId) -> Result<(), A2xReject> {
         self.enter_depth()?;
         let stmts = self
@@ -436,7 +457,10 @@ impl<'v, 'a> Cx<'v, 'a> {
                     None => self.close(),
                 }
             }
-            hir::Stmt::Loop { id, body, .. } => {
+            hir::Stmt::Loop { id, body, unwind } => {
+                if unwind.is_some() {
+                    self.open("try");
+                }
                 self.loop_stack.push(id.0);
                 self.open("while (true)");
                 self.lower_block(*body)?;
@@ -445,6 +469,21 @@ impl<'v, 'a> Cx<'v, 'a> {
                 }
                 self.close();
                 self.loop_stack.pop();
+                if let Some(unwind) = unwind {
+                    self.close();
+                    let error = self.fresh_temp();
+                    self.open(&format!("catch ({error})"));
+                    let message = self.local_name(unwind.message.0)?;
+                    self.assign_local(
+                        &message,
+                        Ty::StrOwned,
+                        &format!("a2x_catch_failure({error})"),
+                    );
+                    let kind = self.local_name(unwind.kind.0)?;
+                    // The checked control-flow lowering dispatches kind 4 to the catch arm.
+                    self.emit(&format!("{kind} = 4;"));
+                    self.close();
+                }
             }
             hir::Stmt::Assign { place, value } => {
                 let p = self
@@ -459,22 +498,7 @@ impl<'v, 'a> Cx<'v, 'a> {
                         let name = self.local_name(p.local.0)?;
                         let lty = self.local_ty(p.local.0);
                         let v = self.lower_into(*value, lty)?;
-                        if is_owned_ty(lty) {
-                            let old = self.fresh_temp();
-                            self.emit(&format!("const {old} = {name};"));
-                            self.emit(&format!("{name} = {v};"));
-                            let free = self.free_stmt(&old, lty);
-                            if let Some(free) = free {
-                                self.open(&format!(
-                                    "if ({old} !== null && {old} !== {name} && {old} !== {})",
-                                    self.skip_var
-                                ));
-                                self.emit(&free);
-                                self.close();
-                            }
-                        } else {
-                            self.emit(&format!("{name} = {v};"));
-                        }
+                        self.assign_local(&name, lty, &v);
                     }
                     hir::PlaceKind::FieldPath(path) => {
                         let base = self.local_name(p.local.0)?;
@@ -733,10 +757,17 @@ impl<'v, 'a> Cx<'v, 'a> {
             hir::ExprKind::BorrowView { base } => self.lower_expr(base),
             hir::ExprKind::BorrowMut { local } => self.local_name(local.0),
             hir::ExprKind::Move { inner } => {
+                let value = self.lower_expr(inner)?;
                 if let hir::ExprKind::ReadLocal { local } = self.expr_kind(inner) {
-                    self.moved_out.insert(local.0);
+                    if is_owned_ty(self.local_ty(local.0)) {
+                        let moved = self.fresh_temp();
+                        self.emit(&format!("const {moved} = {value};"));
+                        let empty = if self.lang.typed() { "null!" } else { "null" };
+                        self.emit(&format!("{value} = {empty};"));
+                        return Ok(moved);
+                    }
                 }
-                self.lower_expr(inner)
+                Ok(value)
             }
             hir::ExprKind::RecordCtor {
                 record,
@@ -934,14 +965,20 @@ impl<'v, 'a> Cx<'v, 'a> {
                 let display = match self.expr_ty(operand)? {
                     Ty::I32 => "a2x_str_display_i32",
                     Ty::F32 => "a2x_str_display_f32",
+                    Ty::Dyn if self.widget_json_enabled() => "a2x_dyn_display",
                     ty => return Err(A2xReject::unsupported_expr(format!("TextDisplay of {ty:?}"))),
                 };
                 Ok(m(self, format!("{display}({o})")))
             }
-            other => Err(A2xReject::unsupported_expr(format!(
-                "the TypeScript/JavaScript lowering does not serve expression `{other:?}` in {:?}",
-                self.family
-            ))),
+            other => {
+                if let Some(expr) = self.lower_widget_json_expr(id, &other)? {
+                    return Ok(m(self, expr));
+                }
+                Err(A2xReject::unsupported_expr(format!(
+                    "the TypeScript/JavaScript lowering does not serve expression `{other:?}` in {:?}",
+                    self.family
+                )))
+            }
         }
     }
 
@@ -1151,6 +1188,40 @@ impl<'v, 'a> Cx<'v, 'a> {
         eval_args: &[hir::ExprId],
         bindings: &[hir::CallBinding],
     ) -> Result<String, A2xReject> {
+        if let Some(op) = self.view.age_widget_http_op(target) {
+            if !self.widget_http {
+                return Err(A2xReject::unsupported_expr(
+                    "widget HTTP requires the suspending widget host",
+                ));
+            }
+            return match (op.symbol, eval_args) {
+                ("auto.http.get-json.v1", [url]) => {
+                    let url = self.lower_expr(*url)?;
+                    Ok(format!("a2x_json_parse((yield a2x_str_utf8({url})))"))
+                }
+                ("auto.http.post-json.v1", [url, json]) => {
+                    let url = self.lower_expr(*url)?;
+                    let json = self.lower_expr(*json)?;
+                    Ok(format!("a2x_str_to_owned(a2x_str_lit((yield {{ url: a2x_str_utf8({url}), json: a2x_str_utf8({json}) }})))"))
+                }
+                _ => Err(A2xReject::new("a2x.internal", "invalid widget HTTP call")),
+            };
+        }
+        if self.lang == ScriptLang::JavaScript {
+            if let Some(op) = self.view.age_json_op(target) {
+                let helper = match op.symbol {
+                    "auto.json.parse.v1" => "a2x_json_parse",
+                    "auto.json.stringify.v1" => "a2x_json_stringify",
+                    "auto.json.number-f32.v1" => "a2x_json_number_f32",
+                    _ => return Err(A2xReject::unsupported_expr(op.symbol)),
+                };
+                let [arg] = eval_args else {
+                    return Err(A2xReject::new("a2x.internal", "invalid JSON argument count"));
+                };
+                let arg = self.lower_expr(*arg)?;
+                return Ok(format!("{helper}({arg})"));
+            }
+        }
         // 1) trace marks
         if let Some(sym) = self.view.trace_symbol(target) {
             let suffix = if sym == "hir.test.mark_a" { "a" } else { "b" };
@@ -1166,6 +1237,16 @@ impl<'v, 'a> Cx<'v, 'a> {
             }
             let args = place_args(&slots, bindings, 3);
             return Ok(format!("a2x_str_find({})", args.join(", ")));
+        }
+        if self.view.text_scan_symbol(target) == Some("__ace_text_lower") {
+            let [text] = eval_args else {
+                return Err(A2xReject::new(
+                    "a2x.internal",
+                    "invalid lowercase argument count",
+                ));
+            };
+            let text = self.lower_expr(*text)?;
+            return Ok(format!("a2x_str_lower({text})"));
         }
         let view = self.view;
         if view.is_age_package() && self.lang == ScriptLang::JavaScript {
@@ -1254,7 +1335,17 @@ impl<'v, 'a> Cx<'v, 'a> {
             slots.push(self.lower_expr(*a)?);
         }
         let args = place_args(&slots, bindings, f.params.len());
-        Ok(format!("{}({})", name_of(&f), args.join(", ")))
+        let delegation = if self.view.age_http_suspends(target) {
+            if !self.widget_http {
+                return Err(A2xReject::unsupported_expr(
+                    "widget HTTP requires the suspending widget host",
+                ));
+            }
+            "yield* "
+        } else {
+            ""
+        };
+        Ok(format!("{delegation}{}({})", name_of(&f), args.join(", ")))
     }
 
     fn resolve_stdlib_port_id(&self, target: usize) -> Option<String> {
@@ -1398,6 +1489,7 @@ pub(crate) fn prepare_body_cx<'v, 'a>(
         view,
         facts,
         family,
+        widget_http: false,
         local_names: HashMap::new(),
         local_tys: HashMap::new(),
         owned_locals: BTreeSet::new(),
@@ -1514,12 +1606,23 @@ pub(crate) fn lower_single_fn(
     facts: &FnFacts<'_>,
     family: LowerFamily,
 ) -> Result<ScriptFn, A2xReject> {
+    lower_single_fn_in_host(lang, view, facts, family, false)
+}
+
+pub(crate) fn lower_single_fn_in_host(
+    lang: ScriptLang,
+    view: &SemanticView<'_>,
+    facts: &FnFacts<'_>,
+    family: LowerFamily,
+    widget_http: bool,
+) -> Result<ScriptFn, A2xReject> {
     let body = facts.body;
     let BodyCx {
         mut cx,
         params,
         has_env,
     } = prepare_body_cx(lang, view, facts, family, true)?;
+    cx.widget_http = widget_http && view.age_http_suspends(facts.def_index);
 
     let has_cleanup = !cx.owned_locals.is_empty();
     if has_cleanup {

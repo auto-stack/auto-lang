@@ -219,7 +219,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         r-super3 { literal: "super3" }
         r-super4 { literal: "super4" }
         r-tag { literal: "tag" }
-        r-take(profiles: [core, scalar, text, record, record-instances, text-record-instances, text-record, config-document, age-h0, age-component, entry-unit, host-console, collections, closures, numeric, aggregates, scheduler, scalar-instances, scalar-modules, packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, scalar-ct]) { literal: "take" }
+        r-take(profiles: [core, scalar, text, record, record-instances, text-record-instances, text-record, config-document, age-h0, entry-unit, host-console, collections, closures, numeric, aggregates, scheduler, scalar-instances, scalar-modules, packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, scalar-ct]) { literal: "take" }
         r-task { literal: "task" }
         r-to { literal: "to" }
         r-try { literal: "try" }
@@ -266,11 +266,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `|` 单独出现仍落 vbar。
         pipegt(profiles: [auto, auto-packages]) { literal: "|>" }
         vbar(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { literal: "|" }
+        age-line-text(profiles: [age-component, age-package]) { line-text: "|", close: "}" }
         caret(profiles: [numeric, aggregates, auto, scheduler, packages-aggregates-ct, auto-packages]) { literal: "^" }
         tilde(profiles: [aggregates, auto, scheduler, auto-packages]) { literal: "~" }
         bang { literal: "!" }
         dotquestion(profiles: [aggregates, auto, scheduler, auto-packages]) { literal: ".?" }
-        questionquestion(profiles: [aggregates, auto, scheduler, auto-packages]) { literal: "??" }
+        questionquestion(profiles: [aggregates, auto, scheduler, auto-packages, age-component, age-package]) { literal: "??" }
         dot { literal: "." }
         question { literal: "?" }
         arrow { literal: "->" }
@@ -332,8 +333,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         name(age-timer-head) { spelling: "timer", token: "ident", role: "timer", profiles: [age-component, age-package] }
         name(age-ui-namespace) { spelling: "ui", token: "ident", role: "ui", profiles: [age-package] }
         name(age-ui-focus) { spelling: "focus", token: "ident", role: "focus", profiles: [age-package] }
-        name(age-package-import-kind) { spelling: "package", token: "ident", role: "package", profiles: [age-package] }
-        name(age-package-import-from) { spelling: "from", token: "ident", role: "from", profiles: [age-package] }
+        name(age-package-import-kind) { spelling: "package", token: "ident", role: "package", profiles: [age-component, age-package] }
+        name(age-package-import-from) { spelling: "from", token: "ident", role: "from", profiles: [age-component, age-package] }
         // PLAN-968: `on { ... }` message-handler head inside a `task`
         // declaration (contextual `on` — not a reserved word).
         name(task-on-head) { spelling: "on", token: "ident", role: "on", profiles: [scheduler, auto] }
@@ -631,7 +632,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-component, age-package]) { age-watch-member() {} }
             alt(profiles: [age-component, age-package]) { age-timer-member() {} }
             alt(profiles: [age-package]) { age-scoped-style-member() {} }
-            alt(profiles: [age-package]) { age-package-use-member() {} }
+            // PLAN-117（U05 029 真语料）：应用面（age-component）的 widget
+            // 体同样嵌入包子组件（`use { package: asset_browser … }` + view
+            // 里的组件实例）——与包面同一声明/投影规则。
+            alt(profiles: [age-component, age-package]) { age-package-use-member() {} }
         }
         age-scoped-style-member(profiles: [age-package]) {
             name(of: "style-head") {}
@@ -667,13 +671,13 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { gt() {} }
             alt { bang() {} }
         }
-        age-package-use-member(profiles: [age-package], expect: "a `use { package: <name> from \"directory\" }` component import") {
+        age-package-use-member(profiles: [age-component, age-package], expect: "a `use { package: <name> from \"directory\" }` component import") {
             r-use() {}
             lbrace(same-line: true) {}
             list-nl { age-package-use-entry() {} }
             rbrace() {}
         }
-        age-package-use-entry(profiles: [age-package]) {
+        age-package-use-entry(profiles: [age-component, age-package]) {
             name(of: "age-package-import-kind") {}
             colon() {}
             ident(field: "package") {}
@@ -688,7 +692,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             name(of: "age-msg-head", field: "head") {}
             opt { ident(field: "msg_name") {} }
             lbrace(same-line: true) {}
-            opt { age-msg-variants() {} }
+            list-nl { age-msg-variants() {} }
             rbrace() {}
         }
         age-msg-variants(profiles: [age-component, age-package]) {
@@ -801,14 +805,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-view-assign-stmt() {} }
             alt(profiles: [age-package]) { age-on-assign() {} }
             alt(profiles: [age-package]) { age-on-var() {} }
+            // PLAN-117（U05 029 真语料）：索引赋值（`used[best] = true`）须先于
+            // 表达式语句（view-call）尝试——否则 `used[best]` 被当普通表达式
+            // 语句消费，`= true` 剩为下一语句而失败（PEG 首个成功即停）。
+            alt(profiles: [age-component, age-package]) { age-on-index-set() {} }
             alt(profiles: [age-component]) { age-view-call-stmt() {} }
             alt { age-on-let() {} }
             alt(profiles: [age-package]) { age-on-message() {} }
             alt(profiles: [age-package]) { age-on-focus() {} }
             alt { age-on-if() {} }
             alt(profiles: [age-package]) { age-on-for() {} }
-            alt(profiles: [age-package]) { age-on-while() {} }
-            alt(profiles: [age-package]) { age-on-index-set() {} }
+            alt(profiles: [age-component, age-package]) { age-on-while() {} }
             alt(profiles: [age-package]) { age-on-push() {} }
             alt(profiles: [age-package]) { age-on-pop() {} }
             alt(profiles: [age-component]) { age-component-on-for() {} }
@@ -820,6 +827,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt { age-view-if-stmt() {} }
             // Package hosts project call syntax before admitting a supported host command.
             alt(profiles: [age-package]) { age-view-call-stmt() {} }
+            // PLAN-117（U05 029 真语料）：widget 形 handler 体同样承载
+            // `try { … } catch { … }`（与直接形 age-on-stmt 同一条规则）。
+            alt(profiles: [age-component, age-package]) { age-on-try() {} }
         }
         age-on-handler-params(profiles: [age-component, age-package]) {
             lparen(same-line: true) {}
@@ -1244,10 +1254,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-package]) { age-on-for() {} }
             alt(profiles: [age-component]) { age-component-on-for() {} }
             alt { age-on-for-cond() {} }
-            alt(profiles: [age-package]) { age-on-while() {} }
-            alt(profiles: [age-package]) { age-on-index-set() {} }
+            alt(profiles: [age-component, age-package]) { age-on-while() {} }
+            alt(profiles: [age-component, age-package]) { age-on-index-set() {} }
             alt(profiles: [age-package]) { age-on-push() {} }
             alt(profiles: [age-package]) { age-on-pop() {} }
+            // PLAN-117（U05 029 真语料）：handler 顶层 `try { … } catch { … }`
+            // ——组件的宿主/解析类失败恢复（json.parse 坏串、Http 未就绪）。
+            // 体语句复用分支面（与 if/while 同集），catch 体同形。
+            alt(profiles: [age-component, age-package]) { age-on-try() {} }
         }
         // PLAN-105 T-02（U03 真语料 012）：裸名赋值也支持**复合算子**
         // （`civil_y += 1`——日历换算段），与 `.field +=` 同形脱糖为二元。
@@ -1293,11 +1307,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         age-on-message(profiles: [age-package], expect: "a widget message `.Name(arguments)`") {
             dot() {}
-            ident(field: "message") {}
+            age-on-message-name(field: "message") {}
             lparen(same-line: true) {}
             opt { age-on-message-args(field: "args") {} }
             rparen() {}
             opt { age-stmt-semi() {} }
+        }
+        // PLAN-117（U05 031/029 真语料）：`."viewRequested"(…)` /
+        // `."error"(…)` 带引号消息名派发（msg 声明侧已有 str-lit 名）。
+        age-on-message-name(profiles: [age-package]) {
+            alt { ident(field: "message") {} }
+            alt { str-lit(field: "message") {} }
         }
         age-on-message-args(profiles: [age-package]) {
             pratt(of: "wide-ops", field: "value") {}
@@ -1356,13 +1376,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-package]) { age-on-focus() {} }
             alt { age-on-if() {} }
             alt(profiles: [age-package]) { age-on-for() {} }
-            alt(profiles: [age-package]) { age-on-while() {} }
-            alt(profiles: [age-package]) { age-on-index-set() {} }
+            alt(profiles: [age-component, age-package]) { age-on-while() {} }
+            alt(profiles: [age-component, age-package]) { age-on-index-set() {} }
             alt(profiles: [age-package]) { age-on-push() {} }
             alt(profiles: [age-package]) { age-on-pop() {} }
             alt(profiles: [age-component]) { age-component-on-for() {} }
             alt { age-on-for-cond() {} }
             alt { age-view-call-stmt() {} }
+            alt(profiles: [age-component, age-package]) { age-on-try() {} }
         }
         age-on-for(profiles: [age-package]) {
             for(field: "kw") {}
@@ -1373,20 +1394,42 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             list-nl { age-on-branch-stmt() {} }
             rbrace() {}
         }
-        age-on-while(profiles: [age-package]) {
+        age-on-while(profiles: [age-component, age-package]) {
             while(field: "kw") {}
             if-cond(field: "cond") {}
             lbrace(same-line: true) {}
             list-nl { age-on-branch-stmt() {} }
             rbrace() {}
         }
-        age-on-index-set(profiles: [age-package]) {
+        // PLAN-117（U05 029 真语料）：`try { <stmts> } catch { <stmts> }`
+        // handler 语句。try/catch 体均用分支面（与 if/while 同集：赋值/
+        // let/if/for/while/调用/推送——029 的 try 体内即这些形态）。
+        age-on-try(profiles: [age-component, age-package], expect: "an `on` handler `try { … } catch { … }`") {
+            r-try(field: "kw")
+            lbrace(same-line: true) {}
+            list-nl { age-on-branch-stmt() {} }
+            rbrace() {}
+            r-catch(field: "catch")
+            lbrace(same-line: true) {}
+            list-nl { age-on-branch-stmt() {} }
+            rbrace() {}
+        }
+        age-on-index-set(profiles: [age-component, age-package]) {
+            // PLAN-117（U05 029 真语料）：`.photos[i].fav = v`——点前缀 +
+            // 索引 + 字段尾的赋值（List 元素字段写）。receiver 前可有点前缀，
+            // 索引后可有 `.field` 尾（元素字段更新，多步 opt 归子规则）。
+            opt { dot(field: "dot") {} }
             ident(field: "receiver") {}
             lbracket(same-line: true) {}
             expr(field: "index") {}
             rbracket() {}
+            opt { age-index-field-tail() {} }
             assign() {}
             pratt(of: "wide-ops", field: "value") {}
+        }
+        age-index-field-tail(profiles: [age-component, age-package]) {
+            dot(same-line: true) {}
+            ident(field: "field")
         }
         age-on-push(profiles: [age-package]) {
             opt { dot(field: "model") {} }
@@ -1421,7 +1464,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `for <x> in <expr>` 由第二个 token 区分（ident `in` vs 表达式）。
         age-on-for-cond(profiles: [age-component, age-package], expect: "a handler-level `for <condition> { … }` loop") {
             for(field: "kw") {}
-            pratt(of: "wide-ops", field: "cond") {}
+            if-cond(field: "cond") {}
             lbrace(same-line: true) {}
             list-nl { age-on-branch-stmt() {} }
             rbrace() {}
@@ -1537,6 +1580,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-981（IF-981-REF）：节点实例引用只在包面存在。
             alt(profiles: [age-package]) { age-node-ref() {} }
             alt { age-view-entry() {} }
+            alt { age-text-line() {} }
             alt { age-text-literal-props() {} }
             alt { age-text-item() {} }
             alt { age-text-props() {} }
@@ -1566,6 +1610,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-view-else(profiles: [age-component, age-package]) {
             alt { else(field: "kw") age-view-if(field: "chain") }
             alt { else(field: "kw") age-view-if-then(field: "items") }
+        }
+        age-text-line(profiles: [age-component, age-package]) {
+            name(of: "age-text-head", field: "component")
+            age-line-text(same-line: true, field: "text")
         }
         // A literal followed by parentheses introduces view attributes, so this
         // form must be tried before Pratt can consume them as a call.
@@ -1614,6 +1662,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // as keys. Their keyword meaning outside the view is unchanged.
             alt { for(field: "base") {} }
             alt { r-to(field: "base") {} }
+            alt { loop(field: "base") {} }
             alt {
                 ident(field: "base") {}
                 // PLAN-105 T-02（U03 真语料 012）：连字符键（SVG 属性
@@ -3274,7 +3323,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         for-cond-stmt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates, auto, scheduler, packages-aggregates-ct, age-package, config-document, auto-packages]) {
             for(field: "kw")
             condition-expr(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, closures, aggregates, auto, scheduler, age-package, packages-modules, config-document, auto-packages], field: "cond")
-            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-ct, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package], field: "cond")
+            expr(profiles: [core, scalar, scalar-instances, scalar-ct, text, entry-unit, host-console, scalar-modules, packages-ct, numeric, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct], field: "cond")
             block(field: "body")
         }
         // AAC composes profiles that each contribute a condition form. Use
@@ -3479,6 +3528,11 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // (scheduler face only; operand anchored to the same line).
             alt(profiles: [scheduler, auto]) { r-await() {} expr(field: "operand", same-line: true) }
             alt(profiles: [scheduler, auto]) { r-go() {} expr(field: "operand", same-line: true) }
+            // PLAN-117（U05 029 真语料）：age-package 的表达式面接受 if 表达式
+            // 操作数（computed 值 `c => if … { } else { }`、handler RHS 等）——
+            // `=>` 后引用表达式规则受 CST 邻接缺陷限制，走 wide-ops pratt
+            // primary 内联 alt（与 design 值同语义）。
+            alt(profiles: [age-package]) { age-if-expr() {} }
             alt { postfix-expr() {} }
         }
         postfix-expr {
@@ -3620,7 +3674,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
             alt(profiles: [auto, auto-packages]) { if-value() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
-            alt { condition-ctor() {} }
+            // PLAN-117（U05 029 真语料）：条件 primary 同样移除记录构造
+            //（age-component 应用面）——`for i < n_all { … }` 的 RHS ident 后
+            // 接块体 `{` 被 condition-ctor 误判（与 atom-expr 同因）。
+            alt(profiles: [record, record-instances, text-record, age-h0, text-record-instances, collections, closures, aggregates, auto, scheduler, age-package, packages-modules, config-document, auto-packages]) { condition-ctor() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
@@ -3640,6 +3697,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [aggregates, auto, scheduler, age-package, auto-packages]) { tuple-lit() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, auto, scheduler, age-package, config-document, auto-packages]) { leading-dot() {} }
             alt(profiles: [age-package]) { age-leading-type() {} }
+            // PLAN-117（U05 029 真语料）：`if saved != null { … }`——条件
+            // primary 同样承载 nil/null 字面量（与 atom-expr 同款）。
+            alt(profiles: [age-component, age-package]) { nil-lit() {} }
             alt { str-lit(field: "lit") }
             alt { char-lit(field: "lit") }
             alt { affix-num(field: "lit") }
@@ -3670,12 +3730,17 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 原子以 `{` 起始（语句位块由语句规则承担），表达式位 `{` 即对象。
             alt(profiles: [aggregates, auto, closures, scheduler, age-component, age-package, config-document, auto-packages]) { object-lit() {} }
             // PLAN-964（L-21）：nil 字面量（r-nil/r-null，PLAN-053 统一）。
-            alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) { nil-lit() {} }
+            // PLAN-117（U05 029 真语料）：`saved != null` 等 handler RHS——
+            // AGE 作者面同样承载 nil/null 字面量。
+            alt(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages, age-component, age-package]) { nil-lit() {} }
             alt(profiles: [aggregates, auto, scheduler, auto-packages]) { is-expr() {} }
             alt(profiles: [auto, auto-packages]) { if-value() {} }
             alt(profiles: [scalar-modules]) { qualified-name() {} }
             alt(profiles: [record, record-instances, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { typed-ctor-expr() {} }
-            alt(profiles: [collections, closures, record, record-instances, text-record, age-h0, age-component, text-record-instances, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { ctor-expr() {} }
+            // In component expressions, require named fields before treating
+            // braces as a constructor. A bare name can still precede a block.
+            alt(profiles: [age-component]) { condition-ctor() {} }
+            alt(profiles: [collections, closures, record, record-instances, text-record, age-h0, text-record-instances, packages-modules, packages-ct, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) { ctor-expr() {} }
             // PLAN-928（T-03）：`List<T>.member` 接收位（尾随 dot 成员使提交
             // 条件镜像旧 generic_scan_commits——平衡 `<...>` 后随 `.`；普通
             // `a < b` 比较在本备选失败后回退 ident + 二元 `<`）。
@@ -3865,7 +3930,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             int-lit(field: "magnitude", same-line: true)
         }
         // PLAN-964（L-21）：nil 字面量（nil/null 统一，PLAN-053）。
-        nil-lit(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages]) {
+        nil-lit(profiles: [aggregates, auto, closures, scheduler, config-document, auto-packages, age-component, age-package]) {
             alt { r-nil(same-line: true, field: "kw") }
             alt { r-null(same-line: true, field: "kw") }
         }
@@ -4026,6 +4091,8 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         primary: "condition-unary"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
+        // PLAN-117（U05 029 真语料）：`??` 空值合并（条件面同 wide-ops 口径）。
+        op(profiles: [age-component, age-package], binding: 3, assoc: "right") { of: "??" }
         op(binding: 3, assoc: "left") { of: "==" }
         op(binding: 3, assoc: "left") { of: "!=" }
         op(binding: 4, assoc: "left") { of: "<" }
@@ -4081,6 +4148,10 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         primary: "unary-expr"
         op(binding: 1, assoc: "left") { of: "||" }
         op(binding: 2, assoc: "left") { of: "&&" }
+        // PLAN-117（U05 029 真语料）：`??` 空值合并（`q.id ?? ""` 等 handler/
+        // computed RHS）——与 aggregates-ops 同语义（right-assoc；== 同级
+        // 共存：作者面不出现 `==`/`??` 混用链）。
+        op(profiles: [age-component, age-package], binding: 3, assoc: "right") { of: "??" }
         op(binding: 3, assoc: "left") { of: "==" }
         op(binding: 3, assoc: "left") { of: "!=" }
         op(binding: 4, assoc: "left") { of: "<" }

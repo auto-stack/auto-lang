@@ -73,6 +73,7 @@ impl AdapterError {
 /// anything deeper reaching this adapter is a hand-made bundle.
 const MAX_EXPR_DEPTH: u32 = 512;
 
+
 /// PLAN-881: the MIR-level name of a type-bound method —
 /// `m.<RecordName>.<MethodName>`, derived from the NOMINAL owner, never
 /// from the def-table position (the HIR def id `d_f<fi>_<name>` is
@@ -677,7 +678,7 @@ fn lower_checked_collection_family(
                 // call sites emit their MIR directly; no CalleeRef.
                 if auto_language && ace_core::source::adapter::text_scan_signature(symbol).is_some()
                 {
-                    let cap = if symbol == "__ace_text_upper" {
+                    let cap = if matches!(symbol.as_str(), "__ace_text_upper" | "__ace_text_lower") {
                         ace_av_core::contract::TEXT_CASE_CAPABILITY
                     } else {
                         ace_av_core::contract::TEXT_SCAN_CAPABILITY
@@ -690,7 +691,10 @@ fn lower_checked_collection_family(
                 if symbol == "__py_f64_bits" || symbol == "__py_staged_text" {
                     continue;
                 }
-                if auto_language
+                // PLAN-117（round-35）：`module.global.` cell 访问器在
+                // collections 域同样放行——AGE 场景道的状态函数读全局 cell
+                //（与 owned 面 PLAN-960 同一逻辑导入机制）。
+                if (auto_language || !closures_profile)
                     && (symbol.starts_with("module.global.")
                         || matches!(symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b"))
                 {
@@ -705,6 +709,44 @@ fn lower_checked_collection_family(
                         env: None,
                     });
                     def_map.insert(di as u32, CalleeRef::Import(idx));
+                } else if ace_av_core::http_client::is_http_symbol(symbol) {
+                    // PLAN-117（round-35 ②）：PLAN-1106 增量入口把 handler 体
+                    // 内联进场景 state fn——http 效应随体进入 collections
+                    // 车道。准入 = http 目录声明（与 owned 面同一 admission
+                    // 表）；执行语义由调用侧 http 车道持有（collections
+                    // 车道无 provider 时按既有 938 不变式具名 fail-closed）。
+                    let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                    let h = ace_av_core::http_client::declaration(symbol, sig)
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
+                    out.imports.push(MirImport {
+                        symbol: symbol.clone(),
+                        effect: Effect::Observable,
+                        sig,
+                        env: None,
+                    });
+                    if !out.capabilities.iter().any(|value| value == "http.client/1") {
+                        out.capabilities.push("http.client/1".into());
+                    }
+                } else if ace_av_core::json_value::is_json_symbol(symbol) {
+                    // PLAN-117（round-35 ②）：json 值原语随内联体进入
+                    // collections 车道——同 http：目录声明 + PlatformCall
+                    // 归入 json 族 host imports（线族门已按 json 族放行）。
+                    let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
+                    let h = ace_av_core::json_value::declaration(symbol, sig)
+                        .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                    out.host_imports.push(h);
+                    def_map.insert(di as u32, CalleeRef::Import(out.imports.len() as u32));
+                    out.imports.push(MirImport {
+                        symbol: symbol.clone(),
+                        effect: Effect::Observable,
+                        sig,
+                        env: None,
+                    });
+                    if !out.capabilities.iter().any(|value| value == "json.value/1") {
+                        out.capabilities.push("json.value/1".into());
+                    }
                 } else if symbol.starts_with("__sched_") {
                     let sig = collections_fn_sig_for_def(module, di as u32, *ty, &mut out)?;
                     let idx = out.intern_import(MirImport {
@@ -748,7 +790,9 @@ fn lower_checked_collection_family(
                 } else {
                     return Err(AdapterError::uns(
                         "lower.intrinsic",
-                        "intrinsics are outside the av.collections/1 surface".to_string(),
+                        format!(
+                            "intrinsics are outside the av.collections/1 surface: {symbol}"
+                        ),
                     ));
                 }
             }
@@ -1556,7 +1600,14 @@ fn lower_checked_owned_module(
     // MIR 验证的 entry-sig（`ac.runtime.text.v1` + 全 `StrView` 形参）与 AV 根帧
     // 准入共同持有；选一个不存在/形状不符的 fn ⇒ 下游具名拒绝。
     match checked.domain() {
-        hir::HirDomain::TextRecord | hir::HirDomain::Text | hir::HirDomain::HostConsole => {}
+        hir::HirDomain::TextRecord
+        | hir::HirDomain::Text
+        | hir::HirDomain::HostConsole
+        // PLAN-117（round-26）：组件**事件道**的 collections 域文档（view-data
+        // 初值 `[]` 物化 + 集合方法面的 029 真形）同走 av.owned 降落——LIST_*
+        // 指令的 owned-profile 准入由 mir_verify 的 collections/json 面门与
+        // wire 的类型标签门持有（逐层放行，非本层把守）。
+        | hir::HirDomain::Collections => {}
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
@@ -1592,6 +1643,15 @@ fn lower_checked_owned_module(
         MirModule::new_owned(owner)
     };
     out.capabilities = checked.required_capabilities().to_vec();
+    // PLAN-117（round-26）：collections 域事件文档盖**元素视图面标记**——
+    // LIST_* 表达式臂与线族 List 类型标签的 owned-profile 准入门按它放行
+    // （复用 PLAN-105 既有标记：同一语义=AGE 组件面集合形状在 owned 车道；
+    // mir_verify 已知集已含它）。
+    if checked.domain() == hir::HirDomain::Collections
+        && !out.capabilities.iter().any(|c| c == AGE_ELEM_VIEW_CAPABILITY)
+    {
+        out.capabilities.push(AGE_ELEM_VIEW_CAPABILITY.to_string());
+    }
 
     let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
     let mut fn_order: Vec<(u32, hir::TypeId, hir::BodyId, String)> = Vec::new();
@@ -1654,6 +1714,16 @@ fn lower_checked_owned_module(
             {
                 let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
                 let h = ace_av_core::http_client::declaration(symbol, sig)
+                    .map_err(|e| AdapterError::inv(e.code, e.message))?;
+                out.host_imports.push(h);
+            }
+            // PLAN-117（B-05 S1b）：json 值原语声明（类别/签名/预算由 av-core
+            // json_value 目录给出；调用点走 PlatformCall，与 config 同通道）。
+            hir::DefKind::Intrinsic { symbol, ty, .. }
+                if ace_av_core::json_value::is_json_symbol(symbol) =>
+            {
+                let sig = owned_fn_sig_for_def(module, di as u32, *ty, &mut out, &BTreeMap::new())?;
+                let h = ace_av_core::json_value::declaration(symbol, sig)
                     .map_err(|e| AdapterError::inv(e.code, e.message))?;
                 out.host_imports.push(h);
             }
@@ -3300,14 +3370,23 @@ fn owned_type_idx_of(
                     || m.defs.iter().any(|d| {
                         matches!(&d.kind, hir::DefKind::Intrinsic { symbol, .. }
                             if symbol.starts_with("auto.console."))
-                    }) =>
+                    })
+                    // PLAN-117（round-26）：元素视图面（collections 域事件道）——
+                    // 数组字面量的 ListPush 效果位是 Unit（collections 面
+                    // 同约定：效果语句无槽位）。
+                    || out
+                        .capabilities
+                        .iter()
+                        .any(|c| c == ace_av_core::contract::AGE_ELEM_VIEW_CAPABILITY) =>
             {
                 Ok(out.intern_type(MirType::Unit))
             }
-            hir::BuiltinType::Unit => Err(AdapterError::uns(
-                "lower.type-use",
-                "the unit result type belongs to the av.entry-unit/1 profile".to_string(),
-            )),
+            hir::BuiltinType::Unit => {
+                Err(AdapterError::uns(
+                    "lower.type-use",
+                    "the unit result type belongs to the av.entry-unit/1 profile".to_string(),
+                ))
+            }
         },
         hir::TypeUse::Ref(tid) => {
             if let Some(idx) = memo.get(tid) {
@@ -3366,6 +3445,35 @@ fn owned_type_idx_of(
                         },
                         Err,
                     )
+                }
+                // PLAN-117（B-05 S1b）：动态值词表（PLAN-964/824）在 AGE 事件
+                // 程序道放行——json.parse 链（Dyn 结果/Object coerce/Nil 判定/
+                // Object 装载）。静态规则仍由共享 verify 持有。
+                hir::TypeKind::Dyn => Ok(out.intern_type(MirType::Dyn)),
+                hir::TypeKind::Nil => Ok(out.intern_type(MirType::Nil)),
+                hir::TypeKind::Object { elem } => {
+                    let e = owned_type_idx_of(elem, m, out, memo, visiting)?;
+                    Ok(out.intern_type(MirType::Object { elem: e }))
+                }
+                // PLAN-117（round-26）：collections 域事件文档的 List 类型表
+                // 条目（view-data 初值 `[]` 物化 = List(Dyn)；与 collections
+                // mapper 同律——plain `str` 元素位落 owned Str）。
+                hir::TypeKind::List { elem } => {
+                    let plain_str_elem = match elem {
+                        hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => true,
+                        hir::TypeUse::Ref(tid) => matches!(
+                            m.types.get(tid.0 as usize).map(|t| &t.kind),
+                            Some(hir::TypeKind::Str)
+                        ),
+                        _ => false,
+                    };
+                    let e = owned_type_idx_of(elem, m, out, memo, visiting)?;
+                    let e = if plain_str_elem {
+                        out.intern_type(MirType::Str)
+                    } else {
+                        e
+                    };
+                    Ok(out.intern_type(MirType::List(ListTypeRef { elem: e })))
                 }
                 other => Err(AdapterError::uns(
                     "lower.type-use",
@@ -3736,6 +3844,26 @@ impl<'a, 'budget> FnLower<'a, 'budget> {
 
     /// PLAN-864: whether this lowering targets the av.collections/1
     /// profile (the module profile is the flag — no signature threading).
+    /// PLAN-117（B-05 S1b）：checked 域 JSON 值面——模块要求 `json.value/1`
+    /// 时放行动态值表达式臂（DynCast/NilLit/ObjectCtor/Get/Set；与
+    /// collections 道同一 MIR 指令族，profile 准入由 mir_verify 的
+    /// dynamic_values()/json 能力臂持有）。
+    fn json_values(&self) -> bool {
+        self.out
+            .capabilities
+            .iter()
+            .any(|c| c == ace_av_core::json_value::CATEGORY)
+    }
+
+    /// PLAN-117（round-26）：collections 域事件道（元素视图面标记盖戳）——
+    /// LIST_* 表达式臂的 owned-profile 准入门。
+    fn collections_event(&self) -> bool {
+        self.out
+            .capabilities
+            .iter()
+            .any(|c| c == AGE_ELEM_VIEW_CAPABILITY)
+    }
+
     fn collections(&self) -> bool {
         // PLAN-105 T-02（U03 真语料 016）：TEXT_DISPLAY 在 data/owned 模块的
         // ABC 准入里本就允许（`abc.rs` `family.allows_data_tags()`），此前只在
@@ -4338,6 +4466,7 @@ k 0
                 | MirInstr::ListGet { .. }
                 | MirInstr::ListPlace { .. }
                 | MirInstr::ForeignCall { .. }
+                | MirInstr::HttpCall { .. }
                 | MirInstr::SchedAwait { .. }
         );
         let result = instr.def_slot();
@@ -5039,6 +5168,9 @@ k 0
                                 [Some(view)] if symbol == "__ace_text_upper" => {
                                     MirInstr::StrUpper { dst, view: *view }
                                 }
+                                [Some(view)] if symbol == "__ace_text_lower" => {
+                                    MirInstr::StrLower { dst, view: *view }
+                                }
                                 _ => {
                                     return Err(AdapterError::inv(
                                         "text.scan-signature",
@@ -5223,12 +5355,20 @@ k 0
                         hir::DefKind::Intrinsic { symbol, .. }
                             if ace_av_core::http_client::is_http_symbol(symbol)
                     );
+                    // PLAN-117（B-05 S1b）：json 值原语 callee 走 host-import
+                    // 路径（PlatformCall 发射，见下）。
+                    let json_callee = matches!(
+                        &self.hir_module.defs[callee.0 as usize].kind,
+                        hir::DefKind::Intrinsic { symbol, .. }
+                            if ace_av_core::json_value::is_json_symbol(symbol)
+                    );
                     if self.out.is_host_console_profile()
                         || sched_module
                         || platform_callee
                         || config_callee
                         || console_callee
                         || http_callee
+                        || json_callee
                         // PLAN-1026: the py lane — console/py intrinsics in
                         // a foreign-carrying closures module.
                         || self
@@ -5291,7 +5431,8 @@ k 0
                             }
                             if !(symbol.starts_with("auto.console.")
                                 || symbol.starts_with("auto.platform.")
-                                || ace_av_core::config_document::is_config_symbol(symbol))
+                                || ace_av_core::config_document::is_config_symbol(symbol)
+                                || ace_av_core::json_value::is_json_symbol(symbol))
                             {
                                 // fall through to the generic call path
                             } else {
@@ -5310,6 +5451,20 @@ k 0
                                     || ace_av_core::config_document::is_config_symbol(symbol)
                                 {
                                     let dst = self.temp_ty(self.t_i32)?;
+                                    self.emit(
+                                        MirInstr::PlatformCall {
+                                            dst,
+                                            host,
+                                            args: arg_slots.clone(),
+                                        },
+                                        sp,
+                                    )?;
+                                    return Ok(dst);
+                                }
+                                // PLAN-117（B-05 S1b）：json 值原语 PlatformCall——
+                                // dst 按声明的结果类型（parse → Dyn 槽）。
+                                if ace_av_core::json_value::is_json_symbol(symbol) {
+                                    let dst = self.temp_ty(ty)?;
                                     self.emit(
                                         MirInstr::PlatformCall {
                                             dst,
@@ -6692,7 +6847,7 @@ k 0
                 Ok(dst)
             }
             // -- PLAN-864 collections surface ------------------------------
-            hir::ExprKind::ListNew { list } if self.collections() => {
+            hir::ExprKind::ListNew { list } if self.collections() || self.collections_event() => {
                 let ty = self.expr_ty(eid)?;
                 let dst = self.temp_ty(ty)?;
                 self.emit(
@@ -6705,13 +6860,13 @@ k 0
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::ListLen { list } if self.collections() => {
+            hir::ExprKind::ListLen { list } if self.collections() || self.collections_event() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
                 self.emit(MirInstr::ListLen { dst, src: l }, sp)?;
                 Ok(dst)
             }
-            hir::ExprKind::ListPush { list, value } if self.collections() => {
+            hir::ExprKind::ListPush { list, value } if self.collections() || self.collections_event() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;
                 // PLAN-105 W108：文本 concat 的积是 StrView（表达式位视图语义）；
@@ -6741,7 +6896,7 @@ k 0
             }
             hir::ExprKind::ListInsert { list, index, value }
             | hir::ExprKind::ListSet { list, index, value }
-                if self.collections() =>
+                if self.collections() || self.collections_event() =>
             {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
@@ -6771,7 +6926,7 @@ k 0
                 }
                 Ok(NO_SLOT)
             }
-            hir::ExprKind::ListGet { list, index } if self.collections() => {
+            hir::ExprKind::ListGet { list, index } if self.collections() || self.collections_event() => {
                 // PLAN-105 W108：**文本元素**的整元素读（视图位/owned 位）走
                 // LIST_FIELD_VIEW 空路径——元素类型取**列表的 MIR 实际元素**
                 //（W108 的元素位映射落 owned Str），不用 elem_vt_of（表达式位
@@ -6853,7 +7008,7 @@ k 0
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::ListRemove { list, index } if self.collections() => {
+            hir::ExprKind::ListRemove { list, index } if self.collections() || self.collections_event() => {
                 let l = self.eval_expr(*list, depth + 1)?;
                 let i = self.eval_expr(*index, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
@@ -6867,7 +7022,7 @@ k 0
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::ListClear { list } if self.collections() => {
+            hir::ExprKind::ListClear { list } if self.collections() || self.collections_event() => {
                 // `xs.clear()` — remove-from-tail loop (no LIST_CLEAR opcode
                 // exists in profile 4 and none is added): per round, re-read
                 // len; when > 0, remove(len-1) and (for owned elements)
@@ -7383,7 +7538,9 @@ k 0
             // -- PLAN-964 object/nil/FStr surface (av.dynamic/1 expansion) --
             // The nil literal is a zero-width value: materialize the Nil
             // const into a Nil-typed temp.
-            hir::ExprKind::DynCast { operand, test_nil } if self.collections() => {
+            hir::ExprKind::DynCast { operand, test_nil }
+                if self.collections() || self.json_values() =>
+            {
                 let src = self.eval_expr(*operand, depth + 1)?;
                 let dst = self.temp_ty(ty)?;
                 let instr = if *test_nil {
@@ -7398,7 +7555,7 @@ k 0
                 self.emit(instr, sp)?;
                 Ok(dst)
             }
-            hir::ExprKind::NilLit if self.collections() => {
+            hir::ExprKind::NilLit if self.collections() || self.json_values() => {
                 let dst = self.temp_ty(ty)?;
                 let c = self.out.intern_const(MirConst::Nil);
                 self.emit(MirInstr::Const { dst, value: c }, sp)?;
@@ -7406,7 +7563,7 @@ k 0
             }
             hir::ExprKind::ObjectCtor {
                 eval_args, keys, ..
-            } if self.collections() => {
+            } if self.collections() || self.json_values() => {
                 // Static keys become owned Str slots (the StrLit path);
                 // values evaluate in source order; the fresh cell lands in
                 // an Object-typed temp.
@@ -7440,7 +7597,9 @@ k 0
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::ObjectGet { base, key } if self.collections() => {
+            hir::ExprKind::ObjectGet { base, key }
+                if self.collections() || self.json_values() =>
+            {
                 let b = self.eval_expr(*base, depth + 1)?;
                 let k = self.eval_expr(*key, depth + 1)?;
                 // The expression's HIR type IS the object's elem (resolve
@@ -7457,7 +7616,9 @@ k 0
                 )?;
                 Ok(dst)
             }
-            hir::ExprKind::ObjectSet { base, key, value } if self.collections() => {
+            hir::ExprKind::ObjectSet { base, key, value }
+                if self.collections() || self.json_values() =>
+            {
                 let b = self.eval_expr(*base, depth + 1)?;
                 let k = self.eval_expr(*key, depth + 1)?;
                 let v = self.eval_expr(*value, depth + 1)?;

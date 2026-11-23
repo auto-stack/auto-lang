@@ -106,6 +106,24 @@ fn place_expr(e: &mut Expr, delta: SpanPlacement) {
         ExprKind::HashExpr { expr: inner } => place_expr(inner, delta),
         // PLAN-968: await/go spans shift with their operand.
         ExprKind::Await(inner) | ExprKind::Go(inner) => place_expr(inner, delta),
+        // PLAN-117（U05 029 真语料）：if 表达式各段 span 平移。
+        ExprKind::If {
+            cond,
+            then,
+            else_chain,
+            els,
+            ..
+        } => {
+            place_expr(cond, delta);
+            place_expr(then, delta);
+            for (c, t) in else_chain {
+                place_expr(c, delta);
+                place_expr(t, delta);
+            }
+            if let Some(e) = els {
+                place_expr(e, delta);
+            }
+        }
         // PLAN-962：范围界 span 平移。
         ExprKind::Range { start, end, .. } => {
             place_expr(start, delta);

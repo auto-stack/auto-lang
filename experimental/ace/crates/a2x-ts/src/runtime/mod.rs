@@ -69,6 +69,7 @@ pub const EXPORT_NAMES: &[&str] = &[
     "a2x_cast_f64",
     "a2x_cast_num",
     "a2x_cast_num_from_big",
+    "a2x_catch_failure",
     "a2x_char_from_codepoint",
     "a2x_char_to_codepoint",
     "a2x_check_i32",
@@ -109,6 +110,7 @@ pub const EXPORT_NAMES: &[&str] = &[
     "a2x_str_len",
     "a2x_str_len_bytes",
     "a2x_str_lit",
+    "a2x_str_lower",
     "a2x_str_ne",
     "a2x_str_slice",
     "a2x_str_utf8",
@@ -165,6 +167,7 @@ pub fn script_widget_runtime_body() -> String {
         out.push('\n');
     }
     out.push_str(include_str!("widget_scope.js"));
+    out.push_str(include_str!("widget_json.js"));
     out
 }
 

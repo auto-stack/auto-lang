@@ -8,8 +8,8 @@
 
 use super::age_h0::{domain_profile_refusal, text_diag, AgeTextLeaf, LegacyWidgetAlias, TextKind};
 use super::ast::{
-    AggArmBody, AggMatchArm, Arg, Block, Expr, ExprKind, FnItem, Ident, Item, MatchPattern,
-    Program, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
+    AggArmBody, AggMatchArm, Arg, Block, CatchClause, Expr, ExprKind, FnItem, Ident, Item,
+    MatchPattern, Program, Receiver, Stmt, TypeAnn, TypeRef, TypeWord,
 };
 use super::cst::{parse_domain_whole_module, FrontBudget, FrontOutcome};
 use super::SourceProfile;
@@ -110,6 +110,14 @@ pub enum ComponentStmt {
     },
     /// Request focus in this widget when the host publishes the frame.
     Focus { target: Expr, span: Span },
+    /// PLAN-117（U05 029 真语料）：`try { … } catch { … }`——宿主/解析类
+    /// 失败恢复（json.parse 坏串、Http 未就绪）。try 体语句失败时执行
+    /// catch 体；两体共用分支面（赋值/let/if/for/while/调用）。
+    Try {
+        body: Vec<ComponentStmt>,
+        catch: Vec<ComponentStmt>,
+        span: Span,
+    },
 }
 
 /// PLAN-980 WEB #6p（调用表达式形）：**通道调用**语句行——callee ∈ widget
@@ -195,7 +203,7 @@ fn specialize_legacy_vm_handlers(
             | ComponentStmt::While { span, .. } | ComponentStmt::Send { span, .. }
             | ComponentStmt::Focus { span, .. } | ComponentStmt::For { span, .. }
             | ComponentStmt::AssignLocal { span, .. } | ComponentStmt::Effect { span, .. }
-            | ComponentStmt::Call { span, .. } => *span,
+            | ComponentStmt::Call { span, .. } | ComponentStmt::Try { span, .. } => *span,
         }
     }
 
@@ -223,6 +231,10 @@ fn specialize_legacy_vm_handlers(
                     if let Some(branch) = els {
                         visit(branch, shadowed, inactive);
                     }
+                }
+                ComponentStmt::Try { body, catch, .. } => {
+                    visit(body, shadowed, inactive);
+                    visit(catch, shadowed, inactive);
                 }
                 _ => {}
             }
@@ -1075,6 +1087,10 @@ fn rewrite_store_stmts(
                 rewrite_store_expr(iter, map)?;
                 rewrite_store_stmts(body, map)?;
             }
+            ComponentStmt::Try { body, catch, .. } => {
+                rewrite_store_stmts(body, map)?;
+                rewrite_store_stmts(catch, map)?;
+            }
         }
     }
     Ok(())
@@ -1197,6 +1213,10 @@ fn subst_params_stmts(stmts: &mut [ComponentStmt], subs: &[(String, Expr)]) {
                 subst_params_expr(iter, subs);
                 subst_params_stmts(body, subs);
             }
+            ComponentStmt::Try { body, catch, .. } => {
+                subst_params_stmts(body, subs);
+                subst_params_stmts(catch, subs);
+            }
         }
     }
 }
@@ -1306,6 +1326,12 @@ fn inline_computed_expr(
             inline_computed_expr(base, computed, depth)?;
             inline_computed_expr(index, computed, depth)
         }
+        ExprKind::ObjectLit { fields } => {
+            for field in fields {
+                inline_computed_expr(&mut field.value, computed, depth)?;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -1343,6 +1369,10 @@ fn inline_computed_stmts(
             ComponentStmt::For { iter, body, .. } => {
                 inline_computed_expr(iter, computed, 0)?;
                 inline_computed_stmts(body, computed)?;
+            }
+            ComponentStmt::Try { body, catch, .. } => {
+                inline_computed_stmts(body, computed)?;
+                inline_computed_stmts(catch, computed)?;
             }
         }
     }
@@ -1383,14 +1413,29 @@ fn inline_computed_view_items(
     Ok(())
 }
 
-/// 把 node 的 `computed` 成员内联进文本叶/树/处理器（computed 不是字段）。
-pub(crate) fn inline_computed_members(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
-    let computed: Vec<(String, Expr)> = node
-        .members
+fn computed_expressions(members: &[ComponentMemberRow]) -> Vec<(String, Expr)> {
+    members
         .iter()
         .filter(|m| m.role == "computed")
         .filter_map(|m| m.value.clone().map(|v| (m.name.clone(), v)))
-        .collect();
+        .collect()
+}
+
+pub(super) fn inline_package_handler_computed_members(
+    node: &mut ComponentNode,
+) -> Result<(), Vec<Diagnostic>> {
+    let computed = computed_expressions(&node.members);
+    if !computed.is_empty() {
+        for handler in &mut node.handlers {
+            inline_computed_stmts(&mut handler.stmts, &computed)?;
+        }
+    }
+    Ok(())
+}
+
+/// 把 node 的 `computed` 成员内联进文本叶/树/处理器（computed 不是字段）。
+pub(crate) fn inline_computed_members(node: &mut ComponentNode) -> Result<(), Vec<Diagnostic>> {
+    let computed = computed_expressions(&node.members);
     if computed.is_empty() {
         return Ok(());
     }
@@ -1556,11 +1601,23 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         Ok(out)
     }
 
+    fn contains_call(stmts: &[ComponentStmt]) -> bool {
+        stmts.iter().any(|stmt| match stmt {
+            ComponentStmt::Call { .. } => true,
+            ComponentStmt::If { then, els, .. } => {
+                contains_call(then) || els.as_deref().is_some_and(contains_call)
+            }
+            ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => contains_call(body),
+            ComponentStmt::Try { body, catch, .. } => contains_call(body) || contains_call(catch),
+            _ => false,
+        })
+    }
+
     for h in &mut node.handlers {
         let stmts = std::mem::take(&mut h.stmts);
         h.stmts = expand_store_calls(stmts, &store_bodies, 0)?;
         // 展开后若不再有调用语句，恢复可执行面（body_foreign 由投影器按调用判定）。
-        if !h.stmts.iter().any(|s| matches!(s, ComponentStmt::Call { .. })) {
+        if !contains_call(&h.stmts) {
             h.body_foreign = false;
         }
         let mut assigns = Vec::new();
@@ -1601,40 +1658,21 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
 
 /// PLAN-105 T-02：组件面是否必须走 collections HIR 域（列表构造/字面量/下标/push）。
 fn needs_collections_face(node: &ComponentNode) -> bool {
-    fn expr_needs(e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::ArrayLit(_) | ExprKind::Index { .. } => true,
-            ExprKind::GenericType { .. } => true,
-            ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
-                expr_needs(recv) || args.iter().any(|a| match a {
-                    crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => expr_needs(x),
-                    crate::source::ast::Arg::Named { value, .. } => expr_needs(value),
-                })
-            }
-            ExprKind::TextDisplay(x) | ExprKind::Await(x) | ExprKind::Go(x) => expr_needs(x),
-            ExprKind::Unary { operand, .. } => expr_needs(operand),
-            ExprKind::Binary { lhs, rhs, .. } => expr_needs(lhs) || expr_needs(rhs),
-            ExprKind::Call { args, .. } => args.iter().any(|a| match a {
-                crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => expr_needs(x),
-                crate::source::ast::Arg::Named { value, .. } => expr_needs(value),
-            }),
-            _ => false,
-        }
-    }
     fn stmt_needs(st: &ComponentStmt) -> bool {
         match st {
-            ComponentStmt::Assign(a) => expr_needs(&a.rhs),
+            ComponentStmt::Assign(a) => needs_collections_face_expr(&a.rhs),
             ComponentStmt::Call { call: value, .. }
             | ComponentStmt::Let { value, .. }
             | ComponentStmt::Effect { value, .. }
             | ComponentStmt::Focus { target: value, .. }
-            | ComponentStmt::AssignLocal { value, .. } => expr_needs(value),
-            ComponentStmt::Send { args, .. } => args.iter().any(expr_needs),
+            | ComponentStmt::AssignLocal { value, .. } => needs_collections_face_expr(value),
+            ComponentStmt::Send { args, .. } => args.iter().any(needs_collections_face_expr),
             ComponentStmt::If { cond, then, els, .. } => {
-                expr_needs(cond) || then.iter().any(stmt_needs) || els.as_ref().is_some_and(|e| e.iter().any(stmt_needs))
+                needs_collections_face_expr(cond) || then.iter().any(stmt_needs) || els.as_ref().is_some_and(|e| e.iter().any(stmt_needs))
             }
-            ComponentStmt::For { iter, body, .. } => expr_needs(iter) || body.iter().any(stmt_needs),
-            ComponentStmt::While { cond, body, .. } => expr_needs(cond) || body.iter().any(stmt_needs),
+            ComponentStmt::For { iter, body, .. } => needs_collections_face_expr(iter) || body.iter().any(stmt_needs),
+            ComponentStmt::While { cond, body, .. } => needs_collections_face_expr(cond) || body.iter().any(stmt_needs),
+            ComponentStmt::Try { body, catch, .. } => body.iter().any(stmt_needs) || catch.iter().any(stmt_needs),
         }
     }
     node.handlers.iter().any(|h| h.stmts.iter().any(stmt_needs))
@@ -1642,6 +1680,29 @@ fn needs_collections_face(node: &ComponentNode) -> bool {
             let t = f.ty.trim();
             t.starts_with("[]") || t.starts_with('[')
         })
+}
+
+/// PLAN-117（round-26）：`needs_collections_face` 的表达式谓词提为模块级——
+/// 事件道的 view-data 初值门复用同一判定（物化 Let 携带的集合形状）。
+fn needs_collections_face_expr(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::ArrayLit(_) | ExprKind::Index { .. } => true,
+        ExprKind::GenericType { .. } => true,
+        ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+            needs_collections_face_expr(recv) || args.iter().any(|a| match a {
+                crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => needs_collections_face_expr(x),
+                crate::source::ast::Arg::Named { value, .. } => needs_collections_face_expr(value),
+            })
+        }
+        ExprKind::TextDisplay(x) | ExprKind::Await(x) | ExprKind::Go(x) => needs_collections_face_expr(x),
+        ExprKind::Unary { operand, .. } => needs_collections_face_expr(operand),
+        ExprKind::Binary { lhs, rhs, .. } => needs_collections_face_expr(lhs) || needs_collections_face_expr(rhs),
+        ExprKind::Call { args, .. } => args.iter().any(|a| match a {
+            crate::source::ast::Arg::Pos(x) | crate::source::ast::Arg::MovePos(x) => needs_collections_face_expr(x),
+            crate::source::ast::Arg::Named { value, .. } => needs_collections_face_expr(value),
+        }),
+        _ => false,
+    }
 }
 /// PLAN-105 T-02：模块级 store 声明的结构候选（独立于 node 候选——store 单元
 /// 可以只有 store 声明）。
@@ -1802,6 +1863,12 @@ pub(crate) fn stmt_refs_store(stmts: &[ComponentStmt]) -> Option<Span> {
                 if let Some(s) = stmt_refs_store(body) {
                     return Some(s);
                 }
+            }
+            ComponentStmt::Try { body, catch, span, .. } => {
+                if let Some(s) = stmt_refs_store(body).or_else(|| stmt_refs_store(catch)) {
+                    return Some(s);
+                }
+                let _ = span;
             }
         }
     }
@@ -2568,6 +2635,15 @@ fn compile_component_scenario_full(
         })?,
         None => &candidates[0],
     };
+    // PLAN-117（round-27）：场景车道的 view-data **读改写**——handler 体内的
+    // `.vd_field` 读改为 fn 入口局部（与事件道同一 rewrite；物化在
+    // behavior_check_fn 按 handler 按需发 Let）。写侧 PLAN-106 收据跳过不变。
+    // candidates 本地持有——转出可变所有权就地改写（clone 成本 = 单节点）。
+    let mut owned_node = node.clone();
+    for h in owned_node.handlers.iter_mut() {
+        rewrite_view_data_reads(&mut h.stmts, &owned_node.view_data);
+    }
+    let node = &owned_node;
     // 隐藏名前缀与用户顶层名冲突：两个前门共用同一策略（先于场景自检）。
     // F11：程序项只解析一次（隐藏名检查与脱糖共用）。
     let items = parse_program_items(src)?;
@@ -2846,7 +2922,27 @@ fn compile_component_scenario_full(
     } // 文本求值函数：字段引用 → 该实例的 `__age_state_<i>()` 调用。
       // states-only 模式（PLAN-980 STATE）跳过文本叶发射：f-string 叶的
       // `TextDisplay` 在 av.owned/1 车道不可 lowering，而状态通道不依赖文本叶。
-    let hir_profile = if candidates.iter().any(needs_collections_face) {
+    // PLAN-117（round-27）：view-data 读物化的集合形状补判——读驱动的物化
+    // Let（view_data_init_expr 解析产物为集合形状）与 handler 体的发射形状
+    //（event_stmt_collections）任一命中即升 collections 域。既有
+    // needs_collections_face 判定保持不变（叠加，不替换）。
+    let vd_collections = node.handlers.iter().any(|h| {
+        let reads = handler_reads_view_data(&h.stmts, &node.view_data);
+        node.view_data.iter().enumerate().any(|(vi, vd)| {
+            reads[vi]
+                && view_data_init_expr(&vd.literal)
+                    .map(|init| needs_collections_face_expr(&init))
+                    .unwrap_or(false)
+        })
+    });
+    let handler_collections = node
+        .handlers
+        .iter()
+        .any(|h| h.stmts.iter().any(|s| event_stmt_collections(s, &node.view_data)));
+    let hir_profile = if candidates.iter().any(needs_collections_face)
+        || vd_collections
+        || handler_collections
+    {
         SourceProfile::Collections
     } else {
         SourceProfile::TextRecord
@@ -3155,58 +3251,6 @@ pub(crate) fn check_event_dispatch(
 /// PLAN-981（IF-981-PARAMS-B）：handler 形参与消息载荷的**声明级**绑定核对。
 /// 逐 handler：形参数必须等于变体载荷槽数（未声明变体按 0），重复形参具名拒。
 /// 未派发也核对（"未调用 handler 亦按原声明语义 verify"）。
-/// PLAN-113（026 真语料）：handler 体是否引用**惰性 view-data 列表字段**
-///（`for r in .customers` 迭代、`.customers.len()`、`.activeRows = sl`
-/// 等列表读）——惰性字段不落状态，组件车道无法静态承载其检查/派发。
-pub(crate) fn handler_reads_view_data(
-    handler: &ComponentHandler,
-    view_data: &[ComponentViewDataField],
-) -> bool {
-    fn expr_reads_inert(e: &crate::source::ast::Expr, inert: &[String]) -> bool {
-        match &e.kind {
-            crate::source::ast::ExprKind::Field { base, name }
-                if matches!(&base.kind, crate::source::ast::ExprKind::Var(v) if v.name == "self")
-                    && inert.iter().any(|n| n == &name.name) =>
-            {
-                true
-            }
-            crate::source::ast::ExprKind::MethodCall { recv, .. } => {
-                expr_reads_inert(recv, inert)
-            }
-            crate::source::ast::ExprKind::Call { args, .. } => {
-                args.iter().any(|a| match a {
-                    crate::source::ast::Arg::Pos(e) => expr_reads_inert(e, inert),
-                    _ => false,
-                })
-            }
-            _ => false,
-        }
-    }
-    fn stmt_reads(st: &ComponentStmt, inert: &[String]) -> bool {
-        match st {
-            ComponentStmt::Assign(a) => expr_reads_inert(&a.rhs, inert),
-            ComponentStmt::AssignLocal { value, .. } => expr_reads_inert(value, inert),
-            ComponentStmt::Call { call, .. } => expr_reads_inert(call, inert),
-            ComponentStmt::For { iter, body, .. } => {
-                expr_reads_inert(iter, inert) || body.iter().any(|b| stmt_reads(b, inert))
-            }
-            ComponentStmt::While { cond, body, .. } => {
-                expr_reads_inert(cond, inert) || body.iter().any(|b| stmt_reads(b, inert))
-            }
-            ComponentStmt::If { cond, then, els, .. } => {
-                expr_reads_inert(cond, inert)
-                    || then.iter().any(|b| stmt_reads(b, inert))
-                    || els.as_deref().is_some_and(|e| e.iter().any(|b| stmt_reads(b, inert)))
-            }
-            ComponentStmt::Let { value, .. } => expr_reads_inert(value, inert),
-            ComponentStmt::Effect { value, .. } => expr_reads_inert(value, inert),
-            _ => false,
-        }
-    }
-    let inert: Vec<String> = view_data.iter().map(|v| v.name.clone()).collect();
-    handler.stmts.iter().any(|st| stmt_reads(st, &inert))
-}
-
 pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Diagnostic>> {
     for h in &node.handlers {
         let variant = node.messages.iter().find(|variant| variant.name == h.msg);
@@ -3288,6 +3332,10 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                     ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => {
                         collect_assign_targets(body, out);
                     }
+                    ComponentStmt::Try { body, catch, .. } => {
+                        collect_assign_targets(body, out);
+                        collect_assign_targets(catch, out);
+                    }
                     ComponentStmt::Let { .. } | ComponentStmt::AssignLocal { .. }
                     | ComponentStmt::Call { .. } | ComponentStmt::Effect { .. }
                     | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
@@ -3316,6 +3364,10 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
                     | ComponentStmt::Effect { .. }
                     | ComponentStmt::Send { .. } | ComponentStmt::Focus { .. } => {}
                     ComponentStmt::For { body, .. } | ComponentStmt::While { body, .. } => collect_local_names(body, out),
+                    ComponentStmt::Try { body, catch, .. } => {
+                        collect_local_names(body, out);
+                        collect_local_names(catch, out);
+                    }
                 }
             }
         }
@@ -3443,6 +3495,10 @@ fn walk_stmt_exprs(
                     return Err(ds);
                 }
             }
+            ComponentStmt::Try { body, catch, .. } => {
+                walk_stmt_exprs(body, f)?;
+                walk_stmt_exprs(catch, f)?;
+            }
         }
     }
     Ok(())
@@ -3527,7 +3583,9 @@ pub(crate) fn handler_check_fn(
     // 承载（共享 verify 会对 self.field 报 undefined/iterate 系）；与域外体
     // 同律不铸检查函数（装载通过，派发按 handler 具名拒）。包面契约（p105
     // list-iteration pending surface）保持原样——本跳过只作用于组件面车道。
-    if !package_lists && handler_reads_view_data(h, &node.view_data) {
+    if !package_lists
+        && handler_reads_view_data(&h.stmts, &node.view_data).into_iter().any(|read| read)
+    {
         return None;
     }
     // PLAN-980 WEB #6o 合同闭合（#6p 实装）：域外体（let/if/非头参数调用）
@@ -3585,7 +3643,10 @@ fn behavior_check_fn(
     package_lists: bool,
     behavior: Behavior<'_>,
 ) -> Option<Result<Item, Vec<Diagnostic>>> {
-    let first_field = node.fields.iter().find(|field| package_lists || field_type(field).is_some())?;
+    let first_field = node.fields.iter().find(|field| package_lists || field_type(field).is_some());
+    if first_field.is_none() {
+    }
+    let first_field = first_field?;
     // 形参类型必须可承载；不可承载的载荷车道由派发守卫具名拒，这里不造假类型。
     let mut params = Vec::new();
     for (i, ((_name, span), spelling)) in behavior.params.iter().zip(behavior.payload).enumerate() {
@@ -3610,7 +3671,9 @@ fn behavior_check_fn(
                     span: *span,
                 })
             }
-            None => return None,
+            None => {
+                return None;
+            }
         }
     }
     let mut stmts = Vec::new();
@@ -3646,6 +3709,28 @@ fn behavior_check_fn(
             value: init,
             span: f.span,
         });
+    }
+    // PLAN-117（round-27）：view-data 字段的**按需读物化**——本 handler 读到的
+    // 字段以初值字面量 Let 物化为只读局部（读改写产物 `__age_s_0_<name>` 的
+    // 绑定；纯写/零读 handler 不发，文档保持文本域）。
+    let vd_reads = handler_reads_view_data(behavior.body, &node.view_data);
+    for (vd_i, vd) in node.view_data.iter().enumerate() {
+        if !vd_reads[vd_i] {
+            continue;
+        }
+        if let Some(init) = view_data_init_expr(&vd.literal) {
+            stmts.push(Stmt::Let {
+                kw: vd.span,
+                name: Ident {
+                    name: local_name(inst, &vd.name),
+                    span: vd.span,
+                },
+                ann: None,
+                mutable: false,
+                value: init,
+                span: vd.span,
+            });
+        }
     }
     // 赋值体：形参名 → 函数参数名（裸名遮蔽 model；`.field` 恒指字段）。
     let param_locals: Vec<(String, String, Span)> = behavior
@@ -3942,6 +4027,15 @@ pub(crate) fn lambda_value_fn(
                 ComponentStmt::Let { .. } | ComponentStmt::AssignLocal { .. }
                 | ComponentStmt::Effect { .. } | ComponentStmt::Send { .. }
                 | ComponentStmt::Focus { .. } => return None,
+                // View inline lambdas have no try/catch in the view-stmt grammar;
+                // treat as not-wired (fail-closed, same as the other lambda gaps).
+                ComponentStmt::Try { span, .. } => {
+                    return Some(Err(vec![text_diag(
+                        "source.age.component-unsupported",
+                        "view inline lambda `try/catch` is not wired yet",
+                        *span,
+                    )]))
+                }
             }
         }
         Some(Ok(()))
@@ -3974,7 +4068,8 @@ pub(crate) fn lambda_value_fn(
             | ComponentStmt::Call { span, .. }
             | ComponentStmt::Effect { span, .. }
             | ComponentStmt::Send { span, .. }
-            | ComponentStmt::Focus { span, .. } => *span,
+            | ComponentStmt::Focus { span, .. }
+            | ComponentStmt::Try { span, .. } => *span,
         })
         .unwrap_or(first_field.span);
     Some(Ok(Item::Fn(FnItem {
@@ -4197,6 +4292,8 @@ fn hook_stmts_lower(
     let mut remaining = body.iter().peekable();
     while let Some(st) = remaining.next() {
         locals.charge_statement()?;
+        if let ComponentStmt::Try { .. } = st {
+        }
         match st {
             ComponentStmt::Assign(assign) => {
                 // PLAN-105 T-02（U03 真语料 012）：裸名先查执行路径绑定表
@@ -4382,8 +4479,22 @@ fn hook_stmts_lower(
                         )]);
                     }
                 }
+                // PLAN-117（round-30，029 ToggleFav 真语料）：`X[i].f = v` 的
+                // 投影形 `X.set_field(i, "f", v)` / `X.set(i, v)` 的接收位是
+                // **裸局部名**——X 为 view-data 字段时改写为物化局部
+                //（读改写只覆盖读位，投影的接收位 Var 不经其通道）。
+                let mut value = value.clone();
+                if let ExprKind::Method { recv, .. } | ExprKind::MethodCall { recv, .. } =
+                    &mut value.kind
+                {
+                    if let ExprKind::Var(id) = &mut recv.kind {
+                        if node.view_data.iter().any(|vd| vd.name == id.name) {
+                            id.name = local_name(0, &id.name);
+                        }
+                    }
+                }
                 let value = rename_expr_with_params(
-                    value, binding, &node.fields, &scope,
+                    &value, binding, &node.fields, &scope,
                 )?;
                 out.push(Stmt::ExprStmt { value, span: *span });
             }
@@ -4550,6 +4661,31 @@ fn hook_stmts_lower(
                     });
                     params.push((name.clone(), local, *param_span));
                 }
+                // PLAN-117（round-29，029 真语料 unbound 根因）：内联展开体
+                // 携带被展开 handler 的**读改写**（`__age_s_0_*`），其物化
+                // Let 在被展开 handler 自己的检查函数入口——展开位必须按需
+                // 补发（读驱动物化，与检查函数/重放道同律）。每次展开的
+                // `stmts` 位于独立 If(true) 块作用域，重物化 = 合法遮蔽
+                // （与入口同初值），无重复绑定冲突。
+                let vd_reads = handler_reads_view_data(&target.stmts, &node.view_data);
+                for (vd_i, vd) in node.view_data.iter().enumerate() {
+                    if !vd_reads[vd_i] {
+                        continue;
+                    }
+                    if let Some(init) = view_data_init_expr(&vd.literal) {
+                        stmts.push(Stmt::Let {
+                            kw: vd.span,
+                            name: Ident {
+                                name: local_name(0, &vd.name),
+                                span: vd.span,
+                            },
+                            ann: None,
+                            mutable: false,
+                            value: init,
+                            span: vd.span,
+                        });
+                    }
+                }
                 locals.calls.push((ordinal, *span));
                 let lowered = hook_stmts_lower(binding, seq, node, &target.stmts, &params, &mut stmts, locals);
                 locals.calls.pop();
@@ -4559,6 +4695,25 @@ fn hook_stmts_lower(
                     cond: Expr { kind: ExprKind::BoolLit(true), span: *span },
                     then: Block { stmts, span: *span },
                     els: None,
+                    span: *span,
+                });
+            }
+            // PLAN-117（U05 029 真语料）：`try { … } catch { … }` → 共享
+            // Stmt::Try（ast 既有形；catch 无绑定形=空 bind）。try/catch 体
+            // 各自递归降——局部作用域按体独立（与 if 分支同规则）。
+            ComponentStmt::Try { body, catch, span } => {
+                let mut try_out = Vec::new();
+                hook_stmts_lower(binding, seq, node, body, &scope, &mut try_out, locals)?;
+                let mut catch_out = Vec::new();
+                hook_stmts_lower(binding, seq, node, catch, &scope, &mut catch_out, locals)?;
+                out.push(Stmt::Try {
+                    body: Block { stmts: try_out, span: *span },
+                    catch: Some(CatchClause {
+                        bind: None,
+                        body: Block { stmts: catch_out, span: *span },
+                        span: *span,
+                    }),
+                    finally: None,
                     span: *span,
                 });
             }
@@ -4838,6 +4993,41 @@ pub(crate) fn rename_expr_with_params(
         },
         // PLAN-105 T-02：泛型类型接收位（`List<int>.new()` 的 `List<int>`）——
         // 类型不是值，原样透传（类型实参由共享 resolver 校验）。
+        ExprKind::If {
+            cond,
+            then,
+            else_chain,
+            els,
+            ..
+        } => Expr {
+            span: expr.span,
+            kind: ExprKind::If {
+                cond: Box::new(rename_expr_with_params(cond, binding, fields, param_locals)?),
+                then: Box::new(rename_expr_with_params(then, binding, fields, param_locals)?),
+                else_chain: else_chain
+                    .iter()
+                    .map(|(c, t)| {
+                        Ok((
+                            rename_expr_with_params(c, binding, fields, param_locals)?,
+                            Box::new(rename_expr_with_params(
+                                t,
+                                binding,
+                                fields,
+                                param_locals,
+                            )?),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, Vec<Diagnostic>>>()?,
+                els: els
+                    .as_ref()
+                    .map(|e| {
+                        rename_expr_with_params(e, binding, fields, param_locals)
+                            .map(Box::new)
+                    })
+                    .transpose()?,
+                span: expr.span,
+            },
+        },
         _ => {
             return Err(vec![text_diag(
                 "source.age.component-unsupported",
@@ -5138,6 +5328,28 @@ pub(crate) fn instance_stmts(
         // ——与检查函数（handler_check_fn）共用同一条脱糖，无第二求值器；
         // 分支快照/遮蔽语义见 `hook_stmts_lower`。赋值目标字段存在性在
         // 声明级（check_handler_bindings）已核，这里的同判定是发射侧防御。
+        // PLAN-117（round-28）：重放道的 view-data **按需读物化**——与本轮
+        // behavior_check_fn 同律；读改写产物 `__age_s_0_*` 的绑定（场景道
+        // 的读改写在 compile_component_scenario_full 已跑，重放体同树）。
+        let vd_reads = handler_reads_view_data(&handler.stmts, &node.view_data);
+        for (vd_i, vd) in node.view_data.iter().enumerate() {
+            if !vd_reads[vd_i] {
+                continue;
+            }
+            if let Some(init) = view_data_init_expr(&vd.literal) {
+                stmts.push(Stmt::Let {
+                    kw: vd.span,
+                    name: Ident {
+                        name: local_name(inst, &vd.name),
+                        span: vd.span,
+                    },
+                    ann: None,
+                    mutable: false,
+                    value: init,
+                    span: vd.span,
+                });
+            }
+        }
         hook_stmts_lower(
             binding,
             seq,
@@ -5516,7 +5728,7 @@ fn list_new_from_array(value: Expr, elem: &TypeAnn) -> Expr {
         },
     }
 }
-pub(crate) fn field_ann(f: &ComponentField) -> Option<TypeAnn> {
+pub fn field_ann(f: &ComponentField) -> Option<TypeAnn> {
     let ty = f.ty.trim();
     let elem = ty
         .strip_prefix("[]")
@@ -5571,7 +5783,7 @@ pub(crate) fn field_ann(f: &ComponentField) -> Option<TypeAnn> {
     })
 }
 
-pub(crate) fn field_type(f: &ComponentField) -> Option<TypeWord> {
+pub fn field_type(f: &ComponentField) -> Option<TypeWord> {
     match f.ty.as_str() {
         "int" | "i32" => Some(TypeWord::I32),
         "bool" => Some(TypeWord::Bool),
@@ -5601,6 +5813,7 @@ fn model_list_type(field: &ComponentField) -> Option<TypeRef> {
     }
     let ann = field.collection_type.as_ref()?;
     match &ann.kind {
+        TypeRef::Record(name) if name.name == "List" => Some(ann.kind.clone()),
         TypeRef::Generic { name, args } if name.name == "List" && args.len() == 1 => {
             Some(ann.kind.clone())
         }
@@ -5674,6 +5887,257 @@ fn event_field_local(field: &str) -> String {
 }
 
 /// `let <bind> = module.global.set:<cell>(<value>)`（提交语句）。
+/// PLAN-117（round-22）：view-data 字段**读物化**——handler 体内
+/// `.vd_field` 读 = view_data 初值字面量的常量物化。惰性字面量本身是合法
+/// 表达式语法（列表/记录字面量），借 `parse_program_items` 铸一个壳 fn
+/// 提取其体表达式。
+fn view_data_init_expr(literal: &str) -> Option<Expr> {
+    // PLAN-117（round-26 修正）：AGE 组件 profile 的 fn 头**必须带返回类型
+    // 注解**（无注解 = parse 期具名拒）——铸壳 fn 此前裸 `fn` 头，全部
+    // view-data 初值物化静默走 PARSE-FAIL（None）臂，读改写产物悬空在
+    // 「no local named __age_s_*」。壳补 `-> int` 注解 + 尾部 return；仅取
+    // Let 值，返回语句不影响提取。
+    let src = format!("fn __age_vd_cast() int {{ let __v = {literal}; return 0 }}");
+    let items = parse_program_items(&src).ok()?;
+    let body = items.iter().find_map(|item| match item {
+        Item::Fn(f) if f.name.name == "__age_vd_cast" => Some(&f.body),
+        _ => None,
+    })?;
+    body.stmts.iter().find_map(|st| match st {
+        Stmt::Let { value, .. } => Some(value.clone()),
+        _ => None,
+    })
+}
+
+fn event_stmt_collections(st: &ComponentStmt, vd: &[ComponentViewDataField]) -> bool {
+    match st {
+        ComponentStmt::Assign(a) => {
+            if !a.bare && vd.iter().any(|f| f.name == a.field) {
+                return false;
+            }
+            needs_collections_face_expr(&a.rhs)
+        }
+        ComponentStmt::Call { call, .. }
+        | ComponentStmt::Let { value: call, .. }
+        | ComponentStmt::Effect { value: call, .. }
+        | ComponentStmt::Focus { target: call, .. }
+        | ComponentStmt::AssignLocal { value: call, .. } => needs_collections_face_expr(call),
+        ComponentStmt::Send { args, .. } => args.iter().any(needs_collections_face_expr),
+        ComponentStmt::If { cond, then, els, .. } => {
+            needs_collections_face_expr(cond)
+                || then.iter().any(|s| event_stmt_collections(s, vd))
+                || els
+                    .as_ref()
+                    .is_some_and(|e| e.iter().any(|s| event_stmt_collections(s, vd)))
+        }
+        ComponentStmt::For { iter, body, .. } | ComponentStmt::While { cond: iter, body, .. } => {
+            needs_collections_face_expr(iter) || body.iter().any(|s| event_stmt_collections(s, vd))
+        }
+        ComponentStmt::Try { body, catch, .. } => {
+            body.iter().any(|s| event_stmt_collections(s, vd))
+                || catch.iter().any(|s| event_stmt_collections(s, vd))
+        }
+    }
+}
+
+/// PLAN-117（round-26）：handler 体是否**读**某 view-data 字段（`self.<name>`
+/// 形）——物化按需（未被读的字段不发 Let；纯写/零读 handler 保持文本域文档）。
+pub(super) fn handler_reads_view_data(
+    stmts: &[ComponentStmt],
+    vd: &[ComponentViewDataField],
+) -> Vec<bool> {
+    fn expr_reads(e: &Expr, vd: &[ComponentViewDataField], hits: &mut Vec<bool>) {
+        // 读改写后的形态（Var(local_name(0, name))）先判——本检查在改写后跑。
+        if let ExprKind::Var(v) = &e.kind {
+            if let Some(i) = vd
+                .iter()
+                .position(|f| v.name == local_name(0, &f.name))
+            {
+                hits[i] = true;
+            }
+            return;
+        }
+        if let ExprKind::Field { base, name } = &e.kind {
+            if matches!(base.kind, ExprKind::Var(ref v) if v.name == "self") {
+                if let Some(i) = vd.iter().position(|f| f.name == name.name) {
+                    hits[i] = true;
+                }
+                return;
+            }
+            expr_reads(base, vd, hits);
+            return;
+        }
+        match &e.kind {
+            ExprKind::ArrayLit(items) => items.iter().for_each(|it| expr_reads(it, vd, hits)),
+            ExprKind::ObjectLit { fields } => {
+                fields.iter().for_each(|f| expr_reads(&f.value, vd, hits))
+            }
+            ExprKind::Binary { lhs, rhs, .. } => {
+                expr_reads(lhs, vd, hits);
+                expr_reads(rhs, vd, hits);
+            }
+            ExprKind::Unary { operand, .. } => expr_reads(operand, vd, hits),
+            ExprKind::Index { base, index } => {
+                expr_reads(base, vd, hits);
+                expr_reads(index, vd, hits);
+            }
+            ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+                expr_reads(recv, vd, hits);
+                args.iter().for_each(|a| match a {
+                    super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => expr_reads(x, vd, hits),
+                    super::ast::Arg::Named { value, .. } => expr_reads(value, vd, hits),
+                });
+            }
+            ExprKind::Call { args, .. } => args.iter().for_each(|a| match a {
+                super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => expr_reads(x, vd, hits),
+                super::ast::Arg::Named { value, .. } => expr_reads(value, vd, hits),
+            }),
+            ExprKind::Await(x) | ExprKind::Go(x) | ExprKind::TextDisplay(x) => {
+                expr_reads(x, vd, hits)
+            }
+            _ => {}
+        }
+    }
+    fn stmt_reads(stmts: &[ComponentStmt], vd: &[ComponentViewDataField], hits: &mut Vec<bool>) {
+        for st in stmts {
+            match st {
+                ComponentStmt::Assign(a) => expr_reads(&a.rhs, vd, hits),
+                ComponentStmt::Let { value, .. } | ComponentStmt::AssignLocal { value, .. } => {
+                    expr_reads(value, vd, hits)
+                }
+                ComponentStmt::Call { call, .. } | ComponentStmt::Effect { value: call, .. } => {
+                    expr_reads(call, vd, hits)
+                }
+                ComponentStmt::Focus { target, .. } => expr_reads(target, vd, hits),
+                ComponentStmt::Send { args, .. } => {
+                    args.iter().for_each(|a| expr_reads(a, vd, hits))
+                }
+                ComponentStmt::If { cond, then, els, .. } => {
+                    expr_reads(cond, vd, hits);
+                    stmt_reads(then, vd, hits);
+                    if let Some(e) = els {
+                        stmt_reads(e, vd, hits);
+                    }
+                }
+                ComponentStmt::For { iter, body, .. }
+                | ComponentStmt::While { cond: iter, body, .. } => {
+                    expr_reads(iter, vd, hits);
+                    stmt_reads(body, vd, hits);
+                }
+                ComponentStmt::Try { body, catch, .. } => {
+                    stmt_reads(body, vd, hits);
+                    stmt_reads(catch, vd, hits);
+                }
+            }
+        }
+    }
+    let mut hits = vec![false; vd.len()];
+    stmt_reads(stmts, vd, &mut hits);
+    hits
+}
+
+/// PLAN-117：handler 体语句树里的 view-data 读改写——`Field{Var(self), name}`
+/// 且 name ∈ view_data → `Var(local_name(0, name))`（与 fn 入口的物化 Let
+/// 对应；写侧既有 PLAN-106 收据跳过不变）。
+fn rewrite_view_data_reads(stmts: &mut [ComponentStmt], vd: &[ComponentViewDataField]) {
+    use super::ast::ExprKind;
+    fn rewrite_expr(e: &mut Expr, vd: &[ComponentViewDataField]) {
+        if let ExprKind::Field { base, name } = &mut e.kind {
+            if matches!(base.kind, ExprKind::Var(ref v) if v.name == "self")
+                && vd.iter().any(|f| f.name == name.name)
+            {
+                e.kind = ExprKind::Var(Ident {
+                    name: local_name(0, &name.name),
+                    span: name.span,
+                });
+                return;
+            }
+            rewrite_expr(base, vd);
+            return;
+        }
+        // 递归容器。
+        match &mut e.kind {
+            ExprKind::ArrayLit(items) => {
+                for it in items {
+                    rewrite_expr(it, vd);
+                }
+            }
+            ExprKind::ObjectLit { fields } => {
+                for f in fields.iter_mut() {
+                    rewrite_expr(&mut f.value, vd);
+                }
+            }
+            ExprKind::Binary { lhs, rhs, .. } => {
+                rewrite_expr(lhs, vd);
+                rewrite_expr(rhs, vd);
+            }
+            ExprKind::Unary { operand, .. } => rewrite_expr(operand, vd),
+            ExprKind::Index { base, index } => {
+                rewrite_expr(base, vd);
+                rewrite_expr(index, vd);
+            }
+            ExprKind::Field { base, name } => {
+                rewrite_expr(base, vd);
+                let _ = name;
+            }
+            ExprKind::Method { recv, args, .. } | ExprKind::MethodCall { recv, args, .. } => {
+                rewrite_expr(recv, vd);
+                for a in args.iter_mut() {
+                    match a {
+                        super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => rewrite_expr(x, vd),
+                        super::ast::Arg::Named { value, .. } => rewrite_expr(value, vd),
+                    }
+                }
+            }
+            ExprKind::Call { callee: _, args } => {
+                for a in args.iter_mut() {
+                    match a {
+                        super::ast::Arg::Pos(x) | super::ast::Arg::MovePos(x) => rewrite_expr(x, vd),
+                        super::ast::Arg::Named { value, .. } => rewrite_expr(value, vd),
+                    }
+                }
+            }
+            ExprKind::Await(x) | ExprKind::Go(x) => rewrite_expr(x, vd),
+            _ => {}
+        }
+    }
+    fn rewrite_stmts(stmts: &mut [ComponentStmt], vd: &[ComponentViewDataField]) {
+        for st in stmts.iter_mut() {
+            match st {
+                ComponentStmt::Assign(a) => rewrite_expr(&mut a.rhs, vd),
+                ComponentStmt::Let { value, .. } | ComponentStmt::AssignLocal { value, .. } => {
+                    rewrite_expr(value, vd)
+                }
+                ComponentStmt::Call { call, .. } | ComponentStmt::Effect { value: call, .. } => {
+                    rewrite_expr(call, vd)
+                }
+                ComponentStmt::Focus { target, .. } => rewrite_expr(target, vd),
+                ComponentStmt::Send { args, .. } => {
+                    for a in args.iter_mut() {
+                        rewrite_expr(a, vd);
+                    }
+                }
+                ComponentStmt::If { cond, then, els, .. } => {
+                    rewrite_expr(cond, vd);
+                    rewrite_stmts(then, vd);
+                    if let Some(e) = els {
+                        rewrite_stmts(e, vd);
+                    }
+                }
+                ComponentStmt::For { iter, body, .. } | ComponentStmt::While { cond: iter, body, .. } => {
+                    rewrite_expr(iter, vd);
+                    rewrite_stmts(body, vd);
+                }
+                ComponentStmt::Try { body, catch, .. } => {
+                    rewrite_stmts(body, vd);
+                    rewrite_stmts(catch, vd);
+                }
+            }
+        }
+    }
+    rewrite_stmts(stmts, vd);
+}
+
 fn cell_set_stmt(bind: &str, field: &str, value: Expr, span: Span) -> Stmt {
     Stmt::Let {
         kw: span,
@@ -5846,26 +6310,49 @@ pub fn compile_component_event_program(
     // 形参 ↔ 载荷声明级核对 + 通道调用值位拒（同场景车道）。
     check_handler_bindings(node)?;
     validate_channel_value_use(node)?;
-    // 增量车道 = 场景重放车道同一 fail-closed 边界：外部名体/宿主通道调用
-    // 不进本车道（WEB lane 的检查函数道承载；ASE 域不消费）。
-    // PLAN-113（026 真语料）：body_foreign 与**惰性 view-data 引用** handler
-    // **跳过**（不建派发入口）而非整体拒编——应用仍可装载渲染；脚本点击
-    // 命中该 handler 时由派发守卫按 handler 具名拒（4956 行同判定），零效果
-    // fail-closed 语义不变。
-    node.handlers.retain(|h| {
-        if h.body_foreign {
-            return false;
-        }
-        if !h.channel_calls.is_empty() {
-            return false;
-        }
-        if handler_reads_view_data(h, &node.view_data) {
-            return false;
-        }
-        true
+    // The event lane can materialize a scalar list from its literal. Reassigned
+    // view data, empty lists, and untyped record rows stay projection-only.
+    let view_data = &node.view_data;
+    let scalar_lists: Vec<_> = view_data
+        .iter()
+        .map(|field| {
+            if node.handlers.iter().flat_map(|handler| &handler.assigns).any(|assign| {
+                !assign.bare && assign.field == field.name
+            }) {
+                return false;
+            }
+            let Some(init) = view_data_init_expr(&field.literal) else {
+                return false;
+            };
+            let ExprKind::ArrayLit(elements) = &init.kind else {
+                return false;
+            };
+            !elements.is_empty()
+                && elements.iter().all(|element| {
+                    matches!(element.kind, ExprKind::IntLit(_) | ExprKind::BoolLit(_) | ExprKind::StrLit(_))
+                })
+        })
+        .collect();
+    node.handlers.retain(|handler| {
+        !handler.body_foreign && handler.channel_calls.is_empty()
+            && !handler_reads_view_data(&handler.stmts, view_data)
+                .into_iter()
+                .zip(&scalar_lists)
+                .any(|(read, scalar_list)| read && !scalar_list)
     });
 
-    let mut out_items: Vec<Item> = Vec::new();
+    {
+        let vd = node.view_data.clone();
+        if !vd.is_empty() {
+            for h in node.handlers.iter_mut() {
+                // PLAN-117：读改写（`.vd` 读 → `local_name(0, vd)`）。
+                rewrite_view_data_reads(&mut h.stmts, &vd);
+            }
+        }
+    }
+    // Keep the module declarations in scope for the generated event functions,
+    // just as the scenario lane does for its generated state functions.
+    let mut out_items = items;
     // (1) 字段 cell（store 声明只注册访问子伪签名；真实初值由 init 写入，
     //     声明占位值取该类型的零值）。
     for f in &node.fields {
@@ -6114,9 +6601,33 @@ pub fn compile_component_event_program(
                 span: f.span,
             });
         }
+        // PLAN-117（round-22）：view-data 字段的**读物化 Let**——handler
+        // 入口把初值字面量物化为只读局部（与 rewrite_view_data_reads 的
+        // 读改写对应；写侧 PLAN-106 收据跳过不变）。
+        // PLAN-117（round-26）：物化按需——只发**被本 handler 读**的字段
+        // （纯写/零读的 handler 不携带集合初值，文档保持文本域）。
+        let vd_reads = handler_reads_view_data(&h.stmts, &node.view_data);
+        for (vd_i, vd) in node.view_data.iter().enumerate() {
+            if !vd_reads[vd_i] {
+                continue;
+            }
+            if let Some(init) = view_data_init_expr(&vd.literal) {
+                stmts.push(Stmt::Let {
+                    kw: vd.span,
+                    name: Ident {
+                        name: local_name(0, &vd.name),
+                        span: vd.span,
+                    },
+                    ann: None,
+                    mutable: false,
+                    value: init,
+                    span: vd.span,
+                });
+            }
+        }
         // 业务语句：与场景重放/检查函数共用同一条脱糖（无第二求值器）。
         hook_stmts_lower(
-            FieldBinding::Local(0), hi, node, &h.stmts, &param_locals, &mut stmts,
+            FieldBinding::Local(0), hi, &node, &h.stmts, &param_locals, &mut stmts,
             &mut HandlerLocals::default(),
         )?;
         // 提交：全部字段统一写回 cell（业务中途 trap ⇒ 不达此处 ⇒ 旧态保留）。
@@ -6179,19 +6690,40 @@ pub fn compile_component_event_program(
             text_def_ids.push(super::adapter::free_fn_def_id(&fn_name));
         }
     }
-    // 共享前门 + 唯一 verify（与场景车道同一 producer）。
     let desugared = Program { items: out_items };
-    let parts = match super::adapter::compile_program_parts_age(
+    // Use the collection domain for a checked collection operation or an
+    // emitted view-data initializer.
+    let materializes_view_data = node.handlers.iter().any(|h| {
+        let reads = handler_reads_view_data(&h.stmts, &node.view_data);
+        reads.into_iter().any(|read| read)
+    });
+    let handler_collections = node
+        .handlers
+        .iter()
+        .any(|h| h.stmts.iter().any(|s| event_stmt_collections(s, &node.view_data)));
+    let hir_profile = if handler_collections || materializes_view_data {
+        SourceProfile::Collections
+    } else {
+        SourceProfile::TextRecord
+    };
+    let parts = match super::adapter::compile_program_parts_age_elem_view(
         &desugared,
         src,
         module_path,
         capabilities,
-        SourceProfile::TextRecord,
+        hir_profile,
     ) {
         Ok(p) => p,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };
-    let checked = match crate::verify::verify_text_record_age(parts.bundle) {
+    let checked = match if hir_profile == SourceProfile::Collections {
+        crate::verify::verify_collection_family_age_elem_view(
+            parts.bundle,
+            crate::hir::HirDomain::Collections,
+        )
+    } else {
+        crate::verify::verify_text_record_age(parts.bundle)
+    } {
         Ok(c) => c,
         Err(ds) => return Err(relabel_leaf_diags(ds, &candidates)),
     };

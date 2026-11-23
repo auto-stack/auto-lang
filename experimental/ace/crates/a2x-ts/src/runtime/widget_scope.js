@@ -18,8 +18,51 @@ function a2x_widget_global_get(symbol, owned) {
   return owned ? a2x_str_clone(value) : value;
 }
 
-function a2x_widget_begin_frame() {
-  _RT.budget_left = A2X_DEFAULT_BUDGET;
+function a2x_widget_begin_frame(budget = A2X_DEFAULT_BUDGET) {
+  _RT.budget_left = budget;
+}
+
+function a2x_widget_work_budget() {
+  return _RT.budget_left;
+}
+
+function a2x_widget_step(held, run) {
+  const first = _RT.next_id;
+  const step = run();
+  if (!step.done) {
+    for (let id = first; id < _RT.next_id; id++) {
+      const text = _RT.live_strs.get(id);
+      if (text !== undefined) held.add(text);
+    }
+  }
+  return step;
+}
+
+function a2x_widget_copy_state(value) {
+  const copies = new Map();
+  const pending = [];
+  function copy(item) {
+    if (item === null || typeof item !== 'object' || ArrayBuffer.isView(item)) return item;
+    if (copies.has(item)) return copies.get(item);
+    a2x_bill(1);
+    if (item instanceof A2xOwnedStr) {
+      const text = a2x_str_clone(item);
+      copies.set(item, text);
+      return text;
+    }
+    const target = Array.isArray(item) ? new Array(item.length) : Object.create(Object.getPrototypeOf(item));
+    copies.set(item, target);
+    pending.push([item, target]);
+    return target;
+  }
+  const root = copy(value);
+  while (pending.length !== 0) {
+    const [source, target] = pending.pop();
+    for (const [key, item] of Object.entries(source)) {
+      Object.defineProperty(target, key, { value: copy(item), enumerable: true, writable: true, configurable: true });
+    }
+  }
+  return root;
 }
 
 function a2x_widget_keep_models(models) {

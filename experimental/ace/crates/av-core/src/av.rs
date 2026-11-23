@@ -724,6 +724,10 @@ fn execute_module_impl_with_host(
             // 其缺席在 HttpCall 执行点具名 fail-closed（会话 provider 注
             // 入面在组件事件会话，无 console host 语义）。
             && !crate::http_client::is_http_symbol(&h.symbol)
+            // PLAN-117（round-45）：json 值原语同律——执行为本域
+            // PlatformCall 分流（json_value::dispatch 进程内），无外部
+            // provider 语义；其缺席在执行点具名 fail-closed。
+            && !crate::json_value::is_json_symbol(&h.symbol)
     });
     let needs_platform = m
         .host_imports
@@ -4371,6 +4375,9 @@ fn dispatch_with_host<V: ModuleView>(
             // PLAN-108：http import 无 console 语义（同 720 行门；缺席在
             // HttpCall 执行点具名 fail-closed）。
             && !crate::http_client::is_http_symbol(&h.symbol)
+            // PLAN-117（round-45 ②）：json 原语同律（本域 PlatformCall
+            // 分流；进程内执行无外部 provider 语义）。
+            && !crate::json_value::is_json_symbol(&h.symbol)
     });
     let needs_platform = v
         .host_imports()
@@ -4726,15 +4733,62 @@ fn dispatch_with_host<V: ModuleView>(
                         }
                         Some(Ok(body_text)) => {
                             let handle = st.arena.alloc(body_text.as_bytes());
-                            let frame = st.frames.last_mut().expect("frame present");
-                            frame.slots[*dst as usize] = Value::Str(handle);
+                            // PLAN-117（round-25 ⑤，029 墙首根）：`get_json`
+                            // 按动词分语义返回 **解析后的 json 值（Dyn）**——
+                            // 与 VM 方言 get_json+to_value 同语义；复用 S1b
+                            // 解析器（预算/深度同 json.parse 运行期臂）。
+                            // 解析失败 = 具名 Error（与 json.parse 的 Io 臂
+                            // 同形——非 Trap，不进 catch；post 族保持 Str）。
+                            if import.symbol == "auto.http.get-json.v1" {
+                                let text_val = Value::Str(handle);
+                                match crate::json_value::dispatch("auto.json.parse.v1", &[text_val]) {
+                                    Ok(value) => {
+                                        let frame = st.frames.last_mut().expect("frame present");
+                                        frame.slots[*dst as usize] = value;
+                                    }
+                                    Err(crate::host::HostError::Cancelled) => {
+                                        return Some(ExecOutcome::Cancelled);
+                                    }
+                                    Err(crate::host::HostError::Resource) => {
+                                        return Some(ExecOutcome::Resource {
+                                            kind: ResourceKind::DynTypeNodes,
+                                            message: "http.client: get-json response exceeded the json value budget".into(),
+                                        });
+                                    }
+                                    Err(crate::host::HostError::Io(message)) => {
+                                        return Some(ExecOutcome::Error {
+                                            message: format!("http.client: {message}"),
+                                            span: span_of(func, flat)
+                                                .map(|sp| v.map_span(func_idx, sp)),
+                                        });
+                                    }
+                                }
+                            } else {
+                                let frame = st.frames.last_mut().expect("frame present");
+                                frame.slots[*dst as usize] = Value::Str(handle);
+                            }
                         }
-                        Some(Err(message)) => {
-                            return Some(ExecOutcome::Error {
-                                message: format!("http.client: {message}"),
-                                span: span_of(func, flat)
-                                    .map(|sp| v.map_span(func_idx, sp)),
-                            });
+                        Some(Err(failure)) => {
+                            use crate::contract::{LanguageErrorKind, LanguageErrorOrigin};
+                            use crate::http_client::HttpFailure;
+
+                            let span = span_of(func, flat).map(|sp| v.map_span(func_idx, sp));
+                            let message = match failure {
+                                HttpFailure::Request(message) => {
+                                    let message = format!("http.client: {message}");
+                                    let origin = LanguageErrorOrigin {
+                                        kind: LanguageErrorKind::Http,
+                                        span,
+                                    };
+                                    match unwind_to_invoke(v, st, limits, &message, origin, true) {
+                                        Ok(true) => continue,
+                                        Ok(false) => message,
+                                        Err(outcome) => return Some(outcome),
+                                    }
+                                }
+                                HttpFailure::Rejected(message) => format!("http.client: {message}"),
+                            };
+                            return Some(ExecOutcome::Error { message, span });
                         }
                     }
                 }
@@ -6653,6 +6707,41 @@ fn dispatch_with_host<V: ModuleView>(
                         return Some(out);
                     }
                 }
+                MirInstr::StrLower { dst, view } => {
+                    let value =
+                        st.frames.last().expect("frame present").slots[*view as usize].clone();
+                    let result = (|| {
+                        let (bytes, view) = borrowed_text_source(&value)?;
+                        charge_exec_work(st, bytes.len() as u64, limits, cancel, started)?;
+                        let text = text_scan_range(bytes, view)?;
+                        let mut length = 0usize;
+                        for ch in text.chars().flat_map(char::to_lowercase) {
+                            let width = ch.len_utf8();
+                            charge_exec_work(st, width as u64, limits, cancel, started)?;
+                            length = length.saturating_add(width);
+                        }
+                        let deep = std::mem::size_of::<Value>().saturating_add(length);
+                        owned_alloc_precheck(st, deep, *dst as usize, limits)?;
+                        charge_exec_work(
+                            st,
+                            text.len().saturating_add(length) as u64,
+                            limits,
+                            cancel,
+                            started,
+                        )?;
+                        // Full-string casing resolves final sigma. Both sigma forms have
+                        // the same UTF-8 width, so scalar casing yields the exact byte budget.
+                        let converted = text.to_lowercase().into_bytes().into_boxed_slice();
+                        let owned = st.arena.try_alloc_boxed(converted)
+                            .map_err(|attempt| ExecOutcome::Infra(format!(
+                                "fault-injected at owned allocation attempt #{attempt}"
+                            )))?;
+                        commit_slot_write(st, *dst as usize, Value::Str(owned), limits)
+                    })();
+                    if let Err(out) = result {
+                        return Some(out);
+                    }
+                }
                 MirInstr::StrCharAt { dst, view, index } => {
                     let (vv, iv) = {
                         let fr = st.frames.last().expect("frame present");
@@ -8102,13 +8191,30 @@ fn dispatch_with_host<V: ModuleView>(
                                     return Some(out);
                                 }
                             } else {
-                                // A RUNTIME CHECKED failure: the source
-                                // stays intact in its slot, nothing dropped
-                                // or half-moved.
-                                return Some(ExecOutcome::Trap {
-                                    kind: crate::contract::TrapKind::DynTypeMismatch,
-                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
-                                });
+                                let materialized =
+                                    dyn_materialize_to(d.as_value(), &want);
+                                match materialized {
+                                    Some(m) => {
+                                        if let Err(out) = commit_slot_write(
+                                            st,
+                                            *dst as usize,
+                                            m,
+                                            limits,
+                                        ) {
+                                            return Some(out);
+                                        }
+                                    }
+                                    None => {
+                                        // A RUNTIME CHECKED failure: the
+                                        // source stays intact in its slot,
+                                        // nothing dropped or half-moved.
+                                        return Some(ExecOutcome::Trap {
+                                            kind: crate::contract::TrapKind::DynTypeMismatch,
+                                            span: span_of(func, flat)
+                                                .map(|sp| v.map_span(func_idx, sp)),
+                                        });
+                                    }
+                                }
                             }
                         }
                         other => {
@@ -8461,6 +8567,22 @@ fn dispatch_with_host<V: ModuleView>(
                         Value::I64(value) => value.to_string().into_bytes(),
                         Value::U64(value) => value.to_string().into_bytes(),
                         Value::F32(value) => value.to_string().into_bytes(),
+                        // PLAN-117（round-36 ②）：json 值链的 Dyn 标量显示
+                        //（`p.sort_key.str()`——成员读的 Dyn 标量落文本）。
+                        Value::Dyn(d) => match d.as_value() {
+                            Value::I32(v) => itoa_display(*v),
+                            Value::I8(v) => itoa_display(i32::from(*v)),
+                            Value::U32(v) => v.to_string().into_bytes(),
+                            Value::I64(v) => v.to_string().into_bytes(),
+                            Value::F32(v) => v.to_string().into_bytes(),
+                            Value::Str(h) => h.bytes().to_vec(),
+                            other => {
+                                return Some(ExecOutcome::Infra(format!(
+                                    "text-display operand holds Dyn({}) (admission violation)",
+                                    other.type_name(),
+                                )))
+                            }
+                        },
                         other => {
                             return Some(ExecOutcome::Infra(format!(
                                 "text-display operand holds {} (admission violation)",
@@ -9162,6 +9284,52 @@ fn dispatch_with_host<V: ModuleView>(
                             "host.reference: missing platform declaration".into(),
                         ));
                     };
+                    // PLAN-117（B-05 S1b）：json 值原语复用同一 PlatformCall
+                    // 指令——执行=本文件内解析器（返回真实 Value：Object/
+                    // List/Str/标量/Nil）。必须在平台 op 表查询之前分流。
+                    if crate::json_value::is_json_symbol(&h.symbol) {
+                        if st.frames.len() >= limits.max_frames {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::Frames,
+                                message: "json call exceeds call depth".into(),
+                            });
+                        }
+                        if CancelCheck::poll(cancel) {
+                            return Some(ExecOutcome::Cancelled);
+                        }
+                        let arg_vals: Vec<Value> = {
+                            let fr = st.frames.last().expect("frame");
+                            args.iter().map(|s| fr.slots[*s as usize].clone()).collect()
+                        };
+                        match crate::json_value::dispatch(&h.symbol, &arg_vals) {
+                            Ok(value) => {
+                                let fr = st.frames.last_mut().expect("frame");
+                                fr.slots[*dst as usize] = value;
+                            }
+                            Err(crate::host::HostError::Cancelled) => {
+                                return Some(ExecOutcome::Cancelled);
+                            }
+                            Err(crate::host::HostError::Resource) => {
+                                return Some(ExecOutcome::Resource {
+                                    kind: ResourceKind::DynTypeNodes,
+                                    message: "json value primitive exceeded its budget".into(),
+                                });
+                            }
+                            Err(crate::host::HostError::Io(message)) => {
+                                return Some(ExecOutcome::Error {
+                                    message: format!("json.value: {message}"),
+                                    span: span_of(func, flat).map(|sp| v.map_span(func_idx, sp)),
+                                });
+                            }
+                        }
+                        if started.elapsed() > limits.wall {
+                            return Some(ExecOutcome::Resource {
+                                kind: ResourceKind::ExecutionWall,
+                                message: "json call exceeded wall budget".into(),
+                            });
+                        }
+                        continue;
+                    }
                     // PLAN-982（B-CONFIG-I）：配置文档原语复用同一 PlatformCall
                     // 指令，但执行的是**宿主侧配置会话**（不是 OS provider）——
                     // 必须在平台 op 表查询之前分流，否则会落到 unknown-symbol。
@@ -11838,6 +12006,35 @@ impl ForeignView<'_> {
             ForeignView::Bytes(bytes) => bytes,
             ForeignView::Handle(handle, range) => &handle.bytes()[range.clone()],
         }
+    }
+}
+
+/// PLAN-117（B-05 S1b）：dyn 容器→typed 槽的**物化**——DYN_TAKE 的类型相等
+/// 之外，允许 `List(Dyn)` 逐元素物化到 `List(elem)`（每个元素自身的描述符
+/// 必须与目标 elem 相容；不可物化 = None → 调用侧维持既有 trap）。纯 share
+/// 语义：不改动源 Dyn 值，新铸目标容器。
+fn dyn_materialize_to(value: &Value, want: &crate::dynamic::DynType) -> Option<Value> {
+    match (value, want) {
+        (Value::Dyn(d), want) => dyn_materialize_to(d.as_value(), want),
+        (Value::List(h), crate::dynamic::DynType::List(elem)) => {
+            let buf = h.rc.try_borrow().ok()?;
+            let mut out = Vec::with_capacity(buf.elems.len());
+            for e in &buf.elems {
+                out.push(dyn_materialize_to(e, elem)?);
+            }
+            Some(Value::List(crate::contract::ListHandle::detached(out)))
+        }
+        (Value::Object(_), crate::dynamic::DynType::Object) => Some(value.clone()),
+        (Value::Str(_), crate::dynamic::DynType::Str) => Some(value.clone()),
+        (Value::I32(_), crate::dynamic::DynType::I32) => Some(value.clone()),
+        (Value::I64(_), crate::dynamic::DynType::I64) => Some(value.clone()),
+        (Value::U64(_), crate::dynamic::DynType::U64) => Some(value.clone()),
+        (Value::F32(_), crate::dynamic::DynType::F32) => Some(value.clone()),
+        (Value::F64(_), crate::dynamic::DynType::F64) => Some(value.clone()),
+        (Value::Bool(_), crate::dynamic::DynType::Bool) => Some(value.clone()),
+        (Value::Char(_), crate::dynamic::DynType::Char) => Some(value.clone()),
+        (Value::Nil, crate::dynamic::DynType::Nil) => Some(Value::Nil),
+        _ => None,
     }
 }
 

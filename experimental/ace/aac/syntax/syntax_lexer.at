@@ -30,6 +30,7 @@ use app.syntax_program.mtag_charset
 use app.syntax_program.mtag_line
 use app.syntax_program.mtag_block
 use app.syntax_program.mtag_strlit
+use app.syntax_program.mtag_line_text
 
 // ---------------------------------------------------------------------------
 // Bucket index (CompiledScanner::compile)
@@ -37,16 +38,14 @@ use app.syntax_program.mtag_strlit
 
 fn lit_len_of(pg List<int>, ri int) int {
     let mtag = scan_mtag(pg, ri)
-    if (mtag == mtag_lit()) {
-        return scan_b(pg, ri)
-    }
-    if (mtag == mtag_line()) {
-        return scan_b(pg, ri)
-    }
-    if (mtag == mtag_block()) {
+    if (has_matcher_prefix(mtag)) {
         return scan_b(pg, ri)
     }
     return 0
+}
+
+fn has_matcher_prefix(mtag int) bool {
+    return mtag == mtag_lit() || mtag == mtag_line() || mtag == mtag_block() || mtag == mtag_line_text()
 }
 
 pub fn use_count_pass(pg List<int>) int {
@@ -59,15 +58,7 @@ pub fn use_count_pass(pg List<int>) int {
     var ri = 0
     for (ri < n_scan(pg)) {
         let mtag = scan_mtag(pg, ri)
-        if (mtag == mtag_lit()) {
-            let b0 = pool_byte(pg, scan_a(pg, ri))
-            counts.set(b0, counts.get(b0) + 1)
-        }
-        if (mtag == mtag_line()) {
-            let b0 = pool_byte(pg, scan_a(pg, ri))
-            counts.set(b0, counts.get(b0) + 1)
-        }
-        if (mtag == mtag_block()) {
+        if (has_matcher_prefix(mtag)) {
             let b0 = pool_byte(pg, scan_a(pg, ri))
             counts.set(b0, counts.get(b0) + 1)
         }
@@ -118,7 +109,7 @@ pub fn compile_scanner(pg List<int>) List<int> {
     var ri = 0
     for (ri < n_scan(pg)) {
         let mtag = scan_mtag(pg, ri)
-        if (mtag == mtag_lit() || mtag == mtag_line() || mtag == mtag_block()) {
+        if (has_matcher_prefix(mtag)) {
             let b0 = pool_byte(pg, scan_a(pg, ri))
             counts.set(b0, counts.get(b0) + 1)
         }
@@ -168,7 +159,7 @@ pub fn compile_scanner(pg List<int>) List<int> {
     ri = 0
     for (ri < n_scan(pg)) {
         let mtag = scan_mtag(pg, ri)
-        if (mtag == mtag_lit() || mtag == mtag_line() || mtag == mtag_block()) {
+        if (has_matcher_prefix(mtag)) {
             let b0 = pool_byte(pg, scan_a(pg, ri))
             put_id(cs, fill, ids, b0, ri)
         }
@@ -537,9 +528,10 @@ fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m Lis
     var k = lo
     for (k < hi) {
         let ri = cs.get(k)
-        if (scan_mode(pg, ri) != st.get(2)) {
-            k = k + 1
-        } else {
+        // A longer literal operator, such as `||`, takes precedence over line text.
+        let longer_literal = (scan_mtag(pg, ri) == mtag_line_text() && best_rule >= 0
+            && scan_mtag(pg, best_rule) == mtag_lit() && best_len > scan_b(pg, ri))
+        if (scan_mode(pg, ri) == st.get(2) && !longer_literal) {
             let r = try_rule(pg, b, st, ri, at, split_range)
             if (r >= 0) {
                 let len = r / 2
@@ -561,8 +553,8 @@ fn match_at(pg List<int>, cs List<int>, b List<int>, st List<int>, at int, m Lis
                     best_err = err
                 }
             }
-            k = k + 1
         }
+        k = k + 1
     }
     if (best_rule < 0) {
         return 0
@@ -589,22 +581,20 @@ fn try_rule(pg List<int>, b List<int>, st List<int>, ri int, at int, split_range
         }
         return l * 2
     }
-    if (mtag == mtag_line()) {
+    if (mtag == mtag_line() || mtag == mtag_line_text()) {
         let s_off = scan_a(pg, ri)
         let s_len = scan_b(pg, ri)
         if (try_literal(b, st, at, pg, s_off, s_len)) {
+            let line_text = mtag == mtag_line_text()
+            let close = scan_c(pg, ri)
             var i = at + s_len
             var probing = 1
             for (probing == 1) {
                 let c = byte_at(b, st, i)
-                if (c < 0) {
+                if (c < 0 || c == 10 || (line_text && (c == 13 || c == close))) {
                     probing = 0
                 } else {
-                    if (c == 10) {
-                        probing = 0
-                    } else {
-                        i = i + 1
-                    }
+                    i = i + 1
                 }
             }
             return (i - at) * 2

@@ -1,5 +1,16 @@
 //! PLAN-843 结构拆分：image 域实现（原样搬移，算法/行为零变化）。
 use super::*;
+use crate::file_session::current_session;
+use auto_media_core::image_pipeline::{global_media_runtime, MediaRuntime};
+
+const UNKNOWN_SESSION: &str = "{\"error\":\"unknown_session\"}";
+
+fn viewer_runtime<T>(missing: T, use_runtime: impl FnOnce(&MediaRuntime) -> T) -> T {
+    match current_session() {
+        Some(access) => access.with_media_runtime(use_runtime).unwrap_or(missing),
+        None => use_runtime(global_media_runtime()),
+    }
+}
 
 // PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
 pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -95,11 +106,11 @@ pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 pub fn shim_image_open_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let root: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(
-        task,
-        vm,
-        auto_media_core::image_pipeline::open_media_session(root),
-    )
+    let session = match current_session() {
+        Some(access) => access.open_media(std::path::Path::new(&root)).unwrap_or_default(),
+        None => global_media_runtime().open_session(root),
+    };
+    push_string_result(task, vm, session)
 }
 
 // PLAN-814: 811 前残留门（体纯 auto-media-core，renderer 中性）随 Core 迁 SDK 去门
@@ -109,7 +120,7 @@ pub fn shim_image_snapshot(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     push_string_result(
         task,
         vm,
-        auto_media_core::image_pipeline::media_session_snapshot(&session),
+        viewer_runtime(UNKNOWN_SESSION.into(), |runtime| runtime.session_snapshot(&session)),
     )
 }
 
@@ -120,7 +131,7 @@ pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     push_string_result(
         task,
         vm,
-        auto_media_core::image_pipeline::media_session_uri(&session),
+        viewer_runtime(String::new(), |runtime| runtime.session_uri(&session)),
     )
 }
 
@@ -128,7 +139,7 @@ pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_image_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    auto_media_core::image_pipeline::media_session_names(&session)
+    viewer_runtime(Vec::new(), |runtime| runtime.session_names(&session))
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
@@ -141,7 +152,7 @@ pub fn shim_image_navigate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     push_string_result(
         task,
         vm,
-        auto_media_core::image_pipeline::navigate_media_session(&session, delta),
+        viewer_runtime(UNKNOWN_SESSION.into(), |runtime| runtime.navigate_session(&session, delta)),
     )
 }
 
@@ -156,13 +167,9 @@ pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     push_string_result(
         task,
         vm,
-        auto_media_core::image_pipeline::request_media_view(
-            &session,
-            index,
-            viewport_width,
-            viewport_height,
-            quality,
-        ),
+        viewer_runtime(UNKNOWN_SESSION.into(), |runtime| {
+            runtime.request_view(&session, index, viewport_width, viewport_height, quality)
+        }),
     )
 }
 
@@ -170,7 +177,7 @@ pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_image_close_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = crate::vm::ffi::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let closed = auto_media_core::image_pipeline::close_media_session(&session);
+    let closed = viewer_runtime(false, |runtime| runtime.close_session(&session));
     closed
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
@@ -183,7 +190,7 @@ pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     push_string_result(
         task,
         vm,
-        auto_media_core::image_pipeline::media_session_stats(&session),
+        viewer_runtime(UNKNOWN_SESSION.into(), |runtime| runtime.session_stats(&session)),
     )
 }
 

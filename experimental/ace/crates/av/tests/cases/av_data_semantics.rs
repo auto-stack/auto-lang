@@ -985,12 +985,14 @@ fn av_data_instruction_contract_round_trip_all_opcodes() {
     }
     // PLAN-1088: Unicode uppercase conversion gated by av.text.case/1.
     // PLAN-105: LIST_FIELD_VIEW keeps an owned text field borrowed in place.
-    assert_eq!(all_mnemonics.len(), 66);
+    // PLAN-117: STR_LOWER uses the same Unicode text capability.
+    assert_eq!(all_mnemonics.len(), 67);
     assert!(all_mnemonics.contains(&"LIST_FIELD_VIEW"));
     assert!(all_mnemonics.contains(&"GLOBAL_TAKE"));
     assert!(all_mnemonics.contains(&"STR_FIND"));
     assert!(all_mnemonics.contains(&"STR_TRIM"));
     assert!(all_mnemonics.contains(&"STR_UPPER"));
+    assert!(all_mnemonics.contains(&"STR_LOWER"));
     assert!(all_mnemonics.contains(&"CONV"));
     assert!(all_mnemonics.contains(&"HOST_CALL"));
     assert!(all_mnemonics.contains(&"FOREIGN_CALL"));

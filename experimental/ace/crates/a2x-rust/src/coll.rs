@@ -542,6 +542,7 @@ pub fn a2x_str_find(s: &str, sub: &str, start: i32) -> A2xResult<i32> {
 pub fn a2x_str_trim(s: &str) -> A2xResult<A2xStr> { a2x_str_clone(s.trim()) }
 pub fn a2x_str_trim_len(s: &str) -> A2xResult<i32> { Ok(s.trim().chars().count() as i32) }
 pub fn a2x_str_upper(s: &str) -> A2xResult<A2xStr> { a2x_str_clone(&s.to_uppercase()) }
+pub fn a2x_str_lower(s: &str) -> A2xResult<A2xStr> { a2x_str_clone(&s.to_lowercase()) }
 
 // ---- PLAN-1115 (T-05): the widening conversion remainder (never trap;
 // the frozen 961 matrix's language-lane completion — the shared RT_NUMERIC

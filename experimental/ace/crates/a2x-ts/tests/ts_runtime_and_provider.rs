@@ -85,6 +85,109 @@ assert.equal(second.snapshot().live_strs.length, 0);
 }
 
 #[test]
+fn suspended_widget_step_keeps_text_across_another_frame() {
+    let dir = scratch_dir("widget-http-step");
+    let script = format!(
+        "import assert from 'node:assert/strict';\n{}\n{}",
+        ace_a2x_ts::script_widget_runtime_body(),
+        r#"
+const retained = new Set();
+function* scan() {
+  const text = a2x_str_to_owned(a2x_str_lit('扫描'));
+  try {
+    a2x_bill(11);
+    const bytes = yield '/api/photos/scan';
+    return a2x_str_concat(text, bytes);
+  } finally {
+    a2x_str_free(text);
+  }
+}
+const source = { rows: a2x_list_new(), title: a2x_str_to_owned(a2x_str_lit('before')) };
+a2x_list_push(source.rows, a2x_obj_new([['n', a2x_dyn_pack(1, 'i32')]]));
+const staged = a2x_widget_copy_state(source);
+a2x_obj_set(a2x_list_get(staged.rows, 0), a2x_str_lit('n'), a2x_dyn_pack(2, 'i32'));
+assert.equal(a2x_dyn_take(a2x_obj_get(a2x_list_get(source.rows, 0), a2x_str_lit('n')), 'i32'), 1);
+const generator = scan();
+assert.deepEqual(a2x_widget_step(retained, () => generator.next()), {
+  value: '/api/photos/scan', done: false,
+});
+assert.equal(retained.size, 1);
+const budget = a2x_widget_work_budget();
+a2x_widget_begin_frame();
+a2x_widget_keep_models([source, staged, [...retained]]);
+assert.equal(a2x_rt_snapshot().live_strs.length, 3);
+a2x_widget_begin_frame(budget);
+assert.equal(a2x_widget_work_budget(), budget);
+const step = a2x_widget_step(retained, () => generator.next(a2x_str_lit('完成')));
+assert.equal(step.done, true);
+assert.equal(a2x_str_utf8(step.value), '扫描完成');
+a2x_widget_keep_models([]);
+assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+const cancelled = scan();
+assert.equal(a2x_widget_step(new Set(), () => cancelled.next()).done, false);
+assert.equal(cancelled.return().done, true);
+assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+"#
+    );
+    std::fs::write(dir.join("driver.mjs"), script).unwrap();
+    let output = Command::new(find_node())
+        .arg("driver.mjs")
+        .current_dir(dir)
+        .output()
+        .expect("run suspended widget lifetime test");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn checked_widget_json_preserves_value_types_and_rejects_bad_inputs() {
+    let dir = scratch_dir("widget-json-values");
+    let script = format!(
+        "import assert from 'node:assert/strict';\n{}\n{}",
+        ace_a2x_ts::script_widget_runtime_body(),
+        r#"
+const text = a2x_str_lit;
+const parse = input => a2x_json_parse(text(input));
+const get = (object, key) => a2x_obj_get(object, text(key));
+const errorCode = code => error => error instanceof A2xTrap && error.code === code;
+const source = parse('{"10":-2,"2":1.5,"__proto__":{"title":"图\\ud83d\\ude00"},"key":1,"key":2,"rows":[17,18],"none":null}');
+assert.equal(a2x_dyn_take(get(source, 'key'), 'i32'), 1);
+assert.equal(a2x_dyn_take(get(source, '2'), 'f64'), 1.5);
+assert.equal(a2x_dyn_take(parse('1.0'), 'f64'), 1);
+assert.throws(() => a2x_dyn_take(parse('1.0'), 'i32'), errorCode('DynTypeMismatch'));
+assert.equal(a2x_str_utf8(a2x_dyn_take(get(get(source, '__proto__'), 'title'), 'Str')), '图😀');
+assert.equal(a2x_dyn_is_nil(get(source, 'none')), true);
+assert.equal(a2x_dyn_is_nil(parse('false')), false);
+assert.throws(() => get(source, 'missing'), errorCode('ObjectMissing'));
+const rows = a2x_dyn_take(get(source, 'rows'), ['list', 'i32']);
+assert.deepEqual(rows.items, [17, 18]);
+a2x_list_set(rows, 0, 19);
+assert.equal(a2x_dyn_take(a2x_obj_get(get(source, 'rows'), 0), 'i32'), 17);
+a2x_obj_set(source, text('none'), a2x_dyn_pack(false, 'bool'));
+assert.equal(a2x_str_utf8(a2x_json_stringify(source)),
+  '{"10":-2,"2":1.5,"__proto__":{"title":"图😀"},"key":1,"key":2,"rows":[17,18],"none":false}');
+for (const invalid of ['[1,]', '{"x":}', '{"x":null}garbage', '0x1']) {
+  assert.throws(() => parse(invalid), errorCode('Fail'));
+}
+assert.throws(() => parse('['.repeat(257) + '0' + ']'.repeat(257)), errorCode('Budget'));
+assert.throws(() => parse(' '.repeat(1 << 20) + '0'), errorCode('Budget'));
+a2x_widget_keep_models([]);
+assert.deepEqual(a2x_rt_snapshot().live_strs, []);
+"#
+    );
+    std::fs::write(dir.join("driver.mjs"), script).unwrap();
+    let output = Command::new(find_node())
+        .arg("driver.mjs")
+        .current_dir(dir)
+        .output()
+        .expect("run widget JSON on Node");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn checked_widget_numeric_casts_truncate_before_the_range_check() {
     use ace_a2x_core::SemanticView;
     use ace_a2x_ts::{emit_function_body_fragment, FragmentProgramContext};

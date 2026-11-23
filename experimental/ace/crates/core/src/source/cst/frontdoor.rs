@@ -692,6 +692,11 @@ fn anchor_imported_store(
                     }
                     span
                 }
+                ComponentStmt::Try { body, catch, span } => {
+                    visit(body, anchor);
+                    visit(catch, anchor);
+                    span
+                }
                 ComponentStmt::Send { args, span, .. } => {
                     for arg in args {
                         anchor_expr(arg, anchor);
@@ -1300,6 +1305,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     crate::source::age_component::specialize_legacy_vm_guards(&mut node, &mut inactive_hosts);
                 }
                 node.payload_records.extend(payload_records.iter().cloned());
+                crate::source::age_component::inline_package_handler_computed_members(&mut node)?;
                 if !node.fields.iter().any(|field| field.name == "store") {
                     if let Some(span) = node.handlers.iter().find_map(|handler| {
                         crate::source::age_component::stmt_refs_store(&handler.stmts)
@@ -1321,29 +1327,26 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     };
                     let supported = node.legacy_widget
                         && match param.ty.as_str() {
-                            "List" => match &default.kind {
-                                ExprKind::ArrayLit(items) => {
-                                    // PLAN-113（026 真语料）：裸 `List` 参数默认
-                                    // 除文本元素外也收**整数元素**（`pageSizes:
-                                    // List = [10, 25, 50]` 分页容量候选）——元素
-                                    // 类型由默认值定型（str 或 int 全一致）。
-                                    let text_elements = param.collection_type.as_ref().is_none_or(|ann| {
-                                        matches!(&ann.kind, TypeRef::Generic { args, .. }
-                                            if matches!(args.as_slice(), [element]
-                                                if matches!(element.kind, TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned))))
-                                    });
-                                    if !text_elements {
-                                        true
-                                    } else {
-                                        items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))
-                                            || items.iter().all(|item| matches!(item.kind, ExprKind::IntLit(_)))
-                                    }
+                            "List" => match (&param.collection_type, &default.kind) {
+                                (None, _) => crate::source::age_package::legacy_widget_default_list_element(default).is_some(),
+                                (Some(ann), ExprKind::ArrayLit(items)) => {
+                                    let text_elements = matches!(&ann.kind, TypeRef::Generic { args, .. }
+                                        if matches!(args.as_slice(), [element]
+                                            if matches!(element.kind, TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned))));
+                                    !text_elements || items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_)))
                                 }
                                 _ => false,
                             },
                             "str" | "Str" => matches!(default.kind, ExprKind::StrLit(_)),
                             "bool" => matches!(default.kind, ExprKind::BoolLit(_)),
                             "int" | "i32" => matches!(default.kind, ExprKind::IntLit(_)),
+                            // PLAN-117（U05 031 真语料）：`zoom: float = 1.0` 等
+                            // 标量默认（image_viewport 头参）——浮点字面量在 AGE
+                            // 面投影为 TypedLit{F32/F64}（含整数默认的合法宽松）。
+                            "float" | "f32" => matches!(
+                                default.kind,
+                                ExprKind::TypedLit { ty: crate::source::ast::TypeWord::Float | crate::source::ast::TypeWord::Double | crate::source::ast::TypeWord::F64, .. } | ExprKind::IntLit(_)
+                            ),
                             _ => false,
                         };
                     if !supported {
@@ -1542,7 +1545,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                     },
                                     span: v.span,
                                 }, &[])?;
-                            } else {
+                            } else if m.role != "computed" {
+                                // The per-instance computed function already
+                                // checks this value and provides it to the view.
                                 check_value(v, &[])?;
                             }
                         }
@@ -1809,8 +1814,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     {
                         crate::source::age_package::walk_view_message_calls(
                             tree,
+                            "",
                             &mut Vec::new(),
-                            &mut |entry, loops| {
+                            &mut |element_tag, entry, loops| {
                                 let symbol = format!(
                                     "{}event_{}_{}",
                                     crate::source::age_package::AGE_PACKAGE_HIDDEN_PREFIX,
@@ -1819,7 +1825,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
                                 );
                                 event_index += 1;
                                 if let Some(item) = crate::source::age_package::check_view_message_call(
-                                    symbol, &node, node_index, entry, loops,
+                                    symbol, &node, node_index, element_tag, entry, loops,
                                 )? {
                                     event_items.push(item);
                                 }

@@ -90,7 +90,11 @@ pub enum SeedCollTy {
     U64,
     Bool,
     F32,
+    Str,
     StrOwned,
+    Nil,
+    Dyn,
+    Object(u32),
     Record(String),
     Variant(String),
     List(u32),
@@ -104,7 +108,11 @@ impl SeedCollTy {
             SeedCollTy::U64 => "u64".into(),
             SeedCollTy::Bool => "bool".into(),
             SeedCollTy::F32 => "f32".into(),
+            SeedCollTy::Str => "str".into(),
             SeedCollTy::StrOwned => "Str".into(),
+            SeedCollTy::Nil => "nil".into(),
+            SeedCollTy::Dyn => "dyn".into(),
+            SeedCollTy::Object(index) => format!("O:{index}"),
             SeedCollTy::Record(n) => format!("R:{n}"),
             SeedCollTy::Variant(n) => format!("V:{n}"),
             SeedCollTy::List(index) => format!("L:{index}"),
@@ -118,7 +126,16 @@ impl SeedCollTy {
             "u64" => Ok(SeedCollTy::U64),
             "bool" => Ok(SeedCollTy::Bool),
             "f32" => Ok(SeedCollTy::F32),
+            "str" => Ok(SeedCollTy::Str),
             "Str" => Ok(SeedCollTy::StrOwned),
+            "nil" => Ok(SeedCollTy::Nil),
+            "dyn" => Ok(SeedCollTy::Dyn),
+            other if other.starts_with("O:") => other[2..]
+                .parse::<u32>()
+                .ok()
+                .filter(|index| index.to_string() == other[2..])
+                .map(SeedCollTy::Object)
+                .ok_or_else(|| seed_reject(format!("invalid object type reference `{other}`"))),
             other if other.starts_with("R:") => {
                 let name = &other[2..];
                 validate_ident_token(name, "record ref")?;
@@ -151,7 +168,10 @@ impl SeedCollTy {
             SeedCollTy::U64 => "u64".into(),
             SeedCollTy::Bool => "bool".into(),
             SeedCollTy::F32 => "f32".into(),
-            SeedCollTy::StrOwned => "str".into(),
+            SeedCollTy::Str | SeedCollTy::StrOwned => "str".into(),
+            SeedCollTy::Nil => "nil".into(),
+            SeedCollTy::Dyn => "dyn".into(),
+            SeedCollTy::Object(index) => format!("obj_{index}"),
             SeedCollTy::Record(n) => format!("rec_{}", sanitize_ident(n)),
             SeedCollTy::Variant(n) => format!("var_{}", sanitize_ident(n)),
             SeedCollTy::List(index) => format!("list_{index}"),
@@ -231,7 +251,14 @@ fn seed_coll_ty(view: &SemanticView<'_>, ty: Ty) -> Result<SeedCollTy, A2xReject
         Ty::U64 => Ok(SeedCollTy::U64),
         Ty::Bool => Ok(SeedCollTy::Bool),
         Ty::F32 => Ok(SeedCollTy::F32),
+        Ty::Str if view.is_age_package() => Ok(SeedCollTy::Str),
         Ty::StrOwned => Ok(SeedCollTy::StrOwned),
+        Ty::Nil if view.is_age_package() => Ok(SeedCollTy::Nil),
+        Ty::Dyn if view.is_age_package() => Ok(SeedCollTy::Dyn),
+        Ty::Object(i) if view.is_age_package() => {
+            view.object_elem(i)?;
+            Ok(SeedCollTy::Object(i))
+        }
         Ty::Record(i) => {
             let rec = view
                 .record(i)
@@ -591,10 +618,13 @@ impl RecordPlan {
                 .iter()
                 .map(|(name, ty)| {
                     let kind = match ty {
-                        SeedCollTy::I32 | SeedCollTy::I64 | SeedCollTy::U64 | SeedCollTy::Bool | SeedCollTy::F32 => FieldKind::Scalar,
+                        SeedCollTy::I32 | SeedCollTy::I64 | SeedCollTy::U64 | SeedCollTy::Bool
+                        | SeedCollTy::F32 | SeedCollTy::Nil => FieldKind::Scalar,
+                        SeedCollTy::Str => FieldKind::StrBorrowed,
                         SeedCollTy::StrOwned => FieldKind::StrOwned,
                         SeedCollTy::Record(inner) => FieldKind::Record(inner.clone()),
-                        SeedCollTy::Variant(_) | SeedCollTy::List(_) => FieldKind::SharedCollection,
+                        SeedCollTy::Variant(_) | SeedCollTy::List(_) | SeedCollTy::Dyn
+                        | SeedCollTy::Object(_) => FieldKind::SharedCollection,
                     };
                     (name.clone(), kind)
                 })

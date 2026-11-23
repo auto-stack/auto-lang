@@ -41,7 +41,7 @@ pub use widget_runtime::{
     widget_timer_interval_ms, AgeWidgetRuntimeComponent, AgeWidgetRuntimeHandler, AgeWidgetRuntimeTimer,
     AgeWidgetRuntimeWatch, AgeWidgetWatchSource,
 };
-pub use live_view::{widget_timer_fn_name_at, widget_view_fn_name_at};
+pub use live_view::{widget_timer_fn_name_at, widget_view_fn_name_at, ImageSurfaceEventPayload};
 pub use super::age_component::outbound::FIELD as WIDGET_OUTBOUND_FIELD;
 pub use super::age_component::outbound::FOCUS_FIELD as WIDGET_FOCUS_FIELD;
 
@@ -861,9 +861,14 @@ fn compile_age_package_mode(
         .map_err(|d| vec![product.bound.locate(d).diagnostic])?;
     expand_model_record_literals(&mut product.bound.program)
         .map_err(|d| vec![product.bound.locate(d).diagnostic])?;
-    let uses_text_predicates = inputs
-        .iter()
-        .any(|unit| super::adapter::needs_text_predicates(&unit.source));
+    let uses_checked_text_methods = inputs.iter().any(|unit| {
+        super::adapter::needs_text_predicates(&unit.source)
+            || [".to_lower", ".lower"].into_iter().any(|method| {
+                unit.source.match_indices(method).any(|(index, name)| {
+                    unit.source[index + name.len()..].trim_start().starts_with('(')
+                })
+            })
+    });
     if inputs.iter().any(|unit| super::adapter::needs_linked_text_predicates(&unit.source)) {
         let source = super::adapter::graft_package_text_predicates(&mut product.bound)
             .map_err(|d| vec![d])?;
@@ -879,10 +884,10 @@ fn compile_age_package_mode(
     // List models, record fields and helpers use the ordinary Auto ownership
     // and collection verifier.
     let auto_type = |ann: &TypeAnn| {
-        matches!(&ann.kind, TypeRef::Generic { name, .. } if name.name == "List")
+        is_list_annotation(ann)
             || matches!(ann.kind, TypeRef::Builtin(TypeWord::U64 | TypeWord::I64))
     };
-    let profile = if uses_text_predicates
+    let profile = if uses_checked_text_methods
         || product.bound.program.items.iter().any(|item| {
             match item {
                 Item::Fn(function) => {
@@ -1064,6 +1069,15 @@ fn list_element(ann: &TypeAnn) -> Option<&TypeAnn> {
     }
 }
 
+fn is_list_annotation(ann: &TypeAnn) -> bool {
+    matches!(&ann.kind, TypeRef::Record(name) | TypeRef::Generic { name, .. }
+        if name.name == "List")
+}
+
+fn is_bare_list_annotation(ann: &TypeAnn) -> bool {
+    matches!(&ann.kind, TypeRef::Record(name) if name.name == "List")
+}
+
 pub(crate) fn is_model_record_list(ann: &TypeAnn, value: &Expr) -> bool {
     matches!(list_element(ann).map(|elem| &elem.kind), Some(TypeRef::Record(_)))
         && matches!(&value.kind, ExprKind::ArrayLit(items)
@@ -1071,8 +1085,8 @@ pub(crate) fn is_model_record_list(ann: &TypeAnn, value: &Expr) -> bool {
 }
 
 fn function_has_typed_list(function: &FnItem) -> bool {
-    if list_element(&function.ret).is_some()
-        || function.params.iter().any(|param| list_element(&param.ty).is_some())
+    if is_list_annotation(&function.ret)
+        || function.params.iter().any(|param| is_list_annotation(&param.ty))
     {
         return true;
     }
@@ -1080,7 +1094,7 @@ fn function_has_typed_list(function: &FnItem) -> bool {
     while let Some(block) = pending.pop() {
         for statement in &block.stmts {
             match statement {
-                Stmt::Let { ann: Some(ty), .. } if list_element(ty).is_some() => return true,
+                Stmt::Let { ann: Some(ty), .. } if is_list_annotation(ty) => return true,
                 Stmt::If { then, els, .. } => {
                     pending.push(then);
                     pending.extend(els.iter());
@@ -1175,6 +1189,11 @@ fn bind_handler_list_context(body: &mut Block) -> Result<(), Diagnostic> {
                     pending.extend(els.iter());
                     pending.push(then);
                 }
+                Stmt::Try { body, catch, finally, .. } => {
+                    pending.extend(finally.iter());
+                    pending.extend(catch.iter().map(|clause| &clause.body));
+                    pending.push(body);
+                }
                 Stmt::ForIn { body, .. } | Stmt::While { body, .. } => pending.push(body),
                 _ => {}
             }
@@ -1195,9 +1214,24 @@ fn bind_handler_list_context(body: &mut Block) -> Result<(), Diagnostic> {
                     }
                 }
                 Stmt::ExprStmt { value, .. } => bind_handler_record_append(value, &local_lists)?,
+                Stmt::Assign { target, value, .. } if target.path.is_empty() => {
+                    if let (Some(ty), ExprKind::ArrayLit(items)) = (
+                        model_lists.get(&target.base.name).and_then(list_record_element),
+                        &mut value.kind,
+                    ) {
+                        for item in items {
+                            bind_handler_record(item, ty)?;
+                        }
+                    }
+                }
                 Stmt::If { then, els, .. } => {
                     pending.extend(els.iter_mut());
                     pending.push(then);
+                }
+                Stmt::Try { body, catch, finally, .. } => {
+                    pending.extend(finally.iter_mut());
+                    pending.extend(catch.iter_mut().map(|clause| &mut clause.body));
+                    pending.push(body);
                 }
                 Stmt::ForIn { body, .. } | Stmt::While { body, .. } => pending.push(body),
                 _ => {}
@@ -1215,9 +1249,18 @@ fn bind_handler_record_append(
     let ("push", ExprKind::Var(local), [Arg::Pos(value)]) =
         (name.name.as_str(), &recv.kind, args.as_mut_slice())
     else { return Ok(()) };
-    let Some(TypeAnn { kind: TypeRef::Record(ty), .. }) =
-        lists.get(&local.name).and_then(list_element)
-    else { return Ok(()) };
+    let Some(ty) = lists.get(&local.name).and_then(list_record_element) else { return Ok(()) };
+    bind_handler_record(value, ty)
+}
+
+fn list_record_element(ann: &TypeAnn) -> Option<&Ident> {
+    match &list_element(ann)?.kind {
+        TypeRef::Record(ty) => Some(ty),
+        _ => None,
+    }
+}
+
+fn bind_handler_record(value: &mut Expr, ty: &Ident) -> Result<(), Diagnostic> {
     let ExprKind::ObjectLit { fields } = &mut value.kind else { return Ok(()) };
     let fields = std::mem::take(fields).into_iter().map(|field| {
         let crate::hir::ObjectKey::Text(name) = field.key else {
@@ -1869,6 +1912,7 @@ pub(crate) fn check_view_message_call(
     symbol: String,
     node: &ComponentNode,
     node_index: usize,
+    element_tag: &str,
     entry: &ComponentViewEntry,
     loops: &[&ComponentViewFor],
 ) -> Result<Option<Item>, Vec<Diagnostic>> {
@@ -1882,6 +1926,18 @@ pub(crate) fn check_view_message_call(
             name.span,
         )]);
     };
+    if let Some(payload) = ImageSurfaceEventPayload::from_binding(element_tag, &entry.key)
+        .filter(|payload| payload.matches_arguments(args))
+    {
+        if payload.matches_types(&variant.payload) {
+            return Ok(None);
+        }
+        return Err(vec![text_diag(
+            "source.age.image-surface-payload",
+            format!("image surface event `{}` has an incompatible message payload", entry.key),
+            entry.span,
+        )]);
+    }
     if args.len() != variant.payload.len() {
         return Err(vec![text_diag(
             "source.age.event-payload-arity",
@@ -1916,32 +1972,31 @@ pub(crate) fn check_view_message_call(
         };
         let value = rename_expr_with_params(expr, binding, &node.fields, &visible)?;
         let span = expr.span;
-        // Operations must distinguish the payload types even where legacy
-        // authored expressions allow mixed text and integer equality or +.
-        let (kind, result) = if ty == TypeWord::StrOwned {
-            (ExprKind::Method {
-                recv: Box::new(value),
-                name: Ident { name: "len".into(), span },
-                args: Vec::new(),
-            }, TypeWord::Int)
+        // Give a dynamic value the declared text context before checking it.
+        // The other payload types keep their exact operator checks.
+        let value = if ty == TypeWord::StrOwned {
+            value
         } else {
             let (op, witness) = if ty == TypeWord::Bool {
                 (BinOp::Eq, ExprKind::BoolLit(false))
             } else {
                 (BinOp::Sub, ExprKind::IntLit(0))
             };
-            (ExprKind::Binary {
-                op,
-                lhs: Box::new(value),
-                rhs: Box::new(Expr { kind: witness, span }),
-            }, ty)
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(value),
+                    rhs: Box::new(Expr { kind: witness, span }),
+                },
+                span,
+            }
         };
         body.push(Stmt::Let {
             kw: span,
             name: Ident { name: format!("{symbol}_arg_{i}"), span },
-            ann: Some(TypeAnn { kind: TypeRef::Builtin(result), span }),
+            ann: Some(TypeAnn { kind: TypeRef::Builtin(ty), span }),
             mutable: false,
-            value: Expr { kind, span },
+            value,
             span,
         });
     }
@@ -2033,7 +2088,7 @@ pub(crate) fn computed_fn(name: String, value: Expr) -> Item {
         type_params: Vec::new(),
         params: Vec::new(),
         ret: TypeAnn { kind: TypeRef::Inferred, span },
-        body: Block { stmts: vec![Stmt::Return { value, span }], span },
+        body: computed_return(value),
         span,
         receiver: Receiver::Free,
         owner: None,
@@ -2041,6 +2096,37 @@ pub(crate) fn computed_fn(name: String, value: Expr) -> Item {
         proto: false,
         test_attribute: None,
     })
+}
+
+// Computed values return through the checked statement-branch path. Each arm
+// participates in return inference and receives the inferred return context.
+fn computed_return(mut value: Expr) -> Block {
+    let span = value.span;
+    let stmt = match std::mem::replace(&mut value.kind, ExprKind::IntLit(0)) {
+        ExprKind::If { cond, then, else_chain, els: Some(els), .. } => {
+            let mut otherwise = computed_return(*els);
+            for (cond, result) in else_chain.into_iter().rev() {
+                let span = cond.span.join(otherwise.span);
+                otherwise = Block {
+                    stmts: vec![Stmt::If {
+                        cond,
+                        then: computed_return(*result),
+                        els: Some(otherwise),
+                        span,
+                    }],
+                    span,
+                };
+            }
+            Stmt::If {
+                cond: *cond,
+                then: computed_return(*then),
+                els: Some(otherwise),
+                span,
+            }
+        }
+        kind => Stmt::Return { value: Expr { kind, span }, span },
+    };
+    Block { stmts: vec![stmt], span }
 }
 
 #[derive(Clone)]
@@ -2590,16 +2676,28 @@ fn widget_prop_name(kind: &str, widget: &str, property: &str) -> String {
     format!("{AGE_PACKAGE_HIDDEN_PREFIX}prop_{kind}_{}_{widget}_{property}", widget.len())
 }
 
+pub(crate) fn legacy_widget_default_list_element(value: &Expr) -> Option<TypeWord> {
+    let ExprKind::ArrayLit(items) = &value.kind else {
+        return None;
+    };
+    if items.iter().all(|item| matches!(item.kind, ExprKind::StrLit(_))) {
+        // Keep the established text element type for an empty legacy default.
+        return Some(TypeWord::StrOwned);
+    }
+    items.iter().all(|item| matches!(item.kind, ExprKind::IntLit(_))).then_some(TypeWord::I32)
+}
+
 pub(crate) fn widget_prop_type(param: &super::age_component::ComponentParam) -> Option<TypeAnn> {
     if let Some(ann) = &param.collection_type {
-        return list_element(ann).map(|_| ann.clone());
+        return (is_bare_list_annotation(ann) || list_element(ann).is_some()).then(|| ann.clone());
     }
-    // An authored legacy default establishes the known text-list shape.
+    // An authored homogeneous scalar default establishes the legacy List shape.
     let span = param.ty_span;
-    let kind = if param.ty == "List" && param.default.is_some() {
+    let kind = if param.ty == "List" {
+        let element = legacy_widget_default_list_element(param.default.as_ref()?)?;
         TypeRef::Generic {
             name: Ident { name: "List".into(), span },
-            args: vec![TypeAnn { kind: TypeRef::Builtin(TypeWord::StrOwned), span }],
+            args: vec![TypeAnn { kind: TypeRef::Builtin(element), span }],
         }
     } else {
         TypeRef::Builtin(super::age_component::payload_type(&param.ty)?)
@@ -2642,6 +2740,17 @@ struct WidgetArgumentSite<'a> {
     instances: usize,
 }
 
+fn legacy_widget_event<'a>(node: &ComponentNode, property: &'a str) -> Option<&'a str> {
+    let event = property.strip_prefix("on_")?;
+    (node.legacy_widget
+        && node.params.iter().any(|param| param.name == property && param.ty == "msg")
+        && !node.handlers.iter().any(|handler| {
+            handler.channel_calls.iter().any(|call| call.channel == property)
+        })
+        && node.messages.iter().any(|msg| msg.outbound && msg.name == event))
+        .then_some(event)
+}
+
 impl WidgetArgumentSite<'_> {
     fn bind_events(
         &self,
@@ -2660,17 +2769,21 @@ impl WidgetArgumentSite<'_> {
                 module: self.component.module.clone(),
                 diagnostic: text_diag(code, message, entry.span),
             };
-            let Some(event) = entry.key.strip_prefix("on").and_then(|name| {
+            let event_name = legacy_widget_event(&child.node, &entry.key)
+                .or_else(|| entry.key.strip_prefix("on"));
+            let Some(event) = event_name.and_then(|name| {
                 child.node.messages.iter().find(|message| message.outbound && message.name == name)
             }) else {
                 return Err(error("source.age.child-event-unknown", format!(
                     "widget `{}` has no declared outbound event for `{}`", child.node.name.name, entry.key,
                 )));
             };
-            let matches_attached_key = |item: &&ComponentViewItem| {
+            let same_key = |item: &&ComponentViewItem| {
                 matches!(item, ComponentViewItem::Entry(other) if other.key == entry.key)
             };
-            if self.element.items.iter().filter(matches_attached_key).nth(1).is_some() {
+            if events.iter().any(|bound| bound.name == event.name)
+                || self.element.items.iter().filter(same_key).nth(1).is_some()
+            {
                 return Err(error("source.age.child-event-duplicate", format!(
                     "widget `{}` binds event `{}` more than once", child.node.name.name, event.name,
                 )));
@@ -2724,6 +2837,14 @@ impl WidgetArgumentSite<'_> {
                     format!("widget `{widget}` receives property `{}` twice", param.name),
                     duplicate.span,
                 ));
+            }
+            // A legacy `on_<event>: msg` mirrors a declared outbound event.
+            // A payload-forwarding binding is consumed by bind_events, and an
+            // unsubscribed event requires no value in the child's model.
+            if legacy_widget_event(&target.node, &param.name).is_some()
+                && arg.is_none_or(|entry| matches!(entry.value, ComponentEntryValue::ChildEvent(_)))
+            {
+                continue;
             }
             let provided = match arg {
                 Some(entry) => {
@@ -3219,24 +3340,25 @@ fn collect_view_event_bindings(
 
 pub(crate) fn walk_view_message_calls<'a>(
     items: &'a [ComponentViewItem],
+    element_tag: &'a str,
     loops: &mut Vec<&'a ComponentViewFor>,
-    visit: &mut impl FnMut(&'a ComponentViewEntry, &[&'a ComponentViewFor]) -> Result<(), Vec<Diagnostic>>,
+    visit: &mut impl FnMut(&'a str, &'a ComponentViewEntry, &[&'a ComponentViewFor]) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<(), Vec<Diagnostic>> {
     for item in items {
         match item {
             ComponentViewItem::Element(element) => {
-                walk_view_message_calls(&element.items, loops, visit)?;
+                walk_view_message_calls(&element.items, &element.tag, loops, visit)?;
             }
             ComponentViewItem::For(view_loop) => {
                 loops.push(view_loop);
-                walk_view_message_calls(&view_loop.items, loops, visit)?;
+                walk_view_message_calls(&view_loop.items, element_tag, loops, visit)?;
                 loops.pop();
             }
             ComponentViewItem::Cond(cond) => {
-                walk_view_message_calls(&cond.then_items, loops, visit)?;
-                walk_view_message_calls(&cond.else_items, loops, visit)?;
+                walk_view_message_calls(&cond.then_items, element_tag, loops, visit)?;
+                walk_view_message_calls(&cond.else_items, element_tag, loops, visit)?;
             }
-            ComponentViewItem::Entry(entry) if entry.message_call().is_some() => visit(entry, loops)?,
+            ComponentViewItem::Entry(entry) if entry.message_call().is_some() => visit(element_tag, entry, loops)?,
             ComponentViewItem::Entry(_) | ComponentViewItem::Text(_) => {}
         }
     }

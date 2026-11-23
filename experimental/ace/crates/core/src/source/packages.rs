@@ -505,6 +505,370 @@ mod tests {
     }
 
     #[test]
+    fn age_package_function_accepts_a_single_for_condition() {
+        use crate::source::ast::{Item, Stmt};
+
+        let source = "fn count(limit int) int {\n    var i int = 0\n    for i < limit {\n        i = i + 1\n    }\n    return i\n}\n";
+        let syntax = parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &super::super::age_component::ComponentScenario {
+                instances: 0,
+                ops: Vec::new(),
+            },
+            0,
+        )
+        .expect("a package function takes one condition before its loop body");
+        let [Item::Fn(function)] = syntax.program.items.as_slice() else {
+            panic!("expected one package function");
+        };
+        assert!(matches!(
+            function.body.stmts.as_slice(),
+            [Stmt::Let { .. }, Stmt::While { .. }, Stmt::Return { .. }]
+        ));
+    }
+
+    #[test]
+    fn age_package_handler_for_condition_ends_before_the_body() {
+        use crate::source::age_component::{ComponentScenario, ComponentStmt};
+
+        let source = r#"
+widget Counter {
+    msg { Count }
+    model { var value int = 0 }
+    view { text "counter" {} }
+    on {
+        .Count -> {
+            let limit int = 2
+            for .value < limit {
+                .value = .value + 1
+            }
+        }
+    }
+}
+"#;
+        let syntax = parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+        .expect("the loop's opening brace belongs to its body");
+        let (node, _, _) = &syntax.age_components[0];
+        assert!(matches!(
+            node.handlers[0].stmts.as_slice(),
+            [ComponentStmt::Let { .. }, ComponentStmt::While { body, .. }]
+                if matches!(body.as_slice(), [ComponentStmt::Assign(_)])
+        ));
+    }
+
+    #[test]
+    fn age_package_distinguishes_message_sends_from_checked_free_calls() {
+        use crate::source::age_component::{ComponentScenario, ComponentStmt};
+        use crate::source::age_h0::LegacyWidgetAlias;
+        use crate::source::age_package::compile_age_package;
+
+        let source = r#"
+widget Counter {
+    msg { Dispatch, Save, Update(int) }
+    model { var value int = 0 }
+    view { text "counter" {} }
+    on {
+        .Dispatch -> { .Update(2) }
+        .Update(next) -> { .value = next }
+        .Save -> {
+            if .value > 0 {
+                save_value(.value)
+            }
+        }
+    }
+}
+"#;
+        let syntax = parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+        .expect("project the message send and the free call");
+        let (node, _, _) = &syntax.age_components[0];
+        let dispatch = node.handlers.iter().find(|handler| handler.msg == "Dispatch").unwrap();
+        assert!(!dispatch.body_foreign);
+        assert!(matches!(
+            dispatch.stmts.as_slice(),
+            [ComponentStmt::Send { message, args, .. }] if message == "Update" && args.len() == 1
+        ));
+        let save = node.handlers.iter().find(|handler| handler.msg == "Save").unwrap();
+        assert!(!save.body_foreign);
+        assert!(matches!(
+            save.stmts.as_slice(),
+            [ComponentStmt::If { then, .. }] if matches!(then.as_slice(), [ComponentStmt::Effect { .. }])
+        ));
+        let unit = PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: source.into(),
+            provider: None,
+        };
+        let Err(diags) = compile_age_package(
+            &[unit], "app::app", LegacyWidgetAlias::Accept, &[PACKAGES_CAPABILITY.into()],
+        ) else {
+            panic!("the undeclared free call must be rejected");
+        };
+        assert!(diags.iter().any(|diag| diag.message.contains("save_value")), "{diags:?}");
+    }
+
+    #[test]
+    fn age_package_projects_list_assignments_in_handler_blocks() {
+        use crate::source::age_component::ComponentScenario;
+        use crate::source::age_h0::LegacyWidgetAlias;
+        use crate::source::age_package::compile_age_package_widget_runtime;
+        use crate::source::ast::ExprKind;
+
+        let source = r#"
+widget Probe {
+    msg { Direct, Branch, Loop, Attempt }
+    model {
+        var rows List<int> = [7]
+        var labels = [{ text: "old" }]
+        var marker int = 0
+    }
+    on {
+        .Direct -> { .rows = [] }
+        .Branch -> {
+            if .marker == 0 {
+                .rows = []
+            }
+        }
+        .Loop -> {
+            while .marker == 0 {
+                .rows = []
+                .marker = 1
+            }
+        }
+        .Attempt -> {
+            let caption = "new"
+            try {
+                .marker = 2
+            } catch {
+                .rows = []
+                .labels = [{ text: caption }]
+            }
+        }
+    }
+    view {
+        for label in .labels {
+            text label.text {}
+        }
+    }
+}
+"#;
+        let syntax = parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.into()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+        .expect("project the handlers");
+        let (node, _, _) = &syntax.age_components[0];
+        for name in ["Direct", "Branch", "Loop", "Attempt"] {
+            let handler = node.handlers.iter().find(|handler| handler.msg == name).unwrap();
+            assert!(handler.assigns.iter().any(|assign| {
+                assign.field == "rows"
+                    && matches!(&assign.rhs.kind, ExprKind::ArrayLit(items) if items.is_empty())
+            }), "{name} must retain its list reset");
+        }
+        let attempt = node.handlers.iter().find(|handler| handler.msg == "Attempt").unwrap();
+        let values = &attempt.assigns.iter().find(|assign| assign.field == "labels").unwrap().rhs;
+        let ExprKind::ArrayLit(items) = &values.kind else {
+            panic!("expected a record array: {values:?}");
+        };
+        let [item] = items.as_slice() else {
+            panic!("expected a single record: {items:?}");
+        };
+        let ExprKind::ObjectLit { fields } = &item.kind else {
+            panic!("expected a record literal: {item:?}");
+        };
+        let [field] = fields.as_slice() else {
+            panic!("expected a single field: {fields:?}");
+        };
+        assert!(matches!(&field.value.kind, ExprKind::Var(local) if local.name == "caption"));
+        let unit = PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: source.into(),
+            provider: None,
+        };
+        compile_age_package_widget_runtime(
+            &[unit], "app::app", LegacyWidgetAlias::Accept, &[PACKAGES_CAPABILITY.into()],
+        )
+        .expect("bind and check the record list assigned in catch");
+    }
+
+    #[test]
+    fn age_package_legacy_list_default_types_match_their_elements() {
+        use crate::source::age_component::ComponentScenario;
+        use crate::source::age_package::widget_prop_type;
+        use crate::source::ast::{TypeRef, TypeWord};
+
+        let parse_default = |default: &str| {
+            let source = format!("widget Pager (sizes: List = {default}) {{ view {{ text \"pages\" {{}} }} }}");
+            parse_package_source_age(
+                &source,
+                &[PACKAGES_CAPABILITY.into()],
+                FrontBudget::WORK_OWNED_64MIB,
+                &ComponentScenario { instances: 0, ops: Vec::new() },
+                0,
+            )
+        };
+        for (default, element) in [
+            ("[10, 25, 50]", TypeWord::I32),
+            (r#"["small", "large"]"#, TypeWord::StrOwned),
+            ("[]", TypeWord::StrOwned),
+        ] {
+            let syntax = parse_default(default).expect("homogeneous list default");
+            let (node, _, _) = &syntax.age_components[0];
+            assert!(matches!(
+                widget_prop_type(&node.params[0]).map(|ty| ty.kind),
+                Some(TypeRef::Generic { args, .. })
+                    if args.len() == 1 && args[0].kind == TypeRef::Builtin(element)
+            ));
+        }
+        let diagnostics = parse_default(r#"[10, "large"]"#).expect_err("mixed list default");
+        assert_eq!(diagnostics[0].code, "source.age.widget-param-default");
+    }
+
+    #[test]
+    fn age_package_bare_list_signatures_carry_dynamic_elements() {
+        use crate::source::{age_component::ComponentScenario, age_h0::LegacyWidgetAlias};
+
+        let source = r#"
+fn make_rows() List {
+    var rows List = []
+    rows.push({ id: "folder", selected: true })
+    return rows
+}
+fn count_rows(rows List) int {
+    return rows.len()
+}
+widget App {
+    computed { count => count_rows(make_rows()) }
+    view { if .count > 0 { text "rows" {} } }
+}
+"#;
+        let unit = PackageModuleInput {
+            package: "app".into(),
+            id: "main".into(),
+            version: "1.0.0".into(),
+            source: source.into(),
+            provider: None,
+        };
+        crate::source::age_package::compile_age_package_with_scenario(
+            &[unit],
+            "app::main",
+            LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.into()],
+            &ComponentScenario { instances: 1, ops: Vec::new() },
+        ).expect("old package signatures carry dynamic collection values");
+    }
+
+    #[test]
+    fn age_package_infers_computed_conditional_results() {
+        use crate::source::{age_component::ComponentScenario, age_h0::LegacyWidgetAlias};
+
+        let source = r#"
+widget App {
+    model {
+        var failed bool = false
+        var total i32 = 42
+    }
+    computed {
+        warning => if .failed { true } else if !.failed { false } else { true }
+        label => if .failed { "error" } else { "ready" }
+        count => if .failed { 1 } else { .total }
+    }
+    view {
+        if .warning { text "failed" {} }
+        if .count > 1 { text "more" {} }
+        text .label {}
+    }
+}
+"#;
+        let compile = |source: String| {
+            crate::source::age_package::compile_age_package_with_scenario(
+                &[PackageModuleInput {
+                    package: "app".into(),
+                    id: "main".into(),
+                    version: "1.0.0".into(),
+                    source,
+                    provider: None,
+                }],
+                "app::main",
+                LegacyWidgetAlias::Accept,
+                &[PACKAGES_CAPABILITY.into()],
+                &ComponentScenario { instances: 1, ops: Vec::new() },
+            )
+        };
+        compile(source.into()).expect("infer the Boolean and text results of a computed conditional");
+
+        let diagnostics = compile(source.replace("else if !.failed { false }", "else if !.failed { 1 }"))
+            .err().expect("computed branches with different types are refused");
+        assert!(diagnostics.iter().any(|diagnostic| diagnostic.code == "source.inference"));
+    }
+
+    #[test]
+    fn age_package_legacy_event_prop_forwards_declared_child_payload() {
+        use crate::source::age_component::ComponentScenario;
+        use crate::source::age_h0::LegacyWidgetAlias;
+        use crate::source::age_package::compile_age_package_with_scenario;
+
+        let compile = |binding: &str| {
+            let parent = format!(r#"
+widget App {{
+    use {{ package: controls from "../controls" }}
+    msg {{ Selected(str) }}
+    model {{ var selected str = "" }}
+    on {{ .Selected(value) -> {{ .selected = value }} }}
+    view {{ Picker ({binding}) {{}} }}
+}}
+"#);
+            let child = r#"
+widget Picker (on_select: msg, on_retry: msg) {
+    msg { "select"(str), "retry"(str) }
+    model { var value str = "" }
+    view { text "picker" {} }
+}
+"#;
+            compile_age_package_with_scenario(
+                &[
+                    PackageModuleInput { package: "app".into(), version: "1.0.0".into(), id: "main".into(), source: parent, provider: None },
+                    PackageModuleInput { package: "controls".into(), version: "1.0.0".into(), id: "picker".into(), source: child.into(), provider: None },
+                ],
+                "app::main",
+                LegacyWidgetAlias::Accept,
+                &[PACKAGES_CAPABILITY.into()],
+                &ComponentScenario { instances: 1, ops: Vec::new() },
+            )
+        };
+        let result = compile("on_select: .Selected($event)")
+            .expect("bind legacy alias to the checked outbound event");
+        let events = &result.first_widget_ref().expect("mounted child").events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "select");
+        assert_eq!(events[0].target, "Selected");
+
+        let errors = compile("on_select: .Selected($event), onselect: .Selected($event)")
+            .err().expect("the same child event cannot be bound twice");
+        assert_eq!(errors[0].code, "source.age.child-event-duplicate");
+    }
+
+    #[test]
     fn package_syntax_preserves_imports_aliases_reexports_and_items() {
         let src = "use std.answer\nuse math.util.clamp as cl\npub use lib.util.limits as lim\n\
                    pub const LIMIT int = 9\n\

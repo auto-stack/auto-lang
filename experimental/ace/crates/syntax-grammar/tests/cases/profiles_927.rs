@@ -158,11 +158,18 @@ fn profiles_reject_incorrect_composition() {
 fn profiles_trim_core_wide_ops_and_while_swap() {
     let core = compile_profile(SOURCE, "core").expect("core");
     let scalar = compile_profile(SOURCE, "scalar").expect("scalar");
-    // core 表只有 `<` `+` `*` 三个算子；wide 表十三个。
+    // Core has three operators, and scalar retains the original wide table.
     let core_table = &core.pratt[0];
     assert_eq!(core_table.ops.len(), 3, "core ops = < + *");
     let scalar_table = &scalar.pratt[0];
-    assert_eq!(scalar_table.ops.len(), 13, "wide ops = full set");
+    assert_eq!(scalar_table.ops.len(), 13, "scalar wide operators stay unchanged");
+    for profile in ["age-component", "age-package"] {
+        let age = compile_profile(SOURCE, profile).expect("AGE grammar");
+        let coalescing_tables = age.pratt.iter()
+            .filter(|table| table.ops.iter().any(|op| age.token_name(op.op) == "questionquestion"))
+            .count();
+        assert_eq!(coalescing_tables, 2, "{profile}: ordinary and conditional coalescing");
+    }
     // while-stmt 只在 core；for-cond-stmt 不在 core。
     let core_rules: Vec<&str> = core.rules.iter().map(|r| r.name.as_str()).collect();
     let scalar_rules: Vec<&str> = scalar.rules.iter().map(|r| r.name.as_str()).collect();

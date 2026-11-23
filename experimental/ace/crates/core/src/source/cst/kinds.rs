@@ -507,7 +507,7 @@ impl SourceKinds {
             name_word: rk_opt(p, "py-member-name"),
             num_ty_word: rk_opt(p, "num-ty-word"),
             leading_dot: rk_opt(p, "leading-dot"),
-            ctor_expr: rk_opt(p, "ctor-expr"),
+            ctor_expr: rk_opt(p, "ctor-expr").or_else(|| rk_opt(p, "condition-ctor")),
             typed_ctor_expr: rk_opt(p, "typed-ctor-expr"),
             ctor_fields: rk_opt(p, "ctor-fields"),
             ctor_field: rk_opt(p, "ctor-field"),

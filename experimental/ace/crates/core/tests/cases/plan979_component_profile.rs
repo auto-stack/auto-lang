@@ -185,6 +185,122 @@ fn p107_age_view_quoted_property_keys_preserve_checked_attributes() {
 }
 
 #[test]
+fn p107_carousel_loop_is_a_view_property() {
+    use ace_core::source::age_component::{ComponentEntryValue, ComponentScenario, ComponentViewItem};
+    use ace_core::source::ast::ExprKind;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    let source = r#"widget CarouselPage {
+    view {
+        carousel (align: "start", loop: "true", style: "w-full max-w-sm") {}
+    }
+}"#;
+    let component = project_component_candidates(source).expect("component carousel properties");
+    let package = parse_package_source_age(
+        source,
+        &[PACKAGES_CAPABILITY.to_string()],
+        FrontBudget::WORK_OWNED_64MIB,
+        &ComponentScenario { instances: 0, ops: Vec::new() },
+        0,
+    )
+    .expect("package carousel properties");
+    for node in [&component[0], &package.age_components[0].0] {
+        let [ComponentViewItem::Element(carousel)] = node.view.tree.as_slice() else {
+            panic!("expected carousel element");
+        };
+        let [_, ComponentViewItem::Entry(loop_prop), _] = carousel.items.as_slice() else {
+            panic!("expected three carousel properties");
+        };
+        assert_eq!(loop_prop.key, "loop");
+        assert!(!loop_prop.is_event);
+        assert!(matches!(&loop_prop.value, ComponentEntryValue::Expr(expr)
+            if matches!(&expr.kind, ExprKind::StrLit(value) if value == "true")));
+    }
+}
+
+#[test]
+fn p117_carousel_messages_accept_newline_or_comma() {
+    use ace_core::source::age_component::ComponentScenario;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    let source = "widget Carousel {\n    msg {\n        Next\n        Previous, Jump(int),\n    }\n    view { text \"Carousel\" {} }\n}";
+    let parse_package = |source: &str| {
+        parse_package_source_age(
+            source,
+            &[PACKAGES_CAPABILITY.to_string()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+    };
+    let component = project_component_candidates(source).expect("component message list");
+    let package = parse_package(source).expect("package message list");
+    for node in [&component[0], &package.age_components[0].0] {
+        let names: Vec<_> = node.messages.iter().map(|msg| msg.name.as_str()).collect();
+        assert_eq!(names, ["Next", "Previous", "Jump"]);
+        assert_eq!(node.messages[2].payload, ["int"]);
+    }
+
+    let unseparated = source.replace("Next\n        Previous", "Next Previous");
+    assert!(project_component_candidates(&unseparated).is_err());
+    assert!(parse_package(&unseparated).is_err());
+}
+
+#[test]
+fn p107_age_inline_text_preserves_labels_and_view_boundaries() {
+    use ace_core::source::age_component::ComponentScenario;
+    use ace_core::source::ast::ExprKind;
+    use ace_core::source::packages::{parse_package_source_age, PACKAGES_CAPABILITY};
+
+    let source = concat!(
+        "widget CarouselDemo { view {\r\n",
+        "    text | Slide 1\r\n",
+        "    if true || false { text | 图例 - Slide 2 }\n",
+        "    text \"Slide 3\"\n",
+        "} }",
+    );
+    let component = project_component_candidates(source).expect("component inline text");
+    let package = parse_package_source_age(
+        source,
+        &[PACKAGES_CAPABILITY.to_string()],
+        FrontBudget::WORK_OWNED_64MIB,
+        &ComponentScenario { instances: 0, ops: Vec::new() },
+        0,
+    )
+    .expect("package inline text");
+    for node in [&component[0], &package.age_components[0].0] {
+        assert_eq!(node.view.tree.len(), 3);
+        assert_eq!(node.view.texts.len(), 3);
+        for (leaf, (label, spelling)) in node.view.texts.iter().zip([
+            ("Slide 1", "| Slide 1"),
+            ("图例 - Slide 2", "| 图例 - Slide 2 "),
+            ("Slide 3", "\"Slide 3\""),
+        ]) {
+            assert!(matches!(&leaf.expr.kind, ExprKind::StrLit(value) if value == label));
+            assert_eq!(
+                &source[leaf.expr.span.start as usize..leaf.expr.span.end as usize],
+                spelling,
+            );
+        }
+    }
+
+    for invalid in [
+        "node Other { view { box | Slide 1\n } }",
+        "node Other { view { text\n| Slide 1\n } }",
+    ] {
+        assert!(project_component_candidates(invalid).is_err());
+        assert!(parse_package_source_age(
+            invalid,
+            &[PACKAGES_CAPABILITY.to_string()],
+            FrontBudget::WORK_OWNED_64MIB,
+            &ComponentScenario { instances: 0, ops: Vec::new() },
+            0,
+        )
+        .is_err());
+    }
+}
+
+#[test]
 fn p979_component_projection_yields_typed_candidates() {
     let nodes = project_component_candidates(VIEW_ONLY).expect("projection");
     assert_eq!(nodes.len(), 1);

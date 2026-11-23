@@ -116,6 +116,20 @@ impl CompiledScanner {
                     };
                     buckets[b0 as usize].push(i as u32);
                 }
+                Matcher::LineText { start, close } => {
+                    let Some(&b0) = start.as_bytes().first() else {
+                        return Err(RtError::InvalidProgram(format!(
+                            "scan rule #{} (`{name}`): empty line-text start",
+                            i
+                        )));
+                    };
+                    if !close.is_ascii() || matches!(*close, b'\r' | b'\n') {
+                        return Err(RtError::InvalidProgram(format!(
+                            "scan rule #{i} (`{name}`): invalid line-text delimiter"
+                        )));
+                    }
+                    buckets[b0 as usize].push(i as u32);
+                }
                 Matcher::BlockComment { start, .. } => {
                     let Some(&b0) = start.as_bytes().first() else {
                         return Err(RtError::InvalidProgram(format!(
@@ -151,7 +165,7 @@ impl CompiledScanner {
 
 fn lit_len(m: &Matcher) -> usize {
     match m {
-        Matcher::Literal(s) | Matcher::LineComment(s) => s.len(),
+        Matcher::Literal(s) | Matcher::LineComment(s) | Matcher::LineText { start: s, .. } => s.len(),
         Matcher::BlockComment { start, .. } => start.len(),
         _ => 0,
     }
@@ -359,6 +373,18 @@ impl<'p, 's> Scanner<'p, 's> {
             if r.mode != self.mode {
                 continue;
             }
+            if let Matcher::LineText { start, .. } = &r.matcher {
+                // A longer operator such as `||` has already been tried in this bucket.
+                if best.as_ref().is_some_and(|matched| {
+                    matched.len > start.len() as u64
+                        && matches!(
+                            &self.p.scanner.rules[matched.rule as usize].matcher,
+                            Matcher::Literal(_)
+                        )
+                }) {
+                    continue;
+                }
+            }
             if let Some(m) = self.try_rule(ri, at)? {
                 let better = match &best {
                     None => true,
@@ -395,6 +421,20 @@ impl<'p, 's> Scanner<'p, 's> {
                         i += 1;
                     }
                     Some((i - at, false))
+                } else {
+                    None
+                }
+            }
+            Matcher::LineText { start, close } => {
+                if let Some(()) = self.try_literal(at, start.as_bytes())? {
+                    let mut end = at + start.len() as u64;
+                    while let Some(byte) = self.w.byte(end)? {
+                        if byte == *close || matches!(byte, b'\r' | b'\n') {
+                            break;
+                        }
+                        end += 1;
+                    }
+                    Some((end - at, false))
                 } else {
                     None
                 }

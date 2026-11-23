@@ -7,8 +7,8 @@ use ace_core::source::age_package::{
 
 use super::{
     add_cell_call, add_scalar_setter, field_value_to_arg, find_function, fresh_context_token, live_view,
-    ComponentFieldValue, ExecLimits, MirGlobal, MirModule, Value, WidgetFocusRequest, WidgetSession, WidgetViewItem,
-    AGE_PACKAGE_HIDDEN_PREFIX,
+    ComponentFieldValue, ExecLimits, MirGlobal, MirModule, Value, WidgetChildTimer, WidgetFocusRequest,
+    WidgetSession, WidgetViewItem, AGE_PACKAGE_HIDDEN_PREFIX,
 };
 use super::watch::{self, Watch, Watched};
 
@@ -31,6 +31,7 @@ struct Child {
     handlers: BTreeMap<String, String>,
     context_handler: Option<String>,
     watches: Vec<Watch>,
+    timers: Vec<Timer>,
     forwards: BTreeMap<String, String>,
     outbound: Option<Outbound>,
     focus_field: Option<usize>,
@@ -40,6 +41,12 @@ struct Child {
 struct StoreFields {
     from_root: Vec<(usize, usize)>,
     to_root: Vec<(usize, usize)>,
+}
+
+struct Timer {
+    message: String,
+    every_ms: u32,
+    condition: Option<String>,
 }
 
 struct Site {
@@ -78,6 +85,7 @@ struct Mount {
     model: Option<SavedGlobalCells>,
     observed_model: Option<SavedGlobalCells>,
     context_token: Option<String>,
+    timer_mount: Option<u64>,
 }
 
 #[derive(Clone, Default)]
@@ -86,6 +94,8 @@ pub(super) struct Children {
     positions: BTreeMap<Vec<usize>, MountPath>,
     observed_root: Option<SavedGlobalCells>,
     focus: Vec<(MountPath, String)>,
+    pub(super) timers: Vec<WidgetChildTimer>,
+    next_timer_mount: u64,
 }
 
 impl Children {
@@ -155,12 +165,6 @@ impl ChildrenProgram {
             .filter(|runtime| runtime.node != root)
         {
             let component = &compiled.description.components[runtime.node];
-            if !runtime.timers.is_empty() {
-                return Err(format!(
-                    "ace.desktop.widget-timer: child timers are unavailable for {}",
-                    component.name
-                ));
-            }
             let view = resolve(&component.module, &runtime.view, mir)?;
             let params = mir
                 .sig_of(mir.funcs[view as usize].sig)
@@ -206,6 +210,18 @@ impl ChildrenProgram {
             });
             let watches = program.watches(mir, &runtime.watches, &call_inputs, model,
                 |name, mir| resolve(&component.module, name, mir))?;
+            let mut timers = Vec::new();
+            for timer in &runtime.timers {
+                let condition = timer.condition.as_ref().map(|name| {
+                    let target = resolve(&component.module, name, mir)?;
+                    program.adapter(mir, target, &call_inputs, None)
+                }).transpose()?;
+                timers.push(Timer {
+                    message: timer.message.clone(),
+                    every_ms: timer.interval_ms,
+                    condition,
+                });
+            }
             let store = component.imported_store.as_ref().map(|imported| {
                 let root = root_component.imported_store.as_ref().ok_or(
                     "ace.desktop.shared-store: the root must own the imported Store",
@@ -233,6 +249,7 @@ impl ChildrenProgram {
                     handlers,
                     context_handler: runtime.context_handler.clone(),
                     watches,
+                    timers,
                     outbound,
                     focus_field: runtime.focus.then_some(component.fields.len() + usize::from(runtime.outbound)),
                     forwards: component.handler_forwards.clone(),
@@ -398,7 +415,11 @@ impl ChildrenProgram {
         limits: &ExecLimits,
     ) -> Result<(Vec<WidgetViewItem>, Children), String> {
         let scratch = session.snapshot.save_global_cells(&self.scratch)?;
-        let mut next = Children { focus: previous.focus.clone(), ..Children::default() };
+        let mut next = Children {
+            focus: previous.focus.clone(),
+            next_timer_mount: previous.next_timer_mount,
+            ..Children::default()
+        };
         let observed_root = if self.root_watches.is_empty() {
             None
         } else {
@@ -681,6 +702,39 @@ impl Draw<'_> {
             );
         }
         let view = self.session.execute(&child.view, &[], self.limits)?;
+        let timer_mount = if child.timers.is_empty() {
+            None
+        } else {
+            let mount = match previous.and_then(|mount| mount.timer_mount) {
+                Some(mount) => mount,
+                None => {
+                    let mount = self.next.next_timer_mount;
+                    self.next.next_timer_mount = mount.checked_add(1).ok_or("child timer mount limit reached")?;
+                    mount
+                }
+            };
+            let mut enabled = BTreeSet::new();
+            for timer in &child.timers {
+                if let Some(condition) = &timer.condition {
+                    match self.session.execute(condition, &[], self.limits)? {
+                        Value::Bool(false) => continue,
+                        Value::Bool(true) => {}
+                        _ => return Err("child widget timer did not return bool".into()),
+                    }
+                }
+                if !enabled.insert((&timer.message, timer.every_ms)) {
+                    return Err(format!("ace.desktop.widget-timer: duplicate '{}'", timer.message));
+                }
+                self.next.timers.push(WidgetChildTimer {
+                    component: self.position.clone(),
+                    node: site.node,
+                    mount,
+                    message: timer.message.clone(),
+                    every_ms: timer.every_ms,
+                });
+            }
+            Some(mount)
+        };
         self.next
             .positions
             .insert(self.position.clone(), path.clone());
@@ -693,6 +747,7 @@ impl Draw<'_> {
                 observed_model: (!child.watches.is_empty()).then(|| model.clone()).flatten(),
                 model,
                 context_token,
+                timer_mount,
             },
         );
         live_view::decode_view(view)

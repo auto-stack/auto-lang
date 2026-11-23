@@ -364,6 +364,20 @@ impl Ctx {
                 } else if let Some(start) = pstr(t, "line-comment") {
                     literal_of.push(None);
                     Matcher::LineComment(start)
+                } else if let Some(start) = pstr(t, "line-text") {
+                    let close = pstr(t, "close").unwrap_or_default();
+                    let close = match close.as_bytes() {
+                        [byte] if byte.is_ascii() && !matches!(*byte, b'\r' | b'\n') => *byte,
+                        _ => {
+                            self.err(
+                                &format!("tokens.{tname}"),
+                                "line-text requires one ASCII closing delimiter".into(),
+                            );
+                            b'}'
+                        }
+                    };
+                    literal_of.push(None);
+                    Matcher::LineText { start, close }
                 } else if phas(t, "block-comment") {
                     let start = pstr(t, "block-comment").unwrap_or_else(|| "/*".into());
                     let end = pstr(t, "close").unwrap_or_else(|| "*/".into());
@@ -373,7 +387,7 @@ impl Ctx {
                 } else {
                     self.err(
                         &format!("tokens.{tname}"),
-                        format!("token `{tname}` has no matcher (literal/charset/quote/line-comment/block-comment)"),
+                        format!("token `{tname}` has no matcher (literal/charset/quote/line-comment/line-text/block-comment)"),
                     );
                     literal_of.push(None);
                     Matcher::Literal("\u{0}impossible".into())

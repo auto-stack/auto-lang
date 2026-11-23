@@ -149,7 +149,12 @@ fn check_block(
                     for (ri, fi) in path {
                         want = program.records[*ri].fields[*fi].vt;
                     }
-                    if value.vt != want {
+                    if value.vt != want
+                        // PLAN-117（round-31 ②）：AGE 面文本写位跨借用/owned
+                        // 放行（内容写入；AP-4 字面量提升与 json 值链 coerce
+                        // 的 owned 产物落回借用期望位——029 真语料字段写）。
+                        && !(age_eq && value.vt.is_text() && want.is_text())
+                    {
                         mismatch(diags, want, value.vt, value.span);
                     }
                 }
@@ -273,6 +278,25 @@ fn check_expr(
             }
             RExprKind::TupleGet { base, .. } => {
                 stack.push(base);
+            }
+            // PLAN-117（U05 029 真语料）：if 表达式——cond/then/链/末 else
+            // 逐支走检（类型收敛由 resolve 完成；verify 面只核对可诊断性）。
+            RExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                stack.push(cond);
+                stack.push(then);
+                for (c, t) in else_chain {
+                    stack.push(c);
+                    stack.push(t);
+                }
+                if let Some(e) = els {
+                    stack.push(e);
+                }
             }
             RExprKind::IntLit(_)
             | RExprKind::BoolLit(_)

@@ -21,7 +21,7 @@ use crate::source::SourceProfile;
 use crate::source::age_component::{
     ComponentAssign, ComponentDesignEntry, ComponentEntryValue, ComponentField, ComponentHandler, ComponentStmt,
     ComponentClassPart, ComponentMemberRow, ComponentMsgVariant, ComponentViewElement, ComponentViewEntry,
-    ComponentViewItem,
+    ComponentView, ComponentViewItem,
 };
 use ace_syntax_runtime::cst::{CstTree, FLAG_TRIVIA};
 use ace_syntax_runtime::program::{GrammarProgram, KIND_CALL, KIND_POSTFIX};
@@ -5604,7 +5604,7 @@ impl<'a> Engine<'a> {
         widget_lists: Option<&WidgetListProjection>,
     ) -> crate::source::age_component::ComponentNode {
         use crate::source::age_component::{
-            ComponentHandler, ComponentMemberRow, ComponentNode, ComponentView,
+            ComponentHandler, ComponentMemberRow, ComponentNode,
         };
         let head_node = self
             .cx
@@ -5806,7 +5806,9 @@ impl<'a> Engine<'a> {
                         // 节点的**原始 span 文本**（惰性数据——不经表达式投
                         // 影/verify；文法已限定列表字面量形）。
                         let Some(ty_node) = self.cx.field_child(field, "ty") else {
-                            view_data_nodes.push(init_node);
+                            let mutable = self.cx.field_child(field, "kw")
+                                .is_some_and(|kw| self.cx.spelling(kw) == "var");
+                            view_data_nodes.push((init_node, mutable));
                             view_data.push(crate::source::age_component::ComponentViewDataField {
                                 name: name_spelled,
                                 literal: self.cx.spelling(init_node),
@@ -6301,13 +6303,25 @@ impl<'a> Engine<'a> {
                 _ => {}
             }
         }
+        let view = ComponentView {
+            role: view_role,
+            exit: view_exit,
+            exits,
+            text_exits,
+            named_trees,
+            span: view_span,
+            texts,
+            node_refs,
+            scene_components,
+            tree,
+        };
         let inferred_records = if self.cx.profile == SourceProfile::AgePackage {
             if head_spelling != canonical_head {
                 Self::admit_legacy_widget_handlers(&fields, &handlers, &mut messages);
                 Self::admit_legacy_interval_tick(&fields, &handlers, &mut messages, &mut member_rows);
             }
             self.admit_typed_model_data(
-                &name, &handlers, &mut view_data, view_data_nodes, &mut fields,
+                &name, &handlers, &view, &mut view_data, view_data_nodes, &mut fields,
                 widget_lists.map(|projection| &projection.model_fields),
             )
         } else {
@@ -6326,18 +6340,7 @@ impl<'a> Engine<'a> {
             authored_name,
             fields,
             handlers,
-            view: ComponentView {
-                role: view_role,
-                exit: view_exit,
-                exits,
-                text_exits,
-                named_trees,
-                span: view_span,
-                texts,
-                node_refs,
-                scene_components,
-                tree,
-            },
+            view,
             messages,
             payload_records: Vec::new(),
             message_set_name,
@@ -6575,12 +6578,12 @@ impl<'a> Engine<'a> {
         &mut self,
         node: &Ident,
         handlers: &[ComponentHandler],
+        view: &ComponentView,
         view_data: &mut Vec<crate::source::age_component::ComponentViewDataField>,
-        initializers: Vec<u32>,
+        initializers: Vec<(u32, bool)>,
         fields: &mut Vec<ComponentField>,
         promoted_model_data: Option<&BTreeSet<usize>>,
     ) -> Vec<TypeItem> {
-        use crate::source::age_component::ComponentStmt;
         let mut names = BTreeSet::new();
         let mut pending: Vec<_> = handlers.iter().map(|handler| handler.stmts.as_slice()).collect();
         while let Some(block) = pending.pop() {
@@ -6604,10 +6607,74 @@ impl<'a> Engine<'a> {
             }
         }
 
+        let replaced: BTreeSet<_> = handlers.iter().flat_map(|handler| &handler.assigns)
+            .map(|assignment| assignment.field.as_str()).collect();
+        let mut view_lists = BTreeSet::new();
+        if !replaced.is_empty() {
+            let mut trees: Vec<_> = view.named_trees.iter().map(|(_, items)| items.as_slice()).collect();
+            trees.push(view.tree.as_slice());
+            while let Some(items) = trees.pop() {
+                for item in items {
+                    match item {
+                        ComponentViewItem::For(iteration) => {
+                            if let ExprKind::Field { base, name } = &iteration.iter.kind {
+                                if matches!(&base.kind, ExprKind::Var(id) if id.name == "self")
+                                    && replaced.contains(name.name.as_str())
+                                {
+                                    view_lists.insert(name.name.as_str());
+                                }
+                            }
+                            trees.push(&iteration.items);
+                        }
+                        ComponentViewItem::Element(element) => trees.push(&element.items),
+                        ComponentViewItem::Cond(branch) => {
+                            trees.push(&branch.then_items);
+                            trees.push(&branch.else_items);
+                        }
+                        ComponentViewItem::Text(_) | ComponentViewItem::Entry(_) => {}
+                    }
+                }
+            }
+        }
+
+        let mut handler_reads = vec![false; view_data.len()];
+        if !view_data.is_empty() {
+            for handler in handlers {
+                let reads = crate::source::age_component::handler_reads_view_data(&handler.stmts, view_data);
+                for (read, used) in handler_reads.iter_mut().zip(reads) {
+                    *read |= used;
+                }
+            }
+        }
         let mut records: Vec<TypeItem> = Vec::new();
-        for (data, initial) in std::mem::take(view_data).into_iter().zip(initializers) {
+        for (index, (data, (initial, mutable))) in
+            std::mem::take(view_data).into_iter().zip(initializers).enumerate()
+        {
             let widget_input = promoted_model_data.is_some_and(|spans| spans.contains(&data.span.start));
-            let typed = names.contains(data.name.as_str()) || widget_input;
+            if mutable
+                && data.literal.chars().filter(|ch| !ch.is_whitespace()).eq("[]".chars())
+                && (widget_input || handler_reads[index] || view_lists.contains(data.name.as_str()))
+                && replaced.contains(data.name.as_str())
+            {
+                // Keep event replacements available to later handlers and widget inputs.
+                // An empty initializer leaves the element type dynamic.
+                let span = data.span;
+                fields.push(ComponentField {
+                    name: data.name,
+                    ty: "List".into(),
+                    ty_span: span,
+                    collection_type: Some(TypeAnn {
+                        kind: TypeRef::Record(Ident { name: "List".into(), span }),
+                        span,
+                    }),
+                    init: Expr { kind: ExprKind::ArrayLit(Vec::new()), span: self.cx.span_of(initial) },
+                    mutable,
+                    span,
+                });
+                continue;
+            }
+            let typed = names.contains(data.name.as_str()) || widget_input
+                || (mutable && view_lists.contains(data.name.as_str()));
             let inferred = typed.then(|| self.project_iterated_record_list(initial, widget_input)).flatten();
             let Some((init, schema, sparse)) = inferred else {
                 view_data.push(data);
@@ -6668,13 +6735,15 @@ impl<'a> Engine<'a> {
 
     /// Infer scalar fields from authored records. Bare widget inputs can also
     /// carry sparse text fields when the remaining record shape is known.
-    fn project_iterated_record_list(&mut self, initial: u32, sparse_text: bool) -> Option<(Expr, Vec<FieldDecl>, bool)> {
+    fn view_data_list_entries(&self, initial: u32) -> Option<Vec<u32>> {
         let entry_kind = self.rule_kind_of("age-view-data-entry")?;
         let inline_kind = self.rule_kind_of("age-view-data-lit-inline")?;
         let tail_kind = self.rule_kind_of("age-view-data-inline-tail")?;
-        let record_kind = self.rule_kind_of("age-view-data-record")?;
-        let field_kind = self.rule_kind_of("age-view-data-field")?;
-        let list = self.unwrap_child(initial);
+        let list = if self.rule_name_of(initial) == "age-view-data-lit" {
+            self.unwrap_child(initial)
+        } else {
+            initial
+        };
         let mut entries = Vec::new();
         if self.cx.tree.kind(list) == inline_kind {
             entries.extend(self.cx.field_child(list, "first"));
@@ -6685,24 +6754,52 @@ impl<'a> Engine<'a> {
             entries.extend(self.cx.children(list).into_iter()
                 .filter(|&node| self.cx.tree.kind(node) == entry_kind));
         }
+        Some(entries)
+    }
+
+    fn project_view_data_record_fields(&mut self, row: u32) -> Option<Vec<(Ident, Expr, Span)>> {
+        if self.cx.tree.kind(row) != self.rule_kind_of("age-view-data-record")? {
+            return None;
+        }
+        let field_kind = self.rule_kind_of("age-view-data-field")?;
+        let mut fields = Vec::new();
+        for field in self.cx.children(row) {
+            if self.cx.tree.kind(field) != field_kind {
+                continue;
+            }
+            let key = self.cx.field_child(field, "key")?;
+            let name = ident_of(&mut self.cx, key);
+            let expr = self.unwrap_child(self.cx.field_child(field, "value")?);
+            let value = self.project_expr_sync(expr);
+            fields.push((name, value, self.cx.span_of(field)));
+        }
+        Some(fields)
+    }
+
+    fn project_handler_record_list(&mut self, initial: u32) -> Option<Expr> {
+        let mut items = Vec::new();
+        for entry in self.view_data_list_entries(initial)? {
+            let row = self.unwrap_child(entry);
+            let fields = self.project_view_data_record_fields(row)?.into_iter()
+                .map(|(name, value, span)| ObjectField {
+                    key: crate::hir::ObjectKey::Text(name.name),
+                    value,
+                    span,
+                })
+                .collect();
+            items.push(Expr { kind: ExprKind::ObjectLit { fields }, span: self.cx.span_of(row) });
+        }
+        Some(Expr { kind: ExprKind::ArrayLit(items), span: self.cx.span_of(initial) })
+    }
+
+    fn project_iterated_record_list(&mut self, initial: u32, sparse_text: bool) -> Option<(Expr, Vec<FieldDecl>, bool)> {
         let mut schema = BTreeMap::<String, FieldDecl>::new();
         let mut items = Vec::new();
-        for entry in entries {
+        for entry in self.view_data_list_entries(initial)? {
             let row = self.unwrap_child(entry);
-            if self.cx.tree.kind(row) != record_kind {
-                return None;
-            }
             let mut columns = BTreeMap::new();
             let mut values = Vec::new();
-            for field in self.cx.children(row) {
-                if self.cx.tree.kind(field) != field_kind {
-                    continue;
-                }
-                let name_node = self.cx.field_child(field, "key")?;
-                let name = ident_of(&mut self.cx, name_node);
-                let span = self.cx.span_of(field);
-                let expr = self.unwrap_child(self.cx.field_child(field, "value")?);
-                let value = self.project_expr_sync(expr);
+            for (name, value, span) in self.project_view_data_record_fields(row)? {
                 let word = match &value.kind {
                     ExprKind::IntLit(_) => TypeWord::Int,
                     ExprKind::BoolLit(_) => TypeWord::Bool,
@@ -6863,6 +6960,7 @@ impl<'a> Engine<'a> {
     ) -> Vec<ComponentViewItem> {
         let text_item = self.rule_kind_of("age-text-item");
         let text_bare = self.rule_kind_of("age-text-bare");
+        let text_line = self.rule_kind_of("age-text-line");
         let text_props = self.rule_kind_of("age-text-props");
         let text_literal_props = self.rule_kind_of("age-text-literal-props");
         let entry_kind = self.rule_kind_of("age-view-entry");
@@ -6878,6 +6976,7 @@ impl<'a> Engine<'a> {
             let raw_kind = self.cx.tree.kind(raw);
             let raw_is_item = Some(raw_kind) == text_item
                 || Some(raw_kind) == text_bare
+                || Some(raw_kind) == text_line
                 || Some(raw_kind) == text_props
                 || Some(raw_kind) == text_literal_props
                 || Some(raw_kind) == entry_kind
@@ -6894,13 +6993,21 @@ impl<'a> Engine<'a> {
                 self.unwrap_child(raw)
             };
             let kind = self.cx.tree.kind(item);
-            if Some(kind) == text_item || Some(kind) == text_bare {
+            if Some(kind) == text_item || Some(kind) == text_bare || Some(kind) == text_line {
                 let comp = self
                     .cx
                     .field_child(item, "component")
                     .expect("text head leaf");
                 let expr_node = self.cx.field_child(item, "text").expect("text expression");
-                let expr = self.project_expr_sync(expr_node);
+                let expr = if Some(kind) == text_line {
+                    let raw = self.cx.spelling(expr_node);
+                    Expr {
+                        kind: ExprKind::StrLit(raw[1..].trim().to_owned()),
+                        span: self.cx.span_of(expr_node),
+                    }
+                } else {
+                    self.project_expr_sync(expr_node)
+                };
                 let leaf = crate::source::age_h0::AgeTextLeaf {
                     role: text_role.to_string(),
                     spelling: self.cx.spelling(comp),
@@ -7053,7 +7160,7 @@ impl<'a> Engine<'a> {
                     // =后续切片）；assigns 深平铺兼容面（既有消费者默认路径
                     // 不变）。
                     let mut foreign = false;
-                    let stmts = self.project_view_stmt_children(inner, &[], &mut foreign);
+                    let stmts = self.project_view_stmt_children(inner, false, &mut foreign);
                     // 增量同步适配（F-R21-3 后续）：lambda-if 落地时调用的
                     // 单句版 flatten_stmt_assigns 已在 981 并集删除（语义被
                     // 切片版包含）——此处等价改道 flat_handler_assigns
@@ -7408,6 +7515,10 @@ impl<'a> Engine<'a> {
                 | crate::source::age_component::ComponentStmt::While { body, .. } => {
                     Self::flat_handler_assigns(body, out);
                 }
+                crate::source::age_component::ComponentStmt::Try { body, catch, .. } => {
+                    Self::flat_handler_assigns(body, out);
+                    Self::flat_handler_assigns(catch, out);
+                }
                 crate::source::age_component::ComponentStmt::Let { .. }
                 | crate::source::age_component::ComponentStmt::AssignLocal { .. }
                 | crate::source::age_component::ComponentStmt::Call { .. }
@@ -7489,7 +7600,14 @@ impl<'a> Engine<'a> {
                 | "age-view-data-lit-inline"
                 | "age-view-data-lit-multiline"
         );
-        let mut rhs = if viewdata_rhs {
+        // A checked assignment uses the destination's type. Its row values
+        // can reference locals and fields, unlike a literal used to infer a schema.
+        let record_values = (viewdata_rhs && self.cx.profile == SourceProfile::AgePackage)
+            .then(|| self.project_handler_record_list(rhs_node))
+            .flatten();
+        let mut rhs = if let Some(array) = record_values {
+            array
+        } else if viewdata_rhs {
             let entry_kind = self.rule_kind_of("age-view-data-entry");
             let record_kind = self.rule_kind_of("age-view-data-record");
             let entries: Vec<u32> = self
@@ -7781,14 +7899,15 @@ impl<'a> Engine<'a> {
         }
         fn walk(stmts: &[crate::source::age_component::ComponentStmt]) -> bool {
             stmts.iter().any(|st| match st {
-                crate::source::age_component::ComponentStmt::Call { call, .. } => {
-                    !list_method(call)
-                }
+                crate::source::age_component::ComponentStmt::Call { call, .. } => !list_method(call),
                 crate::source::age_component::ComponentStmt::If { then, els, .. } => {
                     walk(then) || els.as_ref().is_some_and(|e| walk(e))
                 }
                 crate::source::age_component::ComponentStmt::For { body, .. }
                 | crate::source::age_component::ComponentStmt::While { body, .. } => walk(body),
+                crate::source::age_component::ComponentStmt::Try { body, catch, .. } => {
+                    walk(body) || walk(catch)
+                }
                 _ => false,
             })
         }
@@ -7834,40 +7953,12 @@ impl<'a> Engine<'a> {
                     // fail-closed——976 后继目标域决策）。
                     let inner = self.unwrap_child(stmt);
                     if Some(self.cx.tree.kind(inner)) == view_if_kind {
-                        stmts.push(self.project_view_if(inner, channel_names, &mut body_foreign));
-                    } else if self.rule_name_of(inner) == "age-view-assign-stmt"
-                        || self.rule_name_of(inner) == "age-view-assign-viewdata-stmt"
-                    {
-                        let mut one = Vec::new();
-                        self.collect_view_stmt(inner, &mut one);
-                        if let Some(a) = one.pop() {
-                            stmts.push(self.project_handler_assignment(a));
-                        }
+                        let checked_handler = self.cx.profile == SourceProfile::AgePackage;
+                        stmts.push(self.project_view_if(inner, checked_handler, &mut body_foreign));
                     } else if let Some(call_node) = self.cx.field_child(inner, "call") {
                         match self.project_channel_call(call_node, channel_names) {
                             Some(cc) => channel_calls.push(cc),
-                            None => {
-                                // PLAN-105 T-02：非通道调用保留为 Call 语句（store
-                                // 方法在 store 内联时展开；列表方法在 collections
-                                // 域按表达式语句降级）；其余仍是域外体，派发具名拒。
-                                let call = self.project_expr_sync(call_node);
-                                let is_list_method = match &call.kind {
-                                    crate::source::ast::ExprKind::MethodCall { name, .. } => {
-                                        matches!(
-                                            name.name.as_str(),
-                                            "push" | "get" | "len" | "pop" | "clear" | "set"
-                                        )
-                                    }
-                                    _ => false,
-                                };
-                                stmts.push(crate::source::age_component::ComponentStmt::Call {
-                                    call,
-                                    span: self.cx.span_of(inner),
-                                });
-                                if !is_list_method {
-                                    body_foreign = true;
-                                }
-                            }
+                            None => stmts.push(self.project_handler_call(inner, call_node)),
                         }
                     } else if let Some(st) = self.project_on_stmt_inner(inner) {
                         stmts.push(st);
@@ -7900,6 +7991,38 @@ impl<'a> Engine<'a> {
                 span: self.cx.span_of(c),
             });
         }
+    }
+
+    fn project_handler_call(
+        &mut self,
+        stmt_node: u32,
+        call_node: u32,
+    ) -> crate::source::age_component::ComponentStmt {
+        use crate::source::age_component::ComponentStmt;
+
+        let span = self.cx.span_of(stmt_node);
+        let call = self.project_expr_sync(call_node);
+        // Only the package grammar exposes message sends. The legacy component
+        // grammar accepts the same spelling as a foreign call.
+        if self.cx.profile == SourceProfile::AgePackage
+            && self.cx.spelling(call_node).trim_start().starts_with('.')
+        {
+            if let ExprKind::Call { callee, args } = &call.kind {
+                let payload = args.iter().map(|arg| match arg {
+                    Arg::Pos(expr) | Arg::MovePos(expr) => Some(expr.clone()),
+                    _ => None,
+                }).collect::<Option<Vec<_>>>();
+                if let Some(args) = payload {
+                    return ComponentStmt::Send { message: callee.name.clone(), args, span };
+                }
+            }
+        }
+        if self.cx.profile == SourceProfile::AgePackage && matches!(call.kind, ExprKind::Call { .. }) {
+            // Free functions in a checked handler use the same binding and
+            // result lifetime rules as a call assigned to a local.
+            return ComponentStmt::Effect { value: call, span };
+        }
+        ComponentStmt::Call { call, span }
     }
 
     /// PLAN-980 WEB #6p：调用语句 → 通道调用行。callee 是 widget 头参数名
@@ -9360,24 +9483,24 @@ impl<'a> Engine<'a> {
     /// 体递归走同一函数；类型注解按 `ann-ty` 词法分类（裸 ident → 名义
     /// record，如 `Sweep2D`；无注解交共享 resolver 推断）。
     /// PLAN-980 on-if 刀：`age-view-if-stmt` 节点 → `ComponentStmt::If`
-    /// （view-stmt 方言体——带点赋值/嵌套 if/调用形；调用形置 foreign——
-    /// fail-closed 不做部分体）。assigns 深平铺由调用方经
+    /// （view-stmt 方言体——带点赋值/嵌套 if/调用形；包面 handler 的调用
+    /// 交共享检查，其余调用形置 foreign）。assigns 深平铺由调用方经
     /// `flatten_stmt_assigns` 完成。
     fn project_view_if(
         &mut self,
         inner: u32,
-        channel_names: &[String],
+        checked_handler: bool,
         foreign: &mut bool,
     ) -> crate::source::age_component::ComponentStmt {
         let cond_node = self.cx.field_child(inner, "cond").expect("view-if cond");
         let cond = self.project_expr_sync(cond_node);
-        let then = self.project_view_stmt_children(inner, channel_names, foreign);
+        let then = self.project_view_stmt_children(inner, checked_handler, foreign);
         let els = self.cx.field_child(inner, "els").map(|e| {
             if let Some(chain) = self.cx.field_child(e, "chain") {
                 // else-if 链：单一嵌套条件（递归）。
-                vec![self.project_view_if(chain, channel_names, foreign)]
+                vec![self.project_view_if(chain, checked_handler, foreign)]
             } else {
-                self.project_view_stmt_children(e, channel_names, foreign)
+                self.project_view_stmt_children(e, checked_handler, foreign)
             }
         });
         crate::source::age_component::ComponentStmt::If {
@@ -9389,11 +9512,11 @@ impl<'a> Engine<'a> {
     }
 
     /// view-if 体（age-view-stmt 子节点，声明序）→ 结构化语句面（赋值 +
-    /// 嵌套 if；调用形置 foreign）。
+    /// 嵌套 if 和受检 handler 调用）。
     fn project_view_stmt_children(
         &mut self,
         node: u32,
-        channel_names: &[String],
+        checked_handler: bool,
         foreign: &mut bool,
     ) -> Vec<crate::source::age_component::ComponentStmt> {
         use crate::source::age_component::ComponentStmt;
@@ -9407,15 +9530,15 @@ impl<'a> Engine<'a> {
             }
             let inner = self.unwrap_child(ch);
             if Some(self.cx.tree.kind(inner)) == if_kind {
-                out.push(self.project_view_if(inner, channel_names, foreign));
+                out.push(self.project_view_if(inner, checked_handler, foreign));
             } else if self.cx.field_child(inner, "field").is_some() {
                 sink.clear();
                 self.collect_view_stmt(inner, &mut sink);
                 if let Some(a) = sink.last() {
                     out.push(ComponentStmt::Assign(a.clone()));
                 }
-            } else if self.cx.field_child(inner, "call").is_some() {
-                *foreign = true;
+            } else if let Some(call) = self.cx.field_child(inner, "call").filter(|_| checked_handler) {
+                out.push(self.project_handler_call(inner, call));
             } else {
                 *foreign = true;
             }
@@ -9472,9 +9595,8 @@ impl<'a> Engine<'a> {
     ) -> Option<crate::source::age_component::ComponentStmt> {
         use crate::source::age_component::{ComponentAssign, ComponentStmt};
         match self.rule_name_of(inner).as_str() {
-            // PLAN-981（on-if 组件面刀）：widget 形点前缀赋值（分支体两拼写
-            // 之一）——复用 view 语句赋值模型（复合赋值脱糖同一条）。
-            "age-view-assign-stmt" => {
+            // Direct and nested handlers share the view-assignment projector.
+            "age-view-assign-stmt" | "age-view-assign-viewdata-stmt" => {
                 let mut tmp = Vec::new();
                 self.collect_view_stmt(inner, &mut tmp);
                 tmp.pop().map(|assign| self.project_handler_assignment(assign))
@@ -9500,11 +9622,7 @@ impl<'a> Engine<'a> {
             // store 方法在 store 内联时展开，其余调用维持 body_foreign 合同。
             "age-view-call-stmt" => {
                 let call_node = self.cx.field_child(inner, "call")?;
-                let call = self.project_expr_sync(call_node);
-                Some(ComponentStmt::Call {
-                    call,
-                    span: self.cx.span_of(inner),
-                })
+                Some(self.project_handler_call(inner, call_node))
             }
             "age-on-assign" => {
                 let field_leaf = self
@@ -9593,6 +9711,40 @@ impl<'a> Engine<'a> {
                     cond: self.project_expr_sync(cond), body, span: self.cx.span_of(inner),
                 })
             }
+            // PLAN-117（U05 029 真语料）：`try { … } catch { … }`——按
+            // `catch` 关键字把两个分支体的 age-on-branch-stmt 子节点分成
+            // try 体与 catch 体，逐条投影（与 loop 体同一 inner 解包）。
+            "age-on-try" => {
+                let span = self.cx.span_of(inner);
+                // PLAN-117（帧边界修复）：`r-catch(field: "catch")` 是关键字
+                // token 节点——其 CST kind 不是 "r-catch" 规则节点，按 kind
+                // 判定永远切不进 catch（实证：catch=0 stmts，catch 体语句
+                // 全部直排进 body）。改用**字段标记定位**：catch 关键字
+                // 子节点的源起始偏移为界，其后（且为分支语句）的子节点归
+                // catch 体。
+                let catch_at: usize = self
+                    .cx
+                    .field_child(inner, "catch")
+                    .map(|kw| self.cx.span_of(kw).start as usize)
+                    .unwrap_or(usize::MAX);
+                let mut try_nodes: Vec<u32> = Vec::new();
+                let mut catch_nodes: Vec<u32> = Vec::new();
+                for ch in self.cx.children(inner) {
+                    if self.rule_name_of(ch) != "age-on-branch-stmt" {
+                        continue;
+                    }
+                    if self.cx.span_of(ch).start >= catch_at {
+                        catch_nodes.push(ch);
+                    } else {
+                        try_nodes.push(ch);
+                    }
+                }
+                Some(ComponentStmt::Try {
+                    body: self.project_on_stmts(&try_nodes),
+                    catch: self.project_on_stmts(&catch_nodes),
+                    span,
+                })
+            }
             "age-on-index-set" => {
                 let span = self.cx.span_of(inner);
                 let name = self.cx.field_child(inner, "receiver").expect("indexed local");
@@ -9600,16 +9752,38 @@ impl<'a> Engine<'a> {
                 let index = self.cx.field_child(inner, "index").expect("index");
                 let value = self.cx.field_child(inner, "value").expect("index assignment value");
                 let recv = Expr { span: name.span, kind: ExprKind::Var(name) };
-                Some(ComponentStmt::Effect {
-                    value: Expr {
-                        kind: ExprKind::Method {
-                            recv: Box::new(recv), name: Ident { name: "set".into(), span },
-                            args: vec![Arg::Pos(self.project_expr_sync(index)), Arg::Pos(self.project_expr_sync(value))],
+                // PLAN-117（U05 029 真语料）：`.photos[i].fav = v` 元素字段
+                // 写——带字段尾时投影为 `recv.set_field(index, field, value)`
+                //（checked 域按元素字段更新消费；未接线面具名拒，fail-closed）。
+                if let Some(field) = self.cx.field_child(inner, "field") {
+                    let field = ident_of(&mut self.cx, field);
+                    Some(ComponentStmt::Effect {
+                        value: Expr {
+                            kind: ExprKind::Method {
+                                recv: Box::new(recv),
+                                name: Ident { name: "set_field".into(), span },
+                                args: vec![
+                                    Arg::Pos(self.project_expr_sync(index)),
+                                    Arg::Pos(Expr { span: field.span, kind: ExprKind::StrLit(field.name) }),
+                                    Arg::Pos(self.project_expr_sync(value)),
+                                ],
+                            },
+                            span,
                         },
                         span,
-                    },
-                    span,
-                })
+                    })
+                } else {
+                    Some(ComponentStmt::Effect {
+                        value: Expr {
+                            kind: ExprKind::Method {
+                                recv: Box::new(recv), name: Ident { name: "set".into(), span },
+                                args: vec![Arg::Pos(self.project_expr_sync(index)), Arg::Pos(self.project_expr_sync(value))],
+                            },
+                            span,
+                        },
+                        span,
+                    })
+                }
             }
             "age-on-for" | "age-component-on-for" => {
                 let name = self.cx.field_child(inner, "name").expect("on for binding");
@@ -9681,6 +9855,26 @@ impl<'a> Engine<'a> {
             }
             "age-on-message" => {
                 let message = self.cx.field_child(inner, "message").expect("handler message");
+                // PLAN-117（U05 031/029 真语料）：`."viewRequested"(…)` 带引号
+                // 消息名——str-lit 解码为消息名（msg 声明侧同口径）。
+                // field 里是 age-on-message-name 包装节点，先解包到叶。
+                let message_leaf = self
+                    .cx
+                    .children(message)
+                    .into_iter()
+                    .find(|&c| self.cx.tree.node(c).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0)
+                    .unwrap_or(message);
+                let message_text = if self.cx.tree.kind(message_leaf) == self.cx.k.tok_str_lit {
+                    let raw = self.cx.spelling(message_leaf);
+                    lex::decode_str_value(
+                        raw.strip_prefix('"')
+                            .and_then(|s| s.strip_suffix('"'))
+                            .unwrap_or(raw.as_str())
+                            .as_bytes(),
+                    )
+                } else {
+                    self.cx.spelling(message_leaf)
+                };
                 let mut values = Vec::new();
                 if let Some(list) = self.cx.field_child(inner, "args") {
                     values.push(self.cx.field_child(list, "value").expect("first message argument"));
@@ -9692,7 +9886,7 @@ impl<'a> Engine<'a> {
                     );
                 }
                 Some(ComponentStmt::Send {
-                    message: self.cx.spelling(message),
+                    message: message_text,
                     args: values.into_iter().map(|value| self.project_expr_sync(value)).collect(),
                     span: self.cx.span_of(inner),
                 })
@@ -11420,6 +11614,69 @@ impl<'a> Engine<'a> {
     /// expressions ride under rule nodes the frame walk reaches later).
     /// Runs a bounded sub-walk of the same stepper; the sub-projection
     /// pushes exactly one value.
+    /// PLAN-117（U05 029 真语料）：if 表达式节点 → `ExprKind::If`
+    /// （computed/design/handler RHS 的操作数位；else-if 链以 (cond,value)
+    /// 对源序收集，末 else 为 els）。
+    fn project_if_expr_node(&mut self, inner: u32) -> Expr {
+        let span = self.cx.span_of(inner);
+        let if_else_kind = self.rule_kind_of("age-if-else");
+        let cond = self
+            .cx
+            .field_child(inner, "cond")
+            .map(|w| self.project_expr_sync(self.unwrap_child(w)))
+            .unwrap_or_else(|| Expr { span, kind: ExprKind::BoolLit(true) });
+        let then = self
+            .cx
+            .field_child(inner, "then")
+            .and_then(|w| self.cx.field_child(w, "value"))
+            .map(|v| self.project_expr_sync(v))
+            .unwrap_or_else(|| Expr { span, kind: ExprKind::NilLit });
+        let mut else_chain: Vec<(Expr, Box<Expr>)> = Vec::new();
+        let mut els: Option<Expr> = None;
+        let mut cursor = inner;
+        loop {
+            let Some(els_node) = self
+                .cx
+                .children(cursor)
+                .into_iter()
+                .find(|&w| Some(self.cx.tree.kind(w)) == if_else_kind)
+            else {
+                break;
+            };
+            if let Some(chain) = self.cx.field_child(els_node, "chain") {
+                let chain_cond = self
+                    .cx
+                    .field_child(chain, "cond")
+                    .map(|w| self.project_expr_sync(self.unwrap_child(w)))
+                    .unwrap_or_else(|| Expr { span, kind: ExprKind::BoolLit(true) });
+                let chain_then = self
+                    .cx
+                    .field_child(chain, "then")
+                    .and_then(|w| self.cx.field_child(w, "value"))
+                    .map(|v| self.project_expr_sync(v))
+                    .unwrap_or_else(|| Expr { span, kind: ExprKind::NilLit });
+                else_chain.push((chain_cond, Box::new(chain_then)));
+                cursor = chain;
+            } else {
+                els = self
+                    .cx
+                    .field_child(els_node, "value")
+                    .map(|v| self.project_expr_sync(v));
+                break;
+            }
+        }
+        Expr {
+            span,
+            kind: ExprKind::If {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                else_chain,
+                els: els.map(Box::new),
+                span,
+            },
+        }
+    }
+
     fn project_expr_sync(&mut self, node: u32) -> Expr {
         let depth_mark = self.stack.len();
         let vals_mark = self.vals.len();
@@ -11542,6 +11799,12 @@ impl<'a> Engine<'a> {
             }
             if let Some(post) = self.cx.child_of_kind(node, self.cx.k.postfix_expr) {
                 self.stack.push(Frame::ExprEnter(post));
+                return;
+            }
+            // PLAN-117（U05 029 真语料）：if 表达式操作数（computed 值等）。
+            if let Some(if_expr) = self.cx.child_of_kind(node, self.rule_kind_of("age-if-expr").expect("age-if-expr rule")) {
+                let expr = self.project_if_expr_node(if_expr);
+                self.vals.push(Val::E(expr));
                 return;
             }
             let span = first_leaf_span(&self.cx, node);
@@ -13280,7 +13543,18 @@ impl<'a> Engine<'a> {
                         || x == k.tok_bang
                         || (x == k.tok_dot && self.cx.profile.is_record())
                 );
-                if !primary_start {
+                // PLAN-117（U05 029 真语料）：AGE 面语句级 leading-dot 空调用
+                // （`.GalApply()`）以行尾或块闭 `}` 收束——旧 parser 的
+                // re-enter-primary 怪癖源自非 AGE 面差分（L04/L05/LSTR864/
+                // FIN864B/edge47），AGE 语句文法以换行/块闭分句，此处不拒。
+                let age_stmt_end = matches!(
+                    self.cx.profile,
+                    SourceProfile::AgeH0
+                        | SourceProfile::AgeComponent
+                        | SourceProfile::AgePackage
+                ) && !pending_unbracketed
+                    && (text == "}" || next_line > call_line);
+                if !primary_start && !age_stmt_end {
                     let found = describe_g(g, &text, k);
                     self.cx.reject(span, move || {
                         Diagnostic::new(

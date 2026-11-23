@@ -293,7 +293,11 @@ pub const MAX_VERIFY_ANALYSIS_BYTES: usize = 16 * 1024 * 1024;
 /// 增长，16MB 基线档对全组最大 handler 过紧；AGE 面（携带
 /// `ac.age.elem-view.v1`）走 64MB 档（~2x 头寸），其余 profile 保持冻结
 /// 基线。二次 blowup 门在两档均有效（阈值仍先于分配检查）。
-pub const MAX_VERIFY_ANALYSIS_BYTES_AGE_COMPONENT: usize = 64 * 1024 * 1024;
+/// PLAN-117（round-38 修订）：029 真语料的最大 handler（GalQuery + 内联
+/// GalApply：try + 嵌套循环 + json 值链）的所有权分析估计 ~256MB——组件面
+/// 档随真实组件语料上调（64MB 档针对 012 Tick 形；二次 blowup 门两档均
+/// 有效，逃逸/分配保护不变）。
+pub const MAX_VERIFY_ANALYSIS_BYTES_AGE_COMPONENT: usize = 256 * 1024 * 1024;
 /// Upper bound on one decoded module's structural heap estimate, checked
 /// at admission before deep verification (wire length is not a working-set
 /// proxy; a tiny wire can declare large tables).
@@ -1276,6 +1280,7 @@ pub struct LanguageErrorOrigin {
 pub enum LanguageErrorKind {
     Explicit,
     ListIndex,
+    Http,
     Python(u8),
 }
 

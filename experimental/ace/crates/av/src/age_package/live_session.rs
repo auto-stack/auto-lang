@@ -7,11 +7,13 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use ace_av_core::contract::{ExecOutcome, Value, TEXT_RUNTIME_CAPABILITY};
 use ace_av_core::function_code::FunctionCode;
+use ace_av_core::http_client::HttpProvider;
 use ace_av_core::mir::{
     CalleeRef, FnSig, MirBlock, MirFunction, MirGlobal, MirInstr, MirModule, MirSlot, MirType,
     SlotKind, Terminator,
@@ -20,7 +22,9 @@ use ace_av_core::mir_verify::MirVerifyError;
 pub use ace_av_core::program_snapshot::HostInput;
 use ace_av_core::program_snapshot::{PreparedGlobalUpdate, ProgramSnapshot};
 use ace_av_core::span_map::SpanSegments;
-use ace_av_core::{execute_program_entry_args, EntryArg};
+use ace_av_core::{
+    execute_program_entry_args, execute_program_http_resumable, EntryArg, HttpEntryOutcome,
+};
 use ace_core::source::age_package::{
     AgePackageCompilation, AgePackageDescription, AgeWidgetRefs, AGE_PACKAGE_HIDDEN_PREFIX,
     FILE_LIST_BINDING, TODO_SERVICE_BINDING, WIDGET_FOCUS_FIELD,
@@ -45,6 +49,7 @@ pub struct WidgetProgram {
     host_replies: BTreeMap<&'static str, HostEntry>,
     child_views: BTreeMap<(String, String), String>,
     children: Option<ChildrenProgram>,
+    uses_http: bool,
     fields: Vec<(String, String)>,
     model_cell: usize,
     outbound: bool,
@@ -57,6 +62,25 @@ pub struct WidgetSession {
     children: RefCell<Children>,
     context_token: Option<String>,
     viewport_width: Cell<i32>,
+    http_worker: RefCell<Option<WidgetHttpWorker>>,
+}
+
+struct WidgetHttpWorker {
+    provider: Arc<Mutex<dyn HttpProvider>>,
+    cancel: Arc<CancelFlag>,
+    started: Instant,
+    timeout: Duration,
+}
+
+struct HttpWorkerScope<'a> {
+    slot: &'a RefCell<Option<WidgetHttpWorker>>,
+    previous: Option<WidgetHttpWorker>,
+}
+
+impl Drop for HttpWorkerScope<'_> {
+    fn drop(&mut self) {
+        self.slot.replace(self.previous.take());
+    }
 }
 
 fn fresh_context_token() -> String {
@@ -69,6 +93,16 @@ fn fresh_context_token() -> String {
 pub struct WidgetFocusRequest {
     pub component: Vec<usize>,
     pub target: String,
+}
+
+/// An enabled timer belonging to a child in the current composed package view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WidgetChildTimer {
+    pub component: Vec<usize>,
+    pub node: usize,
+    pub mount: u64,
+    pub message: String,
+    pub every_ms: u32,
 }
 
 pub struct PreparedWidgetUpdate<'a, T> {
@@ -213,7 +247,8 @@ impl WidgetProgram {
             return Err("a host reply binding has no checked handler".into());
         }
         let children = (root.imported_store.is_some() || compiled.widget_runtime.iter().any(|runtime| {
-            runtime.outbound || runtime.focus || runtime.context_handler.is_some() || !runtime.watches.is_empty()
+            runtime.outbound || runtime.focus || runtime.context_handler.is_some()
+                || !runtime.watches.is_empty() || (runtime.node != index && !runtime.timers.is_empty())
         }))
             .then(|| ChildrenProgram::prepare(compiled, &mut mir, index, model_cell as u32))
             .transpose()?;
@@ -229,6 +264,9 @@ impl WidgetProgram {
             entries.extend_from_slice(children.entries());
         }
         live_view::retain_closures(&mut mir, &entries)?;
+        let uses_http = mir.funcs.iter().flat_map(|function| &function.blocks)
+            .flat_map(|block| &block.instrs)
+            .any(|instruction| matches!(instruction, MirInstr::HttpCall { .. }));
         ace_av_core::mir_verify::verify_mir(&mir).map_err(|error| {
             if let MirVerifyError::Invalid { span: Some(span), .. } = &error {
                 // Spans keep their original function coordinates when the
@@ -266,11 +304,20 @@ impl WidgetProgram {
             host_replies,
             child_views,
             children,
+            uses_http,
             fields: root.fields.clone(),
             model_cell,
             outbound: runtime.outbound,
             focus_field: runtime.focus.then_some(root.fields.len() + usize::from(runtime.outbound)),
         }))
+    }
+
+    pub fn has_live_children(&self) -> bool {
+        self.children.is_some()
+    }
+
+    pub fn uses_http(&self) -> bool {
+        self.uses_http
     }
 
     pub fn open(
@@ -313,6 +360,7 @@ impl WidgetProgram {
             children: RefCell::new(Children::default()),
             context_token: self.context_handler.as_ref().map(|_| fresh_context_token()),
             viewport_width: Cell::new(viewport_width.max(0)),
+            http_worker: RefCell::new(None),
         };
         session.execute(&self.init, &[], limits)?;
         if self.handlers.contains_key("Init") {
@@ -325,6 +373,25 @@ impl WidgetProgram {
 }
 
 impl WidgetSession {
+    /// Run a package operation on a host worker with a generation-scoped HTTP provider.
+    /// This call can wait for an HTTP reply and must stay off the UI thread.
+    pub fn with_http_worker<T>(
+        &self,
+        provider: Arc<Mutex<dyn HttpProvider>>,
+        cancel: Arc<CancelFlag>,
+        timeout: Duration,
+        operation: impl FnOnce() -> T,
+    ) -> T {
+        let previous = self.http_worker.replace(Some(WidgetHttpWorker {
+            provider,
+            cancel,
+            started: Instant::now(),
+            timeout,
+        }));
+        let _scope = HttpWorkerScope { slot: &self.http_worker, previous };
+        operation()
+    }
+
     pub fn set_viewport_width(&self, width: i32) {
         self.viewport_width.set(width.max(0));
     }
@@ -375,8 +442,33 @@ impl WidgetSession {
         args: &[EntryArg<'_>],
         limits: &ExecLimits,
     ) -> Result<Value, String> {
-        let (outcome, _) =
-            execute_program_entry_args(&self.snapshot, name, limits, &CancelFlag::new(false), args);
+        let worker = self.http_worker.borrow();
+        let outcome = if let Some(worker) = worker.as_ref() {
+            let mut resume = None;
+            loop {
+                if worker.cancel.load(Ordering::Relaxed) {
+                    break ExecOutcome::Cancelled;
+                }
+                if worker.started.elapsed() >= worker.timeout {
+                    break ExecOutcome::Error {
+                        message: "http.client: checked widget operation timed out".into(),
+                        span: None,
+                    };
+                }
+                match execute_program_http_resumable(
+                    &self.snapshot, name, limits, &worker.cancel, args,
+                    Some(Arc::clone(&worker.provider)), resume,
+                ) {
+                    HttpEntryOutcome::Completed(outcome, _) => break outcome,
+                    HttpEntryOutcome::Suspended(pending) => {
+                        resume = Some(pending);
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                }
+            }
+        } else {
+            execute_program_entry_args(&self.snapshot, name, limits, &CancelFlag::new(false), args).0
+        };
         match outcome {
             ExecOutcome::Success { value, .. } => Ok(value),
             ExecOutcome::Infra(error) if error.starts_with("entry expects ")
@@ -439,6 +531,11 @@ impl WidgetSession {
     /// Take the focus requests resolved against the latest composed package view.
     pub fn take_focus_requests(&self) -> Vec<WidgetFocusRequest> {
         self.children.borrow_mut().take_focus_requests()
+    }
+
+    /// Return enabled timers and their routes from the latest composed view.
+    pub fn child_timers(&self) -> Vec<WidgetChildTimer> {
+        self.children.borrow().timers.clone()
     }
 
     /// Deliver a child event from the current rendered widget path.

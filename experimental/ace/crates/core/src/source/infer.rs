@@ -970,6 +970,9 @@ fn derive_returns(program: &Program, ctx: &mut Ctx, diags: &mut Vec<Diagnostic>)
                 match &agreed {
                     None => agreed = Some(Ty::Concrete(tr)),
                     Some(Ty::Concrete(prev)) if prev == &tr => {}
+                    Some(Ty::Concrete(TypeRef::Builtin(prev)))
+                        if matches!(&tr, TypeRef::Builtin(next)
+                            if super::resolve::vt_of_word(*prev) == super::resolve::vt_of_word(*next)) => {}
                     Some(Ty::Concrete(prev)) => {
                         diags.push(Diagnostic::new(
                             Stage::Bind,

@@ -517,6 +517,7 @@ fn observed_language_error(trace: &ExecTrace, locate: impl Fn(SpanInfo) -> Json)
     let kind = match origin.kind {
         LanguageErrorKind::Explicit => "explicit".to_string(),
         LanguageErrorKind::ListIndex => "list-index".to_string(),
+        LanguageErrorKind::Http => "http.client".to_string(),
         LanguageErrorKind::Python(class) => format!("python.{class}"),
     };
     Some(json!({"kind":kind,"span":origin.span.map(locate)}))

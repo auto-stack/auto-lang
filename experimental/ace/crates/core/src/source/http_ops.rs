@@ -46,7 +46,12 @@ pub const HTTP_SOURCE_OPS: &[HttpSourceOp] = &[
         callee: "Http.get_json",
         symbol: "auto.http.get-json.v1",
         params: P_URL,
-        result: VT::StrOwned,
+        // PLAN-117（round-25 ⑤，029 真语料墙首根 @prep 17452）：组件面
+        // `get_json` 按动词分语义返回 **json 值（Dyn）**——029 原源把结果当
+        // 结构化值用（`.entries` 成员读、`?? []`、`!= null`），与 VM 方言
+        // `get_json`+to_value 同语义。post 族保持 Str（032 串消费不变）。
+        // 执行侧解析失败 = 具名 Error（与 json.parse 运行期臂同形）。
+        result: VT::Dyn,
     },
     HttpSourceOp {
         callee: "Http.post",
@@ -126,6 +131,18 @@ pub fn lookup_callee(name: &str, args: &[VT]) -> Option<&'static HttpSourceOp> {
 /// 符号 → 原语（lowering/admission/运行期按符号查）。
 pub fn by_symbol(sym: &str) -> Option<&'static HttpSourceOp> {
     HTTP_SOURCE_OPS.iter().find(|o| o.symbol == sym)
+}
+
+/// PLAN-117（round-25 ⑤）：`get_json` 的结果是 json 值域 Dyn——其**消费面**
+/// （成员读/`??`/判空）由 `json.value/1` 门控，故模块 requires 需与
+/// `http.client/1` 同授该能力（adapter requires 装配调用）。
+pub fn is_get_json_symbol(sym: &str) -> bool {
+    sym == "auto.http.get-json.v1"
+}
+
+/// HTTP operations carried by the suspending widget script host.
+pub fn is_widget_http_symbol(sym: &str) -> bool {
+    is_get_json_symbol(sym) || sym == "auto.http.post-json.v1"
 }
 
 /// 符号的能力键（未知符号 = None）。

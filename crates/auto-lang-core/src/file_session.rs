@@ -3,9 +3,11 @@
 use cap_std::{ambient_authority, fs::Dir};
 use serde::Serialize;
 use std::cell::RefCell;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
+mod media;
 mod mutation;
 pub use mutation::{FileMutation, FileWritePermissions};
 #[cfg(test)]
@@ -67,7 +69,42 @@ pub struct DirectoryListing {
 #[derive(Default)]
 pub struct FileSession {
     // A revoke or close completes after an in-flight operation exits the lock.
-    access: Mutex<Access>,
+    access: Arc<Mutex<Access>>,
+    // Always acquired under `access`. Workers hold only a weak reference to
+    // the access lock, so they cannot wind up shutting down their own runtime.
+    media: Mutex<Option<auto_media_core::image_pipeline::MediaRuntime>>,
+    media_source_dir: Option<PathBuf>,
+}
+
+/// A regular file selected under a specific host read grant. Deferred work
+/// can re-open it through that grant, for as long as the grant is still live.
+pub struct FileReadTicket {
+    access: Weak<Mutex<Access>>,
+    grant: Arc<()>,
+    path: PathBuf,
+}
+
+impl FileReadTicket {
+    pub fn read(&self, max_bytes: u64) -> Result<Vec<u8>, FileAccessError> {
+        let access = self.access.upgrade().ok_or(FileAccessError::Closed)?;
+        with_read_grant(&access, |grant| {
+            if !Arc::ptr_eq(&self.grant, &grant.identity) {
+                return Err(FileAccessError::NoReadGrant);
+            }
+            let file = mutation::open_read_file(grant, &self.path)?;
+            let mut bytes = Vec::new();
+            file.take(max_bytes.saturating_add(1))
+                .read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > max_bytes {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "file exceeds the read limit",
+                )
+                .into());
+            }
+            Ok(bytes)
+        })
+    }
 }
 
 #[derive(Default)]
@@ -79,6 +116,7 @@ enum Access {
 }
 
 struct DirectoryGrant {
+    identity: Arc<()>,
     root: PathBuf,
     directory: Dir,
     writes: FileWritePermissions,
@@ -101,25 +139,42 @@ impl FileSession {
         display_path(&root)?;
         let directory = Dir::open_ambient_dir(&root, ambient_authority())?;
         *access = Access::Granted(DirectoryGrant {
+            identity: Arc::new(()),
             root,
             directory,
             writes,
         });
+        let retired = self.take_media();
+        drop(access);
+        drop(retired);
         Ok(())
     }
 
     pub fn revoke(&self) {
-        if let Ok(mut access) = self.access.lock() {
-            if matches!(*access, Access::Granted(_)) {
-                *access = Access::Unassigned;
-            }
-        }
+        self.clear_access(Access::Unassigned);
     }
 
     pub fn close(&self) {
-        if let Ok(mut access) = self.access.lock() {
-            *access = Access::Closed;
+        self.clear_access(Access::Closed);
+    }
+
+    fn clear_access(&self, replacement: Access) {
+        let Ok(mut access) = self.access.lock() else {
+            return;
+        };
+        if !matches!(*access, Access::Closed) {
+            *access = replacement;
+            let retired = self.take_media();
+            drop(access);
+            drop(retired);
         }
+    }
+
+    fn take_media(&self) -> Option<auto_media_core::image_pipeline::MediaRuntime> {
+        self.media
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
     }
 
     pub fn read_root(&self) -> Result<String, FileAccessError> {
@@ -142,11 +197,14 @@ impl FileSession {
     ) -> Result<Self, FileAccessError> {
         self.with_grant(|grant| {
             Ok(Self {
-                access: Mutex::new(Access::Granted(DirectoryGrant {
+                access: Arc::new(Mutex::new(Access::Granted(DirectoryGrant {
+                    identity: Arc::new(()),
                     root: grant.root.clone(),
                     directory: grant.directory.try_clone()?,
                     writes: writes(grant.writes),
-                })),
+                }))),
+                media: Mutex::new(None),
+                media_source_dir: self.media_source_dir.clone(),
             })
         })
     }
@@ -175,15 +233,39 @@ impl FileSession {
         self.with_grant(|grant| mutation::with_open_target(grant, path, launch))
     }
 
+    /// Authorize an exact file for deferred reading. The ticket cannot keep
+    /// the session alive or start a read under a replacement grant.
+    pub fn read_ticket(&self, path: &Path) -> Result<FileReadTicket, FileAccessError> {
+        self.with_grant(|grant| {
+            mutation::open_read_file(grant, path)?;
+            Ok(self.ticket(grant, path.to_path_buf()))
+        })
+    }
+
+    fn ticket(&self, grant: &DirectoryGrant, path: PathBuf) -> FileReadTicket {
+        FileReadTicket {
+            access: Arc::downgrade(&self.access),
+            grant: grant.identity.clone(),
+            path,
+        }
+    }
+
     fn with_grant<T>(
         &self,
         execute: impl FnOnce(&DirectoryGrant) -> Result<T, FileAccessError>,
     ) -> Result<T, FileAccessError> {
-        match &*self.access.lock().map_err(|_| FileAccessError::Closed)? {
-            Access::Granted(grant) => execute(grant),
-            Access::Unassigned => Err(FileAccessError::NoReadGrant),
-            Access::Closed => Err(FileAccessError::Closed),
-        }
+        with_read_grant(&self.access, execute)
+    }
+}
+
+fn with_read_grant<T>(
+    access: &Mutex<Access>,
+    execute: impl FnOnce(&DirectoryGrant) -> Result<T, FileAccessError>,
+) -> Result<T, FileAccessError> {
+    match &*access.lock().map_err(|_| FileAccessError::Closed)? {
+        Access::Granted(grant) => execute(grant),
+        Access::Unassigned => Err(FileAccessError::NoReadGrant),
+        Access::Closed => Err(FileAccessError::Closed),
     }
 }
 

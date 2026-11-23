@@ -24,9 +24,9 @@
 descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
 
     enums {
-        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move, text_display, fstr] }
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, text_from_char, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move, text_display, fstr, nil_lit, dyn_cast, dyn_is_nil, object_ctor, object_get, object_set] }
         // PLAN-981: `f32` joins the type cases (AGE resource/coordinate values).
-        enum TypeKind { cases: [i32, bool, str, Str, char, f32, function, record] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, f32, function, record, nil, dyn, object] }
         enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne, add_f32, sub_f32, mul_f32, div_f32, rem_f32, lt_f32, le_f32, gt_f32, ge_f32, eq_f32, ne_f32] }
         enum UnaryOp { cases: [neg_i32, not_bool, neg_f32] }
         enum LogicOp { cases: [and, or] }
@@ -58,7 +58,7 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
 
         node type {
             slots: [Id, TypeKind]
-            fields { params: TypeUseList; result: TypeUse; fields: FieldDeclList }
+            fields { params: TypeUseList; result: TypeUse; fields: FieldDeclList; elem: TypeUse }
         }
 
         node function {
@@ -137,6 +137,10 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
                 base: ExprRef
                 path: FieldRefList
                 parts: ExprRefList
+                eval: ExprRefList
+                value: ExprRef
+                keys: ObjectKeyList
+                key: ExprRef
             }
         }
 
@@ -148,7 +152,7 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         node let { fields { local: LocalRef; value: ExprRef } }
         node return { fields { value: ExprRef } }
         node if { fields { cond: ExprRef; then: BlockRef; else: BlockRef } }
-        node loop { fields { id: LoopDecl; body: BlockRef } }
+        node loop { fields { id: LoopDecl; body: BlockRef; error_kind: LocalRef; error_message: LocalRef } }
         node assign { fields { place: PlaceRef; value: ExprRef } }
         node break { fields { target: LoopRef } }
         node continue { fields { target: LoopRef } }
@@ -166,6 +170,9 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         branch(key: "type.f32") { forbid: [params, result, fields] }
         branch(key: "type.function") { require: [params, result]; forbid: [fields] }
         branch(key: "type.record") { require: [fields]; forbid: [params, result] }
+        branch(key: "type.nil") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.dyn") { forbid: [params, result, fields, elem, arms] }
+        branch(key: "type.object") { require: [elem]; forbid: [params, result, fields, arms] }
         branch(key: "function") {
             require: [name]
             forbid: [symbol, effect, record, receiver]
@@ -392,6 +399,32 @@ descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-
         branch(key: "expr.move") {
             require: [type, operand]
             forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        // PLAN-117（B-05 S1a）：动态值反射面（PLAN-964/824 词表；与
+        // auto-language.atom 同分支形，forbid 集按本 schema 的字段集裁剪）。
+        branch(key: "expr.nil_lit") {
+            require: [type]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, keys, key, eval]
+        }
+        branch(key: "expr.object_ctor") {
+            require: [type, eval, keys]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, bindings, record, field_args, ctor_bindings, base, path, key]
+        }
+        branch(key: "expr.object_get") {
+            require: [type, base, key]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, path, keys, eval]
+        }
+        branch(key: "expr.object_set") {
+            require: [type, base, key, value]
+            forbid: [local, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, path, keys, eval]
+        }
+        branch(key: "expr.dyn_cast") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, keys, key, eval]
+        }
+        branch(key: "expr.dyn_is_nil") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path, keys, key, eval]
         }
         branch(key: "let") { require: [local, value] }
         branch(key: "return") { require: [value] }
