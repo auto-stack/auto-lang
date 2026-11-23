@@ -5047,3 +5047,12 @@ owner=普通面迁移容器下一切片（全泛型切片 963 线或暴露稳定
 ### D-ASE-1111-HTTP-ROUTE
 
 AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todos/:id。 DELETE /api/todos/completed 因而返回 400。基线和本地绑定后的旧 HTTP 样本均复现，仅对照复制件调换注册顺序后返回 true。AutoWeb 路由 owner 可用[PLAN-1111](archive/1111-ase-local-todo-service.md) 的对照重新验证固定段与参数段的重叠。
+
+## D-1123-01 — M2Build 发布收据十六进制嵌入全部工程产物，受 783 暂存预算 8 MiB 限制（OPEN，2026-11-23 PLAN-1123 work 登记）
+
+`experimental/ace/crates/m2-build/src/driver.rs` 把一次构建的全部产物（ABC、provider DLL、manifest）十六进制嵌入一份 `BuildReceipt` 载荷写入 783 托管存储；存储对暂存副本计两份（staged + CAS tmp），上限 `STAGING_BUDGET = 8 MiB`（`experimental/ace/crates/artifacts/src/store/mod.rs` §5.4 合同）。原始产物因此须 < ~4 MiB。
+
+- 观察：AV/Rust 标准库单元带 rustls 依赖时，未优化 dev DLL 3.1–3.4 MiB，工程发布即 `m2build.store: put: ResourceExhausted("transient ... staged 7207764 + CAS tmp 7207764 exceeds budget 8388608")`；选择 `json` 层（serde_json）的工程同样逼近该线。
+- PLAN-1123 处置（未改任何预算）：生成的 provider cargo 单元在 dev 档内对依赖闭包取 `opt-level = "s"`（单元本体仍不优化），DLL 降至 1,824,256 B=1.74 MiB（`str`+`tls` 选择）与 1,934,336 B=1.84 MiB（整单元）；工程道以 `str`+`tls` 选择交付分发证据。
+- 残余：整单元距上限的余量随 ABC 体积变化（收据≈2×十六进制(DLL+ABC)，再计暂存两份；未做整单元实测发布），依赖增长即可能再次不可发布。结构性修复（收据按引用记录大产物，或提高暂存预算）属 783/978 owner，预算为用户裁定，本计划不代决。
+- 关闭条件：M2Build 能发布不小于整单元现尺寸两倍的 provider 产物并有具名用例；或 owner 明文接受现上限并把覆盖矩阵 B-12 写入分发合同。
