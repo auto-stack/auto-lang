@@ -213,6 +213,7 @@ fn load_project(dir: &Path) -> Result<ProjectInputs, ace_m2_build::M2Reject> {
                 .as_deref()
                 .map(|path| read_rust_input(dir, path))
                 .transpose()?,
+            prepared: None,
         })
     } else {
         None

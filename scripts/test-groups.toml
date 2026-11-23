@@ -552,7 +552,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-m2-build", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = []
+tools = ["avrs-tls-provider"]
 domain = "ace"
 all = false
 
@@ -611,7 +611,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-abi", "--lib", "--tests", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(all()) and not test(/(^|::)performance::/)"
-tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes", "store-gc", "av-providers"]
+tools = ["case-parent", "av", "ac", "mn", "mn-collections", "cte", "abi", "sema", "a2x", "trace-runtime", "text-runtime", "data-runtime", "native-runtimes", "store-gc", "av-providers", "avrs-tls-provider"]
 domain = "ace"
 all = false
 

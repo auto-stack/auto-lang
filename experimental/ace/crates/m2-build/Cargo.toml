@@ -73,6 +73,10 @@ name = "avrs_project_1114"
 path = "tests/avrs_project_1114.rs"
 
 [[test]]
+name = "tls_project_1123"
+path = "tests/tls_project_1123.rs"
+
+[[test]]
 name = "a2r_project_1116"
 path = "tests/a2r_project_1116.rs"
 
@@ -83,3 +87,8 @@ path = "tests/a2r_language_lane_1117.rs"
 [[test]]
 name = "a2r_replacement_receipt_1117"
 path = "tests/a2r_replacement_receipt_1117.rs"
+
+[dev-dependencies]
+# PLAN-1123: the test peers' real loopback TLS server (test-only; the
+# provider's own TLS comes from its pinned `dep` annotations).
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

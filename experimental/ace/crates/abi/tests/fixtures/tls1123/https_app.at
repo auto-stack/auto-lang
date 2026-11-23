@@ -1,0 +1,151 @@
+// PLAN-1123: HTTP over the EXPLICIT secure transport — the ordinary AV
+// project's own Auto source (the single author of the glue; both the
+// provider lane and the project lane execute these bytes). The request
+// bytes are BUILT here and the response is PARSED here — the public HTTP
+// request/response contract of std.net is unchanged (status * 10000 +
+// body_len, one request per connection, close-delimited bodies) — while the
+// `tls` provider only moves bytes. Nothing is remembered between requests:
+// every call carries its own target, trust source and (optional) proxy.
+
+fn tls_digit(d int) Str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+fn tls_dec(v int) Str {
+    if v == 0 { return "0" }
+    var n = v
+    var out Str = ""
+    for n > 0 {
+        let d = n - (n / 10) * 10
+        out = tls_digit(d) + out
+        n = n / 10
+    }
+    return out
+}
+
+// The transport spec of THIS request: target and trust source (the head
+// block; the caller appends the empty line and the request bytes).
+fn tls_spec(host Str, port int, trust Str) Str {
+    let head Str = "host " + host + "\n" + "port " + tls_dec(port) + "\n" + "trust " + trust + "\n"
+    return head
+}
+
+fn tls_spec_via(host Str, port int, trust Str, via Str) Str {
+    let head Str = "host " + host + "\n" + "port " + tls_dec(port) + "\n" + "trust " + trust + "\n" + "via " + via + "\n"
+    return head
+}
+
+// Plain bytes through a forwarding proxy (no TLS, no trust source).
+fn tls_spec_http(host Str, port int, via Str) Str {
+    let head Str = "host " + host + "\n" + "port " + tls_dec(port) + "\n" + "via " + via + "\n" + "mode http\n"
+    return head
+}
+
+fn tls_get_req(host Str, port int, path Str) Str {
+    let req Str = "GET " + path + " HTTP/1.1\r\nHost: " + host + ":" + tls_dec(port) + "\r\nUser-Agent: ace-avrs/1\r\nConnection: close\r\n\r\n"
+    return req
+}
+
+fn tls_post_req(host Str, port int, path Str, body Str) Str {
+    let head Str = "POST " + path + " HTTP/1.1\r\nHost: " + host + ":" + tls_dec(port) + "\r\nContent-Length: "
+    let tail Str = "\r\nConnection: close\r\n\r\n"
+    let req Str = head + tls_dec(body.len_bytes()) + tail + body
+    return req
+}
+
+// The absolute-form request line a forwarding proxy receives verbatim.
+fn tls_proxy_get_req(host Str, port int, path Str) Str {
+    let req Str = "GET http://" + host + ":" + tls_dec(port) + path + " HTTP/1.1\r\nHost: " + host + ":" + tls_dec(port) + "\r\nConnection: close\r\n\r\n"
+    return req
+}
+
+// One pass over the response byte stream: the status line, the header/body
+// boundary, and a byte-for-byte comparison of the body with `want`
+// (independent of the transport). Result: status * 100000 + body_len * 10
+// + (1 when every body byte equals `want`, else 0); 9100 = no status line,
+// 9200 = no header end.
+fn tls_observe(x int, want Str) int {
+    var total = 0
+    var code = 0
+    var got = 0
+    var blank = -1
+    var in_body = 0
+    var bad = 0
+    var p3 = 0
+    var p2 = 0
+    var p1 = 0
+    var b = tls_read_byte(x)
+    for b >= 0 {
+        total = total + 1
+        if in_body == 1 {
+            let at = total - 1 - blank
+            if at < want.len_bytes() {
+                if char_at(want, at) != b {
+                    bad = bad + 1
+                }
+            }
+        } else {
+            if got == 0 {
+                if b == 32 {
+                    let d0 = tls_read_byte(x)
+                    let d1 = tls_read_byte(x)
+                    let d2 = tls_read_byte(x)
+                    code = (d0 - 48) * 100 + (d1 - 48) * 10 + (d2 - 48)
+                    got = 1
+                    total = total + 3
+                }
+            } else {
+                if b == 10 {
+                    if p1 == 13 {
+                        if p2 == 10 {
+                            if p3 == 13 {
+                                blank = total
+                                in_body = 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        p3 = p2
+        p2 = p1
+        p1 = b
+        b = tls_read_byte(x)
+    }
+    if got != 1 { return 9100 }
+    if blank < 0 { return 9200 }
+    var flag = 0
+    if bad == 0 {
+        if total - blank == want.len_bytes() {
+            flag = 1
+        }
+    }
+    return code * 100000 + (total - blank) * 10 + flag
+}
+
+// One request over one connection: the exchange is opened, observed and
+// closed here. A negative transport outcome is returned as itself — except
+// the truncated close (-15), where this caller's HTTP decision is that a
+// close-delimited body ends at the close, so the kept bytes are observed.
+fn tls_send(route Str, req Str, want Str) int {
+    let x = tls_exchange(route + "\n" + req)
+    let r = tls_result(x)
+    if r < 0 {
+        if r != -15 {
+            let _c = tls_close(x)
+            return r
+        }
+    }
+    let obs = tls_observe(x, want)
+    let _c = tls_close(x)
+    return obs
+}

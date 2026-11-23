@@ -72,6 +72,7 @@ fn p1114_avrs_project_builds_runs_and_sdk_relocates() {
     inputs.rust_provider = Some(RustProjectInputs {
         source: composed_core(),
         cargo_lock: None,
+        prepared: None,
     });
 
     // Development build + run: the REAL provider answers the byte face.

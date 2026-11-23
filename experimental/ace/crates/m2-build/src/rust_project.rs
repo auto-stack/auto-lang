@@ -98,6 +98,9 @@ pub(crate) fn prepare(
     .map_err(prepare_error)?;
     let mut identity = BuildIdentity::of(&build, &build.shim_source);
     identity.dependency_lock_sha256 = lock.map(|text| sha256_hex(text.as_bytes()));
+    if let Some(closure) = &provider.prepared {
+        return adopt_prepared(closure, provider, &build, identity);
+    }
     let root = scratch
         .join("rust-providers")
         .join(sha256_hex(identity.key().as_bytes()));
@@ -161,6 +164,54 @@ pub(crate) fn prepare(
         identity,
         artifact_sha256,
         rebuilt: true,
+        _lease: lease,
+    })
+}
+
+/// PLAN-1123: adopt a PREPARED provider closure instead of building. The
+/// closure must be this very provider (source and generated shim), built by
+/// the current toolchain under the resolution the project declares, and its
+/// cdylib bytes must match the closure record. Anything else is the named
+/// `m2build.rust-prepared` rejection — the project lane never falls back to
+/// compiling a closure it was handed.
+fn adopt_prepared(
+    closure: &Path,
+    provider: &RustProjectInputs,
+    project: &RustProviderBuild,
+    identity: BuildIdentity,
+) -> Result<PreparedProvider, M2Reject> {
+    fn reject(detail: impl std::fmt::Display) -> M2Reject {
+        M2Reject::new("m2build.rust-prepared", detail.to_string())
+    }
+    let closure = ace_abi::rust_provider::verify_provider_closure(closure, &provider.source)
+        .map_err(reject)?;
+    if closure.rustc_identity != project.rustc_identity {
+        return Err(reject(format!(
+            "the prepared closure was built by `{}` but this project builds with `{}`",
+            closure.rustc_identity, project.rustc_identity
+        )));
+    }
+    if closure.lock != provider.cargo_lock {
+        return Err(reject(
+            "the prepared closure's dependency resolution differs from the project's declared lock",
+        ));
+    }
+    // `verify_provider_closure` already imported this very source.
+    let build = ace_abi::rust_provider::prepared_provider_build(&closure, &provider.source)
+        .map_err(reject)?;
+    let artifact_sha256 = sha256_hex(&fs::read(&build.cdylib).map_err(prepare_error)?);
+    // Hold the executing DLL against a concurrent re-preparation through
+    // the lifetime of this build (read sharing only).
+    let lease = File::options()
+        .read(true)
+        .share_mode(1) // FILE_SHARE_READ
+        .open(&build.cdylib)
+        .map_err(prepare_error)?;
+    Ok(PreparedProvider {
+        build,
+        identity,
+        artifact_sha256,
+        rebuilt: false,
         _lease: lease,
     })
 }

@@ -1,6 +1,6 @@
 # AV/Rust 标准库来源覆盖矩阵（av-rust-provider-coverage）
 
-> Status: PLAN-1114 work 草稿（随批交付更新；merge 时按 `/auto-plan:merge` 沉淀为 canonical Spec）。
+> Status: PLAN-1114 交付（批 1–3、B-01..B-11）；**PLAN-1123 增量**（2026-11-23）：批 4 安全传输层、`dep` 注解内联特性键、预备闭包消费（见对应行与 B-04/B-12..B-14）。
 > 记录 AV/RS 标准库（`IF-ACE-AV-RS-STDLIB/1`）的逐操作来源、平台与实际支持矩阵：
 > 每行 = 一个公共操作 → 实现来源分类、owner、平台与验证入口。分类法沿
 > [Design 60](../../../design/60-ace-rust-route.md) 与
@@ -88,6 +88,17 @@
 | storage | S | W | ACE-KV 共享 Auto（1064）；Rs 无资源面义务 | 1064 复用 |
 | image / frame | B-03 | — | 领域 owner 980/OS064 | — |
 
+### 批 4 · 安全传输（PLAN-1123，已交付）
+
+| 操作 | 来源 | 平台 | Rust 体来源/迁移 | 验证入口 |
+|---|---|---|---|---|
+| tls.tls_exchange / tls_result / tls_read_byte / tls_close | R（显式外库）| W（Linux 臂同源，实跑归 1063）| 钉版 `rustls =0.23.46`（`default-features=false features=ring,std,tls12`——默认加密后端 aws-lc-rs 不在离线 registry）+ `rustls-native-certs =0.8.4`；字节传输（连接/CONNECT 隧道/受检握手/写/读到流尾/关闭），HTTP 构造与解析留调用方 Auto（`tests/fixtures/tls1123/https_app.at`）| `ace-abi::conformance avrs_tls_1123::*`（8 例）|
+| 显式选择 | — | W | `tls` 为独立选层：整单元，或 `str`+`tls` 选择（`AVRS_TLS_SELECTION`）；plain HTTP 的 `net` 层零依赖，不要求该层 | `compose_delivered_avrs`；`v03_provider_missing_and_prepared_closure_is_source_bound` |
+| 依赖闭包构建 | — | W | 显式 `prepare-avrs-tls` 步骤（测试治理工具 `avrs-tls-provider`，`warm` 预热并经 `dir_env` 转发 `ACE_AVRS_TLS_PROVIDER_ROOT`）；生成的 cargo 单元带空 `[workspace]`（闭包位于工作区树下时可独立构建）并在 dev 档内对依赖闭包取 `opt-level = "s"`（单元本体仍不优化）| `cargo t ace-abi` / `ace-m2-build` 的准备阶段收据 |
+| 预备闭包消费 | — | W | `ace-abi/provider-closure/1`；会话道 `open_prepared_avrs_session`；工程道 `RustProjectInputs.prepared`（源/shim/工具链/声明锁严格一致，否则 `m2build.rust-prepared`）| `prepared.*` 三反例；`p1123_prepared_closure_must_match_the_project_exactly` |
+
+`// auto-ffi dep` 注解自此接受可选内联键：`<name> <version> default-features=<bool> features=<a,b>`；两词形的生成字节不变，畸形键=具名 `f0.cargo-dep` 拒绝（`provider_dep_specs`）。
+
 ### 负例与默认近邻（V-03 附加面）
 
 | 面 | 验证 |
@@ -104,11 +115,14 @@
 | B-01 | 双 i32 纯形无受检帧车道（min/max/未来 2-标量 op）——`ViewI32I32ToI32` 存在但 `(i32,i32)` 无 view 首参不可入 | 帧域扩展归后续 Plan（1114 记边界；共享 Auto 承载）|
 | B-02 | List/Map 值不过帧——集合 op 无 Rust 分派面 | 共享 Auto 单源（972）；如需 Rust 集合=opaque 模型另立增量 |
 | B-03 | image/frame（旧资产 17+2 `#[rs]`）| 领域 owner 980/OS064（S-20：媒体域不入 972-975；1114 不交付、不冒充）|
-| B-04 | net TLS/proxy | 974 r2 显式可选 provider 道（未实现不冒充）|
-| B-05 | Linux 腿 | 1063（deferred-required/NOT_RUN，Windows required 全跑）|
+| B-04 | net TLS/proxy | **Windows AV 已交**（PLAN-1123 批 4，显式 `tls` 层；合同与错误表见 [m2-stdlib-network](../../ace-migration/m2-stdlib-network.md)）。代理认证、TLS 客户端证书、更广旧 HTTP API 另列 |
+| B-05 | Linux 腿 | 1063（deferred-required/NOT_RUN，Windows required 全跑；`tls` 层同一源码臂随 1123 交 1063）|
 | B-06 | inline.rs.at（旧 C-inline 面，无 `#[rs]`）| 旧 C 内联资产，AV/Rs 无义务面（N；旧轨保留）|
 | B-07 | json.rs.at 旧 `#[rs]` 镜像 parse P6 坏（D-948-04）| 975 已交 std/json.at 共享 Auto 真身；T-04 显式外库行已交，旧镜像退役记录在案 |
 | B-08 | 无参 i32 形（now_ms()/now_sec()/rand_seed()）——pure 需 view 首参、complete_sync 需单 i32 入参，均无车道 | 帧域扩展或 owned-unit 形另立增量（time 面以 owned clock 承载观测）|
 | B-09 | 双字符串形（file 批量写、env_set）——帧域每调用至多一个借用 view | 帧域扩展另立增量；当前以字节粒度/单 view 子集交付 |
 | B-10 | 完成口形（complete_sync/async）在 avrs 会话车道把模块变调度面——mir 能力域拒绝 | M2Build 工程执行器承载（1113 已证 sdk_pack）；sleep/now 旧 `#[rs]` 面归该 lane |
 | B-11 | redis 真服务器验证依赖外部服务 | §10 具名 pending（运维输入）；RESP2 算法=975 共享 Auto |
+| B-12 | M2Build 发布把工程全部产物十六进制嵌入一份收据写入工件存储（783 暂存预算 8 MiB，暂存+CAS 临时两份）：原始产物须 < ~4 MiB。未优化的 rustls 单元 DLL 3.1 MiB（收据 ~6.2 MB）不可发布，故依赖闭包在 dev 档内尺寸优化（1.7 MiB）；整单元 1.84 MiB 余量仅 ~0.26 MiB。结构性限制（收据嵌入方式 vs 暂存预算）归 783/978 owner，本计划不改预算 | D-1123-01（KNOWN-DEBT）|
+| B-13 | `trust system` 在运行期动态装载 Windows SSPI/Crypt32，不在 DLL 导入表内，SDK 的 `system-lib` 运行依赖因此不含它们（始终存在的系统组件）| 记录在案；如需声明由打包 owner 决定 |
+| B-14 | 一次 `tls_exchange`=一次 foreign 调用：默认执行墙钟 2 s 内只能观察 < 2 s 的交换；更长的 `timeout` 需宿主调高 `ExecLimits.wall`。默认请求期限 1500 ms 据此而定 | 语言/执行器合同，非本层可变 |

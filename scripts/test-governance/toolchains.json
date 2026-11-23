@@ -208,6 +208,19 @@
       "warm": [
         "prepare-av-providers"
       ]
+    },
+    "avrs-tls-provider": {
+      "workspace": "experimental/ace",
+      "package": "ace-abi",
+      "binaries": [
+        "prepare-avrs-tls"
+      ],
+      "profile": "debug",
+      "target": "experimental/ace/target",
+      "dir_env": "ACE_AVRS_TLS_PROVIDER_ROOT",
+      "warm": [
+        "prepare-avrs-tls"
+      ]
     }
   }
 }

@@ -48,11 +48,13 @@ fn scope(tag: &str) -> Scope {
 /// Stage the delivered stdlib files into one flat assembly root (the
 /// 1043 discovery contract: one flat directory; the app source is the
 /// single-module entry of the ordinary AV chain). `stage` copies the
-/// WHOLE tree; `stage_modules` stages the named subset — a consumer
-/// selects its modules (the composed provider is a function of the
-/// selected layers; the dep-carrying json fragment routes the whole unit
-/// through cargo, so the dependency-free batches stage without it and
-/// keep their per-case budget on the fast rustc path).
+/// WHOLE tree except the `tls` layer — its rustls closure is the
+/// PLAN-1123 prepared-closure lane (`avrs_tls_1123`), and staging it here
+/// would compile it inside these cases; `stage_modules` stages the named
+/// subset — a consumer selects its modules (the composed provider is a
+/// function of the selected layers; the dep-carrying json fragment routes
+/// the whole unit through cargo, so the dependency-free batches stage
+/// without it and keep their per-case budget on the fast rustc path).
 fn stage_modules(root: &Path, modules: &[&str], extra: &[(&str, &str)]) {
     for module in modules {
         for suffix in ["at", "rs.at"] {
@@ -81,6 +83,9 @@ fn stage(root: &Path, extra: &[(&str, &str)]) {
     names.sort();
     assert!(!names.is_empty(), "the avrs tree carries modules");
     for name in &names {
+        if name.starts_with("tls.") {
+            continue;
+        }
         let bytes = std::fs::read(avrs_dir().join(name))
             .unwrap_or_else(|e| panic!("stage {name}: {e}"));
         std::fs::write(root.join(name), bytes).unwrap();

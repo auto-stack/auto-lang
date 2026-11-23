@@ -54,6 +54,11 @@ pub struct ProjectInputs {
 pub struct RustProjectInputs {
     pub source: String,
     pub cargo_lock: Option<String>,
+    /// PLAN-1123: a PREPARED provider closure directory (written by the
+    /// explicit prepare step) to adopt instead of building the provider.
+    /// It must match the source, shim, toolchain and declared lock exactly;
+    /// the project lane never compiles a handed closure.
+    pub prepared: Option<PathBuf>,
 }
 
 impl ProjectInputs {

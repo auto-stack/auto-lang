@@ -66,6 +66,7 @@ pub fn background_double(input: i32) -> i32 {
     inputs.rust_provider = Some(RustProjectInputs {
         source: provider.into(),
         cargo_lock: None,
+        prepared: None,
     });
 
     let root = scratch("rust-lifecycle");

@@ -1,0 +1,58 @@
+// PLAN-1123: the AV/Rust stdlib `tls` contract face — the public API record
+// of the EXPLICIT secure transport (the 974 r2 optional provider path). One
+// exchange = one bounded byte exchange: connect (direct, or through an HTTP
+// proxy with CONNECT), a VERIFIED TLS handshake, write the request bytes,
+// read the response bytes to end of stream, close. The provider is a byte
+// transport only — HTTP request formation and response parsing stay in Auto,
+// so the public HTTP request/response contract (status*10000+body_len over
+// the request bytes the caller built) is unchanged.
+//
+// `spec` is a block of `key value` lines, one empty line, then the request
+// bytes. Every field is read from THIS exchange — nothing is carried over
+// from an earlier one (no stale authorization, proxy setting or socket):
+//   host <dns-name | ip | [v6]>   required; also the verified server name
+//   port <1..65535>               required
+//   trust file:<path> | system    required for https; there is NO insecure
+//                                source (verification cannot be turned off)
+//   via <host:port>               optional; the HTTP proxy
+//   mode https | http             optional, default https; `http` is plain
+//                                bytes through a forwarding proxy (requires
+//                                `via`; the caller writes the absolute-form
+//                                request line)
+//   timeout <ms>                  optional, default 1500, at most 60000
+//
+// Ownership: `tls_exchange` opens an exchange the app owns; the socket is
+// closed before the call returns, so the handle only owns the response
+// bytes. `tls_result` is the outcome, `tls_read_byte` walks the response
+// (0..255, then -1 at its end), `tls_close` releases it. A closed or stale
+// handle is rejected before the callee runs (the owned model).
+//
+// Outcomes (`tls_result`): 0 = clean end of stream; a negative named value:
+//   -1 tls.spec        malformed spec (unknown/duplicate key, bad value, no trust source)
+//   -2 net.resolve     host or proxy could not be resolved
+//   -3 net.connect     TCP connect refused/failed
+//   -4 net.timeout     the deadline expired (connect, CONNECT, handshake, exchange)
+//   -5 proxy.rejected  the proxy answered CONNECT with a non-2xx status
+//   -6 proxy.closed    the proxy closed before a CONNECT verdict
+//   -7 proxy.bad       the proxy's CONNECT reply had no parseable status
+//   -8 tls.trust       the trust source is missing, unreadable or empty
+//   -9 tls.untrusted   the peer chains to an issuer outside the trust source
+//   -10 tls.hostname   the peer certificate is not valid for `host`
+//   -11 tls.cert       another certificate validation failure
+//   -12 tls.handshake  TLS protocol failure, or the peer closed mid-handshake
+//   -13 net.write      writing the request failed
+//   -14 net.read       reading the response failed
+//   -15 net.truncated  the peer closed without close_notify (bytes kept)
+//   -16 net.limit      the request exceeds 64 KiB, or the response 1 MiB (bytes kept)
+// A verification failure happens BEFORE any request byte is written.
+//
+// One exchange is one foreign call: the execution wall budget of the
+// running program (`ExecLimits.wall`, 2 s by default) must exceed the
+// request's `timeout`, or the executor's wall-budget outcome preempts the
+// named `net.timeout`. The default stays below that budget on purpose; a
+// longer `timeout` is the caller's explicit choice for a host that raised
+// the wall.
+pub spec fn tls_exchange(spec str) int
+pub spec fn tls_result(exchange int) int
+pub spec fn tls_read_byte(exchange int) int
+pub spec fn tls_close(exchange int) int

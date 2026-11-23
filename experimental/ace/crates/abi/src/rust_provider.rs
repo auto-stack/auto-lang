@@ -684,19 +684,114 @@ pub fn open_py_bridge_session(generation: u64) -> Result<F0Session, String> {
 
 /// `// auto-ffi dep <name> <spec>` lines are the clean project's whole
 /// dependency configuration: the importer ignores them (they are not fn
-/// metadata) and the cargo build unit consumes them verbatim.
+/// metadata) and the cargo build unit consumes them verbatim. The
+/// `(name, version)` projection of every declaration.
 pub fn provider_deps(source: &str) -> Vec<(String, String)> {
+    provider_dep_specs(source)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|dep| (dep.name, dep.version))
+        .collect()
+}
+
+/// One `// auto-ffi dep` declaration: `<name> <version-spec>` and the
+/// optional inline keys `default-features=<bool>` / `features=<a,b,..>`
+/// (PLAN-1123: a crate whose default backend is absent from the offline
+/// registry is pinned to the backend that is).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DepSpec {
+    pub name: String,
+    pub version: String,
+    pub default_features: bool,
+    pub features: Vec<String>,
+}
+
+impl DepSpec {
+    fn parse(rest: &str) -> Option<DepSpec> {
+        let mut words = rest.split_whitespace();
+        let name = words.next()?;
+        let version = words.next()?;
+        let mut spec = DepSpec {
+            name: name.to_string(),
+            version: version.to_string(),
+            default_features: true,
+            features: Vec::new(),
+        };
+        for word in words {
+            match word.strip_prefix("default-features=") {
+                Some("true") => spec.default_features = true,
+                Some("false") => spec.default_features = false,
+                Some(_) => return None,
+                None => match word.strip_prefix("features=") {
+                    Some(list) if !list.is_empty() => {
+                        spec.features.extend(list.split(',').map(str::to_string))
+                    }
+                    Some(_) => return None,
+                    // extra words were never part of a declaration
+                    None => {}
+                },
+            }
+        }
+        Some(spec)
+    }
+
+    /// A declaration that can be written into the generated Cargo.toml
+    /// without escaping (the locked lane refuses anything else by name).
+    fn valid(&self) -> bool {
+        let identifier = |text: &str| {
+            !text.is_empty()
+                && text.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'/' || b == b'+'
+                })
+        };
+        identifier(&self.name)
+            && !self.version.is_empty()
+            && !self.version.contains(['"', '\\', '\n', '\r'])
+            && self.features.iter().all(|feature| identifier(feature))
+    }
+
+    /// The Cargo.toml dependency line: the plain form keeps the bytes of a
+    /// two-word declaration unchanged.
+    fn toml(&self) -> String {
+        if self.default_features && self.features.is_empty() {
+            return format!("{} = \"{}\"\n", self.name, self.version);
+        }
+        let mut line = format!("{} = {{ version = \"{}\"", self.name, self.version);
+        if !self.default_features {
+            line.push_str(", default-features = false");
+        }
+        if !self.features.is_empty() {
+            line.push_str(", features = [");
+            line.push_str(
+                &self
+                    .features
+                    .iter()
+                    .map(|feature| format!("\"{feature}\""))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            line.push(']');
+        }
+        line.push_str(" }\n");
+        line
+    }
+}
+
+/// Every `// auto-ffi dep` declaration of the source, in order. A
+/// malformed inline key is the named declaration failure (never a
+/// silently narrowed dependency).
+pub fn provider_dep_specs(source: &str) -> Result<Vec<DepSpec>, String> {
     let mut deps = Vec::new();
     for line in source.lines() {
         let t = line.trim();
         if let Some(rest) = t.strip_prefix("// auto-ffi dep ") {
-            let mut it = rest.trim().split_whitespace();
-            if let (Some(name), Some(spec)) = (it.next(), it.next()) {
-                deps.push((name.to_string(), spec.to_string()));
-            }
+            let spec = DepSpec::parse(rest.trim())
+                .filter(DepSpec::valid)
+                .ok_or_else(|| format!("invalid Rust dependency declaration: {rest}"))?;
+            deps.push(spec);
         }
     }
-    deps
+    Ok(deps)
 }
 
 /// Build a provider with REAL pinned dependencies (the B-01 source-mode
@@ -755,20 +850,20 @@ path = \"src/lib.rs\"
 [dependencies]
 ",
     );
-    for (name, spec) in provider_deps(provider_source) {
-        if lock.is_some()
-            && (name.is_empty()
-                || !name
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-                || spec.contains(['"', '\\', '\n', '\r']))
-        {
-            return Err(format!(
-                "invalid locked Rust dependency declaration: {name} {spec}"
-            ));
-        }
-        toml.push_str(&format!("{name} = \"{spec}\"\n"));
+    let deps =
+        provider_dep_specs(provider_source).map_err(|error| format!("f0.cargo-dep: {error}"))?;
+    for dep in &deps {
+        toml.push_str(&dep.toml());
     }
+    // PLAN-1123: the unit stays a standalone package wherever its closure
+    // is prepared — under a workspace tree cargo would otherwise adopt the
+    // enclosing root and refuse the package as a non-member. Its dependency
+    // closure compiles size-optimized INSIDE the dev profile (the unit
+    // itself stays unoptimized): M2Build publishes a project's products
+    // hex-encoded in one receipt under the artifact store's 8 MiB staging
+    // budget, which a debug rustls + ring unit (~3.1 MiB of DLL) cannot
+    // cross; at `opt-level = "s"` it is ~1.7 MiB.
+    toml.push_str("\n[workspace]\n\n[profile.dev.package.\"*\"]\nopt-level = \"s\"\n");
     std::fs::write(dir.join("Cargo.toml"), toml).map_err(|e| e.to_string())?;
     if let Some(lock) = lock {
         std::fs::write(dir.join("Cargo.lock"), lock).map_err(|e| e.to_string())?;
@@ -1308,6 +1403,403 @@ pub fn build_avrs_provider(root: &Path, composed: &str) -> Result<RustProviderBu
             build_cargo_provider(&build_root, composed)
         }
     }
+}
+
+/// PLAN-1123: the repository's delivered AV/Rust stdlib tree.
+pub fn delivered_avrs_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../stdlib/ace/avrs")
+}
+
+/// PLAN-1123: every Rust-backed module of the delivered tree, by base name
+/// in sorted order — the whole AV/Rust stdlib unit a consumer selects.
+pub fn delivered_avrs_modules() -> Result<Vec<String>, String> {
+    let mut modules: Vec<String> = std::fs::read_dir(delivered_avrs_dir())
+        .map_err(|e| format!("avrs.tree: {}", e))?
+        .map(|entry| {
+            let name = entry
+                .map_err(|e| e.to_string())?
+                .file_name()
+                .to_string_lossy()
+                .into_owned();
+            Ok(name
+                .strip_suffix(".rs.at")
+                .filter(|base| !base.is_empty() && !base.contains('.'))
+                .map(str::to_string))
+        })
+        .collect::<Result<Vec<Option<String>>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    if modules.is_empty() {
+        return Err(
+            "avrs.tree: the delivered AV/Rust stdlib tree carries no Rust layer".to_string(),
+        );
+    }
+    modules.sort();
+    Ok(modules)
+}
+
+/// PLAN-1123: the composed source of the WHOLE delivered AV/Rust stdlib
+/// unit (every Rust-backed layer under [`AVRS_PROVIDER_HEADER`]).
+pub fn delivered_avrs_provider() -> Result<String, String> {
+    let modules = delivered_avrs_modules()?;
+    let names: Vec<&str> = modules.iter().map(String::as_str).collect();
+    compose_delivered_avrs(&names)
+}
+
+/// The delivered stdlib unit's closure directory inside the provider root.
+pub const AVRS_STDLIB_CLOSURE_DIR: &str = "avrs-stdlib";
+
+/// PLAN-1123: the provider root of the explicit prepare step — the root the
+/// harness forwards (`ACE_AVRS_TLS_PROVIDER_ROOT`), else the directory the
+/// running executable was built into (where `prepare-avrs-tls` writes).
+pub fn prepared_provider_root() -> Result<PathBuf, String> {
+    match std::env::var_os("ACE_AVRS_TLS_PROVIDER_ROOT") {
+        Some(root) => Ok(PathBuf::from(root)),
+        None => {
+            let directory = std::env::current_exe()
+                .map_err(|e| format!("prepared.root: {e}"))?
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| {
+                    "prepared.root: the running executable has no parent directory".to_string()
+                })?;
+            // a test executable runs from `<profile>/deps`; a tool from `<profile>`
+            let profile = |directory: &Path| {
+                (directory.file_name().is_some_and(|name| name == "deps"))
+                    .then(|| directory.parent().map(Path::to_path_buf))
+                    .flatten()
+            };
+            Ok(profile(&directory).unwrap_or(directory))
+        }
+    }
+}
+
+/// The secure-transport selection's closure directory inside the provider
+/// root: the `tls` layer with the `str` byte face its callers compare
+/// response bytes with (a project that needs only the secure transport
+/// selects two layers instead of the whole unit).
+pub const AVRS_TLS_CLOSURE_DIR: &str = "avrs-tls";
+
+/// PLAN-1123: verify a PREPARED closure of one delivered selection against
+/// the delivered sources (never builds). The named `prepared.*` failure
+/// names the prepare step to run.
+fn prepared_selection(
+    directory: &str,
+    modules: &[&str],
+) -> Result<(ProviderClosure, String), String> {
+    let source = compose_delivered_avrs(modules)?;
+    let root = prepared_provider_root()?.join(directory);
+    verify_provider_closure(&root, &source).map(|closure| (closure, source))
+}
+
+/// The PREPARED closure of the whole delivered AV/Rust stdlib unit.
+pub fn prepared_avrs_closure() -> Result<(ProviderClosure, String), String> {
+    prepared_selection(
+        AVRS_STDLIB_CLOSURE_DIR,
+        &delivered_avrs_modules()?
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// The layers of the secure-transport selection.
+pub const AVRS_TLS_SELECTION: [&str; 2] = ["str", "tls"];
+
+/// The PREPARED closure of the secure-transport selection
+/// ([`AVRS_TLS_SELECTION`]).
+pub fn prepared_avrs_tls_closure() -> Result<(ProviderClosure, String), String> {
+    prepared_selection(AVRS_TLS_CLOSURE_DIR, &AVRS_TLS_SELECTION)
+}
+
+/// PLAN-1123: open a session on the prepared closure of the whole delivered
+/// AV/Rust stdlib unit (never builds).
+pub fn open_prepared_avrs_session(generation: u64) -> Result<F0Session, String> {
+    let (closure, source) = prepared_avrs_closure()?;
+    let build = prepared_provider_build(&closure, &source)?;
+    open_session_from_build(&build, generation)
+}
+
+/// PLAN-1123: compose the DELIVERED AV/Rust stdlib layers of one selection
+/// (module base names) under [`AVRS_PROVIDER_HEADER`] — the composition
+/// [`compose_avrs_provider`] performs on a staged closure, taken straight
+/// from the repository tree so the prepare step and every consumer share
+/// one spelling of the selected sources.
+pub fn compose_delivered_avrs(modules: &[&str]) -> Result<String, String> {
+    use ace_core::source::packages::{
+        AssemblyBackend, PackageAssemblyContext, ProviderChoice, ProviderKind, TargetOs,
+    };
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|passed| passed.as_nanos())
+        .unwrap_or(0);
+    let scratch =
+        std::env::temp_dir().join(format!("ace-avrs-compose-{}-{unique}", std::process::id()));
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("avrs.stage: {e}"))?;
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = Cleanup(scratch.clone());
+    let stage_error = |error: std::io::Error| format!("avrs.stage: {error}");
+    for module in modules {
+        for name in [format!("{module}.at"), format!("{module}.rs.at")] {
+            let bytes = std::fs::read(delivered_avrs_dir().join(&name)).map_err(stage_error)?;
+            std::fs::write(scratch.join(name), bytes).map_err(stage_error)?;
+        }
+    }
+    // the entry module's public source (the flat-dir assembly requires it)
+    std::fs::write(scratch.join("main.at"), "fn main() int { return 0 }\n").map_err(stage_error)?;
+    let mut ctx = PackageAssemblyContext::new(
+        AssemblyBackend::Av,
+        ProviderChoice::Kind(ProviderKind::Rs),
+        TargetOs::Windows,
+    );
+    compose_avrs_provider(&scratch, "app::main", &mut ctx).map(|(composed, _)| composed)
+}
+
+/// PLAN-1123: a PREPARED provider closure — one composed provider source
+/// with its built cargo unit. The explicit prepare step
+/// ([`prepare_provider_closure`]) writes it; a daily lane only verifies and
+/// opens it ([`verify_provider_closure`]) and never compiles.
+#[derive(Clone, Debug)]
+pub struct ProviderClosure {
+    pub root: PathBuf,
+    pub provider_digest: String,
+    pub shim_digest: String,
+    pub rustc_identity: String,
+    /// The immutable resolution of a dep-carrying unit (`None` when the
+    /// provider declares no dependency).
+    pub lock: Option<String>,
+}
+
+pub const PROVIDER_CLOSURE_SCHEMA: &str = "ace-abi/provider-closure/1";
+
+/// What a closure binds: the provider and generated-shim digests, the
+/// toolchain, the dependency resolution and the artifact bytes.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClosureRecord {
+    schema: String,
+    provider_digest: String,
+    shim_digest: String,
+    rustc_identity: String,
+    dependency_lock_sha256: Option<String>,
+    cdylib_sha256: String,
+    staticlib_sha256: String,
+    staticlib_len: u64,
+}
+
+fn closure_paths(root: &Path) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    let products = root.join("cargo-unit/target/debug");
+    (
+        root.join("closure.json"),
+        products.join("provider_unit.dll"),
+        products.join("provider_unit.lib"),
+        root.join("cargo-unit/Cargo.lock"),
+    )
+}
+
+fn sha256_file(path: &Path) -> Option<String> {
+    std::fs::read(path)
+        .ok()
+        .map(|bytes| ace_core::runtime_contract::sha256_hex(&bytes))
+}
+
+/// Verify a prepared closure against the CURRENT provider source. Never
+/// builds: a missing closure is `prepared.missing`, one that no longer
+/// matches its source, shim, toolchain or resolution is `prepared.stale`,
+/// and an artifact that differs from the record is `prepared.corrupt`.
+pub fn verify_provider_closure(
+    root: &Path,
+    provider_source: &str,
+) -> Result<ProviderClosure, String> {
+    let (record_path, cdylib, staticlib, lock_path) = closure_paths(root);
+    let prepare_again = "run the prepare step again";
+    let record: ClosureRecord = match std::fs::read(&record_path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|e| format!("prepared.corrupt: provider closure record at {} is unreadable ({e}); {prepare_again}", record_path.display()))?,
+        Err(error) => {
+            return Err(format!(
+                "prepared.missing: no provider closure at {} ({error}); run the prepare step for this provider first",
+                root.display()
+            ))
+        }
+    };
+    if record.schema != PROVIDER_CLOSURE_SCHEMA {
+        return Err(format!(
+            "prepared.schema: provider closure at {} declares `{}`, this host reads `{PROVIDER_CLOSURE_SCHEMA}`; {prepare_again}",
+            root.display(),
+            record.schema
+        ));
+    }
+    let manifest = auto_bindgen::rust_import::import(provider_source)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    let shim_source = auto_bindgen::rust_import::generate_shim(&manifest);
+    let provider_digest = auto_bindgen::rust_import::provider_digest(provider_source);
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&shim_source);
+    let stale = |what: &str| {
+        format!(
+            "prepared.stale: the provider closure at {} no longer matches the current {what}; {prepare_again}",
+            root.display()
+        )
+    };
+    if record.provider_digest != provider_digest {
+        return Err(stale("provider source"));
+    }
+    if record.shim_digest != shim_digest {
+        return Err(stale("generated shim"));
+    }
+    let rustc_identity = rustc_identity(&root)?;
+    if record.rustc_identity != rustc_identity {
+        return Err(stale("rustc toolchain"));
+    }
+    let dep_carrying = !provider_dep_specs(provider_source)?.is_empty();
+    let lock = match (record.dependency_lock_sha256.as_deref(), dep_carrying) {
+        (None, false) => None,
+        (Some(expected), true) => {
+            let text = std::fs::read_to_string(&lock_path)
+                .ok()
+                .filter(|text| ace_core::runtime_contract::sha256_hex(text.as_bytes()) == expected)
+                .ok_or_else(|| stale("dependency resolution"))?;
+            Some(text)
+        }
+        _ => return Err(stale("dependency declaration")),
+    };
+    // The cdylib is the artifact that executes: its bytes are hashed on
+    // every verification. The staticlib (the native-relink product, ~100 MiB
+    // of debug archive) is bound by presence and length here; its digest in
+    // the record is what the prepare step's read-back pinned.
+    if sha256_file(&cdylib).as_ref() != Some(&record.cdylib_sha256) {
+        return Err(format!(
+            "prepared.corrupt: provider artifact {} differs from the closure record; {prepare_again}",
+            cdylib.display()
+        ));
+    }
+    let staticlib_len = std::fs::metadata(&staticlib)
+        .map_err(|_| {
+            format!(
+                "prepared.corrupt: provider artifact {} is missing; {prepare_again}",
+                staticlib.display()
+            )
+        })?
+        .len();
+    if staticlib_len != record.staticlib_len {
+        return Err(format!(
+            "prepared.corrupt: provider artifact {} differs from the closure record; {prepare_again}",
+            staticlib.display()
+        ));
+    }
+    Ok(ProviderClosure {
+        root: root.to_path_buf(),
+        provider_digest,
+        shim_digest,
+        rustc_identity,
+        lock,
+    })
+}
+
+/// The build description of a verified closure (the consumer re-derives
+/// the manifest from the source it verified against).
+pub fn prepared_provider_build(
+    closure: &ProviderClosure,
+    provider_source: &str,
+) -> Result<RustProviderBuild, String> {
+    let (_, cdylib, staticlib, _) = closure_paths(&closure.root);
+    describe_rust_provider(
+        provider_source,
+        closure.rustc_identity.clone(),
+        cdylib,
+        staticlib,
+    )
+}
+
+/// Open a session on a PREPARED provider closure. Never compiles: the
+/// closure is verified against `provider_source` first, so a missing or
+/// stale preparation is the named `prepared.*` failure.
+pub fn open_prepared_provider_session(
+    root: &Path,
+    provider_source: &str,
+    generation: u64,
+) -> Result<F0Session, String> {
+    let closure = verify_provider_closure(root, provider_source)?;
+    let build = prepared_provider_build(&closure, provider_source)?;
+    open_session_from_build(&build, generation)
+}
+
+/// The explicit prepare step: build the provider closure at `root` unless
+/// a closure there already matches the source, toolchain and artifacts.
+/// A dep-carrying unit reuses its earlier resolution under `--locked` and
+/// resolves again only when that resolution no longer satisfies the
+/// declarations.
+pub fn prepare_provider_closure(
+    root: &Path,
+    provider_source: &str,
+) -> Result<ProviderClosure, String> {
+    if let Ok(closure) = verify_provider_closure(root, provider_source) {
+        return Ok(closure);
+    }
+    let deps =
+        provider_dep_specs(provider_source).map_err(|error| format!("f0.cargo-dep: {error}"))?;
+    std::fs::create_dir_all(root).map_err(|e| format!("prepared.root: {e}"))?;
+    let (_, _, _, lock_path) = closure_paths(root);
+    let build = if deps.is_empty() {
+        build_source(root, provider_source)?
+    } else {
+        match std::fs::read_to_string(&lock_path) {
+            Ok(earlier) => build_cargo_provider_with_lock(root, provider_source, Some(&earlier))
+                .or_else(|_| {
+                    let _ = std::fs::remove_file(&lock_path);
+                    build_cargo_provider(root, provider_source)
+                })?,
+            Err(_) => build_cargo_provider(root, provider_source)?,
+        }
+    };
+    let lock = if deps.is_empty() {
+        None
+    } else {
+        Some(std::fs::read_to_string(&lock_path).map_err(|e| format!("prepared.lock: {e}"))?)
+    };
+    let record = ClosureRecord {
+        schema: PROVIDER_CLOSURE_SCHEMA.to_string(),
+        provider_digest: build.provider_digest.clone(),
+        shim_digest: auto_bindgen::rust_import::shim_digest(&build.shim_source),
+        rustc_identity: build.rustc_identity.clone(),
+        dependency_lock_sha256: lock
+            .as_ref()
+            .map(|text| ace_core::runtime_contract::sha256_hex(text.as_bytes())),
+        cdylib_sha256: sha256_file(&build.cdylib).ok_or_else(|| {
+            format!(
+                "prepared.artifact: {} is unreadable",
+                build.cdylib.display()
+            )
+        })?,
+        staticlib_sha256: sha256_file(&build.staticlib).ok_or_else(|| {
+            format!(
+                "prepared.artifact: {} is unreadable",
+                build.staticlib.display()
+            )
+        })?,
+        staticlib_len: std::fs::metadata(&build.staticlib)
+            .map_err(|_| {
+                format!(
+                    "prepared.artifact: {} is unreadable",
+                    build.staticlib.display()
+                )
+            })?
+            .len(),
+    };
+    std::fs::create_dir_all(root).map_err(|e| format!("prepared.root: {e}"))?;
+    std::fs::write(
+        closure_paths(root).0,
+        serde_json::to_vec_pretty(&record).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("prepared.record: {e}"))?;
+    // the read-back is the proof: the closure opens exactly as a consumer sees it
+    verify_provider_closure(root, provider_source)
 }
 
 /// PLAN-967 T-09: PROJECT-level provider resolution for the `use.rs`

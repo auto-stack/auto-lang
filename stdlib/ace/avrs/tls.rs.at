@@ -1,0 +1,512 @@
+// PLAN-1123: the AV/Rust stdlib `tls` Rust provider fragment — the EXPLICIT
+// secure transport of the 974 r2 optional provider path. One call = one
+// bounded byte exchange over TCP: connect (direct, or through an HTTP proxy
+// with CONNECT), a VERIFIED TLS handshake, write the request bytes, read the
+// response bytes to end of stream, close. The provider is a byte transport
+// only — HTTP request formation and response parsing stay in Auto, so the
+// public HTTP request/response contract is unchanged. No state survives a
+// call: trust, proxy and deadline are read from THIS request's spec and the
+// socket is closed before the call returns (the app owns only the response).
+// The pinned external libraries are the clean project's whole dependency
+// configuration (the MIX-07 rule); `ring` is the crypto backend because the
+// offline registry carries no aws-lc closure.
+// auto-ffi dep rustls =0.23.46 default-features=false features=ring,std,tls12
+// auto-ffi dep rustls-native-certs =0.8.4
+
+/// The exchange the app owns after `tls_exchange`: the transport outcome
+/// and the response bytes, released by `tls_close`.
+pub struct AvrsTls {
+    result: i32,
+    response: Vec<u8>,
+    cursor: std::cell::Cell<usize>,
+}
+
+const SPEC: i32 = -1;
+const RESOLVE: i32 = -2;
+const CONNECT: i32 = -3;
+const TIMEOUT: i32 = -4;
+const PROXY_REJECTED: i32 = -5;
+const PROXY_CLOSED: i32 = -6;
+const PROXY_BAD: i32 = -7;
+const TRUST: i32 = -8;
+const UNTRUSTED: i32 = -9;
+const HOSTNAME: i32 = -10;
+const CERT: i32 = -11;
+const HANDSHAKE: i32 = -12;
+const WRITE: i32 = -13;
+const READ: i32 = -14;
+const TRUNCATED: i32 = -15;
+const LIMIT: i32 = -16;
+
+const REQUEST_LIMIT: usize = 64 * 1024;
+const RESPONSE_LIMIT: usize = 1024 * 1024;
+const CONNECT_HEAD_LIMIT: usize = 8 * 1024;
+// The default stays under the AV executor's default execution wall (2 s):
+// one exchange is one foreign call, so a stalled exchange is then the
+// named `net.timeout`, never the executor's wall-budget outcome.
+const DEFAULT_TIMEOUT_MS: u64 = 1500;
+const MAX_TIMEOUT_MS: u64 = 60_000;
+
+/// How a transport run ended: `Done` at a clean end of stream, `Stopped`
+/// at a named condition after which the bytes received so far are still
+/// the caller's to inspect, `Failed` before anything is observable.
+enum Run {
+    Done(Vec<u8>),
+    Stopped(i32, Vec<u8>),
+    Failed(i32),
+}
+
+fn timed_out(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
+struct Endpoint {
+    host: String,
+    port: u16,
+}
+
+impl Endpoint {
+    fn parse(text: &str) -> Option<Endpoint> {
+        let (host, port) = parse_host_port(text)?;
+        if host.is_empty() || port == 0 {
+            return None;
+        }
+        Some(Endpoint {
+            host: host.to_string(),
+            port,
+        })
+    }
+
+    /// The authority spelling of RFC 7230 (an IPv6 literal is bracketed).
+    fn authority(&self) -> String {
+        if self.host.contains(':') && !self.host.starts_with('[') {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+/// Split `host:port`, accepting `[v6]:port`.
+fn parse_host_port(text: &str) -> Option<(&str, u16)> {
+    if let Some(rest) = text.strip_prefix('[') {
+        let end = rest.find(']')?;
+        let port = rest[end + 1..].strip_prefix(':')?;
+        return Some((&rest[..end], port.parse().ok()?));
+    }
+    let mut parts = text.rsplitn(2, ':');
+    let port = parts.next()?;
+    let host = parts.next()?;
+    if host.contains(':') {
+        return None;
+    }
+    Some((host, port.parse().ok()?))
+}
+
+/// The request's transport configuration: every field is read from this
+/// request's spec (nothing is carried over from an earlier request).
+struct Config {
+    target: Endpoint,
+    via: Option<Endpoint>,
+    tls: bool,
+    trust: Option<String>,
+    timeout: std::time::Duration,
+}
+
+/// The spec is a block of `key value` lines, one empty line, then the
+/// request bytes. `host`, `port` and (for https) `trust` are required;
+/// `via`, `mode` and `timeout` are optional. An unknown key, a duplicate
+/// key or a malformed value is the named spec failure.
+fn parse_spec(spec: &str) -> Result<(Config, &str), i32> {
+    let (head, request) = match spec.find("\n\n") {
+        Some(at) => (&spec[..at], &spec[at + 2..]),
+        None => return Err(SPEC),
+    };
+    if request.len() > REQUEST_LIMIT {
+        return Err(LIMIT);
+    }
+    let mut host: Option<String> = None;
+    let mut port: Option<u16> = None;
+    let mut via: Option<Endpoint> = None;
+    let mut tls: Option<bool> = None;
+    let mut trust: Option<String> = None;
+    let mut timeout_ms: Option<u64> = None;
+    for line in head.split('\n') {
+        let (key, value) = line.split_once(' ').ok_or(SPEC)?;
+        let value = value.trim();
+        match key {
+            // an IPv6 literal is bracketed: `[::1]`
+            "host" if host.is_none() && !value.is_empty() && !value.contains([' ', '\r']) => {
+                let name = value
+                    .strip_prefix('[')
+                    .and_then(|rest| rest.strip_suffix(']'))
+                    .unwrap_or(value);
+                host = Some(name.to_string());
+            }
+            "port" if port.is_none() => port = Some(value.parse().map_err(|_| SPEC)?),
+            "via" if via.is_none() => via = Some(Endpoint::parse(value).ok_or(SPEC)?),
+            "mode" if tls.is_none() => {
+                tls = Some(match value {
+                    "https" => true,
+                    "http" => false,
+                    _ => return Err(SPEC),
+                })
+            }
+            "trust" if trust.is_none() && !value.is_empty() => trust = Some(value.to_string()),
+            "timeout" if timeout_ms.is_none() => {
+                let ms: u64 = value.parse().map_err(|_| SPEC)?;
+                if ms == 0 || ms > MAX_TIMEOUT_MS {
+                    return Err(SPEC);
+                }
+                timeout_ms = Some(ms);
+            }
+            // An insecure mode is not a source: verification cannot be turned off.
+            _ => return Err(SPEC),
+        }
+    }
+    let tls = tls.unwrap_or(true);
+    let trust = match (tls, trust) {
+        (true, Some(source)) => Some(source),
+        (true, None) => return Err(SPEC),
+        (false, None) => None,
+        (false, Some(_)) => return Err(SPEC),
+    };
+    if !tls && via.is_none() {
+        return Err(SPEC);
+    }
+    Ok((
+        Config {
+            target: Endpoint {
+                host: host.ok_or(SPEC)?,
+                port: port.ok_or(SPEC)?,
+            },
+            via,
+            tls,
+            trust,
+            timeout: std::time::Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS)),
+        },
+        request,
+    ))
+}
+
+fn resolve(endpoint: &Endpoint) -> Result<Vec<std::net::SocketAddr>, i32> {
+    use std::net::ToSocketAddrs;
+    (endpoint.host.as_str(), endpoint.port)
+        .to_socket_addrs()
+        .map(|iter| iter.collect())
+        .map_err(|_| RESOLVE)
+}
+
+/// Connect to the first address that accepts within the deadline; the
+/// deadline is shared fairly between the addresses still to try.
+fn tcp_connect(
+    endpoint: &Endpoint,
+    deadline: std::time::Instant,
+) -> Result<std::net::TcpStream, i32> {
+    let addresses = resolve(endpoint)?;
+    let mut last = CONNECT;
+    let total = addresses.len();
+    for (index, address) in addresses.iter().enumerate() {
+        let remaining = deadline
+            .checked_duration_since(std::time::Instant::now())
+            .ok_or(TIMEOUT)?;
+        // The addresses still to try share the deadline equally, so an
+        // unreachable first address (a name resolving to an unused stack)
+        // cannot consume the time a later one needs.
+        let share = remaining / ((total - index) as u32).max(1);
+        if share.is_zero() {
+            return Err(TIMEOUT);
+        }
+        match std::net::TcpStream::connect_timeout(address, share) {
+            Ok(stream) => {
+                let _ = stream.set_nodelay(true);
+                return Ok(stream);
+            }
+            Err(error) if timed_out(&error) => last = TIMEOUT,
+            Err(_) => {}
+        }
+    }
+    Err(last)
+}
+
+/// Bound the next blocking operation by what is left of the deadline.
+fn arm(stream: &std::net::TcpStream, deadline: std::time::Instant) -> Result<(), i32> {
+    let remaining = deadline
+        .checked_duration_since(std::time::Instant::now())
+        .ok_or(TIMEOUT)?;
+    stream
+        .set_read_timeout(Some(remaining))
+        .and_then(|()| stream.set_write_timeout(Some(remaining)))
+        .map_err(|_| READ)
+}
+
+/// Ask the proxy for a CONNECT tunnel and read its verdict (the status
+/// code of its response head).
+fn connect_tunnel(
+    stream: &mut std::net::TcpStream,
+    target: &Endpoint,
+    deadline: std::time::Instant,
+) -> Result<(), i32> {
+    use std::io::{Read, Write};
+    arm(stream, deadline)?;
+    let authority = target.authority();
+    let request = format!("CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n\r\n");
+    stream.write_all(request.as_bytes()).map_err(|_| WRITE)?;
+    let mut head: Vec<u8> = Vec::new();
+    let mut byte = [0u8; 1];
+    while !(head.ends_with(b"\r\n\r\n") || head.ends_with(b"\n\n")) {
+        if head.len() >= CONNECT_HEAD_LIMIT {
+            return Err(PROXY_BAD);
+        }
+        match stream.read(&mut byte) {
+            Ok(0) => return Err(PROXY_CLOSED),
+            Ok(_) => head.push(byte[0]),
+            Err(error) if timed_out(&error) => return Err(TIMEOUT),
+            Err(_) => return Err(PROXY_CLOSED),
+        }
+    }
+    let status = String::from_utf8_lossy(&head)
+        .lines()
+        .next()
+        .and_then(|line| line.strip_prefix("HTTP/"))
+        .and_then(|rest| rest.split_once(' '))
+        .and_then(|(_, code)| code.get(..3))
+        .and_then(|code| code.parse::<u16>().ok())
+        .ok_or(PROXY_BAD)?;
+    if (200..300).contains(&status) {
+        Ok(())
+    } else {
+        Err(PROXY_REJECTED)
+    }
+}
+
+/// The trust anchors of THIS request: an explicit CA file (`file:<path>`,
+/// PEM or DER), or the operating system's native root store (`system`).
+/// An empty source is a failure — there is no implicit trust.
+fn trust_store(source: &str) -> Result<rustls::RootCertStore, i32> {
+    use rustls::pki_types::pem::PemObject;
+    let mut roots = rustls::RootCertStore::empty();
+    if let Some(path) = source.strip_prefix("file:") {
+        let bytes = std::fs::read(path).map_err(|_| TRUST)?;
+        let pems: Vec<rustls::pki_types::CertificateDer<'static>> =
+            rustls::pki_types::CertificateDer::pem_slice_iter(&bytes)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| TRUST)?;
+        if pems.is_empty() {
+            // a bare DER certificate
+            if bytes.first() != Some(&0x30) {
+                return Err(TRUST);
+            }
+            roots
+                .add(rustls::pki_types::CertificateDer::from(bytes))
+                .map_err(|_| TRUST)?;
+        } else {
+            for cert in pems {
+                roots.add(cert).map_err(|_| TRUST)?;
+            }
+        }
+    } else if source == "system" {
+        for cert in rustls_native_certs::load_native_certs().certs {
+            roots.add(cert).map_err(|_| TRUST)?;
+        }
+    } else {
+        return Err(SPEC);
+    }
+    if roots.is_empty() {
+        return Err(TRUST);
+    }
+    Ok(roots)
+}
+
+/// Classify a handshake failure: the trust decision and the hostname
+/// decision are named apart from every other certificate or protocol
+/// failure.
+fn handshake_error(error: rustls::Error) -> i32 {
+    match error {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer) => UNTRUSTED,
+        rustls::Error::InvalidCertificate(
+            rustls::CertificateError::NotValidForNameContext { .. }
+            | rustls::CertificateError::NotValidForName,
+        ) => HOSTNAME,
+        rustls::Error::InvalidCertificate(_) => CERT,
+        _ => HANDSHAKE,
+    }
+}
+
+/// The TLS alert behind a failed handshake IO (rustls wraps its own error
+/// in the IO error); a plain IO failure is the protocol failure.
+fn handshake_io_error(error: std::io::Error) -> i32 {
+    match error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<rustls::Error>())
+    {
+        Some(tls) => handshake_error(tls.clone()),
+        None => HANDSHAKE,
+    }
+}
+
+/// Collect the response bytes up to a clean end of stream, re-arming the
+/// socket before every read so one deadline covers the whole exchange.
+fn drain(
+    mut read: impl FnMut(&mut [u8]) -> std::io::Result<usize>,
+    mut rearm: impl FnMut() -> Result<(), i32>,
+) -> Result<Run, i32> {
+    let mut response: Vec<u8> = Vec::new();
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        rearm()?;
+        match read(&mut buffer) {
+            Ok(0) => return Ok(Run::Done(response)),
+            Ok(received) => {
+                if response.len() + received > RESPONSE_LIMIT {
+                    let kept = RESPONSE_LIMIT - response.len();
+                    response.extend_from_slice(&buffer[..kept]);
+                    return Ok(Run::Stopped(LIMIT, response));
+                }
+                response.extend_from_slice(&buffer[..received]);
+            }
+            Err(error) if timed_out(&error) => return Err(TIMEOUT),
+            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
+                // The peer closed without close_notify: the bytes received
+                // are kept and the outcome is named so the caller decides.
+                return Ok(Run::Stopped(TRUNCATED, response));
+            }
+            Err(_) => return Err(READ),
+        }
+    }
+}
+
+/// Plain HTTP through a forwarding proxy: the proxy receives the request
+/// bytes verbatim (the caller wrote the absolute-form request line).
+fn exchange_plain(
+    stream: &mut std::net::TcpStream,
+    request: &str,
+    deadline: std::time::Instant,
+) -> Result<Run, i32> {
+    use std::io::{Read, Write};
+    arm(stream, deadline)?;
+    stream.write_all(request.as_bytes()).map_err(|_| WRITE)?;
+    // a second descriptor of the same socket: timeouts are socket options
+    let socket = stream.try_clone().map_err(|_| READ)?;
+    drain(
+        |buffer| stream.read(buffer),
+        || arm(&socket, deadline),
+    )
+}
+
+/// Verified TLS: the handshake is checked against this request's trust
+/// source and server name before any request byte is written.
+fn exchange_tls(
+    stream: &mut std::net::TcpStream,
+    config: &Config,
+    request: &str,
+    deadline: std::time::Instant,
+) -> Result<Run, i32> {
+    use std::io::{Read, Write};
+    let source = config.trust.as_deref().ok_or(SPEC)?;
+    let roots = trust_store(source)?;
+    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+    let client = rustls::ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
+        .map_err(|_| HANDSHAKE)?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let name = rustls::pki_types::ServerName::try_from(config.target.host.clone())
+        .map_err(|_| SPEC)?;
+    let mut conn = rustls::ClientConnection::new(std::sync::Arc::new(client), name)
+        .map_err(handshake_error)?;
+    while conn.is_handshaking() {
+        arm(stream, deadline)?;
+        match conn.complete_io(stream) {
+            Ok(_) => {}
+            Err(error) if timed_out(&error) => return Err(TIMEOUT),
+            Err(error) => return Err(handshake_io_error(error)),
+        }
+    }
+    let mut tls = rustls::StreamOwned::new(conn, stream);
+    arm(tls.get_ref(), deadline)?;
+    match tls.write_all(request.as_bytes()).and_then(|()| tls.flush()) {
+        Ok(()) => {}
+        Err(error) if timed_out(&error) => return Err(TIMEOUT),
+        Err(_) => return Err(WRITE),
+    }
+    let socket = tls.get_ref().try_clone().map_err(|_| READ)?;
+    let outcome = drain(
+        |buffer| tls.read(buffer),
+        || arm(&socket, deadline),
+    );
+    // The connection never outlives the call: close_notify, then the socket.
+    let _ = tls.conn.send_close_notify();
+    let _ = tls.get_mut().shutdown(std::net::Shutdown::Both);
+    outcome
+}
+
+fn transport(config: &Config, request: &str) -> Run {
+    let deadline = match std::time::Instant::now().checked_add(config.timeout) {
+        Some(deadline) => deadline,
+        None => return Run::Failed(SPEC),
+    };
+    let mut stream = match tcp_connect(config.via.as_ref().unwrap_or(&config.target), deadline) {
+        Ok(stream) => stream,
+        Err(code) => return Run::Failed(code),
+    };
+    let run = if config.tls {
+        if config.via.is_some() {
+            if let Err(code) = connect_tunnel(&mut stream, &config.target, deadline) {
+                return Run::Failed(code);
+            }
+        }
+        exchange_tls(&mut stream, config, request, deadline)
+    } else {
+        exchange_plain(&mut stream, request, deadline)
+    };
+    let _ = stream.shutdown(std::net::Shutdown::Both);
+    match run {
+        Ok(run) => run,
+        Err(code) => Run::Failed(code),
+    }
+}
+
+// auto-ffi fn tls_exchange symbol=avrs.tls.exchange.v1 form=owned_open owned=AvrsTls
+pub fn tls_exchange(spec: &str) -> Box<AvrsTls> {
+    let run = match parse_spec(spec) {
+        Ok((config, request)) => transport(&config, request),
+        Err(code) => Run::Failed(code),
+    };
+    let (result, response) = match run {
+        Run::Done(response) => (0, response),
+        Run::Stopped(code, response) => (code, response),
+        Run::Failed(code) => (code, Vec::new()),
+    };
+    Box::new(AvrsTls {
+        result,
+        response,
+        cursor: std::cell::Cell::new(0),
+    })
+}
+
+// auto-ffi fn tls_result symbol=avrs.tls.result.v1 form=owned_borrow owned=AvrsTls
+pub fn tls_result(exchange: &AvrsTls) -> i32 {
+    exchange.result
+}
+
+// auto-ffi fn tls_read_byte symbol=avrs.tls.read_byte.v1 form=owned_borrow owned=AvrsTls
+pub fn tls_read_byte(exchange: &AvrsTls) -> i32 {
+    let at = exchange.cursor.get();
+    match exchange.response.get(at) {
+        Some(byte) => {
+            exchange.cursor.set(at + 1);
+            *byte as i32
+        }
+        None => -1,
+    }
+}
+
+// auto-ffi fn tls_close symbol=avrs.tls.close.v1 form=owned_close owned=AvrsTls
+pub fn tls_close(exchange: Box<AvrsTls>) -> i32 {
+    drop(exchange);
+    0
+}
