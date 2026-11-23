@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-20
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 depends_on: [PLAN-1109, PLAN-960, PLAN-968, PLAN-969, PLAN-1082]
 supersedes_spec_components: [docs/specs/ace-migration/m2-modules.md]
@@ -130,7 +130,7 @@ affects: [ase]
   - owner_stage: work；依赖 T-04。冻结 SD-01、全链证据与 1112 使用方式，未过项具名。AC-01–03。
 - [x] T-06 独立复审
   - owner_stage: review；依赖 T-05。依据实际入口独立核证、重放关键负控、检查同源与遗漏。AC-04。
-- [ ] T-07 正式落地
+- [x] T-07 正式落地
   - owner_stage: merge；依赖 T-06 pass。冻结职责/消费者并集，核规范、来源、归档与材料清理，更新路线和 1112 对交付件的引用。AC-05。
 
 ## 9. 复审记录
@@ -180,6 +180,18 @@ stage: merge | checkpoint: canonical_verified | plan_id: PLAN-1111 | landed sour
 归档门核对状态、任务、链接及交付祖先后提交计划与 PLAN-1112 接口链接，T-07 在实际 cleanup 完成后关闭。
 
 stage: merge | checkpoint: archived | plan_id: PLAN-1111 | completion_kind: delivered | archive_path: docs/plans/archive/1111-ase-local-todo-service.md | archive gate: 6/7 tasks, 16 links, 5 navigation/source references and both delivery ancestors | cleanup: pending
+
+移除前，`wt-guard.ps1` 确认 AutoLang、AutoUI 和 detached AutoDown 三个专用工作树均无 reparse point，且两仓交付提交均为各自 `master` 的祖先。三个工作树、两仓的 `plan-1111-dev` 分支及空组目录 `D:/autostack/.wt/lang-1111` 已移除，复查磁盘和 Git 注册均无残留。
+
+外部消费者、SDK/宿主探针、基线源码副本、日志及准备工具的输出路径均归入 `D:/autostack/plan-artifacts/plan-1111`，常规构建产物随专用工作树删除。Vue 生成器曾在暂存区的 `ui-{frozen,final,delivery,consumer,base}` 下创建五个 `deps/themes` junction，均指向各自副本内的 `packages/themes`。逐个核对两端路径，只解除链接并复查目标文件。无活动进程及具名保留，最终扫描无 reparse point，删除剩余 5,496 个文件，共 769,146,481 字节。复查暂存目录已不存在，`D:/autostack/plan-artifacts/.retention/policy.json` 已登记删除。
+
+交付后检查记录：现用 `auto-man/target/debug/auto.exe` 修改时间为 2026-11-19 12:27:02，Gallery 013 的 `dist` 修改时间为 2026-11-18 22:59:18。本次主线验收使用冻结测试二进制读取已合入的 Todo 源码，未运行发行部署。批量回归收据已覆盖 PLAN-1126，检查时未达到周期触发条件。
+
+stage: merge | checkpoint: cleaned | plan_id: PLAN-1111 | plan_revision: r1 | worktrees: 3 removed | branches: 2 removed | artifacts: 5496 files, 769146481 bytes removed, zero holds | tasks: 7/7
+
+stage: merge | plan_id: PLAN-1111 | plan_revision: r1 | outcome: pass | delivery_commit: lang 340a0be6c / ui 9f1f0fed | archive_commit: db1534bdc | archive_path: docs/plans/archive/1111-ase-local-todo-service.md | cleanup: verified
+
+stage: goal | plan_id: PLAN-1111 | plan_revision: r1 | round: 3 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: lang 340a0be6c / ui 9f1f0fed | next: done
 
 ## 10. 待澄清事项
 
