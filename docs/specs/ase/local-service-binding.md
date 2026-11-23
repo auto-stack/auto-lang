@@ -19,6 +19,7 @@ AutoUI `examples/ui/013-todo/src/back/{api,db}.at`。注册项的能力表为空
 | `update_todo` | `int id, str text, bool done` | `Updated(Option<Todo>)` |
 | `delete_todo` | `int id` | `Flag(bool)` |
 | `remove_completed` | `bool done` | `Flag(bool)` |
+| `set_all_todos`（可选） | `bool done` | `Flag(bool)` |
 
 `Todo` 持有 `id: i32`、`text: String` 和 `done: bool`。缺失记录仍由原业务
 返回 `Updated(None)` 或 `Flag(false)`。参数错型、未知操作、未授权、超限、
@@ -43,8 +44,9 @@ UTF-8 字节，活列表最多 256 条。请求期限最多 2 秒，AV 使用最
 关闭一个租约仅撤销该租约的投递，剩余租约继续使用当前根。最后租约释放
 后撤待执、通知在途任务、销毁根并清理该代制品目录。`wait_released` 以
 已 join 线程为终态。初始化失败回收该代，后续显式请求可重新激活。
-最后释放后重开从原 Auto 种子开始。磁盘仅暂存受检代码制品，Todo 数据
-只在 AV 实例内存持有。
+默认内存模式最后释放后从原 Auto 种子开始，磁盘仅暂存受检代码制品。
+显式耐久模式按受信 Realm 授予专用数据根，从最后一次原子提交恢复。
+`set_all_todos` 在声明该受检入口的部署中用一次业务提交更新全部完成状态。
 
 ## 验证边界
 
@@ -52,4 +54,4 @@ UTF-8 字节，活列表最多 256 条。请求期限最多 2 秒，AV 使用最
 20 轮开关后工作线程、根、队列与租约归零。无窗口本地执行不分配 demo
 HTTP listener 或 demo 子进程。历史 HTTP 对照、Windows 进程和监听账、
 输入及提交身份见 [PLAN-1111](../../plans/archive/1111-ase-local-todo-service.md)。
-原生前端消费和磁盘持久化由 PLAN-1112 跟进。
+原生前端消费和显式数据根见 [ASE 原生 Todo 与本地持久化](native-todo-persistence.md)。

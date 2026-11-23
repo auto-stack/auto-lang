@@ -259,6 +259,8 @@ Counter→Clock→Todo/Notes→混合样例是建议的验证顺序，不把下�
 | ASG-11 | Gallery 内容 | 真实教程/源码、应用版本对齐、搜索与缩略图目录、重置不误清持久数据 |
 | ASG-12 | 诚实边界 | 原源业务/资源不减；HTTP/旧运行路径/fixture/未支持项分别记账 |
 
+[PLAN-1112 的原 013 Todo](../../plans/archive/1112-ase-native-todo-and-persistence.md)已按受信 Realm 接通本地服务、独立数据根和真实原生窗口。ASG-05/06 的 Todo 子项已验真实读写、独立进程重开及最终租约回收。ASG-10 在这条路径覆盖 Todo 等待异步完成时的 Counter 输入和关窗资源回收。可用边界见 [ASE 原生 Todo 与本地持久化](../../specs/ase/native-todo-persistence.md)。
+
 G1/G2/G3 分别选择对应矩阵，未执行项记录 pending，不强填 PASS。上述执行预算反例仅证明受控故障，不能代替进程级强隔离。原生输入与 fixture、自动与人工证据分列。
 
 ### 9.2 对照场景
