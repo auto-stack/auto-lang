@@ -18,6 +18,24 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+### 2026-11-24（用户裁定后，goal 第 6 轮）· 模块准入 256KiB→512KiB 落地；V-G1d 越过第一墙
+
+- 用户 2026-11-24 **批准**抬模块准入并改 golden 期望。落地（worktree `1a762775a`）：
+  `parse_semantic_source` 准入 `262144→524288`（覆盖 `syntax_grammar_data.at` 341,082B 且留余量），
+  golden 改名 `aac1054_g1_module_admission_is_512k_and_refuses_as_a_resource`（524,288 过 /
+  524,289 `ERROR resource.source`）。新 golden **PASS 1.99s**；70KB golden PASS；
+  `ace-aac-syntax` 50/51、语义车道 124/129（红=基面存量，未变）。
+- Gen1 重出（`gen1-r74`，164s）：boot **681978131**，fingerprint `fa2bee3b…`/exe `bae9a5cc…`/
+  runtime `4b761dea…`；`ace-aac-gen1` **9/9**。
+- gen-next 全树 project 编译：**越过了 256KiB 准入墙**（原 316s→`ERROR resource.source` 消失）。
+  随后第一墙变成 std 面：`bind.module @ atom_data use std.bytes.*`；给 gen-next 补 std 闭包后
+  （`07aa3b54d`，`std/<stem>` 前缀 + Windows 过滤 `*_lnx`），219s 后新墙 =
+  `ERROR source.syntax 55 6097..6105`，模块 55=`std/file`，span=**`for a in t64`（列表迭代语法）**。
+  → V-G1d 剩余墙具名：①parser 语法面（list 迭代等 std 源码形态）②CL 原语面（V-G1c 同源）
+  ③G2 mn 16MiB（尚未触到）。三者都指向"新开 AAC 语言/CL 实现计划"的输入清单。
+
+### 2026-11-24（goal 第 5 轮）· blocked 收据（后由用户裁定部分解除，见上）
+
 ### 2026-11-24（goal 第 4 轮）· 固定点矩阵 + 输入身份反控 + 无 Rust 回落的可观测控制（r9 执行簿记）
 
 - **固定点矩阵**（5 个 base-profile 程序 × 2 个独立构建 × plain/异 CWD/空格+CJK 路径/TZ+LANG+TMP 变化）：
@@ -169,7 +187,7 @@ Gen1/Gen2/Gen3对同一canonical CL源码分别编译运行，Case主体保持�
 
 **合同保持（红线）**：MAX_LIST_ELEMS 与 a2x-rust coll.rs 上限不动；既有报告格式与阶段 oracle 不动；既有固定组原 oracle/条件/owner 保持；不分流语言语义（List 仍是语言类型，只是前端内部存储分页）。模块间 pub 签名允许随分页类型（`List<int>`→页式 record）在**本 Plan 内联动调整**（S 全体一起重绑身份；Gen0 重备 Gen1 后链续行）——语义与报告行为零变化可原组回归证明。
 
-**修复设计**：①行页表——syntax_cst/source_ast/syntax_program/semantic_tree 的行表改页表（每页 ≤32K 行，全局 row id = page<<15|index；stride/角色数学不变，仅 row 访问经页间接层）；②token 分页——syntax_lexer.at 的 toks 输出改页式游标（消费方 lexer 接口签名不变处尽量保，必要时有界扩签名并同步 1047 driver 与 1046 组）；③driver 分段装载——semantic_driver.at 的 src/ast/bases/roots 改分段 append + 页式累积，project 模式逐模块流式化；④准入收敛——T-10 中段先把 admit_document 收到 64KiB-1 使准入=合同（负控：65,536B 边界 ±1 case），分页全落地后恢复 256KiB 并配 >64KiB golden case。
+**修复设计**：①行页表——syntax_cst/source_ast/syntax_program/semantic_tree 的行表改页表（每页 ≤32K 行，全局 row id = page<<15|index；stride/角色数学不变，仅 row 访问经页间接层）；②token 分页——syntax_lexer.at 的 toks 输出改页式游标（消费方 lexer 接口签名不变处尽量保，必要时有界扩签名并同步 1047 driver 与 1046 组）；③driver 分段装载——semantic_driver.at 的 src/ast/bases/roots 改分段 append + 页式累积，project 模式逐模块流式化；④准入收敛——T-10 中段先把 admit_document 收到 64KiB-1 使准入=合同（负控：65,536B 边界 ±1 case），分页全落地后恢复准入并配 >64KiB golden case；**2026-11-24 用户裁定**：模块准入定在 **512KiB**（524288，覆盖最大主体模块 341,082B），golden 改名 aac1054_g1_module_admission_is_512k_and_refuses_as_a_resource，边界 524,288/524,289。
 
 **验收**：§6 V-G1a..e；1046/1047/1048/1050 受影响固定组原样绿 + 必要 consumer（gen1 视图/case-aac-gen1-language-parity 不回归）；新增大输入 golden 进日常组（≤10s/例）。**关闭**：atom_data.at 与全树 S 经自举前端真编译（mir→ABC），gen-next 全链产出 Gen2 native PE 且 boot 退出码与 Gen1 相等（681978131）。
 
@@ -285,7 +303,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
 | [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04。✅ 2026-11-22 r8：开工门闭合——985/A T-A04 phase pass@ecc282df1＋T-A05 fold，M2A-08落主95c7fbad8（985 §9）；1053 archived（Gen1实链：experimental/ace/tests/aac-gen1，aac1053-gen1.exe boot＋aac1053-compile.exe A2R编译入口均已交付，compile阻塞已由a2x-rust lower_coll修复关闭）；1044–1052/1055/1056/1057–1060/1062/1066/1078/1094/1096 archived；1051/1067 archived。专树 D:/autostack/.wt/lang-1054/auto-lang @ plan-1054-dev，base c3e5a4fb2（含1053落主）；材料区 D:/autostack/plan-artifacts/plan-1054/ 已登记（.retention/policy.json scopes，in-flight）。§4指纹实读（c3e5a4fb2）：Design59=d13a42c8056bac9f（变）、roadmap=63cdd3d65c5cba2f（变）、artifact-contract=ba5323ec912ba86d（不变）、test-groups.toml=a75f0e2a9ab24af7（变，1053 gen1视图新增所致）；docs/specs/auto-ac/aac-certification.md 尚不存在（SD-01未来交付）。后续入口：prepare-gen1/gen1-worker（AAC1053_GEN1_DIR）、固定组 case-aac-gen1-language-parity、cargo t ace-aac-gen1；机器占用核查0进程 |
-| [ ] T-10 自举前端分页（r9 吸收 G1） | work | T-01 | 合同保持修复：行存储分页——**缝策略（2026-11-23 侦察定案）**：行存取已集中于属主访问器族（syntax_cst nk/nstart/nlen/nfc/ncc/nexpected/nflags/ndecl；semantic_tree kind/row_count；lexer tok_*；driver 装载点），分页隐藏进访问器内部；新页式类型（record：chunks List<List<int>>+缓存 len，页 ≤32K 行）由新增 aac/support/paged.at 承载；直接点访问（实测 ~154 处核心+长尾）逐个改经访问器；syntax_lexer toks 分页；semantic_driver 侧 src/ast 分段装载+页式累积；admit_document 上限收敛（先收 64KiB-1 并配边界±1 负控，分页全落地后恢复 256KiB 并配大输入 golden）；**不动** MAX_LIST_ELEMS=65536/a2x-rust cap/AV 合同；模块 pub 签名随分页类型本 Plan 内联动调整（S 重绑身份，Gen0 重备 Gen1 后续行）。设计全文 §5 T-10 节。 | §6 V-G1a..e 全闭；1046/1047/1048/1050 受影响固定组原样绿+必要 consumer；新大输入 golden case 进日常组（≤10s/例）；AC-G1。证据折入本行。✅ 部分（2026-11-24 r72，commit d6c89f2eb）：**S 重新可编 + Gen1 重出**。r68 把 paged 文件 IO 拆到新 `aac/support/paged_file.at`（纯存储模块无 host 依赖，AV 装配面可再装）；r69 修完 6 处批量转换遗留（bridge client/invoke、host_diag、driver/boot 的 flat↔页式边界），Gen0 全树诊断 `S-COMPILE OK modules=86 bytes=1619040`；r72 依 AV 实测把**宿主/支撑/帧车道回退 flat**（根因：AV executor 对"元素是 list"的读写按整个嵌套值计步，`paged_push`/`paged_get` 在 `List<List<int>>` 上是 O(存储元素数) —— v03_frame_bytes_match_reference 在 64M/256M 步均失败），S 仍 OK。Gen1 重出（`gen1-r72`，prepare 285s）：`aac1053-gen1.exe` 704,000B，manifest fingerprint `ddaa3a31…`/exe `2fe37e2c…`/runtime `4b761dea…`，boot 退出码 681978131（=旧 Gen1）；固定组 `ace-aac-gen1` 9/9、`ace-aac` 26/26、`ace-aac-host` 22/22、`ace-aac-incremental` 20/20。余：V-G1c（**归因修正 2026-11-24**：多包 std 装载实测可用；真拒绝点=CL 原语面 `char.from_codepoint`，与分页无关）、V-G1d（**第一墙实测**：全树 project 编译 316s 后被 256KiB/模块准入拒 grammar_data 341,082B；越过仍需 CL/std 面与 G2） |
+| [ ] T-10 自举前端分页（r9 吸收 G1） | work | T-01 | 合同保持修复：行存储分页——**缝策略（2026-11-23 侦察定案）**：行存取已集中于属主访问器族（syntax_cst nk/nstart/nlen/nfc/ncc/nexpected/nflags/ndecl；semantic_tree kind/row_count；lexer tok_*；driver 装载点），分页隐藏进访问器内部；新页式类型（record：chunks List<List<int>>+缓存 len，页 ≤32K 行）由新增 aac/support/paged.at 承载；直接点访问（实测 ~154 处核心+长尾）逐个改经访问器；syntax_lexer toks 分页；semantic_driver 侧 src/ast 分段装载+页式累积；admit_document 上限收敛（先收 64KiB-1 并配边界±1 负控，分页全落地后恢复；**模块准入 2026-11-24 用户裁定为 512KiB**，见 §5 T-10 ④）；**不动** MAX_LIST_ELEMS=65536/a2x-rust cap/AV 合同；模块 pub 签名随分页类型本 Plan 内联动调整（S 重绑身份，Gen0 重备 Gen1 后续行）。设计全文 §5 T-10 节。 | §6 V-G1a..e 全闭；1046/1047/1048/1050 受影响固定组原样绿+必要 consumer；新大输入 golden case 进日常组（≤10s/例）；AC-G1。证据折入本行。✅ 部分（2026-11-24 r72，commit d6c89f2eb）：**S 重新可编 + Gen1 重出**。r68 把 paged 文件 IO 拆到新 `aac/support/paged_file.at`（纯存储模块无 host 依赖，AV 装配面可再装）；r69 修完 6 处批量转换遗留（bridge client/invoke、host_diag、driver/boot 的 flat↔页式边界），Gen0 全树诊断 `S-COMPILE OK modules=86 bytes=1619040`；r72 依 AV 实测把**宿主/支撑/帧车道回退 flat**（根因：AV executor 对"元素是 list"的读写按整个嵌套值计步，`paged_push`/`paged_get` 在 `List<List<int>>` 上是 O(存储元素数) —— v03_frame_bytes_match_reference 在 64M/256M 步均失败），S 仍 OK。Gen1 重出（`gen1-r72`，prepare 285s）：`aac1053-gen1.exe` 704,000B，manifest fingerprint `ddaa3a31…`/exe `2fe37e2c…`/runtime `4b761dea…`，boot 退出码 681978131（=旧 Gen1）；固定组 `ace-aac-gen1` 9/9、`ace-aac` 26/26、`ace-aac-host` 22/22、`ace-aac-incremental` 20/20。余：V-G1c（**归因修正 2026-11-24**：多包 std 装载实测可用；真拒绝点=CL 原语面 `char.from_codepoint`，与分页无关）、V-G1d（**准入墙已解除**：用户 2026-11-24 批准 512KiB 准入（commit 1a762775a，golden 改名/边界 524,288±1）；全树 project 编译现越过准入，第一墙变为 std 面——给 gen-next 补 std/<stem> 闭包（07aa3b54d）后新墙=ERROR source.syntax @ std/file 的 for a in t64（列表迭代语法面），其后才轮到 CL 原语面与 G2） |
 | [ ] T-02 同源代际链 | work | T-01；全树 S 编译段依赖 T-10（r9） | Gen1编同一S得到Gen2，Gen2编同一S得到Gen3；记录实际父子编译者/产物hash/命令/退出码/目标，禁止中途偷偷换源码或调用Gen0源编译fallback。 | 真实Gen2/Gen3及身份链，不仅文件名或报告声明；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。部分交付（2026-11-22，commit 1fa69ddc7）：代际构建驱动 `gen-next`（父代工具集 manifest 准入→全树 S project 编译→ABC→1051 bridge→COFF→link→子代 PE→boot 运行→身份 manifest）+ `probe-native-compile`（Gen0 窗 mn 车道判定探针）已交付并提交。实测判定两处具名阻塞（均有完整证据链，plan-artifacts/plan-1054/t02-generational-probe-design.md）：**G1**=自举 1047 语义前端在 ≥~54KiB 输入上触冻结 AV 合同列表上限 `MAX_LIST_ELEMS=65536`（`av.resource.list-elems`，av-core contract；driver 自身准入却允 256KiB，矛盾属实）——atom_data.at（66,236B，S 唯一超限模块）确定性 `trap:ListIndex`（a2x_runtime push 上限，带 backtrace 实测 len=65536/cap=65536；Gen0 构建的 aac1047-driver 同样复现=非 Gen1 构建问题；Gen0 packages 车道编同文件正常）；且 driver 全树平面累积模型在 64 模块下远超 64K，"Gen1 经 1047 driver 编全树 S"当前架构不可行。**G2**=mn 车道（MnDriver 实测，assemble 80.6s）拒lower全树 S+driver 产物（`d_p3_appm15_core_atom_bound_bind_body` ownership 分析 ~34,225,664B > 冻结 16,777,216B）；同 1053 §10 具名缺口（64MiB tier 归 AGE elem-view owner）。诚实边界：ABC→1051 bridge 服务路径对"编译驱动产物"的准入未实测（被 G1 挡在前端阶段，无法产出其 ABC）；G2 在 bridge 路径上的真实状态随 G1 解除后首测。native 代际编译工具的另一候选形态（A2R 车道）无 Auto A2R emitter，不可行。G1 根因细化（2026-11-22 三）：双 list 独立触顶实测——70KB 纯注释文件（行极少）trap=源字节 list；59,546B 密集代码（bytes<64K）trap=token/行 list；即 >64KiB 文件连装载都失败，前端平面存储距全树 S 规模差 1-2 个数量级。G1 已于 2026-11-23 r9 被用户裁定吸收为 T-10（本行原文保留为历史；关闭责任移交 T-10，完成后同输入重跑 gen-next 续行）；G2 关闭条件（具名 pending，不充 PASS）：AGE elem-view 交付后 64MiB tier 开放或 Design59 具名重设计；G2 解除后同输入重跑 gen-next 链条自动续行 |
 | [ ] T-03 各代完整语义与故障 | work | T-02 | Gen1/2/3分别执行CS与完整CL适用测试、编译失败诊断、资源清理及冷/热/恢复/坏编辑修复；保独立oracle并检查每代服务/依赖身份。复用未变输入证据须身份精确。 各代都包含CS未用的~T/?T/!T、泛型/CTE/标注/领域与资源组合CL；当前代源码、库、grammar、runtime、实际编译者/产物逐行绑定，不能借上一代绿报告。 | 各代义务结果及实际错误阶段/资源轨迹；不能只跑自编译小子集；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-04 可复现与包验证 | work | T-03 | 控制时间戳/路径/随机种子/链接metadata等可复现输入，核语义IR/对象/输出和可控制范围字节固定点，任何剩余非确定字段具名解释。按978套路在材料区仓外安装/重定位AAC及显式runtime/helper，列host/target依赖。 | 复现边界和仓外真运行收据；不声称全工具链无libc或所有host已支持；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
@@ -296,6 +314,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量；核真实T-07 review及实际同源代际身份后发布正式AAC独立验收结论/证书，再归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+- 2026-11-24 stage: work | PLAN-1054 | r9 | round: 6 | outcome: pass（用户裁定落地：模块准入 256KiB→512KiB + golden 改名；Gen1 重出 boot parity；V-G1d 越过准入墙，新墙具名到 parser 语法面；非 T-10 关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: 1a762775a（准入）/ 07aa3b54d（gen-next std 闭包） | task_ids: T-10 ④/⑤（准入裁定落地 + 全树 project 续测） | evidence: g1-frontend-paging-handoff.md §"用户裁定后，goal 第 6 轮"；关键数字：512KiB golden PASS 1.99s（524,289 拒 resource.source）；Gen1-r74 boot=681978131 fingerprint fa2bee3b/exe bae9a5cc；gen-next 越过准入→bind.module(std.bytes)→补 std 闭包后 219s→`ERROR source.syntax 55=std/file for a in t64`；ace-aac-syntax 50/51、语义 124/129（红=基面存量）、ace-aac-gen1 9/9 | blockers: 剩余墙=①parser 列表迭代等语法面 ②CL 原语面（V-G1c 同源）③G2；三者需新开 AAC 语言/CL 实现计划（待用户确认） | next_responsible_role: user（批准新计划）→ work
 
 - 2026-11-24 stage: work | PLAN-1054 | r9 | round: 5 | **outcome: blocked（外部依赖，非难度）** | 阻塞条件（连续第 2–5 轮同一条，已具名核实）：本包剩余 AC-01..04/07 与 T-02..T-09 都要求 AAC 自举前端/降级面能吃全 CL 与全树 S，而该能力**没有任何在办实现 owner**：
   ① **CL 原语面缺失**（实测：`std/bytes.at:313 char.from_codepoint` → `bind.module`；`s.char_at(1).to_codepoint()` → `type.unresolved`）——1053/T-07 已把 53 个 blocked 列成四族（`aac.pending-work/1` 16 例 + 具名 stage 诊断 37 例）并写"归 T-04 后续与具名 owner"；但 1046–1052 已全部 **archived**（Design59 说"完整CL由1050/1053最终关闭"，而 1050 只交了 base MIR、1053 只交 Gen1+53 缺口账），**1068 仍 drafting**（alternatives/集成方），当前无任何 executing 计划在实现这些 CL 行。
@@ -351,19 +371,21 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
-2026-11-24（goal 第 5 轮，blocked 交接）：本包剩余工作全部落在三个外部条件上，需用户裁定/指派：
+2026-11-24 goal 第 6 轮更新：**第 2 项（准入裁定）已由用户批准并落地**——模块准入 512KiB
+（`aac1054_g1_module_admission_is_512k_and_refuses_as_a_resource`，commit `1a762775a`）。
+剩余两项：
 
-1. **CL 实现 owner（最关键）**：AAC 自举前端缺 CL 原语面（Str/char 值方法与 `char.from_codepoint`
-   等静态构造；实测 `type.unresolved`/`bind.module`）。1053/T-07 的 53 个 blocked 族、Design59 §3
-   的归属表都指向 1046–1052 的任务，但这些计划**均已 archived**，1068 仍 drafting——**当前没有
-   任何 executing 计划在实现这些 CL 行**。需要用户决定：新开一个 AAC CL 实现计划（或把 1068 转
-   executing 并补生产任务），本包在其后继续 T-02..T-09。
-2. **V-G1d 准入**：抬 1047 driver 的 256KiB/模块准入到 ≥341,082B 须改 golden
-   `aac1054_g1_module_admission_is_256k_and_refuses_as_a_resource` 的期望（仓规：须用户明确同意）；
-   或批准源码级拆分 `syntax_grammar_data.at`（仍受 1 制约）。
-3. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
+1. **CL 实现 owner（关键，待用户决定）**：AAC 前端缺 CL 语法/原语面，实测两处：
+   `std/file` 的 `for a in <list>` 列表迭代被 parser 拒（`source.syntax`）、
+   `std/bytes` 的 `char.from_codepoint` 被 binder 拒（`bind.module`）、
+   `s.char_at(1).to_codepoint()` 被 checker 拒（`type.unresolved`）。
+   设计归属表指向的 1046–1052 均已 archived、1068 仍 drafting——需要用户决定：
+   **新开一个 AAC 语言/CL 实现计划**（推荐；1054 保持 certification 定位并继续 blocked 等待），
+   或把 1068 转 executing 并补生产任务。用户 2026-11-24 已倾向"新开实现计划"，待确认后
+   按 `scripts/new-plan.sh` 建档，输入清单=本文 §0 第 6 轮的三面墙 + 1053/T-07 的 53 个 CL 族。
+2. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
 
-在 1/2/3 任一解除前，本包不再有能推进 AC 的施工项；T-04/T-09 的边缘证据已交到仅剩代际数据的边界。
+在 1/2 解除前，本包不再有能推进 AC 的施工项；T-10 分页与准入相关的可做部分已全部落地。
 
 2026-11-23 裁定已决（用户选 (1)，r9 吸收 G1=T-10；本节原阻塞问题作废保留备查）：~~2026-11-22 T-02 阻塞态（须用户裁定二选一……~~ 当前无新增待澄清。G2（mn 16MiB verify 墙，64MiB tier 归 AGE elem-view owner）为具名外部 pending，非用户决定项；T-10 施工中的例行实现选择不反复请求确认。
 
