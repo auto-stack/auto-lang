@@ -315,6 +315,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 9. 复审记录
 
+- 2026-11-24 stage: work | PLAN-1054 | r9 | round: 6b | outcome: pass（逐模块门面清单：85 模块分类，parser/checker/pending 缺口逐条具名；供新实现计划直接引用；非 T-10 关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: 1a762775a + 07aa3b54d（本轮清单无源码改动） | task_ids: T-10 ⑤（输入面测绘） | evidence: plan-artifacts/plan-1054/cl-frontdoor-inventory.md + module-frontdoor-scan.txt；关键数字：85 模块中 66 解析干净、7 parser 缺口（std/file|list|process|syscommon|sysplat_win|zip|text，主形态 `for x in <list>`）、6 checker 缺口（`List<List<int>>.new()`@paged、`.char_at`、`.to_codepoint`、泛型构造、合成 schema `type.return`）、4 `aac.pending-work/1`（env|path|rand|time）、1 `hir.unsupported`（std/math） | blockers: 同前（CL 实现 owner 待用户确认新计划；G2 具名） | next_responsible_role: user（确认新计划）→ work
+
 - 2026-11-24 stage: work | PLAN-1054 | r9 | round: 6 | outcome: pass（用户裁定落地：模块准入 256KiB→512KiB + golden 改名；Gen1 重出 boot parity；V-G1d 越过准入墙，新墙具名到 parser 语法面；非 T-10 关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: 1a762775a（准入）/ 07aa3b54d（gen-next std 闭包） | task_ids: T-10 ④/⑤（准入裁定落地 + 全树 project 续测） | evidence: g1-frontend-paging-handoff.md §"用户裁定后，goal 第 6 轮"；关键数字：512KiB golden PASS 1.99s（524,289 拒 resource.source）；Gen1-r74 boot=681978131 fingerprint fa2bee3b/exe bae9a5cc；gen-next 越过准入→bind.module(std.bytes)→补 std 闭包后 219s→`ERROR source.syntax 55=std/file for a in t64`；ace-aac-syntax 50/51、语义 124/129（红=基面存量）、ace-aac-gen1 9/9 | blockers: 剩余墙=①parser 列表迭代等语法面 ②CL 原语面（V-G1c 同源）③G2；三者需新开 AAC 语言/CL 实现计划（待用户确认） | next_responsible_role: user（批准新计划）→ work
 
 - 2026-11-24 stage: work | PLAN-1054 | r9 | round: 5 | **outcome: blocked（外部依赖，非难度）** | 阻塞条件（连续第 2–5 轮同一条，已具名核实）：本包剩余 AC-01..04/07 与 T-02..T-09 都要求 AAC 自举前端/降级面能吃全 CL 与全树 S，而该能力**没有任何在办实现 owner**：
@@ -384,6 +386,11 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
    或把 1068 转 executing 并补生产任务。用户 2026-11-24 已倾向"新开实现计划"，待确认后
    按 `scripts/new-plan.sh` 建档，输入清单=本文 §0 第 6 轮的三面墙 + 1053/T-07 的 53 个 CL 族。
 2. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
+
+附（2026-11-24 第 6 轮实测）：若确认新开实现计划，其输入工作清单已备好——
+`plan-artifacts/plan-1054/cl-frontdoor-inventory.md`：85 模块中 66 个解析干净、7 个 parser 缺口
+（`for x in <list>` 迭代）、6 个 checker 缺口（`List<List<int>>.new()`/`.char_at`/`.to_codepoint`/
+泛型构造）、4 个 `aac.pending-work/1`（env|path|rand|time）、1 个 `hir.unsupported`（std/math）。
 
 在 1/2 解除前，本包不再有能推进 AC 的施工项；T-10 分页与准入相关的可做部分已全部落地。
 
