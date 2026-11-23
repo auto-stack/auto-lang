@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-23
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 5
 depends_on: [PLAN-972, PLAN-1079, PLAN-1096]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-core.md, docs/specs/auto-av/language-parity.md]
@@ -72,7 +72,7 @@ affects: [stdlib, auto-av, auto-semantics]
 - [x] AC-01 · owner_stage=work。u64 边界、失败和往返经普通 AV 实跑，满足 V-01。
 - [x] AC-02 · owner_stage=work。旧方法族及既有 i32 兼容逐行归档，V-02/03 有独立 oracle。
 - [x] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
-- [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
+- [x] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
 
 ## 8. 执行步骤
 
@@ -86,7 +86,7 @@ affects: [stdlib, auto-av, auto-semantics]
   - owner_stage=work。依赖 T-02。接入共享标量语料和原映射，运行 V-02/03。
 - [x] T-04 独立复审
   - owner_stage=review。依赖 T-03。核 AC-03、SD 增量、实测结果和旧用例映射。
-- [ ] T-05 冻结验证与归档
+- [x] T-05 冻结验证与归档
   - owner_stage=merge。依赖复审。执行 §6 固定组并集，核规范与主线结果，折叠证据摘要并按生命周期规则收尾。
 
 ## 9. 复审记录
@@ -237,6 +237,16 @@ Rust 与 Case 准备墙钟分别为 119.863 s、12.023 s，执行总墙钟分别
 快进前两树 guard clean。落地后用冻结 debug worker（SHA256 `e48709b5f55c2f7d96ea9e640dca98ccbb6ee720b601eac5a4d7e6099af85621`）对主线两例冒烟，`checked-u64` 2.677 s、`legacy-global` 2.809 s，均退出 0。主检出的 debug/release worker 文件时间分别为 2026-11-23 04:05:06 和 2026-11-22 20:52:01，属于交付前产物。主检出生产、测试和规范路径干净。其它计划与设计文档已有编辑保留。批次收据覆盖至 1126，1122 无新周期门。
 
 `prepared → landed → canonical_verified`：确认交付提交中 SD-01 `docs/specs/ace-migration/m2-stdlib-core.md` blob `fba6d3ef01ded9b1020f1d8cb09657f2eccf6232`，SD-02 `docs/specs/auto-av/language-parity.md` blob `28c7edcccfcae21d0ded9fa558c3f91a4a208f88`。应用派生索引使用上述源文件。成功状态移至本归档文件，路径核验和清理结果分两次提交留痕。当前 T-05 标记等待实际清理。
+
+### 清理与交付复核
+
+归档检查点 `5e87679709c2bbf90c2fa638e5aaf22279308970` 实测 4/5 任务、3/4 验收与 12 条归档相对链接、2 条规范回链相符（0.123 s）。归档后对两棵专属树单独核路径与 guard clean，再移除 auto-lang 与 detached auto-down，删除已合入分支 `plan-1122-dev` 并核空组目录已移除。
+
+输出对账覆盖专属树的 `target/` 与 `experimental/ace/target/`、以及 `D:/autostack/plan-artifacts/plan-1122/` 下的基线、旧源对拍、工作、复审、两次冻结门、落地冒烟、probe store 与 `tmp/`。常规构建缓存随 worktree 移除。统一材料目录经所有权及 reparse 核查，移除 11,287 文件、707,079,290 B。临时验证子路径和计划目录经落地复核无残留，登记表更新为已删除、无持有。
+
+`stage: merge | checkpoint: cleaned | plan_id: PLAN-1122 | plan_revision: r1 | outcome: pass | delivery_commit: fc95c64f07cff24046ac2eb4c4a82a3c2bd5b082 | archive_commit: 5e87679709c2bbf90c2fa638e5aaf22279308970 | archive_path: docs/plans/archive/1122-av-stdlib-wide-unsigned-conversion.md | cleanup: both worktrees, branch, group and sole scratch scope removed | remaining: none`
+
+`stage: goal | plan_id: PLAN-1122 | plan_revision: r1 | round: 6 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: fc95c64f07cff24046ac2eb4c4a82a3c2bd5b082 | next: done`
 
 ## 10. 待澄清事项
 
