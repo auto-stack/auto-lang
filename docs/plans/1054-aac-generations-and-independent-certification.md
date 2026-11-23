@@ -18,6 +18,24 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+### 2026-11-24（goal 第 3 轮）· T-04 可复现边界/仓外运行/依赖面 + r73 固定组复验（r9 执行簿记）
+
+- **同源重建可复现性**：同 worktree 再跑 `prepare-gen1`（273s）→ 源码指纹 `ddaa3a31…` 与 r72
+  **相同**、runtime 同；exe 字节差=**boot 2 字节 / compile 23 字节**，`pe_diff.py` 定位为
+  COFF TimeDateStamp + debug 条目时间戳 + CodeView RSDS GUID/Age（PDB 名恒定为
+  `aac1053-compile.pdb`）；代码/数据段逐字节相同。即**可复现，除具名链接元数据外零差异**。
+- **语义确定性**：两代独立构建的 compile 工具对同一输入（tiny、70,059B bigcomment）report 与
+  ABC SHA256 **完全相同**；boot 退出码均 681978131。
+- **仓外/异路径**：复制到含空格+CJK 路径、从 `C:/Windows/Temp` 启动仍同上（boot 681978131、
+  tiny→`MIR 140`+140B ABC）→ 无开发树/路径依赖。
+- **依赖面**：boot exe 仅 KERNEL32+bcrypt（无 CRT）；compile 工具依赖 `VCRUNTIME140`+UCRT
+  api-ms-win-crt-*（具名 host 依赖，不声称全工具链无 libc）。
+- **受影响固定组（r73 驱动重备后）**：`ace-aac-syntax` 50/51（唯一红 `aac1046_corpus_text`，
+  单线程隔离 PASS 9.17s=已知并发环境账）；语义车道 124/129，5 红与**基面完全相同**
+  （`abc.decode.host-section` 存量，本 Plan 不修）→ 无新增红。
+- 另：V-G1a（70,059B）与 V-G1e（65,535/65,536/65,537 三档 + `av.resource.list-elems` 合同负控）
+  在新 Gen1 上复验通过。T-04 仍未关闭（需 T-03 完整代的包级复现），本轮只交边界证据。
+
 ### 2026-11-24（goal 第 2 轮）· V-G1c/V-G1d 实测：墙在 CL 面与准入，不在分页（r9 执行簿记）
 
 - **V-G1c 修正归因**：1047 driver 的 project/inventory 面**本就支持 `pkg/module` 前缀多包**
@@ -265,6 +283,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量；核真实T-07 review及实际同源代际身份后发布正式AAC独立验收结论/证书，再归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+- 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-04 预备切片：同源重建可复现边界（exe 仅链接元数据差）、语义产物字节级确定、仓外/异路径运行、PE 依赖面；T-10 受影响组 r73 复跑无新增红；T-04 未关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: b16ed7d8c（本轮零源码改动，仅证据与计划簿记） | task_ids: T-04（预备切片）、T-10 ⑤（V-G1a/e 新 Gen1 复验） | evidence: g1-frontend-paging-handoff.md §"goal 第 3 轮"；关键数字：重建指纹同 `ddaa3a31…`、boot exe 差 2B（0x80 TimeDateStamp）、compile 差 23B/6 段、ABC SHA 同（tiny 9A80F9A8…/bigcomment E5DFB508…）、boot 681978131、r73 1046 组 50/51+隔离 PASS、语义 124/129（5 红=基面存量）、PE 导入=KERNEL32+bcrypt vs VCRUNTIME140+UCRT | blockers: 同前轮（CL 原语面/G2/256KiB 准入裁定）——不影响本轮 T-04 切片 | next_responsible_role: work（T-04 固定点矩阵扩展 / T-09 身份反控证据）
 
 - 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（V-G1c/V-G1d 实测归因：多包 std 装载可用、墙在 CL 原语面与 256KiB 准入；gen-next runner 预算具名化 + 仓外重定位证据；非 T-10 关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: 见 gen-next 预算提交（本轮） | task_ids: T-10（⑤ 实测归因）、T-04 预备证据 | evidence: g1-frontend-paging-handoff.md §"2026-11-24（goal 第 2 轮）"；关键数字：probe 30.7s bind.module@std/bytes:313 char.from_codepoint；全树 project 316s→ERROR resource.source（grammar_data 341,082B>262,144B）；relocated exe SHA256 不变、boot 681978131、tiny→MIR 140/ABC 140B | blockers: V-G1c=CL 原语方法/静态构造面（Design59/1068 具名缺口，T-03/T-09 范围）；V-G1d=256KiB 准入（改需 user 裁定 golden）+CL/std 面+G2（AGE elem-view） | next_responsible_role: work（T-04 可复现/仓外 slice；余墙待具名 owner）
 
