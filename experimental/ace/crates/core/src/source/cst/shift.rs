@@ -143,9 +143,9 @@ fn place_expr(e: &mut Expr, delta: SpanPlacement) {
             place_expr(index, delta);
         }
         ExprKind::PySlice { base, bounds } => {
-            shift_expr(base, delta);
+            place_expr(base, delta);
             for bound in bounds.iter_mut().flatten() {
-                shift_expr(bound, delta);
+                place_expr(bound, delta);
             }
         }
         ExprKind::IntLit(_)
