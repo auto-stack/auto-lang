@@ -68,3 +68,17 @@
 
 grammar_/grammar_reject_ 族（配置反控、拒绝定位、合法兄弟可装载）；
 checkpoint 完整状态合同见 [snapshot-cst.md](snapshot-cst.md)。
+
+## 普通 Auto 的 Python 冒号切片（PLAN-1127）
+
+`auto` 与 `auto-packages` 的下标后缀识别 `[start:stop]` 和
+`[start:stop:step]`，三个槽位各可省略。CST 保留分隔冒号、槽位节点和
+右方括号，槽位按普通表达式解析，内部命名实参或对象键的冒号由内部规则消耗。
+普通下标 `[key]` 和范围 `[start..end]` 沿用原分支。
+
+额外冒号和逗号轴在语法阶段拒绝。以切片作为写入 place 的文本诊断为
+`source.py-slice-write`。单模块普通 Auto 的绑定要求接收者经 Python
+provider 和对象来源校验，普通 Auto 值触发 `source.py-slice-receiver`。
+包入口依现有 `source.use-py.surface` 拒绝 Python 导入。
+
+来源见 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。

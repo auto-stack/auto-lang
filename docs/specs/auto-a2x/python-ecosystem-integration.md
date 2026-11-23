@@ -134,3 +134,20 @@ main.at (use.py …)
   venv（基座 CPython 3.14.2），经**用户级**环境变量 `A2PY_PYTHON` 声明；AV 腿不需要它（进程内
   CPython 可见用户 site）。该变量只被 `a2x-worker` 的 `resolve_python`（及沿用它的测试）读取，
   `run_sdk` 与原生参考脚本不受影响。换机器时按同样方式准备，否则 NumPy 用例在 A2PY 端具名失败。
+
+## Python 冒号切片（PLAN-1127）
+
+A2PY 从共享受检 `GetItem` 事实读取接收者和 start/stop/step 三槽，按源序
+求值、以 Python 内建 `slice` 构造键，并用原生订阅协议运行。省略槽位是
+Python `None`。错误观测记录原异常名、`python.N` 分类、原逻辑路径与半开
+UTF-8 字节范围、捕获次数及未捕获时的进程退出码。切片失败使用包含接收者的
+整个下标范围，槽内失败使用内层操作的范围。
+
+Windows x64 的 CPython 3.14.2、NumPy 2.5.1、PyTorch 2.14.0+cpu 已通过
+同源双端及独立原生对照。两库支持正步长和省略槽，NumPy 支持负步长；
+两库的零步长及 PyTorch 的负步长实测为 `ValueError`（`python.5`）。
+切片语料的 `A2PY_PYTHON` 声明解释器须能在 `-I -B` 下导入两库，
+AV 从其装配的 CPython 解析同组包。环境配法见
+[原生参考目录](../../../crates/auto-lang/test/cases/ace-m2/python-1127/README.md)。
+
+来源见 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。

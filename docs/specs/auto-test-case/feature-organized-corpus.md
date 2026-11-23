@@ -212,3 +212,15 @@ contract.rs。`case-av-language-parity`（target=av）不受影响（零新增�
 （NOT_RUN）、只发射（worker 拒绝）。A2PY 的 `run-py` 腿按 1042 合同隔离运行，其声明解释器
 须自带 NumPy（见 `docs/specs/auto-a2x/python-ecosystem-integration.md` §7）。其他视图
 （A2R/AC）不选择本文件的检查。
+
+## Python 冒号切片语料（PLAN-1127）
+
+[python-slicing.case.ad](../../../crates/auto-lang/test/cases/language/script/python-slicing.case.ad)
+是七个切片 Case 的唯一 Auto 作者文件，由 `language.suite.ad` 引用。
+每个 Case 的 `av` 与 `a2py` 检查读取同一 `main.as` 字节和源身份，
+分别调用 AV 普通语言运行和 A2PY `run-py`。固定输出覆盖两库切片矩阵、顺序、
+旧索引形态与捕获或未捕获异常。错误检查包含分类及原始字节范围，
+A2PY 另检查原异常名、捕获次数和实际退出码。
+[独立原生 Python 参考](../../../crates/auto-lang/test/cases/ace-m2/python-1127/slicing_ref.py)
+与两组固定预期逐行对照。来源见
+[PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。

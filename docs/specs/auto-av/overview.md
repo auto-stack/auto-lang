@@ -18,4 +18,4 @@ AV opcode/wire/执行语义及旧whole-source差额不改，typed/wide与native�
 
 普通 AV 的借用、写回、移动与文本存储规则见 [语言齐平合同](language-parity.md)。验收来源见 [PLAN-1086](../../plans/archive/1086-av-parity-borrows-moves-and-storage.md)。
 
-普通 AV 源码入口与 A2PY 已用同一份 Auto 源实测 NumPy 和 Python 标准库 `json`，支持范围及原始异常位置见 [Python 互操作](python-interop.md)。
+普通 AV 源码入口与 A2PY 已用同源 Auto 用例实测 NumPy 和 Python 标准库 `json`，以及 NumPy 与 CPU PyTorch 对象的冒号切片。支持范围及原始异常位置见 [Python 互操作](python-interop.md)。

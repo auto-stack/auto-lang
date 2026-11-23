@@ -199,3 +199,22 @@ ASCII ≤256B；非正规/非有限浮点不可过界。
    检查，由 `case-av-language-parity` 运行（Windows x64 / CPython 3.14.2 / NumPy 2.5.1）。
 
 来源：[PLAN-1126](../../plans/archive/1126-ace-python-numpy-json-parity.md)。
+
+## 普通 Auto 的冒号切片（PLAN-1127）
+
+Python 对象的 `row[start:stop]`、`row[start:stop:step]` 以及省略槽位的
+形式共享受检 `GetItem`。接收者和存在的槽位按源码顺序各求值一次。
+省略槽为 Python `None`，CPython 的内建 `slice` 类型直接构造键。
+结果仍是 Python 对象，可继续索引、调用和显式提取。视图和拷贝由接收对象的
+Python 索引协议决定。显式 `row[slice(...)]` 继续使用对象键入口。
+
+在原 `p967.frame/1` 上，冒号键以零位置参数及 `start/stop/step` 三个
+有名槽位传给 `py.getitem.v1`。缺位置键的旧 provider 会拒绝此帧。切片键仅在
+一次 CPython 取项调用期间持有临时引用，结果沿 PySession registry 管理。
+Python 对象绑定重赋值须保持对象来源，裸标量、普通复合赋值和可写 Auto 单元格
+捕获触发 `source.py-domain`。provider 准备缓存按 provider 与生成 shim
+内容标识。Python ABI 日常测试要求已准备且身份匹配的描述符和 DLL。
+
+索引失败保留原异常类和半开 UTF-8 字节范围，覆盖接收者开头（含括号）
+至本次右方括号。接收者或槽位先失败时保留其内层失败范围。
+来源见 [PLAN-1127](../../plans/archive/1127-ace-python-object-slice-syntax.md)。
