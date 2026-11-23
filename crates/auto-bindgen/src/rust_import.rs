@@ -1395,6 +1395,13 @@ pub fn f(s: &str) -> Option<i32> { None }
 mod frame_shim_prelude_tests {
     include!("frame_shim_prelude.rs");
 
+    /// The one sample table both implementations of the frame grammar are
+    /// tested against; the AV admission's test (`ace-av-core`) includes the
+    /// same file.
+    mod samples {
+        include!("frame_wire_samples.rs");
+    }
+
     const V1: &str = "p967.frame/1\n";
     const V2: &str = "p967.frame/2\n";
 
@@ -1548,6 +1555,62 @@ mod frame_shim_prelude_tests {
                     "{tag} {payload}"
                 );
             }
+        }
+    }
+
+    /// PLAN-1129 review R-10: the decoder is judged by the shared sample
+    /// table — the same frames, with the same verdicts, that the AV
+    /// admission's test runs through the validator. A `Reject` row pins the
+    /// reason, so the two implementations name a malformed float payload the
+    /// same way.
+    #[test]
+    fn the_decoder_judges_the_shared_wire_samples_as_recorded() {
+        let rows = samples::all_samples();
+        assert!(rows.len() > 500, "{} samples", rows.len());
+        let (mut accepted, mut refused_count) = (0, 0);
+        for (frame, verdict) in &rows {
+            let got = decode(frame);
+            let admitted = got.is_ok();
+            match verdict {
+                samples::Verdict::Accept => assert!(got.is_ok(), "{frame:?}: {:?}", got.err()),
+                samples::Verdict::Reject(reason) => {
+                    assert_eq!(got.as_ref().err(), Some(reason), "{frame:?}")
+                }
+                samples::Verdict::Rejected => assert!(got.is_err(), "{frame:?}"),
+            }
+            if admitted {
+                accepted += 1;
+            } else {
+                refused_count += 1;
+            }
+        }
+        assert!(
+            accepted > 200 && refused_count > 200,
+            "accepted {accepted}, refused {refused_count}"
+        );
+    }
+
+    /// The canonical spelling decodes back to the very pattern, for both
+    /// widths: the batch the generated rows are built from, walked directly.
+    #[test]
+    fn the_canonical_spelling_decodes_back_to_its_pattern() {
+        for bits in samples::patterns() {
+            let f = decode(&format!(
+                "{V2}{}",
+                samples::positional("d", &samples::canonical(bits))
+            ))
+            .expect("canonical d");
+            assert!(matches!(first(&f), F0Val::F64(b) if b == bits), "{bits:#x}");
+            let low = bits & 0xFFFF_FFFF;
+            let f = decode(&format!(
+                "{V2}{}",
+                samples::positional("f", &samples::canonical(low))
+            ))
+            .expect("canonical f");
+            assert!(
+                matches!(first(&f), F0Val::F32(b) if u64::from(b) == low),
+                "{low:#x}"
+            );
         }
     }
 }

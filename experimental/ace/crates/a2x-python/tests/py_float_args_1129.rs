@@ -624,3 +624,309 @@ fn generated_python_negates_an_int_argument() {
     assert_eq!(run_generated(&dir), "-3\n0.0\nvalue:0\n");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---- the operand-class matrix of the unary-minus lookup (review R-11) ----
+
+/// The shared start of every matrix program: the imports in a fixed order
+/// (so the generated locals are `l0_pack`, `l1_repr`, `l2_complex`) and one
+/// value of each operand class.
+const MATRIX_PROLOGUE: &str = "use.py struct: pack\nuse.py builtins: repr, complex, len\nuse.py math: sqrt\n\nfn twice_d(v double) double {\n    return v * 2.0d\n}\n\nfn twice_f(v float) float {\n    return v * 2.0\n}\n\nfn inc_i(v int) int {\n    return v + 1\n}\n\nfn main() int {\n    var rate = 0.2d\n    var seed = 0.4\n    var n = 3\n    var o = complex(0.25d, 0.5d)\n";
+
+/// How the minus shows in the argument of the observed call.
+#[derive(Clone, Copy)]
+enum Shape {
+    /// The lookup hands the call a negated value.
+    Negated,
+    /// The lookup hands the call the operand as it stands.
+    Operand,
+    /// The minus sits under an extraction (`float(a2x_neg(..))`), where the
+    /// wrapper count does not reach it: only the printed output is asserted.
+    UnderExtraction,
+}
+
+/// One cell: what the program prints, and how the minus must show in the
+/// argument of the observed call.
+struct Cell {
+    name: &'static str,
+    statements: &'static str,
+    expect: &'static str,
+    shape: Shape,
+}
+
+/// Auto values under the unary minus, each in the positional and the keyword
+/// slot: Python must receive the negated value. `expect` is what native
+/// Python prints for the same expression (an Auto `float` rounded at each
+/// step).
+const AUTO_VALUE_CELLS: [Cell; 19] = [
+    Cell {
+        name: "A1p f64 local",
+        statements: "print(pack(\">d\", -rate).hex().to(str))",
+        expect: "bfc999999999999a",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A1k f64 local",
+        statements: "print(complex(real: -rate, imag: 0.0d))",
+        expect: "(-0.2+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A2p f32 local",
+        statements: "print(pack(\">f\", -seed).hex().to(str))",
+        expect: "becccccd",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A2k f32 local",
+        statements: "print(complex(real: -seed, imag: 0.0d))",
+        expect: "(-0.4000000059604645+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A3p i32 local",
+        statements: "print(repr(-n).to(str))",
+        expect: "-3",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A3k i32 local",
+        statements: "print(complex(real: -n, imag: 0.0d))",
+        expect: "(-3+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A4p f64 function result",
+        statements: "print(pack(\">d\", -twice_d(1.0d)).hex().to(str))",
+        expect: "c000000000000000",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A4k f64 function result",
+        statements: "print(complex(real: -twice_d(1.0d), imag: 0.0d))",
+        expect: "(-2+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A5p f32 function result",
+        statements: "print(pack(\">f\", -twice_f(1.0)).hex().to(str))",
+        expect: "c0000000",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A5k f32 function result",
+        statements: "print(complex(real: -twice_f(1.0), imag: 0.0d))",
+        expect: "(-2+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A6p i32 function result",
+        statements: "print(repr(-inc_i(4)).to(str))",
+        expect: "-5",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A6k i32 function result",
+        statements: "print(complex(real: -inc_i(4), imag: 0.0d))",
+        expect: "(-5+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A7p .to(double) of an attribute",
+        statements: "print(pack(\">d\", -o.real.to(double)).hex().to(str))",
+        expect: "bfd0000000000000",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A7k .to(double) of an attribute",
+        statements: "print(complex(real: -o.real.to(double), imag: 0.0d))",
+        expect: "(-0.25+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A8p .to(float) of an attribute",
+        statements: "print(pack(\">f\", -o.real.to(float)).hex().to(str))",
+        expect: "be800000",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A8k .to(float) of an attribute",
+        statements: "print(complex(real: -o.real.to(float), imag: 0.0d))",
+        expect: "(-0.25+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A9p .to(int), bound to a local",
+        statements: "var k = len(\"abc\").to(int)\n    print(repr(-k).to(str))",
+        expect: "-3",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A9k .to(int), bound to a local",
+        statements: "var k = len(\"abc\").to(int)\n    print(complex(real: -k, imag: 0.0d))",
+        expect: "(-3+0j)",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "A10p .to(double), bound to a local",
+        statements: "var x = o.real.to(double)\n    print(pack(\">d\", -x).hex().to(str))",
+        expect: "bfd0000000000000",
+        shape: Shape::Negated,
+    },
+];
+
+/// Python objects under the unary minus. The v1 op set has no unary minus on
+/// an object and the front door types it as an i32, so every cell here is a
+/// known-wrong form (D-1129-09). `expect` is the output MEASURED on the
+/// lookup before the R-01 repair: the lookup must keep giving exactly that
+/// for these operands, instead of changing what an admitted program does
+/// (review R-11 — the first repair turned the call result and the object
+/// local into `a2x_neg(<object>)`: a float truncated to 0, a complex raising
+/// a raw `TypeError`). `shape` says where the minus is applied: the operand
+/// itself is the argument for a call result, an object local and an operator
+/// result; a path outside the lookup lowers the node for an attribute read;
+/// and for a call followed by `.to()` the parser attaches the minus to the
+/// call first, so it sits under the extraction.
+const PYTHON_OBJECT_CELLS: [Cell; 10] = [
+    Cell {
+        name: "B1p call result",
+        statements: "print(pack(\">d\", -sqrt(0.25d)).hex().to(str))",
+        expect: "3fe0000000000000",
+        shape: Shape::Operand,
+    },
+    Cell {
+        name: "B1k call result",
+        statements: "print(complex(real: -sqrt(0.25d), imag: 0.0d))",
+        expect: "(0.5+0j)",
+        shape: Shape::Operand,
+    },
+    Cell {
+        name: "B2p attribute read",
+        statements: "print(repr(-o.real).to(str))",
+        expect: "0",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "B2k attribute read",
+        statements: "print(complex(real: -o.real, imag: 0.0d))",
+        expect: "0j",
+        shape: Shape::Negated,
+    },
+    Cell {
+        name: "B3p local",
+        statements: "print(repr(-o).to(str))",
+        expect: "(0.25+0.5j)",
+        shape: Shape::Operand,
+    },
+    Cell {
+        name: "B4p operator result",
+        statements: "print(repr(-(o.real * 2.0d)).to(str))",
+        expect: "0.5",
+        shape: Shape::Operand,
+    },
+    Cell {
+        name: "B5p call result then .to(double)",
+        statements: "print(pack(\">d\", -sqrt(0.25d).to(double)).hex().to(str))",
+        expect: "0000000000000000",
+        shape: Shape::UnderExtraction,
+    },
+    Cell {
+        name: "B5k call result then .to(double)",
+        statements: "print(complex(real: -sqrt(0.25d).to(double), imag: 0.0d))",
+        expect: "0j",
+        shape: Shape::UnderExtraction,
+    },
+    Cell {
+        name: "B6p call result then .to(float)",
+        statements: "print(pack(\">f\", -sqrt(0.25d).to(float)).hex().to(str))",
+        expect: "00000000",
+        shape: Shape::UnderExtraction,
+    },
+    Cell {
+        name: "B7p call result then .to(int)",
+        statements: "print(repr(-len(\"abc\").to(int)).to(str))",
+        expect: "-3",
+        shape: Shape::UnderExtraction,
+    },
+];
+
+/// The argument of the observed call — the last `a2x_py_call` of the program
+/// that carries `head` — up to `tail`.
+fn observed_argument(generated: &str, head: &str, tail: &str) -> String {
+    let line = generated
+        .lines()
+        .rev()
+        .find(|line| line.contains("a2x_py_call") && line.contains(head))
+        .unwrap_or_else(|| panic!("no call carrying `{head}`:\n{generated}"));
+    line.rsplit(head)
+        .next()
+        .unwrap()
+        .split(tail)
+        .next()
+        .unwrap()
+        .trim()
+        .to_string()
+}
+
+fn run_matrix(cells: &[Cell], label: &str) {
+    for cell in cells {
+        let dir = scratch(&format!("matrix-{label}-{}", cell.name.replace(' ', "-")));
+        let source = format!(
+            "{MATRIX_PROLOGUE}    {}\n    return 0\n}}\n",
+            cell.statements
+        );
+        emit(&dir, &source);
+        let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
+        let (head, tail) = if cell.statements.contains("pack(\">d\"") {
+            ("l0_pack, None, [\">d\", ", "], {})")
+        } else if cell.statements.contains("pack(\">f\"") {
+            ("l0_pack, None, [\">f\", ", "], {})")
+        } else if cell.statements.contains("repr(") {
+            ("l1_repr, None, [", "], {})")
+        } else {
+            ("None, [], {\"real\": ", ", \"imag\"")
+        };
+        let arg = observed_argument(&generated, head, tail);
+        let depth = negation_depth(&generated, &arg);
+        match cell.shape {
+            Shape::Negated => {
+                assert_eq!(
+                    depth, 1,
+                    "{}: the observed call is handed `{arg}`",
+                    cell.name
+                )
+            }
+            Shape::Operand => {
+                assert_eq!(
+                    depth, 0,
+                    "{}: the observed call is handed `{arg}`",
+                    cell.name
+                )
+            }
+            Shape::UnderExtraction => {}
+        }
+        assert_eq!(
+            run_generated(&dir),
+            format!("{}\nvalue:0\n", cell.expect),
+            "{}",
+            cell.name
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Review R-11: for an Auto VALUE under a unary minus the lookup hands the
+/// call the negated node, and Python prints the native result.
+#[test]
+fn generated_python_negates_every_auto_value_operand_class() {
+    run_matrix(&AUTO_VALUE_CELLS, "auto");
+}
+
+/// Review R-11: for a Python OBJECT under a unary minus the lookup keeps the
+/// behaviour measured before the R-01 repair — the operand itself — and
+/// never emits `a2x_neg(<object>)` on that path. The outputs are the
+/// known-wrong ones of D-1129-09; a change here means the lookup (or the
+/// front door) altered what an admitted program does.
+#[test]
+fn generated_python_keeps_the_earlier_behaviour_for_object_operands() {
+    run_matrix(&PYTHON_OBJECT_CELLS, "object");
+}

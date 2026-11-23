@@ -223,6 +223,46 @@ fn main() int {
     );
 }
 
+/// PLAN-1129 review R-12: the rejection names what does cross, and that has
+/// to be true. A bool crosses only as a literal; an int, a text, a float
+/// and a Python object cross both as literals and as run-time values. The
+/// message used to list bool without that limit.
+#[test]
+fn the_cross_boundary_rejection_states_the_boundary_as_it_is() {
+    let src = "use.py builtins: repr\nfn main() int {\n    var flag = true\n    print(repr(flag).to(str))\n    return 0\n}\n";
+    let caps = [SOURCE_CAP.to_string(), RESOURCE_CAP.to_string()];
+    let diags = compile_language_source_with_foreign(src, "main.as", &caps, &contract())
+        .expect_err("a run-time bool does not cross");
+    let diag = diags
+        .iter()
+        .find(|d| d.code == "source.py-domain")
+        .unwrap_or_else(|| panic!("missing the py-domain rejection: {diags:?}"));
+    assert_eq!(&src[diag.span.start..diag.span.end], "flag");
+    assert!(
+        diag.message.contains("bool only as a literal"),
+        "{:?}",
+        diag.message
+    );
+
+    // everything the message names crosses, and so does the bool literal
+    compile(
+        "use.py builtins: repr, complex
+fn main() int {
+    var n = 3
+    var s = \"x\"
+    var x = 0.5d
+    var o = complex(0.25d, 0.5d)
+    print(repr(true).to(str))
+    print(repr(n).to(str))
+    print(repr(s).to(str))
+    print(repr(x).to(str))
+    print(repr(o).to(str))
+    return 0
+}
+",
+    );
+}
+
 #[test]
 fn the_float_helpers_belong_to_the_py_lane_only() {
     let plain = ace_core::source::compile_language_source(

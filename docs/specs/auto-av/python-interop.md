@@ -233,20 +233,23 @@ Auto → Python 的浮点实参不再限于字面量。`float`（f32）与 `doub
 `/1` 的超集，布局相同：
 
 - `d <len>\n<w2> <w1> <w0>\n` 是 f64，`f` 同形而是 f32；位型按 21/21/22 位自高位拆成三个
-  无符号十进制字，每字有界，故一个值只有一种编码。`f` 的 payload 还要求高 32 位为零
-  （`w2 == 0` 且 `w1 < 1024`）：这是规范编码的一部分，超出即拒绝而不是截断成 f32。畸形
-  payload 是具名 `foreign.frame` 拒绝，派发前生效，接收者、位置与具名三个值槽一视同仁；
-  拒绝消息带帧版本（`p967.frame/2 rejected: <原因>`）。AV 校验器与生成的 shim 解码器是同一
-  字节集的双实现，`f` 的这条上界在两处同时生效。
+  无符号十进制字，每字有界且是最短形式（`0` 单独一位，或首位不是 `0`），故一个值只有一种
+  编码。`f` 的 payload 还要求高 32 位为零（`w2 == 0` 且 `w1 < 1024`）：这是规范编码的一部分，
+  超出即拒绝而不是截断成 f32。畸形 payload 是具名 `foreign.frame` 拒绝，派发前生效，接收者、
+  位置与具名三个值槽一视同仁，原因字符串在两个实现里相同；拒绝消息带帧版本
+  （`p967.frame/2 rejected: <原因>`）。AV 校验器与生成的 shim 解码器是同一字节集的双实现，
+  `f` 的这条上界与前导零的拒绝在两处同时生效；两者各自对同一张样本表
+  （`crates/auto-bindgen/src/frame_wire_samples.rs`）受测。长度与计数字段接受前导零和前导负号，
+  那是 `/1` 布局的既有行为（D-1129-10），不在这句话的范围内。
 - `/2` 帧中的 `t` 恒为文本。普通文本 `"F:1.25"` 不再被当作浮点（此前 AV 与 A2PY 在这一点
   上不一致）。
 - `/1` 帧保留五种标签与 1026 的 `F:<decimal>` 字面量解码，供旧发射件使用。不带用户值的帧
   （导入帧、仅接收者的提取帧）仍为 `/1`。解码模式只由帧版本决定。
 
 **发射**。浮点字面量在编译期即为静态 typed 文本，运行期零成本。其余浮点是对冻结 helper
-`__py_chunk_d(v)`/`__py_chunk_f(v)` 的一次普通调用，因此操作数恰求值一次并保持源序；浮点实参的
-一元负号随操作数表达式一起求值，`-rate`、`-(-seed)`、关键字槽里的 `-two` 到达 Python 时已取反
-（整数实参见文末已知边界）。
+`__py_chunk_d(v)`/`__py_chunk_f(v)` 的一次普通调用，因此操作数恰求值一次并保持源序；Auto
+浮点实参的一元负号随操作数表达式一起求值，`-rate`、`-(-seed)`、关键字槽里的 `-two` 到达
+Python 时已取反（整数实参与 Python 对象的取负见文末已知边界）。
 helper 以普通 Auto 算术读取位型；唯一无法用源码表达的一步——`-0.0` 的符号位——由
 `__py_sign_bit(v)` 提供，lowering 内联发射，不新增 MIR 指令或 wire tag。解析器只在冻结 helper
 `__py_chunk_f64` 的函数体内放行这个名字：用户在源码里调用它按未知被调方拒绝，两端一致（它与
@@ -268,14 +271,15 @@ AV 传规范静默 NaN（`0x7FF8000000000000`、`0x7FC00000`），不主张 payl
 | 已准备的 provider 闭包过期 | 戳记核对 provider 摘要、shim 摘要、rustc 身份与 DLL SHA256 | 具名 `foreign.prepared` |
 | SDK 运行兼容 | 逐符号签名哈希对带帧声明纳入帧版本 | `m2build.compat.symbol-signature` |
 
-未带 `use.py` 的程序不注入浮点 helper，不产生 `/2` 帧。（这句只说 AV。A2PY 的逐步 f32 舍入
-与运行时身份变化不以 `use.py` 为条件，见 [A2X 规范](../auto-a2x/python-ecosystem-integration.md)。）
+未带 `use.py` 的程序不注入浮点 helper，不产生 `/2` 帧。A2PY 不在此列：它的逐步 f32 舍入与
+运行时身份变化不以 `use.py` 为条件，见 [A2X 规范](../auto-a2x/python-ecosystem-integration.md)。
 
 **证据**。语料 `crates/auto-lang/test/cases/language/script/python-float-args.case.ad`（十四个
 Case，含取负实参），参考见
 [原生参考目录](../../../crates/auto-lang/test/cases/ace-m2/python-1129/README.md)；
-`ace-abi` 的 `py_float_1129` 覆盖 typed 帧的精确值、非规范 `f` payload 在三个值槽的拒绝与兼容身份，
-`ace-av-core` 的 `frame_wire_1129_tests` 钉住校验器一侧的同一字节集。
+`ace-abi` 的 `py_float_1129` 覆盖 typed 帧的精确值、非规范 payload（`f` 的高位、前导零）在三个
+值槽的拒绝与兼容身份；`ace-av-core` 的 `frame_wire_1129_tests` 与 `auto-bindgen` 的
+`frame_shim_prelude_tests` 把同一张样本表分别跑过校验器和解码器。
 
 **已知边界**。普通语言入口的执行墙钟预算为 2 秒，含 torch 导入；训练类 Case 在机器有
 其他构建时可能超预算，须在空闲环境隔离重放，不改预算。1026 产品入口与 978 的 Aggregates
@@ -286,5 +290,9 @@ Case，含取负实参），参考见
 只数非负值的位数，负数帧声明的 payload 长度少一位。1026 的 helper 假设线路上只有非负 i32，
 1107 放行运行时整数后该假设不再成立；早于本计划，登记为 D-1129-01。因此取负实参的语料只含
 浮点形态，整数形态只在 A2PY 侧钉住。
+**对 Python 对象取负在 AV 上不成立**：`repr(-o.real)`、`repr(-sqrt(0.25d))`、`repr(-o)` 被前门
+放行并按 i32 处理（961 对非数值操作数的回退），AV 读到的是对象句柄的相反数——不跨边界时
+`print(-r)` 打印的是类似 `-2` 的句柄数，作实参时以同一条 `payload not LF-terminated` 失败。
+v1 操作集没有对象的一元负号；早于本计划，登记为 D-1129-09。
 
 来源见 [PLAN-1129](../../plans/archive/1129-ace-python-runtime-float-arguments.md)。

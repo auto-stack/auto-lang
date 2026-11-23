@@ -561,9 +561,12 @@ fn check_tag_value(tag: u8, payload: &[u8], version: u8) -> Result<(), &'static 
 
 /// The typed float payload `<w2> <w1> <w0>`: three unsigned decimals, the
 /// 64-bit pattern split 21 / 21 / 22 bits from the top. Every word is 1..=7
-/// digits and below its bound, so one value has exactly one encoding (the
+/// digits, below its bound, and in its shortest form (`0` alone, or a first
+/// digit other than `0`), so one value has exactly one encoding: `01` and
+/// `1` are not two spellings of the same word (PLAN-1129 review R-10 — the
 /// same acceptance and the same reasons as the shim decoder's
-/// `__f0_float_bits`). Returns the pattern.
+/// `__f0_float_bits`; both are run over `frame_wire_samples.rs`). Returns the
+/// pattern.
 fn check_float_words(payload: &[u8]) -> Result<u64, &'static str> {
     const BOUNDS: [u64; 3] = [1 << 21, 1 << 21, 1 << 22];
     let mut words = payload.split(|&b| b == b' ');
@@ -577,6 +580,9 @@ fn check_float_words(payload: &[u8]) -> Result<u64, &'static str> {
         }
         if word.is_empty() || word.len() > 7 {
             return Err("typed float word is out of range");
+        }
+        if word[0] == b'0' && word.len() > 1 {
+            return Err("typed float word has a leading zero");
         }
         let value = word
             .iter()
@@ -2693,6 +2699,15 @@ mod frame_wire_1129_tests {
     //! sees them (the generated shim decoder accepts the same bytes).
     use super::validate_frame_wire;
 
+    /// The one sample table both implementations of the frame grammar are
+    /// tested against. `auto-bindgen` keeps it next to the shim decoder.
+    mod samples {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../crates/auto-bindgen/src/frame_wire_samples.rs"
+        ));
+    }
+
     const V1: &str = "p967.frame/1\n";
     const V2: &str = "p967.frame/2\n";
 
@@ -2838,25 +2853,41 @@ mod frame_wire_1129_tests {
     }
 
     #[test]
-    fn the_decoder_and_the_admission_accept_the_same_bytes() {
-        // The generated shim decoder is compiled into every provider; its
-        // source is the one prelude, so a sample of the admission's verdicts
-        // is replayed against the same acceptance spelled once more here.
-        let samples = [
-            (V1, positional("t", "F:2.5"), true),
-            (V1, positional("d", "0 0 0"), false),
-            (V2, positional("d", "0 0 2097151"), true),
-            (V2, positional("f", "0 1023 4194303"), true),
-            (V2, positional("f", "0 4194304 0"), false),
-            (V2, positional("f", "0 1024 0"), false),
-            (V2, positional("f", "2097151 0 0"), false),
-            (V2, positional("d", "0 0 "), false),
-        ];
-        for (version, body, admit) in samples {
-            assert_eq!(
-                validate_frame_wire(format!("{version}{body}").as_bytes()).is_ok(),
-                admit
-            );
+    fn the_admission_judges_the_shared_wire_samples_as_recorded() {
+        // PLAN-1129 review R-10: the admission is judged by the shared
+        // sample table — the same frames, with the same verdicts, that the
+        // shim decoder's test runs through the decoder (`auto-bindgen`). It
+        // used to be tested against its own samples alone.
+        let rows = samples::all_samples();
+        assert!(rows.len() > 500, "{} samples", rows.len());
+        let (mut accepted, mut refused) = (0, 0);
+        for (frame, verdict) in &rows {
+            let got = validate_frame_wire(frame.as_bytes());
+            match verdict {
+                samples::Verdict::Accept => assert_eq!(got, Ok(()), "{frame:?}"),
+                samples::Verdict::Reject(reason) => assert_eq!(got, Err(*reason), "{frame:?}"),
+                samples::Verdict::Rejected => assert!(got.is_err(), "{frame:?}"),
+            }
+            if got.is_ok() {
+                accepted += 1;
+            } else {
+                refused += 1;
+            }
+        }
+        assert!(
+            accepted > 200 && refused > 200,
+            "accepted {accepted}, refused {refused}"
+        );
+    }
+
+    /// The canonical spelling of a pattern is admitted for both widths: the
+    /// batch the generated rows are built from, walked directly.
+    #[test]
+    fn the_canonical_spelling_of_every_generated_pattern_is_admitted() {
+        for bits in samples::patterns() {
+            ok(V2, &samples::positional("d", &samples::canonical(bits)));
+            let low = bits & 0xFFFF_FFFF;
+            ok(V2, &samples::positional("f", &samples::canonical(low)));
         }
     }
 }

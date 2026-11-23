@@ -45,9 +45,10 @@ fn __f0_take_value<'a>(cur: &mut &'a [u8], version: u8) -> Result<(u8, &'a [u8])
 }
 /// The typed float payload `<w2> <w1> <w0>`: three unsigned decimals, the
 /// 64-bit pattern split 21 / 21 / 22 bits from the top (`w0` is the low 22
-/// bits; bits = `w2 << 43 | w1 << 22 | w0`). Every word has a range bound,
-/// so one value has exactly one encoding. A tag `f` value is the low 32
-/// bits of the pattern with the upper 32 bits zero (see `__f0_val`).
+/// bits; bits = `w2 << 43 | w1 << 22 | w0`). Every word has a range bound and
+/// is in its shortest form, so one value has exactly one encoding (PLAN-1129
+/// review R-10: `01` is not a second spelling of `1`). A tag `f` value is the
+/// low 32 bits of the pattern with the upper 32 bits zero (see `__f0_val`).
 fn __f0_float_bits(payload: &[u8]) -> Result<u64, &'static str> {
     let mut words = payload.split(|&b| b == b' ');
     let mut value: u64 = 0;
@@ -59,6 +60,9 @@ fn __f0_float_bits(payload: &[u8]) -> Result<u64, &'static str> {
         }
         if w.is_empty() || w.len() > 7 {
             return Err("typed float word is out of range");
+        }
+        if w[0] == b'0' && w.len() > 1 {
+            return Err("typed float word has a leading zero");
         }
         match __f0_decimal(w) {
             Some((n, rest)) if rest.is_empty() && n < limit => value |= n << shift,

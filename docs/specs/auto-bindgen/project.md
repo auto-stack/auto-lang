@@ -19,9 +19,10 @@ C 头文件/manifest 生成器：为 Auto 的 C FFI 生成 C 头文件与绑定 
   头 + `// auto-ffi fn <name> symbol= form= ret=|errors=` 条目 + `// auto-ffi dep <name> <spec>`
   依赖注解（cargo 单元消费）+ `frame=p967.frame/1` 或 `p967.frame/2` tag 帧轴（恰一
   `frame: &F0Frame` 参数；`/2` 是带类型浮点值的超集，PLAN-1129，其他版本仍具名拒绝；
-  其中 `f` 标签的 payload 须高 32 位为零，超出具名拒绝、不截断）。解码器源文本是同目录的
-  `frame_shim_prelude.rs`：生成器 `include_str!` 原样拼入 provider，单元测试 `include!` 直接编译
-  同一份文本。参数域 view+i32/bool 混合（≤4）；域外形状（泛型/owned String/Vec/Result/async/trait对象/
+  其中 `f` 标签的 payload 须高 32 位为零，每个字须是最短十进制形式，超出具名拒绝、不截断）。
+  解码器源文本是同目录的 `frame_shim_prelude.rs`：生成器 `include_str!` 原样拼入 provider，
+  单元测试 `include!` 直接编译同一份文本；帧文法的样本表在同目录的 `frame_wire_samples.rs`，
+  解码器的测试与 AV 校验器的测试（`ace-av-core`）`include!` 同一份。参数域 view+i32/bool 混合（≤4）；域外形状（泛型/owned String/Vec/Result/async/trait对象/
   &mut）逐项具名拒绝 `rust-import.*`。产出中性 manifest + 生成 C 兼容 shim（含两版 tag 帧的
   `F0Val/F0Kwarg/F0Frame` 类型与同一游标解码器）+ 共享 `ace.foreign.manual/2` 投影。冻结 target 校验。
 - **C**（`auto-ffi-c` 注解头）：真 cl /EP 预处理闭包解析（record/enum/callback/view/out/

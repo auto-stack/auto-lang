@@ -531,6 +531,22 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
             2,
             "typed float f payload exceeds 32 bits",
         ),
+        // a leading zero is a second spelling of the same value (review R-10)
+        (
+            frame(2, ("o", &sqrt_token), &[("t", ""), ("d", "00 0 0")], &[]),
+            2,
+            "typed float word has a leading zero",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[("t", ""), ("f", "0 0512 0")], &[]),
+            2,
+            "typed float word has a leading zero",
+        ),
+        (
+            frame(2, ("o", &sqrt_token), &[], &[("x", ("d", "0000000 0 0"))]),
+            2,
+            "typed float word has a leading zero",
+        ),
         (
             frame(2, ("f", "1 0 0"), &[("t", ""), ("i", "1074")], &[]),
             2,
@@ -555,6 +571,13 @@ fn p1129_t02_typed_frames_carry_exact_floats_and_text_stays_text() {
             "the rejection names the wire version and the reason: {message}"
         );
     }
+    // every malformed frame was refused BEFORE dispatch: none reached the
+    // provider (the canonical control below is the only one that does)
+    assert_eq!(
+        t.callee_count(),
+        before,
+        "every malformed frame was rejected with dispatch=0"
+    );
     // a header of no admitted version is reported as unknown, never as `/1`
     let out = call_op(t, env, "py_call", "p967.frame/3\nr n 0\np 0\nk 0\n");
     let ExecOutcome::Infra(message) = &out else {

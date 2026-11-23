@@ -121,6 +121,59 @@ impl LowerFamily {
     }
 }
 
+/// The locals of one function that hold a Python OBJECT, by the resolver's
+/// own rule (PLAN-1026): a binding whose value is a Python object — the
+/// result of one of the object lanes, or another such local — carries the
+/// py-op domain discipline. The resolver keeps this in a set of its own that
+/// the checked body does not carry (an object is an i32-shaped handle in the
+/// HIR), so it is read off the body here: a `Let` initializer or an
+/// `Assign` value that is an object lane call, or a read of a local already
+/// known to be one, makes the local an object. The pass repeats until nothing
+/// is added, so the order of the statements does not matter.
+///
+/// PLAN-1129 review R-11: the operand lookup needs this to tell an Auto
+/// value from a Python object under a unary node.
+fn py_object_locals(view: &SemanticView<'_>, facts: &FnFacts<'_>) -> BTreeSet<u32> {
+    let object_lane = |expr: hir::ExprId, objects: &BTreeSet<u32>| match &facts.body.exprs
+        [expr.0 as usize]
+        .kind
+    {
+        hir::ExprKind::Call { callee, .. } => {
+            view.foreign_by_def(callee.0 as usize).is_some_and(|d| {
+                d.provider == ace_core::py_ops::PY_PROVIDER
+                    && PyOpKind::from_decl_name(&d.name).is_some_and(|k| k.yields_object())
+            })
+        }
+        hir::ExprKind::ReadLocal { local } => objects.contains(&local.0),
+        _ => false,
+    };
+    let mut objects = BTreeSet::<u32>::new();
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for block in &facts.body.blocks {
+            for stmt in &block.stmts {
+                let (local, value) = match stmt {
+                    hir::Stmt::Let { local, value } => (local.0, *value),
+                    hir::Stmt::Assign { place, value } => {
+                        match facts.body.places.get(place.0 as usize) {
+                            Some(place) if place.kind == hir::PlaceKind::Local => {
+                                (place.local.0, *value)
+                            }
+                            _ => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                if object_lane(value, &objects) && objects.insert(local) {
+                    grew = true;
+                }
+            }
+        }
+    }
+    objects
+}
+
 fn lower_single_fn(
     view: &SemanticView<'_>,
     facts: &FnFacts<'_>,
@@ -156,6 +209,7 @@ fn lower_single_fn(
         family,
         local_names,
         owned_locals: HashMap::new(),
+        py_locals: py_object_locals(view, facts),
         out: Vec::new(),
         indent: 0,
         temp_counter: 0,
@@ -409,6 +463,8 @@ struct PyLowerCtx<'v, 'a> {
     family: LowerFamily,
     local_names: HashMap<u32, String>,
     owned_locals: HashMap<u32, Ty>,
+    /// The locals that hold a Python OBJECT (see [`py_object_locals`]).
+    py_locals: BTreeSet<u32>,
     out: Vec<String>,
     indent: usize,
     temp_counter: usize,
@@ -834,6 +890,23 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         }
     }
 
+    /// Whether the checked expression is a Python OBJECT: the result of an
+    /// object lane, or a read of a local that holds one. This is the
+    /// resolver's `py_is_object`, read off the checked body.
+    fn py_is_object_expr(&self, id: hir::ExprId) -> bool {
+        match &self.facts.body.exprs[id.0 as usize].kind {
+            hir::ExprKind::Call { callee, .. } => self
+                .view
+                .foreign_by_def(callee.0 as usize)
+                .is_some_and(|d| {
+                    d.provider == ace_core::py_ops::PY_PROVIDER
+                        && PyOpKind::from_decl_name(&d.name).is_some_and(|k| k.yields_object())
+                }),
+            hir::ExprKind::ReadLocal { local } => self.py_locals.contains(&local.0),
+            _ => false,
+        }
+    }
+
     /// The checked VALUE expression at exactly `span`. Frame-construction
     /// nodes (display/concat/borrow, the AV encoding intrinsics and every
     /// py-lane frame helper) are not values and are skipped; a py-op call
@@ -847,6 +920,16 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
     /// else at its span, and among unary candidates the LAST one wins: the
     /// checked body lists an expression after all of its children, so the
     /// last is the outermost wrapper (`-(-x)`).
+    ///
+    /// PLAN-1129 (review R-11): that holds for an Auto VALUE only. The front
+    /// door admits unary `-` on a Python object too and types it as an i32
+    /// (the PLAN-961 fallback for a non-numeric operand), so lowering such
+    /// a node emits `a2x_neg(<object>)`: a float truncates to 0 and a
+    /// complex raises a raw `TypeError`. The v1 op set has no unary minus on
+    /// an object; until the front door names that rejection (D-1129-09) the
+    /// lookup keeps its earlier behaviour for these operands — the operand
+    /// itself is the value — instead of changing what an admitted program
+    /// does.
     fn py_find_value(&self, span: (u32, u32)) -> Option<hir::ExprId> {
         let mut best: Option<(u8, hir::ExprId)> = None;
         let mut unary: Option<hir::ExprId> = None;
@@ -854,8 +937,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             if (x.span.start as u32, x.span.end as u32) != span {
                 continue;
             }
-            if matches!(x.kind, hir::ExprKind::Unary { .. }) {
-                unary = Some(hir::ExprId(i as u32));
+            if let hir::ExprKind::Unary { operand, .. } = x.kind {
+                if !self.py_is_object_expr(operand) {
+                    unary = Some(hir::ExprId(i as u32));
+                }
             }
             let rank = match &x.kind {
                 hir::ExprKind::TextDisplay { .. }

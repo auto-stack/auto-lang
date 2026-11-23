@@ -154,6 +154,18 @@ impl PyOpKind {
             Self::ToText => "to-text",
         }
     }
+
+    /// Whether the operation's RESULT is a Python object, as opposed to an
+    /// Auto scalar (`ToFloat`/`ToInt`/`ToBool`) or staged text. This is the
+    /// one definition of "a Python object" for an operation result: the
+    /// resolver's `py_is_object` and the A2PY operand lookup both ask here
+    /// (PLAN-1129 review R-11 — the two used to spell the list separately).
+    pub fn yields_object(self) -> bool {
+        matches!(
+            self,
+            Self::Import | Self::Call | Self::GetAttr | Self::GetItem | Self::BinOp
+        )
+    }
 }
 
 /// The admitted value class of one operand (what a frame carries).
@@ -418,6 +430,29 @@ mod tests {
 
     fn fact(op: PyOpKind, member: &str) -> PyOpFact {
         PyOpFact::new(op, Span { start: 10, end: 20 }).with_member(member)
+    }
+
+    /// PLAN-1129 review R-11: "the result is a Python object" has one
+    /// definition — exactly the five object lanes, never an extraction.
+    #[test]
+    fn exactly_the_five_object_lanes_yield_an_object() {
+        for kind in [
+            PyOpKind::Import,
+            PyOpKind::Call,
+            PyOpKind::GetAttr,
+            PyOpKind::GetItem,
+            PyOpKind::BinOp,
+        ] {
+            assert!(kind.yields_object(), "{}", kind.decl_name());
+        }
+        for kind in [
+            PyOpKind::ToFloat,
+            PyOpKind::ToInt,
+            PyOpKind::ToBool,
+            PyOpKind::ToText,
+        ] {
+            assert!(!kind.yields_object(), "{}", kind.decl_name());
+        }
     }
 
     #[test]

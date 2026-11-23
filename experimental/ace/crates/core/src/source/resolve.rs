@@ -6992,10 +6992,12 @@ impl<'a, 's> FnResolver<'a, 's> {
     fn py_is_object(&self, e: &ResolvedExpr) -> bool {
         match &e.kind {
             RExprKind::ReadLocal(l) => self.py_locals.contains(l),
-            RExprKind::CallFn { fn_index, .. } => matches!(
-                self.py_foreign_name(*fn_index),
-                Some("py_import" | "py_call" | "py_getattr" | "py_getitem" | "py_binop")
-            ),
+            // One definition of "the result is a Python object": the A2PY
+            // operand lookup asks the same predicate (PLAN-1129 review R-11).
+            RExprKind::CallFn { fn_index, .. } => self
+                .py_foreign_name(*fn_index)
+                .and_then(PyOpKind::from_decl_name)
+                .is_some_and(PyOpKind::yields_object),
             _ => false,
         }
     }
@@ -7201,12 +7203,15 @@ impl<'a, 's> FnResolver<'a, 's> {
                 let chunk = self.py_chunk_call("t", v);
                 parts.push(PyFramePart::TextExpr(chunk));
             }
-            // boundary: int, bool, text, float and Python objects cross;
-            // every other value kind is a named rejection
+            // boundary: an int, a text, a float and a Python object cross,
+            // whether written as a literal or computed at run time; a bool
+            // crosses only as the literal `true`/`false` (PLAN-1129 review
+            // R-12: the message used to list bool without that limit). Every
+            // other value kind is a named rejection.
             _ => {
                 self.bind_err(
                     "source.py-domain",
-                    "this value kind cannot cross into a Python call (int, bool, text, float and Python objects cross)",
+                    "this value kind cannot cross into a Python call (int, text, float and Python objects cross; bool only as a literal)",
                     v.span,
                 );
                 parts.push(PyFramePart::Txt("n 0\n\n".to_string()));
