@@ -9,7 +9,7 @@ use super::{
     Block, ComponentNode, ComponentViewEntry, ComponentViewFor, ComponentViewItem, Diagnostic,
     Expr, ExprKind, FnItem, Ident, Item, PackagedAgeComponent, Receiver, Span, Stmt, TypeAnn,
     TypeRef, TypeWord, ViewScope, AGE_PACKAGE_HIDDEN_PREFIX, FILE_LIST_BINDING, FILE_MUTATE_BINDING,
-    FILE_OPEN_BINDING, WIDGET_CONTEXT_BINDING,
+    FILE_OPEN_BINDING, TODO_SERVICE_BINDING, WIDGET_CONTEXT_BINDING,
 };
 use crate::source::{
     age_component::{
@@ -48,7 +48,7 @@ pub(super) fn add_widget_views(
         let is_live_root = instances != 0 && Some(index) == entry_node;
         let handles_root_timers = is_live_root && node.members.iter().any(|row| row.role == "timer");
         let has_host_bindings = is_live_root && node.members.iter().any(|row| {
-            row.role == "bind" && (matches!(row.name.as_str(), FILE_LIST_BINDING | FILE_MUTATE_BINDING | FILE_OPEN_BINDING | WIDGET_CONTEXT_BINDING)
+            row.role == "bind" && (matches!(row.name.as_str(), FILE_LIST_BINDING | FILE_MUTATE_BINDING | FILE_OPEN_BINDING | TODO_SERVICE_BINDING | WIDGET_CONTEXT_BINDING)
                 || row.name.trim_matches('"').starts_with("storage:"))
         });
         if node.view.exit != "view"

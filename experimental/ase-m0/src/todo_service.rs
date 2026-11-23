@@ -113,15 +113,17 @@ enum Operation {
     Update,
     Delete,
     Clear,
+    SetAll,
 }
 
 impl Operation {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::List,
         Self::Create,
         Self::Update,
         Self::Delete,
         Self::Clear,
+        Self::SetAll,
     ];
 
     fn name(self) -> &'static str {
@@ -131,6 +133,7 @@ impl Operation {
             Self::Update => "update_todo",
             Self::Delete => "delete_todo",
             Self::Clear => "remove_completed",
+            Self::SetAll => "set_all_todos",
         }
     }
 
@@ -141,7 +144,7 @@ impl Operation {
             .ok_or(ServiceError::UnknownOperation)?;
         use Argument::*;
         match (op, args) {
-            (Self::List, []) | (Self::Delete, [Int(_)]) | (Self::Clear, [Bool(_)]) => {}
+            (Self::List, []) | (Self::Delete, [Int(_)]) | (Self::Clear | Self::SetAll, [Bool(_)]) => {}
             (Self::Create, [Text(text)]) | (Self::Update, [Int(_), Text(text), Bool(_)]) => {
                 if text.len() > MAX_TEXT_BYTES {
                     return Err(ServiceError::Budget("todo.text-bytes"));

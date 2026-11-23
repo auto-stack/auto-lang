@@ -14,6 +14,7 @@ use super::ProgramSnapshot;
 pub enum HostInput {
     Bool(bool),
     Text(String),
+    I32(i32),
     I64(i64),
     U64(u64),
     Record(Vec<(String, HostInput)>),
@@ -91,6 +92,7 @@ fn materialize(
     charge(remaining, cell)?;
     match (input, types.get(ty as usize)) {
         (HostInput::Bool(value), Some(MirType::Bool)) => Ok(Value::Bool(value)),
+        (HostInput::I32(value), Some(MirType::I32)) => Ok(Value::I32(value)),
         (HostInput::I64(value), Some(MirType::I64)) => Ok(Value::I64(value)),
         (HostInput::U64(value), Some(MirType::U64)) => Ok(Value::U64(value)),
         (HostInput::Text(text), Some(MirType::Str)) => {

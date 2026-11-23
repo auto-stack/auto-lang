@@ -6346,6 +6346,7 @@ impl<'a> Engine<'a> {
             view_data,
             inferred_records,
             stores: Vec::new(),
+            imported_store: None,
             span: self.cx.span_of(node),
         };
         if self.cx.profile == SourceProfile::AgePackage {

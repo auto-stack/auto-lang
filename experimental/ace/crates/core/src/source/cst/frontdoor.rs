@@ -466,8 +466,9 @@ pub(crate) fn parse_packages_front_age(
     scenario: &crate::source::age_component::ComponentScenario,
     node_base: usize,
     defer_styles: bool,
+    store_imports: Option<crate::source::packages::AgeStoreImports<'_>>,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    parse_packages_with(PackagesFace::Age { defer_styles }, src, budget, scenario, node_base)
+    parse_packages_with_stores(PackagesFace::Age { defer_styles }, src, budget, scenario, node_base, store_imports)
 }
 
 /// PLAN-972（T-02）：packages-aggregates-ct 前门（装配 aggregates 线；
@@ -547,26 +548,227 @@ fn parse_packages_with(
     scenario: &crate::source::age_component::ComponentScenario,
     node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    parse_packages_with_stores(face, src, budget, scenario, node_base, None)
+}
+
+fn parse_packages_with_stores(
+    face: PackagesFace,
+    src: &str,
+    budget: FrontBudget,
+    scenario: &crate::source::age_component::ComponentScenario,
+    node_base: usize,
+    store_imports: Option<crate::source::packages::AgeStoreImports<'_>>,
+) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
+    let cached = face.grammar().map_err(infra_err)?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let parsed = parse_package_tree(face, cached, &snap, src.len(), budget)?;
+    project_packages_front_with_widget_lists(
+        src,
+        vec![parsed.tree],
+        Some(parsed.tokens),
+        face,
+        scenario,
+        node_base,
+        None,
+        store_imports,
+    )
+}
+
+pub(crate) fn parse_age_store_declarations(
+    src: &str,
+    budget: FrontBudget,
+) -> Result<Vec<crate::source::age_component::ComponentStore>, Vec<Diagnostic>> {
+    let face = PackagesFace::Age { defer_styles: true };
+    let cached = face.grammar().map_err(infra_err)?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let parsed = parse_package_tree(face, cached, &snap, src.len(), budget)?;
+    let mut stores = project::project_component_stores(
+        &cached.program, &cached.kinds, &parsed.tree, &snap, SourceProfile::AgePackage,
+    )?;
+    if !stores.is_empty() && src.contains("Env") && src.contains("track") {
+        let (program, _) = project::project_program_deferring_templates(
+            &cached.program, &cached.kinds, &parsed.tree, &snap, SourceProfile::TextRecord, true,
+        )?;
+        if unshadowed_package_env(cached, &parsed.tree, &snap, &program) {
+            for store in &mut stores {
+                crate::source::age_component::specialize_legacy_vm_store(store, &mut Vec::new());
+            }
+        }
+    }
+    Ok(stores)
+}
+
+fn unshadowed_package_env(
+    cached: &CachedGrammar,
+    tree: &CstTree,
+    snapshot: &Snapshot,
+    program: &Program,
+) -> bool {
+    use crate::source::ast::Item;
+    let declares_env = program.items.iter().any(|item| {
+        let name = match item {
+            Item::Fn(value) => &value.name,
+            Item::Type(value) => &value.name,
+            Item::Const(value) => &value.name,
+            Item::Store(value) => &value.name,
+            _ => return false,
+        };
+        name.name == "Env"
+    });
+    if declares_env {
+        return false;
+    }
+    let import_kinds: Vec<_> = cached.program.rules.iter().enumerate()
+        .filter(|(_, rule)| matches!(rule.name.as_str(),
+            "use-item-p" | "age-use-sym-item" | "age-use-module-item"))
+        .map(|(index, _)| ace_syntax_runtime::program::RULE_KIND_BASE + index as u32)
+        .collect();
+    let mut pending = vec![(tree.root, false)];
+    while let Some((node, in_import)) = pending.pop() {
+        let kind = tree.kind(node);
+        let in_import = in_import || import_kinds.contains(&kind);
+        if in_import && kind == cached.kinds.tok_ident {
+            let (start, end) = tree.abs_range(node);
+            if snapshot.read_str(start, end).is_ok_and(|name| name == "Env") {
+                return false;
+            }
+        }
+        pending.extend(tree.children(node).into_iter().map(|node| (node, in_import)));
+    }
+    true
+}
+
+fn anchor_imported_store(
+    store: &mut crate::source::age_component::ComponentStore,
+    anchor: crate::atom_text::Span,
+) {
+    use crate::atom_text::Span;
+    use crate::source::age_component::{ComponentAssign, ComponentStmt};
+    use super::shift::{anchor_expr, anchor_type};
+
+    fn assign(assignment: &mut ComponentAssign, anchor: Span) {
+        assignment.span = anchor;
+        anchor_expr(&mut assignment.rhs, anchor);
+    }
+
+    fn visit(stmts: &mut [ComponentStmt], anchor: Span) {
+        for stmt in stmts {
+            let span = match stmt {
+                ComponentStmt::Assign(assignment) => {
+                    assign(assignment, anchor);
+                    continue;
+                }
+                ComponentStmt::Let { name, ann, value, span, .. } => {
+                    name.span = anchor;
+                    if let Some(ty) = ann {
+                        anchor_type(ty, anchor);
+                    }
+                    anchor_expr(value, anchor);
+                    span
+                }
+                ComponentStmt::AssignLocal { name, value, span } => {
+                    name.span = anchor;
+                    anchor_expr(value, anchor);
+                    span
+                }
+                ComponentStmt::For { name, iter, body, span } => {
+                    name.span = anchor;
+                    anchor_expr(iter, anchor);
+                    visit(body, anchor);
+                    span
+                }
+                ComponentStmt::While { cond, body, span } => {
+                    anchor_expr(cond, anchor);
+                    visit(body, anchor);
+                    span
+                }
+                ComponentStmt::If { cond, then, els, span } => {
+                    anchor_expr(cond, anchor);
+                    visit(then, anchor);
+                    if let Some(els) = els {
+                        visit(els, anchor);
+                    }
+                    span
+                }
+                ComponentStmt::Send { args, span, .. } => {
+                    for arg in args {
+                        anchor_expr(arg, anchor);
+                    }
+                    span
+                }
+                ComponentStmt::Effect { value, span }
+                | ComponentStmt::Call { call: value, span }
+                | ComponentStmt::Focus { target: value, span } => {
+                    anchor_expr(value, anchor);
+                    span
+                }
+            };
+            *span = anchor;
+        }
+    }
+
+    // The imported body is checked in the consumer. Use its import site
+    // as the source anchor rather than indexing provider bytes into it.
+    store.span = anchor;
+    store.name.span = anchor;
+    for field in &mut store.fields {
+        field.span = anchor;
+        field.ty_span = anchor;
+        if let Some(ty) = &mut field.collection_type {
+            anchor_type(ty, anchor);
+        }
+        anchor_expr(&mut field.init, anchor);
+    }
+    for message in &mut store.messages {
+        message.span = anchor;
+    }
+    for handler in &mut store.handlers {
+        handler.span = anchor;
+        for (_, span) in &mut handler.params {
+            *span = anchor;
+        }
+        for (_, span) in handler.param_annotations.iter_mut().flatten() {
+            *span = anchor;
+        }
+        for call in &mut handler.channel_calls {
+            call.span = anchor;
+            for arg in &mut call.args {
+                anchor_expr(arg, anchor);
+            }
+        }
+        for assignment in &mut handler.assigns {
+            assign(assignment, anchor);
+        }
+        visit(&mut handler.stmts, anchor);
+    }
+}
+
+fn parse_package_tree(
+    face: PackagesFace,
+    cached: &CachedGrammar,
+    snap: &Snapshot,
+    source_len: usize,
+    budget: FrontBudget,
+) -> Result<ace_syntax_runtime::parse::ParseOutput, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     let err = |code, message: String, span| vec![Diagnostic::new(Stage::Text, code, message, span)];
     let zero = Span { start: 0, end: 0 };
-    let cached = face.grammar().map_err(infra_err)?;
     crate::source::parser::note_tokenize(Span {
         start: 0,
-        end: src.len(),
+        end: source_len,
     });
     crate::body_work::record_whole(crate::body_work::Stage::WholeParse);
-    let pages = std::rc::Rc::new(PageStore::new());
-    let snap = Snapshot::from_text(&pages, src);
     // PLAN-981：`age-package` 裁剪带 `contextual` 槽位（`node`/`model`/`on`…），
     // 解析必须拿到**真实快照字节**才能识别限定拼写；其它包面无该表，走原
     // 无上下文入口（字节与诊断面不变）。
-    let ctx_text = SnapshotTokenText { snap: &snap };
-    let parsed = if matches!(face, PackagesFace::Age { .. } | PackagesFace::Auto) {
+    let ctx_text = SnapshotTokenText { snap };
+    if matches!(face, PackagesFace::Age { .. } | PackagesFace::Auto) {
         parse_snapshot_with_ctx(
             &cached.program,
             &cached.scanner,
-            &snap,
+            snap,
             &Budget::from(budget),
             Some(&ctx_text),
         )
@@ -574,7 +776,7 @@ fn parse_packages_with(
         parse_snapshot(
             &cached.program,
             &cached.scanner,
-            &snap,
+            snap,
             &Budget::from(budget),
         )
     }
@@ -585,15 +787,7 @@ fn parse_packages_with(
             zero,
         ),
         other => err("source.infra", format!("parse: {other}"), zero),
-    })?;
-    project_packages_front(
-        src,
-        vec![parsed.tree],
-        Some(parsed.tokens),
-        face,
-        scenario,
-        node_base,
-    )
+    })
 }
 fn parse_module_syntax_range(
     src: &str,
@@ -806,7 +1000,7 @@ pub(crate) fn project_packages_front(
     // `__age_state_n<k>_…` 与读回/AV 的包级序号对不上，UI058 T-05 实测）。
     node_base: usize,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
-    project_packages_front_with_widget_lists(src, trees, tokens, face, scenario, node_base, None)
+    project_packages_front_with_widget_lists(src, trees, tokens, face, scenario, node_base, None, None)
 }
 
 pub(crate) fn project_packages_front_with_widget_lists(
@@ -817,6 +1011,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
     scenario: &crate::source::age_component::ComponentScenario,
     node_base: usize,
     widget_lists: Option<&crate::source::age_package::widget_lists::WidgetListProjection>,
+    store_imports: Option<crate::source::packages::AgeStoreImports<'_>>,
 ) -> Result<crate::source::packages::PackageSyntax, Vec<Diagnostic>> {
     use crate::atom_text::{Span, Stage};
     use crate::source::packages::{PackageImport, PackageSyntax};
@@ -961,36 +1156,9 @@ pub(crate) fn project_packages_front_with_widget_lists(
         } else {
             Vec::new()
         };
-        let specializes_legacy_vm = if matches!(face, PackagesFace::Age { .. })
+        let specializes_legacy_vm = matches!(face, PackagesFace::Age { .. })
             && src.contains("Env") && src.contains("track")
-        {
-            use crate::source::ast::Item;
-            let declares_env = program.items.iter().any(|item| {
-                let name = match item {
-                    Item::Fn(value) => &value.name,
-                    Item::Type(value) => &value.name,
-                    Item::Const(value) => &value.name,
-                    Item::Store(value) => &value.name,
-                    _ => return false,
-                };
-                name.name == "Env"
-            });
-            let mut pending = vec![tree.root];
-            let mut imports_env = false;
-            while let Some(node) = pending.pop() {
-                let kind = Some(tree.kind(node));
-                if [use_item_p, age_use_sym, age_use_module].contains(&kind)
-                    && path_segments(tree, node).iter().any(|name| name == "Env")
-                {
-                    imports_env = true;
-                    break;
-                }
-                pending.extend(tree.children(node));
-            }
-            !declares_env && !imports_env
-        } else {
-            false
-        };
+            && unshadowed_package_env(cached, tree, &snap, &program);
         items.extend(program.items);
         // PLAN-981（IF-981-MODULE）：AGE 领域候选从**同一次** CST 里投影，
         // 与普通包项并排记录（结构名按 Schema 的 role 归属，不按拼写猜）。
@@ -1060,23 +1228,65 @@ pub(crate) fn project_packages_front_with_widget_lists(
             // PLAN-105 T-02（U03 真语料 013/015，S1）：**同源 store 声明 → 组件内联**
             // ——字段加前缀、`.store.<f>` 改写为前缀字段、`store.<Msg>()` → 前缀消息
             // 函数（与组件面 `compile_age_component` 同一条变换）。
-            match project::project_component_stores(
+            let mut stores = project::project_component_stores(
                 &cached.program,
                 &cached.kinds,
                 tree,
                 &snap,
                 SourceProfile::AgePackage,
-            ) {
-                Ok(stores) if !stores.is_empty() => {
-                    if let Some(first) = nodes.first_mut() {
-                        first.stores = stores;
-                        if let Err(ds) = crate::source::age_component::inline_store_decl(first) {
-                            return Err(ds);
+            )?;
+            if specializes_legacy_vm {
+                for store in &mut stores {
+                    crate::source::age_component::specialize_legacy_vm_store(store, &mut inactive_hosts);
+                }
+            }
+            let mut imported = None;
+            if let Some(scope) = &store_imports {
+                for declaration in &tree.decls {
+                    let mut node = declaration.node;
+                    if tree.kind(node) == cached.kinds.item {
+                        let Some(child) = tree.children(node).into_iter().find(|&child| {
+                            tree.node(child).flags & ace_syntax_runtime::cst::FLAG_TRIVIA == 0
+                        }) else { continue };
+                        node = child;
+                    }
+                    if Some(tree.kind(node)) != age_use_sym {
+                        continue;
+                    }
+                    let module = text(tree, field(tree, node, "module").expect("use module"));
+                    let key = crate::source::packages::unit_key(scope.package, &module);
+                    let Some(declared) = scope.stores.get(&key) else { continue };
+                    let head = field(tree, node, "head").expect("use head");
+                    let names = std::iter::once(head).chain(tree.children(node).into_iter()
+                        .filter(|&child| Some(tree.kind(child)) == age_use_sym_tail)
+                        .filter_map(|child| field(tree, child, "sym")));
+                    for name in names {
+                        let name = text(tree, name);
+                        let Some(store) = declared.iter().find(|store| store.name.name == name) else {
+                            continue;
+                        };
+                        if !stores.is_empty() || imported.is_some() {
+                            return Err(err("source.age.store-import",
+                                "an AGE unit may bind one Store".into(), node_span(tree, node)));
                         }
+                        let mut store = store.clone();
+                        anchor_imported_store(&mut store, node_span(tree, node));
+                        imported = Some((key.clone(), store));
                     }
                 }
-                Ok(_) => {}
-                Err(ds) => return Err(ds),
+            }
+            if let Some((module, store)) = imported {
+                for widget in &mut nodes {
+                    widget.payload_records.extend(store.messages.iter().flat_map(|message| message.payload.iter().cloned()));
+                    widget.imported_store = Some(crate::source::age_component::ImportedStore {
+                        module: module.clone(), name: store.name.name.clone(), fields: Vec::new(),
+                    });
+                    widget.stores.push(store.clone());
+                    crate::source::age_component::inline_store_decl(widget)?;
+                }
+            } else if let Some(first) = nodes.first_mut() {
+                first.stores.append(&mut stores);
+                crate::source::age_component::inline_store_decl(first)?;
             }
             // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景的
             // `Send`/`SendArgs` **声明级**核对（arity/载荷域）移到包级一次核
@@ -1089,7 +1299,7 @@ pub(crate) fn project_packages_front_with_widget_lists(
                 if specializes_legacy_vm {
                     crate::source::age_component::specialize_legacy_vm_guards(&mut node, &mut inactive_hosts);
                 }
-                node.payload_records.clone_from(&payload_records);
+                node.payload_records.extend(payload_records.iter().cloned());
                 if !node.fields.iter().any(|field| field.name == "store") {
                     if let Some(span) = node.handlers.iter().find_map(|handler| {
                         crate::source::age_component::stmt_refs_store(&handler.stmts)

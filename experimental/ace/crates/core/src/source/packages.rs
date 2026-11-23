@@ -444,7 +444,12 @@ pub fn parse_package_source_age(
     scenario: &super::age_component::ComponentScenario,
     node_base: usize,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
-    parse_package_source_age_with_style_dependencies(src, capabilities, budget, scenario, node_base, false)
+    parse_package_source_age_with_style_dependencies(src, capabilities, budget, scenario, node_base, false, None)
+}
+
+pub(crate) struct AgeStoreImports<'a> {
+    pub package: &'a str,
+    pub stores: &'a BTreeMap<String, Vec<super::age_component::ComponentStore>>,
 }
 
 pub(crate) fn parse_package_source_age_with_style_dependencies(
@@ -454,11 +459,12 @@ pub(crate) fn parse_package_source_age_with_style_dependencies(
     scenario: &super::age_component::ComponentScenario,
     node_base: usize,
     defer_styles: bool,
+    store_imports: Option<AgeStoreImports<'_>>,
 ) -> Result<PackageSyntax, Vec<Diagnostic>> {
     if let Err(ds) = require_packages_capabilities(capabilities) {
         return Err(ds);
     }
-    super::cst::parse_packages_front_age(src, budget, scenario, node_base, defer_styles)
+    super::cst::parse_packages_front_age(src, budget, scenario, node_base, defer_styles, store_imports)
 }
 
 mod binding;

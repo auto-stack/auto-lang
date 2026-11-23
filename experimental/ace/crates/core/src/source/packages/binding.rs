@@ -433,6 +433,7 @@ struct AgeBindingOutput<'a> {
 pub struct PackagedAgeComponent {
     pub module: String,
     pub node: crate::source::age_component::ComponentNode,
+    pub(crate) module_imports: Vec<PackageImport>,
     /// 文本叶的 (隐藏函数源名, 原模块内 span)，与 `node.view.texts` 同序。
     pub text_fns: Vec<(String, Span)>,
     /// PLAN-981 B-W1（IF-981-PROOF-AV）：场景属性值函数的登记事实（按发射序）。
@@ -487,6 +488,31 @@ fn bind_packages_face_with(
     let mut units = BTreeMap::new();
     let mut component_manifests = BTreeSet::new();
     let mut total = 0usize;
+    let mut age_stores = BTreeMap::new();
+    if face == Faces::Age {
+        for input in inputs {
+            if input.source.len() > budget.work_bytes {
+                return Err(fail(&unit_key(&input.package, &input.id), "source.resource", "module input byte budget", zero));
+            }
+            if input.is_component_manifest()
+                || !input.source.match_indices("store").any(|(offset, token)| {
+                    input.source[offset + token.len()..].starts_with(char::is_whitespace)
+                        && input.source[..offset].chars().next_back()
+                            .is_none_or(|before| !(before.is_alphanumeric() || before == '_'))
+                })
+            {
+                continue;
+            }
+            let key = unit_key(&input.package, &input.id);
+            let stores = crate::source::cst::parse_age_store_declarations(&input.source, budget)
+                .map_err(|mut diagnostics| PackageDiagnostic {
+                    module: key.clone(), diagnostic: diagnostics.remove(0),
+                })?;
+            if !stores.is_empty() {
+                age_stores.insert(key, stores);
+            }
+        }
+    }
     for input in inputs {
         // PLAN-1043：provider 层只走装配入口（显式上下文/选择/身份）。
         if input.provider.is_some() {
@@ -556,6 +582,7 @@ fn bind_packages_face_with(
                     scenario,
                     node_base,
                     input.package != split_key(entry).0,
+                    Some(super::AgeStoreImports { package: &input.package, stores: &age_stores }),
                 )
             }
             Faces::Plain => parse_package_source(&input.source, caps, budget),
@@ -571,12 +598,53 @@ fn bind_packages_face_with(
                 out.components.push(PackagedAgeComponent {
                     module: key.clone(),
                     node: node.clone(),
+                    module_imports: syntax.imports.clone(),
                     text_fns: text_fns.clone(),
                     scene_fns: scene_fns.clone(),
                 });
             }
         }
         units.insert(key, syntax);
+    }
+    if let Some(out) = age_out.as_ref() {
+        let inherited = out.components.iter().filter_map(|component| {
+            let store = component.node.imported_store.as_ref()?;
+            let provider = units.get(&store.module)?;
+            let imports = provider.imports.iter()
+                .filter(|import| provider.referenced.contains(import.bound_name()))
+                .cloned().collect::<Vec<_>>();
+            Some((component.module.clone(), store.clone(), imports))
+        }).collect::<Vec<_>>();
+        for (module, store, inherited_imports) in inherited {
+            let unit = units.get_mut(&module).expect("checked Store consumer module");
+            let (_, provider) = split_key(&store.module);
+            unit.imports.retain(|import| !matches!(import.path.as_slice(), [unit, name]
+                if unit == provider && name == &store.name));
+            for import in inherited_imports {
+                if let Some(existing) = unit.imports.iter().find(|existing| existing.bound_name() == import.bound_name()) {
+                    if existing.path != import.path {
+                        return Err(fail(&module, "source.age.store-import",
+                            format!("Store dependency `{}` conflicts with an import in this widget", import.bound_name()),
+                            existing.span));
+                    }
+                } else {
+                    unit.imports.push(import.clone());
+                }
+                unit.referenced.insert(import.bound_name().to_owned());
+            }
+        }
+        for (module, stores) in &age_stores {
+            if !out.components.iter().any(|component| component.module == *module
+                || component.node.imported_store.as_ref().is_some_and(|store| store.module == *module))
+            {
+                return Err(fail(module, "source.age.component-unsupported",
+                    format!("store `{}` has no checked widget consumer", stores[0].name.name), stores[0].span));
+            }
+        }
+        if !scenario.ops.is_empty() && out.components.iter().any(|component| component.node.imported_store.is_some()) {
+            return Err(fail(entry, "source.age.store-runtime",
+                "shared Stores require a live widget session for events", zero));
+        }
     }
     let mut augmented = Vec::new();
     if face == Faces::Age

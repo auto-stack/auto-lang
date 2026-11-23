@@ -381,6 +381,7 @@ fn project_variant(
         scenario,
         node_base,
         Some(projection),
+        None,
     )
     .map_err(|mut diagnostics| PackageDiagnostic {
         module: module.into(),
@@ -408,5 +409,7 @@ fn append_variant(
         declaration(item).is_some_and(|name| !existing.contains(name))
     }));
     unit.age_components.push((node.clone(), text_fns.clone(), scene_fns.clone()));
-    components.push(PackagedAgeComponent { module: module.into(), node, text_fns, scene_fns });
+    components.push(PackagedAgeComponent {
+        module: module.into(), node, module_imports: unit.imports.clone(), text_fns, scene_fns,
+    });
 }

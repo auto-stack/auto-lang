@@ -23,7 +23,7 @@ use ace_av_core::span_map::SpanSegments;
 use ace_av_core::{execute_program_entry_args, EntryArg};
 use ace_core::source::age_package::{
     AgePackageCompilation, AgePackageDescription, AgeWidgetRefs, AGE_PACKAGE_HIDDEN_PREFIX,
-    FILE_LIST_BINDING, WIDGET_FOCUS_FIELD,
+    FILE_LIST_BINDING, TODO_SERVICE_BINDING, WIDGET_FOCUS_FIELD,
 };
 
 use super::{live_view, CancelFlag, ComponentFieldValue, ExecLimits, WidgetViewItem};
@@ -42,7 +42,7 @@ pub struct WidgetProgram {
     timers: Vec<Option<String>>,
     handlers: BTreeMap<String, String>,
     context_handler: Option<String>,
-    directory_reply: Option<HostEntry>,
+    host_replies: BTreeMap<&'static str, HostEntry>,
     child_views: BTreeMap<(String, String), String>,
     children: Option<ChildrenProgram>,
     fields: Vec<(String, String)>,
@@ -179,27 +179,28 @@ impl WidgetProgram {
             );
         }
         let mut handlers = BTreeMap::new();
-        let directory_message = root
-            .members
-            .iter()
-            .find(|row| row.role == "bind" && row.name == FILE_LIST_BINDING)
-            .and_then(|row| row.text.as_deref());
-        let mut directory_reply = None;
+        let mut host_messages = BTreeMap::new();
+        for binding in [FILE_LIST_BINDING, TODO_SERVICE_BINDING] {
+            let mut rows = root.members.iter().filter(|row| row.role == "bind" && row.name == binding);
+            let Some(row) = rows.next() else { continue };
+            let message = row.text.as_deref().ok_or_else(|| format!("{binding} needs a reply handler"))?;
+            if rows.next().is_some() || host_messages.insert(message, binding).is_some() {
+                return Err(format!("duplicate host reply binding {binding}"));
+            }
+        }
+        let mut host_replies = BTreeMap::new();
         for handler in &runtime.handlers {
             let target = find_function(&mir, &resolve(&handler.function)?)?;
-            let host_cell = if Some(handler.message.as_str()) == directory_message {
-                Some(add_directory_cell(&mut mir, target)?)
-            } else {
-                None
-            };
+            let binding = host_messages.get(handler.message.as_str()).copied();
+            let host_cell = binding.map(|_| add_host_reply_cell(&mut mir, target)).transpose()?;
             let name = add_entry(
                 &mut mir,
                 target,
                 model_cell as u32,
                 Entry::Transition(host_cell),
             )?;
-            if let Some(cell) = host_cell {
-                directory_reply = Some(HostEntry {
+            if let (Some(binding), Some(cell)) = (binding, host_cell) {
+                host_replies.insert(binding, HostEntry {
                     message: handler.message.clone(),
                     entry: name,
                     cell,
@@ -208,9 +209,12 @@ impl WidgetProgram {
                 handlers.insert(handler.message.clone(), name);
             }
         }
-        let children = compiled.widget_runtime.iter().any(|runtime| {
+        if host_replies.len() != host_messages.len() {
+            return Err("a host reply binding has no checked handler".into());
+        }
+        let children = (root.imported_store.is_some() || compiled.widget_runtime.iter().any(|runtime| {
             runtime.outbound || runtime.focus || runtime.context_handler.is_some() || !runtime.watches.is_empty()
-        })
+        }))
             .then(|| ChildrenProgram::prepare(compiled, &mut mir, index, model_cell as u32))
             .transpose()?;
         let mut entries = handlers
@@ -218,7 +222,7 @@ impl WidgetProgram {
             .chain(timers.iter().flatten())
             .chain(std::iter::once(&view))
             .chain(child_views.values())
-            .chain(directory_reply.iter().map(|reply| &reply.entry))
+            .chain(host_replies.values().map(|reply| &reply.entry))
             .map(|name| find_function(&mir, name))
             .collect::<Result<Vec<_>, _>>()?;
         if let Some(children) = &children {
@@ -259,7 +263,7 @@ impl WidgetProgram {
             timers,
             handlers,
             context_handler: runtime.context_handler.clone(),
-            directory_reply,
+            host_replies,
             child_views,
             children,
             fields: root.fields.clone(),
@@ -290,8 +294,8 @@ impl WidgetProgram {
             .map(|&index| self.mir.funcs[index as usize].name.clone())
             .collect::<Vec<_>>();
         let host_inputs = self
-            .directory_reply
-            .iter()
+            .host_replies
+            .values()
             .map(|reply| reply.cell)
             .collect::<Vec<_>>();
         let snapshot = ProgramSnapshot::link_with_host_inputs(
@@ -486,12 +490,32 @@ impl WidgetSession {
         value: HostInput,
         limits: &ExecLimits,
     ) -> Result<(), String> {
+        self.host_reply(FILE_LIST_BINDING, message, value, limits)
+    }
+
+    /// Deliver a typed completion from the native Todo service binding.
+    pub fn todo_service_reply(
+        &self,
+        message: &str,
+        value: HostInput,
+        limits: &ExecLimits,
+    ) -> Result<(), String> {
+        self.host_reply(TODO_SERVICE_BINDING, message, value, limits)
+    }
+
+    fn host_reply(
+        &self,
+        binding: &str,
+        message: &str,
+        value: HostInput,
+        limits: &ExecLimits,
+    ) -> Result<(), String> {
         let reply = self
             .program
-            .directory_reply
-            .as_ref()
+            .host_replies
+            .get(binding)
             .filter(|reply| reply.message == message)
-            .ok_or("widget has no matching checked directory reply")?;
+            .ok_or_else(|| format!("widget has no matching checked reply for {binding}"))?;
         self.transaction(|| {
             self.snapshot
                 .with_host_input(&reply.entry, reply.cell, value, limits, || {
@@ -570,21 +594,21 @@ enum Entry {
     Observe,
 }
 
-fn add_directory_cell(mir: &mut MirModule, target: u32) -> Result<u32, String> {
+fn add_host_reply_cell(mir: &mut MirModule, target: u32) -> Result<u32, String> {
     let sig = mir
         .sig_of(mir.funcs[target as usize].sig)
-        .ok_or("missing directory reply signature")?;
+        .ok_or("missing host reply signature")?;
     let [_, payload] = sig.params.as_slice() else {
-        return Err("widget directory reply must receive exactly one record".into());
+        return Err("widget host reply must receive exactly one record".into());
     };
     let ty = match mir.types.get(*payload as usize) {
         Some(MirType::Record(_)) => *payload,
         Some(MirType::RecordView(layout)) => mir.intern_type(MirType::Record(layout.clone())),
-        _ => return Err("widget directory reply must receive a record".into()),
+        _ => return Err("widget host reply must receive a record".into()),
     };
     let cell = mir.globals.len() as u32;
     mir.globals.push(MirGlobal {
-        name: format!("{AGE_PACKAGE_HIDDEN_PREFIX}directory_reply"),
+        name: format!("{AGE_PACKAGE_HIDDEN_PREFIX}host_reply_{cell}"),
         ty,
         mutable: false,
     });
@@ -788,6 +812,129 @@ mod tests {
     use ace_core::source::age_h0::LegacyWidgetAlias;
     use ace_core::source::age_package::compile_age_package_widget_runtime;
     use ace_core::source::packages::{PackageModuleInput, PACKAGES_CAPABILITY};
+
+    #[test]
+    fn imported_store_is_shared_by_root_and_child_only_within_one_mount() {
+        let unit = |id: &str, source: &str| PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: id.into(),
+            source: source.into(),
+            provider: None,
+        };
+        let inputs = [
+            unit("app", r#"
+use counter_store: CounterStore
+use child: Child
+widget App {
+    msg { Increment }
+    model { var draft int = 0 }
+    on { .Increment -> { store.Increment() } }
+    view {
+        col {
+            text f"root ${.store.count}" {}
+            Child()
+        }
+    }
+}
+"#),
+            unit("child", r#"
+use counter_store: CounterStore
+widget Child {
+    msg { Increment }
+    model { var draft int = 0 }
+    on {
+        .Increment -> {
+            .draft += 1
+            store.Increment()
+        }
+    }
+    view { text f"child ${.store.count} draft ${.draft}" {} }
+}
+"#),
+            unit("counter_store", r#"
+store CounterStore {
+    model { var count int = 0 }
+    msg { Increment }
+    on { .Increment -> { .count += 1 } }
+}
+"#),
+        ];
+        let compiled = compile_age_package_widget_runtime(
+            &inputs, "app::app", LegacyWidgetAlias::Accept, &[PACKAGES_CAPABILITY.into()],
+        ).unwrap();
+        let program = WidgetProgram::prepare(&compiled, "app::app").unwrap();
+        let limits = ExecLimits::default();
+        let first = program.open(1, &limits).unwrap();
+        let second = program.open(2, &limits).unwrap();
+        let view = |session: &WidgetSession| {
+            let view = session.package_view(&compiled.description, &compiled.widget_refs, &limits).unwrap();
+            format!("{view:?}")
+        };
+        first.dispatch("Increment", &[], &limits).unwrap();
+        let from_root = view(&first);
+        assert!(from_root.contains("root 1") && from_root.contains("child 1 draft 0"), "{from_root}");
+        first.dispatch_child(&[0, 1], "Increment", &[], &limits).unwrap();
+        let from_child = view(&first);
+        assert!(from_child.contains("root 2") && from_child.contains("child 2 draft 1"), "{from_child}");
+        let separate = view(&second);
+        assert!(separate.contains("root 0") && separate.contains("child 0 draft 0"), "{separate}");
+    }
+
+    #[test]
+    fn todo_host_reply_matches_its_checked_channel_and_mount() {
+        let input = PackageModuleInput {
+            package: "app".into(),
+            version: "1.0.0".into(),
+            id: "app".into(),
+            source: r#"
+type TodoRow {
+    id int
+    text str
+    done bool
+}
+type TodoCompletion { rows List<TodoRow> }
+widget App {
+    msg { TodoFinished(TodoCompletion) }
+    bind { "service:todo" -> .TodoFinished }
+    model { var count int = 0 }
+    on { .TodoFinished(result TodoCompletion) -> { .count = result.rows.len() } }
+    view { text .count {} }
+}
+"#.into(),
+            provider: None,
+        };
+        let compiled = compile_age_package_widget_runtime(
+            &[input],
+            "app::app",
+            LegacyWidgetAlias::Accept,
+            &[PACKAGES_CAPABILITY.into()],
+        )
+        .unwrap();
+        let program = WidgetProgram::prepare(&compiled, "app::app").unwrap();
+        let limits = ExecLimits::default();
+        let first = program.open(1, &limits).unwrap();
+        let second = program.open(2, &limits).unwrap();
+        let count = |session: &WidgetSession| session.scalar_states().unwrap()[0].1.clone();
+        let reply = || HostInput::Record(vec![(
+            "rows".into(),
+            HostInput::List(vec![HostInput::Record(vec![
+                ("id".into(), HostInput::I32(4)),
+                ("text".into(), HostInput::Text("完成 🌱".into())),
+                ("done".into(), HostInput::Bool(false)),
+            ])]),
+        )]);
+        assert!(first.dispatch("TodoFinished", &[], &limits).is_err());
+        assert!(first.directory_reply("TodoFinished", reply(), &limits).is_err());
+        assert!(first.todo_service_reply("WrongHandler", reply(), &limits).is_err());
+        assert!(first
+            .todo_service_reply("TodoFinished", HostInput::Bool(true), &limits)
+            .is_err());
+        assert_eq!(count(&first), ComponentFieldValue::Int(0));
+        first.todo_service_reply("TodoFinished", reply(), &limits).unwrap();
+        assert_eq!(count(&first), ComponentFieldValue::Int(1));
+        assert_eq!(count(&second), ComponentFieldValue::Int(0));
+    }
 
     #[test]
     fn live_widget_sessions_keep_current_models_and_refuse_invalid_transitions() {

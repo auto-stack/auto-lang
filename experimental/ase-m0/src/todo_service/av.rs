@@ -19,7 +19,7 @@ pub(super) const MAX_AV_WALL: Duration = Duration::from_millis(500);
 
 pub(super) struct Owner<'a> {
     target: PackageAvTarget,
-    entries: [String; 5],
+    entries: [Option<String>; Operation::ALL.len()],
     list_cell: usize,
     durable: Option<Durable<'a>>,
     pub(super) writes: Cell<u64>,
@@ -84,6 +84,10 @@ impl<'a> Owner<'a> {
         for operation in Operation::ALL {
             let name = operation.name();
             if !product.bound.units[&module].exports.contains(name) {
+                if matches!(operation, Operation::SetAll) {
+                    entries.push(None);
+                    continue;
+                }
                 return Err(initialization(format!("missing public operation {name}")));
             }
             let def = product
@@ -94,17 +98,19 @@ impl<'a> Owner<'a> {
                     package == &app.package && unit == &app.entry && original == name
                 })
                 .ok_or_else(|| initialization(format!("missing operation definition {name}")))?;
-            entries.push(format!("d_{}", def.0));
+            entries.push(Some(format!("d_{}", def.0)));
         }
-        let entries: [String; 5] = entries.try_into().expect("closed operation table");
-        let target =
-            PackageAvTarget::cold_with_entry(path, &product, &entries[Operation::List as usize])
+        let entries: [Option<String>; Operation::ALL.len()] =
+            entries.try_into().expect("closed operation table");
+        let list = entries[Operation::List as usize].as_deref().expect("required list operation");
+        let target = PackageAvTarget::cold_with_entry(path, &product, list)
                 .map_err(initialization)?;
         let todo_type = format!("t_rec_{}", type_symbol(&app.package, &app.entry, "Todo"));
         for operation in Operation::ALL {
+            let Some(entry) = &entries[operation as usize] else { continue };
             let code = target
                 .current
-                .find_code(&entries[operation as usize])
+                .find_code(entry)
                 .ok_or_else(|| {
                     initialization(format!("missing admitted operation {}", operation.name()))
                 })?;
@@ -118,7 +124,7 @@ impl<'a> Owner<'a> {
                 Operation::Create => &[MirType::StrView],
                 Operation::Update => &[MirType::I32, MirType::StrView, MirType::Bool],
                 Operation::Delete => &[MirType::I32],
-                Operation::Clear => &[MirType::Bool],
+                Operation::Clear | Operation::SetAll => &[MirType::Bool],
             };
             let is_todo = |ty| match type_at(ty) {
                 MirType::Record(RecordTypeRef { name, fields, .. }) => {
@@ -143,7 +149,7 @@ impl<'a> Owner<'a> {
                     }
                     _ => false,
                 },
-                (Operation::Delete | Operation::Clear, MirType::Bool) => true,
+                (Operation::Delete | Operation::Clear | Operation::SetAll, MirType::Bool) => true,
                 _ => false,
             };
             if !sig.params.iter().map(|&ty| type_at(ty)).eq(params) || !valid_result {
@@ -279,6 +285,9 @@ impl<'a> Owner<'a> {
         deadline: Instant,
         max_steps: u64,
     ) -> (Result<Reply, ServiceError>, Option<u64>) {
+        let Some(entry) = &self.entries[operation as usize] else {
+            return (Err(ServiceError::UnknownOperation), None);
+        };
         if matches!(operation, Operation::Create) && self.initialized() {
             match self.target.current.global_cells().get(self.list_cell) {
                 Some(Value::List(list)) if list.len() >= MAX_TODOS => {
@@ -322,7 +331,7 @@ impl<'a> Owner<'a> {
         let dispatch = || {
             let (outcome, trace) = execute_program_entry_args(
                 snapshot,
-                &self.entries[operation as usize],
+                entry,
                 &limits,
                 cancel,
                 &args,
@@ -446,7 +455,7 @@ fn decode(operation: Operation, value: &Value) -> Result<Reply, ServiceError> {
                 _ => Err(result_type()),
             }
         }
-        (Operation::Delete | Operation::Clear, Value::Bool(ok)) => Ok(Reply::Flag(*ok)),
+        (Operation::Delete | Operation::Clear | Operation::SetAll, Value::Bool(ok)) => Ok(Reply::Flag(*ok)),
         _ => Err(result_type()),
     }
 }

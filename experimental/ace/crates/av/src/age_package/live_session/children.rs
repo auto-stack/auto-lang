@@ -34,6 +34,12 @@ struct Child {
     forwards: BTreeMap<String, String>,
     outbound: Option<Outbound>,
     focus_field: Option<usize>,
+    store: Option<StoreFields>,
+}
+
+struct StoreFields {
+    from_root: Vec<(usize, usize)>,
+    to_root: Vec<(usize, usize)>,
 }
 
 struct Site {
@@ -124,7 +130,7 @@ impl ChildrenProgram {
                 .filter(|row| {
                     let name = row.name.trim_matches('"');
                     row.role == "bind"
-                        && (name.starts_with("file:") || name.starts_with("storage:"))
+                        && (name.starts_with("file:") || name.starts_with("storage:") || name == "service:todo")
                 })
                 .filter_map(|row| row.text.clone())
                 .collect(),
@@ -138,6 +144,7 @@ impl ChildrenProgram {
         let root_runtime = compiled.widget_runtime.iter().find(|runtime| runtime.node == root)
             .ok_or("missing checked root runtime")?;
         let root_module = &compiled.description.components[root].module;
+        let root_component = &compiled.description.components[root];
         program.root_watches = program.watches(
             mir, &root_runtime.watches, &[root_model], Some(root_model),
             |name, mir| resolve(root_module, name, mir),
@@ -199,6 +206,23 @@ impl ChildrenProgram {
             });
             let watches = program.watches(mir, &runtime.watches, &call_inputs, model,
                 |name, mir| resolve(&component.module, name, mir))?;
+            let store = component.imported_store.as_ref().map(|imported| {
+                let root = root_component.imported_store.as_ref().ok_or(
+                    "ace.desktop.shared-store: the root must own the imported Store",
+                )?;
+                if root.module != imported.module || root.name != imported.name || root.fields != imported.fields
+                    || model.is_none()
+                {
+                    return Err("ace.desktop.shared-store: incompatible root and child Store bindings");
+                }
+                let from_root = root.fields.iter().map(|name| {
+                    let source = root_component.fields.iter().position(|(field, _)| field == name);
+                    let destination = component.fields.iter().position(|(field, _)| field == name);
+                    source.zip(destination).ok_or("ace.desktop.shared-store: missing model field")
+                }).collect::<Result<Vec<_>, _>>()?;
+                let to_root = from_root.iter().map(|&(source, destination)| (destination, source)).collect();
+                Ok(StoreFields { from_root, to_root })
+            }).transpose()?;
             program.components.insert(
                 runtime.node,
                 Child {
@@ -212,6 +236,7 @@ impl ChildrenProgram {
                     outbound,
                     focus_field: runtime.focus.then_some(component.fields.len() + usize::from(runtime.outbound)),
                     forwards: component.handler_forwards.clone(),
+                    store,
                 },
             );
         }
@@ -481,11 +506,19 @@ impl ChildrenProgram {
         if let Some(model) = &mount.model {
             session.snapshot.install_saved_global_cells(model)?;
         }
+        if let Some(fields) = &child.store {
+            let model = child.model.ok_or("missing checked child Store model")?;
+            session.snapshot.copy_model_fields(&session.program.mir, self.root_model, model, &fields.from_root)?;
+        }
         if let Some((handler, token)) = child.context_handler.as_ref().zip(mount.context_token.as_deref()) {
             session.apply_context(&child.handlers[handler], token, limits)?;
         }
         let payload = payload.iter().map(field_value_to_arg).collect::<Vec<_>>();
         session.execute(entry, &payload, limits)?;
+        if let Some(fields) = &child.store {
+            let model = child.model.ok_or("missing checked child Store model")?;
+            session.snapshot.copy_model_fields(&session.program.mir, model, self.root_model, &fields.to_root)?;
+        }
         let events = outgoing(session, child)?;
         let mut focus = Vec::new();
         if let Some(model) = child.model {
@@ -614,6 +647,12 @@ impl Draw<'_> {
                     );
                 }
             }
+        }
+        if let Some(fields) = &child.store {
+            let model = child.model.ok_or("missing checked child Store model")?;
+            self.session.snapshot.copy_model_fields(
+                &self.session.program.mir, self.program.root_model, model, &fields.from_root,
+            )?;
         }
         let inputs = self.session.snapshot.save_global_cells(&child.inputs)?;
         if !child.watches.is_empty() {

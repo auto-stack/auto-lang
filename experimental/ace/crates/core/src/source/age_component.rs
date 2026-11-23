@@ -153,11 +153,8 @@ pub struct ComponentHandler {
     pub span: Span,
 }
 
-/// The compatibility VM implements `Env.track() == "vm"`. Checked package
-/// hosts never run on that track. Keep the surviving branch's lexical scope
-/// and exclude inactive branches from both lowering and import reachability.
-pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &mut Vec<Span>) {    use super::ast::BinOp;
-
+fn checked_guard(expr: &Expr) -> Option<bool> {
+    use super::ast::BinOp;
     fn is_legacy_track(expr: &Expr) -> bool {
         match &expr.kind {
             ExprKind::Method { recv, name, args } | ExprKind::MethodCall { recv, name, args, .. } => {
@@ -168,25 +165,29 @@ pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &m
         }
     }
 
-    fn checked_guard(expr: &Expr) -> Option<bool> {
-        let ExprKind::Binary { op, lhs, rhs } = &expr.kind else { return None };
-        if matches!(op, BinOp::And | BinOp::Or) {
-            let left = checked_guard(lhs)?;
-            let right = checked_guard(rhs)?;
-            return Some(if *op == BinOp::And { left && right } else { left || right });
-        }
-        if !is_legacy_track(lhs)
-            || !matches!(&rhs.kind, ExprKind::StrLit(value) if matches!(value.as_str(), "vm" | "vue"))
-        {
-            return None;
-        }
-        match op {
-            BinOp::Eq => Some(false),
-            BinOp::Ne => Some(true),
-            _ => None,
-        }
+    let ExprKind::Binary { op, lhs, rhs } = &expr.kind else { return None };
+    if matches!(op, BinOp::And | BinOp::Or) {
+        let left = checked_guard(lhs)?;
+        let right = checked_guard(rhs)?;
+        return Some(if *op == BinOp::And { left && right } else { left || right });
     }
+    if !is_legacy_track(lhs)
+        || !matches!(&rhs.kind, ExprKind::StrLit(value) if matches!(value.as_str(), "vm" | "vue"))
+    {
+        return None;
+    }
+    match op {
+        BinOp::Eq => Some(false),
+        BinOp::Ne => Some(true),
+        _ => None,
+    }
+}
 
+fn specialize_legacy_vm_handlers(
+    handlers: &mut [ComponentHandler],
+    model_shadows: bool,
+    inactive: &mut Vec<Span>,
+) {
     fn span(stmt: &ComponentStmt) -> Span {
         match stmt {
             ComponentStmt::Assign(assign) => assign.span,
@@ -228,6 +229,20 @@ pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &m
         }
     }
 
+    for handler in handlers {
+        let shadowed = model_shadows || handler.params.iter().any(|(name, _)| name == "Env");
+        visit(&mut handler.stmts, shadowed, inactive);
+    }
+}
+
+pub(crate) fn specialize_legacy_vm_store(store: &mut ComponentStore, inactive: &mut Vec<Span>) {
+    let model_shadows = store.fields.iter().any(|field| field.name == "Env");
+    specialize_legacy_vm_handlers(&mut store.handlers, model_shadows, inactive);
+}
+
+/// Keep compatibility-track branches out of checked packages, including
+/// their imports. Retain the lexical scope of the active handler branch.
+pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &mut Vec<Span>) {
     fn view_span(item: &ComponentViewItem) -> Span {
         match item {
             ComponentViewItem::Text(item) => item.span,
@@ -272,10 +287,7 @@ pub(crate) fn specialize_legacy_vm_guards(node: &mut ComponentNode, inactive: &m
 
     let model_shadows = node.fields.iter().any(|field| field.name == "Env")
         || node.params.iter().any(|param| param.name == "Env");
-    for handler in &mut node.handlers {
-        let shadowed = model_shadows || handler.params.iter().any(|(name, _)| name == "Env");
-        visit(&mut handler.stmts, shadowed, inactive);
-    }
+    specialize_legacy_vm_handlers(&mut node.handlers, model_shadows, inactive);
     let view_start = inactive.len();
     visit_view(&mut node.view.tree, model_shadows, inactive);
     for (_, items) in &mut node.view.named_trees {
@@ -653,7 +665,16 @@ pub struct ComponentNode {
     /// PLAN-105 T-02（U03 真语料 013/016）：模块内 `store <Name> { … }` 声明
     /// （S1 结构候选；语义未接线时消费方必须具名拒）。
     pub stores: Vec<ComponentStore>,
+    pub(crate) imported_store: Option<ImportedStore>,
     pub span: Span,
+}
+
+/// Field names in the checked widget model, in the declared Store order.
+#[derive(Clone, Debug)]
+pub struct ImportedStore {
+    pub module: String,
+    pub name: String,
+    pub fields: Vec<String>,
 }
 
 /// PLAN-105 T-02（U03 真语料 013/016）：`store <Name> { … }` 共享 store 声明
@@ -1059,6 +1080,24 @@ fn rewrite_store_stmts(
     Ok(())
 }
 
+fn qualify_store_messages(stmts: &mut [ComponentStmt]) {
+    for stmt in stmts {
+        match stmt {
+            ComponentStmt::Send { message, .. } => *message = store_msg_prefixed(message),
+            ComponentStmt::If { then, els, .. } => {
+                qualify_store_messages(then);
+                if let Some(els) = els {
+                    qualify_store_messages(els);
+                }
+            }
+            ComponentStmt::While { body, .. } | ComponentStmt::For { body, .. } => {
+                qualify_store_messages(body);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// `store.<Msg>(args)` 调用识别：返回 (Msg, args)。
 fn store_call_parts(call: &Expr) -> Option<(String, Vec<Expr>)> {
     match &call.kind {
@@ -1387,7 +1426,7 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
     // 仍具名拒（不静默覆盖）。
     let mut map: Vec<(String, String)> = Vec::new();
     for f in &store.fields {
-        if node.fields.iter().any(|cf| cf.name == f.name) {
+        if node.imported_store.is_none() && node.fields.iter().any(|cf| cf.name == f.name) {
             map.push((f.name.clone(), f.name.clone()));
             continue;
         }
@@ -1407,6 +1446,9 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         node.fields.push(nf);
         map.push((f.name.clone(), prefixed));
     }
+    if let Some(binding) = &mut node.imported_store {
+        binding.fields = map.iter().map(|(_, field)| field.clone()).collect();
+    }
     // 消息并入。
     for m in &store.messages {
         let mut nm = m.clone();
@@ -1420,6 +1462,7 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         let mut nh = h.clone();
         nh.msg = store_msg_prefixed(&h.msg);
         rewrite_store_stmts(&mut nh.stmts, &map)?;
+        qualify_store_messages(&mut nh.stmts);
         store_bodies.push((h.msg.clone(), nh.stmts.clone(), h.params.clone()));
         for a in &mut nh.assigns {
             if let Some((_, prefixed)) = map.iter().find(|(f, _)| *f == a.field) {

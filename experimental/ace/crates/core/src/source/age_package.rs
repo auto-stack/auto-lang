@@ -47,6 +47,7 @@ pub use super::age_component::outbound::FOCUS_FIELD as WIDGET_FOCUS_FIELD;
 
 /// The source literal identifying a host-owned directory listing binding.
 pub const FILE_LIST_BINDING: &str = "\"file:list\"";
+pub const TODO_SERVICE_BINDING: &str = "\"service:todo\"";
 pub const FILE_MUTATE_BINDING: &str = "\"file:mutate\"";
 pub const FILE_OPEN_BINDING: &str = "\"file:open\"";
 pub const WIDGET_CONTEXT_BINDING: &str = "\"widget:context\"";
@@ -152,6 +153,7 @@ pub struct AgePackageComponent {
     pub legacy_widget: bool,
     /// model 字段（名字 + 类型拼写，按声明序）。
     pub fields: Vec<(String, String)>,
+    pub imported_store: Option<super::age_component::ImportedStore>,
     /// `on <msg>` 消息名（按声明序；可能带 `.`，如 `Life.Tick`）。
     pub handler_msgs: Vec<String>,
     /// Bound declaration-check functions for payload or structured model handlers.
@@ -766,29 +768,6 @@ pub fn compile_age_package(
 }
 
 /// 同 [`compile_age_package`]，但显式给出**消费者场景**（实例数与定向事件）。
-///
-/// 场景不是源语言的一部分：它决定为哪些实例生成状态函数/求值函数，从而让
-/// AV/A2R 消费者观察真实值（两实例 2:1 事件、N 次 Tick）。
-/// PLAN-105 T-02：把 `use` 行按字节等长空白化（供 store 结构投影复用——store
-/// 单元常以 `use back.api: …` 开头，而组件裁剪面不接收 `use`）。
-fn blank_use_lines(src: &str) -> String {
-    let mut out = String::with_capacity(src.len());
-    for line in src.split_inclusive('\n') {
-        let body = line.trim_end_matches('\n');
-        if body.trim_start().starts_with("use ") {
-            for ch in body.chars() {
-                out.push(if ch == '\r' { '\r' } else { ' ' });
-            }
-            if line.ends_with('\n') {
-                out.push('\n');
-            }
-        } else {
-            out.push_str(line);
-        }
-    }
-    out
-}
-
 pub fn compile_age_package_with_scenario(
     inputs: &[PackageModuleInput],
     entry: &str,
@@ -822,32 +801,6 @@ fn compile_age_package_mode(
     scenario: &crate::source::age_component::ComponentScenario,
     runtime_state: bool,
 ) -> Result<AgePackageCompilation, Vec<Diagnostic>> {
-    // PLAN-105 T-02（U03 真语料 013/016）：包内 `store` 声明——结构已可投影
-    // （`ComponentStore`），共享实例语义未接线 → **具名拒**（store 单元常带
-    // `use` 行，这里按源准备同律先把 `use` 行空白化再投影）。
-    for unit in inputs {
-        let blanked = blank_use_lines(&unit.source);
-        if let Ok(stores) = crate::source::age_component::project_component_stores(&blanked) {
-            if let Some(store) = stores.first() {
-                // PLAN-105 T-02（S1 首片）：**同源** store 已接线（组件内联，见
-                // `cst::frontdoor` 的 AGE 包前门）——单元自己引用 `.store.` 即放行；
-                // 真正的**跨单元** store 装载仍未接线，保持具名拒绝。
-                let in_source = blanked.contains(".store.");
-                if !in_source {
-                    return Err(vec![crate::atom_text::Diagnostic::new(
-                        crate::atom_text::Stage::Text,
-                        "source.age.component-unsupported",
-                        format!(
-                            "store `{}` is declared but cross-unit store loading is not \
-                             wired yet (S1); inline the store into its consumer unit",
-                            store.name.name
-                        ),
-                        store.span,
-                    )]);
-                }
-            }
-        }
-    }
     // 1) 共享包绑定：包模块面 ∪ AGE 面**一次**解析；可见性/导入/初始化序/
     //    mangle 全部由 960 的绑定器裁定（本模块不重做任何一项）。
     let mut product = bind_packages_age_mode(
@@ -1577,6 +1530,7 @@ fn read_back_components(
             name: p.node.name.name.clone(),
             head_span: p.node.head_span,
             legacy_widget: p.node.legacy_widget,
+            imported_store: p.node.imported_store.clone(),
             fields: p
                 .node
                 .fields
@@ -2531,16 +2485,33 @@ fn walk_widget_sites(
                 ComponentViewItem::Element(element) => {
                     let named = element.tag.starts_with(|letter: char| letter.is_ascii_uppercase());
                     let children = element.items.iter().rev();
-                    if !has_widget_scope || (!named && !element.tag.contains(['-', '_'])) {
+                    let imported_widget = component.module_imports.iter().find_map(|import| {
+                        if import.bound_name() != element.tag {
+                            return None;
+                        }
+                        let [module, name] = import.path.as_slice() else { return None; };
+                        supplied.get(own_package)?.iter().copied().find(|target| {
+                            target.module.split_once("::").is_some_and(|(_, id)| id == module)
+                                && target.node.authored_name == *name
+                                && target.node.legacy_widget
+                        })
+                    });
+                    if imported_widget.is_none()
+                        && (!has_widget_scope || (!named && !element.tag.contains(['-', '_'])))
+                    {
                         work.extend(children.map(|item| (item, loops.clone())));
                         continue;
                     }
                     let specialized = sites
                         .get(&(component.module.clone(), element.span.start))
                         .map(|&index| &components[index]);
-                    let mut matching = widgets.iter().filter(|target| {
+                    let mut matching = widgets.iter().copied().filter(|target| {
                         specialized.map_or_else(
-                            || widget_tag_matches(&element.tag, &target.node.name.name),
+                            || imported_widget.map_or_else(
+                                || widget_tag_matches(&element.tag, &target.node.name.name),
+                                |selected| selected.module == target.module
+                                    && selected.node.name.name == target.node.name.name,
+                            ),
                             |selected| selected.module == target.module && selected.node.name.name == target.node.name.name,
                         )
                     });

@@ -135,6 +135,36 @@ fn row(id: i32, text: &str, done: bool) -> Todo {
 
 #[cfg(all(windows, target_arch = "x86_64"))]
 #[test]
+fn durable_toggle_all_is_one_commit_with_stable_row_identity() {
+    let fixture = Fixture::new();
+    let data = fixture.work.join("data");
+    std::fs::create_dir(&data).unwrap();
+    let binding = fixture.durable(&data);
+    let tab = lease(&binding, 1);
+    let (before, _) = list(&tab);
+    assert_eq!(before.len(), 4);
+    assert_eq!(
+        call(&tab, "set_all_todos", vec![Argument::Bool(true)]).result,
+        Ok(Reply::Flag(true))
+    );
+    let (after, _) = list(&tab);
+    let expected: Vec<_> = before
+        .into_iter()
+        .map(|todo| Todo { done: true, ..todo })
+        .collect();
+    assert_eq!(after, expected);
+    drop(tab);
+    assert_eq!(fixture.released(&binding).durable_writes, 1);
+
+    let reopened = fixture.durable(&data);
+    let tab = lease(&reopened, 1);
+    assert_eq!(list(&tab).0, expected);
+    drop(tab);
+    assert_eq!(fixture.released(&reopened).durable_writes, 0);
+}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[test]
 fn durable_snapshot_reopens_with_exact_rows_and_next_id() {
     let fixture = Fixture::new();
     let data = fixture.work.join("private realm");

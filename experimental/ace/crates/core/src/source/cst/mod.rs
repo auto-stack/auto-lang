@@ -62,6 +62,7 @@ pub use frontdoor::packages_grammar;
 pub use frontdoor::CachedGrammar;
 pub(crate) use frontdoor::{
     bind_age_style_imports,
+    parse_age_store_declarations,
     auto_packages_grammar, module_grammar, parse_config_document_front, parse_domain_whole_module,
     parse_module_fragment, parse_module_front, parse_packages_front, parse_packages_front_age,
     parse_packages_front_aggregates, parse_packages_front_aggregates_ct, parse_packages_front_auto,
