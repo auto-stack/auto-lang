@@ -492,10 +492,11 @@ fn run_language(source: &str) -> ace_abi::py_session::PyRun {
         .unwrap_or_else(|e| panic!("AV lane: {e}"))
 }
 
-/// Every corpus case runs on AV through the ordinary language entry of the
+/// One corpus case runs on AV through the ordinary language entry of the
 /// real session — the entry the case runner uses. A program that succeeds
-/// matches its frozen oracle line for line; a program that fails ends in
-/// the language error the case names, with no partial output.
+/// matches its frozen oracle line for line and returns `true`; a program that
+/// fails ends in the language error the case names, with no partial output,
+/// and returns `false`.
 ///
 /// The session entry takes explicit limits, so the PyTorch case runs here
 /// with a generous wall (the case runner's own 2 s budget is exercised by
@@ -504,44 +505,120 @@ fn run_language(source: &str) -> ace_abi::py_session::PyRun {
 /// (The 1026 `run_with` entry compiles under the Aggregates grammar, which
 /// parses neither `.to(str)` nor a text literal followed by a float literal
 /// in one argument list; both are older than this Plan and outside it.)
-#[test]
-fn p1129_corpus_matches_the_av_oracle_through_the_ordinary_entry() {
-    let started = Instant::now();
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    for name in CORPUS_CASES {
-        let (source, av) = corpus_case(name);
-        let run = run_language(source);
-        let message = av
-            .lines()
-            .find_map(|line| line.strip_prefix("message: \"").map(str::to_string))
-            .map(|m| m.trim_end_matches('"').to_string());
-        let stdout = run.stdout_text();
-        if let Some(message) = message {
-            assert!(av.contains("code: \"lang.error\""), "{name}");
-            assert!(
-                run.success_i32().is_none(),
-                "{name}: a failing program must not succeed"
-            );
-            let outcome = format!("{:?}", run.outcome);
-            assert!(
-                outcome.contains(&message),
-                "{name}: the language error names the Python failure: {outcome}"
-            );
-            assert_eq!(stdout, "", "{name}: no partial output");
-            failed += 1;
-        } else {
-            assert!(run.success_i32().is_some(), "{name}: {:?}", run.outcome);
-            assert_eq!(
-                stdout.lines().collect::<Vec<&str>>(),
-                fence(av, "text").lines().collect::<Vec<&str>>(),
-                "{name}"
-            );
-            succeeded += 1;
-        }
+fn corpus_case_on_av(name: &str) -> bool {
+    let (source, av) = corpus_case(name);
+    let run = run_language(source);
+    let message = av
+        .lines()
+        .find_map(|line| line.strip_prefix("message: \"").map(str::to_string))
+        .map(|m| m.trim_end_matches('"').to_string());
+    let stdout = run.stdout_text();
+    if let Some(message) = message {
+        assert!(av.contains("code: \"lang.error\""), "{name}");
+        assert!(
+            run.success_i32().is_none(),
+            "{name}: a failing program must not succeed"
+        );
+        let outcome = format!("{:?}", run.outcome);
+        assert!(
+            outcome.contains(&message),
+            "{name}: the language error names the Python failure: {outcome}"
+        );
+        assert_eq!(stdout, "", "{name}: no partial output");
+        false
+    } else {
+        assert!(run.success_i32().is_some(), "{name}: {:?}", run.outcome);
+        assert_eq!(
+            stdout.lines().collect::<Vec<&str>>(),
+            fence(av, "text").lines().collect::<Vec<&str>>(),
+            "{name}"
+        );
+        true
     }
-    assert_eq!((succeeded, failed), (12, 1), "twelve successes, one uncaught failure");
-    eprintln!("p1129 corpus on AV: {} ms", started.elapsed().as_millis());
+}
+
+/// The corpus this file reads is exactly the case list below, in file order,
+/// each with its AV probe: a case added to the corpus cannot go unrun here.
+#[test]
+fn p1129_corpus_lists_every_case_in_file_order() {
+    let headings: Vec<&str> = CORPUS
+        .lines()
+        .filter_map(|line| line.strip_prefix("## Case: "))
+        .collect();
+    assert_eq!(headings, CORPUS_CASES);
+    assert_eq!(
+        CORPUS.matches("### Probe av\n").count(),
+        CORPUS_CASES.len()
+    );
+}
+
+// One case per test: each stays well inside the per-case budget even while
+// the rest of the binary runs beside it (the whole list in ONE test took
+// 13.0 s under that load).
+
+#[test]
+fn p1129_corpus_av_runtime_values() {
+    assert!(corpus_case_on_av("runtime-values"));
+}
+
+#[test]
+fn p1129_corpus_av_types_and_text() {
+    assert!(corpus_case_on_av("types-and-text"));
+}
+
+#[test]
+fn p1129_corpus_av_order_and_once() {
+    assert!(corpus_case_on_av("order-and-once"));
+}
+
+#[test]
+fn p1129_corpus_av_rounds_first() {
+    assert!(corpus_case_on_av("rounds-first"));
+}
+
+#[test]
+fn p1129_corpus_av_boundaries() {
+    assert!(corpus_case_on_av("boundaries"));
+}
+
+#[test]
+fn p1129_corpus_av_signed_zero_f32() {
+    assert!(corpus_case_on_av("signed-zero-f32"));
+}
+
+#[test]
+fn p1129_corpus_av_binop_float() {
+    assert!(corpus_case_on_av("binop-float"));
+}
+
+#[test]
+fn p1129_corpus_av_containers_and_binop() {
+    assert!(corpus_case_on_av("containers-and-binop"));
+}
+
+#[test]
+fn p1129_corpus_av_torch_lr_computed() {
+    assert!(corpus_case_on_av("torch-lr-computed"));
+}
+
+#[test]
+fn p1129_corpus_av_sqrt_runtime_negative() {
+    assert!(corpus_case_on_av("sqrt-runtime-negative"));
+}
+
+#[test]
+fn p1129_corpus_av_sqrt_uncaught_fails_as_written() {
+    assert!(!corpus_case_on_av("sqrt-uncaught"));
+}
+
+#[test]
+fn p1129_corpus_av_sqrt_nested_first() {
+    assert!(corpus_case_on_av("sqrt-nested-first"));
+}
+
+#[test]
+fn p1129_corpus_av_sqrt_nested_shifted() {
+    assert!(corpus_case_on_av("sqrt-nested-shifted"));
 }
 
 // ---- compatibility and identity ------------------------------------------------
