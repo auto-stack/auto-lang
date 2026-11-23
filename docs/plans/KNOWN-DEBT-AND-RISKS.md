@@ -5056,3 +5056,16 @@ AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todo
 - PLAN-1123 处置（未改任何预算）：生成的 provider cargo 单元在 dev 档内对依赖闭包取 `opt-level = "s"`（单元本体仍不优化），DLL 降至 1,824,256 B=1.74 MiB（`str`+`tls` 选择）与 1,934,336 B=1.84 MiB（整单元）；工程道以 `str`+`tls` 选择交付分发证据。
 - 残余：整单元距上限的余量随 ABC 体积变化（收据≈2×十六进制(DLL+ABC)，再计暂存两份；未做整单元实测发布），依赖增长即可能再次不可发布。结构性修复（收据按引用记录大产物，或提高暂存预算）属 783/978 owner，预算为用户裁定，本计划不代决。
 - 关闭条件：M2Build 能发布不小于整单元现尺寸两倍的 provider 产物并有具名用例；或 owner 明文接受现上限并把覆盖矩阵 B-12 写入分发合同。
+
+## PLAN-1054 T-10 具名债务：core_hir verify 阶段每条目表扫描族（1050 年代既有）
+
+- **现象**：dense mir（59,546B/8505 行）`ERROR resource.semantic`@确定性字节；V-G1b 尾段与
+  V-G1d（全树 S 单包 mir）同被阻塞。
+- **根因**（实测归因，非假设）：verify_binary/verify_call 每表达式全扫 args+find_row(exprs)+
+  has_budget 按表尺寸批量扣燃料；verify_blocks 每 block 全扫 statements（真二次方）。
+  master 同构；分页解锁规模后暴露。非 T-10 回归。
+- **修复设计**：statements 按 row 计数排序桶链 + expr_pos/defs_pos/blocks_pos 直通索引
+  （expr_pos/arg_index 已落地先例）+ has_budget 随真实工作量重标；冻结 oracle 安全网=
+  ace-aac-syntax 组内 aac1050 mir 全组。
+- **关闭条件**：dense mir 全链产出 ABC + gen-next 全树 S 单包编译通过 + 上述组原样绿。
+- **登记**：2026-11-23，PLAN-1054 work 阶段，owner=下一会话 work（handoff 轮 60-61 全文）。
