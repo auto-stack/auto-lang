@@ -869,11 +869,16 @@ fn compile_age_package_mode(
                 })
             })
     });
-    if inputs.iter().any(|unit| super::adapter::needs_linked_text_predicates(&unit.source)) {
+    if inputs.iter().any(|unit| super::adapter::needs_linked_text_predicates(&unit.source))
+        || inputs.iter().any(|unit| unit.source.contains(".substr("))
+    {
         let source = super::adapter::graft_package_text_predicates(&mut product.bound)
             .map_err(|d| vec![d])?;
         product.sources.push(source);
     }
+    // PLAN-118：包面 `.to(int)` 解析接枝（与文本谓词接枝同位，独立 helper）。
+    super::adapter::graft_package_integer_parse(&mut product.bound)
+        .map_err(|d| vec![d])?;
 
     // 4) 唯一 verify：几何域 = text-record（与 979/960 同一条链）。
     // 解析/检查用**本面的真实身份**（AgePackage），与发射一致：AGE 的资源端口、

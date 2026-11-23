@@ -5971,6 +5971,22 @@ fn vt_of_ann_coll(
                 }
                 VT::Variant(coll.variant_by_name(&id.name).expect("checked name"))
             }
+            None if id.name == "List" => {
+                // PLAN-118：裸 `List`（无类型实参）按 model_list_type 同款先例
+                // 归 List<Str>——paint_color 内联 fn 的 `pxs List` 形参消费
+                // （024 的按值列表 helper 先例已在包面运行）。
+                if matches!(pos, TypePos::Field | TypePos::Param | TypePos::Result)
+                    && !coll.aggregates_admission
+                {
+                    return reject(
+                        diags,
+                        VT::I32,
+                        "List-typed fields/parameters/results are not part of this source profile (v1 lists are function-local values)".to_string(),
+                        ann.span,
+                    );
+                }
+                VT::List(coll.intern_list(VT::StrOwned))
+            }
             None => {
                 diags.push(Diagnostic::new(
                     Stage::Bind,

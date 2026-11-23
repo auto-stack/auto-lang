@@ -41,6 +41,25 @@ pub fn total_len(xs List<Str>) int {
     return total
 }
 
+// PLAN-118：VM 对等 List<Str>.join(sep)——paint 快照格式 `px.join("|")`
+// 命脉；空表得空串。acc 单路径尾移（同 case_at 所有权纪律）。
+pub fn join(xs List<Str>, sep Str) Str {
+    return join_into(xs, sep, 0, "")
+}
+
+fn join_into(xs List<Str>, sep Str, i int, acc Str) Str {
+    if (i == xs.len()) {
+        return acc
+    }
+    if (i + 1 == xs.len()) {
+        let last Str = acc + xs[i].clone()
+        return join_into(xs, sep, i + 1, last)
+    }
+    let mid Str = acc + xs[i].clone()
+    let next Str = mid + sep.clone()
+    return join_into(xs, sep, i + 1, next)
+}
+
 pub fn reduce(xs List<int>, init int, f fn(int, int) -> int) int {
     var acc = init
     for x in xs {

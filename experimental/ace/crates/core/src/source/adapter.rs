@@ -593,6 +593,16 @@ pub(super) const STDLIB_TEXT_MANGLE: &str = "__std_text_";
 pub(super) const STDLIB_TEXT_FIND: &str = "__std_text_find";
 const TEXT_PREDICATE_FNS: &[&str] = &["starts_with", "ends_with", "eq_at"];
 
+/// PLAN-118：包面接枝集 = 谓词三件 + substr（master text.at 既有
+/// `pub fn substr`，此前因不在这个接枝清单而 "not linked"——组件面走
+/// graft_stdlib_text 全量接枝不受影响）。接枝仅在需要文本谓词或 `.substr(`
+/// 时发生（age_package.rs 触发位）。
+fn graft_fns() -> Vec<&'static str> {
+    let mut fns: Vec<&'static str> = TEXT_PREDICATE_FNS.to_vec();
+    fns.push("substr");
+    fns
+}
+
 pub(super) fn needs_linked_text_predicates(src: &str) -> bool {
     src.contains(".starts_with") || src.contains(".ends_with")
 }
@@ -606,7 +616,7 @@ pub(super) fn needs_text_predicates(src: &str) -> bool {
 pub(super) fn graft_package_text_predicates(
     bound: &mut super::packages::BoundPackages,
 ) -> Result<super::age_package::AgeModuleSource, Diagnostic> {
-    let source = mangle_stdlib_functions(STDLIB_ASM_TEXT_AT, TEXT_PREDICATE_FNS, STDLIB_TEXT_MANGLE);
+    let source = mangle_stdlib_functions(STDLIB_ASM_TEXT_AT, &graft_fns(), STDLIB_TEXT_MANGLE);
     let mut helpers = super::parse_program_with(&source, SourceProfile::Auto)?;
     let flat_start = bound.source_len() + 1;
     for item in &mut helpers.items {
@@ -736,22 +746,27 @@ pub fn graft_package_u64_parse(bound: &mut super::packages::BoundPackages) -> Re
     Ok(())
 }
 
-fn graft_stdlib_integer_parse(user_source: &str, mut source: String) -> String {
-    let needs_integer_parse = user_source.match_indices(".to").any(|(index, method)| {
+/// PLAN-118：`.to(int)` 检测（组件面与包面共用触发词形）。
+pub(super) fn needs_integer_parse(user_source: &str) -> bool {
+    user_source.match_indices(".to").any(|(index, method)| {
         user_source[index + method.len()..]
             .trim_start()
             .strip_prefix('(')
             .and_then(|arguments| arguments.trim_start().strip_prefix("int"))
             .is_some_and(|remainder| remainder.trim_start().starts_with(')'))
-    });
-    if !needs_integer_parse {
-        return source;
-    }
+    })
+}
+
+/// `.to(int)` 的解析实现源：stdlib to_int/parse_at 接枝 + Option 消费
+/// helper（非法输入走语言 checked 错误通道——fail-closed，None 行为裁定见
+/// PLAN-118 §10）。
+fn stdlib_integer_parse_source() -> String {
     // Reuse the standard-library parser. An ordinary conversion consumes
     // its Option through the language's checked error channel.
     let (parse, _) = STDLIB_ASM_CONV_AT
         .split_once("pub fn is_uint")
         .expect("stdlib conversion and predicate declarations");
+    let mut source = String::new();
     source.push('\n');
     source.push_str(&mangle_stdlib_functions(
         &parse.replace("s Str", "s str"),
@@ -773,6 +788,49 @@ fn __std_conv_bad_int() int {
 "#,
     );
     source
+}
+
+fn graft_stdlib_integer_parse(user_source: &str, mut source: String) -> String {
+    if !needs_integer_parse(user_source) {
+        return source;
+    }
+    source.push_str(&stdlib_integer_parse_source());
+    source
+}
+
+/// PLAN-118：包面 `.to(int)` 接枝——镜像 graft_package_u64_parse 的包绑定
+/// 通道（paint 的 PaintHit `id.substr(2,…).to(int)` 消费；组件面走
+/// graft_stdlib_integer_parse，同一实现源）。
+pub fn graft_package_integer_parse(
+    bound: &mut super::packages::BoundPackages,
+) -> Result<(), Diagnostic> {
+    if !bound
+        .segments
+        .iter()
+        .any(|segment| needs_integer_parse(&segment.source))
+    {
+        return Ok(());
+    }
+    let source = stdlib_integer_parse_source();
+    let mut helpers = super::parse_program_with(&source, SourceProfile::Auto)?;
+    let start = bound.source_len() + 1;
+    for item in &mut helpers.items {
+        let super::ast::Item::Fn(function) = item else {
+            unreachable!("integer-parse graft contains only functions")
+        };
+        super::cst::shift_fn_item(function, start);
+    }
+    bound.program.items.extend(helpers.items);
+    bound.input_hash = crate::runtime_contract::sha256_hex(
+        format!("package/stdlib-int-parse/1\n{}\n{source}", bound.input_hash).as_bytes(),
+    );
+    bound.segments.push(super::packages::PackageSegment {
+        package: "__ace".into(),
+        module: "stdlib_int_parse".into(),
+        source,
+        start,
+    });
+    Ok(())
 }
 
 fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
