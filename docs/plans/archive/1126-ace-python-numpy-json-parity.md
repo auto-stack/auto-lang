@@ -351,6 +351,12 @@ AV 用 `case-av-language-parity` 与普通源码执行入口。A2PY 消费 1110 
 
 `stage: merge | plan_id: PLAN-1126 | plan_revision: r1 | outcome: pass | delivery_commit: 6db6d7bf7a552175a122fed78bd5a613eede2c27 | archive_commit: e501fef74 | archive_path: docs/plans/archive/1126-ace-python-numpy-json-parity.md | cleanup: trees, branch, scratch and owned temp cleared | iteration_gate: closeout complete; periodic batch due from PLAN-1120, tracked by separate batch receipt`。
 
+**周期批量回归**。PLAN-1120 晚于上次 1118 覆盖点且编号可被 5 整除。主检出在 `b1835f26f2af0c54e75987afd83a68b41b798ba0` 单实例验证 `cargo t all` 的固定选择。驱动将 8 个 Case/Python 与 29 个 nextest 调用分别准备和执行，以保留 nextest 的 debug 工具配置。原始结果共 29 PASS、5 FAIL、3 NOT_APPLICABLE、2995 原子检查；`auto-lang` 的 WinError 2 发生于原子执行前。5 个失败调用的基线签名均有 1118 记录。另保留 `infra-fixed` 子进程 Git 凭据配置缺值导致的 7 条子结果；只重放受影响的 5 个离线用例，清除该进程的外部 Git 配置注入后 5/5 PASS，退出 0，3.895 s。无新增可归因红，Linux/WSL 有条件排除，UI/Man 仍由原 owner 管理。
+
+批次准备 125.417 s、执行 176.218 s、资源等候 31.926 s，发现/清理未汇总为独立阶段；两个子驱动退出 1，维持既有失败。批次原始范围、报告哈希和复跑信息见 [批量回归收据](../.last-batch-regression.json) 及本次收据提交。
+
+`stage: goal | plan_id: PLAN-1126 | plan_revision: r1 | round: 续跑 5 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: 6db6d7bf7a552175a122fed78bd5a613eede2c27 | next: done`。
+
 ## 10. 待澄清事项
 
 T-01 核准实际 Python/NumPy 组合、现有字符串和对象索引的覆盖、精确错误分类及两端命令。候选源码为验收合同。源语法差额、共享语义或宿主边界变化按实际证据写回。

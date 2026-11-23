@@ -1,45 +1,94 @@
 {
-  "last_covered_plan_id": 1118,
-  "timestamp": "2026-11-22T16:35:00Z",
-  "covered_commit": "00503eeac",
-  "command": "cargo t all",
+  "last_covered_plan_id": 1126,
+  "timestamp": "2026-11-23T00:03:39Z",
+  "covered_commit": "b1835f26f2af0c54e75987afd83a68b41b798ba0",
+  "command": "cargo t all (fixed selection, prepared and run as two runner partitions)",
   "legs": [
     "language-fixed-groups"
   ],
   "counts": {
     "PASS": 29,
-    "FAIL": 6,
+    "FAIL": 5,
     "NOT_APPLICABLE": 3,
-    "executed_atomic_items": 0
+    "executed_atomic_items": 2995
   },
   "preparation": {
-    "command": "python scripts/fixed-tests.py all --prepare-only",
+    "command": "cargo t <case/python groups> --prepare-only; cargo t <nextest groups> --prepare-only --debug-tools",
     "exit": 0,
-    "manifest": "D:/autostack/auto-lang/target/test-groups/prepared/2a77fb330f6bc78e/prepared.json",
+    "manifests": [
+      "D:/autostack/auto-lang/target/test-groups/prepared/262f55fe28fcc977/prepared.json",
+      "D:/autostack/auto-lang/target/test-groups/prepared/262f55fe28fcc977-debug/prepared.json"
+    ],
     "invocations": 37,
-    "wall_seconds": 355.241
+    "part_wall_seconds": {
+      "other": 0.5457961,
+      "native": 124.8707719
+    }
   },
   "execution": {
-    "exit": 0,
-    "wall_seconds": 262.92,
-    "results": "D:/autostack/plan-artifacts/batch-regression-1118/results.json",
-    "source_state": "2a77fb330f6bc78e"
+    "exit": 1,
+    "wall_seconds": 176.2176649,
+    "part_wall_seconds": {
+      "other": 65.0665171,
+      "native": 111.1511478
+    },
+    "parts": {
+      "other": {
+        "path": "D:/autostack/plan-artifacts/batch-regression-1126/other/results.json",
+        "sha256": "590be17bbaade33312ce9492b420671e176f20fb67d638f52c6fe2f8f4e60729",
+        "driver_wall_seconds": 64.29469119996065,
+        "invocations": 8,
+        "exit": 1,
+        "debug_override": false
+      },
+      "native": {
+        "path": "D:/autostack/plan-artifacts/batch-regression-1126/native/results.json",
+        "sha256": "eae1cfef2c2af29806707c1a34607891cac0078c6f26400a1aff6431c5756ce9",
+        "driver_wall_seconds": 109.99033780000173,
+        "invocations": 29,
+        "exit": 1,
+        "debug_override": true
+      }
+    },
+    "results": "D:/autostack/plan-artifacts/batch-regression-1126/results.json",
+    "results_sha256": "a5b8b09d815499cb28300c8b09e061c5d887460094da4df67c99df99599ca146",
+    "source_state": "262f55fe28fcc977cc2c2b7206388b2fcdfcec19ace01c5c19d07d9ee86a363e",
+    "config_sha256": "2d3cd7f908e494a618b6d97c2550f65dffa9326c6843f50b3b5b0af99be5167e",
+    "resource_wait_seconds": 31.9262704
   },
-  "trigger": "PLAN-1110 merge closeout: 1110 % 5 == 0 > last_covered 1114; window b2e873bb4..00503eeac landed 1052/1053/1110/1115/1116/1117/1118.",
+  "trigger": "PLAN-1120 (%5==0) landed after the PLAN-1118 batch receipt; PLAN-1126 closeout ran the due batch.",
   "new_reds": [],
   "known_reds_seen": [
-    "auto-lang-core aac_baseline v01-v06: spec identity pin stale (m2-certification.md edited by 985/1096, checker pin not refreshed) - unchanged since 1114 batch",
-    "auto-lang-core obligation_ledger p985_* x5: receipt pin of m2-numbers.md stale - unchanged since 1114 batch",
-    "auto-generation-core plan988_byte_consumers x5: newest_rlib expect fails in prepared archive-run mode - unchanged since 1114 batch",
-    "auto-lang: infra spawn [WinError 2] (PLAN-1108 / DEBT-1098-BATCH-PREPARE family) - unchanged",
-    "infra-meter ProcessCapture.test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build (PLAN-1108)",
-    "infra-fixed FixedGroups.test_all_is_explicit_language_only (D-1051-BATCH-SELECTION / PLAN-1108)",
-    "infra-fixed PreparedRunGate.test_ordinary_ace_entry_requires_preparation_before_any_run (PLAN-1108)"
+    "auto-lang: same [WinError 2] before atomic execution as the 1118 receipt (PLAN-1108).",
+    "auto-lang-core: same 11 atomic failures (AAC v01-v06 source pins and obligation_ledger p985_* x5).",
+    "auto-generation-core: same 5 plan988_byte_consumers archive-mode rlib failures.",
+    "infra-meter: same ProcessCapture.test_preparation_rejects_leak_despite_existing_artifact_then_accepts_clean_build assertion.",
+    "infra-fixed: same FixedGroups.test_all_is_explicit_language_only and PreparedRunGate.test_ordinary_ace_entry_requires_preparation_before_any_run."
   ],
+  "environment_replay": {
+    "group": "infra-fixed",
+    "initial_errors": 7,
+    "affected_tests": [
+      "test_fixed_groups.PreparedRunGate.test_archive_tamper_and_missing_are_named_failures",
+      "test_fixed_groups.PreparedRunGate.test_config_source_and_toolchain_drift_are_named_failures",
+      "test_fixed_groups.PreparedRunGate.test_debug_manifest_checks_prepared_only_runtime_and_worker_binding",
+      "test_fixed_groups.PreparedRunGate.test_find_matching_manifest_skips_invalid_and_requires_full_cover",
+      "test_fixed_groups.PreparedRunGate.test_verified_manifest_passes"
+    ],
+    "cause": "The Windows metered subprocess dropped empty inherited Git HTTP credential-config values while retaining GIT_CONFIG_COUNT; local rev-parse rejected the malformed environment.",
+    "replay": "The same five named offline unittest bodies ran with process-local GIT_CONFIG_COUNT=0.",
+    "exit": 0,
+    "passed": 5,
+    "wall_seconds": 3.894659,
+    "log": "D:/autostack/plan-artifacts/batch-regression-1126/infra-fixed-replay.log",
+    "log_sha256": "1c37dde2329faedb30eb6fd2b6ca5d6f3799b6e88026cdfd7b2335ca1762254a"
+  },
   "verdict": "known-reds-only",
   "notes": [
-    "NOT_APPLICABLE: aavm, a2r-actor-tests, auto-vm (unchanged conditions).",
-    "All 6 FAIL groups match the 1114-batch receipt identities exactly; none attributable to the 1052/1053/1110/1115-1118 window.",
-    "PLAN-1110-adjacent pre-existing reds (1093 C-provider av cases x2, abi source-protocol x1) live outside cargo t all (case-view/ace-adapters groups) and are recorded in the PLAN-1110 archive receipt with master-equivalence evidence."
+    "NOT_APPLICABLE: aavm, a2r-actor-tests, auto-vm. Linux/WSL legs excluded by Windows host ruling.",
+    "29 PASS / 5 FAIL / 3 NOT_APPLICABLE are raw invocations. The Git environment replay is separate and does not replace the first report.",
+    "The auto-lang invocation hit its known runner error before execution; it contributes zero atomic items.",
+    "UI/Man legs remain under their owners.",
+    "Repository code/config paths unchanged during the batch. Independent Plan bookkeeping was present on main."
   ]
 }
