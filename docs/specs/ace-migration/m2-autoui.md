@@ -672,6 +672,18 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
 - **边界（保持）**：U02–U06 示例级 AV 完整逐例仍压 980 ④-A 解锁路径（980 §9 :1739「B-AV-I 保持未勾——全分母仍压 ④」）；`UI-W1-AV` 最终汇总收据由 980 `B-AV-R` 签发（981 §9 交接约定），本接收记录其已交子面与生产入口证据，不冒全包完成。
 - **PLAN-104 补记（U02 AV harness 能力与边界，2026-11-19，merge 落地）**：AV 组件面 `ace_node_desktop` 的显示模型 harness 现支持——①view 条件项按实例状态求值可见性（不可见叶不呈现、叶序保持）；②元素 label（`h2`/`span` 族）作为展示行（不占 AV 叶编号）；③`view for` 循环体叶按仅视图数据（`ComponentViewDataField`）展开为具体叶（010 faqs：4 项×q/a=8 叶），不支持形状具名拒；④`style` 面不被 harness 消费（按原字节空白化，样式由 A2Vue/1072 负责）；⑤`ui_apply_bool` 的 Auto 面标量为 `i32`（0/1）。**保持边界**：foreign handler（`print` 等，D-④-4）在 AV 与 Vue lane 均具名缺席（`absent`/零效果拒）；entry-λ `oninput` 与无消息输入在 AV 场景面无派发面，输入类格以 A2Vue 收据为准（2026-11-19 用户裁定）；U02–U06 示例级 AV 完整逐例仍随 ④-A 解锁路径推进。
 
+### PLAN-117 的 W1 U05 接收（Windows AV/Iced）
+
+AutoUI `fdde1591`、AutoLang `249e836b2` 提供下列入口。实窗回放使用 AutoUI `8894c9ef`、AutoLang `c3593fe12`、AutoOS `cdb4883`、AutoDown `45b642d` 和 AutoWeb `26d085f`。AutoLang `30780612c` 收窄普通短路表达式的临时值作用域，受检 AGE 包执行路径保持一致。交付源码与复审源码逐字节一致，实跑明细见 AutoUI PLAN-117 §9。
+
+| W1 原入口 | 实窗接收结果 |
+|---|---|
+| 029 Photo Gallery `src/front/app.at` | 浏览真实目录、打开嵌入视口并再次返回列表。含保留字符的目录请求在 503 后可返回根目录并重新进入，首扫也可单独恢复。移走原图触发 `OnError`，放回触发 `OnLoaded`。各次会话正常关闭。 |
+| 031 Image Viewer `src/front/app.at` | 载入 320×240，观察 1.25 倍缩放、−40 px 平移和视口裁切。确认坏图恢复及 JPEG、PNG、WebP、Alpha、EXIF。关闭查看器或撤销授权时回收私有媒体访问。 |
+| AutoOS Widgets Gallery 原 Carousel 页 `src/front/pages/carousel.at` | 从原侧栏打开，验证 Basic、Sizes、Spacing、纵向手势、横向误拖、首尾循环，以及离开路由后重新挂载。原画廊首页仍报 `expected fn, found widget`。 |
+
+本次接收限定为上述三条 Windows 行，其余 U05 行保留在原 W1 分母。语言阶段原固定组结果为 4,215/4,239，显式准备运行时后同归档 Native 原用例复放通过，有效结果为 4,216/4,239。AutoUI 为 86/87。计划收据保留整体命令的非零退出，以及 23 条已登记语言失败和 1 条已登记 Chart 失败。
+
 ## 15. Vue 与生产 TS/JS 接管（PLAN-1072，2026-11-19）
 
 - **交付来源**：[PLAN-1072](../../plans/archive/1072-autoui-vue-web.md)（归档件；冻结门 `cargo t ace-source` 923/923 PASS、`cargo t ace-av` 1426/1428 仅预存 `host_console`×2、UI 受影响 10 套件全部零失败、`plan1072_component_style` 19/19 通过）。
@@ -689,6 +701,16 @@ export 语句剥除/checked-add 语义按 rt_body.js 冻结式手写——`<scri
   1. **开关与路径边界**：仅在 `auto-ui-tools --features ace-vue` + `AUTO_UI_ACE_VUE=1` 下对 `app.at`（`vue.rs:4173, 7684`）与 `components/*.at`（`vue.rs:4495`）启用 ACE lane 替换；默认构建、`front_dir` 兄弟文件（`vue.rs:7398`）、`pages/`（`vue.rs:4350`）、`widgets/`（`vue.rs:7757`）与 `stores/` 仍走旧 `VueGenerator` / `ts_adapter::TypeScriptTrans`。
   2. **双轨拼接边界**：`generate_widget_with_lane`（`ace_vue_script.rs:796-884`）基于 `VueGenerator::new().generate_sfc(&widget)` 仅拼接替换受检 `on` / `__evt_*` 体；`computed`、`watch`、`setup`、`ext_imports`、`.Init`/`.Destroy` 与 `absent` 处理器仍由 `VueGenerator` 发射（如含 `setup`+`use{}` 的 `Widget B` 维持双轨 fail-closed，`absent=[".Bump"]`）。
   3. **夹具与联合门边界**：1072 产品验证以 Rust `gen_vue_project` / `incremental_compile_changed`、`@vue/compiler-sfc` + `esbuild` 与 Playwright Node `http`（`test_010_form.mjs` stub `@/components/ui/*`、`test_p1072_lifecycle_watch_expose.mjs` stub `BOOT_EXT_STUB`；`plan980_010_form_short.rs` 浏览器腿仍挂旧 `App.vue`，而 `p1072_010_product_browser_mount` 挂 lane `App.sfc` 测三字段 `v-model` + `Submit`）为边界；公开 CLI `auto gen` / `auto build` / `auto run` 派发与完整 `pnpm` / Vite 打包运行由 **PLAN-982** 联合门与后续 `V-TS-CONSUMER-UI` 收尾任务承接（均登账入 `KNOWN-DEBT-AND-RISKS.md`）。
+
+### PLAN-117 的 U05 接收（A2Vue / Chrome）
+
+使用同一组 AutoUI `fdde1591`、AutoLang `249e836b2` 的受检接口。原项目在隔离目录用 `auto build --render vue` 冷构建，经真实 Chrome 核验。实际运行版本及输入身份见上节和 AutoUI PLAN-117 §9。
+
+| 原入口 | 生产生成与浏览器接收结果 |
+|---|---|
+| 029 Photo Gallery | 原图库目录浏览、嵌套 Unicode、保留字符、503 恢复、嵌入视口。移走并放回同一原图时，资源请求依次为 200、404、200，最终恢复显示 64×48。 |
+| 031 Image Viewer | 原查看器加载 320×240，实际接受 1.25 倍缩放和 −40 px 平移并裁切视口。坏图 422 后可换图恢复，覆盖 JPEG、PNG、WebP、Alpha 和 EXIF。切换资源和关闭会话后，旧私有租约返回 404。 |
+| AutoOS Widgets Gallery `/carousel` | 原路由产物保留按钮、拖动、间距、按轴键盘操作、首尾循环和宽窄视口。离开再进入恢复原始位置。附带的浏览器 404 来自 `/favicon.ico`。 |
 
 ## 16. U03 本地应用语义批（PLAN-105，2026-11-21 已交付）
 
