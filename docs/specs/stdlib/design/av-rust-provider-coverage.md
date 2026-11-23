@@ -123,6 +123,6 @@
 | B-09 | 双字符串形（file 批量写、env_set）——帧域每调用至多一个借用 view | 帧域扩展另立增量；当前以字节粒度/单 view 子集交付 |
 | B-10 | 完成口形（complete_sync/async）在 avrs 会话车道把模块变调度面——mir 能力域拒绝 | M2Build 工程执行器承载（1113 已证 sdk_pack）；sleep/now 旧 `#[rs]` 面归该 lane |
 | B-11 | redis 真服务器验证依赖外部服务 | §10 具名 pending（运维输入）；RESP2 算法=975 共享 Auto |
-| B-12 | M2Build 发布把工程全部产物十六进制嵌入一份收据写入工件存储（783 暂存预算 8 MiB，暂存+CAS 临时两份）：原始产物须 < ~4 MiB。未优化的 rustls 单元 DLL 3.1–3.4 MiB 不可发布，故依赖闭包在 dev 档内尺寸优化：`str`+`tls` 1,824,256 B（1.74 MiB）、整单元 1,934,336 B（1.85 MiB）；整单元距上限的余量随 ABC 体积变化（收据≈2×十六进制(DLL+ABC)，再计暂存两份）。该生成器为 967 各 cargo 单元共享：serde_json 单元等同样在 dev 档内取依赖尺寸优化（语义不变、DLL 更小），此前缓存的未优化 DLL 在其输入不变时继续复用。结构性限制（收据嵌入方式 vs 暂存预算）归 783/978 owner，本计划不改预算 | D-1123-01（KNOWN-DEBT）|
+| B-12 | M2Build 发布把工程全部产物十六进制嵌入一份收据写入工件存储（783 暂存预算 8 MiB，暂存+CAS 临时两份）：原始产物须 < ~4 MiB。未优化的 rustls 单元 DLL 3.1–3.4 MiB 不可发布，故依赖闭包在 dev 档内尺寸优化：`str`+`tls` 1,824,256 B（1.74 MiB）、整单元 1,934,336 B（1.84 MiB）；整单元距上限的余量随 ABC 体积变化（收据≈2×十六进制(DLL+ABC)，再计暂存两份）。该生成器为 967 各 cargo 单元共享：serde_json 单元等同样在 dev 档内取依赖尺寸优化（语义不变、DLL 更小），此前缓存的未优化 DLL 在其输入不变时继续复用。结构性限制（收据嵌入方式 vs 暂存预算）归 783/978 owner，本计划不改预算 | D-1123-01（KNOWN-DEBT）|
 | B-13 | `trust system` 经 Crypt32 读取当前用户 ROOT 证书库；Crypt32 是 DLL 的静态导入，已在 SDK 声明的 12 个 `system-lib` 之列，单元不引用 SSPI 接口。12 个库中仅 vcruntime140.dll 不是操作系统组件（VC++ 运行库，目标机须已安装）| 记录在案；如需声明由打包 owner 决定 |
 | B-14 | 一次 `tls_exchange`=一次 foreign 调用：默认执行墙钟 2 s 内只能观察 < 2 s 的交换；更长的 `timeout` 需宿主调高 `ExecLimits.wall`。默认请求期限 1500 ms 据此而定 | 语言/执行器合同，非本层可变 |
