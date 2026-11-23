@@ -5043,3 +5043,7 @@ PLAN-1109 冻结 `ace-abi` 运行中 25 条 `source_foreign` 用例失败。以�
 （构造/方法链/作实参传入）全部正常；该边界不在 1121 首批合同（旧 15 用例无跨函数传递面）。
 owner=普通面迁移容器下一切片（全泛型切片 963 线或暴露稳定容器类型名）；关闭条件=形参/返回可注解
 且跨函数 face 跟踪语义明确，具名用例复跑全绿。非阻塞。
+
+### D-ASE-1111-HTTP-ROUTE
+
+AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todos/:id。 DELETE /api/todos/completed 因而返回 400。基线和本地绑定后的旧 HTTP 样本均复现，仅对照复制件调换注册顺序后返回 true。AutoWeb 路由 owner 可用[PLAN-1111](archive/1111-ase-local-todo-service.md) 的对照重新验证固定段与参数段的重叠。

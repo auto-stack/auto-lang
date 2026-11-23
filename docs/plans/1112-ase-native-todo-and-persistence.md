@@ -19,7 +19,7 @@ affects: [ase, age/autoui-runtime]
 
 ## 0. 变更摘要
 
-消费 [PLAN-1111](1111-ase-local-todo-service.md) 的本地绑定，把 Gallery 的真实 013 Todo 项目接进 AutoScape 原生验证宿主。验前后台经受检执行、关闭和重开后的数据、同业务对照成本。当前 0/8。
+消费 [PLAN-1111](archive/1111-ase-local-todo-service.md) 的本地绑定，把 Gallery 的真实 013 Todo 项目接进 AutoScape 原生验证宿主。验前后台经受检执行、关闭和重开后的数据、同业务对照成本。当前 0/8。
 
 ## 1. 目标
 
@@ -55,7 +55,7 @@ AutoUI 保有真实工程装载、Store 和呈现所有权。ASE 管理 tab、�
 
 | 接口/责任 | 使用条件 |
 |---|---|
-| 1111 本地绑定 | 正式落地签名、租约语义和原 013 后端收据后接生产路径。沿同一后端，再验可选持久化与 completion。 |
+| [1111 本地绑定规范](../specs/ase/local-service-binding.md) | 已交付。注册 app://auto.demo.todo/ 与 todo 1.0.0，通过 ServiceBinding、Lease、Ticket 消费原 013。按代次和请求号路由完成，超时可能已提交时刷新。T-02/T-03 复用这份版本及 Auto 业务。 |
 | AutoUI PLAN-105 的 013 AV 切片 | 需要实际交付能装载原 `pac.at` 及闭包、原 Store 与动态列表、编辑输入，以及本地操作/typed 完成可消费的原生宿主接口。只等这些接口的正式来源与复跑记录。105 的整批示例、A2Vue 及完整 ACE/AGE M2 不作为原生接线前置。通用能力或原例源缺口交原 owner；1112 可先冻结源、对照脚本和存储方案。 |
 | 973/1064 文件与持久能力、[975 数据能力](../specs/ace-migration/m2-stdlib-data.md)、1109 车道 | 已交。T-01 核授予 API、配额、存储路径及真实原生挂载。1111 就绪后 T-02 在实际 Todo AV profile 先证持久化，无需等 105 前端。装配缺口具名交原 owner。 |
 
