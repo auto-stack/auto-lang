@@ -297,6 +297,13 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 9. 复审记录
 
+- 2026-11-24 stage: work | PLAN-1054 | r9 | round: 5 | **outcome: blocked（外部依赖，非难度）** | 阻塞条件（连续第 2–5 轮同一条，已具名核实）：本包剩余 AC-01..04/07 与 T-02..T-09 都要求 AAC 自举前端/降级面能吃全 CL 与全树 S，而该能力**没有任何在办实现 owner**：
+  ① **CL 原语面缺失**（实测：`std/bytes.at:313 char.from_codepoint` → `bind.module`；`s.char_at(1).to_codepoint()` → `type.unresolved`）——1053/T-07 已把 53 个 blocked 列成四族（`aac.pending-work/1` 16 例 + 具名 stage 诊断 37 例）并写"归 T-04 后续与具名 owner"；但 1046–1052 已全部 **archived**（Design59 说"完整CL由1050/1053最终关闭"，而 1050 只交了 base MIR、1053 只交 Gen1+53 缺口账），**1068 仍 drafting**（alternatives/集成方），当前无任何 executing 计划在实现这些 CL 行。
+  ② **V-G1d 准入裁定**：全树 project 编译 316s 后 `ERROR resource.source`（`syntax_grammar_data.at` 341,082B > 262,144B 模块准入）。抬准入须改 golden `aac1054_g1_module_admission_is_256k_and_refuses_as_a_resource` 的期望（仓规须用户明确同意）；拆分该数据模块也仍被 ①挡死。
+  ③ **G2**：mn 16MiB verify 墙，归 AGE elem-view owner（具名 pending，非本包可修）。
+  本包内已完成且不反向依赖上述项的部分：T-01、T-10 分页（①②③ + 遗留面收口，S 全编/Gen1 重出 boot parity/四组绿）、T-04 可复现边界与仓外运行、T-09 无回落可观测控制（见 g1-frontend-paging-handoff.md）。继续做只能是 T-04/T-09 的边缘证据，无法推进任何 AC 闭合。
+  | unblock 条件：任一 CL 实现任务转为 executing 并交付原语面；或用户裁定抬准入且提供 CL 实现资源；或 G2 owner 交付 64MiB tier。 | next_responsible_role: user（裁定/指派），其后 work。
+
 - 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-04 固定点矩阵：5 程序（含记录域）×2 构建×4 条件 report/ABC 全一致；命名/时间戳/突变反控；剥离环境与 PE 导入的"无 Rust 回落"可观测控制；T-04 未关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: b16ed7d8c（本轮零源码改动） | task_ids: T-04（固定点/环境独立性切片）、T-09（预备控制） | evidence: g1-frontend-paging-handoff.md §"goal 第 4 轮"；关键数字：P1/P2/P3/P5/P4b report 140/400/235/477/422 与 ABC 逐字节唯一；rename/mtime 不变、mutation 变 `9DFB2739…`；clean-env rc=0 同 ABC；compile exe 无 CreateProcess 导入 | blockers: 同前（CL 原语面/G2/256KiB 准入） | next_responsible_role: work（T-04 包级复现待 T-03；T-09 需真实代际反控）
 
 - 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-04 预备切片：同源重建可复现边界（exe 仅链接元数据差）、语义产物字节级确定、仓外/异路径运行、PE 依赖面；T-10 受影响组 r73 复跑无新增红；T-04 未关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: b16ed7d8c（本轮零源码改动，仅证据与计划簿记） | task_ids: T-04（预备切片）、T-10 ⑤（V-G1a/e 新 Gen1 复验） | evidence: g1-frontend-paging-handoff.md §"goal 第 3 轮"；关键数字：重建指纹同 `ddaa3a31…`、boot exe 差 2B（0x80 TimeDateStamp）、compile 差 23B/6 段、ABC SHA 同（tiny 9A80F9A8…/bigcomment E5DFB508…）、boot 681978131、r73 1046 组 50/51+隔离 PASS、语义 124/129（5 红=基面存量）、PE 导入=KERNEL32+bcrypt vs VCRUNTIME140+UCRT | blockers: 同前轮（CL 原语面/G2/256KiB 准入裁定）——不影响本轮 T-04 切片 | next_responsible_role: work（T-04 固定点矩阵扩展 / T-09 身份反控证据）
@@ -344,13 +351,19 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 
 ## 10. 待澄清事项
 
-2026-11-24 新增（V-G1d 决策点，不阻塞本轮其它工作）：全树 S 的 `syntax_grammar_data.at`=341,082B
-超过 1047 driver 的 256KiB/模块准入（该上限由 T-10 r53-r64 自定，并有负控 golden
-`aac1054_g1_module_admission_is_256k_and_refuses_as_a_resource`）。要闭 V-G1d，必须先二选一：
-(a) 抬模块准入到 ≥341,082B（须改该 golden 的期望——按仓规须用户明确同意），或
-(b) 把该语法数据模块源码级拆分成多模块（S 重绑身份）。两者都不改 1044 冻结的运行时合同；
-在裁定前 V-G1d 保持"实测第一墙=准入拒绝"，不充 PASS。另：V-G1c 的 ABC 期望受 CL 原语面
-（Str/char 值与静态构造）缺失所阻，属 Design59/1068 具名缺口，不在本包内私建。
+2026-11-24（goal 第 5 轮，blocked 交接）：本包剩余工作全部落在三个外部条件上，需用户裁定/指派：
+
+1. **CL 实现 owner（最关键）**：AAC 自举前端缺 CL 原语面（Str/char 值方法与 `char.from_codepoint`
+   等静态构造；实测 `type.unresolved`/`bind.module`）。1053/T-07 的 53 个 blocked 族、Design59 §3
+   的归属表都指向 1046–1052 的任务，但这些计划**均已 archived**，1068 仍 drafting——**当前没有
+   任何 executing 计划在实现这些 CL 行**。需要用户决定：新开一个 AAC CL 实现计划（或把 1068 转
+   executing 并补生产任务），本包在其后继续 T-02..T-09。
+2. **V-G1d 准入**：抬 1047 driver 的 256KiB/模块准入到 ≥341,082B 须改 golden
+   `aac1054_g1_module_admission_is_256k_and_refuses_as_a_resource` 的期望（仓规：须用户明确同意）；
+   或批准源码级拆分 `syntax_grammar_data.at`（仍受 1 制约）。
+3. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
+
+在 1/2/3 任一解除前，本包不再有能推进 AC 的施工项；T-04/T-09 的边缘证据已交到仅剩代际数据的边界。
 
 2026-11-23 裁定已决（用户选 (1)，r9 吸收 G1=T-10；本节原阻塞问题作废保留备查）：~~2026-11-22 T-02 阻塞态（须用户裁定二选一……~~ 当前无新增待澄清。G2（mn 16MiB verify 墙，64MiB tier 归 AGE elem-view owner）为具名外部 pending，非用户决定项；T-10 施工中的例行实现选择不反复请求确认。
 
