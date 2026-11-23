@@ -18,6 +18,19 @@ touched_goals: [GOAL-002]
 
 ## 0. 变更摘要
 
+### 2026-11-24（goal 第 4 轮）· 固定点矩阵 + 输入身份反控 + 无 Rust 回落的可观测控制（r9 执行簿记）
+
+- **固定点矩阵**（4 个 base-profile 程序 × 2 个独立构建 × plain/异 CWD/空格+CJK 路径/TZ+LANG+TMP 变化）：
+  report 与 ABC SHA256 在每个程序内**全部唯一**（P1 `140`/`9A80F9A8…`、P2 `400`/`752D1919…`、
+  P3 `235`/`4B45E603…`、P5 `477`/`C94F50C0…`）。
+- **输入身份反控**：同内容改名→ABC 不变；改 mtime→不变；`return 7`→`return 8`→ABC 变
+  （`9DFB2739…`）。大输入维度沿用前轮：70,059B bigcomment 两构建 ABC 同（`E5DFB508…`）。
+- **T-09 预备控制**：剥离 `PATH`/`ACE_*`/`CARGO_HOME` 等环境后仍 rc=0 且 ABC 逐字节同；
+  `aac1053-compile.exe` 的 PE 导入**无 `CreateProcess*`**（结构上无法拉起 Rust 前门），
+  但 `aac1053-gen1.exe` 保留 `CreateProcessW` 导入（S host 面链接期保留，boot 路径不调用）——
+  证据只支持"boot 路径未用"，不声称"镜像无 spawn 能力"。
+- T-04 仍未关闭（需 T-03 完整代）；本轮只交固定点/环境独立性边界。
+
 ### 2026-11-24（goal 第 3 轮）· T-04 可复现边界/仓外运行/依赖面 + r73 固定组复验（r9 执行簿记）
 
 - **同源重建可复现性**：同 worktree 再跑 `prepare-gen1`（273s）→ 源码指纹 `ddaa3a31…` 与 r72
@@ -283,6 +296,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量；核真实T-07 review及实际同源代际身份后发布正式AAC独立验收结论/证书，再归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+- 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-04 固定点矩阵：4 程序×2 构建×4 条件 report/ABC 全一致；命名/时间戳/突变反控；剥离环境与 PE 导入的"无 Rust 回落"可观测控制；T-04 未关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: b16ed7d8c（本轮零源码改动） | task_ids: T-04（固定点/环境独立性切片）、T-09（预备控制） | evidence: g1-frontend-paging-handoff.md §"goal 第 4 轮"；关键数字：P1/P2/P3/P5 report 140/400/235/477 与 ABC 逐字节唯一；rename/mtime 不变、mutation 变 `9DFB2739…`；clean-env rc=0 同 ABC；compile exe 无 CreateProcess 导入 | blockers: 同前（CL 原语面/G2/256KiB 准入） | next_responsible_role: work（T-04 包级复现待 T-03；T-09 需真实代际反控）
 
 - 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-04 预备切片：同源重建可复现边界（exe 仅链接元数据差）、语义产物字节级确定、仓外/异路径运行、PE 依赖面；T-10 受影响组 r73 复跑无新增红；T-04 未关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: b16ed7d8c（本轮零源码改动，仅证据与计划簿记） | task_ids: T-04（预备切片）、T-10 ⑤（V-G1a/e 新 Gen1 复验） | evidence: g1-frontend-paging-handoff.md §"goal 第 3 轮"；关键数字：重建指纹同 `ddaa3a31…`、boot exe 差 2B（0x80 TimeDateStamp）、compile 差 23B/6 段、ABC SHA 同（tiny 9A80F9A8…/bigcomment E5DFB508…）、boot 681978131、r73 1046 组 50/51+隔离 PASS、语义 124/129（5 红=基面存量）、PE 导入=KERNEL32+bcrypt vs VCRUNTIME140+UCRT | blockers: 同前轮（CL 原语面/G2/256KiB 准入裁定）——不影响本轮 T-04 切片 | next_responsible_role: work（T-04 固定点矩阵扩展 / T-09 身份反控证据）
 
