@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use ace_abi::py_session::PySession;
+use super::py_prepared::py_session;
 use ace_av_core::av::ExecLimits;
 
 fn corpus_dir() -> PathBuf {
@@ -54,7 +54,7 @@ fn oracle_lines() -> Vec<f64> {
 fn p1107_v02_protocol_case_av_matches_the_native_oracle() {
     let src = std::fs::read_to_string(corpus_dir().join("protocol_1107.at"))
         .expect("the shared V-02 protocol corpus");
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run_with(
             &src,
@@ -94,7 +94,7 @@ var a3 = l.append(33)
 print(l.count(22).to(int))
 return 7
 }";
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run_with(
             src,
@@ -126,7 +126,7 @@ print(l.pop().to(int))
 print(len(l).to(int))
 return 0
 }";
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run_with(
             src,

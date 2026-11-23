@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use ace_abi::py_session::PySession;
+use super::py_prepared::py_session;
 use ace_av_core::av::ExecLimits;
 
 const CORPUS: &str =
@@ -18,7 +18,7 @@ fn corpus() -> String {
 #[test]
 fn p1107_v04_uncaught_python_error_is_a_named_trap_with_span() {
     let src = corpus();
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run_with(
             &src,
@@ -61,7 +61,7 @@ fn p1107_v04_uncaught_python_error_is_a_named_trap_with_span() {
 /// equivalent property is per-run isolation, covered by the V-04 A2PY case.)
 #[test]
 fn p1107_v04_session_remains_usable_after_a_trap() {
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let limits = ExecLimits {
         max_steps: 5_000_000,
         wall: std::time::Duration::from_secs(60),

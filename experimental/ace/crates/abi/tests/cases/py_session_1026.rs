@@ -6,7 +6,7 @@
 //! §6; identity is asserted from BOTH directions every run.
 #![cfg(windows)]
 
-use ace_abi::py_session::PySession;
+use super::py_prepared::py_session;
 use ace_av_core::av::ExecLimits;
 
 const CORPUS_COPY: &str =
@@ -75,7 +75,7 @@ fn p1026_corpus_identity_both_directions() {
 #[test]
 fn p1026_v01_acceptance_training_via_public_session() {
     let started = std::time::Instant::now();
-    let mut session = PySession::open().expect("the py adapter session opens");
+    let mut session = py_session();
     // generous step/wall budgets: the f64 reconstruction's pow2 loop is
     // instruction-heavy by design (~1000 steps per extraction)
     let limits = ExecLimits {
@@ -121,10 +121,10 @@ fn p1026_v01_acceptance_training_via_public_session() {
 
 #[test]
 fn p1026_session_close_releases_binding_and_reopens() {
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     session.close();
     // a fresh session at a new generation still runs a py op end-to-end
-    let mut fresh = PySession::open().expect("fresh session opens");
+    let mut fresh = py_session();
     let run = fresh
         .run("use.py math: sqrt\nfn main() int {\nvar q = sqrt(4)\nprint(q.to(float))\nreturn 0\n}")
         .unwrap_or_else(|e| panic!("fresh run: {e}"));
@@ -149,7 +149,7 @@ fn p1026_session_close_releases_binding_and_reopens() {
 /// (== against Rust-computed constants — no tolerance).
 #[test]
 fn p1026_f64_reconstruction_bit_exact_negative_and_low_bit31() {
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run(
             "use.py math: pi, e
@@ -199,7 +199,7 @@ return 0
 /// changed between calls).
 #[test]
 fn p1026_v09_v10_identity_mutation_and_dynamic_state() {
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     // build a Python list, mutate via `l.append`, read via ALIAS `a` and
     // via getitem — identity + dynamic state in one program
     let run = session
@@ -291,7 +291,7 @@ return x
 /// the same lane the py programs reach through `.to(float)`.
 #[test]
 fn p1026_console_float_lane_formats_native_auto_doubles() {
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run(
             "use.py math: sqrt

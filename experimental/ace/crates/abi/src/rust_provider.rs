@@ -633,6 +633,47 @@ pub fn py_bridge_shared_build() -> Result<&'static RustProviderBuild, String> {
         .map_err(|e| e.clone())
 }
 
+/// Read the explicitly prepared AV Python provider without building anything.
+pub fn load_prepared_py_bridge(root: &Path) -> Result<RustProviderBuild, String> {
+    fn prepared_error(message: impl std::fmt::Display) -> String {
+        format!("foreign.prepared: Python provider: {message}")
+    }
+
+    let descriptor = std::fs::read(root.join("py.descriptor.json")).map_err(prepared_error)?;
+    let descriptor: serde_json::Value =
+        serde_json::from_slice(&descriptor).map_err(prepared_error)?;
+    if descriptor["schema"] != "plan1093.provider-descriptor/1"
+        || descriptor["kind"] != "rust"
+        || descriptor["provider"] != "py"
+    {
+        return Err(prepared_error("invalid descriptor identity"));
+    }
+    let rustc_identity = descriptor["rustc_identity"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| prepared_error("missing rustc identity"))?;
+    let out = root.join("out");
+    let build = describe_rust_provider(
+        py_bridge_provider_source(),
+        rustc_identity.to_string(),
+        out.join("py_bridge.dll"),
+        out.join("py_bridge.lib"),
+    )
+    .map_err(prepared_error)?;
+    let shim_digest = auto_bindgen::rust_import::shim_digest(&build.shim_source);
+    let want_stamp = format!("{}\n{shim_digest}\n{rustc_identity}\n", build.provider_digest);
+    let stamp = std::fs::read_to_string(out.join("py-build-stamp.txt")).map_err(prepared_error)?;
+    if stamp != want_stamp || !build.staticlib.is_file() {
+        return Err(prepared_error("stale or incomplete provider closure"));
+    }
+    let dll = std::fs::read(&build.cdylib).map_err(prepared_error)?;
+    let hash = ace_core::runtime_contract::sha256_hex(&dll);
+    if descriptor["artifact_sha256"] != hash.as_str() {
+        return Err(prepared_error("DLL digest mismatch"));
+    }
+    Ok(build)
+}
+
 /// Open the py-bridge provider as a foreign session at `generation`
 /// (interpreter DLL resolution first, then the shared prepared build).
 pub fn open_py_bridge_session(generation: u64) -> Result<F0Session, String> {

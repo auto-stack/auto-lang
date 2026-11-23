@@ -6,7 +6,7 @@
 //! through the py lane and asserts the recorded operation plan.
 #![cfg(windows)]
 
-use ace_abi::rust_provider::open_py_bridge_session;
+use super::py_prepared::py_f0_session;
 use ace_core::py_ops::{PyOpKind, PyValClass};
 
 const SECTION_5_1: &str = r#"use.py torch: manual_seed, arange, ones
@@ -37,7 +37,7 @@ fn main() int {
 }"#;
 
 fn compile(src: &str) -> ace_core::verify::CheckedModule {
-    let session = open_py_bridge_session(1).expect("py bridge session");
+    let session = py_f0_session();
     let caps = vec![
         ace_foreign_contract::manual::SOURCE_CAP.to_string(),
         ace_foreign_contract::resource::RESOURCE_CAP.to_string(),
@@ -190,7 +190,7 @@ fn p1107_t02_neutral_contract_matches_the_live_provider_declarations() {
     // side must fail here — names, logical forms, status tables and resource
     // lane kinds are compared field by field.
     let neutral = ace_foreign_contract::py_ops::language_contract().expect("neutral contract");
-    let session = open_py_bridge_session(1).expect("live provider");
+    let session = py_f0_session();
     let live = session.admitted.source_declarations_ref();
     assert_eq!(neutral.source_declarations_ref().len(), live.len());
     for nl in neutral.source_declarations_ref() {
@@ -222,7 +222,7 @@ fn p1107_t02_provider_declarations_match_the_frozen_op_list() {
     // The target-neutral declaration list (`PY_OP_NAMES`) is the source other
     // targets recognise; it must stay exactly the admitted provider's set, so
     // a provider-side op addition cannot silently widen a consumer's contract.
-    let session = open_py_bridge_session(1).expect("py bridge session");
+    let session = py_f0_session();
     let mut names: Vec<&str> = session
         .admitted
         .source_declarations_ref()

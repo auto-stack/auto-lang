@@ -8,7 +8,7 @@
 //! failure, never a silent skip.
 #![cfg(windows)]
 
-use ace_abi::rust_provider::open_py_bridge_session;
+use super::py_prepared::py_f0_session;
 use ace_av_core::contract::ExecOutcome;
 use ace_av_core::foreign_exec::ForeignStubTable;
 
@@ -127,13 +127,11 @@ fn expect_status(out: ExecOutcome, what: &str) -> i32 {
 }
 
 fn session() -> ace_abi::rust_provider::F0Session {
-    open_py_bridge_session(1).unwrap_or_else(|e| panic!("py-bridge session: {e}"))
+    py_f0_session()
 }
 
 /// The preparation gate: the shared prepared build exists, every fn
-/// declares the frame axis, and admission answers through the real AV
-/// lane. The FIRST run on a machine also compiles the pinned pyo3
-/// closure (recorded timing; later runs are cargo no-ops).
+/// declares the frame axis, and admission answers through the real AV lane.
 #[test]
 fn p1026_py_bridge_prepared_and_admits() {
     let t0 = std::time::Instant::now();
@@ -443,4 +441,50 @@ fn p1026_py_bridge_torch_slice() {
         "close",
     );
     eprintln!("p1026 torch slice: {} ms", t0.elapsed().as_millis());
+}
+
+#[test]
+fn p1026_python_slice_bindings_and_spans_1127() {
+    use ace_core::source::compile_language_source_with_foreign;
+
+    let f0 = py_f0_session();
+    let caps = ["foreign.scalar".to_string(), "foreign.resource".to_string()];
+    let compile = |body: &str| {
+        let source = format!("use.py numpy: arange\nfn main() int {{ {body} }}");
+        compile_language_source_with_foreign(&source, "main.as", &caps, &f0.admitted)
+    };
+    for write in ["row = 2", "row += 1"] {
+        let body = format!("var row = arange(6); {write}; var selected = row[:]; return 0");
+        let Err(diags) = compile(&body) else {
+            panic!("a scalar write reached a Python binding: {write}");
+        };
+        assert!(
+            diags.iter().any(|d| d.code == "source.py-domain"),
+            "{diags:?}"
+        );
+    }
+    let body =
+        "var row = arange(6); row = arange(3); var selected = (row).reshape(3)[::0]; return 0";
+    let compiled = compile(body).unwrap_or_else(|diags| panic!("{diags:?}"));
+    let source = format!("use.py numpy: arange\nfn main() int {{ {body} }}");
+    let expression = "(row).reshape(3)[::0]";
+    let start = source.find(expression).unwrap();
+    assert!(compiled
+        .checked
+        .py_ops()
+        .expect("shared Python facts")
+        .find_exact(
+            ace_core::py_ops::PyOpKind::GetItem,
+            (start as u32, (start + expression.len()) as u32)
+        )
+        .is_some());
+}
+
+#[test]
+fn p1026_python_prepared_only_loader_requires_descriptor_1127() {
+    let result = ace_abi::rust_provider::load_prepared_py_bridge(std::path::Path::new(file!()));
+    let Err(message) = result else {
+        panic!("loaded Python provider from a Rust source path");
+    };
+    assert!(message.starts_with("foreign.prepared:"), "{message}");
 }

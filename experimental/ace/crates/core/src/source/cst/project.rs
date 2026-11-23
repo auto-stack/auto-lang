@@ -4184,6 +4184,7 @@ enum Frame {
         kw: Span,
     },
     PostfixFoldAll {
+        receiver_start: usize,
         steps: Vec<u32>,
     },
     /// 调用收尾：callee 语义（纯名字 / 方法链尾步）+ 一元链 + 实参数 +
@@ -11556,7 +11557,10 @@ impl<'a> Engine<'a> {
             if steps.is_empty() {
                 self.stack.push(Frame::ExprEnter(base));
             } else {
-                self.stack.push(Frame::PostfixFoldAll { steps });
+                self.stack.push(Frame::PostfixFoldAll {
+                    receiver_start: self.cx.span_of(base).start,
+                    steps,
+                });
                 self.stack.push(Frame::ExprEnter(base));
             }
             return;
@@ -12523,11 +12527,11 @@ impl<'a> Engine<'a> {
     /// 折叠全部后缀步（迭代；不递归）。PLAN-1080（T-03）：管道步与点后缀
     /// 同构脱糖（紧结合——管道作用于紧邻后缀链，二元算子在其后作用于整
     /// 个管道结果；legacy 低结合形需显式括号，见 §6.5 D-03 边界记录）。
-    fn fold_postfix(&mut self, recv: Expr, steps: Vec<u32>) -> Expr {
+    fn fold_postfix(&mut self, recv: Expr, receiver_start: usize, steps: Vec<u32>) -> Expr {
         let mut value = recv;
         for step in steps {
             let member = self.step_member(step);
-            value = self.fold_one_postfix(value, step, member);
+            value = self.fold_one_postfix(value, receiver_start, step, member);
         }
         value
     }
@@ -12574,7 +12578,13 @@ impl<'a> Engine<'a> {
         })
     }
 
-    fn fold_one_postfix(&mut self, recv: Expr, step: u32, member: Option<u32>) -> Expr {
+    fn fold_one_postfix(
+        &mut self,
+        recv: Expr,
+        receiver_start: usize,
+        step: u32,
+        member: Option<u32>,
+    ) -> Expr {
         if let Some(op) = member {
             let token = self.cx.tree.kind(op);
             if token == self.cx.k.tok_r_await || token == self.cx.k.tok_r_go {
@@ -12615,7 +12625,8 @@ impl<'a> Engine<'a> {
                 .and_then(|node| self.cx.field_child(node, "step"));
             let bounds = [start, stop, step].map(|node| node.map(|n| self.project_expr_sync(n)));
             return Expr {
-                span: recv.span.join(self.cx.span_of(slice)),
+                // Group projection can omit parentheses from the inner value's span.
+                span: Span { start: receiver_start, end: self.cx.span_of(slice).end },
                 kind: ExprKind::PySlice {
                     base: Box::new(recv),
                     bounds: Box::new(bounds),
@@ -13216,7 +13227,10 @@ impl<'a> Engine<'a> {
                 });
                 push_args(self, arg_nodes);
                 if !fold_mids.is_empty() {
-                    self.stack.push(Frame::PostfixFoldAll { steps: fold_mids });
+                    self.stack.push(Frame::PostfixFoldAll {
+                        receiver_start: self.cx.span_of(base).start,
+                        steps: fold_mids,
+                    });
                 }
                 self.stack.push(Frame::ExprEnter(base));
             }
@@ -14644,9 +14658,9 @@ impl<'a> Engine<'a> {
                     },
                 }));
             }
-            Frame::PostfixFoldAll { steps } => {
+            Frame::PostfixFoldAll { receiver_start, steps } => {
                 let recv = self.pop_e();
-                let e = self.fold_postfix(recv, steps);
+                let e = self.fold_postfix(recv, receiver_start, steps);
                 self.vals.push(Val::E(e));
             }
             Frame::CallAssemble {

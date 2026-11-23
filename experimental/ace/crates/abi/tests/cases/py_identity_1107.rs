@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use ace_abi::py_session::PySession;
+use super::py_prepared::py_session;
 use ace_av_core::av::ExecLimits;
 
 fn corpus_dir() -> PathBuf {
@@ -55,7 +55,7 @@ fn oracle_lines() -> Vec<f64> {
 fn p1107_v03_identity_and_aliasing_via_av_session() {
     let src = std::fs::read_to_string(corpus_dir().join("identity_1107.at"))
         .expect("the shared V-03 identity corpus");
-    let mut session = PySession::open().expect("session opens");
+    let mut session = py_session();
     let run = session
         .run_with(
             &src,

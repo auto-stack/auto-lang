@@ -4,7 +4,7 @@
 //! byte identity is pinned here so a second hand-written copy cannot appear.
 #![cfg(windows)]
 
-use ace_abi::py_session::PySession;
+use super::py_prepared::py_session;
 use ace_av_core::av::ExecLimits;
 
 const CORPUS: &str = "../../../../crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as";
@@ -45,7 +45,7 @@ fn p1107_v01_corpus_identity_is_pinned() {
 
 #[test]
 fn p1107_v01_section51_training_via_av_session() {
-    let mut session = PySession::open().expect("the py adapter session opens");
+    let mut session = py_session();
     let limits = ExecLimits {
         max_steps: 200_000_000,
         wall: std::time::Duration::from_secs(180),

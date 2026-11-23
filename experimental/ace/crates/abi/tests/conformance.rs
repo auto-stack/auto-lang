@@ -47,6 +47,9 @@ mod sys973_av_foreign;
 mod out_frame_1064;
 #[path = "cases/plan980_f0_cache.rs"]
 mod plan980_f0_cache;
+#[cfg(windows)]
+#[path = "cases/py_prepared.rs"]
+mod py_prepared;
 #[path = "cases/py_bridge_1026.rs"]
 mod py_bridge_1026;
 

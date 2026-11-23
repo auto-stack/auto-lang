@@ -9990,6 +9990,17 @@ F:{d}
             let _ = self.expr_iterative(&pa.value);
             return;
         };
+        if pa.steps.is_empty()
+            && self.py_locals.contains(&xl)
+            && !matches!(pa.op, ast::PlaceOp::Set)
+        {
+            self.bind_err(
+                "source.py-domain",
+                "compound assignment cannot write an opaque Python binding",
+                span,
+            );
+            return;
+        }
         let base_vt = self.locals[xl.0].vt;
         if self.profile == SourceProfile::Auto && self.dynamic_place(base_vt, &pa.steps) {
             self.resolve_dynamic_place_assign(pa);
@@ -15858,6 +15869,13 @@ F:{d}
                     let cell_binding = *mutable
                         && matches!(vt, VT::I32 | VT::Bool | VT::Char)
                         && self.shared_cell_spans.contains(&name.span.start);
+                    if cell_binding && self.py_locals.contains(&lref) {
+                        self.bind_err(
+                            "source.py-domain",
+                            "a checked Python binding cannot be captured as a writable Auto cell",
+                            name.span,
+                        );
+                    }
                     self.locals.push(LocalDecl {
                         name: name.name.clone(),
                         vt,
@@ -15943,6 +15961,16 @@ F:{d}
                     // here only resolution failures are reported.
                     let rstmt = match self.lookup(&target.base.name) {
                         Some(l) => {
+                            if target.path.is_empty()
+                                && self.py_locals.contains(&l)
+                                && !self.py_is_object(&value)
+                            {
+                                self.bind_err(
+                                    "source.py-domain",
+                                    "a checked Python binding requires a Python object on assignment",
+                                    value.span,
+                                );
+                            }
                             // resolve the field path segment by segment
                             // against the actual owner records
                             let mut path: Vec<(usize, usize)> = Vec::new();

@@ -1270,7 +1270,7 @@ runner = "nextest"
 workspace = "experimental/ace"
 args = ["-p", "ace-abi", "--test", "conformance", "--config-file", "../../.config/nextest-full.toml"]
 expression = "(test(p1026)) and not test(/(^|::)performance::/)"
-tools = []
+tools = ["av-providers"]
 domain = "ace"
 all = false
 
