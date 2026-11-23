@@ -140,6 +140,7 @@ merge 级门。
   `18446744073709551615` 的输入返回 `None`。在乘加前检验上界。
 - `std.conv.from_u64(n u64) -> Str` 返回规范十进制，零写作 `"0"`，其余值无前导零。
   装配 AV 对最大值、往返、溢出和零分别断言。原 i32 `to_int` 接面与值域保持。
+  冻结装配按导入或已绑定的引用联入宽转换接口，旧消费者只使用原有符号时保持原有落地能力。
 - 普通 AV 单文件和工程源码的 `str/Str.parse_u64()` 借用文本，通过同一纯 Auto
   解析函数返回 Option。工程的解析器来源纳入编译身份和诊断坐标。显示接面见
   [AV 语言齐平](../auto-av/language-parity.md)。[PLAN-1122](../../plans/archive/1122-av-stdlib-wide-unsigned-conversion.md)。

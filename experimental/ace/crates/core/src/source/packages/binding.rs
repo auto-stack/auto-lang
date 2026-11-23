@@ -4621,7 +4621,7 @@ pub fn bind_package_syntax_assembled_aggregates(
     impls: BTreeMap<String, PackageImplSyntax>,
     ctx: &super::provider_sources::PackageAssemblyContext,
 ) -> Result<BoundPackages, PackageDiagnostic> {
-    bind_package_syntax_inner(
+    let mut bound = bind_package_syntax_inner(
         inputs,
         entry,
         caps,
@@ -4631,7 +4631,45 @@ pub fn bind_package_syntax_assembled_aggregates(
         Some(ctx),
         Faces::AggregatesCt,
         None,
-    )
+    )?;
+    omit_unrequested_wide_conversions(&mut bound);
+    Ok(bound)
+}
+
+// Some assembled consumers lower every function, including declarations
+// the application never calls. Link the AV wide conversion family only
+// when the resolved package graph imports or references it.
+fn omit_unrequested_wide_conversions(bound: &mut BoundPackages) {
+    use super::stdlib::STDLIB_PACKAGE;
+
+    let module = unit_key(STDLIB_PACKAGE, "conv");
+    if bound.entry == module || !bound.units.contains_key(&module) {
+        return;
+    }
+
+    const NAMES: [&str; 3] = ["parse_u64", "from_u64", "digits_of_u64"];
+    let symbols = NAMES.map(|name| fn_symbol(STDLIB_PACKAGE, "conv", name, &bound.entry));
+    let referenced = bound.references.iter().any(|(owner, targets)| {
+        !symbols.contains(owner) && symbols.iter().any(|symbol| targets.contains(symbol))
+    });
+    let imported = bound.units.values().flat_map(|unit| &unit.imports).any(|import| {
+        matches!(import.path.as_slice(), [package, module, name]
+            if package == STDLIB_PACKAGE && module == "conv" && NAMES.contains(&name.as_str()))
+    });
+    if referenced || imported {
+        return;
+    }
+
+    bound
+        .program
+        .items
+        .retain(|item| !matches!(item, Item::Fn(function) if symbols.contains(&function.name.name)));
+    for symbol in symbols {
+        bound.origins.remove(&symbol);
+        bound.references.remove(&symbol);
+        bound.global_reads.remove(&symbol);
+        bound.binding_walks.remove(&symbol);
+    }
 }
 
 /// 编译期标量值（与 source-cte `CtValue` 同域：i32/bool）。
