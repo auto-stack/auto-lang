@@ -392,7 +392,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package]) { var-item() {} }
             alt(profiles: [auto-packages]) { auto-var-item() {} }
             alt(profiles: [age-package]) { age-let-item() {} }
-            alt(profiles: [age-package]) { age-use-sym-item() {} }
+            alt(profiles: [age-package, auto-packages]) { age-use-sym-item() {} }
             alt(profiles: [packages-modules, packages-ct, packages-aggregates, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, auto-packages]) { use-item-p() {} }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, packages-modules, packages-ct, packages-aggregates, aggregates, auto, scheduler, age-package, config-document, auto-packages]) { type-item() {} }
             // PLAN-1043（T-03）/PLAN-966（T-02）：项位编译期选择（仅
@@ -1193,15 +1193,15 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-105 T-02（U03 真语料 013/015）：列表类型注解 `[]T` / `[N]T`
         // （模型字段 `var todos []Todo = []`）——collections 域按 `List<T>` 承载。
-        age-list-ty(profiles: [age-component, age-package]) {
+        age-list-ty(profiles: [age-component, age-package, auto-packages]) {
             lbracket() {}
-            opt { int-literal(field: "len") {} }
+            opt(profiles: [age-component, age-package]) { int-literal(field: "len") {} }
             rbracket() {}
             age-model-ty(field: "elem") {}
         }
-        age-model-ty(profiles: [age-component, age-package]) {
+        age-model-ty(profiles: [age-component, age-package, auto-packages]) {
             alt(profiles: [age-package]) { generic-ty(field: "generic") }
-            alt { age-list-ty(field: "list") {} }
+            alt(profiles: [age-component, age-package]) { age-list-ty(field: "list") {} }
             alt { int-kw() {} }
             alt { i32() {} }
             alt { bool() {} }
@@ -2037,14 +2037,14 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         // `pub use a.b[.c] [as x]`（2 段=本包 mod.item；3 段=pkg.mod.item）。
         // PLAN-981（IF-981-ORIGINAL）：符号表式导入 `use <mod>: a, b, c`。
         // 与点分导入同义（逐符号绑定到 `mod.a` …），只是作者拼写不同。
-        age-use-sym-item(profiles: [age-package], expect: "a symbol-table import `use <mod>: a, b`") {
+        age-use-sym-item(profiles: [age-package, auto-packages], expect: "a symbol-table import `use <mod>: a, b`") {
             r-use(field: "kw") {}
             ident(field: "module") {}
             colon() {}
             ident(field: "head") {}
             many { age-use-sym-tail() {} }
         }
-        age-use-sym-tail(profiles: [age-package]) {
+        age-use-sym-tail(profiles: [age-package, auto-packages]) {
             comma() {}
             ident(field: "sym") {}
         }
@@ -2397,7 +2397,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             alt(profiles: [age-package]) { f32-kw(field: "word") }
             // PLAN-105 T-02（U03 真语料 012）：三层面的注解类型也收列表形
             //（`var rows []str = []` 在 handler 体里）与泛型形（`List<str>`）。
-            alt(profiles: [age-component, age-package]) { age-list-ty(field: "list") }
+            alt(profiles: [age-component, age-package, auto-packages]) { age-list-ty(field: "list") }
             alt(profiles: [age-component]) { generic-ty(field: "generic") }
             alt { int-kw(field: "word") }
             alt { i32(field: "word") }
@@ -2643,6 +2643,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         //   * 记录体 `[as Spec,..] { members }`。
         // 两者首 token 互异（`=` vs `as`/`{`），由本规则的 alt 分派。
         type-tail(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, scalar-ct, aggregates, auto, packages-modules, packages-ct, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, packages-aggregates-ct, age-package, config-document, auto-packages]) {
+            alt(profiles: [auto-packages]) {
+                assign() {}
+                lbrace() {}
+                list-nl { member() {} }
+                rbrace() {}
+            }
             alt(profiles: [record, record-instances, text-record, age-h0, age-component, text-record-instances, collections, aggregates, auto, scheduler, age-package, config-document, auto-packages]) {
                 assign() {}
                 ann-ty(field: "alias")
@@ -2802,6 +2808,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             many(profiles: [auto, auto-packages, aac]) { declaration-attribute(field: "attribute") {} }
             ident(field: "name")
             opt { colon() {} }
+            opt(profiles: [auto-packages]) { colon() {} }
             ann-ty(field: "ty")
             // PLAN-1083（auto 面）：字段后逗号吸收（命名载荷 `Rect { w int, h int }`
             // 的同行拼写；冻结面行为不变）。

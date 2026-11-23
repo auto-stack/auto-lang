@@ -279,6 +279,37 @@ impl ProgramSnapshot {
         result
     }
 
+    /// Run a global transaction with an isolated list buffer at one cell.
+    /// The caller owns the snapshot exclusively, bounds the list, and only
+    /// mutates its structure. Record/text elements are shared read-only.
+    /// Fresh module initialization already creates an isolated cell table.
+    pub fn with_forked_global_list<T, E>(
+        &self,
+        index: usize,
+        invalid_list: impl FnOnce() -> E,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
+        self.with_global_transaction(|| {
+            if self.initialized() {
+                use crate::contract::Value;
+                let mut cells = self.cells.borrow_mut();
+                let Some(cell) = cells.get_mut(index).and_then(Option::as_mut) else {
+                    return Err(invalid_list());
+                };
+                let Value::List(list) = &cell.value else {
+                    return Err(invalid_list());
+                };
+                let elements = list.rc.borrow().elems.clone();
+                let len = elements.len();
+                let fork = crate::owned_text::StrArena::new()
+                    .try_alloc_list(elements, len)
+                    .map_err(|_| invalid_list())?;
+                *cell = crate::av::GlobalValue::plain(Value::List(fork));
+            }
+            operation()
+        })
+    }
+
     /// Evaluate a candidate update and restore the original cells. Its result
     /// and full state can be committed later by the same snapshot.
     pub fn preview_global_update<T, E>(

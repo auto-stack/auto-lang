@@ -95,3 +95,16 @@ CST 投影为 `Item::Node`（名字+span，体不重投影），node view 文本
 session 不串 state/cache。共享语法/绑定/IR 改动仅按 AV 及共同正确性验证；非 AV
 目标检查保 `#ignore` 与后续 owner。来源与逐 case 结果见
 [PLAN-1095](../../plans/1095-av-parity-ordinary-project-composition.md)。
+
+### 普通 Auto 包导入的类型边
+
+普通 Auto 包前门（`auto-packages`）支持 `use mod: Type, item` 的成员清单、
+`type Record = { field: T }` 的命名记录声明，以及返回位置的 `[]T` 列表拼写。
+这些形状分别投影到已有的受检成员导入、记录和动态列表类型。解析后的类型专用
+导入没有值初始化顺序边，仍须解析存在性、可见性和记录类型。模块、函数和常量
+导入保留运行时模块图检查，全局值初始化依赖仍按实际读取和调用关系检查。
+[PLAN-1111](../../plans/archive/1111-ase-local-todo-service.md) 用 013 后端覆盖
+API → DB 的模块依赖和 DB → API 的类型依赖。普通 Auto 的命名记录构造将借用
+文本复制进拥有文本的字段。AV 的 `with_forked_global_list` 允许独占宿主在
+一个列表 cell 上隔离结构修改，失败时恢复旧缓冲和全局标量。记录和文本元素
+保持只读共享。

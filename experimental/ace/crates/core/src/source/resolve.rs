@@ -17977,6 +17977,13 @@ F:{d}
                         && matches!(v.kind, RExprKind::StrLit(_))
                     {
                         v.vt = VT::StrOwned;
+                    } else if self.profile.is_auto_language()
+                        && want == VT::StrOwned
+                        && v.vt == VT::Str
+                    {
+                        // An ordinary record owns its text just as an
+                        // explicitly owned local does.
+                        v = Self::own_dynamic_text(v);
                     }
                     if want == VT::StrOwned && self.coll.legacy_age_widget_at(v.span) {
                         v = Self::clone_text_element(v);

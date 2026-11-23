@@ -1421,8 +1421,13 @@ fn bind_package_syntax_inner(
                     is_module: false,
                 },
             };
+            // A resolved type-only import on the ordinary Auto face cannot
+            // order module initialization. Record layout and global value
+            // dependency checks still run on the fully bound package.
+            if face != Faces::Auto || !b.is_type {
+                edges.get_mut(key).unwrap().insert(target_key);
+            }
             binds.insert(i.bound_name().to_string(), b);
-            edges.get_mut(key).unwrap().insert(target_key);
         }
         if face == Faces::Age && needs_age_math(key, unit, &units) {
             let target = super::stdlib::AGE_MATH_MODULE.to_string();
