@@ -16,7 +16,7 @@ supersedes_spec_components:
 new_spec_components: []
 touched_goals: []
 affects: [auto-syntax, auto-av, auto-a2x, auto-test-case]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -118,7 +118,7 @@ AV 走 `case-av-language-parity` 普通源码入口，A2PY 走 `case-a2py-langua
 - [x] AC-03（owner_stage=work）V-02/03/05 记录原生参考的原类和双端实际分类、捕获次数或退出、原 Auto 逻辑路径与半开字节范围，含内层失败和位置位移反控。
 - [x] AC-04（owner_stage=work）同源正例含两库，每个异常 Case 有同源 AV/A2PY 实跑、独立原生参考、实际运行身份与共享消费回归。语料及 oracle 有明确维护入口。
 - [x] AC-05（owner_stage=review）独立核共享语义、语法兼容和错误观测，按冻结提交验证 AC-01..04，并审查规范增量。
-- [ ] AC-06（owner_stage=merge）跑冻结职责及必要消费者门，核规范沉淀、正式合入、计划归档和保护式清理。
+- [x] AC-06（owner_stage=merge）跑冻结职责及必要消费者门，核规范沉淀、正式合入、计划归档和保护式清理。
 
 ## 8. 执行步骤
 
@@ -134,7 +134,7 @@ AV 走 `case-av-language-parity` 普通源码入口，A2PY 走 `case-a2py-langua
   - owner_stage: work。前置 T-02/03。落新语料及参考，复用 1126 的源身份和 1110 的诊断校验。完成 V-01..05 固定期望、三方结果、反控和复放；记录实测支持范围、完整职责与必要消费者组的选择。关联 AC-01..04。
 - [x] T-05 独立复审
   - owner_stage: review。前置 T-04。锁提交，逐项核 AC-01..04 与规范增量，复查 parser/profile 兼容、跨边界生命周期及无绕过路径。关联 AC-05。
-- [ ] T-06 合入归档
+- [x] T-06 合入归档
   - owner_stage: merge。前置 T-05 pass。冻结职责组和实际下游门、规范沉淀、归档、材料对账并按仓规保护式清理。关联 AC-06。
 
 ## 9. 复审记录
@@ -312,6 +312,23 @@ SD-01..04 保留 PLAN-1127 来源，AV 总览指向现有互操作规范。用�
 `stage: merge | checkpoint: archived | plan_id: PLAN-1127 | status: archived | completion_kind: delivered | owned_tasks: 5/6 | cleanup: pending`。
 
 实际归档态检查通过。已核 6 个任务、6 个验收项及尚未关闭的清理项，归档引用从新父目录解析，SD-01..04 回链到本计划且 AV 总览导航命中互操作规范。Design 58 的 §3.6 仍在主检出的并行草稿，归档链接定位已跟踪的 Design 58 文件。
+
+
+### 清理与交付结论
+
+`stage: merge | checkpoint: cleaned | plan_id: PLAN-1127 | archive_commit: eb33152474755e4528c9d0f4b690ff920a642c57 | owned_tasks: 6/6 | cleanup: verified`。
+
+逐项核对 PowerShell 扫描、Git 归属与可删除输出。lang-1127/auto-lang 已合入且干净，guard clean 后移除（83,342 文件，33,179,042,461 B，单次移除 20.903 s）。同组 auto-down@456c86ac 未改动，guard clean 后移除（1,333 文件，27,162,752 B），开发分支及空组目录同步移除（依赖、分支、组共 0.237 s）。正常构建 target、实验 target 及准备工具随树清理。
+
+对账范围 D:/autostack/plan-artifacts/plan-1127，包括全部固定门、基线重放、独立参考、临时解释器、输出和 fixed-admission 诊断。保护检查 clean，确认归档已折叠证据。先删除一份 437 B 冒烟日志，其余以带 SHA256 的清单逐项验证边界后删文件、从叶到根移除空目录（7,550 文件、946,577,442 B、6,120 子目录，1.937 s，随后移除本次清理清单和空根）。原始材料共 7,551 文件、946,577,879 B，已整目录清理，未发现本计划的散落输出或需保留材料。D:/autostack/plan-artifacts/.retention/policy.json 已回读确认 deleted-at-merge。D:/autostack/.tools/a2py-py314-numpy 是用户持久环境，加载本机包目录的 .pth 配置按本日授权和 PLAN-1126 记录登记，未计入计划材料。主检出并行草稿及原有无关残留保留。
+
+上线观察（上海时间）为现存 release a2x-worker.exe 2026-11-19 21:49:26、av-worker.exe 2026-11-22 20:52:01。主检出旧 debug Python 描述符时间 2026-11-22 23:11:02，仍登记旧工件 SHA256 0c7909d44078b1f141c1923a2b450177961f4e32f1296cf3e51911401f47df00。本计划交付冻结源码，运行证据使用本计划准备的 debug 工具。
+
+周期回归检查：主检出收据覆盖 PLAN-1126，2026-11-23 08:03:39（上海），检查时约 4.48 小时。以后合入的 PLAN-1127 不触发 %5，期间没有超过覆盖 ID 且触发 %5 的 Plan。批次未到期，本计划的定向固定门见上。
+
+`stage: merge | plan_id: PLAN-1127 | plan_revision: r1 | outcome: pass | delivery_commit: bafc880f13e00a078b2ab24fa3da438757764bec | canonical: SD-01..04 + AV overview verified | archive: docs/plans/archive/1127-ace-python-object-slice-syntax.md | cleanup: verified | batch: not_due`。
+
+`stage: goal | plan_id: PLAN-1127 | plan_revision: r1 | round: 9 | from: merge | to: done | status: archived | outcome: pass | worktree: removed | commit: bafc880f13e00a078b2ab24fa3da438757764bec | next: done`。
 
 ## 10. 待澄清事项
 
