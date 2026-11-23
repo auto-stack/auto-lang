@@ -377,7 +377,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 （`aac1054_g1_module_admission_is_512k_and_refuses_as_a_resource`，commit `1a762775a`）。
 剩余两项：
 
-1. **CL 实现 owner（关键，待用户决定）**：AAC 前端缺 CL 语法/原语面，实测两处：
+1. **CL 实现 owner（关键；已起草 PLAN-1130 待用户确认）**：AAC 前端缺 CL 语法/原语面，实测两处：
    `std/file` 的 `for a in <list>` 列表迭代被 parser 拒（`source.syntax`）、
    `std/bytes` 的 `char.from_codepoint` 被 binder 拒（`bind.module`）、
    `s.char_at(1).to_codepoint()` 被 checker 拒（`type.unresolved`）。
@@ -385,6 +385,9 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
    **新开一个 AAC 语言/CL 实现计划**（推荐；1054 保持 certification 定位并继续 blocked 等待），
    或把 1068 转 executing 并补生产任务。用户 2026-11-24 已倾向"新开实现计划"，待确认后
    按 `scripts/new-plan.sh` 建档，输入清单=本文 §0 第 6 轮的三面墙 + 1053/T-07 的 53 个 CL 族。
+   **2026-11-24 已起草**：PLAN-1130 `docs/plans/1130-aac-cl-primitive-and-std-surface.md`
+   （master `9cd6a4cab`，status drafting，9 任务/9 AC/4 规范增量），待用户确认后开
+   `D:/autostack/.wt/lang-1130/auto-lang` 执行；1054 在其交付后重绑 S 身份续跑 T-02..T-09。
 2. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
 
 附（2026-11-24 第 6 轮实测）：若确认新开实现计划，其输入工作清单已备好——
