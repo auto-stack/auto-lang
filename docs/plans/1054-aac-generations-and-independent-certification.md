@@ -4,7 +4,7 @@ status: executing
 feature_name: AAC同源代际自编译与独立认证发行
 author: [Codex]
 created_at: 2026-11-14
-updated_at: 2026-11-23
+updated_at: 2026-11-24
 plan_revision: 9
 current_step: 1
 total_steps: 10
@@ -17,6 +17,17 @@ touched_goals: [GOAL-002]
 # [PLAN-1054] AAC同源代际自编译与独立认证发行
 
 ## 0. 变更摘要
+
+### 2026-11-24 · T-10 遗留面收口：S 重新可编、Gen1 重新出具（r9 执行簿记，非规划变更）
+
+work 会话（2026-11-23/24）在 r9 授权范围内继续 T-10：把 r54-56 批量分页转换的遗留面收干净，
+**S（86 模块/1,619,040B）已由 Gen0 前端完整编译**，Gen1 重新链接并 boot（退出码 681978131 与旧 Gen1 相等），
+`ace-aac-gen1` 9/9、`ace-aac` 26/26、`ace-aac-host` 22/22、`ace-aac-incremental` 20/20 全绿（新 Gen1 身份）。
+期间实测定案：AV executor 对嵌套 list 元素访问按整个嵌套值计步，故**宿主/支撑/帧车道回退 flat**
+（1045 宿主面、1056 codec/driver），页式存储只留在编译器前端与阶段 driver IO；
+`paged_read_file/paged_write_file` 拆到 `aac/support/paged_file.at` 使纯存储模块无 host 依赖。
+T-10 ④ 边界负控维持既有结论；⑤ 仍余 V-G1c（driver 无 std 包多包装载）与 V-G1d（gen-next 全链，
+冻结墙具名 pending：模块准入 256KiB/语义步数/ABC 每函数表项/G2 mn 16MiB）。本轮不预勾 AC-G1。
 
 ### 2026-11-23 r9 · 用户裁定吸收 G1：新增 T-10 自举前端分页（范围扩批）
 
@@ -225,7 +236,7 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | Task ID / 状态 | owner_stage | 依赖 | 实际影响/执行内容 | 输出与验法/对应AC |
 |---|---|---|---|---|
 | [x] T-01 开工身份核对 | work | G-AAC及本包§4/5最小前置、未来实施授权 | 重读本Plan当前revision和当前Spec，核已合入A基线与输入版本、实际路径/符号/供给就绪、唯一专树及材料登记；未就绪停在具名依赖不消费WIP | 记录worktree/branch/base与§4指纹变化、支持profile和后续任务入口；AC-01/04。✅ 2026-11-22 r8：开工门闭合——985/A T-A04 phase pass@ecc282df1＋T-A05 fold，M2A-08落主95c7fbad8（985 §9）；1053 archived（Gen1实链：experimental/ace/tests/aac-gen1，aac1053-gen1.exe boot＋aac1053-compile.exe A2R编译入口均已交付，compile阻塞已由a2x-rust lower_coll修复关闭）；1044–1052/1055/1056/1057–1060/1062/1066/1078/1094/1096 archived；1051/1067 archived。专树 D:/autostack/.wt/lang-1054/auto-lang @ plan-1054-dev，base c3e5a4fb2（含1053落主）；材料区 D:/autostack/plan-artifacts/plan-1054/ 已登记（.retention/policy.json scopes，in-flight）。§4指纹实读（c3e5a4fb2）：Design59=d13a42c8056bac9f（变）、roadmap=63cdd3d65c5cba2f（变）、artifact-contract=ba5323ec912ba86d（不变）、test-groups.toml=a75f0e2a9ab24af7（变，1053 gen1视图新增所致）；docs/specs/auto-ac/aac-certification.md 尚不存在（SD-01未来交付）。后续入口：prepare-gen1/gen1-worker（AAC1053_GEN1_DIR）、固定组 case-aac-gen1-language-parity、cargo t ace-aac-gen1；机器占用核查0进程 |
-| [ ] T-10 自举前端分页（r9 吸收 G1） | work | T-01 | 合同保持修复：行存储分页——**缝策略（2026-11-23 侦察定案）**：行存取已集中于属主访问器族（syntax_cst nk/nstart/nlen/nfc/ncc/nexpected/nflags/ndecl；semantic_tree kind/row_count；lexer tok_*；driver 装载点），分页隐藏进访问器内部；新页式类型（record：chunks List<List<int>>+缓存 len，页 ≤32K 行）由新增 aac/support/paged.at 承载；直接点访问（实测 ~154 处核心+长尾）逐个改经访问器；syntax_lexer toks 分页；semantic_driver 侧 src/ast 分段装载+页式累积；admit_document 上限收敛（先收 64KiB-1 并配边界±1 负控，分页全落地后恢复 256KiB 并配大输入 golden）；**不动** MAX_LIST_ELEMS=65536/a2x-rust cap/AV 合同；模块 pub 签名随分页类型本 Plan 内联动调整（S 重绑身份，Gen0 重备 Gen1 后续行）。设计全文 §5 T-10 节。 | §6 V-G1a..e 全闭；1046/1047/1048/1050 受影响固定组原样绿+必要 consumer；新大输入 golden case 进日常组（≤10s/例）；AC-G1。证据折入本行 |
+| [ ] T-10 自举前端分页（r9 吸收 G1） | work | T-01 | 合同保持修复：行存储分页——**缝策略（2026-11-23 侦察定案）**：行存取已集中于属主访问器族（syntax_cst nk/nstart/nlen/nfc/ncc/nexpected/nflags/ndecl；semantic_tree kind/row_count；lexer tok_*；driver 装载点），分页隐藏进访问器内部；新页式类型（record：chunks List<List<int>>+缓存 len，页 ≤32K 行）由新增 aac/support/paged.at 承载；直接点访问（实测 ~154 处核心+长尾）逐个改经访问器；syntax_lexer toks 分页；semantic_driver 侧 src/ast 分段装载+页式累积；admit_document 上限收敛（先收 64KiB-1 并配边界±1 负控，分页全落地后恢复 256KiB 并配大输入 golden）；**不动** MAX_LIST_ELEMS=65536/a2x-rust cap/AV 合同；模块 pub 签名随分页类型本 Plan 内联动调整（S 重绑身份，Gen0 重备 Gen1 后续行）。设计全文 §5 T-10 节。 | §6 V-G1a..e 全闭；1046/1047/1048/1050 受影响固定组原样绿+必要 consumer；新大输入 golden case 进日常组（≤10s/例）；AC-G1。证据折入本行。✅ 部分（2026-11-24 r72，commit d6c89f2eb）：**S 重新可编 + Gen1 重出**。r68 把 paged 文件 IO 拆到新 `aac/support/paged_file.at`（纯存储模块无 host 依赖，AV 装配面可再装）；r69 修完 6 处批量转换遗留（bridge client/invoke、host_diag、driver/boot 的 flat↔页式边界），Gen0 全树诊断 `S-COMPILE OK modules=86 bytes=1619040`；r72 依 AV 实测把**宿主/支撑/帧车道回退 flat**（根因：AV executor 对"元素是 list"的读写按整个嵌套值计步，`paged_push`/`paged_get` 在 `List<List<int>>` 上是 O(存储元素数) —— v03_frame_bytes_match_reference 在 64M/256M 步均失败），S 仍 OK。Gen1 重出（`gen1-r72`，prepare 285s）：`aac1053-gen1.exe` 704,000B，manifest fingerprint `ddaa3a31…`/exe `2fe37e2c…`/runtime `4b761dea…`，boot 退出码 681978131（=旧 Gen1）；固定组 `ace-aac-gen1` 9/9、`ace-aac` 26/26、`ace-aac-host` 22/22、`ace-aac-incremental` 20/20。余：V-G1c（1047 driver 无 std 包多包装载）、V-G1d（gen-next 全链；冻结墙具名 pending） |
 | [ ] T-02 同源代际链 | work | T-01；全树 S 编译段依赖 T-10（r9） | Gen1编同一S得到Gen2，Gen2编同一S得到Gen3；记录实际父子编译者/产物hash/命令/退出码/目标，禁止中途偷偷换源码或调用Gen0源编译fallback。 | 真实Gen2/Gen3及身份链，不仅文件名或报告声明；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03。部分交付（2026-11-22，commit 1fa69ddc7）：代际构建驱动 `gen-next`（父代工具集 manifest 准入→全树 S project 编译→ABC→1051 bridge→COFF→link→子代 PE→boot 运行→身份 manifest）+ `probe-native-compile`（Gen0 窗 mn 车道判定探针）已交付并提交。实测判定两处具名阻塞（均有完整证据链，plan-artifacts/plan-1054/t02-generational-probe-design.md）：**G1**=自举 1047 语义前端在 ≥~54KiB 输入上触冻结 AV 合同列表上限 `MAX_LIST_ELEMS=65536`（`av.resource.list-elems`，av-core contract；driver 自身准入却允 256KiB，矛盾属实）——atom_data.at（66,236B，S 唯一超限模块）确定性 `trap:ListIndex`（a2x_runtime push 上限，带 backtrace 实测 len=65536/cap=65536；Gen0 构建的 aac1047-driver 同样复现=非 Gen1 构建问题；Gen0 packages 车道编同文件正常）；且 driver 全树平面累积模型在 64 模块下远超 64K，"Gen1 经 1047 driver 编全树 S"当前架构不可行。**G2**=mn 车道（MnDriver 实测，assemble 80.6s）拒lower全树 S+driver 产物（`d_p3_appm15_core_atom_bound_bind_body` ownership 分析 ~34,225,664B > 冻结 16,777,216B）；同 1053 §10 具名缺口（64MiB tier 归 AGE elem-view owner）。诚实边界：ABC→1051 bridge 服务路径对"编译驱动产物"的准入未实测（被 G1 挡在前端阶段，无法产出其 ABC）；G2 在 bridge 路径上的真实状态随 G1 解除后首测。native 代际编译工具的另一候选形态（A2R 车道）无 Auto A2R emitter，不可行。G1 根因细化（2026-11-22 三）：双 list 独立触顶实测——70KB 纯注释文件（行极少）trap=源字节 list；59,546B 密集代码（bytes<64K）trap=token/行 list；即 >64KiB 文件连装载都失败，前端平面存储距全树 S 规模差 1-2 个数量级。G1 已于 2026-11-23 r9 被用户裁定吸收为 T-10（本行原文保留为历史；关闭责任移交 T-10，完成后同输入重跑 gen-next 续行）；G2 关闭条件（具名 pending，不充 PASS）：AGE elem-view 交付后 64MiB tier 开放或 Design59 具名重设计；G2 解除后同输入重跑 gen-next 链条自动续行 |
 | [ ] T-03 各代完整语义与故障 | work | T-02 | Gen1/2/3分别执行CS与完整CL适用测试、编译失败诊断、资源清理及冷/热/恢复/坏编辑修复；保独立oracle并检查每代服务/依赖身份。复用未变输入证据须身份精确。 各代都包含CS未用的~T/?T/!T、泛型/CTE/标注/领域与资源组合CL；当前代源码、库、grammar、runtime、实际编译者/产物逐行绑定，不能借上一代绿报告。 | 各代义务结果及实际错误阶段/资源轨迹；不能只跑自编译小子集；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
 | [ ] T-04 可复现与包验证 | work | T-03 | 控制时间戳/路径/随机种子/链接metadata等可复现输入，核语义IR/对象/输出和可控制范围字节固定点，任何剩余非确定字段具名解释。按978套路在材料区仓外安装/重定位AAC及显式runtime/helper，列host/target依赖。 | 复现边界和仓外真运行收据；不声称全工具链无libc或所有host已支持；用§6 V-01..04的对应输入核独立预期，绑定AC-01/02/03 |
@@ -236,6 +247,8 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
 | [ ] T-08 合入沉淀与清理 | merge | T-07 pass | 按原merge范式核已落主身份、受影响证据、Spec增量；核真实T-07 review及实际同源代际身份后发布正式AAC独立验收结论/证书，再归档本Plan；所有输出路径逐项对账，必要证据折叠计划后清空材料scope，wt-guard clean再移树/分支 | 独立交付摘要/后继输入及清理结果；AC-06，M2/AAC总出口按各自合同 |
 
 ## 9. 复审记录
+
+- 2026-11-24 stage: work | PLAN-1054 | r9 | outcome: pass（T-10 遗留面收口大额交付：S 86 模块 Gen0 全编、Gen1 重出 boot parity、四组全绿；非 T-10 关闭——V-G1c/V-G1d 未闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: d6c89f2eb（r68 421733e03 / r69 6ef93ebaa / r72 d6c89f2eb） | task_ids: T-10（①②③ + 遗留面；④既有；⑤余 V-G1c/d） | evidence: g1-frontend-paging-handoff.md §"2026-11-23/24 续（r68–r72）"；关键数字：S-COMPILE OK modules=86 bytes=1619040 / Gen1 704,000B boot=681978131 / ace-aac 26+22+20、ace-aac-gen1 9/9；AV nested-list 计费实测（v03 frame 64M→256M 均超步） | blockers: 无外部阻塞——V-G1c 需 driver 的 std 包多包装载（计划内实现选择）；V-G1d 冻结墙（模块准入 256KiB、语义步数、ABC 每函数表项、G2 mn 16MiB）维持具名 pending | next_responsible_role: work（V-G1c→V-G1d→T-02 续行）
 
 - 2026-11-23 stage: work | PLAN-1054 | r9 | outcome: pass（T-10 ①②进行中大额交付+中途检查点 848cb03ab；非绿态、非 T-10 关闭） | worktree_path: D:/autostack/.wt/lang-1054/auto-lang | branch: plan-1054-dev | base_commit: c3e5a4fb2 | code_commit: 848cb03ab | dependency_revisions: 1047 driver 预备 aac1047-prep-r9（Bind 全过） | task_ids: T-10（①闭合②进行中） | evidence: §5 T-10 节 + g1-frontend-paging-handoff.md（实施记录全链：Paged 基座/a2x-rust place_ref 臂/批转换/事故与修法/剩余 176 边界清单与确定性修法） | blockers: 无外部阻塞——剩余为确定性机械修；G2 仍具名 pending | next_responsible_role: work（T-10 ②边界统一→③④⑤）
 
