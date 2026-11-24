@@ -894,7 +894,7 @@ stage: merge | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | completi
 |---|---|
 | `prepared` | 复审 r5 pass（受审 `e06229806`）；SD-01 增量：`docs/specs/ace-migration/m2-stdlib-data.md`（+ §2 一句边界）；交付提交 `c6443252c` |
 | `landed` | 主检出 `git merge --ff-only plan-1124-dev` → master tip = `c6443252c`，无 merge commit；主检出他方 `docs/design/**` WIP 未触碰 |
-| `canonical_verified` | `git rev-parse HEAD:docs/specs/ace-migration/m2-stdlib-data.md` = `4b42b18db…`，与交付提交逐字节相同；worktree 同文件 sha256 `17022c7a…`；规范里指向本计划的链接已改指 `plans/archive/` |
+| `canonical_verified` | 交付提交 `c6443252c` 上该文件 blob `4b42b18db…`（与 worktree 逐字节相同，sha256 `17022c7a…`）；收尾链接修复（首行 PLAN-1124 链接改指 `plans/archive/`）后 HEAD blob 为 `29e17c00…`，差异仅该链接 |
 | `archived` | `docs/plans/archive/1124-av-stdlib-json-and-csv.md`，`status: archived`；计划文件与 docs 改动已提交到 master |
 | `cleaned` | `wt-guard.ps1` 对实施树与同组 `auto-down` 兄弟树各报 clean；`git worktree remove` 成功、分支 `plan-1124-dev` 删除、组目录 `D:/autostack/.wt/lang-1124/` 移除；`plan-artifacts/plan-1124/` 删除 **15,427 个文件 / 3,337,059,371 字节**（构建中间产物与探针 crate 的 target 树不回收，随 worktree 删除）；`%TEMP%\p1124-*` 遗留 30 个目录清空为 0；`.retention/policy.json` 登记 `deleted-at-merge (no holds)` |
 
