@@ -5746,6 +5746,29 @@ fn fn_sig_of_coll(
 /// Value type of a type annotation (PLAN-771): builtin words map directly;
 /// record names resolve through the pre-registered record index (unknown
 /// names are a bind-level error pointing at the annotation).
+/// PLAN-1131: the grafted migration record for a legacy standard-library
+/// type name (`HashMap`/`HashSet`/`StringBuilder` → the `__std_` record
+/// the adapter grafts when the source names them). A program-declared type of the same
+/// name wins, exactly as on the constructor path (`mapset_graft_rec`); this
+/// only lets an annotation name the same public type identity the
+/// constructor answers, so parameters, results, fields and locals bind to
+/// one record.
+pub(crate) fn grafted_migration_rec(
+    rec_index: &BTreeMap<String, usize>,
+    name: &str,
+) -> Option<usize> {
+    if rec_index.contains_key(name) {
+        return None;
+    }
+    match name {
+        "HashMap" => rec_index.get("__std_HashMap"),
+        "HashSet" => rec_index.get("__std_HashSet"),
+        "StringBuilder" => rec_index.get("__std_StringBuilder"),
+        _ => None,
+    }
+    .copied()
+}
+
 fn vt_of_ann(
     ann: &ast::TypeAnn,
     rec_index: &BTreeMap<String, usize>,
@@ -5789,8 +5812,12 @@ fn vt_of_ann(
             ));
             VT::I32
         }
-        ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
-            Some(&i) => VT::Rec(i),
+        ast::TypeRef::Record(id) => match rec_index
+            .get(&id.name)
+            .copied()
+            .or_else(|| grafted_migration_rec(rec_index, &id.name))
+        {
+            Some(i) => VT::Rec(i),
             None => {
                 diags.push(Diagnostic::new(
                     Stage::Bind,
@@ -5960,8 +5987,12 @@ fn vt_of_ann_coll(
             ));
             VT::I32
         }
-        ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
-            Some(&i) => VT::Rec(i),
+        ast::TypeRef::Record(id) => match rec_index
+            .get(&id.name)
+            .copied()
+            .or_else(|| grafted_migration_rec(rec_index, &id.name))
+        {
+            Some(i) => VT::Rec(i),
             // Legacy AGE helpers leave the element type unspecified.
             None if coll.age_package && id.name == "List" => VT::List(coll.intern_list(VT::Dyn)),
             None if coll.variant_by_name(&id.name).is_some() => {
@@ -6384,6 +6415,9 @@ enum RecvClass<'a> {
     ListCtor(usize),
     /// `E.A` / `E.A(e)` — qualified variant construction.
     VariantArm { vi: usize, disc: u32 },
+    /// PLAN-1131: `Result.Ok(e)` / `Result.Err(e)` — the legacy qualified
+    /// spelling of the builtin Result constructors.
+    LegacyResultCtor,
     GenericEnum { template: &'a ast::Ident, types: &'a [ast::TypeAnn] },
     /// PLAN-981（IF-981-ORIGINAL）：AGE 资源服务命名空间接收者
     /// （`material2d.color(...)`）。携带声明表里那一条 op。
@@ -13181,11 +13215,7 @@ impl<'a, 's> FnResolver<'a, 's> {
     /// container name (`HashMap`/`HashSet` when the user declared no such
     /// type — the compat construction entry falls back to it).
     fn mapset_graft_rec(&self, name: &str) -> Option<usize> {
-        match name {
-            "HashMap" => self.rec_index.get("__std_HashMap").copied(),
-            "HashSet" => self.rec_index.get("__std_HashSet").copied(),
-            _ => None,
-        }
+        grafted_migration_rec(&self.rec_index, name)
     }
 
     /// PLAN-864: classify a `List<T>`-style generic receiver. Only
@@ -19555,6 +19585,14 @@ impl<'a, 's> FnResolver<'a, 's> {
         rargs: &mut [ResolvedArg],
         span: Span,
     ) -> MapsetRewrite {
+        // PLAN-1131: the StringBuilder graft has no face to track; only
+        // its legacy `drop()` is the end-of-use marker.
+        if self.records[ri].name == "__std_StringBuilder" {
+            return match name.name.as_str() {
+                "drop" => MapsetRewrite::Drop,
+                _ => MapsetRewrite::Same,
+            };
+        }
         let is_map = match self.records[ri].name.as_str() {
             "__std_HashMap" => true,
             "__std_HashSet" => false,
@@ -20771,6 +20809,13 @@ impl<'a, 's> FnResolver<'a, 's> {
                                         .expect("checked above"),
                                 )
                             } else if self.lookup(&id.name).is_none()
+                                && id.name == "Result"
+                                && !self.rec_index.contains_key("Result")
+                                && self.coll.variant_by_name("Result").is_none()
+                                && matches!(name.name.as_str(), "Ok" | "Err")
+                            {
+                                RecvClass::LegacyResultCtor
+                            } else if self.lookup(&id.name).is_none()
                                 && self.profile.is_collections()
                             {
                                 match self.qualified_variant_arm(&id.name, &name.name) {
@@ -21471,6 +21516,49 @@ impl<'a, 's> FnResolver<'a, 's> {
                             let hint = self.contextual_enum(template, types, expected);
                             out[dest] = self.probe_enum_constructor(
                                 template, hint.as_deref().unwrap_or(types), &name, &rargs, node_span,
+                            );
+                        }
+                        RecvClass::LegacyResultCtor => {
+                            // PLAN-1131: same constructor and same defaults
+                            // as the bare spelling (`Ok(42)` answers
+                            // Result<int, Str>, `Err(e)` Result<int, typeof e>).
+                            if rargs.len() != 1 || rargs[0].name.is_some() {
+                                self.bind_err(
+                                    "source.argument",
+                                    format!("`Result.{}` takes exactly one payload", name.name),
+                                    node_span,
+                                );
+                                out[dest] = ResolvedExpr {
+                                    span: node_span,
+                                    vt: VT::I32,
+                                    kind: RExprKind::IntLit(0),
+                                };
+                                continue;
+                            }
+                            let mut payload = rargs.remove(0).value;
+                            let is_ok = name.name == "Ok";
+                            if !is_ok && payload.vt == VT::Str {
+                                if let RExprKind::StrLit(_) = payload.kind {
+                                    payload.vt = VT::StrOwned;
+                                }
+                            }
+                            let arms = if is_ok {
+                                vec![
+                                    ("Ok".to_string(), Some(payload.vt)),
+                                    ("Err".to_string(), Some(VT::StrOwned)),
+                                ]
+                            } else {
+                                vec![
+                                    ("Ok".to_string(), Some(VT::I32)),
+                                    ("Err".to_string(), Some(payload.vt)),
+                                ]
+                            };
+                            let vi = self.coll.intern_variant("Result", name.span, arms);
+                            out[dest] = self.resolve_bare_ctor(
+                                &name.name,
+                                Some(payload),
+                                Some(VT::Variant(vi)),
+                                node_span,
                             );
                         }
                         RecvClass::VariantArm { vi, disc } => {
@@ -22555,6 +22643,43 @@ impl<'a, 's> FnResolver<'a, 's> {
             let scalar = self.resolve_method(&at, recv, args, None, span);
             return self.resolve_method(&codepoint, scalar, Vec::new(), None, span);
         }
+        // PLAN-1131: the legacy Result reader pair on the builtin Result
+        // family — the same arm test `is r { Ok(_) -> ... }` lowers to.
+        if self.profile.is_auto_language()
+            && to_word.is_none()
+            && args.is_empty()
+            && matches!(name.name.as_str(), "is_ok" | "is_err")
+        {
+            if let VT::Variant(vi) = recv.vt {
+                if self.coll.variants[vi].name == "Result" {
+                    // the arm test reads a named local, like `is`
+                    let RExprKind::ReadLocal(local) = recv.kind else {
+                        self.bind_err(
+                            "source.unsupported",
+                            format!(
+                                "`{}` reads a result held in a local; bind the value to a name first",
+                                name.name
+                            ),
+                            name.span,
+                        );
+                        return ResolvedExpr {
+                            span,
+                            vt: VT::Bool,
+                            kind: RExprKind::BoolLit(false),
+                        };
+                    };
+                    return ResolvedExpr {
+                        span,
+                        vt: VT::Bool,
+                        kind: RExprKind::VariantGuardTest {
+                            local,
+                            variant: vi,
+                            disc: u32::from(name.name == "is_err"),
+                        },
+                    };
+                }
+            }
+        }
         if self.profile.is_auto_language() {
             if name.name == "len" && to_word.is_none() && args.is_empty() {
                 if let RExprKind::CallIntrinsic {
@@ -22603,8 +22728,10 @@ impl<'a, 's> FnResolver<'a, 's> {
                         kind: RExprKind::Unit,
                     };
                 }
-                if matches!(name.name.as_str(), "to_upper" | "to_lower" | "lower") && args.is_empty() {
-                    let symbol = if name.name == "to_upper" {
+                if matches!(name.name.as_str(), "to_upper" | "to_lower" | "lower" | "upper")
+                    && args.is_empty()
+                {
+                    let symbol = if matches!(name.name.as_str(), "to_upper" | "upper") {
                         "__ace_text_upper"
                     } else {
                         "__ace_text_lower"
@@ -22625,7 +22752,8 @@ impl<'a, 's> FnResolver<'a, 's> {
                     return self.resolve_text_contains(recv, args, span);
                 }
                 if matches!(
-                    name.name.as_str(), "find" | "trim" | "split" | "substr" | "starts_with" | "ends_with",
+                    name.name.as_str(),
+                    "find" | "trim" | "split" | "substr" | "starts_with" | "ends_with" | "lines",
                 ) {
                     return self.resolve_std_text_method(name, recv, args, span);
                 }

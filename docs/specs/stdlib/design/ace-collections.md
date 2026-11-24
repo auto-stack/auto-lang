@@ -82,3 +82,24 @@ AV/C、AV/Rust 具名 pending。
 - **静态面纪律**：每接收者局部变量一个值面（int/str，int 默认）；面冲突与未知面为
   绑定期具名拒（`source.map-face-mismatch`/`source.map-face-unknown`）；错值型在
   Verify 阶段 `verify.type-mismatch` 拒。
+
+## PLAN-1131 增量（2026-11-24，跨函数传递、返回与最后所有者）
+
+普通面迁移容器（非本装配集）作公共类型跨函数使用的合同；类型绑定与旧导入见
+[m2-stdlib-core](../ace-migration/m2-stdlib-core.md) PLAN-1131 增量。
+
+- **跨函数传递**：持有资源的容器记录作实参按共享引用传递（不复制）：被调方的插入、删除、
+  清空对调用者可见，无需 `.move`；`HashMap`/`HashSet` 注解与构造器是同一记录身份。
+- **返回**：被调方 `return m` 把局部容器交给调用者；调用者继续查询、替换、删除均合法，
+  返回后调用者是其所有者。
+- **最后所有者与释放**：存储随最后持有帧退出而释放——被调方局部未返回则随被调帧退出；
+  返回给调用者则随调用者作用域退出；经形参的失败路径（`fail`）同样对账。arena 上
+  分配 == 释放、live = 0；两种归属的分配数相同（同一存储，返回不触发复制）。
+- **值形状跨调用**：静态值面按**各函数自身的观察**追踪（形参是该函数的新局部）。读一个本函数
+  未观察过的形参上的统一 `get` = `source.map-face-unknown`（写 `get_int`/`get_str`，或先
+  insert）；同一函数内的面冲突 = `source.map-face-mismatch`。被调方可向调用者的 map 加入
+  另一面条目（容器按条目存面）：调用者用统一 `get` 读该条目走受检失败通道（ValueError，
+  可 catch，owner 存活）——交界处的异面不产生静默错读；调用点不做静态面核对
+  （债务 D-1131-CROSS-FN-FACE）。
+- **StringBuilder 资源**：片段为 owned `Str`，存于一条 `List<Str>`；每次 `build()` 的拼接文本是
+  独立的 owned 分配，随作用域退出释放（账本差值对每次 `build()` 恒定）。

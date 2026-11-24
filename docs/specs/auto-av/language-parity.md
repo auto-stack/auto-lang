@@ -517,6 +517,37 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 
 复跑入口：`cargo test -p ace-av --test conformance plan1120_generic_list_hof`（9 例）+ plan1082/1086/1088 近邻族。legacy 映射：`legacy.25_method_u64.012_list_hof_value` 行归本计划（`legacy-map.tsv`，canonical `av.parity.1120.generic-list-hof`）。
 
+## PLAN-1131 增量（2026-11-24，公共容器类型与旧导入兼容矩阵）
+
+普通入口 = 单文件普通 Auto 源（`compile_language_source`，AV 执行）。证据
+`av.parity.1131.public-types`（`experimental/ace/crates/av/tests/cases/plan1131_public_types.rs`）。
+
+**公共容器类型**：`HashMap`/`HashSet` 可作形参、返回、字段与局部注解，绑定到构造器回答的同一
+公共记录；跨函数传递、返回后续用、最后所有者释放与值面规则见
+[ace-collections](../stdlib/design/ace-collections.md) PLAN-1131 增量。
+
+**兼容矩阵**（原源码 = 迁移表登记的原始 Auto 源，未改写）：
+
+| 旧行 | 原源码在普通入口 | 分类 | 等价拼写 / 独立预期 |
+| --- | --- | --- | --- |
+| 13_collections.014–019（StrBldr） | 运行，结果逐字等于原 oracle（`0`/`hello world`/`hello!`/`count: 42`/`5`/`0`） | 直接运行 | 无需改写 |
+| 08_strings.005（len/is_empty） | 运行；`5` 同，bool 显示 `true/false` | 直接运行 + 展示差异 | int shim → `5\n1\n0` |
+| 08_strings.006（upper/lower） | 运行，逐字 `HELLO\nhello` | 直接运行 | — |
+| 08_strings.007（search/find） | 运行；`find`=6 同，bool 显示 `true` | 直接运行 + 展示差异 | int shim → `1\n1\n1\n6`；缺省 -1 |
+| 08_strings.008（transform） | 运行，逐字 `hi\nhello rust\nolleh` | 直接运行 | — |
+| 08_strings.010（char_at） | 运行；内建 `str.char_at` 答 char，显示 `h/o` | 直接运行 + 展示差异 | `.to_codepoint()` 与导入的自由函数 → `104\n111` |
+| 26_str_method_on_heap.001（split 元素） | `let p1 = parts[1]` 具名拒 `Bind:source.view-escape` | 已有批准差异（元素复制纪律 D-962） | `parts.get(1).clone()` → 逐字 `RS\nrs\nRS\nx` |
+| 26_str_method_on_heap.002（字面量 lower/upper） | 运行，逐字 `hello\nworld\nHELLO` | 直接运行 | — |
+| 28_enum_methods.006（use auto.result） | 运行；bool 显示 `true/false` | 直接运行 + 展示差异 | int shim → `1\n0\n0\n1` |
+
+**导入优先级**（未改动既有优先级，仅新增回退）：程序自声明的函数 `len`、类型/枚举/函数 `Result`、
+类型 `StringBuilder`/`HashMap`/`HashSet` 均优先于旧导入与嫁接；只识别整行
+`use auto.str: …`/`use auto.result`，其余 `use` 行保持 Text `source.unsupported`。
+
+**未在本入口观察的面**：多文件包面（`packages` 装配线，`use pkg.module.symbol`）没有嫁接通道，
+`HashMap.new()` 在该面不属本计划交付；该线在未准备的工作树里现成 972 用例即红，观察留待
+`cargo t` 准备后的冻结并集复核。大小写映射沿文本模块的 ASCII 实现（非 ASCII 文本未承诺）。
+
 ## PLAN-1122 · 字符串转宽无符号整数
 
 普通 AV 用 `text.parse_u64() -> ?u64` 迁移旧 `text.to_uint()`。旧调用在绑定阶段报

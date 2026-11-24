@@ -133,6 +133,38 @@ merge 级门。
   V-03 缺键协议/owner 存活/释放对账/整数 List 与 Dyn 近邻不回归）；
   旧行映射 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（PLAN-1121 行组）。
 
+## PLAN-1131 增量（2026-11-24，公共容器类型与旧导入）
+
+- **可引用的容器类型**：类型注解位（形参/返回/字段/`var`/`let`）书写 `HashMap`/`HashSet`
+  在程序未声明同名类型时绑定到**与构造器同一**嫁接记录（解析器 `grafted_migration_rec`：
+  `__std_HashMap`/`__std_HashSet`）；用户自声明同名类型优先（同构造回退的遮蔽规则）。
+  注解是受检身份而非擦除：int、另一记录、另一容器作实参在 Verify 以 `source.type-mismatch` 拒。
+- **StringBuilder 嫁接**：`stdlib/ace/asm/builder.at` 的 `__std_StringBuilder` 是纯 Auto 记录
+  （`parts List<Str>` + `+` 拼接 + f-string 整数渲染；无自有缓冲或文本算法；**不属于** 972
+  装配集）。`new(capacity)` 的容量提示接受不用；`append`/`append_char`/`append_int` 追加一个
+  owned 片段；`build` 按追加序拼接（可重复读，builder 保留片段）；`len` 为拼接文本长度；
+  `clear` 清空；`drop` 为使用结束标记（单元 no-op）。源提及 `StringBuilder` 时嫁接，同名用户类型优先。
+- **文本方法**：`.upper()` 与 `to_upper` 走同一 case intrinsic；`.lines()` 接文本模块的 `lines`。
+- **已验旧导入**：单文件普通面没有 `use` 项。适配器识别且仅识别**整行**的
+  `use auto.str: a, b`（标识符列表）与 `use auto.result`，按字节原位抹空（字节数不变，跨度不变），
+  再把导入名经转发函数接到既有公共模块，不复制算法：
+  - 文本模块 `stdlib/ace/asm/text.at`（`__std_text_*`）：`len`→`byte_len`、`is_empty`→`byte_len == 0`、
+    `upper`/`lower`→`upper_ascii`/`lower_ascii`、`contains`/`starts_with`/`ends_with`/`trim`/`replace`/
+    `reverse`→同名、`find`→`?int` 取值（缺省 -1，沿旧整数语义）、`char_at`→`char_code_at`；
+  - 内建 Result 族（见下）。
+  程序自声明的同名函数/类型优先（转发函数不附加该名）。其他 `use` 行（含 `use auto.<其他模块>`、
+  非标识符列表）保持原有具名拒（Text `source.unsupported`）；导入了文本模块没有的名字 = 调用处
+  `source.undefined`。
+- **等价拼写与具名差异**：`Result.Ok(e)`/`Result.Err(e)` 是内建构造器的限定拼写
+  （`Ok`→`Result<载荷类型, Str>`，`Err`→`Result<int, 载荷类型>`）；`is_ok()`/`is_err()` 即 `is` 的
+  臂测试，只读具名局部（非局部具名拒 `source.unsupported`）。展示规则沿 1121：bool 打印
+  `true`/`false`、char 打印字符；旧 `[1,0]` 与码点 oracle 由显式 int shim / `.to_codepoint()`
+  逐字复现。`let p1 = parts[1]`（整元素作值）按元素复制纪律具名拒 `source.view-escape`，
+  等价拼写 `parts.get(1).clone()`。
+- **证据**：`av.parity.1131.public-types`（`experimental/ace/crates/av/tests/cases/plan1131_public_types.rs`，
+  27 例）＋ adapter 单测 4 例（builder 嫁接、导入抹空原位、非旧形态不抹、转发函数只调文本模块）；
+  旧行映射 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（PLAN-1131 行组 14 行）。
+
 ## PLAN-1122 · 宽无符号十进制
 
 - `std.conv.parse_u64(s Str) -> ?u64` 接受 ASCII 十进制数字，允许一个前置 `+` 与前导零。

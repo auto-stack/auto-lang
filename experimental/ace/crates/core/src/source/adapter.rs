@@ -245,6 +245,11 @@ pub fn compile_language_source_with_metadata(
     capabilities: &[String],
     mut prepare: impl FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<(CompiledSource, super::cst::SourceMetadata), Vec<Diagnostic>> {
+    // PLAN-1131: the legacy `use auto.str`/`use auto.result` import lines
+    // are blanked before the parse (the face has no `use` item); every
+    // byte offset and so every user span is unchanged.
+    let (masked, legacy) = mask_legacy_imports(src);
+    let src = masked.as_str();
     let unit = Unit {
         src,
         module_path,
@@ -267,6 +272,7 @@ pub fn compile_language_source_with_metadata(
             referenced,
             &unit,
             &declared,
+            &legacy,
             &mut prepare,
         );
     }
@@ -278,6 +284,7 @@ pub fn compile_language_source_with_metadata(
         ModuleGraft::NONE,
         &unit,
         &declared,
+        &legacy,
         &mut prepare,
     );
     if without.is_ok() || named == ModuleGraft::NONE {
@@ -291,6 +298,7 @@ pub fn compile_language_source_with_metadata(
         named,
         &unit,
         &declared,
+        &legacy,
         &mut prepare,
     ) {
         Ok(compiled) => Ok(compiled),
@@ -345,6 +353,7 @@ fn compile_grafted(
     graft: ModuleGraft,
     unit: &Unit<'_>,
     declared: &std::collections::BTreeSet<String>,
+    legacy: &LegacyImports,
     prepare: &mut dyn FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<(CompiledSource, super::cst::SourceMetadata), Vec<Diagnostic>> {
     let Unit {
@@ -360,6 +369,8 @@ fn compile_grafted(
     // hit the source compiles byte-identically (zero graft, zero drift).
     let profile = SourceProfile::Auto;
     let mut program = program;
+    // PLAN-1131: the legacy import lines are already blanked by the
+    // caller; the imported text names are bound by forwarders below.
     let mut grafted = graft_stdlib_integer_parse(
         src,
         graft_stdlib_csv(
@@ -367,13 +378,25 @@ fn compile_grafted(
             graft_stdlib_json(
                 graft.json,
                 declared,
-                graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
+                graft_stdlib_text(
+                    &src,
+                    graft_stdlib_builder(&graft_stdlib_mapset(&graft_stdlib_list(src))),
+                    !legacy.str_names.is_empty(),
+                ),
             ),
         ),
     );
     if needs_stdlib_u64_parse(src) {
         grafted.push('\n');
         grafted.push_str(&stdlib_u64_parse_source());
+    }
+    for (name, forwarder) in LEGACY_STR_FORWARDERS {
+        // a function the program declares itself keeps its name (the
+        // program's own declaration is the one its calls resolve to)
+        if legacy.str_names.iter().any(|n| n == name) && !declared.contains(*name) {
+            grafted.push('\n');
+            grafted.push_str(forwarder);
+        }
     }
     if grafted.len() != src.len() {
         // A script consumes its top-level statement tail. Project the
@@ -586,6 +609,144 @@ fn graft_stdlib_mapset(src: &str) -> String {
 {STDLIB_ASM_MAP_STR_AT}
 "
     )
+}
+
+/// PLAN-1131: the ordinary-face StringBuilder legacy graft (pure Auto
+/// record over List<Str> and `+`; stdlib/ace/asm/builder.at). Same
+/// include_str identity and shadowing rule as the map/set graft.
+const STDLIB_ASM_BUILDER_AT: &str = include_str!("../../../../../../stdlib/ace/asm/builder.at");
+
+fn needs_stdlib_builder_graft(src: &str) -> bool {
+    src.contains("StringBuilder")
+}
+
+fn graft_stdlib_builder(src: &str) -> String {
+    if !needs_stdlib_builder_graft(src) {
+        return src.to_string();
+    }
+    format!("{src}
+{STDLIB_ASM_BUILDER_AT}
+"
+    )
+}
+
+/// PLAN-1131: the legacy imports the single-module ordinary face answers.
+/// The legacy corpus imports the standard library by module
+/// (`use auto.str: len, is_empty`, `use auto.result`); the face has no
+/// `use` item, so the adapter recognises exactly these whole-line forms,
+/// blanks the line (same byte length, so user spans stay put) and binds the
+/// imported names to the existing public modules: the text module
+/// (`__std_text_*`, through the forwarders below) and the builtin Result
+/// family. Any other `use` line is left to the parser's named rejection.
+#[derive(Default, PartialEq, Eq, Debug)]
+struct LegacyImports {
+    /// `use auto.str: ...` names, in written order, deduplicated.
+    str_names: Vec<String>,
+    /// `use auto.result` was written.
+    result: bool,
+}
+
+/// The legacy text functions the adapter forwards onto the text module:
+/// (written name, forwarder source). Every body calls the frozen
+/// `stdlib/ace/asm/text.at` implementation — no second text algorithm.
+const LEGACY_STR_FORWARDERS: &[(&str, &str)] = &[
+    ("len", "fn len(s str) int { return __std_text_byte_len(s.clone()) }"),
+    (
+        "is_empty",
+        "fn is_empty(s str) bool { return __std_text_byte_len(s.clone()) == 0 }",
+    ),
+    (
+        "upper",
+        "fn upper(s str) Str { return __std_text_upper_ascii(s.clone()) }",
+    ),
+    (
+        "lower",
+        "fn lower(s str) Str { return __std_text_lower_ascii(s.clone()) }",
+    ),
+    (
+        "contains",
+        "fn contains(s str, needle str) bool { return __std_text_contains(s.clone(), needle.clone()) }",
+    ),
+    (
+        "starts_with",
+        "fn starts_with(s str, prefix str) bool { return __std_text_starts_with(s.clone(), prefix.clone()) }",
+    ),
+    (
+        "ends_with",
+        "fn ends_with(s str, suffix str) bool { return __std_text_ends_with(s.clone(), suffix.clone()) }",
+    ),
+    (
+        // the legacy `find` answers -1 when the needle is absent
+        "find",
+        "fn find(s str, sub str) int {\n    var at = -1\n    is __std_text_find(s.clone(), sub.clone()) {\n        Some(v) -> { at = v }\n        None -> { at = -1 }\n    }\n    return at\n}",
+    ),
+    ("trim", "fn trim(s str) Str { return __std_text_trim(s.clone()) }"),
+    (
+        "replace",
+        "fn replace(s str, from str, into str) Str { return __std_text_replace(s.clone(), from.clone(), into.clone()) }",
+    ),
+    ("reverse", "fn reverse(s str) Str { return __std_text_reverse(s.clone()) }"),
+    (
+        "char_at",
+        "fn char_at(s str, i int) int { return __std_text_char_code_at(s.clone(), i) }",
+    ),
+];
+
+fn is_legacy_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty()
+        && (bytes[0].is_ascii_alphabetic() || bytes[0] == b'_')
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+}
+
+/// Recognise the legacy imports of `src` and answer the source with those
+/// lines blanked (every other byte, and so every user span, is unchanged).
+fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
+    let mut out = String::with_capacity(src.len());
+    let mut imports = LegacyImports::default();
+    let mut changed = false;
+    for line in src.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        let body = body.strip_suffix('\r').unwrap_or(body);
+        let text = body.trim();
+        let mut names: Vec<String> = Vec::new();
+        let mut result = false;
+        if let Some(list) = text.strip_prefix("use auto.str:") {
+            for name in list.split(',') {
+                let name = name.trim();
+                if !is_legacy_name(name) {
+                    // not the legacy form: keep the line for the parser
+                    names.clear();
+                    break;
+                }
+                if !names.iter().any(|n| n == name) {
+                    names.push(name.to_string());
+                }
+            }
+        } else if text == "use auto.result" {
+            result = true;
+        }
+        if names.is_empty() && !result {
+            out.push_str(line);
+            continue;
+        }
+        changed = true;
+        for ch in line.chars() {
+            out.push(if ch == '\n' || ch == '\r' { ch } else { ' ' });
+        }
+        for name in names {
+            if !imports.str_names.iter().any(|n| n == &name) {
+                imports.str_names.push(name);
+            }
+        }
+        imports.result |= result;
+    }
+    if !changed {
+        return (src.to_string(), imports);
+    }
+    (out, imports)
 }
 
 const STDLIB_ASM_TEXT_AT: &str = include_str!("../../../../../../stdlib/ace/asm/text.at");
@@ -833,10 +994,13 @@ pub fn graft_package_integer_parse(
     Ok(())
 }
 
-fn graft_stdlib_text(user_source: &str, mut src: String) -> String {
-    if needs_text_predicates(user_source) || [".find(", ".trim(", ".split(", ".substr("]
-        .iter()
-        .any(|name| user_source.contains(name))
+fn graft_stdlib_text(user_source: &str, mut src: String, legacy_text: bool) -> String {
+    if legacy_text
+        || needs_text_predicates(user_source)
+        || user_source.contains(".lines(")
+        || [".find(", ".trim(", ".split(", ".substr("]
+            .iter()
+            .any(|name| user_source.contains(name))
     {
         let functions: Vec<_> = STDLIB_ASM_TEXT_AT
             .lines()
@@ -1136,6 +1300,115 @@ fn map("));
         let hit = graft_stdlib_mapset("fn main() int { var s = HashSet.new()
  return 0 }");
         assert!(hit.contains("type __std_HashSet {"));
+    }
+
+    /// PLAN-1131: the StringBuilder graft fires on the legacy name only and
+    /// stays byte-identical otherwise.
+    #[test]
+    fn stdlib_builder_graft_trigger_and_identity() {
+        let plain = "fn main() int { return 1 }";
+        assert_eq!(graft_stdlib_builder(plain), plain);
+        // the name inside a string literal is still the trigger (the same
+        // text rule as the other grafts); the graft is appended after it
+        let hit = graft_stdlib_builder("fn main() int { var s = \"StringBuilder\".len()\n return 0 }");
+        assert!(hit.ends_with(&format!("\n{STDLIB_ASM_BUILDER_AT}\n")));
+        let hit = graft_stdlib_builder("var sb = StringBuilder.new(1024)\nsb.drop()\n0\n");
+        assert!(hit.starts_with("var sb = StringBuilder.new(1024)"));
+        assert!(hit.contains("type __std_StringBuilder {"));
+        // no second text or container algorithm: the graft composes the
+        // List surface, `+` and the f-string only
+        assert!(!STDLIB_ASM_BUILDER_AT.contains("fn __std_text_"));
+        assert!(!STDLIB_ASM_BUILDER_AT.contains("__ace_text_"));
+    }
+
+    /// PLAN-1131: the legacy import lines are blanked byte for byte; every
+    /// other byte (and so every user span) is unchanged.
+    #[test]
+    fn legacy_imports_are_masked_in_place() {
+        let plain = "fn main() int {\n    return 1\n}\n";
+        assert_eq!(
+            mask_legacy_imports(plain),
+            (plain.to_string(), LegacyImports::default())
+        );
+        let src = "use auto.str: len, is_empty, len\nfn main() int {\n    return len(\"x\")\n}\nuse auto.result\n";
+        let (masked, imports) = mask_legacy_imports(src);
+        assert_eq!(masked.len(), src.len(), "byte length is preserved");
+        let first = "use auto.str: len, is_empty, len\n";
+        let last = "use auto.result\n";
+        let blank = |line: &str| format!("{}\n", " ".repeat(line.len() - 1));
+        assert!(masked.starts_with(&blank(first)), "{masked:?}");
+        assert!(masked.ends_with(&blank(last)), "{masked:?}");
+        assert_eq!(src.find("fn main()").unwrap(), masked.find("fn main()").unwrap());
+        assert_eq!(
+            imports.str_names,
+            vec!["len".to_string(), "is_empty".to_string()],
+            "written order, deduplicated"
+        );
+        assert!(imports.result);
+        // CRLF endings keep their line breaks
+        let (masked, imports) = mask_legacy_imports("use auto.str: len\r\nvar a = 1\r\n");
+        assert!(masked.starts_with("                 \r\n"));
+        assert_eq!(imports.str_names, vec!["len".to_string()]);
+    }
+
+    /// PLAN-1131: anything that is not the exact legacy form is left to the
+    /// parser's ordinary named rejection.
+    #[test]
+    fn legacy_import_mask_leaves_other_lines_alone() {
+        for src in [
+            "use auto.nope: len\n",
+            "use std.text.byte_len\n",
+            "use auto.str\n",
+            "use auto.str: a b\n",
+            "use auto.str:\n",
+            "use auto.str: len is_empty\n",
+            "use auto.result: Ok\n",
+            "use auto.result.extra\n",
+            "fn f() int { return len(use auto.str: 1) }\n",
+        ] {
+            let (masked, imports) = mask_legacy_imports(src);
+            assert_eq!(masked, src, "{src:?}");
+            assert_eq!(imports, LegacyImports::default(), "{src:?}");
+        }
+        // the words as program text inside a line are not an import
+        let src = "fn main() int {\n    var s = \"use auto.result\"\n    return s.len()\n}\n";
+        assert_eq!(mask_legacy_imports(src), (src.to_string(), LegacyImports::default()));
+        // a quoted line is not the bare import line (the quotes are part of
+        // the trimmed text), so a string holding the words is program text
+        assert_eq!(
+            mask_legacy_imports("\"use auto.result\"\n"),
+            ("\"use auto.result\"\n".to_string(), LegacyImports::default())
+        );
+    }
+
+    /// PLAN-1131: every legacy text forwarder calls the frozen text module;
+    /// the names are the ones the legacy corpus imports.
+    #[test]
+    fn legacy_str_forwarders_call_the_text_module() {
+        let names: Vec<&str> = LEGACY_STR_FORWARDERS.iter().map(|(name, _)| *name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "len", "is_empty", "upper", "lower", "contains", "starts_with", "ends_with",
+                "find", "trim", "replace", "reverse", "char_at",
+            ]
+        );
+        for (name, body) in LEGACY_STR_FORWARDERS {
+            assert!(body.starts_with(&format!("fn {name}(")), "{name}");
+            assert!(body.contains("__std_text_"), "{name} forwards to the text module");
+        }
+        // the grafted module is the repo file, so every callee exists there
+        for callee in [
+            "byte_len", "upper_ascii", "lower_ascii", "contains", "starts_with", "ends_with",
+            "find", "trim", "replace", "reverse", "char_code_at",
+        ] {
+            assert!(
+                STDLIB_ASM_TEXT_AT
+                    .lines()
+                    .any(|line| line.trim_start().starts_with(&format!("pub fn {callee}("))),
+                "text.at declares {callee}"
+            );
+        }
     }
 
     fn names(

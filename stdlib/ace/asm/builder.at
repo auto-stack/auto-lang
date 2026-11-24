@@ -1,0 +1,56 @@
+// PLAN-1131 T-03: the ordinary-face StringBuilder legacy compat graft —
+// a pure Auto record over the frozen collections List<Str> and the `+`
+// text concatenation (no buffer or text algorithm of its own). Like
+// map_str.at this file is NOT part of the 972 assembled stdlib surface
+// (stdlib_assembled_files() does not list it); the adapter grafts it into
+// ordinary Auto-language sources that mention `StringBuilder`, and the
+// resolver falls back to this mangled type only when the program declares
+// no `StringBuilder` of its own (the user declaration wins).
+//
+// Semantics (the legacy stdlib/auto/builder.at face):
+// - new(capacity) answers an empty builder; the legacy capacity hint is
+//   accepted and unused (the parts list grows as needed).
+// - append/append_char/append_int push one owned part; append_int renders
+//   the decimal text of the value.
+// - build() answers the concatenation of the parts in append order; the
+//   builder keeps its parts (build is a read).
+// - len() answers the text length of the concatenation; clear() empties.
+// - drop() is an end-of-use marker (the resolver resolves it to a unit
+//   no-op); storage release stays observable at scope exit.
+type __std_StringBuilder {
+    parts List<Str>
+    static fn new(capacity int) __std_StringBuilder {
+        return __std_StringBuilder { parts: List<Str>.new() }
+    }
+    fn append(s Str) void {
+        .parts.push(s.move)
+    }
+    fn append_char(c char) void {
+        .parts.push(c.to(Str))
+    }
+    fn append_int(v int) void {
+        var text Str = f"$v"
+        .parts.push(text.move)
+    }
+    fn build() Str {
+        var out Str = ""
+        var __n = 0
+        for __n < .parts.len() {
+            out = out + .parts.get(__n)
+            __n = __n + 1
+        }
+        return out
+    }
+    fn clear() void {
+        .parts.clear()
+    }
+    fn len() int {
+        var total = 0
+        var __n = 0
+        for __n < .parts.len() {
+            total = total + .parts.get(__n).len()
+            __n = __n + 1
+        }
+        return total
+    }
+}
