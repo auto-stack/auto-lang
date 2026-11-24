@@ -87,6 +87,7 @@ affects: [stdlib, auto-av, auto-semantics]
   - [↩ 复审 r1 判 fail，2026-11-23] V-01 fail（F-01 序列化不保值、F-02 i32 最小值 trap、F-08 数值精度）；V-02 fail（F-03 `encode_pretty` 改写宽整数、F-04 `List` 元素绕过用户覆写）；V-03 partial（F-07 预算无测试且单位不符）。详见 §9。
   - [✅ work 修复轮 1 完成 2026-11-24] 提交 `9a9c296ec`。F-01、F-02、F-03、F-04、F-08 与自查的 N-1、N-5、N-6 已修并有永久断言；一致性 `plan1124_json_csv` 26/26、语言用例 `av.parity.1124.*` 8/8、仓库外数值 oracle 34,629 个输入 0 不一致。待 T-05 重审确认。
   - [↩ 复审 r2 判 partial，2026-11-24] V-01 数值、树与格式化成立；V-02 的 `List` 位置覆写只对全标量记录成立（F-14）；V-03 语义成立，预算见 F-15。详见 §9。
+  - [✅ work 修复轮 4 完成 2026-11-24] 提交 `e06229806`。F-24（参数化枚举字段的具名拒绝，从实例化传入模板名集合）已修；`plan1124_json_csv` 37/37、语言用例 9/9、近邻 54/54、单元 11/11，新增行告警与格式归因 0。待 T-05 重审确认。
   - [✅ work 修复轮 3 完成 2026-11-24] 提交 `4cc02b463`。F-20（枚举/`str` 拥有数据的具名拒绝）与 F-23（两处新增行告警）已修；`plan1124_json_csv` 37/37、语言用例 9/9、单元 11/11、近邻 54/54。待 T-05 重审确认。
   - [✅ work 修复轮 2 完成 2026-11-24] 提交 `b5ada0bd0`。F-13、F-14、F-15、F-17、F-18 已修并有永久断言：`plan1124_json_csv` 37/37（串行最慢 7.76 s）、语言用例 9/9（含新增 `graft-local-names`）、近邻 54/54。待 T-05 重审确认。
 - [ ] AC-02 · owner_stage=work。旧接口义务和已验 JSON 近邻逐项保留，错误和资源预算可观察。
@@ -97,6 +98,7 @@ affects: [stdlib, auto-av, auto-semantics]
 - [ ] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
   - [修复轮 1 之后待重审 2026-11-24] 受审提交 `9a9c296ec`（基线 `d206320e8` 之上）。
   - [复审 r2 2026-11-24] outcome: needs_fix（`review_scope: repair`，受审提交 `9a9c296ec`）；F-13..F-19 见 §9。修复后对新提交重审受影响的 AC。
+  - [修复轮 4 之后待重审 2026-11-24] 受审提交 `e06229806`；只重审 F-24（`Box<int>` 字段经真实 worker 得到 `source.json-encode-unsupported` 且在 `List` 字段 span 内）与 `f14_*` 的参数化枚举断言；其余结论沿用 r3/r4。
   - [修复轮 3 之后待重审 2026-11-24] 受审提交 `4cc02b463`；只重审 F-20（枚举/`str` 两个探针与 `f14_*` 两面断言）、F-23（新增行告警归因）、§4 T01-7/8/9 文本与 F-22 的登记口径；AC-02 与 T-02/T-04 的关闭结论不需重审。
   - [复审 r1 已执行，2026-11-23] outcome: needs_fix（受审提交 `d206320e8`）。修复后对新提交重审受影响的 AC。
 - [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
@@ -129,6 +131,8 @@ affects: [stdlib, auto-av, auto-semantics]
   - [✅ 修复轮 2 完成 2026-11-24] F-14：`json_encode_synth.rs` 在 `List` 字段处具名拒绝（`source.json-encode-unsupported`），规范写实际规则；F-16 新增行格式。用例 `f14_*`（两面）通过（提交 `b5ada0bd0`）。
   - [↩ 复审 r3 2026-11-24 回开] F-20：规范列为“拥有自有数据”的枚举字段与 `str` 字段没有拿到承诺的具名诊断（落到 `verify.view-escape`）。
   - [✅ 修复轮 3 完成 2026-11-24] F-20：`owns_data` 计入枚举（`Item::Enum` 名称集合）与 `Builtin(Str)`；真实 worker 复测两种形状都得到 `source.json-encode-unsupported` 并点名记录与字段，`f14_*` 增加枚举（单文件面）与 `str`（两面）断言（提交 `4cc02b463`）。
+  - [↩ 复审 r4 2026-11-24 回开] F-24：参数化枚举字段（`Box<int>`）仍落到 `verify.view-escape`（模板名在合成前已从程序里删去）。
+  - [✅ 修复轮 4 完成 2026-11-24] F-24：合成器经 `synthesize_json_encodable_methods_with_enums` 接收实例化的模板名集合，泛型分支按“List 或枚举名”判定；`f14_*` 增加参数化枚举报错断言、非泛型枚举补包面断言（提交 `e06229806`）。
   - [✅ 已完成 2026-11-23] `json_encode_synth.rs` + `instances.rs`（补全 `Stmt::Try`/`AggIsMatch`/`With`/`Yield` 重绑与 `Option` 字段归整）+ `packages.rs` + `cst/project.rs`（`List<f64>`/`tok_affix_num` 修复）：基于 `TypeItem.fields` 合成 `JsonEncodable`（覆盖全宽整数、`f32`/`f64`、`bool`、`Str`/`str`、`?T`、`List<T>`、嵌套记录、`Empty`、`Custom` 重写），拒绝未合规记录（`source.instances-bound`）、非法字段/嵌套未合规/循环（`source.json-encode-unsupported`）、伪造 `std`（`ace.stdlib-reserved`）与非有限浮点（`JsonError`）。
 - [ ] T-04 迁移 CSV 公开操作
   - owner_stage=work。依赖 T-01。落实二维语义、分隔符与错误，验 V-03，汇入公共语料。
@@ -795,6 +799,57 @@ stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 6 | from: review |
 stage: work | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1124/auto-lang | branch: plan-1124-dev | base_commit: b5ada0bd0 | code_commit: 4cc02b463 | dependency_revisions: 主检出同源 workspace（`--locked --offline`） | task_ids: T-01, T-03 | evidence: 本节与 plan-artifacts/plan-1124/work-r2/gate/out-r3/（merge 时按规则删除） | blockers: 无 | next_responsible_role: review
 
 stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 7 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: 4cc02b463 | next: review（只审 F-20/F-23 与 §4 三行；AC-02 与 T-02/T-04 的关闭结论不需重审）
+
+2026-11-24 · stage: review · review_scope: repair · PLAN-1124 r1 · outcome: needs_fix（受审提交 `4cc02b463c2d3ec635822a28e1818088801dbf67`，修复轮 3）。
+
+F-20 的报告形状（带载荷枚举字段、借用 `str` 字段）、F-23（两处告警与新增行告警/格式归因）与 F-21/F-22（§4 文本与登记口径）经本轮独立重放**关闭**；但 `enum Box<T>` 这类**参数化枚举**字段仍落到 `verify.view-escape`（F-24，低：仍编译期拒绝，不产生错误输出，只是诊断码/位置与 §2 那句话不符）。自动修复轮已到三次上限，复审把关闭方式交主会话；主会话按有界第 4 轮修掉 F-24（提交 `e06229806`）。next: review（只重审 F-24）。
+
+stage: review | review_scope: repair | reviewer_identity: 发起会话派生的子代理（全新上下文，未参与实现与 r1/r2/r3；环境模型标识 deepseek-v4.1-flash；无会话 ID）| plan_id: PLAN-1124 | plan_revision: r1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-1124/auto-lang | branch: plan-1124-dev | reviewed_commit: 4cc02b463c2d3ec635822a28e1818088801dbf67 | baseline_commit: b5ada0bd0342b454911ffb5d324abcc59664104f | base_commit: 8a52d7364e5b218e0a08b167038a5d71d54ee72f | dependency_revisions: 主检出同源 workspace（`--locked --offline`）；master 现值 `f38d1106d`；同组 auto-down detached `456c86a…`（较 r3 未变）| spec_inputs: docs/specs/ace-migration/m2-stdlib-data.md @4cc02b463 blob `b4c845686d41c46f2fc0c9c29e3bb062360d0000`，sha256 `46f8bbc0…`（与 r3 逐字节相同，本轮未改正文）；`stdlib/ace/std/json.at` blob `95b6c561ec…` 与基面相同；json_auto `20724f199…`、csv `59c512515…` 与 r3 相同 | acceptance_results: AC-01 pass（F-24 备注）· AC-02 pass（沿用 r3）· AC-03 needs_fix（本记录）· AC-04 pending(merge) | findings: F-24（F-20、F-21、F-22、F-23 关闭）| evidence: `D:/autostack/plan-artifacts/plan-1124/review4/`（`verdict-r4.md` sha256 `f2701f898f2f63079bdc7fd4fef60a1b8f102b72c28a1225939e551780418b0b`、`diff-b5ad-4cc0.patch`、`logs/`、`out/`、`warn_attrib.py`、`fmt_attrib.py`、`worker-src/`、`worker-out/`；下列为持久摘要）| next: work（F-24）
+
+**复审 r4 的基线核实与局限**
+
+- 实施树进出各查一次 `git status --porcelain` 均为 0 行，HEAD 全程 `4cc02b463`；`git diff --stat b5ada0bd0 4cc02b463` = 4 个文件 +75/−10，与交接一致；未触及 `.autoos/`、`specs.json`、`index.json`、`KNOWN-DEBT-AND-RISKS.md`、`.retention`、`docs/`。
+- worker 由本轮自建（`-p ace-av --bin av-worker`，rc=0、3.3 s，11:51:08，晚于提交）；探针全部经 `ac-av/language-source-run-v1` 真实产品单文件路径。
+- 局限：未回退实施树，b5ada0bd0 的对照行为不重跑（用 r3 记录的同类输入做闭包比对）；包面只经 `f14_*` 断言，未自建包产品探针；未重跑 37 例全集/单元/近邻/语言用例（除这 4 个文件外输入未变，只重跑受影响的 `f14_*`，其余沿用 r3 证据）。
+- 占用：11:45–11:57 他方 `plan-1068` 的 `prepare-native` 反复出现，按门等待三次（20.4 s / 3.3 s / 67.5 s 前均确认 0 竞争）后才起跑。
+
+**复审 r4 的三项结果**
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| F-20（枚举 / 借用 `str` 的具名拒绝） | **关闭（报告形状）**，泛型枚举残留另立 F-24 | r3 原输入复跑：`f14-c`（`enum Choice { A(Str) B }` 的 `e` 字段）→ `bind/source.json-encode-unsupported`、“through field `e`”、span `168..185`=`tags List<Tagged>`、149.7 ms；`f14-d`（`name str`）→ 同码、“through field `name`”、span `145..162`、160.6 ms。自选扩展：`Str`、嵌套记录到 `Str`、嵌套记录到枚举、无载荷枚举都具名且 span 在 `List` 字段内（364–389 ms）；`f14_*` PASS 1.403 s（含包面 `str` 断言）；反例控制重放：复制标量记录仍走覆写（int/i64、f32/bool、嵌套复制记录，637.5/606.2/622.9 ms），非 `List` 位置（`str`、枚举、泛型枚举）不变 |
+| F-23（新增行告警/格式） | **关闭** | 自建两份构建日志（`ace-core`+`ace-av` lib/tests rc=0、20.4 s；`av-worker` rc=0、3.3 s），117 条 `-->`；自写归因：本轮范围 4 文件/8 段新增区间 → 改动文件告警 0、新增行 0；整计划范围 16 文件/66 段 → 0/0；`mentioned_names` 全仓 0 引用、`prepare` 无 `mut`；rustfmt 1.9.0：本轮 15 hunk、整计划 252 hunk，新增行命中均 0 |
+| F-21 / F-22（计划文本） | **关闭** | §4 T01-7 与 `json_auto.at:331-341/1312-1314`、`csv.at:27/33/156-159/225-236/413-416` 逐项对上；T01-8 与 `stdlib_refs.rs` 作用域栈、`adapter.rs:236-300` 一致；T01-9 与 `json_encode_synth.rs:404-427` 一致，`source.view-escape` 已降为显式否认；§4:44 已写“待 merge 登记”，两个 `policy.json` 无 1124 条目 |
+
+**复审 r4 的发现清单**
+
+- **F-24（低，合同文本与实现不符；SD-01 §2、T01-9、T-03；F-20 的同类残留）泛型枚举实例字段仍落到 `verify.view-escape`。** 实测（真实 av-worker）：`enum Box<T> { V(T) }` + `Tagged { a int; b Box<int>; fn json_encode()… }` + `Holder { slots List<Tagged> }` → `stage=verify code=verify.view-escape`（“a whole owned element is not a value…”），span `172..190`=`slots List<Tagged>`，556.5 ms；对照：同一记录在非 `List` 位置正常（815.8 ms），泛型**记录**字段 `inner Inner<Str>` 已被具名拒绝（“through field inner”，353.3 ms），故缺口特定于参数化枚举名。原因（读码+实测）：枚举名表只收 `Item::Enum` 且过滤 `type_params.is_empty()`，而 `owns_data` 的泛型分支只认 `List`，`Box<int>` 的 AST 是 `TypeRef::Generic{name:"Box"}`；验证侧把 `VT::Variant` 当资源叶子，所以记录本就判为拥有自有数据。关闭口径：(a) 把参数化枚举名并入 `owns_data` 的泛型分支并补一条断言（推荐）；(b) 收窄 §2/T01-9 的“枚举”为“非泛型枚举”并记债。仍是编译期拒绝、不产生错误输出，故低。
+- **O-r4-1（不阻塞）**：不带覆写、含借用 `str` 字段的记录作 `List` 元素时仍 `verify.view-escape`（“an owned field view is only consumed by `.len()` in this profile”）；同一记录非 `List` 位置正常。这是未触碰的无覆写分支的既有语言边界，规范未提——主会话已在 SD-01 §2 补一句注明。
+- **O-r4-2（不阻塞）**：`f14_*` 的枚举形态只断言单文件面，理由写的是“包模块尚不接收 `enum` 项”，复审读码指出 `packages/binding.rs:1242` 的 Auto 面正是接收 `Item::Enum` 的分支（他面以 `source.module-surface` 拒绝），无法在预算内证实前提；若是覆盖缺口，可在 F-24 修复时顺手补。主会话复测：非泛型 `enum` 在包面可编译并得到具名拒绝（已补两面断言）；参数化枚举在包面需要模板声明（`source.module-templates`），故只单文件面。
+- **O-r4-3（措辞）**：§4:59 说“该规则由 binder 的视图检查实现”，而这两个站点的阶段是 `verify` / `verify.view-escape`；不影响合同，未改。
+
+**复审 r4 的计时表**：`01-build` rc=0 20.4 s；`02-build`（av-worker）rc=0 3.3 s；`f14_*` PASS 1.403 s（<10 s 门）；真实 av-worker 探针 21 次、单次 38.4–815.8 ms；告警/格式归因数秒。
+
+**复审 r4 的规范增量结论**：正文本轮逐字节未动；除 F-24 的参数化枚举外，§1、§2、§3 都能与代码/实测对上。frontmatter 结论沿用 r3（路径准确；`new_spec_components: []` 需在 merge 写明“只修改现有文件”；`touched_goals: [GOAL-002]` 真实）。
+
+**复审 r4 的路由**：`status: executing`（从 execution_done 回退）；`next: work`（只做 F-24）；回开范围 AC-03、T-03；AC-02 与 T-02/T-04 不需重审。自动修复轮已到三次上限，F-24 由主会话在有界第 4 轮处理。
+
+stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 8 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: 4cc02b463 | next: work（F-24，有界第 4 轮）
+
+2026-11-24 · stage: work · PLAN-1124 r1 · 修复轮 4（有界，对应复审 r4 的 F-24）。修复提交 `e06229806`。next: review（只重审 F-24）。
+
+**修复与证据**
+
+| 发现 | 修复 | 证据 |
+|---|---|---|
+| F-24 | 实例化会在合成前删除泛型 `enum` 模板，于是字段里写的 `Box<int>` 仍保留模板名而 `owns_data` 只认 `List`。新增 `synthesize_json_encodable_methods_with_enums(program, enum_templates)`；`instances.rs` 把模板名集合传入；`owns_data` 的泛型分支改为 `List 或枚举名`。`f14_*` 增加参数化枚举断言（单文件面：包模块的泛型枚举需要模板声明，实测 `source.module-templates`）；非泛型枚举改为两面断言（包面实测可用，回答 r4 的 O-r4-2） | 真实 av-worker：`Box<int>` 字段 → `bind/source.json-encode-unsupported`（“through field `b`”，span `172..190`=`slots List<Tagged>`，354 ms）；非泛型枚举仍具名（358 ms） |
+| O-r4-1 | SD-01 §2 补一句：不带覆写、含借用 `str` 字段的记录作 `List` 元素时仍受既有 owned-field 视图规则限制（`verify.view-escape`，只允许 `.len()` 消费） | `docs/specs/ace-migration/m2-stdlib-data.md` §2 |
+
+**本轮验证（`e06229806` 源码）**：`plan1124_json_csv` **37/37**（串行 82.3 s）；`ace-core` 嫁接+stdlib 单元 **11/11**；`ace-av` worker 单元 **1/1**；近邻 **54/54**；语言用例 `av.parity.1124.*` **9/9 PASS**（步墙钟 685–1840 ms）；新增行告警归因 **0**（`build2.log` + `plan1124.log` 对 `git diff HEAD` 求交）；`rustfmt --check` 新增行 hunk **0**（3 个改动 `.rs`；`instances.rs` 的两处既有格式欠账在 851/1398 行，不在新增区间）；`%TEMP%\p1124-*` 无新增。
+
+stage: work | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1124/auto-lang | branch: plan-1124-dev | base_commit: 4cc02b463 | code_commit: e06229806 | dependency_revisions: 主检出同源 workspace（`--locked --offline`） | task_ids: T-03 | evidence: 本节与 plan-artifacts/plan-1124/work-r2/gate/out-r5/、probe-r5/（merge 时按规则删除） | blockers: 无 | next_responsible_role: review
+
+stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 9 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: e06229806 | next: review（只重审 F-24）
 
 ## 10. 待澄清事项
 
