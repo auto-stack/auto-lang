@@ -303,6 +303,14 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
   `abc.decode.host-section: missing host-import section`。产物头是 **AVAD v2 / profile 3（owned 线族）**，而 owned 线族要求带 `HOST` 段
   （av-core `WireFamily::carries_host_section` 对 Owned 恒为 true）；Auto 的 `base_abc.encode_base_abc` 目前**不写 HOST 段**。
   对照：`"ABC".len()` 的 ABC 同样缺 HOST → 这是 Text 域（owned）产物的普遍缺口，不是 char op 引入的。
+- **HOST 段已补（worktree `92ae16b3b`）**：`base_abc.encode_base_abc` 在 owned 线族（有 record/text）时按 AV 段序在 capabilities 之后写 `"HOST"` + u16 0。
+  实测：`"ABC".char_at(1).to_codepoint()` 的 ABC 由 244→**250 字节**且含 `HOST`，**AV 解码通过**（错误从 `abc.decode.host-section` 前进到类型检查）。
+  `ace-aac-syntax` **PASS（13s）**（含既有 record/text 程序无回归）。
+- **下一个卡点**：`mir.type-op: char_at dst type 0 is not char` → **ABC 类型表没有 TY_CHAR(8) 条目**。
+  Auto 的 9 个标量表项是 AV 的数值 tag（0/1/19/20/21/3/4/5/6），`type_index(5)` 把 char 映射到 0（i32）。
+  正解：需要时在标量段末尾追加一个 **TY_CHAR(8)** 表项（索引 9），并把 `record_index`/`text_type_base`/fn 类型计数与
+  `wire_lane_type(5)` 全部按 +1 平移（char 不出现时保持 9 不变，避免既有程序改动）。测试
+  `aac1068_t15_char_builtins_execute_in_av` 已落地并 `#[ignore]`，补完类型表后取消 ignore 即可验证 66。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
   再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
