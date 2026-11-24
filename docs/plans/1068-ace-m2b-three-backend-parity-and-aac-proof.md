@@ -338,6 +338,12 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     8 个 std 模块分布 + 宿主能力逐条决策：`net.tcp`（net/redis 的 `net_tcp_connect`）、`sqlite.open`（`db_open(path)`）
     一律先声明为 **external 签名**放行绑定/定型，实现具名分期；`env/path/rand/time` 同策略；`text`/`url`
     属语言原语面（`STR_CLONE`、`str→Str` 所有权）需在 T-15/T-16 内实现；json 的驱动 trap 单列。
+  - **S std 实测（2026-11-24，`stdlib/ace/sys`，package `sys`）**：`env`/`path`/`rand`/`time` 四模块已由驱动
+    正确报告 **`aac.pending-work/1`**（`PENDING 2 -1 0 <span>`，与计划预判的 env/path/rand/time 完全一致）；
+    `file`/`process`/`storage`/`syscommon`/`sysplat_win`/`zip` 六模块 **`trap:ListIndex`**（单文件模式同样复现）。
+    `file.at` 二分：v21（到 379 行）报 pending，v24（到 431 行）起 trap → 触发区间是 380..431 的
+    `append_text`/`write_bytes`/`write_bytes_all` 一带；已排除的最小构造：递归 + `List<int>` 形参、
+    未定义调用（→ `bind.unresolved`）、if 内调用，均不重现。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
