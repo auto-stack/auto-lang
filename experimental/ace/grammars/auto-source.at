@@ -204,7 +204,7 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         grid-kw(profiles: [aggregates, auto, scheduler, auto-packages]) { literal: "grid" }
         // PLAN-1043（T-03）：`..` 进 packages-ct 面（仅 in-range 编译期迭代
         // 位引用；其余 packages 位不引用 = 保留）。
-        dotdot(profiles: [aggregates, auto, packages-ct, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { literal: ".." }
+        dotdot(profiles: [aggregates, auto, packages-ct, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages, age-package]) { literal: ".." }
         r-nil { literal: "nil" }
         r-null { literal: "null" }
         r-outlet { literal: "outlet" }
@@ -779,6 +779,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // PLAN-980 WEB #6i：带参 handler `.Msg(param) -> { … }`——参数
             // 段可选（零参 `.Inc -> { … }` 不受影响；真语料参数化事件）。
             opt { age-on-handler-params(field: "params") {} }
+            // PLAN-118：显式空参数表 `.Msg() -> { … }`——绑定 0 参、payload
+            // 丢弃（088 ColorPicker 真语料形；见 check_handler_bindings）。
+            opt { age-on-handler-params-empty(field: "empty_params") {} }
             arrow() {}
             lbrace(same-line: true, cut: true) {}
             // R61-1：watch 体允许单行与多语句（`many` 不强制换行）；语句以 `.`
@@ -844,6 +847,12 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         age-on-handler-param-tail(profiles: [age-component, age-package]) {
             comma() {} ident(field: "param")
             opt { ann-ty(field: "param_ann") {} }
+        }
+        // PLAN-118：显式空参数表——`.Msg() ->` 绑定零参（payload 不绑定、
+        // 由 check_handler_bindings 放行；与缺省 `.Msg ->` 的隐式零参区分）。
+        age-on-handler-params-empty(profiles: [age-component, age-package]) {
+            lparen(same-line: true) {}
+            rparen() {}
         }
         // PLAN-980：widget DSL 语句子集——`.field (=|+=|=) <expr>`。
         age-view-stmt(profiles: [age-component, age-package]) {
@@ -3147,6 +3156,9 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
             // 公共 stdlib 输出循环需要普通 while 形循环）。PLAN-965：aggregates, auto
             // 面同表（生成器/控制效果用例的普通 while 形循环）。
             alt(profiles: [aac]) { aac-for-cond-stmt() {} }
+            // PLAN-118：包面范围循环必须先于 for-cond 备选（`for i in a..n`
+            // 会被 for-cond 吞掉 `for i` 后撞 `in` 硬错，不回退）；仅包面。
+            alt(profiles: [age-package]) { for-range-stmt() {} }
             alt(profiles: [scalar, scalar-instances, scalar-ct, text, record, record-instances, text-record, age-h0, age-component, text-record-instances, entry-unit, host-console, scalar-modules, packages-modules, packages-ct, aggregates, auto, scheduler, packages-aggregates-ct, age-package, config-document, auto-packages]) { for-cond-stmt() {} }
             alt(profiles: [collections, closures, numeric, aggregates, auto, packages-aggregates, scheduler, packages-aggregates-ct, packages-aggregates-ct, auto-packages]) { for-in-stmt() {} }
             // PLAN-962：`for i in a..b / a..=b { }`（i32 计数循环）。
@@ -3346,20 +3358,23 @@ grammar(name: "auto-source", revision: 3, newline: true, stmt-end: ["semi", "rbr
         }
         // PLAN-962：范围迭代（L-19）——`for i in a..b { }` / `a..=b`；解析
         // 为 Range 迭代形，resolve 脱糖 i32 计数循环（步进 1）。
-        for-range-stmt(profiles: [aggregates, auto, scheduler, auto-packages]) {
+        for-range-stmt(profiles: [aggregates, auto, scheduler, auto-packages, age-package]) {
             for(field: "kw")
             ident(field: "var")
             in(field: "in")
             range-iter(field: "iter")
             block(field: "body")
         }
-        range-iter(profiles: [aggregates, auto, scheduler, auto-packages]) {
-            expr(field: "start")
-            range-dots(field: "dots")
-            expr(field: "end")
+        range-iter(profiles: [aggregates, auto, scheduler, auto-packages, age-package]) {
+            // PLAN-118：包面边界表达式走 condition-ops（不含记录构造提交）——
+            // `for i in 0..n { … }` 的 `n {` 不得被当成 ctor 吞掉块体。
+            alt(profiles: [age-package]) {
+                condition-expr(field: "start") range-dots(field: "dots") condition-expr(field: "end")
+            }
+            alt { expr(field: "start") range-dots(field: "dots") expr(field: "end") }
         }
-        range-dots(profiles: [aggregates, auto, scheduler, auto-packages]) {
-            alt { dotdoteq() {} }
+        range-dots(profiles: [aggregates, auto, scheduler, auto-packages, age-package]) {
+            alt(profiles: [aggregates, auto, scheduler, auto-packages]) { dotdoteq() {} }
             alt { dotdot() {} }
         }
         // PLAN-928（T-03）：PLAN-864 `is <局部> { 臂 -> { .. } }`（穷尽分派；

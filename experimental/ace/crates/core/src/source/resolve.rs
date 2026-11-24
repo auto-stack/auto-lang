@@ -2436,7 +2436,12 @@ pub(crate) fn resolve_detailed_in_mode(
     coll.aggregates_admission = surface.is_aggregates();
     // AGE 组件面（`compile_program_parts_age`）声明的能力：元素视图放行。
     coll.elem_view_admission = elem_view;
-    coll.implicit_push_transfer = elem_view;
+    // PLAN-118（用户裁定①，088 ColorPicker 准入）：AGE **包面**与组件面同享
+    // 「整局部隐式转移」——VM 轨组件包把 `var it str = …` 直接 `push` 进状态
+    // 列表（VM 文本值可复制），包面此前要求显式 `.move` 而整批拒。包面的
+    // 解析 profile 是 Auto（`age_package` 标记置位），故以该标记为准；其它
+    // 面（含 text-record）保持显式 `.move` 语义不变。
+    coll.implicit_push_transfer = elem_view || coll.age_package;
     coll.ordinary_auto = surface.is_auto_language();
     let is_coll = surface.is_collections();
 

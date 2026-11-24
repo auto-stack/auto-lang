@@ -1089,6 +1089,25 @@ pub(crate) fn is_model_record_list(ann: &TypeAnn, value: &Expr) -> bool {
             if items.iter().any(|item| matches!(&item.kind, ExprKind::ObjectLit { .. })))
 }
 
+/// PLAN-118：子组件属性值引用**惰性 view-data 字段**（`var palette = [ … ]`
+/// 无类型列表——AGE 包面按展示数据承载，不进 model 字段表）时，属性求值函数
+/// 里没有 `self` 可绑定。按 view-data 的**原字面量**内联成属性值（展示数据是
+/// 只读常量；与视图读同一来源），使 088 ColorPicker 的 `palette: .palette`
+/// 这类真语料形可绑定。
+pub(crate) fn view_data_property_value(
+    node: &super::age_component::ComponentNode,
+    expr: &Expr,
+) -> Option<Expr> {
+    let ExprKind::Field { base, name } = &expr.kind else {
+        return None;
+    };
+    if !matches!(&base.kind, ExprKind::Var(v) if v.name == "self") {
+        return None;
+    }
+    let field = node.view_data.iter().find(|field| field.name == name.name)?;
+    super::age_component::view_data_init_expr(&field.literal)
+}
+
 fn function_has_typed_list(function: &FnItem) -> bool {
     if is_list_annotation(&function.ret)
         || function.params.iter().any(|param| is_list_annotation(&param.ty))
@@ -1854,7 +1873,12 @@ pub(crate) fn hidden_value_fn(
     let binding = FieldBinding::state_at(node_index, 0, node);
     let loops = if view_expr_uses_loop(expr, loops) { loops } else { &[] };
     let (loop_sources, visible) = view_check_loop_sources(name, node, binding, loops)?;
-    let bound = rename_expr_with_params(expr, binding, &node.fields, &visible)?;
+    let bound = match view_data_property_value(node, expr) {
+        // PLAN-118：裸 view-data 字段值按只读字面量内联（`palette: .palette`
+        // 的 view 值检查——view-data 不进 model 字段表，rename 会留下 `self`）。
+        Some(literal) => literal,
+        None => rename_expr_with_params(expr, binding, &node.fields, &visible)?,
+    };
     let span = expr.span;
     let let_stmt = Stmt::Let {
         kw: span,
@@ -2178,6 +2202,11 @@ impl<'a> ViewScope<'a> {
     }
 
     fn rename(&self, expr: &Expr) -> Result<Expr, Vec<Diagnostic>> {
+        // PLAN-118：裸 view-data 字段读（`palette: .palette`）按只读字面量
+        // 内联——view-data 不进 model 字段表，走 rename 会留下未绑定的 `self`。
+        if let Some(literal) = view_data_property_value(self.node, expr) {
+            return Ok(literal);
+        }
         super::age_component::rename_expr_with_params(
             expr, self.binding, &self.node.fields, &self.visible,
         )
@@ -2947,6 +2976,8 @@ impl WidgetArgumentSite<'_> {
                 ).map_err(translate)?;
                 let value = if is_model_record_list(&ty, expr) {
                     expr.clone()
+                } else if let Some(literal) = view_data_property_value(&self.component.node, expr) {
+                    literal
                 } else {
                     scope.rename(expr).map_err(translate)?
                 };

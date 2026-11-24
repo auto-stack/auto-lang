@@ -143,6 +143,10 @@ pub struct ComponentHandler {
     pub params: Vec<(String, Span)>,
     /// An optional type assertion for each authored payload binder.
     pub param_annotations: Vec<Option<(String, Span)>>,
+    /// PLAN-118：作者写了显式空参数表 `.Msg() ->`——绑定 0 参、消息 payload
+    /// 不绑定（作者意图是丢弃载荷；与缺省 `.Msg ->` 的隐式零参区分，
+    /// 见 [`check_handler_bindings`]）。
+    pub empty_params: bool,
     /// R65-3：是否来自 `on { .Msg -> … }`（widget 形）——该形必须指向已声明消息。
     pub from_widget: bool,
     /// PLAN-980 WEB #6o（#6p 收窄）：体含**域外语句**（let/if、非头参数名
@@ -3259,7 +3263,11 @@ pub(crate) fn check_handler_bindings(node: &ComponentNode) -> Result<(), Vec<Dia
         // handler 自身形参作载荷（无注解时默认 `str`，与 `msg { X(str) }` 的
         // 约定拼写同律）；包面仍由 R65-3（msg-unknown）在进入本核对前拒。
         let declared = variant.map_or(h.params.len(), |variant| variant.payload.len());
-        if h.params.len() != declared {
+        // PLAN-118：显式 `()` = 作者明确不绑定任何载荷槽（`.RCommitted() ->`
+        // 的 088 ColorPicker 形——payload 丢弃是作者意图）。缺省 `.Msg ->`
+        // 不带括号时仍按逐槽核对（保持既有严格面）。
+        let binds_nothing_explicitly = h.empty_params && h.params.is_empty();
+        if h.params.len() != declared && !binds_nothing_explicitly {
             // span 指到“多出来的那个形参”；形参不足时落在 handler 自身。
             let span = h
                 .params
@@ -5891,7 +5899,7 @@ fn event_field_local(field: &str) -> String {
 /// `.vd_field` 读 = view_data 初值字面量的常量物化。惰性字面量本身是合法
 /// 表达式语法（列表/记录字面量），借 `parse_program_items` 铸一个壳 fn
 /// 提取其体表达式。
-fn view_data_init_expr(literal: &str) -> Option<Expr> {
+pub(crate) fn view_data_init_expr(literal: &str) -> Option<Expr> {
     // PLAN-117（round-26 修正）：AGE 组件 profile 的 fn 头**必须带返回类型
     // 注解**（无注解 = parse 期具名拒）——铸壳 fn 此前裸 `fn` 头，全部
     // view-data 初值物化静默走 PARSE-FAIL（None）臂，读改写产物悬空在

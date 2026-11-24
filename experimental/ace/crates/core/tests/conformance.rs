@@ -86,6 +86,9 @@ mod plan981_age_fields;
 mod plan981_age_package;
 #[path = "cases/plan981_age_package_modules.rs"]
 mod plan981_age_package_modules;
+// PLAN-118（用户裁定①）：显式空参数 handler + 包模块 fn 范围循环两件表面。
+#[path = "cases/plan118_package_surface.rs"]
+mod plan118_package_surface;
 #[path = "cases/plan981_age_ref.rs"]
 mod plan981_age_ref;
 #[path = "cases/plan981_age_resources.rs"]

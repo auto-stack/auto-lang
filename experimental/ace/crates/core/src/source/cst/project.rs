@@ -5918,6 +5918,7 @@ impl<'a> Engine<'a> {
                         // 979 形态 `on <Msg> { … }` 没有参数段（参数属于 #6i widget 形）。
                         params: Vec::new(),
                         param_annotations: Vec::new(),
+                        empty_params: false,
                         from_widget: false,
                         body_foreign,
                         // 979 形态无 widget 头参数——无通道面。
@@ -7997,6 +7998,8 @@ impl<'a> Engine<'a> {
                 msg: self.cx.spelling(msg),
                 params,
                 param_annotations,
+                // PLAN-118：`.Msg() ->` 显式空参数表（0 参、载荷丢弃）。
+                empty_params: self.cx.field_child(c, "empty_params").is_some(),
                 from_widget: true,
                 body_foreign,
                 channel_calls,

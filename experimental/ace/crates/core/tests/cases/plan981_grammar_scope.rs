@@ -215,7 +215,10 @@ fn p981_grammar_ids_match_the_recorded_frozen_values() {
             // retain the canonical bytes computed from master.
             // PLAN-117: restore named record constructors in component values
             // without committing on a bare name followed by a block.
-            "5aed2a9d4d0292758baa5a1ceeb020acd1052c5a3fc68b9d15ce37277f7c53fb",
+            // PLAN-118（2026-11-24 具名重基线，用户裁定①）：显式空参数 handler
+            // `.Msg() ->`（age-on-handler-params-empty，两面共用）——
+            // 前值 5aed2a9d… → 本值；其余 13 邻居逐字节不变。
+            "8507f3e0577afec791b824e366b03093fb40e2cf1e99d8bf56273c8313d4b5dc",
         ),
         (
             SourceProfile::AgeH0,
@@ -354,6 +357,9 @@ fn p981_age_package_grammar_id_is_frozen() {
         // 9bd00590…→2308100f…；age-component 面编译字节不变（该臂组件面本有）。
         // PLAN-117: checked handlers and coalescing, Carousel properties,
         // inline text and message lists, including the PLAN-113 package additions.
-        "c7d31df87db770819dcc1cf27db1c64f4490998fb5842961a5dc6e83dce49324"
+        // PLAN-118（2026-11-24 具名重基线，用户裁定①）：包面范围循环
+        //（stmt/for-range-stmt/range-iter/range-dots/dotdot 增 age-package）
+        // + 显式空参数 handler——前值 c7d31df8… → 本值。
+        "efb064f2f9dac8715600cc94e725a23d32dcd0dc02a303ec1e9ac6777f045583"
     );
 }
