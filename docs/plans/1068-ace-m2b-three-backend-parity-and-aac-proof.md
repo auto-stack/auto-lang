@@ -355,6 +355,13 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     WIP diff 存档 `plan-artifacts/plan-1068/t128/clone-view-wip.diff`（11,368B），源码已回退，tree 干净 `4450c319e`。
     下轮首个实验（便宜且决定性）：在干净树上给 `lower_base.at` 加一个**空操作函数**再编译——若同样报 4266，则确认是解析边界，
     须改用「不改函数数量的等价写法」（例如把 view 包装内联进现有分支、不新增顶层函数）。
+  - **解析边界假设已证伪 + worktree 协作冲突（2026-11-24）**：在干净 `lower_base.at` 新增空函数
+    （`fn probe_noop() int { return 0 }`）后 prepare-native **rc=0** → 上一轮 `source.syntax` 是**我那批 edit 的具体语法问题**，
+    不是文件规模/形参数量边界。同时发现**另一个 agent 正在同一 worktree 实现 `List<T>.new()` 类型化**
+    （未提交：`semantics/typecheck.at` 的 `list_new_receiver`+`derive` 分支、`types.at` 的 `apply_type` 公开、
+    `tests/semantic_conformance.rs` 新增用例）。按用户裁定：**我已暂停该 worktree 的一切代码改动**，
+    只回退了自己的两个文件（`core_hir.at`/`base_ir.at`），对方三处未动；其未提交内容与结论便条已备份到
+    `plan-artifacts/plan-1068/t132-foreign-work/`（含 `note-to-list-new-agent.md`）。后续代码工作需换独立 worktree 再启。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
   - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
     `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
