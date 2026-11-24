@@ -302,7 +302,10 @@ fn add_model(
     sites: &[AgeWidgetRef],
     items: &mut Vec<Item>,
 ) -> Result<AgeWidgetRuntimeComponent, Vec<Diagnostic>> {
-    if node.view.exit != "view" || !node.view_data.is_empty() {
+    // PLAN-118（T-03）：惰性 view-data 字段（VM 轨 `var px = []` 一类）不再
+    // 判死 live 视图——`live_view::build_view` 的 ViewScope 已按只读字面量
+    // 内联 bare view-data 名（`px42=${.px[42]}` 真语料形）；仍要求普通 view 出口。
+    if node.view.exit != "view" {
         return Err(vec![text_diag(
             "source.age.widget-runtime-view",
             "a checked widget runtime requires an ordinary widget view",
