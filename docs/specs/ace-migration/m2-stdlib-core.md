@@ -173,7 +173,7 @@ merge 级门。
   - `use auto.result` 是模块导入（同 `use std.json`）：冻结的 `auto::result` 模块只给导入一个
     目标，Result/Ok/Err 本身内建。
   - 该面既有边界（非本计划引入，未改）：非入口函数的 `!int` 形参不被接纳；`print` 需要宿主。
-- **证据（r2）**：`experimental/ace/crates/av/tests/cases/plan1131_multi_module.rs`（13 例：
+- **证据（r2）**：`experimental/ace/crates/av/tests/cases/plan1131_multi_module.rs`（15 例：
   跨模块形参/返回/记录字段/三模块链、集合去重与共享、构建器、错形状 `source.type-mismatch`、
   模块同名类型优先、依赖模块与入口的旧导入、工程同名模块优先、未知模块 `source.module-missing`、
   无容器对照）＋ adapter 单测 `package_face_legacy_pieces`、`legacy_import_mask_changes_nothing_without_an_import`。
