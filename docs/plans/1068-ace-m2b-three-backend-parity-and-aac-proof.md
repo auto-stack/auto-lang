@@ -231,7 +231,7 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 `visible()` 对 for-in 声明改用「绑定名 end <= 使用 start」判定（并把 `pg` 传进 `lookup`/`visible`）。
 实测：`for x in xs { t = t + x }` 里 `x` 可解析、循环外使用 `x` 仍 `bind.unresolved`、不再 `trap`；
 `ace-aac-syntax` **PASS（12s）**。余：绑定元素类型未传播（`t + x` 仍 `type.unresolved`）——`facts[iterable]`
-在该时刻为 0，未能从 `iter` 角色或 `in` 后继定位到可用的可迭代表达式节点，下轮用 AST dump 定位。
+在该时刻为 0，未能从 `iter` 角色或 `in` 后继定位到可用的可迭代表达式节点，**AST 定位（2026-11-24）**：for-in 节点（kind 2097492=340）子节点与字段：`for`(-1) / 绑定 ident(14) / `in`(-1) / **可迭代 ident(107)** / `body` block(13)。即 `iter` 角色与 `in` 后继都应命中 `xs`（[52,54)）；但重新构建后 `facts[iterable]` 仍为 0（`lane <= 0` 返回 0），故 `t + x` 仍 `type.unresolved`。下轮需要一个能观测 facts 的探针（或在 `derive` 里把 `lane`、`type_kind` 写入错误码区分），先确认 iterable 的 fact 到底是 0 还是非 list。
 
 ### 规范增量
 
