@@ -336,6 +336,12 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     而 ACE 切片没有等价声明。试过 `#[c] fn ...;`（被判为**需要定义的 prototype** → `bind.unresolved`）与
     `use c "..."`（`bind.module`）均不成立。结论：按 `aac.pending-work/1` 的具名分期处理（owner=host surface），
     不阻塞 T-16 的 std 类型门（4/8 语言原语面已全绿）。
+  - **`Str.clone()` 执行面（2026-11-24，已回退）**：AV 侧**已存在** `STR_TO_OWNED`（opcode 0x18=24，`mir.rs`/`abc.rs`/`av.rs`/`instruction_spec` 全实现），
+    无需新增 opcode。Auto 侧曾按 len_bytes 模式接好 HIR op 26 → MIR 24 → verify → ABC，但端到端卡在
+    **owned→view 隐式转换**：`let s = "ABC".clone()  return s.len()` 的 `STR_LEN` 要求 view 操作数（owned 被
+    `mir.type` 拒）。这是独立的「owned text 隐式借用」缺口，不属于 clone 本身。
+    已回退全部实验改动（5 文件），保持 `4450c319e` 干净。下一步：实现文本操作数的 owned→view 隐式转换
+    （lower_base 在 view 位置插入 view 指令，或 AV 侧确认 STR_LEN 是否接受 owned），再接 clone 的执行测试。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
   - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
     `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
