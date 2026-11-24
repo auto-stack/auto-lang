@@ -347,7 +347,12 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
   - **file.at trap 进一步定位（2026-11-24）**：v23=418 行（`write_bytes_all` 之前）报 pending；追加 `write_bytes_all`（419..431）
     即 trap。该函数**单独**（配 stub）在三种形态（stub 前置/后置/去掉递归）下都**不重现**，缺任一 stub 只报 `bind.unresolved`；
     在 v23 之后追加任意 trivial 函数也**不 trap** → 触发需要「v23 的 pending 上下文 + 该函数的未解析调用/递归组合」。
-    结论：这是**驱动级 trap（无 span）**，盲二分收益已很低；需要给驱动加 trap-safe 报告（捕获并输出阶段/行）或交给更强的 agent。
+    结论：这是**驱动级 trap（无 span）**，盲二分收益已很低；需要给驱动加 trap-safe 报告（捕获并输出阶段/行）。
+  - **trap-safe 探针已定位阶段（2026-11-24）**：给驱动加「阶段号单字节写文件」探针（`AAC1047_PROBE`），
+    file.at 运行后探针停在 **stage 91 = `load_source` 之后未返回** → **trap 在 parse/projection 内部，不在 binding**；
+    1046 驱动 `parse-source` 同样 `trap:ListIndex`（无 CANON 输出）。
+    首要嫌疑：T-12 的 `compact_edges`（`syntax_parse.at`）在节点回收后读到**陈旧 fc/cl**（超出 `m_efhi` 的逻辑前沿）时
+    `ef.get((fc+k)*2)` 越界；下一步审计 `compact_edges` 的 fc/cl 有效性与节点回收时的清零，并加边界拒绝。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
