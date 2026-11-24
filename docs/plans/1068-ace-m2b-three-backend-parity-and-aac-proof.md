@@ -369,6 +369,9 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     → **trap 窗口 = 104,000..112,000 步、token ≈ 4135 附近**；`efhi` 在 96k 处异常（=thi），随后又涨到 30040。
     首要嫌疑：compaction 后**帧的 `fs_cstart` 与节点 `fc` 的写回不覆盖"回溯保存栈"中的帧**，恢复后 `child_push` 在陈旧偏移上读写；
     或 `alloc_node` 复制后未清帧段导致 frontier 记账错乱。诊断改动已回退。
+  - **交接报告（2026-11-24）**：`plan-artifacts/plan-1068/parse-trap-issue-report.md` —— 完整复现、排除表
+    （compaction/child_push/alloc_node 守卫均未触发）、步数夹逼数据（104,000..112,000 步、token≈4135、96k 处 `efhi==thi` 异常）、
+    建议的着手点（状态 dump 常规化、按 token 定位、审计负下标、save 不保存 nframes）。已呈现给用户，供外部更强 agent 分析。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
