@@ -1046,7 +1046,11 @@ export function a2x_list_len(l) {
 /** Append one element. */
 export function a2x_list_push(l, v) {
   const list = _list(l);
-  list.items.push(v);
+  // PLAN-118（T-06）：文本是值语义——owned Str 入表存**独立副本**。生成代码
+  // 的体清理会对入表用的局部变量发 `a2x_str_free`（`push(it)` 后 `it` 仍被
+  // 计入 owned 集），共享同一对象会让表里留下悬垂句柄（实测 paint 视图读
+  // 场景列表即 `use-after-free on Str#…`）。
+  list.items.push(v instanceof A2xOwnedStr ? new A2xOwnedStr(_asBytes(v)) : v);
 }
 
 /** Insert one element at `i` (`0..len`). */
