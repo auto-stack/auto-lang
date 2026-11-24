@@ -326,7 +326,7 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     std/list 从 `type.condition 854..867` 一路推进到 **`aac.type-report/1`（类型通过）**。
     现在 std 包 **2/8 类型通过**（math、list）；text 卡 `s.clone()`、url 卡 `Str` 所有权（字面量→Str）、
     net/redis/sqlite 卡 bind（宿主/pending-work 面）、json 卡驱动 `trap:ListIndex`。
-  - **url/文本原语（worktree 待填）**：`str` 字面量填入 owned 位置改用既有 promote 规则（`is_text_literal`，与调用实参同一规则；
+  - **url/文本原语（worktree `53d922633`）**：`str` 字面量填入 owned 位置改用既有 promote 规则（`is_text_literal`，与调用实参同一规则；
     return 与隐式尾表达式两处）；`Str.slice(start,end)` 类型化为 `str`（view，双 int 实参）。实测 **std/url.at → `aac.type-report/1`**。
     std 包 **3/8 类型通过**（math、list、url）；text 仍卡 `s.clone()`。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
