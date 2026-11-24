@@ -385,9 +385,10 @@ work核定向反例+影响组；独立review按同树冻结源码复核，不以
    **新开一个 AAC 语言/CL 实现计划**（推荐；1054 保持 certification 定位并继续 blocked 等待），
    或把 1068 转 executing 并补生产任务。用户 2026-11-24 已倾向"新开实现计划"，待确认后
    按 `scripts/new-plan.sh` 建档，输入清单=本文 §0 第 6 轮的三面墙 + 1053/T-07 的 53 个 CL 族。
-   **2026-11-24 已起草**：PLAN-1130 `docs/plans/1130-aac-cl-primitive-and-std-surface.md`
-   （master `9cd6a4cab`，status drafting，9 任务/9 AC/4 规范增量），待用户确认后开
-   `D:/autostack/.wt/lang-1130/auto-lang` 执行；1054 在其交付后重绑 S 身份续跑 T-02..T-09。
+   **2026-11-24 用户裁定**：不另立 1130，改为把 AAC CL 生产实现**并入 PLAN-1068**
+   （1068 `drafting → executing`，新增 T-11..T-17 / AC-11..AC-17 / V-11..V-17 / SD-AACCL-01..04）；
+   原 PLAN-1130 草稿撤回（内容=1068 新任务，git 历史保留）。1054 在 1068 交付后重绑 S 身份
+   续跑 T-02..T-09。
 2. **G2**：mn 16MiB verify 墙，归 AGE elem-view owner；具名 pending，非本包可修。
 
 附（2026-11-24 第 6 轮实测）：若确认新开实现计划，其输入工作清单已备好——

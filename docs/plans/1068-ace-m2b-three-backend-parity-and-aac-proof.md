@@ -1,16 +1,16 @@
 ---
 plan_id: PLAN-1068
-status: drafting
+status: executing
 feature_name: ACE M2-B 三端能力对齐与AAC实证收口
 author: [Codex]
 created_at: 2026-11-16
-updated_at: 2026-11-19
-plan_revision: 11
+updated_at: 2026-11-24
+plan_revision: 12
 current_step: 0
-total_steps: 10
+total_steps: 17
 depends_on: [PLAN-1067, PLAN-1064, PLAN-974, PLAN-975, PLAN-978, PLAN-1044, PLAN-1045]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/ace-migration/m2-certification.md]
-new_spec_components: [docs/specs/ace-migration/m2-three-backend-parity.md]
+new_spec_components: [docs/specs/ace-migration/m2-three-backend-parity.md, docs/specs/auto-ac/aac-std-closure.md]
 touched_goals: [GOAL-002]
 affects: [ace, auto-ac, stdlib]
 ---
@@ -19,7 +19,22 @@ affects: [ace, auto-ac, stdlib]
 
 ## 0. 变更摘要
 
-2026-11-19。T-04 及 T-06/08 按 [AGE 交付表](../design/strategy/age-m2-three-route-strategy.md#后继交付与消费) 接收各端。1097 交宿主/W2，1074 交 W3，AGE 公共 AC/A2R 取 [1102](1102-age-ac-gallery-fusion-and-capabilities.md)/[1103](1103-age-a2r-gallery-fusion-and-capabilities.md)，两游戏取 [1100](1100-age-av-game-2d.md)/[1104](1104-age-ac-game-2d.md)/[1076](1076-age-a2r-game-2d.md) 和 [1101](1101-age-av-game-3d.md)/[1105](1105-age-ac-game-3d.md)/[1077](1077-age-a2r-game-3d.md)。保阶段任务及最终分母。
+### 2026-11-24 r12 · 用户裁定：AAC CL 生产实现并入本包，1068 转 executing
+
+用户 2026-11-24 在"新开实现计划 vs 把生产任务并入 1068"中选择后者：把 AAC 自举前端的
+**CL 生产实现**（parser 列表迭代、Str/char 原语与泛型构造、HIR builtin callee、MIR/ABC
+lowering、std 闭包与 `aac.pending-work/1` 面）作为本包新增 work 任务 T-11..T-17 / AC-11..AC-17 /
+V-11..V-17 / SD-AACCL-01..04 承接；本包状态 `drafting → executing`，`plan_revision 11 → 12`，
+`total_steps 10 → 17`。同期起草的 PLAN-1130（`docs/plans/1130-aac-cl-primitive-and-std-surface.md`，
+master `9cd6a4cab`）按用户裁定**撤回**（文件删除，内容=本批任务；git 历史保留）。
+
+输入：PLAN-1054 的逐模块门面清单（85 模块：66 解析干净 / 7 parser 缺口 / 6 checker 缺口 /
+4 `aac.pending-work/1` / 1 `hir.unsupported`）与 1053/T-07 的 53 个 blocked CL 族。
+归属变更：Design59 §3 原把 AAC 前端差额归 1046–1052，但这些计划均已 archived 且无在办 owner；
+本裁定由 1068 直接承接生产（T-11 内同步补记 Design59 归属表），1054 在该批交付后重绑 S 身份续跑
+T-02..T-09。原 T-01..T-10、AC/语言/库/UI/AGE/AAC 义务全部保留，原 0/10 进度不变。
+
+### 2026-11-19。T-04 及 T-06/08 按 [AGE 交付表](../design/strategy/age-m2-three-route-strategy.md#后继交付与消费) 接收各端。1097 交宿主/W2，1074 交 W3，AGE 公共 AC/A2R 取 [1102](1102-age-ac-gallery-fusion-and-capabilities.md)/[1103](1103-age-a2r-gallery-fusion-and-capabilities.md)，两游戏取 [1100](1100-age-av-game-2d.md)/[1104](1104-age-ac-game-2d.md)/[1076](1076-age-a2r-game-2d.md) 和 [1101](1101-age-av-game-3d.md)/[1105](1105-age-ac-game-3d.md)/[1077](1077-age-a2r-game-3d.md)。保阶段任务及最终分母。
 
 ### 2026-11-19 r10 · 接收AV-ONLY阶段与非AV检查恢复
 
@@ -119,6 +134,34 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 
 一行的通过=同一Auto源/等价合同输入在AV、真AC、真A2R运行，分别满足规范独立expected、错误/授权/取消/生命周期与源位置合同。不同平台对象/ABI、调度交错、内部布局与物理性能可不同；公共能力缺失不能藏在“适用格”里。外部OS/设备客观不适用须有真实规范理由，不能用AC未实现伪造平台排除。Linux验证仍按1063延期，逐行保实现与原例/NOT_RUN；本包不自动宣布Linux通过。
 
+### AAC CL 生产实现（2026-11-24 用户裁定并入；原 PLAN-1130）
+
+**目标面**：让自举 AAC 前端吃下全树 S 与 Windows std 闭包所需的 CL 面，把全树 project 编译从
+"被 parser/checker/std 面挡住"推进到"越过 parse/bind/typecheck 进入 HIR/MIR 并可被 AV 消费"。
+生产点只在本包（`experimental/ace/aac/**` 与阶段 driver），Rust 侧只作独立 oracle/消费端。
+
+1. **parser（`for <binding> in <collection>`）**：共享 grammar 已在
+   `experimental/ace/grammars/auto-source.at` 行 107 记有"集合族最小语句面（for-in 迭代）"；
+   T-11 先判定是 `aac` profile 未含该生产、还是 `syntax_parse` 投影未接、还是形状不匹配，
+   再改 profile/重新生成 `syntax_grammar_data.at`（**不手改生成文件**）或补投影。
+   绑定为 body 作用域局部不可变；`List<T>`/`Str` 两类 iterable；range-for 语义不变。
+2. **checker 原语与泛型构造**：补 `Str.char_at(int) -> char`、`char.to_codepoint() -> int`、
+   `char.from_codepoint(int) -> char`、`List<T>.new() -> List<T>`（含嵌套泛型）的事实；
+   未知方法仍 `type.unresolved`（负控）。
+3. **HIR builtin callee**：primitive 调用无可指向声明行，HIR 增**闭集** `callee: "b:<name>"`
+   形；既有程序 HIR 文本逐字节不变；`verify_core_document` 只接受闭集内名字，未知名具名拒绝。
+4. **MIR/ABC 与 AV**：迭代 lower 成索引循环（ListLen/ListGet + 合成索引槽）；
+   `char_at`/`to_codepoint`/`from_codepoint` 优先复用 `av-core` 合同已有 op，缺 op 按合同增补并配
+   独立 conformance；泛型构造→LIST_NEW。不支持面必须落具名阶段码，不得 trap 或空成功。
+5. **std 闭包**：project 车道按 `std/<stem>` 装载（`semantic_driver.at`）+ `gen-next` 物化
+   `stdlib_assembled_files()+stdlib_sys_files()`（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块
+   （bytes/conv/env/file/path/process/syscommon/sysplat_win/text/time）绑定/定型可达；
+   `aac.pending-work/1`（env/path/rand/time）与 `std/math` 的 `hir.unsupported` 逐条决定
+   "实现"或"具名分期+阶段码"，不得静默通过。
+
+边界：Gen2 native PE/代际签章仍归 PLAN-1054 T-02；G2（mn 16MiB）归 AGE elem-view owner；
+53 个 CL 族的 oracle/行不删；Linux host 不扩。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
@@ -132,6 +175,13 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 | SD-AC-DESKTOP | modify | docs/specs/ace-migration/m2-three-backend-parity.md | 接收 1097 真实 AC 会话、宿主及产品的正式证据 | 领域能力交付与最终三端对齐均可追溯 | AC-DESKTOP |
 | SD-CL-OWNER | modify | docs/specs/ace-migration/m2-three-backend-parity.md | 证据回 Design59 对应生产任务并验全部 CL，含 AAC 自身未用的行 | 覆盖与实际代码版本一致 | AC-CL-OWNER |
 | SD-AC-WAVE2 | modify | docs/specs/ace-migration/m2-three-backend-parity.md 及 m2-certification.md | 接 1097 W2 及 W3 后验三端 | 阶段独立交付 | AC-AC-WAVE2 |
+
+| delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-AACCL-01 | modify | `docs/specs/auto-ac/aac-source-frontend.md` | 增补 `for <binding> in <collection>` 语句面（aac profile）、AST 角色与无损投影；range-for 语义不变 | parser 缺口是 S/std 第一墙 | AC-12 |
+| SD-AACCL-02 | modify | `docs/specs/auto-ac/aac-complete-semantics.md` | 增补 Str/char 原语方法与 `char.from_codepoint` 静态、泛型构造事实；未知方法仍拒绝 | checker 缺口 | AC-13 |
+| SD-AACCL-03 | modify | `docs/specs/auto-ac/aac-mir-lowering.md` | 增补 builtin callee 的 HIR 形、迭代/原语 MIR/ABC lowering 与拒绝分类 | 生产面落地 | AC-14/15 |
+| SD-AACCL-04 | add | `docs/specs/auto-ac/aac-std-closure.md` | 新增编译车道 std 闭包装载、Windows 平台选择、`aac.pending-work/1` 分期规则 | 目前无规范描述该车道 | AC-16/17 |
 
 ## 6. 测试设计
 
@@ -175,6 +225,20 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 | V-CL-OWNER | AAC 某一阶段 PASS 且未使用 required async/标注时，缺对应同源真执行用例或产物即拒最终三端；复用独立 expected 并检查来源。 |
 | V-AC-WAVE2 / NOCYCLE | 验 1097 已正式完整交 W2 的覆盖/反控、1074 实际消费 W2 的身份。留 required AC 行或缺正式 W3 时，T-06/08 最终汇总仍失败。 |
 
+### V-AACCL（2026-11-24 并入的 AAC CL 生产验证，未执行）
+
+入口=cargo t ace-aac-syntax（先 `prepare-native` 双 driver + `AAC1046_NATIVE_DIR`/`AAC1047_NATIVE_DIR`）、语义车道 `cargo nextest run --offline -p ace-aac-syntax-conformance --features aac-semantics --lib --tests --config-file ../../.config/nextest-full.toml --test-threads 1`、`cargo t ace-aac-gen1`（`AAC1053_GEN1_DIR`）、`cargo t ace-aac`；全树清单工具按 T-17 落材料区。
+
+| V / AC / owner | 输入 | 独立 oracle 与负控 | 边界 |
+|---|---|---|---|
+| V-11 / AC-11 / T-11 | master 现 S/std 闭包 85 模块 + 1054 清单 | 逐模块阶段/span 与 1054 清单一致或差异有解释；改动不得改变既有固定组 oracle | 仅测绘与决策，不施工 |
+| V-12 / AC-12 / T-12 | `for x in <List>`、`for c in <Str>`、空集、嵌套；缺 in/range 误用/绑定重名 | 合法形 CST 无损且绑定角色正确；非法形 source 阶段具名拒绝；range-for goldens 不变 | aac profile；不改其它 profile 字节 |
+| V-13 / AC-13 / T-13 | 三类原语调用 + `List<T>.new()`（含嵌套）；`char_at(Str)`、`from_codepoint(bool)`、未知名 | 正确事实/类型；非法 type 阶段具名拒绝；未知方法仍 `type.unresolved` | 不引隐式转换 |
+| V-14 / AC-14 / T-14 | 上述合法形 | 既有 HIR 文本逐字节不变；新形进闭集；未知 builtin 拒绝 | HIR schema 只增闭集 |
+| V-15 / AC-15 / T-15 | 迭代求和、char_at/索引、codepoint 往返 | MIR/ABC 产出且 AV 执行值=独立字面 oracle；资源/失败分类正确 | base profile；op 增补走 av-core 合同 |
+| V-16 / AC-16 / T-16 | S 的 10 个 std 模块 + 4 个 pending 面 | 绑定/定型可达；pending 面逐条具名（实现或分期+阶段码），不得空成功 | 平台面按 Windows；Linux 不扩 |
+| V-17 / AC-17 / T-17 | 全树 85 模块 project | 越过 parse/bind/typecheck 进 HIR/MIR；剩余拒绝为完整具名清单（阶段+code+span），零 trap；固定组无新增红 | 不含 Gen2/G2 |
+
 ## 7. 验收标准
 
 - [ ] **AC-FC｜owner_stage: work**：V-FC-CONSUMER及§5 FC逐原义务满足，公共语言唯一作者/本目标真实动作与独立结果/迁移映射均可追溯；原独立review复核，merge只接真实落主来源。未交required目标保pending，不因共享目录、少文件或另一端通过而降门。
@@ -200,9 +264,23 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 |---|---|---|---|
 | AC-AC-WAVE2 | work | UI-W1-AV之后，全部UI/Widgets AC机器执行/真实窗口/事件/生命周期/错误/资源独立oracle通过可正式交UI-W2-AC，第三波仍pending；最终T-06/08另核三端 | T-04 核 1097 阶段收据及 V-AC-WAVE2/NOCYCLE；原最终 T-09/10 保留 |
 
+### AAC CL 生产验收（2026-11-24 并入）
+
+| ID | owner_stage | 完成谓词 |
+|---|---|---|
+| AC-11 | work | T-11 决策记录落盘（生成器/形态/路径），85 模块清单刷新并与 1054 证据可追溯；V-11 闭合 |
+| AC-12 | work | `for <binding> in <collection>` 在 aac profile 实现并投影；V-12 全绿，range-for 与既有 parse goldens 零回归 |
+| AC-13 | work | 原语方法与泛型构造事实落地；V-13 全绿，未知方法仍拒绝 |
+| AC-14 | work | HIR builtin callee 闭集 + verify；V-14 全绿，既有 HIR 文本零变化 |
+| AC-15 | work | 迭代/原语 MIR/ABC lowering + AV 独立执行；V-15 全绿，拒绝分类正确 |
+| AC-16 | work | S 的 std 闭包在 project 车道可绑定/定型；pending 面逐条具名；V-16 闭合 |
+| AC-17 | work | 全树 project 编译越 parser/checker/std 面（MIR/ABC 或完整具名清单）；`ace-aac-syntax`/`ace-aac-gen1`/`ace-aac` 无新增红；V-17 闭合 |
+
+上表证据同时受既有 AC-REVIEW（T-09）与 AC-LAND（T-10）覆盖；AAC CL 生产不另设 review/merge 任务。
+
 ## 8. 执行步骤
 
-全部 0/10，证据接收与最终验收均待执行。
+原 T-01..T-10 全部 0/10；2026-11-24 并入的 AAC CL 生产 T-11..T-17 为 0/7，证据接收与最终验收均待执行。
 
 - [ ] **T-01｜work｜AC-01**：核 985/A 与原 required 矩阵，冻结原源/Case、独立判据、适用平台与生产任务。缺证仅登记验收状态。
 - [ ] **T-02｜work｜AC-02**：按 §5 对照原语言和组合行收 1046–1051 正式输入，核当前 AC 真执行、共享源/产物、诊断与资源，交 V-02/V-CL-OWNER 的语言部分，登记已有 AV AutoDown Case 的 AC 同源验收结果和待对账行。
@@ -214,10 +292,22 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 - [ ] **T-08｜work｜AC-01..04**：核 V-01..05、1096 正式同版验收分母与每个适用 AC Case 的实际结果、对应 W1/W2/W3 与域证据，完整 required 差额为 0 后冻结范围、同版身份及正式结果，交 985/B。
 - [ ] **T-09｜review｜AC-REVIEW**：独立核生产证据、三端运行与逐行 oracle，反查缩分母、AAC 子集冒完整支持、fallback、领域和资源遗漏。
 - [ ] **T-10｜merge｜AC-LAND**：正式合入验收结果、支持范围及证据簿记，交 985/B/986/987；沿原流程清理阶段材料和工作树。
+- [ ] **T-11｜work｜AC-11**：AAC CL 基线与 parser 缺口决策。重绑 master S/std 闭包身份并重跑 85 模块门面清单；判定 `for x in <collection>` 属 profile 缺生产 / 投影未接 / 形状不匹配，落 `plan-artifacts/plan-1068/aaccl-gap-decision.md`（含 grammar data 生成器命令）；同步在 Design59 §3 归属表补记 1068 承接。验证：清单与 1054 证据逐条对齐、`prepare-native` 双 driver rc=0。
+- [ ] **T-12｜work｜AC-12**：parser 列表迭代。按 T-11 结论改 aac profile / grammar 源并重新生成 `syntax_grammar_data.at`（不手改数据文件），或补 `syntax_parse` 投影；新 golden 覆盖 List/Str/空集/嵌套与缺 in、range 误用、绑定重名三类负控。验证：`cargo t ace-aac-syntax`（预期 51/51 或仅既有并发账）+ 语义车道 parse 用例 + V-12。
+- [ ] **T-13｜work｜AC-13**：checker 原语与泛型构造。`types/typecheck/binding.at` 增 `Str.char_at`、`char.to_codepoint`、`char.from_codepoint`、`List<T>.new()`（含嵌套）事实；`paged.at` 与 `syntax_grammar_data` 两个 S 内实例单独定位。验证：V-13 + 错参/未知名负控。
+- [ ] **T-14｜work｜AC-14**：HIR builtin callee 闭集。`core_hir.at` 增 `callee: "b:<name>"` 形与 verify 白名单；既有程序 HIR 文本逐字节不变。验证：语义车道 HIR 用例 + V-14。
+- [ ] **T-15｜work｜AC-15**：MIR/ABC 迭代与原语 lowering。`base_ir/lower_base/verify_base/base_abc.at` 落地索引循环与 char/文本原语；缺 op 时按 `av-core` 合同增补 + conformance。验证：`run_base_mir_case` + AV 独立 oracle + V-15。
+- [ ] **T-16｜work｜AC-16**：std 闭包与待办面。project 车道 `std/<stem>` + `gen-next` 物化（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块绑定/定型；`aac.pending-work/1`（env/path/rand/time）与 `std/math` 逐条实现或具名分期（阶段码 + 受影响 CL 行）。验证：V-16 + `cargo t ace-aac ace-aac-gen1` 无新增红。
+- [ ] **T-17｜work｜AC-17**：全树 project 门与固定组。85 模块 project 编译，落 MIR/ABC 或完整具名拒绝清单（阶段 + code + span，零 trap）；扫描脚本落材料区；记录执行/排除/耗时。验证：V-17 + `cargo t ace-aac-syntax ace-aac-gen1 ace-aac`。
 
 T-01 冻结验收分母。T-02–05 按实际输入签收，T-06/07 最终复验，T-08 汇总，T-09 独立复审，T-10 正式交接。发布差额归零以原 required 行逐条有证为准。
 
+T-11..T-17 为 AAC CL 生产实现（2026-11-24 并入）：T-11 决策/基线 → T-12 parser → T-13 checker（可与 T-12 并行）→ T-14 HIR → T-15 MIR/ABC → T-16 std 闭包 → T-17 全树门；其证据随 T-08 汇总、T-09 独立复审、T-10 落主交接，供 PLAN-1054 重绑 S 身份续跑 T-02..T-09 消费。
+
 ## 9. 复审记录
+
+- 2026-11-24 stage: new/revision | PLAN-1068 | r12 | outcome: pass（规划并入，非实现/认证 PASS） | 用户裁定：AAC CL 生产实现并入本包，`drafting → executing`；新增 T-11..T-17 / AC-11..AC-17 / V-11..V-17 / SD-AACCL-01..04；原 T-01..T-10 与 0/10 进度保持；原 PLAN-1130 撤回（内容=本批任务，git 历史保留） | next: work（T-11 起；先重绑 master S/std 身份再改生产面）
+
 
 - 2026-11-19 r10规划交接：明确AV路线只选AV，非AV#ignore由本目标实施阶段逐项恢复；原任务/状态/进度、完整门与原预期保持，本轮没有实现或运行。
 
@@ -259,6 +349,12 @@ stage: new/revision | outcome: pass（规划合同预检） | 本轮用户仅授
 本轮规划静态预检：14份计划/设计/路线文档，8份Plan共230个当前任务；仅980新增B-AV-I/V/R三项并按完整W3范围重开原RUST三项，旧AXR0收据保留；981仅核正原SOURCE三项已交的滞后计数。全部原任务ID/其余勾选、各Plan状态与整包依赖列表保留；新增本地链接/锚点15处、章节/表格/元数据计数/验收任务映射及行尾检查通过，A最小→A出口→W1→W2独立交接→W3→OS→候选/安装/退役阶段图16节点18边无环。原GUI/Widgets/Notes-Clock/语言/库/产品义务有具名阶段与原owner，不以延期冒PASS。仅文档预检，未实施/建树/运行测试或窗口/签阶段/合入/清理/恢复目标，未写源码、测试资产、canonical Specs或取号计数器；他会话并发修改不由本轮回退。
 
 ## 10. 待澄清事项
+
+2026-11-24：T-11..T-17 的专树沿用本包 §3 的 `D:/autostack/.wt/lang-1068/auto-lang` @ `plan-1068-dev`
+（当前尚未建立，T-11 开工时创建；材料区 `D:/autostack/plan-artifacts/plan-1068/`）。原 PLAN-1130
+已按用户裁定撤回，其清单（85 模块门面扫描）作为本批 T-11 输入。AAC CL 的 AV runtime op 增补
+（若 T-15 触发）须按 `av-core` 合同走并具名交接，不在本包私改其它计划冻结面；G2（mn 16MiB）
+仍归 AGE elem-view owner，Gen2/代际签章仍归 PLAN-1054。
 
 T-01冻结实际差额而非仅设计清单；T-04按现产品owner确定已有ABI可复用或需新增的最小AC接缝；T-05选实际已交AAC模块及有界工作负载，不能臆造未存在入口。当前仅规划，不启动实现或AAC。
 
