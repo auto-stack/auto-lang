@@ -348,7 +348,17 @@ stage: merge | plan_id: PLAN-1131 | plan_revision: r2 | outcome: pass | delivery
 
 **部署观察**：本计划交付物是编译器/标准库源码与测试，无生产面制品在本范围内；未触发 release 构建或重启——记为 stale-artifact 观察（无受影响制品）。
 
-**批量回归到期核**：待 `cleaned` 后核对 `docs/plans/.last-batch-regression.json`。
+**archived**：计划移至 `docs/plans/archive/1131-av-stdlib-public-types-and-legacy-imports.md`，`status: archived`、`completion_kind: delivered`、8/8；计划内 6 个相对链接与债务台账中 10 个指向本计划的链接均已核对有效；簿记提交 `114129321`（计划归档 + `KNOWN-DEBT-AND-RISKS.md`）。
+
+**cleaned（2026-11-24 20:43）**：`wt-guard.ps1` 对计划树、auto-down 兄弟树、基面重放临时树均报 clean（pwsh）；`git worktree remove` ×3、`git branch -d plan-1131-dev`（删除前顶点 `c361477bf`，已在 master 历史中）、组目录 `D:/autostack/.wt/lang-1131` 已删（0 残留）；auto-down 兄弟树 detached@`456c86a` 全程未改动。暂存区 `D:/autostack/plan-artifacts/plan-1131/`（78 个文件、379,415 字节、0 个重解析点）在证据折叠后整目录删除；`.retention/policy.json` 已登记 archived/删除/无持有（原子替换写入）。构建中间产物随工作树删除、未回收。
+
+**批量回归到期核**：`.last-batch-regression.json` last_covered=1126（2026-11-23T00:03Z）；1131 % 5 = 1 ≠ 0，且收据龄 36.7 h < 48 h → 不到期，不触发。
+
+**主检出观察（非本计划引入，如实报告）**：落地时主检出带有其他会话未提交的代码改动（`experimental/ace/aac/mir/*.at`、`experimental/ace/tests/aac-syntax/semantic_driver.at` 等）与若干设计文档改动；本计划快进合入未触及它们，也未在主检出上构建。落地后另一会话（plan-119）直接在 master 上追加了若干提交。
+
+stage: merge | plan_id: PLAN-1131 | plan_revision: r2 | outcome: pass | delivery_commit: c361477bf | canonical_specs: docs/specs/ace-migration/m2-stdlib-core.md, docs/specs/stdlib/design/ace-collections.md, docs/specs/auto-av/language-parity.md | archive_path: docs/plans/archive/1131-av-stdlib-public-types-and-legacy-imports.md | cleanup: cleaned | pending_merge_gates: 无
+
+stage: goal | plan_id: PLAN-1131 | plan_revision: r2 | round: 14 | from: merge | to: done | status: archived | outcome: pass | worktree: D:/autostack/.wt/lang-1131/auto-lang（已移除） | commit: c361477bf | next: done
 ## 10. 待澄清事项
 
 公开类型的绑定机制已由 T-01 核定（注解回退到嫁接记录，同名用户声明优先），未改动既有类型或导入优先级，无需实施决策。
