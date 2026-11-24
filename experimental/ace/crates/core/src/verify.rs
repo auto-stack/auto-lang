@@ -2229,13 +2229,23 @@ pub fn verify_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// T-02; the full resource walk (ownership liveness, cleanup schedules)
 /// extends the PLAN-770 machinery in T-04.
 pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_text_record_impl(bundle, false, None, false)
+    verify_text_record_impl(bundle, false, None, false, false)
 }
 
 /// PLAN-980 on-if 刀：AGE 组件检查函数模块的 verify 入口——str/Str 相等性
 /// 放行（与 compile_parts_with_age 的 typecheck 放行成对；text 族入口不变）。
 pub fn verify_text_record_age(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    verify_text_record_impl(bundle, false, None, true)
+    verify_text_record_impl(bundle, false, None, true, false)
+}
+
+/// PLAN-118（用户裁定①）：AGE **包面**的 elem-view 变体——与组件面同享
+///「owned 元素文本按非破坏视图参与文本 concat / `.len()`」的 verify 门
+///（resolve 侧 `elem_view_admission` 已含 AgePackage；此前 verify 侧未同步，
+/// 088 ColorPicker 的 `join` 元素读被误拒为 view-escape）。
+pub fn verify_text_record_age_elem_view(
+    bundle: hir::Bundle,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_text_record_impl(bundle, false, None, true, true)
 }
 
 /// PLAN-939: the text-record domain WITH foreign declarations — resource
@@ -2249,7 +2259,7 @@ pub fn verify_foreign_text_record(
     environment: &ace_foreign_contract::manual::AdmittedForeign,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     check_foreign_declarations(&bundle, environment)?;
-    verify_text_record_impl(bundle, true, None, false)
+    verify_text_record_impl(bundle, true, None, false, false)
 }
 
 fn verify_text_record_impl(
@@ -2257,6 +2267,7 @@ fn verify_text_record_impl(
     foreign_allowed: bool,
     _reserved: Option<()>,
     age_eq: bool,
+    elem_view_owned: bool,
 ) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != HirDomain::TextRecord {
         return Err(vec![Diagnostic::new(
@@ -2272,7 +2283,7 @@ fn verify_text_record_impl(
     }
     let mut v = Verifier {
         age_eq,
-        elem_view_owned: false,
+        elem_view_owned,
         foreign_allowed,
         diags: Vec::new(),
         closures_ctx: None,
@@ -2421,6 +2432,15 @@ pub fn verify_auto_language(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Di
 /// AGE package helpers use the Auto collection domain and AGE text equality.
 pub(crate) fn verify_auto_language_age(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
     verify_collection_family_impl(bundle, HirDomain::Closures, false, true, true)
+}
+
+/// PLAN-118（用户裁定①）：AGE 包面 Auto-profile 的 elem-view 变体（owned 元素
+/// 文本按非破坏视图参与 concat / `.len()`；resolve 的 `elem_view_admission`
+/// 已含 AgePackage，verify 侧此前未同步）。
+pub(crate) fn verify_auto_language_age_elem_view(
+    bundle: hir::Bundle,
+) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_collection_family_inner(bundle, HirDomain::Closures, false, true, true, true)
 }
 
 /// PLAN-1026: the closures family WITH foreign declarations (the py
@@ -3302,6 +3322,7 @@ impl Verifier {
                         let elem_text_concat_ok = self.elem_view_owned
                             && text_concat_used.contains(&(ei as u32))
                             && Self::list_elem_type_is_text(m, &body.exprs[list.0 as usize].ty, self);
+
                         if Self::list_elem_owned(m, &body.exprs[list.0 as usize].ty, self)
                             && !elem_text_concat_ok
                             && !projected.contains(&(ei as u32))

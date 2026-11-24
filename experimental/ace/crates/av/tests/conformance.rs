@@ -302,6 +302,8 @@ mod plan979_age_h0_cpu;
 mod plan980_state_face;
 #[path = "cases/plan981_age_package_av.rs"]
 mod plan981_age_package_av;
+#[path = "cases/plan118_join.rs"]
+mod plan118_join;
 #[path = "cases/plan981_cross_module_nodes.rs"]
 mod plan981_cross_module_nodes;
 #[path = "cases/plan981_event_b_av.rs"]

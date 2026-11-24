@@ -10330,6 +10330,12 @@ impl<'a, 's> FnResolver<'a, 's> {
             }
             let mut value = self.expr_with_expect(&pa.value, Some(cur));
             self.reject_elem_view_use(&value, "the assigned value");
+            // PLAN-118：把具体文本列表写进未定型/动态列表字段（VM 轨
+            // `var px = []` 的 view-data 列表）时按元素逐项物化为 Dyn——
+            // 运行时列表元素本就是动态值，类型层需要一次显式转换。
+            if matches!(cur, VT::List(_)) {
+                value = self.coerce_assigned_list(value, cur, span);
+            }
             match pa.op {
                 ast::PlaceOp::Set => {
                     if cur == VT::StrOwned && matches!(value.kind, RExprKind::StrLit(_)) {
@@ -13889,6 +13895,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                 return self.std_list_hof(name, *list, rargs, span);
             }
             "len" if rargs.is_empty() => mk(VT::I32, RExprKind::ListLen { list }),
+            // PLAN-118（用户裁定①）：`xs.join(sep)`——文本列表连接。与 clear
+            // 同一脱糖路线（不新增 opcode）：`out = ""`，`i < len` 循环里
+            // 先补分隔符（i > 0）再拼元素视图，返回 owned 文本。
+            "join" if rargs.len() == 1 && matches!(elem, VT::Str | VT::StrOwned | VT::Dyn) => {
+                self.join_text_list(li, *list, rargs.remove(0), span)
+            }
             "clear" if rargs.is_empty() => mk(VT::Unit, RExprKind::ListClear { list }),
             "clone" if rargs.is_empty() => {
                 self.bind_err(
@@ -13903,7 +13915,7 @@ impl<'a, 's> FnResolver<'a, 's> {
                 self.bind_err(
                     "source.undefined",
                     format!(
-                        "no list method `{}` with {} argument(s) in this profile (legal: new/push/insert/get/set/remove/len/clear)",
+                        "no list method `{}` with {} argument(s) in this profile (legal: new/push/insert/get/set/remove/len/clear/join)",
                         name.name,
                         rargs.len()
                     ),
@@ -13914,8 +13926,293 @@ impl<'a, 's> FnResolver<'a, 's> {
         }
     }
 
-    fn clone_collection_value(&self, value: ResolvedExpr) -> ResolvedExpr {
-        ResolvedExpr {
+    /// PLAN-118（用户裁定①，088 ColorPicker 准入）：`xs.join(sep)` 的文本
+    /// 连接脱糖——`out = ""`；`i < xs.len()` 循环内：`i > 0` 时 `out = out +
+    /// sep`，随后 `out = out + xs.get(i)`（owned 元素走非破坏元素视图），
+    /// 返回 `out`（move 转移）。与 `clear` 同「无新 opcode」路线。
+    fn join_text_list(
+        &mut self,
+        li: usize,
+        list: ResolvedExpr,
+        sep: ResolvedArg,
+        span: Span,
+    ) -> ResolvedExpr {
+        let pending = |span: Span| ResolvedExpr {
+            span,
+            vt: VT::StrOwned,
+            kind: RExprKind::StrLit(String::new()),
+        };
+        if sep.name.is_some() || sep.moved {
+            self.bind_err(
+                "source.argument",
+                "join takes one positional separator".to_string(),
+                sep.span,
+            );
+            return pending(span);
+        }
+        let sep_value = sep.value;
+        if !matches!(sep_value.vt, VT::Str | VT::StrOwned) {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "join expects a text separator, found `{}`",
+                    sep_value.vt.as_str()
+                ),
+                sep.span,
+            );
+            return pending(span);
+        }
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let elem = self.coll.lists[li];
+        self.reject_elem_view_use(&list, "the joined list");
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(list.clone()),
+            },
+        ));
+        let out = self.agg_temp("join_out", VT::StrOwned, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: out,
+            value: expr(VT::StrOwned, RExprKind::StrLit(String::new())),
+            span,
+        });
+        let index = self.agg_temp("join_index", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_out = || expr(VT::StrOwned, RExprKind::ReadLocal(out));
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let owned = self.vt_is_coll_owned(elem);
+        let element = if owned {
+            expr(
+                elem,
+                RExprKind::ElemView {
+                    list: Box::new(list.clone()),
+                    index: Box::new(read_index()),
+                    path: Vec::new(),
+                },
+            )
+        } else if elem == VT::Dyn {
+            // 未定型列表（VM 轨 `var px = []`）的元素按运行时文本收窄——
+            // 非文本 Dyn 值在 DynCast 处 fail-closed（不静默转数字串）。
+            Self::coerce_dynamic(
+                expr(
+                    elem,
+                    RExprKind::ListGet {
+                        list: Box::new(list.clone()),
+                        index: Box::new(read_index()),
+                    },
+                ),
+                VT::Str,
+            )
+        } else {
+            expr(
+                elem,
+                RExprKind::ListGet {
+                    list: Box::new(list.clone()),
+                    index: Box::new(read_index()),
+                },
+            )
+        };
+        let concat = |lhs: ResolvedExpr, rhs: ResolvedExpr| {
+            // verify：文本 concat 的声明类型必须是 owned `Str`（lhs/rhs 可
+            // 是 str/Str/元素视图）。
+            expr(
+                VT::StrOwned,
+                RExprKind::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+            )
+        };
+        let append_sep = RStmt::Assign {
+            local: out,
+            path: Vec::new(),
+            value: concat(read_out(), sep_value.clone()),
+            span,
+        };
+        let append_element = RStmt::Assign {
+            local: out,
+            path: Vec::new(),
+            value: concat(read_out(), element),
+            span,
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::If {
+                        cond: expr(
+                            VT::Bool,
+                            RExprKind::Binary {
+                                op: BinOp::Gt,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(0))),
+                            },
+                        ),
+                        then: RBlock {
+                            stmts: vec![append_sep],
+                            span,
+                        },
+                        els: None,
+                        span,
+                    },
+                    append_element,
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(
+            VT::StrOwned,
+            RExprKind::Move {
+                inner: Box::new(read_out()),
+            },
+        )
+    }
+
+    /// PLAN-118（用户裁定①，088 ColorPicker 准入）：具体文本列表 → 动态列表
+    /// 赋值位的元素级物化。VM 轨组件包的模型列表是无类型 `var x = []`
+    /// （AGE 包面按 `List(Dyn)` 承载），而 handler 内的局部列表按文本元素
+    /// 定成 `List<Str>`；直接赋值类型不一致。这里脱糖成
+    /// `conv = List<Dyn>.new(); while i < src.len() { conv.push(src.get(i)) }`
+    /// 并把 `conv`（move）交给赋值位。
+    fn coerce_assigned_list(&mut self, value: ResolvedExpr, want: VT, span: Span) -> ResolvedExpr {
+        let (VT::List(want_li), VT::List(src_li)) = (want, value.vt) else {
+            return value;
+        };
+        let src_elem = self.coll.lists[src_li];
+        if self.coll.lists[want_li] != VT::Dyn || src_elem == VT::Dyn {
+            return value;
+        }
+        // 仅文本元素有已受检的物化通道（记录元素列表保持原判据）。
+        if !matches!(src_elem, VT::Str | VT::StrOwned) {
+            return value;
+        }
+        let expr = |vt, kind| ResolvedExpr { span, vt, kind };
+        let src = self.eval_once(value);
+        let conv = self.agg_temp("__dyn_list", VT::List(want_li), true, span);
+        self.emit_stmt(RStmt::Let {
+            local: conv,
+            value: expr(VT::List(want_li), RExprKind::ListNew { list: want_li }),
+            span,
+        });
+        let length = self.eval_once(expr(
+            VT::I32,
+            RExprKind::ListLen {
+                list: Box::new(src.clone()),
+            },
+        ));
+        let index = self.agg_temp("__dyn_i", VT::I32, true, span);
+        self.emit_stmt(RStmt::Let {
+            local: index,
+            value: expr(VT::I32, RExprKind::IntLit(0)),
+            span,
+        });
+        let read_index = || expr(VT::I32, RExprKind::ReadLocal(index));
+        let read_conv = || expr(VT::List(want_li), RExprKind::ReadLocal(conv));
+        let element = if src_elem == VT::StrOwned {
+            Self::coerce_dynamic(
+                Self::clone_owned_text(expr(
+                    src_elem,
+                    RExprKind::ElemView {
+                        list: Box::new(src.clone()),
+                        index: Box::new(read_index()),
+                        path: Vec::new(),
+                    },
+                )),
+                VT::Dyn,
+            )
+        } else {
+            Self::coerce_dynamic(
+                expr(
+                    src_elem,
+                    RExprKind::ListGet {
+                        list: Box::new(src.clone()),
+                        index: Box::new(read_index()),
+                    },
+                ),
+                VT::Dyn,
+            )
+        };
+        let target = LoopRef(self.loop_count);
+        self.loop_count += 1;
+        self.emit_stmt(RStmt::While {
+            target,
+            cond: expr(
+                VT::Bool,
+                RExprKind::Binary {
+                    op: BinOp::Lt,
+                    lhs: Box::new(read_index()),
+                    rhs: Box::new(length),
+                },
+            ),
+            body: RBlock {
+                stmts: vec![
+                    RStmt::ExprStmt {
+                        value: expr(
+                            VT::Unit,
+                            RExprKind::ListPush {
+                                list: Box::new(read_conv()),
+                                value: Box::new(element),
+                            },
+                        ),
+                        span,
+                    },
+                    RStmt::Assign {
+                        local: index,
+                        path: Vec::new(),
+                        value: expr(
+                            VT::I32,
+                            RExprKind::Binary {
+                                op: BinOp::Add,
+                                lhs: Box::new(read_index()),
+                                rhs: Box::new(expr(VT::I32, RExprKind::IntLit(1))),
+                            },
+                        ),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        });
+        expr(
+            VT::List(want_li),
+            RExprKind::Move {
+                inner: Box::new(read_conv()),
+            },
+        )
+    }
+
+    fn clone_collection_value(&self, value: ResolvedExpr) -> ResolvedExpr {        ResolvedExpr {
             span: value.span,
             vt: value.vt,
             kind: RExprKind::OwnedClone {
@@ -16709,6 +17006,14 @@ impl<'a, 's> FnResolver<'a, 's> {
                     // PLAN-962: storing a whole-element view into a local
                     // is a view escape (the alias must not materialize).
                     self.reject_elem_view_use(&value, "the assigned value");
+                    // PLAN-118：具体文本列表写进动态列表局部（VM 轨组件包的
+                    // `var px = []` 模型状态）时元素级物化为 Dyn。
+                    if let Some(want) = expect {
+                        if matches!(want, VT::List(_)) {
+                            let coerced_span = value.span;
+                            value = self.coerce_assigned_list(value, want, coerced_span);
+                        }
+                    }
                     if matches!(
                         &value.kind,
                         RExprKind::CreateClosure { captures, .. }

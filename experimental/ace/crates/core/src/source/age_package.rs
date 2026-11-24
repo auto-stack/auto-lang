@@ -948,10 +948,10 @@ fn compile_age_package_mode(
     let input_hash = parts.input_hash.clone();
     let desugar_hash = crate::source::cst::content_sha(parts.atom_text.as_bytes());
     let mut checked = if profile == SourceProfile::Auto {
-        crate::verify::verify_auto_language_age(parts.bundle)
+        crate::verify::verify_auto_language_age_elem_view(parts.bundle)
     } else {
         // PLAN-106（B3）：包面 AGE 走 age verify（Str==str 与组件面同旗）。
-        crate::verify::verify_text_record_age(parts.bundle)
+        crate::verify::verify_text_record_age_elem_view(parts.bundle)
     }
     .map_err(|ds| relabel_package_diags(locate_all(&product.bound, ds)))?;
     // 4a-bis) PLAN-981（D-981-MODULE-GLOBAL-A2R）：把绑定器的模块全局事实钉进
