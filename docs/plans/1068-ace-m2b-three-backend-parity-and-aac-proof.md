@@ -265,6 +265,10 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
   （该 call **没有 args 节点**，实参是 call 的直接子节点）——都报同一 reference。结论：带实参的内建调用在 HIR
   引用记账上还有未理解环节；下轮先拿 **HIR 表达式表 dump**（verify 之前打印 exprs/args/blocks），对照
   `to_codepoint` 的成功样本定位差异，不要再盲改。
+  **第三次实验（2026-11-24，已回退）**：把 `verify_usage` 的 `unused` 判负临时改成 `return 0` 后，
+  **`s.char_at(i)` 与 `c.to_codepoint()` 双双到 `mir.base-profile`** —— 证明 wiring（op/值类型/verify/form/args）
+  本身是通的，**唯一剩余项就是「实参表达式 47..48 被判 unused」这条 claim 记账**。不以削弱 verify 收尾；
+  下轮用「把 `exprs/args/claims` 表内容写进 HIR 文档文本」的临时 dump 看清 id 关系再修（文档路径已验证可用）。
 
 ### 规范增量
 
