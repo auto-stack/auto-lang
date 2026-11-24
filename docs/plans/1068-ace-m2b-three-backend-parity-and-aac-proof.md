@@ -291,6 +291,13 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的发射+verify+文本 form、实参 claim 记账。
 **下一步 T-15**：`lower_base` 为 op 23/24 生成 MIR（当前按设计拒为 `mir.base-profile`），并补 AV 执行。
 
+**T-15 起步（2026-11-24，worktree `5351fb075`）**：
+- AV 侧**已有** `STR_CHAR_AT`（opcode 0x15=21）与 `CHAR_TO_CODEPOINT`（0x1A=26）——`av-core/instr_spec.rs` 已定义并实现（`mir.rs`/`abc.rs`），所以 T-15 主要工作在 Auto 侧；
+- Auto 侧已接线：`base_ir` 两个指令码、`lower_base` 的 op 常量+白名单+`to_codepoint` 降低、`verify_base` 类型规则（char→int）、`base_abc` 编码、`data_value` 纳入 char lane；
+- `ace-aac-syntax` 50/51（唯一红仍是已知 `aac1046_corpus_text`）。
+- **重要教训（red herring）**：`mir.base-profile` 对没有 `main` 的程序来自 `core_hir` 的 **entry gate**（`entry < 0`），不是 op 不支持——前几轮用它判断"op 已通过 lowering"是不成立的；后续所有 MIR 测量必须用带 `main` 的程序。
+- 实测 `fn main() int { let c = 'A' ... }` → `hir.unsupported`（**char 字面量**在 HIR 未支持）；端到端验证需先补 char 字面量或 `char_at` 的 lowering。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
