@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-1124
-status: reviewed
+status: archived
 feature_name: "AV 标准库动态 JSON、泛型编码与 CSV 迁移"
 author: [Codex]
 created_at: 2026-11-22
@@ -883,6 +883,43 @@ stage: review | review_scope: repair | reviewer_identity: 发起会话派生的�
 - SD-01 §2 新句为真且与其余文字不矛盾。frontmatter 结论沿用 r4。
 
 stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 10 | from: review | to: merge | status: reviewed | outcome: pass | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: e06229806 | next: merge（T-06）
+
+2026-11-24 · stage: merge · PLAN-1124 r1 · outcome: **pass（delivered）**。交付提交 `c6443252c`（master 快进合并，无 merge commit）。
+
+stage: merge | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | completion_kind: delivered | reviewed_commit: e0622980603b051c75b40cf3f9bcc319a9e6227d | delivery_commit: c6443252c | default_branch: master | canonical_specs: docs/specs/ace-migration/m2-stdlib-data.md @c6443252c blob `4b42b18db406c96e33a5a398dd5b91e2cfa71af1`，sha256 `17022c7acc6d769c11013b3cc876ed1470ae26bb10e1ef212451ba6314942e72` | archive_path: docs/plans/archive/1124-av-stdlib-json-and-csv.md | worktree: D:/autostack/.wt/lang-1124/auto-lang（移除） | branch: plan-1124-dev（删除）
+
+**Checkpoints**
+
+| checkpoint | 证据 |
+|---|---|
+| `prepared` | 复审 r5 pass（受审 `e06229806`）；SD-01 增量：`docs/specs/ace-migration/m2-stdlib-data.md`（+ §2 一句边界）；交付提交 `c6443252c` |
+| `landed` | 主检出 `git merge --ff-only plan-1124-dev` → master tip = `c6443252c`，无 merge commit；主检出他方 `docs/design/**` WIP 未触碰 |
+| `canonical_verified` | `git rev-parse HEAD:docs/specs/ace-migration/m2-stdlib-data.md` = `4b42b18db…`，与交付提交逐字节相同；worktree 同文件 sha256 `17022c7a…`；规范里指向本计划的链接已改指 `plans/archive/` |
+| `archived` | `docs/plans/archive/1124-av-stdlib-json-and-csv.md`，`status: archived`；计划文件与 docs 改动已提交到 master |
+| `cleaned` | 见本节末：wt-guard clean、worktree/分支/组目录移除、`plan-artifacts/plan-1124/` 删除、`.retention/policy.json` 刷新；构建中间产物随 worktree 删除，未回收 |
+
+**变基映射与补丁等价**
+
+- 第一次变基 `master 9d99115f2`：`d206320e8→4f9f4f73f`、`9a9c296ec→c91e233ce`、`b5ada0bd0→4847a3503`、`4cc02b463→78c0cc2b4`、`e06229806→339fe8656`；`git range-diff 8a52d7364..e06229806 9d99115f2..339fe8656` 显示 5 个 commit 中 2 个带上下文差异（第 1 个是 `av-core/src/av.rs` 的冲突解：保留本计划的 `Value::F64` 分支与 master 的 `Value::Dyn` 分支；第 3 个是 master 重命名后的函数上下文文本），补丁行等价。
+- 变基期修复：master 新增表达式级 `ExprKind::If` 变体，`stdlib_refs.rs` 的穷举走查补上该分支（遍历 cond/then/else_chain/els，不绑定名字）；提交 `c6443252c`。
+- 第二次变基 `9d99115f2→cbf2671b6`：master 只多了一个改 `docs/plans/1068-…md` 的 docs 提交（`git diff --name-only` 不触及 `crates/`、`experimental/`、`stdlib/`、`docs/specs/`），按“输入未变”复用全部验证证据。
+
+**冻结组并集（交付提交 `c6443252c`，`cargo t` 固定组入口，已 `--prepare-only` 后 build-free 运行）**
+
+| 组 | 结果 | 原红/环境（与本计划无关，均在 master 内容上复现） | 墙钟 |
+|---|---|---|---|
+| `stdlib` | **PASS**，180 项 | — | 8 s |
+| `ace-stdlib` | **PASS**，2/2 | — | 5 s |
+| `ace-semantics` | **PASS**，295 项 | — | 11 s |
+| `ace-source` | 1023 项：1018 passed、1 skipped、5 failed（组红） | `text_record_source::{flagship_combination_compiles_and_verifies, generated_atom_carries_the_combination_surface, move_arguments_transfer_whole_roots_not_views, named_ctor_source_order_is_the_written_order, positional_ctor_and_owning_contexts_promote_literals}`（基线 `9a9c296ec` 与 master 内容上同名复现） | 12 s |
+| `ace-av`（带 `ace-av/test-case-batch`） | 1695 项：1682 passed、23 skipped、13 failed（组红） | `av_method_modes::use_after_move_of_method_arg_rejected`、`av_method_owned::{v03_flagship_value_thirty, v03_token_microprogram_fifty_seven, v10_method_field_borrow_return_zero_alloc, v10_second_alloc_failure_rolls_back_partially_built_output}`、`av_owned_first_case::av_owned_first_case_whole_path_and_live_zero`、`av_owned_recipe::av_owned_recipe_fixture_face_matches_hand_audit`、`av_test_batch::c_data_profile_keeps_its_scalar_entry_boundary`、`component_event_sessions_1106::v02b_text_leaves_are_pure_reads`、`resource_915::{r02_l04_arena_sweep_is_complete, r02_l04_value_sweep_is_complete, r02_l05_v05_sweeps}`、`ace-av-core layout::tests::layout_rejects_non_record_and_empty`（与本计划基线同 13 名） | 63 s |
+| `case-av-language-parity`（AV 视图） | 574 项执行、5 行非 PASS（组红），`av.parity.1124.*` **9/9 PASS** | `av.parity.1082.empty-array-rejects` FAIL、`av.parity.1084.boxed-nil-arithmetic-script-catch` FAIL、`av.parity.1093.{explicit-c-library, c-header-spelling-rejected}` FAIL、`py.float-args.1129.torch-lr-computed` ERROR（`py.slicing.1127.torch-zero` 本轮通过，属环境抖动）；五条把实施树文件回退到 master 内容、重做 `--prepare-only` 后逐条复现同名结果 | 114 s |
+
+**本计划目标用例（交付提交 `c6443252c`）**：`plan1124_json_csv` **37/37**（串行 84.0 s，最慢 5.2 s，10 秒门内）；`ace-core` 嫁接+stdlib 单元 **11/11**；`ace-av` worker 单元 **1/1**；近邻 `json975`/`plan1120`/`plan1121`/`module_v_1064` **54/54**；语言用例 `av.parity.1124.*` **9/9 PASS**（组运行内计时 685–1840 ms）；新增行编译器告警归因 **0**；`rustfmt --check` 新增行 hunk **0**。
+
+**债务与沉淀**：`docs/plans/KNOWN-DEBT-AND-RISKS.md` 的 M2-A 两条边界行已改写为“由 PLAN-1124 交付/关闭”（动态 `JsonValue`/泛型 `encode[T]`；`encoding/csv.at` 迁移），并新增 D-1124-AV-TEXT-01 / DIAG-01 / SYNTH-01 / PKG-01 四个具名承接项；`docs/design/strategy/av-autovm-language-parity.md` 与本计划相关的链接改指 `plans/archive/`。`new_spec_components: []` 的理由：只修改既有 `docs/specs/ace-migration/m2-stdlib-data.md`，未新建规范组件。
+
+**边界保留**：动态树是只读访问面（`as_array()` 元素受既有列表视图规则限制）；`JsonEncodable` 自动合成只覆盖文档化字段域；`List` 元素位置的覆写记录在拥有自有数据（含枚举/参数化枚举/借用 `str`）时具名拒绝；包模块尚不接收泛型枚举模板（`source.module-templates`）；Linux/WSL 用例按 2026-11-14 裁定归专用 Linux 环境（PLAN-1063）。
 
 ## 10. 待澄清事项
 

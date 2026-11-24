@@ -1,6 +1,6 @@
 # ACE M2 标准库数据域（PLAN-975 / PLAN-1124）
 
-来源：[PLAN-975](../../plans/archive/975-ace-m2-stdlib-data.md)（r10 合同，M2-A 终态交付）、[PLAN-1124](../../plans/1124-av-stdlib-json-and-csv.md)（r1 合同，M2-B 动态 JSON、`JsonEncodable` 泛型编码与纯 Auto CSV）。本文件沉淀**已验证**的 M2 数据域规范与实现边界。
+来源：[PLAN-975](../../plans/archive/975-ace-m2-stdlib-data.md)（r10 合同，M2-A 终态交付）、[PLAN-1124](../../plans/archive/1124-av-stdlib-json-and-csv.md)（r1 合同，M2-B 动态 JSON、`JsonEncodable` 泛型编码与纯 Auto CSV）。本文件沉淀**已验证**的 M2 数据域规范与实现边界。
 
 ## B1 原语切片：`char.to(Str)` 物化（T-B1-D 沉淀，2026-11-16）
 

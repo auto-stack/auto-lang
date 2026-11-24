@@ -4735,8 +4735,17 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 
 ### PLAN-975 M2-A 收尾候选边界与 master 预存红观察 — 2026-11-16
 
-- **动态 `JsonValue` / 泛型 `encode[T]` / 任意字段名类型迭代反射（B 阶段边界）**：M2-A 已交付纯 Auto `json.at` 编解码与点路径数组访问、`spec JsonDecodable` 泛型 `<T has JsonDecodable> decode<T>`、`app::service` `pub type Service` 跨模块编解码，及 `966` `ct_field_count`/`ct_has_field` 合约检查；动态 `JsonValue` AST 对象（`keys`/`as_array`/`as_number`/`prettify`/`minify`）、泛型 `encode[T]`/`encode_pretty` 与按字段名/类型遍历反射超出 M2-A 范围（`966` A 切片仅提供字段数与 `has_field`），关闭=B 阶段/comptime 字段遍历能力就绪后增量扩展。owner=M2-B/966 后续轮。
-- **`encoding/csv.at` 外部未迁移占位**：`stdlib/auto/encoding/csv.at`（`csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`）仍仅存在于旧 VM/A2R 外部清单，不在 ACE M2-A 已交付 `json`/`sqlite`/`redis` 集合内。关闭=如需支持则按纯 Auto codec 迁移或明确废弃。owner=M2-B/stdlib-encoding。
+- **动态 `JsonValue` / 泛型 `encode[T]`（B 阶段边界）— 2026-11-24 由 PLAN-1124 交付**：普通 Auto AV 面（单文件与 packages）交付只读动态 JSON 树（`parse`/`parse_strict`/`is_valid`/`minify`/`prettify`、`.kind()`/`.type_of()`、`.keys`/`.get`/`.get_at`/`.at`/`.as_*`）与 `spec JsonEncodable` 泛型 `encode<T>`/`encode_pretty<T>`（依 `TypeItem.fields` 声明序合成，含跨模块记录与手写覆盖）；合同见 [m2-stdlib-data](../specs/ace-migration/m2-stdlib-data.md) §1–§2 与 [1124 计划](archive/1124-av-stdlib-json-and-csv.md)。仍在的边界：树是只读访问面，`as_array()` 元素按既有列表视图规则使用（如 `remove` 后再访问），合成只覆盖文档化字段域，没有按字段名/类型的运行期反射。owner=M2-B/966 后续轮。
+- **`encoding/csv.at` 外部未迁移占位 — 2026-11-24 由 PLAN-1124 关闭**：`stdlib/ace/std/csv.at` 交付纯 Auto RFC-4180 CSV（四个旧公开名 `csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`，另加 `csv_parse_rows`/`csv_encode_rows`，`std.csv` 与 `std.encoding.csv` 两个导入面），合同见 [m2-stdlib-data](../specs/ace-migration/m2-stdlib-data.md) §3 与 [1124 计划](archive/1124-av-stdlib-json-and-csv.md)；旧 `stdlib/auto/encoding/csv.at` 的 Vm/A2R 外部清单不在本计划范围（保持原状）。
+### PLAN-1124 具名承接项（2026-11-24，merge 收据见 [1124 计划](archive/1124-av-stdlib-json-and-csv.md) §9）
+
+| 发现 | 级别 | 摘要 | owner | 关闭条件 | 状态 |
+|---|---|---|---|---|---|
+| D-1124-AV-TEXT-01 | MINOR | `ace-av-core` 的 `owned_text::char_at`/`scalar_range_to_bytes` 每次调用把整段文本物化成 `Vec<char>`，逐字符扫描的墙钟是平方级（本计划只让自己的预扫按短片段读取绕开它） | ACE AV 核心文本运行时 | 按标量索引不再随文本总长线性增长；131,071 个标量的逐字符扫描接近线性 | 具名登记 |
+| D-1124-DIAG-01 | MINOR | 记录里写 `static fn json_encode()` 得到 `source.duplicate`（span 只有 1 个字符），不是签名不符时的具名诊断 | `json_encode_synth` 的覆写检测 | 得到具名诊断与覆盖整个声明的 span | 具名登记 |
+| D-1124-SYNTH-01 | MINOR | `json_encode_synth.rs` 用硬编码的 `p3_stdm4_json_json_str` 探测 packages 模式，与 std 包改名方案耦合 | `json_encode_synth` | 改按模块归属判断，或随 std 包改名方案一并处理 | 具名登记 |
+| D-1124-PKG-01 | MINOR | `modules/packages.rs` 对自动插入的 `std::json` 等模块把版本回退成 `"1.0.0"`；今天与 `STDLIB_VERSION` 相同，版本号一变实例的身份哈希不会跟随 | `modules/packages.rs` | 版本取自 `STDLIB_VERSION` | 具名登记 |
+
 - **跨 Plan 外部承接边界（已具名）**：SQLite 宿主文件持久化/崩溃恢复归 `PLAN-973`/`PLAN-1064`；`packages` 跨模块 `p967_*` provider 执行装配归 `PLAN-1043`；schema 迁移策略归 `PLAN-986`；Linux 端实跑 `L-01..L-05` 归 `PLAN-1063`。
 - **T-04 并集观察到的 master 预存红（非 Plan 975 引入）**：① `ace-a2x-c::admitted_text::runtime_admission_preserves_bytes_and_the_certification_pin` 与 `ace-abi::source_foreign`（25 例）— `master@82d032c8e`（Plan 972）改 `a2x-c/src/runtime.rs` 后 `CERTIFICATION_C_RUNTIME_SHA256`（`bd260a8b...` vs `0a4f68e3...`）未重钉；② `ace-av::stdlib_list_946::stdlib_list_946_grammar_face` — `master@4ba167930`（Plan 1064）放宽 `if` 条件文法后旧负控断言过时；③ `ace-runtime` `ace-text-conformance` 19 例 Windows `rust-lld` 缺 `__CxxFrameHandler3`/`_fltused`。关闭=批量回归 triage 或各自 owner/fix worktree 修复。owner=批量回归 triage。
 

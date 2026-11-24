@@ -1,5 +1,7 @@
 # AV 与 AutoVM 语言齐平：差距设计、AutoDown 验证与执行路线
 
+2026-11-22 更新。PLAN-1078～1096 的语言路线已归档，普通工程迁移尚有的差额及归属见[第 9 节](#9-av-迁移剩余差额与实施顺序)。下文第 1～8 节记录 2026-11-19 的立项基线。
+
 2026-11-19，规划r3。用户决定先推进AV语言路线；依据当前工作区源码/Specs/原AutoDown作者源。本文与19个计划均**仅规划，没有修改实现、创建实施树或运行任何代码/用例**。原审计见[能力与示例审计](ace-capability-gap-audit-2026-11-19.md)；本文在语言侧继续下钻，不能把原审计中的最小缺口表当全分母。
 
 ## 1 目标、边界与“齐平”的含义
@@ -259,3 +261,20 @@ AVP-00新增`SourceProfile::Auto`（拟名）、源码准入键`ac.source.langua
 没有执行compiler/test/demo/GPU/GUI，所有planned case都未验证。不新增全局性能/全仓回归门，也不改旧归档收据或已有语义expected。1068/985只增加AV正式来源的阶段接收关系，其它会话后续修订与编号不回退、不覆盖。
 
 2026-11-19 r2规划修订：统一作者迁移到中立language根，72例原代码需求保留；旧506文档快照按语义归类迁移，AC/A2R/AAC/产品接收补同源规则。本轮未迁例、未改expected、未运行；旧静态预检数字为r1历史，r2按实际改动重新核链接/依赖。
+
+## 9 AV 迁移剩余差额与实施顺序
+
+[PLAN-1096](../../plans/archive/1096-av-parity-full-language-certification.md)交付已约定的 AV 语言验收。[PLAN-1114](../../plans/archive/1114-ace-av-rs-stdlib-providers.md)的后续冻结复验执行 529 项，527 通过，2 项因 C provider 准备闭包缺失而失败。本批按实际迁移差额立项，所有新增计划均为 `drafting`。
+
+| 类别 | 计划或现有责任 | 交付边界与顺序 |
+| --- | --- | --- |
+| 语言与标准库接面 | [1120 泛型 List 高阶方法](../../plans/1120-av-generic-list-hof.md) | 首选实施。用旧 `List<Note>` 和拥有型资源反例验 `map/reduce/find/any/all`。旧 25.012 归本计划。 |
+| 标准库容器 | [1121 Map/Set](../../plans/1121-av-stdlib-map-set.md) | 可先独立核存储和接口。承 `legacy.13_collections.001–013`、`legacy.21_conv.003–004`，实现触及同一绑定段时与 1120 协调合入。 |
+| 标准库转换 | [1122 宽无符号转换](../../plans/1122-av-stdlib-wide-unsigned-conversion.md) | 可并行。承 `legacy.25_method_u64.001–011`，区分旧 `Str.to_uint()` 的实际表示与受检 `u64` 公共操作。 |
+| 标准库网络 | [1123 HTTPS/代理](../../plans/1123-av-stdlib-https-proxy.md) | 可并行，先直连再代理。Windows 证据交 982，Linux 交 1063。1119 可按实际需求消费公共能力。 |
+| 标准库数据 | [1124 JSON/CSV](../../plans/archive/1124-av-stdlib-json-and-csv.md) | 可独立推进。先固定动态值与编码事实，再实现泛型编码。CSV 依赖自己的格式合同。 |
+| C 验收工件 | [1125 C provider 可重建](../../plans/1125-av-c-provider-reproducible-fixtures.md) | 可并行。关闭 1093 的两项具体闭包失败。固定组其他红项仍按 [1108](../../plans/1108-batch-regression-gate-repair-after-1098.md)的现有职责处理，若同根因则复用修复。 |
+| 旧脚本整支迁移 | [982/EXEC](../../plans/982-ace-m2-man-gen.md) | 先用原 [03_image_scraper.at](../../../examples/a2rs/03_image_scraper.at)核 CLI 参数、HTTP 和文件装配。通过受控服务和临时输出验证响应及文件副作用，脚本实际需要 HTTPS 时消费 1123。 |
+| Linux 平台验收 | [1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md) | 接各计划的 Linux 义务、原源码和独立 oracle，待专用 Linux 环境执行。 |
+
+这六个新计划的文档前置均已归档，T-01 可分别核对当前事实。UI、AC/AAC 与 A2R 依照各自既有门槛推进。已裁定的语义差异继续按 [AV 语言规范](../../specs/auto-av/language-parity.md)处理，例如负索引在 AV 报越界。每项实施以后用旧原源和新独立预期共同验收，批准的迁移改写附原源诊断与映射。
