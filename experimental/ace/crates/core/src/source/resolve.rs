@@ -16830,6 +16830,24 @@ impl<'a, 's> FnResolver<'a, 's> {
                     if ann_vt == Some(VT::StrOwned) && value.vt == VT::Str {
                         value = Self::own_dynamic_text(value);
                     }
+                    // PLAN-118（T-03，088 color_model 真语料）：owned 文本局部从
+                    // 另一个 owned 文本局部**初始化**时按值拷贝（`var up Str =
+                    // ch` 后 ch 仍被读）——VM 文本值是值语义，绑定新局部不消费源。
+                    if ann_vt == Some(VT::StrOwned)
+                        && value.vt == VT::StrOwned
+                        && matches!(value.kind, RExprKind::ReadLocal(_))
+                    {
+                        value = ResolvedExpr {
+                            span: value.span,
+                            vt: VT::StrOwned,
+                            kind: RExprKind::Method {
+                                recv: Box::new(value),
+                                method: BuiltinMethod::Clone,
+                                to: None,
+                                args: Vec::new(),
+                            },
+                        };
+                    }
                     if legacy_widget {
                         value = Self::copy_legacy_text_local(value, ann_vt);
                     }
