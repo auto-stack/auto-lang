@@ -626,6 +626,16 @@ impl ViewBody<'_> {
         stmts: &mut Vec<Stmt>,
     ) -> Result<(), Vec<Diagnostic>> {
         let span = entry.span;
+        {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("D:/autostack/plan-artifacts/plan-119/view-events.log")
+            {
+                let _ = writeln!(f, "VIEWTAG key={} tag={}", entry.key, element_tag);
+            }
+        }
         let (name, args) = match (entry.message_call(), &entry.value) {
             (Some(call), _) => call,
             (
