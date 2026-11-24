@@ -5069,3 +5069,72 @@ AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todo
   ace-aac-syntax 组内 aac1050 mir 全组。
 - **关闭条件**：dense mir 全链产出 ABC + gen-next 全树 S 单包编译通过 + 上述组原样绿。
 - **登记**：2026-11-23，PLAN-1054 work 阶段，owner=下一会话 work（handoff 轮 60-61 全文）。
+
+## D-1129-01 — AV 上程序算出的负 `int` 实参生成畸形帧，派发前失败（OPEN，2026-11-24 PLAN-1129 修复轮 1 探针发现，早于本计划）
+
+- **现象**：AV 上，Python 调用的 `int` 实参只要在运行时为负，运行就以 `foreign.frame: p967.frame/2 rejected: payload not LF-terminated` 结束，Python 未被调用。与由哪种表达式得出负数无关：`var a = 1`、`var b = 2`、`repr(a - b)`，返回负数的函数，先绑定到局部变量，一元负号 `repr(-n)`，结果为 -10 或 i32 最小值，全部相同。非负的运行时整数与负整数字面量（`repr(-3)`）正常。A2PY 传递负数本身。
+- **根因**：冻结 helper `__py_dlen`（`experimental/ace/crates/core/src/source/py.rs`）只数非负值的十进制位数；`__py_chunk_i` 用它声明 payload 长度，而 `$n` 渲染出 `-3`（2 字节），声明比实际少一位。1026 的注释假设帧线路只携带非负 i32；1107 放行运行时整数实参后该假设不再成立。PLAN-1129 没有改这两个 helper。
+- **PLAN-1129 处置**：未修，本计划的合同是浮点实参。取负实参语料 `python-float-args.case.ad` 的 `negated-operands` 只含浮点形态；整数形态由 `ace-a2x-python` 的 `generated_python_negates_an_int_argument` 只在 A2PY 侧钉住；AV 规范的「已知边界」写明。
+- **owner**：AV py 车道（1026 helper）维护方。
+- **关闭条件**：`__py_dlen` 对负值计入符号位（含 i32 最小值）；`repr(a - b)`、`repr(-n)`、`round(2.5d, ndigits: -digits)` 在两端通过，整数形态补回上述语料；届时只在 A2PY 侧的钉可以移除。
+
+## D-1129-02 — SDK 运行兼容「`/2` 需求遇 `/1` 供给」只有哈希层用例（OPEN，2026-11-24 PLAN-1129 复审 r2 观察 R-07）
+
+`m2build.compat.symbol-signature` 的这条路径只由构造成立：唯一的需求生产者是 `ConsumerRequirements::native_program`，所有带帧符号的签名哈希（含 `/1` 的）都变了，仓内没有钉值可据以断言一次真实的供需错配。owner=M2Build 运行兼容；关闭条件=一条端到端用例，带 `/2` 帧声明的工件对上只声明 `/1` 的 SDK，得到具名 `m2build.compat.symbol-signature`。非阻塞。
+
+## D-1129-03 — `.as(float)` 收窄溢出时两端失败形态不同（OPEN，2026-11-24 PLAN-1129 复审 r2 观察 R-08，早于本计划）
+
+两端都失败，但 AV 是 `av.trap.float-overflow`，A2PY 以未归类的 `OverflowError` 退出 1。`a2x_cast_f32` 与 AV 的陷阱都早于本计划。owner=A2PY 异常映射；关闭条件=A2PY 把该溢出映射为与 AV 相同的陷阱类别，并有双端用例。非阻塞。
+
+## D-1129-04 — AV 普通语言入口的 2 秒墙钟含第三方包导入，torch 冷缓存必超（OPEN，2026-11-24 PLAN-1129 复审 r2 观察 R-09）
+
+`torch-lr-computed` 在 torch 冷缓存导入时以 `av.resource.execution-wall` 出错（实测 3055 ms、7770 ms、7960 ms），缓存热后通过。该属性早于本计划，1127 的 torch 用例同样暴露。预算是既有裁定，本计划不改。2026-11-24 修复轮 3 增补：把安静判据放宽到「0 构建/测试进程且 CPU 均值 < 15%」后，3 个安静窗口（CPU 5.2%、13.7%、9.5%）里的重放仍全部越界（2712、3295、8189 ms），安静机器上连跑三次为 7271（冷）、2921、2903 ms；同一轮语料组里 1127 的三个 torch 用例在同一环境下 2308–2861 ms 通过，说明本例的调用量本身就压在 2 秒上，不只是导入冷热。owner=AV 执行预算；关闭条件=预算对导入阶段另有口径，或 owner 明文接受「训练类用例须在空闲且缓存热的环境重放」并写入用例说明，或该用例改到墙钟内（减少训练步数或给语料显式墙钟）。
+
+## D-1129-05 — 浮点字面量不支持指数记法（OPEN，2026-11-24 PLAN-1129 复审 r2 观察，早于本计划）
+
+`1.0e3` 被判 `source.literal-range`；不带指数的长写法解码与 Python 一致（23 个字面量相对误差全为 0）。owner=语言字面量解析；关闭条件=指数记法按 IEEE 规则解码并有对照用例。非阻塞。
+
+## D-1129-06 — 默认工具档下 `ace-native` 有 22 个 `sched_m2_1067` 用例链接失败（OPEN，2026-11-24 PLAN-1129 work 观察）
+
+默认工具档（不带 `--debug-tools`）下报 `undefined symbol: mn_pio_state_address` 等，由 `ac_sched_runtime.lib` 引用；同一提交换调试工具档后其中 21 个转绿。`ace-sched-runtime` 只依赖 `ace-text-runtime` 与 `windows-sys`，PLAN-1129 未触及。本机其余 `ace-native` 回执均为调试工具档。owner=调度器运行时的工具档准备；关闭条件=默认工具档下该组通过，或默认档正式退役并从文档删除。
+
+## D-1129-07 — A2PY 对象 helper 在 worker 的 `run-py` 身份里没有独立轴（OPEN，2026-11-24 PLAN-1129 work 观察，早于本计划）
+
+`a2x_py_text` 在 `PY_OBJECT_HELPERS`，其内容哈希只在工程入口（m2-build 的 `python-object-runtime` 轴）进入身份；worker 的 `run-py` 身份只含运行时正文哈希（运行时每次重新发射）。对象 helper 单独变化时 worker 一侧没有身份轴。PLAN-1129 两个 helper 同时变化且正文哈希已变，不受影响。owner=A2PY 运行时身份；关闭条件=worker 侧为对象 helper 建立独立身份轴，或 owner 明文接受「worker 每次重新发射运行时，故不需要缓存身份」并写入规范。
+
+## D-1129-08 — 带 `use.py` 的程序里，带闭包实参的列表高阶调用在 bind 阶段失败（OPEN，2026-11-24 PLAN-1129 复审 r3 探针发现，早于本计划）
+
+- **现象**：不带 `use.py` 时，`let xs = ["a", "bb"]` 加 `xs.all((s Str) => s.len() > 0)` 在 AV 上正常输出。加上 `use.py builtins: repr` 后同一写法在 bind 阶段失败：`xs.all(…)`、`xs.filter(…)` 报 `source.py-domain: this operator on a Python object is outside the v1 op set (add/sub/mul/truediv)`，接着报「`all`/`filter` expects a callback … returning bool」，也就是闭包体里的比较被当成了对 Python 对象的运算；`xs.map((s Str) => s.len())` 在 A2PY 上报 `verify.type-mismatch: expr e2: param 0 (i32) does not match eval_args[0] (Str)`。AV 对 `all` 给出同样的 bind 诊断。
+- **根因**：没有确立。PLAN-1129 没有改解析器里处理闭包与 Python 对象的代码。
+- **owner**：py 车道前门与 1120 列表高阶调用的交互。
+- **关闭条件**：带 `use.py` 的程序里，`map/filter/find/any/all` 的闭包实参在两端的结果与不带 `use.py` 时相同，或前门给出原因准确的具名拒绝。
+
+## D-1129-09 — 对 Python 对象取负被前门放行并按 i32 处理（OPEN，2026-11-24 PLAN-1129 复审 r3 探针发现，早于本计划）
+
+- **现象**：`var o = complex(0.25d, 0.0d)` 时 `repr(-o.real)` 原生得 `-0.25`；AV 上以 `foreign.frame: p967.frame/2 rejected: payload not LF-terminated` 失败，A2PY 上得 `0`。不跨界的 `print(-r)`（`r = sqrt(0.25d)`）在 AV 上打印句柄的相反数（实测 `-2`），A2PY 报 `a2x.unsupported-expr`。`repr(-o)`（复数）在 A2PY 上以未归类的 `TypeError: int() argument must be … not 'complex'` 退出 1。先提取再取负是对的：`repr(-sqrt(0.25d).to(double))` 得 `-0.5`。
+- **根因**：解析器只对数值操作数做带类型的一元负号，其余操作数回退为 i32 且不拒绝（`experimental/ace/crates/core/src/source/resolve.rs` 的 `Task::UnaryOut`，来自 `a505011bd7`）。Python 对象是 i32 形状的句柄，所以 AV 读到的是句柄本身；A2PY 的 `NegI32` 发射 `a2x_neg(对象)`，即 `-int(对象)`。
+- **与 PLAN-1129 的关系**：R-01 的修复让 A2PY 在「取负的 Python 对象作 Python 调用实参」时选中一元节点，症状从「传入操作数本身、丢符号」变成「截断为 0 或崩溃」。复审 r3 的 R-11 要求修复轮处理这个回归面；修复轮 2（`3c7aebf5f`）让 A2PY 的查找对这类操作数回到修复前的行为（调用结果与对象局部变量原样传入），并用 29 格矩阵钉住。本条继续覆盖整个形态：AV 一侧读到的是句柄的相反数，A2PY 一侧仍然丢符号（`-sqrt(0.25d)` 传 `+0.5`），属性读取后的取负在 A2PY 上截断为 0。
+- **owner**：py 车道前门。
+- **关闭条件**：两端对 Python 对象的一元负号给出具名拒绝并提示先 `.to(double)`，或正式支持；AV 不再打印句柄的相反数。关闭时同步更新 `ace-a2x-python` 矩阵里的 10 格 Python 对象预期。
+
+## D-1129-10 — `p967.frame` 的长度与计数字段接受前导零和前导负号（OPEN，2026-11-24 PLAN-1129 复审 r3 探针发现，967/1026 既有行为）
+
+- **现象**：AV 校验器与生成的 shim 解码器逐行相同地接受 `d 05`、`d 0000000000000005`、`d -5`、`d -05`（与 `d 5` 载同一个值），计数 `p 00`、`p -0`、`k 00`，以及 `/1` 的 `i 003`、`i -0`、`i +42`、`o 007`；带 `+` 的长度被拒绝。
+- **根因**：`split_decimal`（校验器）与 `__f0_decimal`（解码器）跳过开头的 `-`，不限制前导零；整数与句柄 payload 用 `str::parse`。PLAN-1129 的 `/2` 帧按「布局不变」继承了这套解析。发射端总是写规范形式。
+- **说明**：这是 `/1` 布局的既有行为。PLAN-1129 的合同要求 `/1` 行为不变，所以没有在该计划里改；规范里「一个值只有一种编码」一句只应理解为说字三元组 `<w2> <w1> <w0>`。另外，校验器与解码器对四种非浮点的畸形帧给出的原因字符串不同（`n` 带负载、`b` 负载不是 0 或 1、接收者头带尾随文本、接收者长度超过上限），接受与否则一致。
+- **owner**：967 tag 帧线路。
+- **关闭条件**：长度与计数字段只接受规范十进制（无前导零、无负号），两个实现的原因字符串对同一字节集逐字相同；或 owner 明文接受现行为，并把规范改写为「解码接受这些等价拼写」。
+
+## D-1129-11 — Python → Auto 的 `.to(double)`/`.to(float)` 提取对无穷与 NaN 两端不一致（OPEN，2026-11-24 PLAN-1129 修复轮 2 探针发现，早于本计划）
+
+- **现象**：`var o = float("inf")` 后 `o.to(double)`，AV 以 `PyException ValueError: py.float-boundary: non-finite/subnormal value rejected (v1)` 结束运行，A2PY 打印 `Infinity`；`float("nan")` 配 `.to(float)` 同理，A2PY 打印 `NaN`。有限值（`float(0.5d)` 配 `.to(double)`）两端都得 `0.5`。
+- **根因**：AV 的 provider 对非有限与非正规值具名拒绝（`experimental/ace/crates/foreign-contract/py/py_bridge_provider.rs`，PLAN-1026 的出站合同）；A2PY 的提取 lowering 不设这个界。PLAN-1129 没有改两侧的提取路径，它的合同也写明出站合同不变。
+- **owner**：py 车道的出站提取合同。
+- **关闭条件**：两端对出站的非有限值与非正规值给出一致的结果（都具名拒绝，或都按既定规则保留），并在两份规范的出站合同里写明。
+
+## D-1129-12 — master 侧两条 AV 语料红：`av.parity.1082.empty-array-rejects` 与 `av.parity.1084.boxed-nil-arithmetic-script-catch`（OPEN，2026-11-24 PLAN-1129 merge 门发现，早于本计划、不属本计划）
+
+- **现象**：PLAN-1129 的 merge 门（`c96bd10cb`）跑语料组时，这两条 AV 用例非 PASS。`empty-array-rejects` 期望 `stage: resolve` 的 `source.array-lit-empty` 具名拒绝，实际 success；`boxed-nil-arithmetic-script-catch` 期望捕获类型错误后 exit 42，实际 `av.trap.dyn-type`。
+- **主检出对照**：用 master-only 工具（从 `365d38772` 单独准备，清单 `7f9566b2ee9959a9`）重放，失败消息逐字相同；PLAN-1129 的 9 个提交不含这两条用例与其解析/求值路径。原始输出在 `D:/autostack/plan-artifacts/plan-1129/t06/m01-master-baseline-cases.txt`（该目录已随 merge 删除，结论已折入归档计划 §9「merge」）。
+- **owner**：PLAN-1068 / PLAN-117 一侧（master 上 `[]` 字面量与 dyn-type 捕获的当前行为），以及语料期望的维护者。
+- **关闭条件**：两条用例在 master 上重新通过，或语料期望按已批准的语义变更改写并记录理由；下一次到期批次回归（`cargo t all`）应把它作为已知红或新增红显式列出。
