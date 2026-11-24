@@ -25,7 +25,7 @@ total_steps: 6
 
 ## 0. 变更摘要
 
-2026-11-23，承接 PLAN-1127 的已交同源切片基线，将 Python 调用中只接受字面量或字面量来源的浮点实参扩到普通 Auto 运行时浮点值。首个使用例是 `SGD(model.parameters(), lr: rate)`，其中 `rate` 由 Auto 实际计算。目标与后继顺序见 [Design 58 §8](../design/58-python-standard-syntax-interop.md#8-python-后继路线)。
+2026-11-23，承接 PLAN-1127 的已交同源切片基线，将 Python 调用中只接受字面量或字面量来源的浮点实参扩到普通 Auto 运行时浮点值。首个使用例是 `SGD(model.parameters(), lr: rate)`，其中 `rate` 由 Auto 实际计算。目标与后继顺序见 [Design 58 §8](../../design/58-python-standard-syntax-interop.md#8-python-后继路线)。
 
 ## 1. 目标
 
@@ -44,15 +44,15 @@ ACE `resolve`、`PyOpFact/PyOperand`、967 Python provider 与 978 工件装配�
 
 ## 4. 需求分析与背景调查
 
-本轮授权为 auto-lang 仓内的设计、路线图与计划文档，由 [Specs 总览](../specs/overview.md) 导航。静态代码基线 `8a52d7364e5b`。实施、构建、产品执行和 worktree 留待工作阶段。
+本轮授权为 auto-lang 仓内的设计、路线图与计划文档，由 [Specs 总览](../../specs/overview.md) 导航。静态代码基线 `8a52d7364e5b`。实施、构建、产品执行和 worktree 留待工作阶段。
 
 | 来源 | 已核对事实 |
 |---|---|
-| [AV Python 规范](../specs/auto-av/python-interop.md)、[Python 生态规范](../specs/auto-a2x/python-ecosystem-integration.md) | 动态浮点实参仍是明确缺口。输出侧已经有 `.to(float/double)`，入站有独立边界。 |
-| [共享 resolve](../../experimental/ace/crates/core/src/source/resolve.rs)、[操作事实](../../experimental/ace/crates/core/src/py_ops.rs) | `py_val_class`、`py_operand_literal`、`py_frame_val` 目前只承认浮点字面量及 `py_lit_locals` 中记录的来源。运行时 float 落入 `source.py-domain`。 |
-| [AV provider](../../experimental/ace/crates/foreign-contract/py/py_bridge_provider.rs)、[A2PY lowering](../../experimental/ace/crates/a2x-python/src/lower.rs) | AV 旧 provider 把文本前缀 `F:` 当浮点字面量标记。A2PY 已有按受检表达式获取非字面量操作数的路径。需验证它能获取真实浮点值而没有采用帧构造节点或旧常量。 |
-| [1107 PyTorch 源](../../crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as)、[PLAN-1110](archive/1110-ace-a2py-python-exception-mapping.md)、[PLAN-1127](archive/1127-ace-python-object-slice-syntax.md) | 现有训练把 `lr: 0.1` 写为字面量。1110 异常调度和 1127 双端参考基线已交付。原始 1107 夹具保留作对照。 |
-| [967 的标量合同](../../experimental/ace/crates/foreign-contract/src/lane.rs)、[M2 构建规范](../specs/ace-migration/m2-build.md)、[PLAN-967](archive/967-ace-m2-host.md)、[PLAN-978](archive/978-ace-m2-build.md) | 通用 ABI 有精确 `F64Bits` lane，当前 Python 调用仍有自己的帧合同。扩展必须由现有 provider 与装配选择正式承载。通用标量 lane 的存在并不证明它已进入 Python 参数帧。 |
+| [AV Python 规范](../../specs/auto-av/python-interop.md)、[Python 生态规范](../../specs/auto-a2x/python-ecosystem-integration.md) | 动态浮点实参仍是明确缺口。输出侧已经有 `.to(float/double)`，入站有独立边界。 |
+| [共享 resolve](../../../experimental/ace/crates/core/src/source/resolve.rs)、[操作事实](../../../experimental/ace/crates/core/src/py_ops.rs) | `py_val_class`、`py_operand_literal`、`py_frame_val` 目前只承认浮点字面量及 `py_lit_locals` 中记录的来源。运行时 float 落入 `source.py-domain`。 |
+| [AV provider](../../../experimental/ace/crates/foreign-contract/py/py_bridge_provider.rs)、[A2PY lowering](../../../experimental/ace/crates/a2x-python/src/lower.rs) | AV 旧 provider 把文本前缀 `F:` 当浮点字面量标记。A2PY 已有按受检表达式获取非字面量操作数的路径。需验证它能获取真实浮点值而没有采用帧构造节点或旧常量。 |
+| [1107 PyTorch 源](../../../crates/auto-lang/test/cases/ace-m2/python-1107/pytorch_train.as)、[PLAN-1110](1110-ace-a2py-python-exception-mapping.md)、[PLAN-1127](1127-ace-python-object-slice-syntax.md) | 现有训练把 `lr: 0.1` 写为字面量。1110 异常调度和 1127 双端参考基线已交付。原始 1107 夹具保留作对照。 |
+| [967 的标量合同](../../../experimental/ace/crates/foreign-contract/src/lane.rs)、[M2 构建规范](../../specs/ace-migration/m2-build.md)、[PLAN-967](967-ace-m2-host.md)、[PLAN-978](978-ace-m2-build.md) | 通用 ABI 有精确 `F64Bits` lane，当前 Python 调用仍有自己的帧合同。扩展必须由现有 provider 与装配选择正式承载。通用标量 lane 的存在并不证明它已进入 Python 参数帧。 |
 
 2026-11-23 用户以 `/goal 完成计划1129` 授权执行、复审、合同内修复和合入归档。实施基面 `0486981556bd8d128c69ded9888319ac4a65fc02`，专属树 `D:/autostack/.wt/lang-1129/auto-lang`（`plan-1129-dev`），同组只读 auto-down 检出 `456c86a`。计划材料统一放 `D:/autostack/plan-artifacts/plan-1129/`。
 
