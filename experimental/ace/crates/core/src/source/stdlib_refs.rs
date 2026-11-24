@@ -247,6 +247,25 @@ impl Refs {
                     self.expr(part);
                 }
             }
+            // Heard through the module's branches like any other expression:
+            // a reference inside one still counts, and names are not bound.
+            ExprKind::If {
+                cond,
+                then,
+                else_chain,
+                els,
+                ..
+            } => {
+                self.expr(cond);
+                self.expr(then);
+                for (guard, body) in else_chain {
+                    self.expr(guard);
+                    self.expr(body);
+                }
+                if let Some(els) = els {
+                    self.expr(els);
+                }
+            }
             ExprKind::GridLit { rows, .. } => {
                 for row in rows {
                     for cell in row {
