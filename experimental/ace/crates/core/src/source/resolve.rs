@@ -25119,7 +25119,7 @@ impl<'a, 's> FnResolver<'a, 's> {
         value.kind = RExprKind::RecordClone { base: Box::new(base) };
     }
 
-    fn adapt_argument_type(&self, value: &mut ResolvedExpr, want: VT) {
+    fn adapt_argument_type(&mut self, value: &mut ResolvedExpr, want: VT) {
         retag_literal(value, want);
         self.adapt_spec_value(value, want);
         // PLAN-117（round-34 ②）：json 值链实参 coerce——Dyn 实参落到 callee
@@ -25128,6 +25128,15 @@ impl<'a, 's> FnResolver<'a, 's> {
         // 延伸到实参位）。
         if value.vt == VT::Dyn && want != VT::Dyn && want != VT::Unit {
             *value = Self::coerce_dynamic(value.clone(), want);
+        }
+        // PLAN-118（T-03）：动态列表形参收具体文本列表实参时，调用点做元素级
+        // 物化（typecheck 的 AGE 放宽必须与 MIR 槽型一致，否则 MIR 拒
+        // `List<Dyn>` ← `List<Str>`）。
+        if let (VT::List(want_li), VT::List(_)) = (want, value.vt) {
+            if self.coll.lists[want_li] == VT::Dyn {
+                let span = value.span;
+                *value = self.coerce_assigned_list(value.clone(), want, span);
+            }
         }
         if self.profile.is_auto_language() && want == VT::Str && value.vt == VT::StrOwned {
             let span = value.span;
