@@ -84,7 +84,7 @@ staleness）——设计如此。
 ### 2. 模式驱动泛型 JSON 编码（`spec JsonEncodable` / `json_encode_synth.rs`）
 
 - **契约与推导**：`spec JsonEncodable { fn json_encode() Str }` 搭配泛型入口 `encode<T has JsonEncodable>(value T) Str` 与 `encode_pretty<T has JsonEncodable>(value T) Str`。未声明 `fn json_encode() Str` 的 `type R as JsonEncodable` 由编译器按 `TypeItem.fields` 的声明序合成编码，跨模块记录与字段重命名自动反映。
-- **覆写在每个位置生效**：记录自己声明的 `fn json_encode() Str` 在顶层、嵌套字段和 `List` 元素三种位置都被调用。`List` 元素位置有一个前提：`List` 元素是视图而不是完整的值，不能整体交给方法，所以带覆写的记录只有在字段都是复制标量（整数、浮点、布尔，及其嵌套）时才能作 `List` 元素。记录拥有自有数据（文本、列表、枚举或选项、函数，直接或经嵌套记录）时，带覆写的记录不能作 `List` 元素，编译期以 `source.json-encode-unsupported` 在该 `List` 字段处具名拒绝，与覆写体读什么无关。不带覆写的记录作 `List` 元素时逐字段经视图读取，不受此限。
+- **覆写在每个位置生效**：记录自己声明的 `fn json_encode() Str` 在顶层、嵌套字段和 `List` 元素三种位置都被调用。`List` 元素位置有一个前提：`List` 元素是视图而不是完整的值，不能整体交给方法，所以带覆写的记录只有在字段都是复制标量（整数、浮点、布尔，及其嵌套）时才能作 `List` 元素。记录拥有自有数据（文本、列表、枚举或选项、函数，直接或经嵌套记录）时，带覆写的记录不能作 `List` 元素，编译期以 `source.json-encode-unsupported` 在该 `List` 字段处具名拒绝，与覆写体读什么无关。不带覆写的记录作 `List` 元素时逐字段经视图读取，不受此限（其中含借用 `str` 字段的记录仍受语言既有的 owned-field 视图规则限制：该字段的视图只能由 `.len()` 消费，否则 `verify.view-escape`）。
 - **字段域与负控**：支持 `Str` / `str`、`int` / `i32` / `i8` / `u8` / `uint` / `u32` / `i64` / `u64`、`f32` / `f64`、`bool`、`?T`（`null` 或内值）、`List<T>`、嵌套的 `JsonEncodable` 记录与空记录。未声明遵从 `JsonEncodable` 的记录被泛型边界拒绝（`source.instances-bound`）；不支持的字段类型（如 `char`）、嵌套的未遵从记录、递归环、`List<List<...>>`、`List<?T>` 在编译期被拒绝（`source.json-encode-unsupported`）。
 - **`encode_pretty(v)`** 是 `encode(v)` 的缩进排版，两者只差空白。
 

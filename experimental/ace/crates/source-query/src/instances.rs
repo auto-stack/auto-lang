@@ -1206,6 +1206,9 @@ pub(crate) fn instantiate_auto_program_scoped(
     });
     let mut expanded_enums = BTreeMap::<String, String>::new();
     let mut expanded = BTreeMap::<String, String>::new();
+    // The generic enum templates are gone from `program` from here on; the
+    // synthesizer needs their names for fields still written `Box<int>`.
+    let enum_templates: BTreeSet<String> = enums.keys().cloned().collect();
     let mut origins = AutoInstanceOrigins::default();
     let limit = ProduceLimits::default();
     let start = Instant::now();
@@ -1217,7 +1220,10 @@ pub(crate) fn instantiate_auto_program_scoped(
                 program,
                 &record_templates,
             )?);
-        ace_core::source::json_encode_synth::synthesize_json_encodable_methods(program)?;
+        ace_core::source::json_encode_synth::synthesize_json_encodable_methods_with_enums(
+            program,
+            &enum_templates,
+        )?;
         for item in &mut program.items {
             if let Item::Type(record) = item {
                 register_auto_methods(

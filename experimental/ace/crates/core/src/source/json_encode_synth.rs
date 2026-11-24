@@ -47,6 +47,16 @@ impl JsonHelpers {
 /// Synthesizes `fn json_encode() Str` on every concrete `TypeItem` in `program`
 /// that declares conformance to `JsonEncodable` without a user-defined `json_encode`.
 pub fn synthesize_json_encodable_methods(program: &mut Program) -> Result<(), Vec<Diagnostic>> {
+    synthesize_json_encodable_methods_with_enums(program, &BTreeSet::new())
+}
+
+/// The same, for a program whose generic `enum` templates instantiation has
+/// already removed: a field still written `Box<int>` keeps the template name
+/// at bind time, so the names have to come from the caller.
+pub fn synthesize_json_encodable_methods_with_enums(
+    program: &mut Program,
+    enum_templates: &BTreeSet<String>,
+) -> Result<(), Vec<Diagnostic>> {
     let helpers = JsonHelpers::detect(program);
     let record_specs: BTreeMap<String, Vec<String>> = program
         .items
@@ -86,13 +96,15 @@ pub fn synthesize_json_encodable_methods(program: &mut Program) -> Result<(), Ve
             _ => None,
         })
         .collect();
-    let enums: BTreeSet<String> = program
-        .items
+    let enums: BTreeSet<String> = enum_templates
         .iter()
-        .filter_map(|item| match item {
-            Item::Enum(e) if e.type_params.is_empty() => Some(e.name.name.clone()),
+        .cloned()
+        .chain(program.items.iter().filter_map(|item| match item {
+            // Materialized enum instances as well as the non-generic enums
+            // that stay in place.
+            Item::Enum(e) => Some(e.name.name.clone()),
             _ => None,
-        })
+        }))
         .collect();
 
     let mut diags = Vec::new();
@@ -166,7 +178,10 @@ impl SynthCtx<'_> {
             // `Str` owns its buffer and `str` is a borrowed text slice; the
             // verifier counts both as resource leaves.
             TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned) => true,
-            TypeRef::Generic { name, .. } => name.name == "List",
+            // A list element owns its elements; a parameterized enum
+            // (`Box<int>`) is an enum and may own a payload, exactly like a
+            // non-parameterized one.
+            TypeRef::Generic { name, .. } => name.name == "List" || self.enums.contains(&name.name),
             TypeRef::Record(record) => {
                 if self.enums.contains(&record.name) {
                     return true;

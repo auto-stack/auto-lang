@@ -1795,18 +1795,26 @@ pub type Holder as JsonEncodable {
     let (_stage, code) = compile_diag(&single);
     assert_eq!(code, "source.json-encode-unsupported");
 
-    // F-20 (review r3): the owning shapes the spec lists are not only owned
-    // text and lists. An enum-typed field and a borrowed `str` field also
-    // hold resources, so they get the same named refusal at the list field
-    // instead of the verifier's `verify.view-escape`. The single-file face
-    // covers both shapes; package modules do not admit `enum` items yet, so
-    // the packages face covers the borrowed `str` shape.
+    // F-20/F-24 (review r3/r4): the owning shapes the spec lists are not
+    // only owned text and lists. An enum-typed field, a parameterized enum
+    // field (`Box<int>`) and a borrowed `str` field also hold resources, so
+    // they get the same named refusal at the list field instead of the
+    // verifier's `view-escape`.
     let owning_shapes: &[(&str, &str, &str, &str, bool)] = &[
         (
             "enum field",
             "enum Choice {\n    A(Str)\n    B\n}\n\n",
             "    e Choice\n",
             "e",
+            true,
+        ),
+        (
+            // A package module's generic enum needs a template declaration
+            // (`source.module-templates`), so this shape is single-file here.
+            "parameterized enum field",
+            "enum Box<T> {\n    V(T)\n}\n\n",
+            "    b Box<int>\n",
+            "b",
             false,
         ),
         ("borrowed str field", "", "    text str\n", "text", true),
