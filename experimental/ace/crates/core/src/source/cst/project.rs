@@ -7905,14 +7905,21 @@ impl<'a> Engine<'a> {
     ) -> bool {
         fn list_method(call: &crate::source::ast::Expr) -> bool {
             match &call.kind {
-                crate::source::ast::ExprKind::MethodCall { name, .. } => matches!(
-                    name.name.as_str(),
-                    "push" | "get" | "len" | "pop" | "clear" | "set"
-                ),
+                crate::source::ast::ExprKind::MethodCall { name, .. } => {
+                    let ok = matches!(
+                        name.name.as_str(),
+                        "push" | "get" | "len" | "pop" | "clear" | "set"
+                    );
+                    if !ok {
+                        eprintln!("P119DBG foreign_callee={}", name.name);
+                    }
+                    ok
+                }
                 _ => false,
             }
         }
         fn walk(stmts: &[crate::source::age_component::ComponentStmt]) -> bool {
+            #[allow(clippy::needless_return)]
             stmts.iter().any(|st| match st {
                 crate::source::age_component::ComponentStmt::Call { call, .. } => !list_method(call),
                 crate::source::age_component::ComponentStmt::If { then, els, .. } => {
@@ -7978,6 +7985,7 @@ impl<'a> Engine<'a> {
                     } else if let Some(st) = self.project_on_stmt_inner(inner) {
                         stmts.push(st);
                     } else {
+                        eprintln!("P119DBG foreign_stmt @{}..{}", self.cx.span_of(inner).start, self.cx.span_of(inner).end);
                         body_foreign = true;
                     }
                 }
@@ -7988,7 +7996,9 @@ impl<'a> Engine<'a> {
             let (params, param_annotations): (Vec<_>, Vec<_>) =
                 self.handler_params(c).into_iter().unzip();
             let mut locals = params.iter().map(|(name, _)| name.clone()).collect();
-            body_foreign |= Self::resolve_handler_scope(&mut stmts, &mut locals, true);
+            let scope_foreign = Self::resolve_handler_scope(&mut stmts, &mut locals, true);
+            if scope_foreign { eprintln!("P119DBG scope_foreign=true"); }
+            body_foreign |= scope_foreign;
             let mut assigns = Vec::new();
             Self::flat_handler_assigns(&stmts, &mut assigns);
             // PLAN-105 T-02：分支/循环体里出现的**非列表方法**调用仍然是域外
