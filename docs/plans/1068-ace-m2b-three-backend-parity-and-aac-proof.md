@@ -357,6 +357,10 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     → **trap 在 parse 机器本身（不是 projection）**。给 `compact_edges` 两个循环加边界拒绝（返回 7）并让调用点传播后，
     错误仍是 `trap:ListIndex` → **compaction 不是 trap 源**（守卫未触发）。守卫已回退。
     下一步：在 `machine_run` 每 128 步写一次「步号单字节文件」，定位 trap 前最后一步，再对照输入位置（这是有界且确定的做法）。
+  - **步数夹逼（2026-11-24）**：把 `syntax_parse.at` 的硬上限临时改成 2000/16000/64000 重编驱动后，file.at 都返回 **`PARSE_ERR 4`（预算耗尽）**
+    → trap 发生在 **64000 步之后**（15.4KB 的稠密文件按经验需要 ~1M 步）。步数夹逼有效但代价是每次重编（~90s）。
+    下一步（最省）：在预算拒绝处把 **`steps`、`m_i`（token 下标）、`m_thi`、`m_efhi`、`nframes`** 编进返回串（`PARSE_ERR 4 <...>`），
+    一次即可拿到 trap 前的输入位置与机器状态；再对照该 token 附近的构造。cap 改动已回退。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
