@@ -945,3 +945,5 @@ T-01 冻结 JSON 数字、对象顺序与重复键；记录 CSV 旧边界及规�
 - `%TEMP%` 下 `p1124-*` 遗留目录 30 个（F-09 关闭时留下的历史残留，非本轮新增）已清空为 0。
 - `.retention/policy.json` 已登记本计划为 `deleted-at-merge (no holds)`，scope 已不存在，无具名持有。
 - 链接核对：本文件从 `docs/plans/archive/` 出发的全部相对链接（`../../specs/`、`../../design/`、`../../../stdlib/`、`../1063-…`、`1096-…`）逐条 `Test-Path` 为真。
+
+- **部署观察**：本计划的产物是语言编译器/标准库源码（`experimental/ace/**`、`stdlib/ace/std/{json_auto,csv}.at`、`docs/specs/**`），不涉及 release 二进制、安装包或 Web bundle；验证全部在 test/debug profile 完成，未触发发布构建或服务重启。
