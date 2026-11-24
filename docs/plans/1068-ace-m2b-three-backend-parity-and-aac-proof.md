@@ -282,6 +282,15 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
   是**文档序号**（不是行号），两者命名空间需在 dump 中直接对照。下轮：在文档里临时追加 `args` 三元组与
   `expressions` 行映射（一段 debug 文本），一次看清。
 
+**已打通（2026-11-24，worktree `fbbb7e48b`）**：debug 显示 args 只有 `(31,0)`（接收者），实参 e42 完全没进三元组——
+根因是 `descendant_expression` 只下探一层，而实参节点的表达式在更深层。改为**递归 BFS**后：
+- `s.char_at(i)` → **`mir.base-profile`**
+- `c.to_codepoint()` → **`mir.base-profile`**
+- 原 `c-charat` 组合用例 → **`mir.base-profile`**
+`ace-aac-syntax` 50/51（唯一红是已知并行环境项 `aac1046_corpus_text`，单线程复放 **PASS 5.3s**）。
+T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的发射+verify+文本 form、实参 claim 记账。
+**下一步 T-15**：`lower_base` 为 op 23/24 生成 MIR（当前按设计拒为 `mir.base-profile`），并补 AV 执行。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
