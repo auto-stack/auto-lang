@@ -299,6 +299,12 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
 - **已完成（worktree `20761ec41`）**：`char_at` 的 lowering（`STR_CHAR_AT` 双操作数）+ `verify_base` 类型规则 + `base_abc` 三字编码（dst/view/index，与 av-core 的 `put_u32` 顺序一致）后：
   `fn main() int { return "ABC".char_at(1).to_codepoint() }` → **`MIR aac.base-mir/1 244` + ABC 244 bytes**（parse→bind→typecheck→HIR→MIR→verify→ABC 全通）。
   基线对照：`fn main() int { return 3 }` → 140 bytes；`"ABC".len()` → 175 bytes。
+- **AV 执行受阻（2026-11-24）**：新测试 `aac1068_t15_char_builtins_execute_in_av`（`run` + `execute_owned_auto_mir`）在 `decode_abc` 处失败：
+  `abc.decode.host-section: missing host-import section`。产物头是 **AVAD v2 / profile 3（owned 线族）**，而 owned 线族要求带 `HOST` 段
+  （av-core `WireFamily::carries_host_section` 对 Owned 恒为 true）；Auto 的 `base_abc.encode_base_abc` 目前**不写 HOST 段**。
+  对照：`"ABC".len()` 的 ABC 同样缺 HOST → 这是 Text 域（owned）产物的普遍缺口，不是 char op 引入的。
+- 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
+  再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
 - 实测 `fn main() int { let c =' 'A' ... }` → `hir.unsupported`（**char 字面量**在 HIR 未支持）；端到端验证需先补 char 字面量或 `char_at` 的 lowering。
 
