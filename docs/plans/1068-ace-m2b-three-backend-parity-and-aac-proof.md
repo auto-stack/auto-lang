@@ -316,6 +316,13 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
   解锁：`aac1068_t15_char_builtins_execute_in_av` **PASS** —— AV 真实执行
   `fn main() int { return "ABC".char_at(1).to_codepoint() }` 并返回 **66（'B'）**；
   `ace-aac-syntax` **PASS（14s）**，既有 record/text 程序零回归。
+- **T-16 起步（worktree `17c22da0c`）**：
+  - **std 包实测**（`stdlib/ace/std` 作为 package `std`、project 车道）：8 个模块出发分布 = math **类型通过**；
+    text `type.unresolved`（`s.len_bytes()`）→ 修后前进到 `s.clone()`；list `type.condition`；url `type.return`；
+    net/redis/sqlite `bind.unresolved`（多为宿主/pending-work 面）；json **`trap:ListIndex`（驱动级）**。
+  - **`len_bytes` 端到端落地**：checker 识别 → HIR op 25 → MIR/AV `STR_LEN_BYTES`(0x14=20) → verify/ABC；
+    `fn main() int { return "ABC".len_bytes() }` 直接产出 181 字节 ABC；`ace-aac-syntax` **PASS（13s）**。
+  - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；list/url 的类型与条件面；json 的驱动 trap。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
   再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
