@@ -397,14 +397,16 @@ provider 单元 `parity1093_c.c`、SDK-include 实现单元 `parity1093_c_impl.c
   `foreign.identity`；描述符/DLL 缺失 → `foreign.prepared`。
 - **独立 oracle**（`experimental/ace/crates/av/tests/cases/c_provider_1125.rs`，均
   ≤0.11 s）：`"hello\0world"`→5、`"héllo😀"`→10（UTF-8 字节）证明调用进入真实 C
-  `strlen` 而非字节长度；身份/工件篡改在**DLL 保持可调用**的副本上被具名拒绝且
-  `runtime_calls`/`host_dispatches` 为 0；撤 `foreign.scalar`/`foreign.resource` →
+  `strlen` 而非字节长度；身份/工件篡改在**DLL 保持可调用**的副本上被具名拒绝（同一
+  DLL 字节的未篡改副本对同一源返回 5——"无调用"以这条成对对照为证；step 计数器
+  `runtime_calls` 不含 foreign 派发，成功调用时亦为 0，不能作此证据）；撤
+  `foreign.scalar`/`foreign.resource` →
   `source.foreign-capability`；`use.c <string.h>` → `source.use-rs.provider`。
 - **公开入口**：`av.parity.1093.explicit-c-library` 与
   `av.parity.1093.c-header-spelling-rejected` 经 `cargo t case-av-language-parity`
   复放；闭包缺失时二者均为 `foreign.prepared`，反例不得冒充成功。
 
-见 [PLAN-1125](../../plans/1125-av-c-provider-reproducible-fixtures.md)。
+见 [PLAN-1125](../../plans/archive/1125-av-c-provider-reproducible-fixtures.md)。
 
 ## PLAN-1094 增量（AVP-16，脚本模式与 Python 对象协议）
 

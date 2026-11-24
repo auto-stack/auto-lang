@@ -57,13 +57,30 @@ fn run(source: &str, caps: &[&str], root: &Path) -> Json {
     serve(&request(source, caps, root)).expect("ordinary worker response")["steps"][0].clone()
 }
 
-/// A scratch copy of the prepared closure: `edit` mutates the descriptor
-/// in place, the DLL is copied byte-for-byte.
+const CALL: &str = "use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }";
+
+/// The untampered closure answers 5 for `CALL` — the control every
+/// rejection below is measured against.
+fn control(root: &Path) {
+    let step = run(CALL, &CAPS, root);
+    positive(&step);
+    assert_eq!(step["value"], 5, "{step}");
+}
+
+/// A scratch copy of the prepared closure. The copy is proven CALLABLE
+/// first (it answers 5 before anything is touched), then `edit` mutates
+/// the descriptor; the DLL is never touched.
 fn tampered(edit: impl FnOnce(&mut Json)) -> (tempfile::TempDirGuard, PathBuf) {
     let root = closure();
     let guard = tempfile::TempDirGuard::new();
     let copy = guard.path().to_path_buf();
     std::fs::copy(root.join("parity1093_c.dll"), copy.join("parity1093_c.dll")).unwrap();
+    std::fs::copy(
+        root.join("parity1093_c.descriptor.json"),
+        copy.join("parity1093_c.descriptor.json"),
+    )
+    .unwrap();
+    control(&copy);
     let mut descriptor: Json =
         serde_json::from_slice(&std::fs::read(root.join("parity1093_c.descriptor.json")).unwrap())
             .unwrap();
@@ -112,15 +129,16 @@ fn positive(step: &Json) {
     assert_eq!(step["console"]["stderr_b64"], "", "{step}");
 }
 
-/// A named rejection: the diag carries the code, no run value was
-/// produced and no call reached a provider or the host.
+/// A named rejection: the diag carries the code and no run value was
+/// produced. "No call" rests on the paired control — the same DLL bytes
+/// answer 5 until the descriptor or the grants change — not on the step
+/// counters: `runtime_calls` counts AV call frames and reads 0 on a
+/// successful C call too (PLAN-1125 review F-01).
 fn rejected<'a>(step: &'a Json, code: &str) -> &'a Json {
     assert_eq!(step["outcome"], "diag", "{code}: {step}");
     let error = &step["diag"];
     assert_eq!(error["code"], code, "{error}");
     assert!(step["value"].is_null(), "{step}");
-    assert_eq!(step["counters"]["runtime_calls"], 0, "{step}");
-    assert_eq!(step["counters"]["host_dispatches"], 0, "{step}");
     error
 }
 
@@ -142,6 +160,7 @@ fn plan1125_c_provider_calls_the_real_c_strlen() {
 
 #[test]
 fn plan1125_c_header_spelling_reaches_the_source_rejection() {
+    control(&closure());
     let step = run("use.c <string.h>\nfn main() int { return c_strlen(\"hello\") }", &CAPS, &closure());
     let error = rejected(&step, "source.use-rs.provider");
     assert!(error["message"].as_str().unwrap().contains("string.h"), "{error}");
@@ -182,7 +201,7 @@ fn plan1125_c_wrong_artifact_identity_is_rejected() {
         declared.replace_range(0..1, if declared.starts_with('0') { "1" } else { "0" });
         descriptor["artifact_sha256"] = json!(declared);
     });
-    rejected(&run("use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }", &CAPS, &root), "foreign.artifact");
+    rejected(&run(CALL, &CAPS, &root), "foreign.artifact");
 }
 
 #[test]
@@ -196,7 +215,7 @@ fn plan1125_c_foreign_header_source_is_rejected() {
         other.extend_from_slice(b"\n// not the admitted header\n");
         descriptor["source_b64"] = json!(base64::engine::general_purpose::STANDARD.encode(&other));
     });
-    rejected(&run("use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }", &CAPS, &root), "foreign.identity");
+    rejected(&run(CALL, &CAPS, &root), "foreign.identity");
 }
 
 #[test]
@@ -213,27 +232,23 @@ fn plan1125_c_foreign_manifest_provider_is_rejected() {
             base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&manifest).unwrap())
         );
     });
-    rejected(&run("use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }", &CAPS, &root), "foreign.identity");
+    rejected(&run(CALL, &CAPS, &root), "foreign.identity");
 }
 
 #[test]
 fn plan1125_c_missing_closure_is_a_preparation_failure() {
+    control(&closure());
     let guard = tempfile::TempDirGuard::new();
-    rejected(
-        &run(
-            "use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }",
-            &CAPS,
-            guard.path(),
-        ),
-        "foreign.prepared",
-    );
+    let step = run(CALL, &CAPS, guard.path());
+    rejected(&step, "foreign.prepared");
 }
 
 #[test]
 fn plan1125_c_revoked_capability_rejects_before_the_call() {
+    control(&closure());
     for revoked in ["foreign.scalar", "foreign.resource"] {
         let caps: Vec<&str> = CAPS.iter().copied().filter(|cap| *cap != revoked).collect();
-        let step = run("use.c parity1093_c\nfn main() int { return c_strlen(\"hello\") }", &caps, &closure());
+        let step = run(CALL, &caps, &closure());
         rejected(&step, "source.foreign-capability");
     }
 }
