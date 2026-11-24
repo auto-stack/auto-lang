@@ -223,6 +223,13 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 **本轮结论**：因剩余预算不足，先落设计；实现从方案 A 的 ①开始（builtin callee 闭集 +
 `list.len`/`list.get`），并与 T-15 的 MIR op 对齐。
 
+**T-14 起步尝试（2026-11-24，已回退）**：在 `binding.at` 的 `build_declarations` 里把
+`for-in-stmt` 的迭代变量声明为局部（声明行 = 绑定名节点，`heads[body]` 指向它）。结果：
+**绑定/作用域正确**（循环体内 `x` 可解析；循环外使用 `x` 仍 `bind.unresolved`），但**类型检查
+`trap:ListIndex`**——声明行是名字节点（非语句行），typecheck 的注解/初始化假设被打破。
+下轮正解：在**投影层**把 `for-in` 脱糖成 `let x = <elem>` 形状（或给声明一个受支持的语句行
++ 元素类型），再接 HIR；不要在 binding 里造非常规声明行。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
