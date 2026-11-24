@@ -544,9 +544,12 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 类型 `StringBuilder`/`HashMap`/`HashSet` 均优先于旧导入与嫁接；只识别整行
 `use auto.str: …`/`use auto.result`，其余 `use` 行保持 Text `source.unsupported`。
 
-**未在本入口观察的面**：多文件包面（`packages` 装配线，`use pkg.module.symbol`）没有嫁接通道，
-`HashMap.new()` 在该面不属本计划交付；该线在未准备的工作树里现成 972 用例即红，观察留待
-`cargo t` 准备后的冻结并集复核。大小写映射沿文本模块既有实现（函数名 `upper_ascii`/`lower_ascii`；复审实测非 ASCII 亦按 Unicode 映射）。
+**多文件入口（r2，2026-11-24 用户裁定后补齐）**：V-01 的"多模块 AutoDown Case"在普通 Auto 包闭包
+（`bind_packages_auto`）上兑现——证据 `experimental/ace/crates/av/tests/cases/plan1131_multi_module.rs`（13 例）：
+容器公共类型跨真实模块边界成立（形参/返回/记录字段/模块链），`use auto.str: …` 与 `use auto.result` 在依赖
+模块与入口模块均可用，模块同名类型与工程同名模块优先，未知模块保持 `source.module-missing`。
+`packages` **装配线**（并入冻结装配标准库集的 `packages-aggregates-ct` 线）不在本计划范围：那条线没有记录类型
+嫁接通道，且另有基线红 D-1125-01（`list.at` 私有 `fn`，owner PLAN-118）；本计划的用例只含工程模块，不触及它。
 
 ## PLAN-1122 · 字符串转宽无符号整数
 

@@ -161,6 +161,22 @@ merge 级门。
   `true`/`false`、char 打印字符；旧 `[1,0]` 与码点 oracle 由显式 int shim / `.to_codepoint()`
   逐字复现。`let p1 = parts[1]`（整元素作值）按元素复制纪律具名拒 `source.view-escape`，
   等价拼写 `parts.get(1).clone()`。
+- **多文件包面（r2，2026-11-24 用户裁定"本计划补齐多文件包"）**：普通 Auto 包闭包（PLAN-1085 的
+  `bind_packages_auto`，入口 `compile_package_product_auto`）得到同一套容器与导入：
+  - `graft_package_migration_types` 在任一模块源提及容器名时，把 `map_str.at`/`builder.at` 作为
+    一个隐藏段并入绑定后的程序——与单文件面同一份记录、同一解析器；
+  - 包绑定器把 `HashMap`/`HashSet`/`StringBuilder` 当作内建名义类型：名字原样交给解析器，由
+    嫁接回退绑定；**模块自己声明或导入的同名类型优先**（在同名判断之前解析）；
+  - `use auto.str: a, b` 在包面是"模块成员导入"：冻结的 `auto::str` 模块承载 `text.at`
+    （改名后的同一实现）与单文件面同一组转发函数（公开函数）；模块写了该导入而工程没带
+    同名模块时，由 `compile_package_product_auto` 自动并入；
+  - `use auto.result` 是模块导入（同 `use std.json`）：冻结的 `auto::result` 模块只给导入一个
+    目标，Result/Ok/Err 本身内建。
+  - 该面既有边界（非本计划引入，未改）：非入口函数的 `!int` 形参不被接纳；`print` 需要宿主。
+- **证据（r2）**：`experimental/ace/crates/av/tests/cases/plan1131_multi_module.rs`（13 例：
+  跨模块形参/返回/记录字段/三模块链、集合去重与共享、构建器、错形状 `source.type-mismatch`、
+  模块同名类型优先、依赖模块与入口的旧导入、工程同名模块优先、未知模块 `source.module-missing`、
+  无容器对照）＋ adapter 单测 `package_face_legacy_pieces`、`legacy_import_mask_changes_nothing_without_an_import`。
 - **证据**：`av.parity.1131.public-types`（`experimental/ace/crates/av/tests/cases/plan1131_public_types.rs`，
   27 例）＋ adapter 单测 4 例（builder 嫁接、导入抹空原位、非旧形态不抹、转发函数只调文本模块）；
   旧行映射 `crates/auto-lang/test/cases/language/migration/legacy-map.tsv`（PLAN-1131 行组 14 行）。

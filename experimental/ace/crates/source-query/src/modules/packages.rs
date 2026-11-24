@@ -66,10 +66,49 @@ pub fn compile_package_product_auto_prepared(
     if !caps.iter().any(|cap| cap == packages) {
         caps.push(packages.into());
     }
+    // PLAN-1131 (r2): a module's legacy `use auto.str` / `use auto.result`
+    // resolves against the frozen legacy modules unless the program brings
+    // its own module of that name.
+    let sources: Vec<&str> = inputs.iter().map(|unit| unit.source.as_str()).collect();
+    let (legacy_text, legacy_result) =
+        ace_core::source::adapter::legacy_auto_imports(&sources);
+    let mut inputs_owned: Vec<PackageModuleInput> = inputs.to_vec();
+    let has = |package: &str, id: &str| {
+        inputs
+            .iter()
+            .any(|unit| unit.package == package && unit.id == id)
+    };
+    for (package, id, wanted, source) in [
+        (
+            "auto",
+            "str",
+            legacy_text,
+            ace_core::source::adapter::legacy_auto_str_module_source(),
+        ),
+        (
+            "auto",
+            "result",
+            legacy_result,
+            ace_core::source::adapter::legacy_auto_result_module_source().to_string(),
+        ),
+    ] {
+        if wanted && !has(package, id) {
+            inputs_owned.push(PackageModuleInput {
+                package: package.into(),
+                version: "1.0.0".into(),
+                id: id.into(),
+                source,
+                provider: None,
+            });
+        }
+    }
+    let inputs = &inputs_owned[..];
     let mut bound = ace_core::source::packages::bind_packages_auto(inputs, entry, &caps, budget)
         .map_err(|e| vec![e])?;
     let profile = SourceProfile::Auto;
     ace_core::source::adapter::graft_package_u64_parse(&mut bound)
+        .map_err(|d| vec![bound.locate(d)])?;
+    ace_core::source::adapter::graft_package_migration_types(&mut bound)
         .map_err(|d| vec![bound.locate(d)])?;
     ace_core::source::adapter::complete_auto_signatures(&mut bound.program)
         .map_err(|ds| locate_all(&bound, ds))?;

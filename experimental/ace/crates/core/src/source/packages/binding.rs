@@ -1531,6 +1531,28 @@ fn bind_package_syntax_inner(
                 edges.get_mut(key).unwrap().insert(target_key);
                 continue;
             }
+            // PLAN-1131 (r2): the legacy `use auto.result` names the module
+            // (no member list), like `use std.json`.
+            if face == Faces::Auto
+                && i.path.len() == 2
+                && i.path[0] == "auto"
+                && i.path[1] == "result"
+            {
+                let target_key = unit_key(&i.path[0], &i.path[1]);
+                if units.contains_key(&target_key) {
+                    binds.insert(
+                        i.bound_name().to_string(),
+                        BoundImport {
+                            symbol: target_key.clone(),
+                            is_type: false,
+                            is_const: false,
+                            is_module: true,
+                        },
+                    );
+                    edges.get_mut(key).unwrap().insert(target_key);
+                    continue;
+                }
+            }
             if face == Faces::Auto
                 && ((i.path.len() == 2
                     && i.path[0] == super::stdlib::STDLIB_PACKAGE
@@ -3045,6 +3067,14 @@ impl<'a> Walker<'a> {
                     name.span,
                 ))
             };
+        }
+        // PLAN-1131 (r2): the legacy standard-library container names are
+        // builtin nominal types on the ordinary language face too — not
+        // module symbols. The name reaches the resolver, which binds it to
+        // the grafted migration record; a type a module declares or imports
+        // under the same name resolved above and keeps winning.
+        if self.auto_language && crate::source::adapter::is_migration_type_name(&name.name) {
+            return Ok(name.name.clone());
         }
         Err(fail(
             self.key,

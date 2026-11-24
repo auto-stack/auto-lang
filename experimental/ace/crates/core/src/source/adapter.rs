@@ -714,11 +714,18 @@ fn literal_spans(src: &str) -> Option<Vec<Span>> {
 /// A line that meets a literal is program data and is never masked; the
 /// decision comes from the lexer's literal ranges, never from a text guess.
 fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
+    // nothing to recognise: the source is handed on untouched and unscanned
+    if !src.contains("use auto.") {
+        return (src.to_string(), LegacyImports::default());
+    }
     let mut out = String::with_capacity(src.len());
-    let mut imports = LegacyImports::default();
+    let imports = LegacyImports::default();
+    // a failed scan changes nothing: the source itself goes on, and the
+    // parser's diagnostic is the answer
     let Some(literals) = literal_spans(src) else {
-        return (out, imports);
+        return (src.to_string(), imports);
     };
+    let mut imports = imports;
     let mut changed = false;
     let mut at = 0usize;
     for line in src.split_inclusive('\n') {
@@ -926,7 +933,123 @@ pub fn graft_package_u64_parse(bound: &mut super::packages::BoundPackages) -> Re
     Ok(())
 }
 
-/// PLAN-118：`.to(int)` 检测（组件面与包面共用触发词形）。
+/// PLAN-1131 (r2): the legacy standard-library type names the ordinary
+/// language face answers through the grafted migration records.
+pub fn is_migration_type_name(name: &str) -> bool {
+    matches!(name, "HashMap" | "HashSet" | "StringBuilder")
+}
+
+/// PLAN-1131 (r2): the frozen `auto.str` module of the ordinary Auto
+/// package face. The legacy corpus imports the text helpers by module
+/// (`use auto.str: len`), and the package face resolves that as members of
+/// a module — so the module carries the same text implementation (the
+/// frozen `text.at`, name-mangled) and the same forwarders the single-file
+/// adapter appends, as public functions. No second text algorithm.
+pub fn legacy_auto_str_module_source() -> String {
+    let functions: Vec<_> = STDLIB_ASM_TEXT_AT
+        .lines()
+        .filter_map(|line| {
+            line.trim_start_matches("pub ")
+                .strip_prefix("fn ")?
+                .split_once('(')
+                .map(|(name, _)| name)
+        })
+        .collect();
+    let mut source = mangle_stdlib_functions(
+        STDLIB_ASM_TEXT_AT,
+        &functions,
+        STDLIB_TEXT_MANGLE,
+    );
+    for (name, forwarder) in LEGACY_STR_FORWARDERS {
+        let Some(body) = forwarder.strip_prefix(&format!("fn {name}(")) else {
+            continue;
+        };
+        source.push('\n');
+        source.push_str("pub fn ");
+        source.push_str(name);
+        source.push('(');
+        source.push_str(body);
+    }
+    source
+}
+
+/// PLAN-1131 (r2): the frozen `auto.result` module. The legacy corpus
+/// writes `use auto.result` and then the builtin `Result.Ok`/`is_ok`
+/// spellings; the module exists so the import resolves, and documents that
+/// the Result family itself is builtin (no functions of its own).
+pub fn legacy_auto_result_module_source() -> &'static str {
+    "// PLAN-1131: the legacy `auto.result` module. Result, Ok and Err are\n\
+     // builtin on the ordinary language face; this module only gives the\n\
+     // legacy import a target.\n\
+     pub const LEGACY_RESULT_MODULE int = 1\n"
+}
+
+/// PLAN-1131 (r2): whether a program module imports the legacy `auto.str`
+/// or `auto.result` module.
+pub fn legacy_auto_imports(sources: &[&str]) -> (bool, bool) {
+    let mut text = false;
+    let mut result = false;
+    for source in sources {
+        for line in source.lines() {
+            let line = line.trim();
+            if line.starts_with("use auto.str") {
+                text = true;
+            } else if line.starts_with("use auto.result") {
+                result = true;
+            }
+        }
+    }
+    (text, result)
+}
+
+/// PLAN-1131 (r2): the migration containers on the ordinary Auto package
+/// face. A multi-module program names `HashMap`/`HashSet`/`StringBuilder`
+/// exactly like a single file; the same pure-Auto records
+/// (`map_str.at`, `builder.at`) are appended to the bound program as one
+/// hidden segment, so the resolver's constructor fallback, the annotation
+/// fallback and the spelling rewrite apply unchanged across module borders.
+/// A type a module declares under the same name wins at resolve time.
+pub fn graft_package_migration_types(
+    bound: &mut super::packages::BoundPackages,
+) -> Result<(), Diagnostic> {
+    let mentions = |name: &str| {
+        bound
+            .segments
+            .iter()
+            .any(|segment| segment.source.contains(name))
+    };
+    let mut source = String::new();
+    if mentions("HashMap") || mentions("HashSet") {
+        source.push_str(STDLIB_ASM_MAP_STR_AT);
+    }
+    if mentions("StringBuilder") {
+        source.push('\n');
+        source.push_str(STDLIB_ASM_BUILDER_AT);
+    }
+    if source.is_empty() {
+        return Ok(());
+    }
+    let mut helpers = super::parse_program_with(&source, SourceProfile::Auto)?;
+    let start = bound.source_len() + 1;
+    for item in &mut helpers.items {
+        match item {
+            super::ast::Item::Fn(function) => super::cst::shift_fn_item(function, start),
+            super::ast::Item::Type(record) => super::cst::shift_type_item(record, start),
+            _ => unreachable!("the migration graft holds record types only"),
+        }
+    }
+    bound.program.items.extend(helpers.items);
+    bound.input_hash = crate::runtime_contract::sha256_hex(
+        format!("package/stdlib-migration/1\n{}\n{source}", bound.input_hash).as_bytes(),
+    );
+    bound.segments.push(super::packages::PackageSegment {
+        package: "__ace".into(),
+        module: "stdlib_migration".into(),
+        source,
+        start,
+    });
+    Ok(())
+}
 pub(super) fn needs_integer_parse(user_source: &str) -> bool {
     user_source.match_indices(".to").any(|(index, method)| {
         user_source[index + method.len()..]
@@ -1338,6 +1461,61 @@ fn map("));
         // List surface, `+` and the f-string only
         assert!(!STDLIB_ASM_BUILDER_AT.contains("fn __std_text_"));
         assert!(!STDLIB_ASM_BUILDER_AT.contains("__ace_text_"));
+    }
+
+    /// PLAN-1131 r2 (review notes R-1131-08/09): a source without a legacy
+    /// import is handed on untouched, and the byte length is preserved for
+    /// every input — including a scan that cannot succeed.
+    #[test]
+    fn legacy_import_mask_changes_nothing_without_an_import() {
+        for src in [
+            "",
+            "fn main() int {\n    var s = \"quotes and 'chars'\"\n    return s.len()\n}\n",
+            "fn f() int { return 1 }\n// use auto.result in a comment is not an import line\n",
+            "\0\u{7f}use auto.result\n",
+        ] {
+            let (masked, imports) = mask_legacy_imports(src);
+            assert_eq!(masked.len(), src.len(), "{src:?}");
+            assert_eq!(imports, LegacyImports::default(), "{src:?}");
+        }
+        let src = "fn main() int { return 1 }\n";
+        assert_eq!(mask_legacy_imports(src), (src.to_string(), LegacyImports::default()));
+    }
+
+    /// PLAN-1131 r2: the package-face pieces — the type names the binder
+    /// lets through, the import detector, and the frozen legacy modules.
+    #[test]
+    fn package_face_legacy_pieces() {
+        for name in ["HashMap", "HashSet", "StringBuilder"] {
+            assert!(is_migration_type_name(name));
+        }
+        for name in ["List", "Result", "HashMapper", "stringbuilder", ""] {
+            assert!(!is_migration_type_name(name));
+        }
+        let imports = |sources: &[&str]| legacy_auto_imports(sources);
+        assert_eq!(imports(&["fn main() int { return 1 }"]), (false, false));
+        assert_eq!(
+            imports(&["use auto.str: len\nfn main() int { return 1 }"]),
+            (true, false)
+        );
+        assert_eq!(imports(&["use auto.result\n"]), (false, true));
+        assert_eq!(
+            imports(&[
+                "// use auto.str: len\nfn main() int { return 1 }",
+                "  use auto.result\n",
+                "  use auto.str: upper\n",
+            ]),
+            (true, true),
+            "indented lines count; a commented one does not start the line"
+        );
+        let text = legacy_auto_str_module_source();
+        for (name, _) in LEGACY_STR_FORWARDERS {
+            assert!(text.contains(&format!("pub fn {name}(")), "{name} is a public member");
+        }
+        assert!(text.contains("__std_text_byte_len"), "the frozen text module is inlined");
+        assert!(!text.contains("__ace_text_"), "no intrinsic the package binder cannot bind");
+        assert!(!text.contains("pub fn __std_text_"), "the implementation stays private");
+        assert!(legacy_auto_result_module_source().contains("pub const LEGACY_RESULT_MODULE int = 1"));
     }
 
     /// PLAN-1131: the legacy import lines are blanked byte for byte; every
