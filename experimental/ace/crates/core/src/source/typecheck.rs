@@ -87,6 +87,14 @@ pub fn check_body_in(program: &ResolvedProgram, fn_index: usize) -> Vec<Diagnost
     diags
 }
 
+fn is_dyn_list(program: &ResolvedProgram, vt: VT) -> bool {
+    matches!(vt, VT::List(li) if program.lists.get(li) == Some(&VT::Dyn))
+}
+
+fn text_list_element(program: &ResolvedProgram, vt: VT) -> bool {
+    matches!(vt, VT::List(li) if program.lists.get(li).is_some_and(|elem| elem.is_text()))
+}
+
 fn mismatch(diags: &mut Vec<Diagnostic>, expected: VT, found: VT, span: Span) {
     diags.push(Diagnostic::new(
         Stage::Verify,
@@ -376,7 +384,14 @@ fn check_expr(
                             let text_cross = age_eq
                                 && want.is_text()
                                 && a.value.vt.is_text();
-                            if a.value.vt != want && !text_cross {
+                            // PLAN-118：AGE 面文本列表实参同样跨借用/owned
+                            //（`List<str>` ↔ `List<Str>`；088 的裸 `List` 形参
+                            // 收模型文本列表）。
+                            let text_list_cross = age_eq
+                                && (text_list_element(program, want)
+                                    || is_dyn_list(program, want))
+                                && matches!(a.value.vt, VT::List(_));
+                            if a.value.vt != want && !text_cross && !text_list_cross {
                                 mismatch(diags, want, a.value.vt, a.value.span);
                             }
                         }

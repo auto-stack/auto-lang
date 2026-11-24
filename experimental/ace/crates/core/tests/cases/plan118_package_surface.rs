@@ -132,3 +132,26 @@ fn p118_child_property_binds_lazy_view_data_list() {
     .expect("child property binds a lazy view-data list");
     assert_eq!(compiled.description.components.len(), 2);
 }
+#[test]
+fn p118_bare_list_field_passes_to_bare_list_module_param() {
+    // 088 color_picker:305 形：`cp_pal_item(.pal_norm, i)`——裸 `List` 模型
+    // 字段实参送裸 `List` 模块 fn 形参。
+    let source = "fn item(colors List, i int) Str {\n\
+        return colors[i]\n\
+    }\n\
+    widget W {\n\
+        msg { Load }\n\
+        model { var pal_norm List = []\n var out Str = \"\" }\n\
+        on { .Load -> { .out = item(.pal_norm, 0) } }\n\
+        view { text .out {} }\n\
+    }\n";
+    match compile(source) {
+        Ok(_) => {}
+        Err(diagnostics) => {
+            for d in diagnostics.iter().take(6) {
+                eprintln!("micro diag {}: {} @{:?}", d.code, d.message, d.span);
+            }
+            panic!("bare List field -> bare List param must compile");
+        }
+    }
+}
