@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-1124
-status: execution_done
+status: executing
 feature_name: "AV 标准库动态 JSON、泛型编码与 CSV 迁移"
 author: [Codex]
 created_at: 2026-11-22
 updated_at: 2026-11-24
 plan_revision: 1
-current_step: 5
+current_step: 0
 total_steps: 6
 depends_on: [PLAN-966, PLAN-975, PLAN-1064, PLAN-1088, PLAN-1096]
 supersedes_spec_components: [docs/specs/ace-migration/m2-stdlib-data.md]
@@ -83,14 +83,17 @@ affects: [stdlib, auto-av, auto-semantics]
 
 ## 7. 验收标准
 
-- [x] AC-01 · owner_stage=work。V-01–03 都从普通工程真实调用公共 API，结果与独立预期相符。
+- [ ] AC-01 · owner_stage=work。V-01–03 都从普通工程真实调用公共 API，结果与独立预期相符。
   - [↩ 复审 r1 判 fail，2026-11-23] V-01 fail（F-01 序列化不保值、F-02 i32 最小值 trap、F-08 数值精度）；V-02 fail（F-03 `encode_pretty` 改写宽整数、F-04 `List` 元素绕过用户覆写）；V-03 partial（F-07 预算无测试且单位不符）。详见 §9。
   - [✅ work 修复轮 1 完成 2026-11-24] 提交 `9a9c296ec`。F-01、F-02、F-03、F-04、F-08 与自查的 N-1、N-5、N-6 已修并有永久断言；一致性 `plan1124_json_csv` 26/26、语言用例 `av.parity.1124.*` 8/8、仓库外数值 oracle 34,629 个输入 0 不一致。待 T-05 重审确认。
-- [x] AC-02 · owner_stage=work。旧接口义务和已验 JSON 近邻逐项保留，错误和资源预算可观察。
+  - [↩ 复审 r2 判 partial，2026-11-24] V-01 数值、树与格式化成立；V-02 的 `List` 位置覆写只对全标量记录成立（F-14）；V-03 语义成立，预算见 F-15。详见 §9。
+- [ ] AC-02 · owner_stage=work。旧接口义务和已验 JSON 近邻逐项保留，错误和资源预算可观察。
   - [↩ 复审 r1 判 partial，2026-11-23] 近邻回归全部保留，四个 CSV 旧公开名保留；预算只在提高 `ExecLimits` 后可观察，CSV 单元格预算与恰 1 MiB 侧无断言（F-07）；新回归一项（F-05）；测试残留临时目录（F-09）。详见 §9。
   - [✅ work 修复轮 1 完成 2026-11-24] 提交 `9a9c296ec`。F-05、F-06、F-07、F-09、F-10、F-11、F-12 与自查的 N-2、N-3、N-4 已修；近邻 54/54；字节、节点、单元格三种预算都按精确边界断言两侧并核对 arena 账本；修复后的每轮运行 `%TEMP%` 目录计数不变。待 T-05 重审确认。
+  - [↩ 复审 r2 判 partial，2026-11-24] 近邻 54/54，字节预算在全部入口成立；嫁接触发对局部名误判（F-13）；CSV 预扫漏单独 CR，阈值以下的稠密输入先建后拒（F-15）。详见 §9。
 - [ ] AC-03 · owner_stage=review。独立复核所需用例、从源码到执行的真实接线、原 oracle 和规范增量，重放关键正反例。
   - [修复轮 1 之后待重审 2026-11-24] 受审提交 `9a9c296ec`（基线 `d206320e8` 之上）。
+  - [复审 r2 2026-11-24] outcome: needs_fix（`review_scope: repair`，受审提交 `9a9c296ec`）；F-13..F-19 见 §9。修复后对新提交重审受影响的 AC。
   - [复审 r1 已执行，2026-11-23] outcome: needs_fix（受审提交 `d206320e8`）。修复后对新提交重审受影响的 AC。
 - [ ] AC-04 · owner_stage=merge。冻结受影响固定组证据，按 review 认定的规范增量及交接记录归档。
 
@@ -98,31 +101,36 @@ affects: [stdlib, auto-av, auto-semantics]
 
 实施前于可用的现有任务跟踪入口登记任务 ID。T-01 可在已归档依赖上先核实基线和公开合同。
 
-- [x] T-01 核定数据接口、资源合同和编码事实
+- [ ] T-01 核定数据接口、资源合同和编码事实
   - owner_stage=work。重放 975 与旧 CSV/JSON 代表输入。固定数据模型和歧义政策，验证真实字段事实或显式 schema/spec，再冻结兼容表。
   - [↩ 复审 r1 回开 2026-11-23] 回开范围仅限冻结记录的补全：缩进格式（F-06）、预算单位与适用入口（F-07）、数值范围与精度承诺（F-08）、分隔符规则与规范正文统一（C4）。下列原完成说明是实现方的主张，与 §9 复审记录冲突处以后者为准。
   - [✅ 修复轮 r1 完成 2026-11-24] 冻结记录补全 D-1124-T01-5..10 已写入 §4，含修复轮内的三次自我修订：T01-8（库记录 `JsonValue` 遇同名声明时改名）、T01-5（等距取偶；Rust 的格式化不是这一条的 oracle）、T01-7（预算两侧都按精确边界断言）。
+  - [↩ 复审 r2 回开 2026-11-24] 只限冻结记录的文本：T01-7（CSV 预扫的阈值与行尾）、T01-8（“未自行声明该名”须按作用域理解）、T01-9（`List` 元素位置的覆写只对字段全为复制标量的记录成立）。
   - [✅ 已完成 2026-11-23] 基线 `json975` 10/10 绿（3.46s）；核实 `stdlib/ace/std/json.at` 受 975/1064/AGE `Faces::Plain` 消费锁定，确定普通 Auto AV 增补模块、LCRS `JsonValue`、last-member-wins、`f64` 精度/预算、`JsonEncodable` 基于 `TypeItem.fields` 合成及 RFC-4180 CSV 四公开函数合同（详见 §4 T-01 冻结记录）。
-- [x] T-02 实现动态 JSON 读取与格式化
+- [ ] T-02 实现动态 JSON 读取与格式化
   - owner_stage=work。依赖 T-01。复用解析器已验语义交付动态树和访问方法，验 V-01。
   - [↩ 复审 r1 回开 2026-11-23] F-01（f64 文本序列化不保值）、F-02（i32 最小值 trap）、F-05（JSON 嫁接按裸标识符触发与同名去重）、F-06（缩进未冻结）、F-07（节点预算无测试、单位不符、大输入墙钟超线性）、F-08（数值非正确舍入）、F-09、F-10。下列原完成说明是实现方的主张，与 §9 复审记录冲突处以后者为准（“扁平 O(N)”在 AV 墙钟上不成立）。
   - [✅ 修复轮 r1 完成 2026-11-24] F-01、F-02、F-05、F-06、F-07、F-08 与 N-1、N-2、N-3：`stdlib/ace/std/json_auto.at`（正确舍入的解析、最短往返文本、文本级格式化、字节预算与分块的分隔符预扫）、`adapter.rs` 与新文件 `stdlib_refs.rs`（按引用嫁接、保留命名空间、库记录改名、冲突诊断指向程序声明）。
+  - [↩ 复审 r2 回开 2026-11-24] F-13（引用分析把局部名字当成引用）、F-16（`instances.rs` 新增行一处格式）。
   - [✅ 已完成 2026-11-23] `stdlib/ace/std/json_auto.at` + `adapter.rs`/`packages/binding.rs`/`resolve.rs`/`av.rs`：交付扁平 O(N) LCRS `JsonValue`（`parse`/`parse_strict`/`is_valid`/`minify`/`prettify`、`.kind`/`.type_of`/`.keys` 后成员胜出、`.get`/`.get_at`/`.at`/`.get_*`/`.as_*`）、`1 MiB` / `65536` 节点 / `128` 深度预算及 `f64.to_str()`/`TextDisplay(F64)`，保持 `stdlib/ace/std/json.at` 零字节改动。
-- [x] T-03 实现泛型 JSON 编码
+- [ ] T-03 实现泛型 JSON 编码
   - owner_stage=work。依赖 T-01/T-02。经普通模块交独立实例与编码失败，验 V-02。
   - [↩ 复审 r1 回开 2026-11-23] F-01（f64 字段）、F-03（`encode_pretty` 改写宽整数）、F-04（`List<R>` 元素绕过用户 `json_encode` 覆写）、F-10（格式与 `let _ = …?`）。下列原完成说明是实现方的主张，与 §9 复审记录冲突处以后者为准。
   - [✅ 修复轮 r1 完成 2026-11-24] F-01（浮点字段）、F-03、F-04、F-10：`json_encode_synth.rs`（`List` 元素走用户的 `json_encode`）、`instances.rs` 与 `modules/packages.rs`（检查合成步骤的返回值）。
+  - [↩ 复审 r2 回开 2026-11-24] F-14（带自有字段的记录作 `List` 元素时覆写不被调用，规范与计划写得过宽）、F-16。
   - [✅ 已完成 2026-11-23] `json_encode_synth.rs` + `instances.rs`（补全 `Stmt::Try`/`AggIsMatch`/`With`/`Yield` 重绑与 `Option` 字段归整）+ `packages.rs` + `cst/project.rs`（`List<f64>`/`tok_affix_num` 修复）：基于 `TypeItem.fields` 合成 `JsonEncodable`（覆盖全宽整数、`f32`/`f64`、`bool`、`Str`/`str`、`?T`、`List<T>`、嵌套记录、`Empty`、`Custom` 重写），拒绝未合规记录（`source.instances-bound`）、非法字段/嵌套未合规/循环（`source.json-encode-unsupported`）、伪造 `std`（`ace.stdlib-reserved`）与非有限浮点（`JsonError`）。
-- [x] T-04 迁移 CSV 公开操作
+- [ ] T-04 迁移 CSV 公开操作
   - owner_stage=work。依赖 T-01。落实二维语义、分隔符与错误，验 V-03，汇入公共语料。
   - [↩ 复审 r1 回开 2026-11-23] F-05（CSV 嫁接触发器）、F-07（CSV 字节与单元格预算无断言）、F-11（嫁接错误的 span 保护不完整）、F-12（规范文本与行为不符）。下列原完成说明是实现方的主张；其中“单测 ≤0.3s”与复审实测不符（`v01_and_v02_packages…` 实测 1.608 s）。
   - [✅ 修复轮 r1 完成 2026-11-24] F-05（CSV 嫁接）、F-07（字节与单元格预算）、F-11、F-12 与 N-4：`stdlib/ace/std/csv.at`、`language_source_worker.rs`（嫁接区错误定位到程序的调用）、语言用例 `numbers-exact`、`pretty-bytes`、`graft-own-names`、`override-list`、规范 `docs/specs/ace-migration/m2-stdlib-data.md`。
+  - [↩ 复审 r2 回开 2026-11-24] F-15（CSV 预扫漏单独 CR 与稠密输入）、F-16、F-17（库错误的位置可能落到另一个入口的调用上）。
   - [✅ 已完成 2026-11-23] `stdlib/ace/std/csv.at`：交付纯 Auto RFC-4180 CSV（`csv_parse`/`csv_parse_with_delimiter`/`csv_encode`/`csv_encode_with_delimiter`/`csv_parse_rows`/`csv_encode_rows`，支持 `std.csv` 与 `std.encoding.csv`），补齐 `language_source_worker.rs` 嫁接错误 span 保护；落地 `crates/auto-lang/test/cases/language/stdlib/json-csv.case.ad`（登记 `language.suite.ad`）与规范 `docs/specs/ace-migration/m2-stdlib-data.md`（SD-01）。
   - **Work Readiness（dev/debug 实测）**：`ace-core stdlib::tests` 4/4 passed（0.23s）；`plan1124_json_csv` 6/6 passed（总 1.37s，单测 ≤0.3s，arena 0 leak）；`av.parity.1124.{json-dynamic-tree, json-encodable-schema, json-csv-packages, csv-rfc4180}` 4/4 PASS（热测 725ms / 727ms / 1099ms / 647ms，均 ≤10.0s）；近邻回归 `json975` 10/10、`plan1120` 11/11、`plan1121` 26/26、`module_v_1064` 7/7 全绿。
 - [ ] T-05 独立复审
   - owner_stage=review。依赖 T-04。核 AC-03、SD 增量、实测结果和旧用例映射。
   - [复审 r1 2026-11-23] outcome: needs_fix（`review_scope: final`，受审提交 `d206320e8`）；发现 F-01..F-12 见 §9。修复提交后重审受影响的 AC。
   - [修复轮 1 之后待执行 2026-11-24] 受审提交 `9a9c296ec`；重审 F-01..F-12 与 N-1..N-6 的关闭情况、SD-01 与新增用例的 10 秒门。
+  - [复审 r2 2026-11-24] outcome: needs_fix（`review_scope: repair`，受审提交 `9a9c296ec`）；F-13..F-19 见 §9。修复提交后重审受影响的 AC。
 - [ ] T-06 冻结验证与归档
   - owner_stage=merge。依赖复审。执行 §6 固定组并集，核规范与主线结果，折叠证据摘要并按生命周期规则收尾。
 
@@ -445,6 +453,211 @@ stage: work | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | worktree_
 stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 4 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: 9a9c296ec | next: review
 
 2026-11-24 · stage: review · review_scope: repair · status: in-progress（进行中的标记，不是收据）。独立复审子代理 04:56 启动，07:47 因账号使用上限中断，08:37 带原上下文续跑；受审提交 `9a9c296ec`；证据目录 `D:/autostack/plan-artifacts/plan-1124/review2/`。复审记录与路由收据待其返回后追加在本行之后；若此时会话再次中断，续接的轮次应先读该目录里已有的证据，再决定重审还缺什么，不要从头重复。
+
+2026-11-24 · stage: review · review_scope: repair · PLAN-1124 r1 · outcome: needs_fix（受审提交 `9a9c296ec2733dfc93c0fcaf9cd6928a2e207469`）。
+
+实现方的测试全部重放通过，数值与字节预算这两块最重的合同经独立反例成立；但有三项合同内问题被复审自己的反例确认，另有四项低级问题，其中一项是修复记录声称已关闭而实测未关闭。next: work。
+
+stage: review | review_scope: repair | reviewer_identity: 发起会话派生的子代理（全新上下文，未参与实现与 r1；环境模型标识 GLM-5.4；无会话 ID）| plan_id: PLAN-1124 | plan_revision: r1 | outcome: needs_fix | worktree_path: D:/autostack/.wt/lang-1124/auto-lang | branch: plan-1124-dev | reviewed_commit: 9a9c296ec2733dfc93c0fcaf9cd6928a2e207469 | baseline_commit: d206320e86ecc6bb7f7d4ba0b9c61089201df8f7 | base_commit: 8a52d7364e5b218e0a08b167038a5d71d54ee72f | dependency_revisions: 主检出同源 workspace（`--locked --offline`）；master 现值 `7bb90b1f77b8210ccebe3c1562aa053a9132aa1a` | spec_inputs: docs/specs/ace-migration/m2-stdlib-data.md @9a9c296ec blob `f320d532cd8f955d99ead00cd5ef113005f44a8c`，sha256 `a6837ee27ea1afe796fd90161d3dacd6e551a70dfde33feaa0ae09cc1d0dcef0`（r1 所审 `83bd7a3ed…`，基面 `8b32fe786…`）| acceptance_results: AC-01 partial · AC-02 partial · AC-03 fail · AC-04 pending(merge) | pending_closeout_gates: 变基并解决冲突、六个冻结组整组并集 | findings: F-13..F-19 | evidence: `D:/autostack/plan-artifacts/plan-1124/review2/`（索引 `out/EVIDENCE-INDEX.txt`；下列内容为持久摘要）| next: work
+
+**复审 r2 的基线核实**
+
+- 实施树进出各查一次 `git status --porcelain` 均为 0 行，收尾时 HEAD 仍为 `9a9c296ec`；修复 diff 13 个文件 +3980/−555，整计划 21 个文件 +7094/−41。
+- `stdlib/ace/std/json.at` 的 blob 与基面相同（`95b6c561ec…`）；diff 未触及 `.autoos/`、`specs.json`、`index.json`、`KNOWN-DEBT-AND-RISKS.md`、`.retention`、`docs/plans/`；worktree 组目录内 reparse point 为 0。
+- 提供的仓库外 oracle 经闸门重建：Finished 0.09 s、无重编译，即该可执行文件与 `9a9c296ec` 的源码一致。
+- master 较基面多 19 个提交，其中 `249e836b2`（PLAN-117）触及本计划的文件。干跑 `git merge-tree --write-tree master 9a9c296ec`（当时 master `f083f403b`）报 `experimental/ace/crates/av-core/src/av.rs` 内容冲突；其后 master 只多了 3 个改 `docs/plans` 的提交，未触及本计划文件。
+- 主检出的 Plan 文件在复审期间只多了一行“review r2 进行中”的标记，被审的主张没有变化。
+
+**复审 r2 的审查局限**
+
+- 基面没有实跑（没有基面 worktree，技能不允许为复审另建检出）。凡写“基面如何”处都是读 diff 的推断。
+- 复审自己的探针和核对脚本出过多处错（Auto 字面量转义、把关键字 `tag` 当字段名、不合法的 `const`/`List::new(1, 2)`/列表 `clone` 写法、把 512 行当成 700 行、被自己的步数上限截断）。三个核对脚本（rustfmt 归因、警告归因、数值核对）的初版都会给出假结果，都是由对照发现、修正后才采用。记录里只引用更正后的结果；作废的输出列在 `out/budget/README-which-outputs-stand.txt`。
+- 自建 harness 不是产品路径。它与仓库外 oracle 是同一批 crate 的 dev 构建，只提高了 `max_steps`（两个探针另提高了 `max_slot_bytes`）。产品路径的证据来自真实 av-worker、nextest 与检查器的重放。
+- 未验证的项：存储值的零符号（语言内观测不到，除零 trap，`to_str` 不显示符号）；`csv_*` 公开名作局部名（只有读码推断，没有实测金丝雀）；`uint`/`float`/`double` 别名字段与深度 128/129 边界（沿用 r1 与 Plan 用例，未重测）。
+- 未完成即放弃的探针：JSON 转义串的完整解析（三遍平方扫描超过复审的 400M 步上限，改用快速预扫探针）；`csv_encode` 对 65,537 个单格行的 JSON（被复审主动停止，由 700×100 的运行取代）。
+- 占用：每次 cargo 前都经闸门，等待 0–1 s，机器空闲。计时轮（05:22:28–05:23:12）期间复审没有任何其他进程；此后它自己的并行负载最高 22 个 oracle 进程（20 逻辑核）。
+- 中断：后台任务 1 小时上限杀掉了 `midpoints_uniform` 的首次运行（无结果），拆成两半重跑完成。账号用量上限造成一次会话中断（07:47–08:36）；中断前最后一个探针在 07:52:47 自行完成并落盘，续跑后只读取。
+
+**复审 r2 的验收结果**
+
+| AC | r1 | r2 | 要点 |
+|---|---|---|---|
+| AC-01 | fail | partial | V-01 数值、树与格式化成立；V-02 的 List 位置覆写只对全标量记录成立（F-14）；V-03 语义成立，预算见 F-15 |
+| AC-02 | partial | partial | 近邻 54/54；字节预算全部入口成立；嫁接触发对局部名误判（F-13）；CSV 预扫漏 CR（F-15） |
+| AC-03 | fail | fail | 复审 r2 记录即执行结果 |
+| AC-04 | pending | pending | 归 merge |
+
+**复审 r2 的发现清单**（severity 沿用 r1 的口径）
+
+- **F-13（中，新回归；AC-02、T-02/T-04、D-1124-T01-8；F-05 的余留）单文件嫁接把局部名字当成引用。**
+  - 不变量：不引用库的程序保持基面行为；规则是“程序引用了模块的公开名且未自行声明该名时才嫁接”。
+  - 实测（真实 av-worker，各 5 次取中位数）：hello-world 41.1 ms；注释含 encode、minify 等 40.9 ms；字符串含触发词 43.4 ms；局部变量 `let parse = 1` 597.2 ms；局部变量 `let is_valid = true` 588.6 ms；参数 `helper(parse int)` 571.9 ms；嵌套 `fn parse` 569.5 ms；闭包 `var parse = fn …` 600.8 ms。
+  - 金丝雀（程序声明 `fn __json_admit` 而不使用库）：单独存在时编译并运行（41.8 ms）；加上名为 `parse`、`encode`、`is_valid`、`minify`、`prettify`、`parse_strict`、`JsonValue`、`JsonEncodable` 的局部变量，或名为 `parse` 的参数，九种全部变成 `source.duplicate: function __json_admit is declared more than once`，span 0..38 指向程序自己的声明。基面没有 JSON 嫁接（读码），这类程序原本可编译。
+  - 原因（已确立）：`stdlib_refs.rs` 的 `referenced_names` 把每个 `ExprKind::Var`（第 186 行）都记为引用；`declared_names`（第 32–48 行）只收顶层项。局部声明因此既算“引用”又不算“自行声明”。
+  - 被误分类的位置：局部变量、参数、嵌套函数名、闭包绑定。程序自己的名字不被替换这一点仍成立：嵌套 `fn parse` 与库并用时 `parse(1)` 仍得 2。
+  - 关闭 oracle：上述程序经 worker 的墙钟与 hello 同一量级；金丝雀程序编译并打印 7；`stdlib_json_csv_graft_follows_references` 的表里补上这四种位置的否定行，同时保留真实引用的肯定行。
+  - 最小重放：`python -I worker_probe.py worker-src/g-local-parse.at`、`g-canary-json-local-parse.at`、`g-param-parse.at`（均在 `D:/autostack/plan-artifacts/plan-1124/review2/` 下）。
+- **F-14（中，合同与实现不符且边界无用例；AC-01 V-02、T-03、D-1124-T01-9、SD-01 §2；F-04 的余留）带自有字段的记录作 `List` 元素时，手写覆写不被调用。**
+  - 不变量（冻结合同）：“手写的 `fn json_encode() Str` 在顶层、嵌套字段和 `List` 元素三种位置都被调用。`List` 元素是视图：覆写体若需要整个容器字段，该调用在绑定期被语言既有的视图规则拒绝”。
+  - 实测（单文件面与 packages 面逐行相同）：
+
+    | 带覆写的元素记录 | 覆写体 | List 位置的结果 |
+    |---|---|---|
+    | `a int` | 读 `.a` | 正常，`{"tags":[[1]]}` |
+    | `a int` + `name Str` | 只读 `.a` | `verify.view-escape` |
+    | 同上 | 返回常量，什么都不读 | `verify.view-escape` |
+    | 同上 | 读 `.name`、`.name.len()`、`.name.clone()`，或作实参 | `verify.view-escape` |
+    | `a int` + `name Str`，无覆写 | （合成内联） | 正常，`{"tags":[{"a":1,"name":"n"}]}` |
+    | 同一带覆写记录作普通字段 | 读 `.name`、`.name.clone()` | 正常，`{"one":[n]}` |
+
+  - 实际规则：覆写记录只有在全部字段都是复制标量时才能作 `List` 元素，与覆写体读什么无关。诊断文本是 `a whole owned element is not a value; project a field or use remove`，诊断码是 `verify.view-escape`；规范与计划写的是 `source.view-escape`。
+  - 原因（已确立）：`json_encode_synth.rs` 第 351–360 行对带覆写的元素合成 `self.<字段>.get(i).json_encode()`；`verify.rs` 第 3290–3315 行（本计划未改）对元素类型拥有自有数据的 `ListGet` 作值使用即报错，它不看方法体。
+  - 覆盖边界：Plan 的两处用例（`f04_override_holds_for_list_elements` 与语言用例 `override-list`）都只用有一个 `int` 字段的 `Custom`。满足“全标量覆写记录”时，深度 2 嵌套、`?Item` 字段、整数极值、字符串转义的输出与 Python `json` 逐字节相同。
+  - 关闭 oracle（二选一）：(a) 矩阵里被拒的六行在两面都输出覆写文本；或 (b) 规范与 D-1124-T01-9 写明实际规则与诊断码，并补两面的阳性（`a int`）与阴性（带 `Str` 字段）断言。
+  - 最小重放：`p1124-review2-oracle.exe run pkg-matrix/single/m2-str-present-unread/prog.at` 与 `pkg pkg-matrix/pkg/m2-str-present-unread`。
+- **F-15（中，合同内缺陷；AC-02 V-03、T-04、D-1124-T01-7、SD-01 §3；F-07 的余留）CSV 预扫漏数单独 CR，“构建前拒绝”只对部分输入成立。**
+  - 不变量（规范原文）：“解析方向在输入达到 131_071 字符后先数分隔符（引号外的分隔符与换行，末尾换行不算），单元格超过 65_536 个即在构建任何单元格前抛 CsvError”。
+  - 实测（65,537 格，只提高步数上限）：LF（131,074 字符）577 次分配、5.5 s；CRLF（196,611 字符）833 次分配、12.1 s；单独 CR（131,074 字符）131,651 次分配、1209 s；LF 32,768 行加 CR 32,769 行（131,074 字符）131,667 次分配、1200 s。四种都以 `CsvError: cell budget exceeded` 结束且账本平衡；带 CR 的两种先建满 65,536 格，墙钟约 220 倍。
+  - 同一发现的另一半：`csv.at` 第 31–32 行的注释 “A cell takes at least two characters, so only long input can reach the cell budget” 不成立，空单元格只占一个字符。阈值以下同样先建后拒：65,536 个逗号（65,536 字符 / 65,537 格）65,598 次分配、211 s；`a,⏎` × 32,769（98,307 字符 / 65,538 格）98,366 次分配、581 s。
+  - 对照（预扫正确的形状）：引号内的 65,536 个分隔符（CJK、emoji、`""` 转义各一次）都计 0，解析成 1 行 1 格；`"a"x` 加 65,536 个分隔符在 554 次分配时即拒，少一个分隔符则在 558 次分配后由解析器拒绝；`a,` × 65,535 加 LF（恰 65,536 格）被准许并解析完成。编码方向：`csv_encode` 对 700×100 格的 JSON 文本同样以 `cell budget exceeded` 结束（131,788 次分配、1540 s）；规范只对解析方向承诺预扫，这一点不违约。
+  - 原因（已确立）：`__csv_separators`（`csv.at` 第 144–197 行）只数 `c == 10`；解析器却把单独 `\r` 当行尾（第 113–118 行）。
+  - 影响边界：默认 `ExecLimits`（100 万步）走不到这条路径，对提高限额的宿主成立。
+  - 关闭 oracle：CR、混合行尾、65,536 个逗号三种输入被拒时的分配次数与 LF 同量级；补用例并断言分配计数；改正规范与代码注释。
+  - 最小重放：`p1124-review2-oracle.exe run probes/budget-csv-eol-cr.at 400000000`（约 20 分钟），与 `budget-csv-eol-lf.at`（约 6 秒）对照。
+- **F-16（低，收尾缺陷；F-10）本计划新增行上仍有 4 处 rustfmt 差异，其中 1 处由修复提交引入。**
+  - 实测（`rustfmt --check` 按新增行归因；归因脚本经两个对照验证）：`experimental/ace/crates/core/src/source/cst/project.rs:15159–15161`（`d206320e8`；即 r1 列的 15156）；`experimental/ace/crates/core/src/source/resolve.rs:18086–18089`（`d206320e8`）；`experimental/ace/crates/core/src/source/resolve.rs:18101`（`d206320e8`；即 r1 列的 18098）；`experimental/ace/crates/source-query/src/instances.rs:1218`（`9a9c296ec` 新增）。
+  - 同一批 16 个文件里另有 256 处差异落在基面既有行上，不计在本计划头上。修复记录写的“对本计划新增的行逐块格式化”与 F-10“全部修复”与实测不符。
+  - 其余健康项（实测）：编译器警告在构建日志 109 个位置里 8 个位于本计划改动的文件，0 个在新增行上；`todo!`、`unimplemented!`、新 lint 豁免、被忽略的测试、丢弃的 `let _ = …?` 均为 0；10 处 `eprintln!` 都在测试文件里作计时输出。
+  - 关闭 oracle：`python -I fmt_attrib.py <worktree> 8a52d7364 <新提交> out.txt` 得 0。
+- **F-17（低，诊断质量；F-11 的余留）未捕获的库错误可能把位置报到另一个入口的成功调用上。**
+  - 实测：`is_valid("{}")` 成功后 `minify("{")` 失败，上报的 span 是 `is_valid("{}")`；同一入口先成功后失败，报第一处 `parse_strict("[1]")`；分支里的失败，报分支外的 `minify("[1]")`。13 个 span 探针里没有一个 span 落在提交源码之外，错误文本都正确。
+  - Plan 写的余留是“同一入口被调用多次时报告源码顺序上的第一处”，比实际窄：实际是第一处能静态到达出错函数的调用，可以是另一个入口，也可以是没执行的分支。
+  - 关闭 oracle：单元测试补“另一入口的成功调用在前”的用例并断言 span 落在失败调用内；或把实际规则写进计划与规范。
+- **F-18（低，规范增量；F-12 的余留）SD-01 有五处与行为不符或留白。**
+  1. 覆写规则与诊断码，见 F-14。
+  2. CSV 预扫，见 F-15。
+  3. “程序另行声明同名类型时 `encode` 的约束无法满足，诊断落在调用处”不属实。实测程序自带 `type JsonEncodable { v int }`（或同名 enum）并用库的 `encode`：编译并输出 `{}` 与 `{"x":1}`，没有任何诊断；没有用例覆盖这句。
+  4. “131_071 字符（容纳 65,536 个分隔符的最短长度）”：行为属实，括号里的算术不对——65,536 个节点的最短合法文档是 131,073 字符，首个超限是 131,075。
+  5. 留白两处：字面量 `-0.0`、`-0e5` 经树输出 `0`，字面量 `-0` 输出 `-0`（`parse_strict("[-0,-0.0]").json_encode()` 得 `[-0,0]`），规范没有写这种情形，按“读回得到同一个 f64”应得 `-0`；`csv_encode_rows` 没有单元格预算也没有字节预算（70,000 格全部编码，输出 139,999 字符），规范未提，而 D-1124-T01-7 写的是“CSV 的解析、编码入口生效”。
+- **F-19（低，收尾簿记）材料区未登记。**
+  - Plan §4 写“已登记 `.retention/policy.json`”，但 `D:/autostack/auto-lang/.retention/policy.json` 与 `D:/autostack/.retention/policy.json` 里都没有任何含 `1124` 的条目。按规则，未登记的在途目录 fail-closed。
+  - 另：`%TEMP%` 下有修复会话留下的 `p1124-probe.rs`、`p1124-probe.err` 两个散落文件。
+
+**复审 r2 对 r1 发现与自查缺陷的关闭结论**
+
+| 发现 | 结论 | 复审自己的证据 |
+|---|---|---|
+| F-01 | 关闭 | 61,467 个输入的树文本与 ECMAScript、Python 逐字一致；`minify("  [ 1 , 2 ]  ")` 得 `[1,2]`，数字文本原样 |
+| F-02 | 关闭 | edge 文件含 `-2147483648`，输出精确；`f02_…` 用例 0.389 s |
+| F-03 | 关闭 | `u64` 最大值、`i64` 最小值、`9007199254740993` 精确；四份文档的 pretty 去空白后与 compact 逐字节相同 |
+| F-04 | 对已测形状关闭，一般情形不成立 | F-14 |
+| F-05 | 对注释、字符串、自有名字关闭；触发条件对局部名误判 | 注释 40.9 ms、字符串 43.4 ms；六个保留名冲突都是 `source.duplicate`，span 指向程序声明，不使用库时同样程序可编译；F-13 |
+| F-06 | 关闭 | 四份文档的 `prettify` 与 Python `json.dumps(indent=2)` 逐字节相同 |
+| F-07 | 单位与入口关闭；“构建前拒绝”对单独 CR 与稠密输入不成立 | F-15 |
+| F-08 | 关闭 | 61,467 个输入 0 不一致，含 34,000 个中点族、7,157 个 2 的幂邻域、最长 3,152 位的文本 |
+| F-09 | 关闭 | 复审整轮运行前后 `%TEMP%\p1124-*` 目录数 30 → 30 |
+| F-10 | **未关闭** | F-16 |
+| F-11 | 对已测情形关闭；跨入口归因有误 | F-17 |
+| F-12 | r1 的七点已改；仍有五处不符或留白 | F-18 |
+| N-1 | 关闭 | `ties` 文件 1,932 个输入 0 不一致；对照 oracle 把平位改向上时，708 处被复审的核对脚本抓出 |
+| N-2 | 关闭 | 自有 `JsonValue` 与库并用正常；程序自带的 `JsonEncodable` 类型与库的 spec 并存 |
+| N-3 | 关闭 | `json-node-65537` 1.98 s、299 次分配；`csv-cell-65537` 7.3 s、554 次分配 |
+| N-4 | 关闭 | `fn __std_list_map` 加 List 使用得 `source.duplicate`，span 0..40 是程序的声明 |
+| N-5 | 以独立证据确认 | 三个中点用例重放通过；复审自己的 34,000 个中点族输入全部一致。“文本已按精确有理数重新生成”这一过程性说法无法直接核验 |
+| N-6 | 关闭 | T01-5 文本已更正；等距取偶对 Node 与 Python 成立 |
+
+**复审 r2 对七个重点的结论**
+
+1. 数值：通过，没有找到任何错误输入。独立 oracle 是 Node 的 `String(Number(text))` 与 Python 的 `float()`、`repr()`，两者在全部输入上一致。合同只有两处与 ECMAScript 不同：正指数写作 `e100` 而非 `e+100`；字面量 `-0` 保留符号。61,467 个输入分为 60,440 个数值、822 个越界、203 个畸形文本、2 个 `-0` 字面量，结果 0 不一致。覆盖面：全范围随机 double 与随机十进制文本；随机 double、2 的幂两侧、最小正规数、次正规数、范围顶部的精确中点及其 ±10⁻ᴺ（N 最大到展开末位之后 500 位）；900–3,152 位的长数字，非零位放在第 790–810 个有效位上，跨越 800 位截断；范围两端的越界阈值两侧。核对脚本自身经对照：未变异的假 oracle 得 0，变异后的假 oracle 被抓出 708 到 1,932 处不等。存储值的零符号未能观测；`-0` 与 `-0.0` 的文本差异见 F-18。
+2. 预算：字节预算成立，节点与单元格预算的“构建前拒绝”有缺口。字节预算在 JSON 五个入口与 CSV 五个文本入口都按字节生效；合法的超限文档 `is_valid` 为 false、`parse` 为 None；多字节验证：524,292 个标量、1,572,868 字节的文档 0.13 s 即被拒。JSON 节点预算：65,537 个值在 299 次分配时被拒；恰 65,536 个值的同长度文本被准许、由解析器拒绝；逗号在字符串内（CJK、emoji、转义引号、转义反斜杠）的四种快速探针都计 0；无效文档在字符串外的 65,536 个逗号也被预扫拒绝。CSV 单元格预算：LF、CRLF、尾随分隔符、逗号串的形状都在数百次分配时被拒；单独 CR、混合行尾与阈值以下的稠密输入先建后拒（F-15）。所有探针的 arena 账本都平衡，包括捕获后的拒绝、解析器内的拒绝和 VM 自己的资源拒绝。接受侧以“同长度文本被准许后由解析器拒绝”证实。恰 65,536 格的完整解析在默认 8 MiB slot 预算下不可达，LF 与 CR 都在约 39,000 格处 `av.resource.slot-bytes`。Plan 用例里 `is_valid(over)` 的输入是全空格文本，无论有没有字节预算都是 false，不具区分力。新增用例最慢 7.169 s（`f07_node_budget_admits_the_last`，work 记的是 6.62 s），在 10 秒门内，余量约 2.8 s。
+3. 单文件嫁接：自有名字保留成立，触发条件误判局部名字。注释与字符串不触发；程序自己的顶层 `fn parse`、`fn minify`、嵌套 `fn parse`、`JsonValue`、`JsonEncodable` 都还是它自己的；保留名冲突是普通的 `source.duplicate`，span 指向程序声明；误分类的位置是局部变量、参数、嵌套函数名、闭包（F-13）。“从不使用 JSON 或 CSV 的程序行为不变”只在读码上成立：没有触发时嫁接文本逐字节等于输入，合成步骤不改程序。带这些局部名的程序现在每次编译多付约 0.55 s。
+4. `List` 元素上的 `json_encode` 覆写：两面一致，只在覆写记录全为标量字段时成立（F-14）。满足该条件时，深度 2 嵌套的输出与 Python `json` 逐字节相同，单文件与 packages 面相同；`?Item` 字段输出 `{"some":{"w":3,"q":30},"none":null,"flag":false}`；整数极值与浮点字段精确：`f32` 的 0.1 经 `f64` 输出 `0.10000000149011612`，运行期负零输出 `0`；字符串转义与 Python 相同。
+5. worker 的 `reported_span`：没有越界的 span，程序自身的错误不受影响，跨入口归因有误（F-17）。span 是字节偏移：含 CJK 的 125 字节程序按字节读回正是 `csv_parse("\"unclosed quoted field")`；程序自身的 `fail(msg)` 与溢出 trap 保留原 span。
+6. 健康：新增行上编译器警告 0；rustfmt 4 处（F-16）；其余干净。
+7. 规范增量：方向正确，多数条文属实；五处不符或留白（F-18），嫁接规则的“没有自行声明该名”一句需要与实现对齐（F-13）。
+
+**复审 r2 的计时表：实跑范围**
+
+| 范围 | 结果与执行/排除数 | 准备构建 | 发现 | 测试 | 清理 | 总墙钟 | 占用等待 |
+|---|---|---|---|---|---|---|---|
+| 仓库外 oracle 身份重建（dev） | 无重编译 | 1 s | — | — | — | 1 s | 0 |
+| 自建 harness 构建（dev，三个目标目录） | 成功；首次 36 s 因复审自己的代码编译失败 | 36 + 1 + 0 + 1 + 59 + 58 s | — | — | — | 约 155 s | 0–1 s 每次 |
+| `nextest list` × 4（清单 26 / 54 / 9 / 1） | 完成 | 1.16 / 0.19 / 0.12 / 0.18 s | 含在总墙钟内 | — | 未观测 | 5 s | 0–1 s 每次 |
+| `nextest run` plan1124_json_csv | 26/26 PASS，1478 skipped | 0.18 s | 未观测 | 43.5 s | 未观测 | 44 s | 0 |
+| 近邻 json975、plan1120、plan1121、module_v_1064 | 54/54 PASS，1450 skipped | 0.19 s | 未观测 | 4.4 s | 未观测 | 5 s | 1 s |
+| ace-core 嫁接与 stdlib 单元 | 9/9 PASS，85 skipped | 0.12 s | 未观测 | 1.16 s | 未观测 | 2 s | 0 |
+| ace-av worker 单元 | 1/1 PASS，32 skipped | 0.18 s | 未观测 | 0.18 s | 未观测 | 1 s | 1 s |
+| 工具准备 `fixed-tests.py case-av-language-parity --prepare-only` | PREPARED | 4 s | — | — | — | 4 s | 1 s |
+| 语言用例 × 8（检查器逐例） | 8/8 PASS | 复用上项 | 每进程含套件 inventory，未单列 | 见逐例表 | 未观测 | 30 s | 0 |
+| 数值 oracle（仓库外 oracle，12 个输入文件） | 61,467 个输入，0 不一致 | — | — | 分片墙钟合计 4,804 s（6 或 10 进程并行） | — | 约 05:37–07:04 | 0 |
+| 预算探针（自建 harness） | 见重点 2，账本全部平衡 | — | — | 0.13 s 至 2,564 s | — | 与其他项并行 | 0 |
+| 嫁接与 span 探针（真实 av-worker） | 68 次运行，37–781 ms 每次 | — | — | — | — | 约 2 min | 0 |
+| JsonEncodable 探针（单文件、packages、矩阵、变体） | 见重点 4 | — | — | 每个毫秒级 | — | 约 1 min | 0 |
+| rustfmt 归因（16 个 .rs，带两个对照） | 新增行上 4 处 | 不适用 | — | — | — | 数秒 | 不适用 |
+| 合并干跑 `git merge-tree` | `av.rs` 内容冲突 | — | — | — | — | 1 s | 不适用 |
+
+构建档位：nextest 为 `test` profile（unoptimized + debuginfo），仓库外 oracle 与自建 harness 为 dev profile，没有 `--release`。未执行：`cargo t all`、六个冻结组整组、`ace-perf`。Linux 与 WSL 用例按 2026-11-14 裁定排除。
+
+**复审 r2 的计时表：本计划新增用例逐例计时**（新增测试义务共 40 项：26 个一致性用例、6 个单元用例、8 个语言用例，没有参数化输入或包装子项，全部在 10 秒门内）
+
+| 新增用例 | 测的行为与 oracle | 实际秒数 | 结果 |
+|---|---|---|---|
+| `plan1124_json_csv::f07_node_budget_admits_the_last` | 65,536 个值被准许并由解析器拒绝；1,025 个值的合法文档完整解析 | 7.169 | PASS |
+| `…::f07_cell_budget_admits_the_last` | 65,536 个单元格被准许；1,025 个单元格解析并编码 | 4.964 | PASS |
+| `…::f07_cell_budget_refuses_the_first_excess` | 65,537 个单元格在构建前被拒 | 4.345 | PASS |
+| `…::f07_json_byte_budget_on_every_entry` | 1,048,577 字节四个入口拒绝；1,048,576 字节由节点预算拒绝 | 3.152 | PASS |
+| `…::f07_csv_byte_budget_on_every_entry` | 1,048,577 字节 `csv_parse`、`csv_encode` 拒绝；1,048,576 字节由单元格预算拒绝 | 2.729 | PASS |
+| `…::f07_node_budget_refuses_the_first_excess` | 65,537 个值在构建前被拒 | 2.197 | PASS |
+| `…::f08_exact_midpoints_at_the_smallest_normal` | 最小正规数附近的中点及两侧一位 | 1.999 | PASS |
+| `…::f08_exact_midpoints_among_subnormals` | 次正规数里的中点及两侧一位 | 1.972 | PASS |
+| `…::f01_f08_review_counterexamples_read_back_exactly` | r1 的 F-01、F-08 反例及同类 48 个读回逐位相等 | 1.773 | PASS |
+| `…::v01_and_v02_packages_cross_module_json_schema_and_rename` | 跨模块 `JsonEncodable` 编码经自家解析器回读 | 1.649 | PASS |
+| `…::f01_minify_round_trip_keeps_every_double` | 19 个文本经 `minify`、`prettify` 后读回相同 | 1.179 | PASS |
+| `…::f04_override_holds_for_list_elements` | 覆写在顶层、嵌套字段、`List` 元素三处一致（两个面） | 1.167 | PASS |
+| `…::f08_exact_midpoints_round_to_even` | 42 个精确中点，平位取偶 | 1.165 | PASS |
+| `…::f05_graft_follows_references_and_keeps_the_programs_names` | r1 的 F-05 反例；保留名冲突；自有 `JsonValue` 与库并存 | 1.143 | PASS |
+| `…::v01_json_depth_and_budget_limits_fail_safely` | 深度 127 成功、130 失败；超 1 MiB 被字节预算拒绝 | 0.882 | PASS |
+| `…::f08_exact_midpoints_near_1e300` | 1e300 附近的中点及两侧一位 | 0.838 | PASS |
+| `…::v02_json_encodable_negative_controls_and_non_finite_float` | 未遵从记录、`char` 字段具名拒绝；inf 触发 `JsonError` | 0.737 | PASS |
+| `…::f08_shortest_text_breaks_ties_to_even` | 20 个等距最短候选取末位偶数 | 0.720 | PASS |
+| `…::f01_f02_f03_record_fields_print_exactly` | 记录字段输出精确文本；pretty 与 compact 只差空白 | 0.602 | PASS |
+| `…::f08_finite_range_and_long_digits` | 越界被拒、下溢为 0、40 位数字 | 0.591 | PASS |
+| `…::v02_single_file_widths_empty_custom_override_and_forged_std_rejected` | 空记录、自定义覆写、各宽整数；伪造 `package std` 被拒 | 0.506 | PASS |
+| `…::v01_json_dynamic_tree_keys_dup_types_and_errors_released` | 树访问、重复键、缺键、三个捕获错误；退出时账本为零 | 0.449 | PASS |
+| `…::f06_pretty_bytes_and_as_array_usability` | 缩进布局的完整字节；`as_array()` 经 `remove` 可用 | 0.409 | PASS |
+| `…::f01_formatters_keep_the_number_text` | `minify`、`prettify` 保留数字原文 | 0.408 | PASS |
+| `…::f02_i32_minimum_and_negative_zero_serialize` | `i32` 最小值与字面量 `-0` 在五个入口的精确文本 | 0.389 | PASS |
+| `…::v03_csv_rfc4180_delimiters_roundtrip_and_error_cleanup` | 引号、换行、空字段、`;` 与制表符分隔符、四个错误后零泄漏 | 0.347 | PASS |
+| `ace-core` `stdlib_json_csv_graft_keeps_the_programs_own_names` | 自有名字与保留名冲突 | 0.676 | PASS |
+| `ace-core` `auto_json_and_csv_parse_cleanly_in_packages_and_single_file_profiles` | 两个库在两种 profile 下可解析 | 0.280 | PASS |
+| `ace-av` `plan1124_uncaught_library_error_is_reported_at_the_call` | 未捕获的库错误定位到程序的调用 | 0.179 | PASS |
+| `ace-core` `stdlib_module_graft_shape` | 嫁接文本的形状 | 0.109 | PASS |
+| `ace-core` `stdlib_json_csv_graft_follows_references` | 引用分析与嫁接触发 | 0.046 | PASS |
+| `ace-core` `auto_json_and_csv_inputs_match_frozen_sources` | 冻结身份 | 0.009 | PASS |
+| `av.parity.1124.json-csv-packages`（exit 42） | 跨模块，`use std.csv` 与 `std.encoding.csv` | 步墙钟 1.694 s | PASS |
+| `av.parity.1124.json-dynamic-tree`（exit 42） | 动态树与错误路径 | 步墙钟 1.519 s | PASS |
+| `av.parity.1124.numbers-exact`（exit 42） | 数字读回逐位相等、最短文本 | 步墙钟 1.478 s | PASS |
+| `av.parity.1124.json-encodable-schema`（exit 42） | 泛型编码经自家解析器回读 | 步墙钟 1.467 s | PASS |
+| `av.parity.1124.pretty-bytes`（exit 42） | 缩进布局的完整字节 | 步墙钟 1.213 s | PASS |
+| `av.parity.1124.override-list`（exit 42） | `List` 元素走用户的 `json_encode`（全标量记录） | 步墙钟 1.193 s | PASS |
+| `av.parity.1124.graft-own-names`（exit 42） | 自有 `parse`、`json_cp`、`JsonValue` 与库共存 | 步墙钟 1.169 s | PASS |
+| `av.parity.1124.csv-rfc4180`（exit 42） | RFC-4180 解析与编码 | 步墙钟 0.641 s | PASS |
+
+沿可达调用路径没有发现日常测试触发编译。一致性用例与单元用例是 nextest 在 `--no-capture` 并行调度下的实测值；语言用例是检查器报告的步墙钟。
+
+**复审 r2 的规范增量结论**（SD-01，modify `docs/specs/ace-migration/m2-stdlib-data.md`）：方向正确，需修正后再沉淀。
+
+- 需改正的条文：F-14（覆写边界与诊断码）、F-15（CSV 预扫）、F-18 的五处。
+- frontmatter：`supersedes_spec_components` 的路径准确；`new_spec_components: []` 是因为只修改现有文件，merge 时需写明理由；`touched_goals: [GOAL-002]` 是真实 ID（`docs/specs/goals.md` 第 11 行），贴合度沿用 r1 的判断，未重新评估。
+- 留给 merge 的 pending：变基（master 现值 `7bb90b1f7`，需解决 `av-core/src/av.rs` 的内容冲突；变基后受影响验证要在新提交上重跑）；六个冻结组整组并集（`stdlib`、`ace-stdlib`、`ace-source`、`ace-semantics`、`ace-av`（带 `ace-av/test-case-batch`）、`case-av-language-parity`），范围同 r1 所列，本次未整组执行；规范里指向 `../../plans/1124-…` 的链接归档时改指 `plans/archive/`；`KNOWN-DEBT-AND-RISKS.md`：r1 列的三行，以及 D-1124-AV-TEXT-01、DIAG-01、SYNTH-01、PKG-01（D-1124-AV-TEXT-01 的根因复审读码确认：`owned_text.rs` 第 226–270 行每次调用都把整段文本收集成 `Vec<char>`）；材料区登记（F-19）；`review2/` 现为 1.4 GB，其中 1.3 GB 是可重建的 harness 构建缓存（`probe-crate/target3`），随材料区删除。
+
+**复审 r2 的路由**：`status: executing`；`next: work`，按 F-13、F-14、F-15 优先，然后 F-16 至 F-19 修复并补永久断言，在新提交上重审受影响的 AC。
+
+- 回开范围：AC-01（V-02、V-03）与 AC-02；T-01（T01-7、T01-8、T01-9 的文本）、T-02（F-13、F-16）、T-03（F-14、F-16）、T-04（F-15、F-16、F-17）。`current_step` 重算为 0，`plan_revision` 不变。
+- 这是第二次未通过的复审。按复审技能，下一次交接被视为就绪之前，需先核 work 对这三项中等级发现的诊断与覆盖、设计上的调整。
+- O-5（`project.rs` 的 `is_numeric()` 门控）仍由冻结组兜底。
+
+stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 5 | from: review | to: work | status: executing | outcome: needs_fix | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: 9a9c296ec | next: work
 
 ## 10. 待澄清事项
 
