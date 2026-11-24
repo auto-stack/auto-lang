@@ -385,8 +385,11 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     预期值由测试内的**独立模型** `expected_boot_reduction()` 推导（非冻结常量），因此这是**行为分歧**而非普通重绑。
     时间线：本计划 T-13/T-14/T-15/T-16 的 5 个提交（`93baf690b`/`7dd8eaaaa`/`fbbb7e48b`/`17c22da0c`/`c89a7bebd`）
     都改动了 S 自身（AAC 编译器）的语义/编码，最可疑是 `core_value_type` 纳入 owned text（改变 S 自身文本值的 HIR 发射）。
-    下轮：用 `prepare-gen1` 对 5 个提交做二分（每次 ~300s + 1s 测试），定位引入点；若是**有意语义变更**，
-    需走 1054 的 Gen1 契约重定（并确认独立模型同步）；若否，回退该改动。
+    **已定性（2026-11-24，基线对照）**：在**计划基点 `7bb90b1f7`** 上重跑同一流程（collections lib + prepare-gen1 288s +
+    固定组），得到**完全相同的 `1957214666`** 与同一批失败（boot/corpus/compile_entry 等 4 条）→
+    **该回归是基点既有的（pre-existing），不是本计划 5 个提交引入的**。此前计划里记的 `681978131` 属于更早的基点。
+    结论：`ace-aac-gen1` 在本基线上整体红，属**继承性问题**，需由拥有 Gen1 契约/基线的主体另行处理；
+    本计划不因此阻塞，也不把它计入 1068 的交付门。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
