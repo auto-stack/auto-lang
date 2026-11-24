@@ -4619,7 +4619,7 @@ shadow871、av_closures_909（其中 4 例 git stash 隔离复验仍红；其余
 | D-948-01 开发仓绝对路径与本机耦合 | RELEASE-BLOCKER | `loader.rs:68,78` `CARGO_MANIFEST_DIR` 回退开发仓、`~/.auto/libs/stdlib` junction、`PATH` `auto` 指向陈旧 `auto-man/target/debug/auto.exe`、`auto-lang` 无 release/debug exe | 978 / 986 / OS064 | 洁净 `SCRUB` 仓外 CWD 与 `man-install.py` clean install/relocation/rollback 实跑通过 | 具名登记 |
 | D-948-02 项目级 `use.rs`/`use.c` 拒绝 | MAJOR | `binding.rs:890-896` 仍拒项目级 `use.rs`，阻塞 `1041`/`946` `AV/C` 与 `AV/Rust` 路径 | 967 T-09+ | `967` 放行项目级 `use.c`/`use.rs` 并补全 `AV/C`/`AV/Rust` 实跑 | 具名登记 |
 | D-948-03 `async.at` 句柄与 `try_recv` 语义 | MINOR | `spawn -> void` 无句柄/取消、`Sender`/`Receiver` 缺 `close`/`drop`、`try_recv` 混淆 `0` 与空 | 968 / 973 AC-08 | 补齐任务/通道生命周期 API 与 `0` vs empty 负控 | 具名登记 |
-| D-948-04 `json.at` 命名漂移与 `json.rs.at` 坏 | MINOR | `json.at`（`JsonValue.type`）与 `038_json_encode_parse`（`Json.type_of`）命名漂移、`json.rs.at` `parse` P6 坏、typed `decode[T]` 擦除未实现 | 975 T-01/AC-02 | 冻结公开 JSON API、补全动态/typed 用例与独立 oracle | 具名登记 |
+| D-948-04 `json.at` 命名漂移与 `json.rs.at` 坏 | MINOR | `json.at`（`JsonValue.type`）与 `038_json_encode_parse`（`Json.type_of`）命名漂移、`json.rs.at` `parse` P6 坏、typed `decode[T]` 擦除未实现 | 975 T-01/AC-02 | 冻结公开 JSON API、补全动态/typed 用例与独立 oracle | 具名登记（2026-11-24：动态 JSON 公共 API 已由 PLAN-1124 冻结为 `.kind()`/`.type_of()` 并有独立用例与 oracle；`json.rs.at` P6 与 typed `decode[T]` 反射仍开） |
 | D-948-05 `UNEXEC-01..05` 未执行场景 | RELEASE-BLOCKER | 仓外 CWD、`man-install.py`、重定位、`web-install.py` 主题校验与完整 CAP（Design46 Gate A/B 未闭）仍 `pending` | 978 / 986 / 983 / Design46 C1-C3 | 对应后继在洁净环境实跑并记收据 | 具名登记 |
 
 ### D-979 — PLAN-979 A 切片已交付后的具名承接项（2026-11-15，非延期豁免；2026-11-16 全部关闭）
