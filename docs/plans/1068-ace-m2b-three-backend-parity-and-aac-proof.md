@@ -327,6 +327,13 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     现在 std 包 **2/8 类型通过**（math、list）；text 卡 `s.clone()`、url 卡 `Str` 所有权（字面量→Str）、
     net/redis/sqlite 卡 bind（宿主/pending-work 面）、json 卡驱动 `trap:ListIndex`。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
+  - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
+    `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
+    继续最小化：`s.len()` + 1 个调用 / 2 个调用 / 3 个调用（到 `json_ws`）分别通过、通过、通过；
+    但把 3 个调用写成 `json_ws(s,0)/json_ws(s,1)/json_ws(s,2)`（**3 个带 str 实参的调用**）即 trap；
+    而合成程序 `fn g(a int)` 的三次调用**不 trap** → 触发与「被调用函数带 `str` 形参 + 多调用」相关，
+    不是单纯调用数。下一步：用 `fn g(a str) int` + 3 次调用构造最小独立 reproducer，再查 binder 的
+    `call_parameter_slots`/`mappings` 是否对 str 形参映射取到 `-1`。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
   再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
