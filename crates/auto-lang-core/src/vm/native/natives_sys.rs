@@ -168,18 +168,24 @@ pub fn shim_sys_uptime_s(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
 
 /// `sys.kill(pid) -> Bool` — PLAN-112 起先咨询宿主结束进程授权门：
 /// 无门（None）= 迁移前行为逐字不变；`Deny` 在刷新采样与 OS 结束**之前**
-/// 抛 `VMError`（稳定码 + 宿主原因 + pid），handler 中止而 VM/窗口存活；
+/// 以稳定码 + 宿主原因 + pid 记一条 error 日志并返回 `false`（软拒绝）：
+/// handler 继续走完自己的收尾（对话框关闭、刷新继续），窗口不中止；
 /// `Allow` 继续走既有 `libs::sys::kill`。
+///
+/// 为什么是软拒绝而不是抛 `VMError`：VMError 会中止 handler，调用方的收尾
+/// （`ConfirmKill` 里的关对话框、清选择、`.Refresh()`）一段都不执行——拒绝后
+/// UI 停在确认框，用户得再点一次「取消」。破坏性操作的拒绝用「返回值 + 具名
+/// 诊断」即可，handler 应继续走完收尾。
 pub fn shim_sys_kill(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let pid = pop_arg_i32(task);
     if let Some(gate) = vm.native_interface.sys_kill_gate() {
         if let crate::vm::host_capabilities::SysKillDecision::Deny { reason } = gate.decision(pid) {
-            return Err(VMError::RuntimeError(format!(
-                "{}: {} (pid {})",
-                crate::vm::host_capabilities::SYS_KILL_PERMISSION_DENIED,
-                reason,
-                pid
-            )));
+            log::error!(
+                "{}",
+                crate::vm::host_capabilities::sys_kill_denial_text(pid, &reason)
+            );
+            task.ram.push_nv(auto_val::encode_bool(false));
+            return Ok(());
         }
     }
     let ok = crate::libs::sys::kill(pid);

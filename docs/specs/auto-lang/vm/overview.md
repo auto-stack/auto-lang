@@ -376,8 +376,11 @@ per-VM `vm::host_capabilities::SysKillGate` 供判定；canonical 名/ID/签名
 不变，`shim_sys_kill` 是唯一消费点。
 
 - **判定**：`Allow` = 走既有 `libs::sys::kill`；`Deny { reason }` = 在刷新
-  采样与 OS 结束**之前**抛 `VMError`，文本 = 稳定码
-  `sys.kill.permission_denied` + reason + pid（handler 中止、VM/窗口存活）。
+  采样与 OS 结束**之前**以稳定码 `sys.kill.permission_denied` + reason + pid
+  记一条 error 日志，并给 `sys.kill` 返回 `false`（软拒绝）——handler 继续
+  收尾（对话框关闭、刷新继续），不抛 `VMError`。抛错会中止 handler、丢掉
+  调用方的关对话框/清选择/`Refresh()` 收尾；破坏性操作的拒绝用「返回值 +
+  具名诊断」即可。
 - **缺席语义**（与其它 provider 族反向）：未注册 = 无门，shim 直接
   `libs::sys::kill`——迁移前行为逐字不变；`AllowAll` 显式登记等价未注册。
   本族缺席**不是**错误也不是值降级。

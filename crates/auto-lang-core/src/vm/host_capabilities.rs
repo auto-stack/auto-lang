@@ -810,6 +810,14 @@ pub trait SysKillGate: Send + Sync {
 /// 同一字面量（两个调用链的门、一个字面码）。
 pub const SYS_KILL_PERMISSION_DENIED: &str = "sys.kill.permission_denied";
 
+/// 拒绝诊断文本（稳定码 + 宿主原因 + pid）。
+///
+/// 单一格式化点：shim 的 error 日志与两端的永久用例共用同一文本，避免
+/// 「日志里有的字段、测试里没有」的漂移。
+pub fn sys_kill_denial_text(pid: i32, reason: &str) -> String {
+    format!("{}: {} (pid {})", SYS_KILL_PERMISSION_DENIED, reason, pid)
+}
+
 /// 进程级默认 gate（显式注册；None = 无门 → 旧行为）。
 static PROCESS_DEFAULT_SYS_KILL_GATE: RwLock<Option<Arc<dyn SysKillGate>>> = RwLock::new(None);
 

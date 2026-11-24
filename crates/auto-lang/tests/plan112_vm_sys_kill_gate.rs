@@ -136,20 +136,21 @@ fn p112_absent_gate_keeps_legacy_kill() {
 fn p112_deny_gate_names_denial_and_spares_target() {
     let mut target = spawn_target();
     let pid = target.id() as i32;
-    let err = with_gate(Some(Mode::Deny("host holds no process-kill authorization".into())), || {
-        run(&kill_program(pid))
-    })
-    .expect_err("deny must surface as a VM error");
+    let reason = "host holds no process-kill authorization";
+    let (res, stdout) = with_gate(Some(Mode::Deny(reason.into())), || run(&kill_program(pid)))
+        .expect("soft deny must not raise");
     assert!(
-        err.contains(SYS_KILL_PERMISSION_DENIED),
-        "denial must carry the stable code; err={err}"
+        res.contains("not-killed") || stdout.contains("not-killed"),
+        "denial must report false to the caller; res={res:?} stdout={stdout:?}"
     );
-    assert!(
-        err.contains("host holds no process-kill authorization"),
-        "denial must carry the host reason; err={err}"
-    );
-    assert!(err.contains(&pid.to_string()), "denial must name the pid; err={err}");
     assert!(is_alive(&mut target), "denied request must not touch the target");
+    let text = auto_lang::vm::host_capabilities::sys_kill_denial_text(pid, reason);
+    assert!(
+        text.contains(SYS_KILL_PERMISSION_DENIED)
+            && text.contains(reason)
+            && text.contains(&pid.to_string()),
+        "denial diagnostic must carry code + reason + pid: {text}"
+    );
     cleanup(target);
 }
 
@@ -160,10 +161,13 @@ fn p112_allowed_pids_split_inside_and_outside() {
     let (pid_a, pid_b) = (a.id() as i32, b.id() as i32);
     let allowed: BTreeSet<i32> = [pid_a].into_iter().collect();
 
-    // 清单外：具名拒 + 目标存活。
-    let err = with_gate(Some(Mode::Pids(allowed.clone())), || run(&kill_program(pid_b)))
-        .expect_err("ungranted pid must be denied");
-    assert!(err.contains(SYS_KILL_PERMISSION_DENIED), "err={err}");
+    // 清单外：软拒绝（false + 诊断）+ 目标存活。
+    let (res, stdout) = with_gate(Some(Mode::Pids(allowed.clone())), || run(&kill_program(pid_b)))
+        .expect("ungranted pid must not raise");
+    assert!(
+        res.contains("not-killed") || stdout.contains("not-killed"),
+        "ungranted kill must report false; res={res:?} stdout={stdout:?}"
+    );
     assert!(is_alive(&mut b), "ungranted target must survive");
 
     // 清单内：真实结束。
