@@ -227,8 +227,11 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 `for-in-stmt` 的迭代变量声明为局部（声明行 = 绑定名节点，`heads[body]` 指向它）。结果：
 **绑定/作用域正确**（循环体内 `x` 可解析；循环外使用 `x` 仍 `bind.unresolved`），但**类型检查
 `trap:ListIndex`**——声明行是名字节点（非语句行），typecheck 的注解/初始化假设被打破。
-下轮正解：在**投影层**把 `for-in` 脱糖成 `let x = <elem>` 形状（或给声明一个受支持的语句行
-+ 元素类型），再接 HIR；不要在 binding 里造非常规声明行。
+**已落地（worktree `5b9d7c1d` 待填）**：改为在 `build_declarations` 里以 **for-in 语句行**声明绑定（`decl_name` = 绑定名节点），
+`visible()` 对 for-in 声明改用「绑定名 end <= 使用 start」判定（并把 `pg` 传进 `lookup`/`visible`）。
+实测：`for x in xs { t = t + x }` 里 `x` 可解析、循环外使用 `x` 仍 `bind.unresolved`、不再 `trap`；
+`ace-aac-syntax` **PASS（12s）**。余：绑定元素类型未传播（`t + x` 仍 `type.unresolved`）——`facts[iterable]`
+在该时刻为 0，未能从 `iter` 角色或 `in` 后继定位到可用的可迭代表达式节点，下轮用 AST dump 定位。
 
 ### 规范增量
 
