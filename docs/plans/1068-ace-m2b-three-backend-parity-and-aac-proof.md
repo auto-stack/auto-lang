@@ -269,6 +269,13 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
   **`s.char_at(i)` 与 `c.to_codepoint()` 双双到 `mir.base-profile`** —— 证明 wiring（op/值类型/verify/form/args）
   本身是通的，**唯一剩余项就是「实参表达式 47..48 被判 unused」这条 claim 记账**。不以削弱 verify 收尾；
   下轮用「把 `exprs/args/claims` 表内容写进 HIR 文档文本」的临时 dump 看清 id 关系再修（文档路径已验证可用）。
+  **HIR 文档 dump 已拿到（2026-11-24，`AAC1047_HIR=hir` 模式不改 lowering，直接返回文档文本）**：
+  `only-charat` 的文档里 `return(value: "e27")`、`expr e27 char_at { operand: "e31" }`、`expr e31 read_local(s)`、
+  `expr e42 read_local(i)`——**e42（实参 i）没有任何引用**，正是 `verify_usage` 判 unused 的对象。
+  `only-codepoint` 只有 e25/e21 两条且闭合。已试仍无效：按 call 直接子节点/span 枚举把实参 id 推进 args 三元组
+  （含槽位 1、去重、BFS 深取）——e42 仍未 claim。**关键疑点：`args` 三元组首字段与 claim 走查的 `id` 命名空间
+  可能不同**（`find_row(exprs,5,node,0)` 的 field0 vs `exprs` 里的表达式序号），下轮应直接 dump `args` 表看
+  真实内容（或读 `verify_statements` 如何生成 `k`/`e` 引用），这是最后一步。
 
 ### 规范增量
 
