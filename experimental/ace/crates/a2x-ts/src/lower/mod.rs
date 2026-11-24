@@ -970,6 +970,14 @@ impl<'v, 'a> Cx<'v, 'a> {
                 };
                 Ok(m(self, format!("{display}({o})")))
             }
+            // PLAN-119（用户 A 授权）：`DynCast` 在 TS 后端是**恒等**——JS 值本身
+            // 动态，具体→Dyn 的转换无需运行时动作（Rust/C 后端才需要装箱）。038
+            // Minesweeper 的 `.to(Str)` 在 Collections 域会落到该节点，此前落进
+            // 兜底拒（`does not serve expression`）。
+            hir::ExprKind::DynCast { operand, .. } => {
+                let o = self.lower_expr(operand)?;
+                Ok(m(self, o))
+            }
             other => {
                 if let Some(expr) = self.lower_widget_json_expr(id, &other)? {
                     return Ok(m(self, expr));
