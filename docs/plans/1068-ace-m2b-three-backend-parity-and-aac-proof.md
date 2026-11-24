@@ -276,6 +276,11 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
   （含槽位 1、去重、BFS 深取）——e42 仍未 claim。**关键疑点：`args` 三元组首字段与 claim 走查的 `id` 命名空间
   可能不同**（`find_row(exprs,5,node,0)` 的 field0 vs `exprs` 里的表达式序号），下轮应直接 dump `args` 表看
   真实内容（或读 `verify_statements` 如何生成 `k`/`e` 引用），这是最后一步。
+  **补充事实（2026-11-24）**：`verify_call` 用 `exprs.get(position+4)` 作 callee、`args` 三元组第三字段作形参槽位——
+  即 args 首字段确实是表达式 id（=源行），与我的推送一致；因此问题更可能在「claim 走查的根」：`blocks` 的 value 来自
+  `expression_ids.get(result)`（result 是 `return-stmt` 的 value 角色节点），而 doc 里 `return(value: "e27")` 的 e27
+  是**文档序号**（不是行号），两者命名空间需在 dump 中直接对照。下轮：在文档里临时追加 `args` 三元组与
+  `expressions` 行映射（一段 debug 文本），一次看清。
 
 ### 规范增量
 
