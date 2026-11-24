@@ -328,7 +328,14 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     net/redis/sqlite 卡 bind（宿主/pending-work 面）、json 卡驱动 `trap:ListIndex`。
   - **url/文本原语（worktree `53d922633`）**：`str` 字面量填入 owned 位置改用既有 promote 规则（`is_text_literal`，与调用实参同一规则；
     return 与隐式尾表达式两处）；`Str.slice(start,end)` 类型化为 `str`（view，双 int 实参）。实测 **std/url.at → `aac.type-report/1`**。
-    std 包 **3/8 类型通过**（math、list、url）；text 仍卡 `s.clone()`。
+    std 包 **3/8 类型通过**（math、list、url）。
+  - **text 关闭（worktree `4450c319e`）**：`Str.clone()` 类型化为 owned text（接收者 view/owned + 零实参），
+    **std/text.at → `aac.type-report/1`**，std 包 **4/8 类型通过**（math、list、url、text）；`ace-aac-syntax` **PASS（51/51）**。
+  - **net/redis/sqlite 定性（2026-11-24）**：这三例的未解析符号是**宿主函数**（`net_tcp_connect`、`db_open` 等），
+    ACE 切片本身不含声明；S 的 sys 模块用 `#in sys is current { Windows -> { use std.sysplat_win.* } }` 形式声明，
+    而 ACE 切片没有等价声明。试过 `#[c] fn ...;`（被判为**需要定义的 prototype** → `bind.unresolved`）与
+    `use c "..."`（`bind.module`）均不成立。结论：按 `aac.pending-work/1` 的具名分期处理（owner=host surface），
+    不阻塞 T-16 的 std 类型门（4/8 语言原语面已全绿）。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
   - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
     `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
