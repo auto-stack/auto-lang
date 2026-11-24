@@ -165,5 +165,13 @@ affects: [auto-abi, auto-test-case, auto-av, ace-m2-build]
 - **未跑 / 排除**：Linux/WSL 腿按 2026-11-14 裁定不在本机执行。本合并会话未重跑 `auto-test-case` 以外的其它组；无新用例新增（8 条即前述，耗时见 §9 复审记录）。
 - **机器占用**：并集准备与基线准备均在有界等待后启动（`occupancy.log`）；冻结第二轮执行与基线执行启动时 busy=0。定向探针期间其他会话（plan-1068、ui-118、PLAN-118 合并）持续在场。
 - **archived / cleaned / 批量回归到期**：见下一条收据。
+2026-11-24 · stage: merge（收尾收据）| PLAN-1125:r1 | checkpoints: **archived ✓ · cleaned ✓**。
+
+- **archived**：`git mv` 至 `docs/plans/archive/1125-av-c-provider-reproducible-fixtures.md`，`status: archived`，T-01..T-05 / AC-01..AC-04 全部勾选，`current_step: 5/5`，`completion_kind: delivered`。归档及簿记提交 `5d259d3b5`（含 KNOWN-DEBT 新增 D-1125-01..05、策略文档 `av-autovm-language-parity.md` 指向归档路径的链接修正）。归档后计划内 13 个相对链接全部可解析（脚本核对，broken = 0）；`language-parity.md` 中 `[PLAN-1125]` 指向归档路径。
+- **cleaned**：移除前复核 worktree 干净（`git status --porcelain` 0 行）、`plan-1125-dev` 已是 master 祖先；`pwsh -NoProfile -File D:/autostack/wt-guard.ps1` 对 `D:/autostack/.wt/lang-1125/auto-lang` 与 `…/auto-down` 均报 clean；随后 `git worktree remove` 两仓、`git branch -d plan-1125-dev`（was `8ea33745f`）、删除空组目录。auto-down 兄弟未改动（`456c86a`）。
+- **材料区删除**：`D:/autostack/plan-artifacts/plan-1125/` 整目录在证据折入后删除——10,734 个文件、1,031,826,055 字节、0 个 reparse point；无具名未解决问题持有。构建中间产物随 worktree 删除，未回收。收尾路径对账：本计划命令/日志使用的输出目录仅该材料区、worktree 内两处 `target`（随 worktree 删除）、主检出既有 `target`（A/B 基线构建的忽略输出，非本计划所有、未删除）及 runner 自建自清的系统临时 `tmcase-*` / `ace-av-c1125-*`（运行时清理标记为真）；未发现其他盘符或散落目录。
+- **批量回归到期检查**：`docs/plans/.last-batch-regression.json` 的 `last_covered_plan_id = 1126`（2026-11-23T00:03:39Z）。1125 ≤ 1126 且收据距今约 32.5 h（< 48 h）→ **未到期**，未触发 `cargo t all`。提醒：收据满 48 h 且其后有合并时到期；届时 master 已知的 `ace-av` 38 条 `std::list` 红（D-1125-01）会被计为新红或需对照。
+- **部署观察**：本计划只改测试准备器、测试配置、worker 的 C provider 校验与测试/规范文档；无发行包、常驻应用或 web bundle 依赖本改动，未触发任何 release 构建或重启。
+
 ## 10. 待澄清事项
 本计划可直接核干净检出失败。1108 如已修共享 producer，以其当前交付复用，保留本计划两条原 Case 的独立关闭条件。
