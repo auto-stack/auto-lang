@@ -246,7 +246,9 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 2. call 发射分支在 `resolved_function` 之前识别 `.char_at/.to_codepoint/.from_codepoint`（postfix + member 拼写），用 `add_expression(..., op, t, operand)` 发射并跳过子节点；
 3. HIR 文本发射处（`form` switch，约 1622 行）补三种 form；
 4. `lower_base.at` 的允许 op 集**暂不加入**这三者 → 得到具名 `mir.base-profile`（T-15 再实现 MIR/AV op）。
-这样 T-14 的可见进展是：`s.char_at(i)` 从 `hir.unsupported` 前进到 `mir.base-profile`。
+这样 T-14 的可见进展是：`s.char_at(i)` 从 `hir.unsupported` 前进到 `mir.base-profile`.
+
+**HIR 发射尝试（2026-11-24，已回退）**：按上设计在 `core_hir.at` 加 op 23/24/25 + `builtin_text_op` + call 分支发射。构建通过，但 `c.to_codepoint()` 仍 `hir.unsupported`；**决定性探针**：让 `builtin_text_op` 无条件返回 `char_at_op()` 后仍不变 → 该 call 行**同样没有进入 `node_kind == "call"` 的发射分支**（与 `List<T>.new()` 的症状同源：某个 call 行在 HIR 的 `owner >= 0 && hir_value_type(records,t)` 门外被跳过）。已回退到 `7dd8eaaaa`。下一步必须**先解决"call 行为何不进入发射/派生分支"**这个共同根因（建议：在 `derive`/`core_hir` 的 call 分支入口针对具体 row 写可观测标记，或 dump `owners`/`facts`），否则 T-14/T-15 的逐 op 接线都会卡在同一处。
 
 ### 规范增量
 
