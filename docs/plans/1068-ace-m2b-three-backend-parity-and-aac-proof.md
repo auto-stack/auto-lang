@@ -379,6 +379,14 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
       **`type.unresolved`** —— 属 CLAUDE.md 记录的既知限制「if 表达式目前按语句解析」，非本计划改动引入（if-value 的
       `derive` 分支存在，但投影给的是语句形状）。结论：该套件不作为本计划的日常门（1048 的交付门是 `--test n` 68/68），
       本计划仍以 `ace-aac-syntax` 固定组为准。
+  - 🔴 **`ace-aac-gen1` 回归（2026-11-24，必须处理）**：备好 `ace-collections-runtime`（`--profile runtime-release`，2s，5.6MB）
+    与 `prepare-gen1`（298s，产出 `aac1053-gen1.exe` + `driver.manifest`）后运行固定组：**4/9 FAIL**，关键一条
+    `gen1_boot_native_matches_independent_reference`：**observed 1957214666 ≠ expected 681978131**。
+    预期值由测试内的**独立模型** `expected_boot_reduction()` 推导（非冻结常量），因此这是**行为分歧**而非普通重绑。
+    时间线：本计划 T-13/T-14/T-15/T-16 的 5 个提交（`93baf690b`/`7dd8eaaaa`/`fbbb7e48b`/`17c22da0c`/`c89a7bebd`）
+    都改动了 S 自身（AAC 编译器）的语义/编码，最可疑是 `core_value_type` 纳入 owned text（改变 S 自身文本值的 HIR 发射）。
+    下轮：用 `prepare-gen1` 对 5 个提交做二分（每次 ~300s + 1s 测试），定位引入点；若是**有意语义变更**，
+    需走 1054 的 Gen1 契约重定（并确认独立模型同步）；若否，回退该改动。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
