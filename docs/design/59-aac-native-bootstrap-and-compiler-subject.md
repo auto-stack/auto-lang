@@ -113,6 +113,12 @@ AAC计划同时承担两件不同的事：用Auto实现编译器主体；使该�
 | AutoUI/AGE 的 AC 领域实现 | [1097](../plans/1097-ace-ac-autoui-w2-and-age-host.md) 独立交 AC 宿主、W2 和 AGE 的正式 AC 域证据，1074 用 W2 继续 A2R。 |
 | 联合验收 | [1068](../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md) 收上述生产方已交证据及其阶段 AAC 模块，最终三端按独立预期验证并交 985/B。1053 全 CL 与 1054 代际签章沿 AAC 路线独立完成。 |
 
+2026-11-24 用户裁定：1046–1052 归档后，AAC 前端的 CL 生产面改由
+[1068](../plans/1068-ace-m2b-three-backend-parity-and-aac-proof.md) 直接承接
+（T-11..T-17 / AC-11..AC-17：parser 列表迭代、Str/char 原语与泛型构造、HIR builtin callee、
+MIR/ABC lowering、std 闭包与 `aac.pending-work/1` 面）；上表 1046–1052 行作为历史归属保留，
+生产证据改由 1068 提供；1053/1054 的 CL/代际签章仍沿 AAC 路线独立完成。
+
 
 
 ### AC 复用 AV 的 AutoDown 语言语料
