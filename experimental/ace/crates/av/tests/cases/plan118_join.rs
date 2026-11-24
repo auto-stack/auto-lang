@@ -96,3 +96,32 @@ widget App {
         ]
     );
 }
+#[test]
+fn plan118_entry_widget_view_is_emitted_for_the_live_root() {
+    // T-03 真窗入口：live 根组件的视图必须恒发（无子站点/定时器/宿主绑定
+    // 也要有），否则宿主报 "entry component has no checked view"。
+    use ace_av::age_package::{evaluate_package_view, ExecLimits, WidgetViewItem};
+
+    let source = r#"
+widget App {
+    msg { Load }
+    model { var label Str = "ready" }
+    on { .Load -> { .label = "loaded" } }
+    view { text .label {} }
+}
+"#;
+    let compiled = compile_age_package_with_scenario(
+        &[input("app", "app", source)],
+        "app::app",
+        LegacyWidgetAlias::Accept,
+        &caps(),
+        &ComponentScenario {
+            instances: 1,
+            ops: vec![ScenarioOp::Send { instance: 0, msg: "Load".into() }],
+        },
+    )
+    .expect("live root package compiles");
+    let view = evaluate_package_view(&compiled, 0, &ExecLimits::default())
+        .expect("the live root view executes without any child site");
+    assert_eq!(view, [WidgetViewItem::Text("loaded".into())]);
+}

@@ -95,8 +95,17 @@ pub(super) fn add_widget_views(
                 || row.name.trim_matches('"').starts_with("storage:"))
         });
         if node.view.exit != "view"
-            || !node.view_data.is_empty()
-            || (!handles_root_timers && !has_host_bindings && sites.is_none()
+            // PLAN-118（T-03 真窗）：**widget live 根组件恒发视图**——它是宿主
+            // 实际渲染的入口，不靠子站点/定时器/宿主绑定来「证明被使用」。
+            // 此前只按 sites/targets/timers/bindings 选发，031-paint（storage
+            // 已被 prep 改写为状态字段、无 timer、无人引用）的入口视图整体
+            // 缺席，真窗装载报 "entry component has no checked view"。惰性
+            // view-data 字段在属性值位已按只读内联，根部同样放行。
+            || (!node.view_data.is_empty() && !(is_live_root && node.legacy_widget))
+            || (!(is_live_root && node.legacy_widget)
+                && !handles_root_timers
+                && !has_host_bindings
+                && sites.is_none()
                 && !targets.contains(&(component.module.as_str(), node.name.name.as_str())))
         {
             continue;

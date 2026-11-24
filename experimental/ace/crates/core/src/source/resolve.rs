@@ -16824,6 +16824,12 @@ impl<'a, 's> FnResolver<'a, 's> {
                         frame.idx = frame.src.stmts.len();
                         continue;
                     }
+                    // PLAN-118（T-03，088 color_model 真语料）：owned 文本注解位
+                    // 收借用文本值时按值拷贝（`var t Str = phex`，phex 为 `str`
+                    // 形参）——AGE 面不允许借用视图落入 owned 槽。
+                    if ann_vt == Some(VT::StrOwned) && value.vt == VT::Str {
+                        value = Self::own_dynamic_text(value);
+                    }
                     if legacy_widget {
                         value = Self::copy_legacy_text_local(value, ann_vt);
                     }
@@ -17181,6 +17187,11 @@ impl<'a, 's> FnResolver<'a, 's> {
                             .extend(ret_stmts);
                     } else {
                         let mut value = self.expr_with_expect(value, Some(self.fn_result));
+                        // PLAN-118（T-03）：借用文本返回 owned 文本结果位时按值
+                        // 拷贝（088 模块 fn `return t`，t 为借用局部）。
+                        if self.fn_result == VT::StrOwned && value.vt == VT::Str {
+                            value = Self::own_dynamic_text(value);
+                        }
                         self.reject_elem_view_use(&value, "the returned value");
                         retag_literal(&mut value, self.fn_result);
                         if matches!(
