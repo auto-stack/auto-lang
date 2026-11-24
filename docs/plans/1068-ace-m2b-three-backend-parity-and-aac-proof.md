@@ -296,7 +296,11 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
 - Auto 侧已接线：`base_ir` 两个指令码、`lower_base` 的 op 常量+白名单+`to_codepoint` 降低、`verify_base` 类型规则（char→int）、`base_abc` 编码、`data_value` 纳入 char lane；
 - `ace-aac-syntax` 50/51（唯一红仍是已知 `aac1046_corpus_text`）。
 - **重要教训（red herring）**：`mir.base-profile` 对没有 `main` 的程序来自 `core_hir` 的 **entry gate**（`entry < 0`），不是 op 不支持——前几轮用它判断"op 已通过 lowering"是不成立的；后续所有 MIR 测量必须用带 `main` 的程序。
-- 实测 `fn main() int { let c = 'A' ... }` → `hir.unsupported`（**char 字面量**在 HIR 未支持）；端到端验证需先补 char 字面量或 `char_at` 的 lowering。
+- **已完成（worktree `20761ec41`）**：`char_at` 的 lowering（`STR_CHAR_AT` 双操作数）+ `verify_base` 类型规则 + `base_abc` 三字编码（dst/view/index，与 av-core 的 `put_u32` 顺序一致）后：
+  `fn main() int { return "ABC".char_at(1).to_codepoint() }` → **`MIR aac.base-mir/1 244` + ABC 244 bytes**（parse→bind→typecheck→HIR→MIR→verify→ABC 全通）。
+  基线对照：`fn main() int { return 3 }` → 140 bytes；`"ABC".len()` → 175 bytes。
+- 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
+- 实测 `fn main() int { let c =' 'A' ... }` → `hir.unsupported`（**char 字面量**在 HIR 未支持）；端到端验证需先补 char 字面量或 `char_at` 的 lowering。
 
 ### 规范增量
 
