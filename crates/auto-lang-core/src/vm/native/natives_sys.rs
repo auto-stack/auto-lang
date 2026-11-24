@@ -180,7 +180,9 @@ pub fn shim_sys_kill(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let pid = pop_arg_i32(task);
     if let Some(gate) = vm.native_interface.sys_kill_gate() {
         if let crate::vm::host_capabilities::SysKillDecision::Deny { reason } = gate.decision(pid) {
-            log::error!(
+            // eprintln（不用 log::error!）：宿主未装 logger 时 log 记录会被丢弃，
+            // 拒绝诊断必须出现在运行日志里（T-03 的具名 oracle 依赖它）。
+            eprintln!(
                 "{}",
                 crate::vm::host_capabilities::sys_kill_denial_text(pid, &reason)
             );
