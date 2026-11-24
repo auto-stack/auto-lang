@@ -259,6 +259,12 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
   但 `verify_unary_builtin` 的 `unary_operand` 在"接收者+实参"两个三元组里会取到实参而判失败；去掉接收者三元组则
   `verify_usage` 报接收者未引用。**剩余问题 = 内建 op 的 args 布局与 verify 语义冲突**，下轮正解：
   给内建一元 op 固定 args 布局（接收者三元组在首位），并让 verify 用「该表达式的第一个三元组」而非 `unary_operand`。
+  **第二次实验（2026-11-24，已回退）**：按"接收者三元组在首位 + `first_operand`"实现后，
+  `c.to_codepoint()` 稳定到 `mir.base-profile`，但 `s.char_at(i)` 仍 `hir.reference 47..48`（实参 `i` 未被 claim）。
+  已试：实参三元组槽位改 1（与 `binary_inputs` 一致）、`descendant_expression` 取实参、遍历 call 直接子节点
+  （该 call **没有 args 节点**，实参是 call 的直接子节点）——都报同一 reference。结论：带实参的内建调用在 HIR
+  引用记账上还有未理解环节；下轮先拿 **HIR 表达式表 dump**（verify 之前打印 exprs/args/blocks），对照
+  `to_codepoint` 的成功样本定位差异，不要再盲改。
 
 ### 规范增量
 
