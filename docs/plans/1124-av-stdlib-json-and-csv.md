@@ -720,6 +720,8 @@ stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 5 | from: review |
 
 stage: work | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | worktree_path: D:/autostack/.wt/lang-1124/auto-lang | branch: plan-1124-dev | base_commit: 9a9c296ec | code_commit: b5ada0bd0 | dependency_revisions: 主检出同源 workspace（`--locked --offline`） | task_ids: T-01, T-02, T-03, T-04 | evidence: 本节表格与 plan-artifacts/plan-1124/work-r2/（gate/ 与 cases/ 原始日志与报告；merge 时按规则删除） | blockers: 无 | next_responsible_role: review
 
+2026-11-24 · stage: review · review_scope: repair · status: in-progress（进行中的标记，不是收据）。独立复审子代理 11:12 启动，受审提交 `b5ada0bd0`，证据目录 `D:/autostack/plan-artifacts/plan-1124/review3/`；复审记录与路由收据待其返回后追加在本行之后。若此处之后没有收据而会话中断，续接轮次应先读该目录里已有的证据，再决定还缺什么，不要从头重复。
+
 ## 10. 待澄清事项
 
 T-01 冻结 JSON 数字、对象顺序与重复键；记录 CSV 旧边界及规范化。若编码依赖更广反射，先以现有受检接口落定机制和必要共享差额。
