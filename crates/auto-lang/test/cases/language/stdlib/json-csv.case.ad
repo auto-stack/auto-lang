@@ -5,6 +5,7 @@ Public language corpus coverage for ordinary Auto AV stdlib data formats:
 - Schema-driven `spec JsonEncodable` / `encode` / `encode_pretty` over primitives, wide numeric types, optionals, lists, nested records, empty records, and custom overrides;
 - Pure-Auto RFC-4180 `std.csv` parsing/encoding (`csv_parse`, `csv_encode`, custom delimiters, `csv_parse_rows`, `csv_encode_rows`, `std.encoding.csv` compatibility) including quoted commas, escaped quotes, embedded newlines, CRLF, and empty trailing fields.
 - Review r1 repair: exact number text (correct rounding, shortest round-trip form, verbatim formatter tokens, the i32 minimum), the frozen indented layout with `as_array()`, a program's own names next to the grafted library, and a record's own `json_encode` as a list element.
+- Review r2 repair: locals, parameters, nested functions and closures that carry library names are no references (no graft); a record with its own `json_encode` that owns data is refused by name as a list element; the CSV cell budget is refused before anything is built for every line ending and for dense input; a negative literal that rounds to zero keeps its sign; `csv_encode_rows` counts cells first.
 
 ## Case: json-dynamic-tree
 id: "av.parity.1124.json-dynamic-tree"
@@ -391,6 +392,56 @@ fn main() int {
     if one != "{\"custom\":3}" { return 2 }
     let layout = "{\n  \"customs\": [\n    {\n      \"custom\": 1\n    },\n    {\n      \"custom\": 2\n    }\n  ]\n}"
     if encode_pretty(h) != layout { return 3 }
+    return 42
+}
+```
+
+### Probe av
+recipe: "ac-av/language-source-run-v1"
+entry: "d_main"
+caps: ["ac.source.language.av/v1", "console.stdout", "console.stderr"]
+exit: 42
+
+## Case: graft-local-names
+id: "av.parity.1124.graft-local-names"
+tags: ["av-language-parity", "plan-1124", "stdlib", "graft"]
+links: ["PLAN-1124"]
+entry-mode: "program"
+
+### Auto
+path: "main.at"
+
+```auto
+// No library is referenced here: a local, a parameter, a nested function and
+// a closure carry library names, and a reserved library name is declared.
+fn __json_admit() int {
+    return 7
+}
+
+fn helper(parse int) int {
+    return parse + 1
+}
+
+fn main() int {
+    let encode = 1
+    var minify = fn (x int) int {
+        return x + 2
+    }
+    fn is_valid(v int) int {
+        return v
+    }
+    var total = 0
+    if encode != 1 { return 1 }
+    total = total + encode
+    if minify(1) != 3 { return 2 }
+    total = total + minify(1)
+    if helper(4) != 5 { return 3 }
+    total = total + helper(4)
+    if is_valid(9) != 9 { return 4 }
+    total = total + is_valid(9)
+    if __json_admit() != 7 { return 5 }
+    total = total + __json_admit()
+    if total != 25 { return 6 }
     return 42
 }
 ```

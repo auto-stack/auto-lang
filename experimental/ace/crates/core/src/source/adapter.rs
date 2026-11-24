@@ -202,7 +202,7 @@ pub fn compile_language_source_with(
     src: &str,
     module_path: &str,
     capabilities: &[String],
-    prepare: impl FnOnce(&mut super::ast::Program) -> Result<(), Vec<Diagnostic>>,
+    mut prepare: impl FnMut(&mut super::ast::Program) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
     compile_language_source_prepared(
         src,
@@ -223,7 +223,7 @@ pub fn compile_language_source_prepared(
     src: &str,
     module_path: &str,
     capabilities: &[String],
-    prepare: impl FnOnce(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+    mut prepare: impl FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
     compile_language_source_with_metadata(src, module_path, capabilities, prepare)
         .map(|(compiled, _)| compiled)
@@ -231,12 +231,127 @@ pub fn compile_language_source_prepared(
 
 /// Return checked ordinary Auto source and the metadata read by the same
 /// CST projection. Metadata coordinates are relative to the source unit.
+///
+/// PLAN-1124: the JSON and CSV modules have ordinary words as public names
+/// (`parse`, `encode`), so they are grafted on the program's references, not
+/// on the spelling of its text. When the program only *names* a local like a
+/// library entry point, the scope analysis finds no reference, and that
+/// verdict is confirmed by compiling without the graft. `prepare` runs once;
+/// twice only when that compile fails while the text still names a library
+/// entry point, because the analysis may have missed a reference.
 pub fn compile_language_source_with_metadata(
     src: &str,
     module_path: &str,
     capabilities: &[String],
-    prepare: impl FnOnce(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+    mut prepare: impl FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<(CompiledSource, super::cst::SourceMetadata), Vec<Diagnostic>> {
+    let unit = Unit {
+        src,
+        module_path,
+        capabilities,
+    };
+    let parse = || super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d]);
+    let (program, has_instances, metadata) = parse()?;
+    let names = super::stdlib_refs::analyze(&program);
+    let declared = super::stdlib_refs::declared_names(&program);
+    let wants = |names: &std::collections::BTreeSet<String>| ModuleGraft {
+        json: needs_stdlib_json_graft(names, &declared),
+        csv: needs_stdlib_csv_graft(names, &declared),
+    };
+    let referenced = wants(&names.referenced);
+    if referenced != ModuleGraft::NONE {
+        return compile_grafted(
+            program,
+            has_instances,
+            metadata,
+            referenced,
+            &unit,
+            &declared,
+            &mut prepare,
+        );
+    }
+    let named = wants(&names.mentioned);
+    let without = compile_grafted(
+        program,
+        has_instances,
+        metadata,
+        ModuleGraft::NONE,
+        &unit,
+        &declared,
+        &mut prepare,
+    );
+    if without.is_ok() || named == ModuleGraft::NONE {
+        return without;
+    }
+    let (program, has_instances, metadata) = parse()?;
+    match compile_grafted(
+        program,
+        has_instances,
+        metadata,
+        named,
+        &unit,
+        &declared,
+        &mut prepare,
+    ) {
+        Ok(compiled) => Ok(compiled),
+        // The graft refused a reserved name the program declares as well:
+        // the program's own errors are the ones reported without it.
+        Err(ds) if !ds.is_empty() && ds.iter().all(is_graft_refusal) => without,
+        Err(ds) => Err(ds),
+    }
+}
+
+/// The source unit one compile reads: the text the grafts append to and the
+/// identity the checked bundle carries.
+#[derive(Clone, Copy)]
+struct Unit<'a> {
+    src: &'a str,
+    module_path: &'a str,
+    capabilities: &'a [String],
+}
+
+/// The graft's own refusal (`compile_grafted`): a grafted function under a
+/// reserved name the program declares too.
+fn is_graft_refusal(diagnostic: &Diagnostic) -> bool {
+    diagnostic.code == "source.duplicate"
+        && diagnostic
+            .message
+            .strip_prefix("function `")
+            .and_then(|rest| rest.strip_suffix("` is declared more than once"))
+            .is_some_and(|name| name.starts_with("__"))
+}
+
+/// Which of the two reference-driven modules one compile grafts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ModuleGraft {
+    json: bool,
+    csv: bool,
+}
+
+impl ModuleGraft {
+    const NONE: ModuleGraft = ModuleGraft {
+        json: false,
+        csv: false,
+    };
+}
+
+/// One compile of the already parsed program, with the given module grafts.
+/// The other grafts (list, map/set, text, integer parse) follow the text of
+/// the source as before.
+fn compile_grafted(
+    program: super::ast::Program,
+    has_instances: bool,
+    metadata: super::cst::SourceMetadata,
+    graft: ModuleGraft,
+    unit: &Unit<'_>,
+    declared: &std::collections::BTreeSet<String>,
+    prepare: &mut dyn FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+) -> Result<(CompiledSource, super::cst::SourceMetadata), Vec<Diagnostic>> {
+    let Unit {
+        src,
+        module_path,
+        capabilities,
+    } = *unit;
     // PLAN-1082 (T-03): graft the frozen 972 assembled stdlib list module
     // (name-mangled) onto the single-module ordinary face when the source
     // references the legacy `List.new(` constructor or a HOF method — the
@@ -244,21 +359,14 @@ pub fn compile_language_source_with_metadata(
     // frozen file, same compiler; never a second algorithm). Without a
     // hit the source compiles byte-identically (zero graft, zero drift).
     let profile = SourceProfile::Auto;
-    let (mut program, has_instances, metadata) =
-        super::parser::parse_auto_program_for_instances(src).map_err(|d| vec![d])?;
-    // PLAN-1124: the JSON and CSV modules have ordinary words as public
-    // names (`parse`, `encode`), so they are grafted on the program's own
-    // references rather than on the spelling of its text.
-    let references = super::stdlib_refs::referenced_names(&program);
-    let declared = super::stdlib_refs::declared_names(&program);
+    let mut program = program;
     let mut grafted = graft_stdlib_integer_parse(
         src,
         graft_stdlib_csv(
-            &references,
-            &declared,
+            graft.csv,
             graft_stdlib_json(
-                &references,
-                &declared,
+                graft.json,
+                declared,
                 graft_stdlib_text(src, graft_stdlib_mapset(&graft_stdlib_list(src))),
             ),
         ),
@@ -833,10 +941,10 @@ fn rename_identifier(src: &str, from: &str, to: &str) -> String {
     out
 }
 
-fn stdlib_json_graft_text(declared: &std::collections::BTreeSet<String>) -> &'static str {
+fn stdlib_json_graft_text(record_taken: bool) -> &'static str {
     static PLAIN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     static RENAMED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    if !declared.contains(STDLIB_JSON_RECORD) {
+    if !record_taken {
         return PLAIN.get_or_init(|| {
             stdlib_module_graft(
                 super::packages::stdlib::auto_json_source(),
@@ -859,23 +967,21 @@ fn stdlib_json_graft_text(declared: &std::collections::BTreeSet<String>) -> &'st
 }
 
 fn graft_stdlib_json(
-    references: &std::collections::BTreeSet<String>,
+    graft: bool,
     declared: &std::collections::BTreeSet<String>,
     mut src: String,
 ) -> String {
-    if needs_stdlib_json_graft(references, declared) {
+    if graft {
         src.push('\n');
-        src.push_str(stdlib_json_graft_text(declared));
+        src.push_str(stdlib_json_graft_text(
+            declared.contains(STDLIB_JSON_RECORD),
+        ));
     }
     src
 }
 
-fn graft_stdlib_csv(
-    references: &std::collections::BTreeSet<String>,
-    declared: &std::collections::BTreeSet<String>,
-    mut src: String,
-) -> String {
-    if needs_stdlib_csv_graft(references, declared) {
+fn graft_stdlib_csv(graft: bool, mut src: String) -> String {
+    if graft {
         static GRAFT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         let graft = GRAFT.get_or_init(|| {
             stdlib_module_graft(
@@ -952,8 +1058,9 @@ fn map("));
     ) {
         let (program, _, _) = crate::source::parser::parse_auto_program_for_instances(src)
             .expect("test source parses");
+        let names = crate::source::stdlib_refs::analyze(&program);
         (
-            crate::source::stdlib_refs::referenced_names(&program),
+            names.referenced,
             crate::source::stdlib_refs::declared_names(&program),
         )
     }
@@ -1037,6 +1144,162 @@ fn map("));
         }
     }
 
+    /// Where a local binding can be declared, with `{n}` for its name.
+    const BINDINGS: &[(&str, &str)] = &[
+        ("local", "fn main() int {\n    let {n} = 1\n    return {n}\n}\n"),
+        (
+            "mutable local",
+            "fn main() int {\n    var {n} = 1\n    {n} = {n} + 1\n    return {n}\n}\n",
+        ),
+        (
+            "parameter",
+            "fn helper({n} int) int {\n    return {n} + 1\n}\nfn main() int {\n    return helper(4)\n}\n",
+        ),
+        (
+            "nested function",
+            "fn main() int {\n    fn {n}(x int) int {\n        return x + 1\n    }\n    return {n}(1)\n}\n",
+        ),
+        (
+            "closure",
+            "fn main() int {\n    var {n} = fn (x int) int {\n        return x + 2\n    }\n    return {n}(1)\n}\n",
+        ),
+        (
+            "loop binding",
+            "fn main() int {\n    var xs = List.new(1, 2)\n    var total = 0\n    for {n} in xs {\n        total = total + {n}\n    }\n    return total\n}\n",
+        ),
+        (
+            "catch binding",
+            "fn main() int {\n    var {n} = 0\n    try {\n        {n} = 1\n    } catch {n} {\n        return 1\n    }\n    return {n}\n}\n",
+        ),
+        (
+            "destructured local",
+            "fn main() int {\n    let ({n}, other) = (1, 2)\n    return {n} + other\n}\n",
+        ),
+        (
+            "inner block",
+            "fn main() int {\n    var total = 0\n    if 0 < 1 {\n        let {n} = 3\n        total = {n}\n    }\n    return total\n}\n",
+        ),
+    ];
+
+    /// PLAN-1124 (review r2, F-13): a local binding that carries a library
+    /// name is no reference, in every position a binding can be declared and
+    /// for every public name of both modules. Such a program compiles without
+    /// the graft.
+    #[test]
+    fn stdlib_json_csv_graft_ignores_local_bindings() {
+        let public = crate::source::packages::stdlib::AUTO_JSON_NAMES
+            .iter()
+            .chain(crate::source::packages::stdlib::AUTO_CSV_NAMES);
+        for name in public {
+            for (position, template) in BINDINGS {
+                let src = template.replace("{n}", name);
+                let (refs, own) = names(&src);
+                assert!(
+                    !needs_stdlib_json_graft(&refs, &own) && !needs_stdlib_csv_graft(&refs, &own),
+                    "{position} `{name}`: {refs:?}"
+                );
+                compiles(&src).unwrap_or_else(|e| panic!("{position} `{name}`: {e:?}"));
+            }
+        }
+
+        // A real reference is still found next to a binding of the same name.
+        for src in [
+            "fn main() int {\n    let parse = 1\n    let v = parse_strict(\"[1]\")\n    return v.len() + parse\n}\n",
+            "fn a() int {\n    let parse_strict = 1\n    return parse_strict\n}\nfn main() int {\n    let v = parse_strict(\"[1]\")\n    return v.len()\n}\n",
+            // A use before a later `let` in the same block counts as a
+            // reference: the rule could be read either way.
+            "fn main() int {\n    let v = parse_strict(\"[1]\")\n    let parse_strict = 2\n    return v.len() + parse_strict\n}\n",
+            // A binding of an inner block is not visible outside it.
+            "fn main() int {\n    if 0 < 1 {\n        let parse_strict = 1\n    }\n    let v = parse_strict(\"[1]\")\n    return v.len()\n}\n",
+            // A local never shadows a type.
+            "fn main() int {\n    let JsonValue = 1\n    let v JsonValue = parse_strict(\"[1]\")\n    return v.len() + JsonValue\n}\n",
+        ] {
+            let (refs, own) = names(src);
+            assert!(needs_stdlib_json_graft(&refs, &own), "{src}");
+        }
+        compiles(
+            "fn a() int {\n    let parse_strict = 1\n    return parse_strict\n}\nfn main() int {\n    let v = parse_strict(\"[1]\")\n    return v.len()\n}\n",
+        )
+        .expect("the program's own binding in one function, the library in another");
+        for src in [
+            "fn main() int {\n    let csv_encode = 1\n    let t = csv_parse(\"a,b\")\n    return t.len() + csv_encode\n}\n",
+            "fn a() int {\n    let csv_parse = 1\n    return csv_parse\n}\nfn main() int {\n    let t = csv_parse(\"a,b\")\n    return t.len()\n}\n",
+        ] {
+            let (refs, own) = names(src);
+            assert!(needs_stdlib_csv_graft(&refs, &own), "{src}");
+        }
+
+        // The review's canary: a reserved library name next to a local that
+        // carries a public one compiles, since no library is referenced.
+        compiles(&format!(
+            "{RESERVED}\
+             fn main() int {{\n\
+                 let parse = 1\n\
+                 return parse\n\
+             }}\n"
+        ))
+        .expect("a local named like an entry point does not bring the library");
+    }
+
+    /// PLAN-1124 (review r2, F-13): the graft decision costs one compile. A
+    /// second one runs only when the program fails without the graft while
+    /// its text names a library entry point.
+    #[test]
+    fn stdlib_graft_prepares_once_unless_the_graft_is_in_doubt() {
+        let runs = |src: &str| {
+            let mut prepared = 0;
+            // The three-argument entry reports every compile, with or without
+            // instance templates.
+            let result = compile_language_source_prepared(src, "main.at", &[], |program, _, _| {
+                prepared += 1;
+                program.items.retain(
+                    |item| !matches!(item, crate::source::ast::Item::Fn(f) if !f.type_params.is_empty()),
+                );
+                Ok(())
+            });
+            (result.map(|_| ()), prepared)
+        };
+        for src in [
+            "fn main() int {\n    return 0\n}\n",
+            "fn main() int {\n    let v = parse_strict(\"[1]\")\n    return v.len()\n}\n",
+            "fn main() int {\n    let parse = 1\n    return parse\n}\n",
+            "fn main() int {\n    return missing_fn(1)\n}\n",
+        ] {
+            assert_eq!(
+                runs(src).1,
+                1,
+                "one compile when the graft is not in doubt: {src}"
+            );
+        }
+        // The program has its own error and names a local like an entry
+        // point: the graft is tried once more, and the error is its own.
+        let own_error = "fn main() int {\n    let parse = 1\n    return missing_fn(parse)\n}\n";
+        let (result, prepared) = runs(own_error);
+        assert_eq!(prepared, 2);
+        let error = result.expect_err("the program's own error");
+        assert!(
+            error[0].message.contains("missing_fn"),
+            "not a refusal of the graft: {error:?}"
+        );
+        // With a reserved library name declared, the graft refuses the
+        // second compile before any preparation; the first result is the
+        // one reported.
+        let canary = format!(
+            "{RESERVED}\
+             fn main() int {{\n\
+                 let parse = 1\n\
+                 return missing_fn(parse)\n\
+             }}\n"
+        );
+        let (result, prepared) = runs(&canary);
+        assert_eq!(prepared, 1);
+        let error = result.expect_err("the program's own error");
+        assert!(
+            error[0].message.contains("missing_fn"),
+            "not a refusal of the graft: {error:?}"
+        );
+    }
+
     #[test]
     fn stdlib_json_csv_graft_keeps_the_programs_own_names() {
         // Nothing grafted: a reserved library name stays free to declare.
@@ -1117,7 +1380,7 @@ fn map("));
     /// leaves record methods and `__`-prefixed helpers alone.
     #[test]
     fn stdlib_module_graft_shape() {
-        let json = stdlib_json_graft_text(&Default::default());
+        let json = stdlib_json_graft_text(false);
         for line in [
             "fn __std_json_parse_strict(s str) JsonValue {",
             "fn __std_json_json_str(value Str) Str {",
@@ -1141,7 +1404,7 @@ fn map("));
 
         // A program that declares the record's name gets the same graft with
         // that one identifier moved into the reserved namespace.
-        let taken = stdlib_json_graft_text(&[STDLIB_JSON_RECORD.to_string()].into_iter().collect());
+        let taken = stdlib_json_graft_text(true);
         assert_eq!(
             taken,
             rename_identifier(

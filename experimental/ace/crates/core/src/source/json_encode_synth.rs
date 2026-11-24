@@ -134,6 +134,41 @@ struct SynthCtx<'a> {
     overrides: &'a BTreeSet<String>,
 }
 
+impl SynthCtx<'_> {
+    /// The first field of record `name` through which its values own data —
+    /// the binder's rule for a list element being a view instead of a value:
+    /// the field types reach owned text, a list, an enum or option, or a
+    /// function, directly or through nested records.
+    fn owned_field(&self, name: &str) -> Option<String> {
+        let mut seen = BTreeSet::from([name.to_string()]);
+        self.record_fields
+            .get(name)?
+            .iter()
+            .find(|(_, ty, _)| self.owns_data(ty, &mut seen))
+            .map(|(field, _, _)| field.clone())
+    }
+
+    fn owns_data(&self, ty: &TypeAnn, seen: &mut BTreeSet<String>) -> bool {
+        match &ty.kind {
+            TypeRef::Builtin(TypeWord::StrOwned) => true,
+            TypeRef::Generic { name, .. } => name.name == "List",
+            TypeRef::Record(record) => {
+                seen.insert(record.name.clone())
+                    && self.record_fields.get(&record.name).is_some_and(|fields| {
+                        fields.iter().any(|(_, ty, _)| self.owns_data(ty, seen))
+                    })
+            }
+            TypeRef::Optional(_) | TypeRef::Function { .. } => true,
+            TypeRef::Tuple(parts) => parts.iter().any(|part| self.owns_data(part, seen)),
+            TypeRef::Builtin(_)
+            | TypeRef::TyVar(_)
+            | TypeRef::Inferred
+            | TypeRef::ResultBang(_)
+            | TypeRef::Stream(_) => false,
+        }
+    }
+}
+
 /// Where an encoded value sits: an ordinary field, an element of a list
 /// field, or a field read through such an element.
 #[derive(Clone, Copy)]
@@ -351,9 +386,23 @@ impl Emit<'_> {
                 if site.list_elem {
                     // A list element is a view: its fields are read through
                     // it. A record with its own `json_encode` is asked
-                    // directly, so the override holds in every position.
+                    // directly, so the override holds in every position —
+                    // as long as the record holds copy fields only. A view
+                    // of a record that owns data is not a whole value and
+                    // cannot be handed to the method; that is named here,
+                    // at the list field, instead of being left to the
+                    // verifier's rejection of the synthesized call.
                     if ctx.overrides.contains(&rec_ident.name) {
                         self.stack.remove(&rec_ident.name);
+                        if let Some(field) = ctx.owned_field(&rec_ident.name) {
+                            return Err(unsupported_diag(
+                                format!(
+                                    "record `{}` has its own `json_encode` and owns data (through field `{}`), so it cannot be encoded as a list element: a list element is a view, not a whole value",
+                                    rec_ident.name, field
+                                ),
+                                span,
+                            ));
+                        }
                         let encoded = method_call_0(expr, "json_encode", span);
                         append_out(stmts, out_id, encoded, span);
                         return Ok(());

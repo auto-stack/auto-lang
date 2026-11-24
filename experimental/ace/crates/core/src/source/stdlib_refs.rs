@@ -3,29 +3,58 @@
 //! `minify`).
 //!
 //! A module is grafted only when the program references one of its public
-//! names *and* does not declare that name itself: the program's own
-//! `fn parse` or `type JsonValue` is the program's, and a word inside a
-//! comment or a string literal is not a reference. The walk is exhaustive on
-//! purpose — a new AST variant has to be classified here instead of passing
-//! unnoticed.
+//! names *and* does not declare that name itself. A reference is a name used
+//! as a value, a call target, a type or a spec where no local binding of that
+//! name is in scope: a word inside a comment or a string literal is not a
+//! reference, and neither is a local variable, a parameter, a nested function
+//! or a closure parameter that happens to carry a library name. The walk is
+//! exhaustive on purpose — a new AST variant has to be classified here
+//! instead of passing unnoticed.
+//!
+//! Binding is modeled conservatively in one direction. A name is bound only
+//! where the binder surely binds it (parameters, `let` and `var` from their
+//! declaration on, pattern and loop bindings inside their own block). Where
+//! the rule could be read either way — a use before a later `let` in the same
+//! block — the name counts as a reference, which at worst grafts a module the
+//! program does not need; the adapter still compiles such a program without
+//! the graft first and keeps that result when it succeeds.
 
 use std::collections::BTreeSet;
 
 use super::ast::{
     AggArmBody, AggMatchArm, Arg, Block, ClosureBody, ConformRef, EnumArm, Expr, ExprKind, FnItem,
-    Ident, Item, MatchArm, Param, PlaceStep, Program, Stmt, TaskPattern, TypeAnn, TypeItem,
-    TypeParamDecl, TypeRef,
+    Ident, Item, MatchArm, MatchPattern, Param, PlaceStep, Program, Stmt, TaskPattern, TypeAnn,
+    TypeItem, TypeParamDecl, TypeRef,
 };
 
-/// Every name the program uses as a value, a call target, a type or a spec.
-pub(crate) fn referenced_names(program: &Program) -> BTreeSet<String> {
+/// The names a program uses, in two widths.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct NameUse {
+    /// Names used as a value or a call target where no local binding of that
+    /// name is in scope, plus every name used as a type, a spec or an enum
+    /// (locals never shadow those).
+    pub referenced: BTreeSet<String>,
+    /// Every name the program uses as a value, a call target, a type, a spec
+    /// or an enum, local bindings included.
+    pub mentioned: BTreeSet<String>,
+}
+
+/// Which names the program uses.
+pub(crate) fn analyze(program: &Program) -> NameUse {
     let mut refs = Refs {
-        names: BTreeSet::new(),
+        use_: NameUse::default(),
+        scopes: vec![BTreeSet::new()],
     };
     for item in &program.items {
         refs.item(item);
     }
-    refs.names
+    refs.use_
+}
+
+/// Every name the program uses as a value, a call target, a type or a spec,
+/// local bindings included.
+pub(crate) fn mentioned_names(program: &Program) -> BTreeSet<String> {
+    analyze(program).mentioned
 }
 
 /// Names of the program's own top-level items (functions, records, enums, …).
@@ -48,34 +77,94 @@ pub(crate) fn declared_names(program: &Program) -> BTreeSet<String> {
 }
 
 struct Refs {
-    names: BTreeSet<String>,
+    use_: NameUse,
+    /// Local bindings in scope, the innermost scope last. The first entry is
+    /// the module itself and stays empty: module-level names are read from
+    /// `declared_names`.
+    scopes: Vec<BTreeSet<String>>,
 }
 
 impl Refs {
-    fn ident(&mut self, id: &Ident) {
-        self.names.insert(id.name.clone());
+    fn bind(&mut self, id: &Ident) {
+        self.scopes
+            .last_mut()
+            .expect("the module scope is always present")
+            .insert(id.name.clone());
     }
 
-    fn params(&mut self, params: &[Param]) {
+    fn bound(&self, name: &str) -> bool {
+        self.scopes.iter().rev().any(|scope| scope.contains(name))
+    }
+
+    /// A name used as a value or a call target.
+    fn value(&mut self, id: &Ident) {
+        self.use_.mentioned.insert(id.name.clone());
+        if !self.bound(&id.name) {
+            self.use_.referenced.insert(id.name.clone());
+        }
+    }
+
+    /// A name used as a type, a spec or an enum.
+    fn type_name(&mut self, id: &Ident) {
+        self.use_.mentioned.insert(id.name.clone());
+        self.use_.referenced.insert(id.name.clone());
+    }
+
+    /// Walk with `bound` in a new scope.
+    fn scoped<I>(&mut self, bound: I, walk: impl FnOnce(&mut Self))
+    where
+        I: IntoIterator<Item = Ident>,
+    {
+        self.scopes
+            .push(bound.into_iter().map(|id| id.name).collect());
+        walk(self);
+        self.scopes.pop();
+    }
+
+    fn block(&mut self, block: &Block) {
+        self.scoped(std::iter::empty(), |this| {
+            for stmt in &block.stmts {
+                this.stmt(stmt);
+            }
+        });
+    }
+
+    fn block_binding<I>(&mut self, block: &Block, bound: I)
+    where
+        I: IntoIterator<Item = Ident>,
+    {
+        self.scoped(bound, |this| {
+            for stmt in &block.stmts {
+                this.stmt(stmt);
+            }
+        });
+    }
+
+    /// Parameters are visible throughout the body; their types and defaults
+    /// are read outside it. The caller supplies the scope.
+    fn bind_params(&mut self, params: &[Param]) {
         for param in params {
             self.type_ann(&param.ty);
             if let Some(default) = &param.default {
                 self.expr(default);
             }
         }
+        for param in params {
+            self.bind(&param.name);
+        }
     }
 
     fn type_params(&mut self, params: &[TypeParamDecl]) {
         for param in params {
             if let Some(bound) = &param.bound {
-                self.ident(bound);
+                self.type_name(bound);
             }
         }
     }
 
     fn conform(&mut self, conform: &[ConformRef]) {
         for claim in conform {
-            self.ident(&claim.name);
+            self.type_name(&claim.name);
             for arg in &claim.args {
                 self.type_ann(arg);
             }
@@ -88,12 +177,12 @@ impl Refs {
     fn type_ann(&mut self, ty: &TypeAnn) {
         match &ty.kind {
             TypeRef::Builtin(_) | TypeRef::Inferred => {}
-            TypeRef::TyVar(id) | TypeRef::Record(id) => self.ident(id),
+            TypeRef::TyVar(id) | TypeRef::Record(id) => self.type_name(id),
             TypeRef::Optional(inner) | TypeRef::ResultBang(inner) | TypeRef::Stream(inner) => {
                 self.type_ann(inner);
             }
             TypeRef::Generic { name, args } => {
-                self.ident(name);
+                self.type_name(name);
                 for arg in args {
                     self.type_ann(arg);
                 }
@@ -121,15 +210,32 @@ impl Refs {
         }
     }
 
+    /// The payload bindings of an `is` arm, in source order. The arm's own
+    /// name is not a variable, and its qualification names an enum.
+    fn pattern(&mut self, pattern: &MatchPattern) -> Vec<Ident> {
+        match pattern {
+            MatchPattern::Variant { qual, bindings, .. } => {
+                if let Some(qual) = qual {
+                    self.type_name(qual);
+                }
+                bindings.clone()
+            }
+            MatchPattern::IntLit(_) | MatchPattern::BoolLit(_) | MatchPattern::Else => Vec::new(),
+        }
+    }
+
     fn arms(&mut self, arms: &[AggMatchArm]) {
         for arm in arms {
-            if let Some(guard) = &arm.guard {
-                self.expr(guard);
-            }
-            match &arm.body {
-                AggArmBody::Block(block) => self.block(block),
-                AggArmBody::Expr(expr) => self.expr(expr),
-            }
+            let bound = self.pattern(&arm.pat);
+            self.scoped(bound, |this| {
+                if let Some(guard) = &arm.guard {
+                    this.expr(guard);
+                }
+                match &arm.body {
+                    AggArmBody::Block(block) => this.block(block),
+                    AggArmBody::Expr(expr) => this.expr(expr),
+                }
+            });
         }
     }
 
@@ -183,13 +289,13 @@ impl Refs {
                 self.expr(start);
                 self.expr(end);
             }
-            ExprKind::Var(id) => self.ident(id),
+            ExprKind::Var(id) => self.value(id),
             ExprKind::Method { recv, args, .. } => {
                 self.expr(recv);
                 self.args(args);
             }
             ExprKind::Call { callee, args } => {
-                self.ident(callee);
+                self.value(callee);
                 self.args(args);
             }
             ExprKind::ConstCall {
@@ -198,7 +304,7 @@ impl Refs {
                 consts: _,
                 args,
             } => {
-                self.ident(callee);
+                self.value(callee);
                 for ty in types {
                     self.type_ann(ty);
                 }
@@ -213,7 +319,7 @@ impl Refs {
                 self.expr(rhs);
             }
             ExprKind::CtorNamed { ty, args, fields } => {
-                self.ident(ty);
+                self.type_name(ty);
                 for arg in args {
                     self.type_ann(arg);
                 }
@@ -238,7 +344,7 @@ impl Refs {
             }
             ExprKind::ViewArg { .. } | ExprKind::MutArg { .. } => {}
             ExprKind::GenericType { name, args } => {
-                self.ident(name);
+                self.type_name(name);
                 for arg in args {
                     self.type_ann(arg);
                 }
@@ -248,16 +354,20 @@ impl Refs {
                 result,
                 body,
                 ..
-            } => {
-                self.params(params);
+            } => self.scoped(std::iter::empty(), |this| {
+                this.bind_params(params);
                 if let Some(result) = result {
-                    self.type_ann(result);
+                    this.type_ann(result);
                 }
                 match &**body {
-                    ClosureBody::Expr(expr) => self.expr(expr),
-                    ClosureBody::Block(block) => self.block(block),
+                    ClosureBody::Expr(expr) => this.expr(expr),
+                    ClosureBody::Block(block) => {
+                        for stmt in &block.stmts {
+                            this.stmt(stmt);
+                        }
+                    }
                 }
-            }
+            }),
             ExprKind::UnwrapOr { inner, fallback } => {
                 self.expr(inner);
                 self.expr(fallback);
@@ -269,12 +379,6 @@ impl Refs {
         }
     }
 
-    fn block(&mut self, block: &Block) {
-        for stmt in &block.stmts {
-            self.stmt(stmt);
-        }
-    }
-
     fn stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::ExprStmt { value, .. }
@@ -282,11 +386,15 @@ impl Refs {
             | Stmt::Yield { value, .. } => {
                 self.expr(value);
             }
-            Stmt::Let { ann, value, .. } => {
+            // `let` and `var` bind from their declaration on.
+            Stmt::Let {
+                name, ann, value, ..
+            } => {
                 if let Some(ann) = ann {
                     self.type_ann(ann);
                 }
                 self.expr(value);
+                self.bind(name);
             }
             Stmt::Assign { value, .. } => self.expr(value),
             Stmt::IndexAssign(assign) => {
@@ -301,8 +409,19 @@ impl Refs {
                 }
                 self.expr(&assign.value);
             }
-            Stmt::LetDestruct { value, .. } => self.expr(value),
-            Stmt::Hold { body, .. } | Stmt::Loop { body, .. } => self.block(body),
+            Stmt::LetDestruct { names, value, .. } => {
+                self.expr(value);
+                for name in names {
+                    self.bind(name);
+                }
+            }
+            Stmt::Hold {
+                name, bind, body, ..
+            } => {
+                self.value(name);
+                self.block_binding(body, [bind.clone()]);
+            }
+            Stmt::Loop { body, .. } => self.block(body),
             Stmt::If {
                 cond, then, els, ..
             } => {
@@ -317,17 +436,28 @@ impl Refs {
                 self.block(body);
             }
             Stmt::Break { .. } | Stmt::Continue { .. } => {}
-            Stmt::IsMatch { arms, .. } => {
-                for MatchArm { qual, body, .. } in arms {
+            Stmt::IsMatch {
+                scrutinee, arms, ..
+            } => {
+                self.value(scrutinee);
+                for MatchArm {
+                    qual,
+                    binding,
+                    body,
+                    ..
+                } in arms
+                {
                     if let Some(qual) = qual {
-                        self.ident(qual);
+                        self.type_name(qual);
                     }
-                    self.block(body);
+                    self.block_binding(body, binding.iter().cloned());
                 }
             }
-            Stmt::ForIn { iter, body, .. } => {
+            Stmt::ForIn {
+                var, iter, body, ..
+            } => {
                 self.expr(iter);
-                self.block(body);
+                self.block_binding(body, [var.clone()]);
             }
             Stmt::AggIsMatch {
                 scrutinee, arms, ..
@@ -343,15 +473,17 @@ impl Refs {
             } => {
                 self.block(body);
                 if let Some(catch) = catch {
-                    self.block(&catch.body);
+                    self.block_binding(&catch.body, catch.bind.iter().cloned());
                 }
                 if let Some(finally) = finally {
                     self.block(finally);
                 }
             }
-            Stmt::With { expr, body, .. } => {
+            Stmt::With {
+                expr, bind, body, ..
+            } => {
                 self.expr(expr);
-                self.block(body);
+                self.block_binding(body, bind.iter().cloned());
             }
             Stmt::HashIf { then, els, .. } => {
                 self.block(then);
@@ -359,21 +491,32 @@ impl Refs {
                     self.block(els);
                 }
             }
+            // The `#for` variable lives in the compile-time domain only; a
+            // runtime use of its name is an ordinary undefined name.
             Stmt::HashFor { body, .. } => self.block(body),
             Stmt::HashIs { arms, .. } => {
                 for arm in arms {
                     self.block(&arm.body);
                 }
             }
-            Stmt::NestedFn { item } => self.fn_item(item),
+            // A nested function is visible where it is declared, as a call
+            // target only.
+            Stmt::NestedFn { item } => {
+                self.bind(&item.name);
+                self.fn_item(item);
+            }
         }
     }
 
     fn fn_item(&mut self, f: &FnItem) {
-        self.type_params(&f.type_params);
-        self.params(&f.params);
-        self.type_ann(&f.ret);
-        self.block(&f.body);
+        self.scoped(std::iter::empty(), |this| {
+            this.type_params(&f.type_params);
+            this.bind_params(&f.params);
+            this.type_ann(&f.ret);
+            for stmt in &f.body.stmts {
+                this.stmt(stmt);
+            }
+        });
     }
 
     fn type_item(&mut self, t: &TypeItem) {
@@ -434,15 +577,26 @@ impl Refs {
                     self.fn_item(hook);
                 }
                 for arm in &t.arms {
-                    match &arm.pattern {
-                        TaskPattern::Lit(lit) => self.expr(lit),
-                        TaskPattern::Bind { ty, .. } => self.type_ann(ty),
-                        TaskPattern::Named { .. } | TaskPattern::Wildcard(_) => {}
-                    }
-                    if let Some(guard) = &arm.guard {
-                        self.expr(guard);
-                    }
-                    self.block(&arm.body);
+                    let bound = match &arm.pattern {
+                        TaskPattern::Lit(lit) => {
+                            self.expr(lit);
+                            Vec::new()
+                        }
+                        TaskPattern::Bind { name, ty } => {
+                            self.type_ann(ty);
+                            vec![name.clone()]
+                        }
+                        TaskPattern::Named { bindings, .. } => bindings.clone(),
+                        TaskPattern::Wildcard(_) => Vec::new(),
+                    };
+                    self.scoped(bound, |this| {
+                        if let Some(guard) = &arm.guard {
+                            this.expr(guard);
+                        }
+                        for stmt in &arm.body.stmts {
+                            this.stmt(stmt);
+                        }
+                    });
                 }
             }
             Item::Node(_) | Item::UseRs(_) | Item::UsePy(_) => {}

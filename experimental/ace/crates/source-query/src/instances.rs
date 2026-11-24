@@ -1211,10 +1211,12 @@ pub(crate) fn instantiate_auto_program_scoped(
     let start = Instant::now();
     let mut steps = 0;
     loop {
-        origins.records.extend(ace_core::source::cst::materialize_auto_record_instances(
-            program,
-            &record_templates,
-        )?);
+        origins
+            .records
+            .extend(ace_core::source::cst::materialize_auto_record_instances(
+                program,
+                &record_templates,
+            )?);
         ace_core::source::json_encode_synth::synthesize_json_encodable_methods(program)?;
         for item in &mut program.items {
             if let Item::Type(record) = item {

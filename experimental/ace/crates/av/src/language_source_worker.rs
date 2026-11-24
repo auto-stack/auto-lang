@@ -860,6 +860,11 @@ fn reported_span(
 /// that can reach `raised` — for a trap or an error raised inside grafted
 /// standard-library text. Only a program that calls into the library can
 /// get there, so some such call exists whenever the library ran.
+///
+/// The position is a hint, not a record of the run: reachability is static,
+/// so among several candidates the first one is named even when another one
+/// raised the error (a later call of the same entry, another entry, or a
+/// branch that did not run). The diagnostic text carries the error itself.
 fn library_call_site(lowered: &MirModule, source_len: usize, raised: u32) -> Option<SpanInfo> {
     let function_count = lowered.funcs.len();
     let raised = usize::try_from(raised)
@@ -989,10 +994,10 @@ mod compile_time_tests {
         }
     }
     /// PLAN-1124: an uncaught error raised inside grafted standard-library
-    /// text is reported at the program's call that reached the library, so
-    /// the checker judges it instead of refusing a span outside the
+    /// text is reported at a call in the program that can reach the library,
+    /// so the checker judges it instead of refusing a span outside the
     /// submitted source; a failing call in the program itself keeps its own
-    /// span.
+    /// span. Which call is named follows `library_call_site`.
     #[test]
     fn plan1124_uncaught_library_error_is_reported_at_the_call() {
         let caps = &[AUTO_SOURCE_ADMISSION_CAP];
@@ -1003,40 +1008,62 @@ mod compile_time_tests {
                     .is_some_and(|end| end as usize <= source.len())
             })
         };
-        let library = "fn main() int {\n    let _a = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n";
-        let step = request(library, caps, None);
-        assert_eq!(step["outcome"], "diag", "{step}");
-        assert_eq!(step["diag"]["code"], "lang.error", "{step}");
-        assert!(
-            step["diag"]["message"]
-                .as_str()
-                .is_some_and(|message| message.contains("CsvError")),
-            "{step}"
-        );
-        assert!(in_source(&step, library), "{step}");
-        // The report names the program's call that reached the library —
-        // the first such call in source order — never a span in the graft.
-        let call = "csv_parse(\"\\\"unclosed quoted field\")";
-        let call_at = library.find(call).expect("the call is in the program");
-        let (start, end) = (
-            step["source_span"]["start"].as_u64().expect("a start") as usize,
-            step["source_span"]["end"].as_u64().expect("an end") as usize,
-        );
-        assert!(
-            call_at <= start && start < end && end <= call_at + call.len(),
-            "{step}"
-        );
-
-        let twice = "fn main() int {\n    let _a = csv_parse(\"a,b\")\n    let _b = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n";
-        let step = request(twice, caps, None);
-        assert_eq!(step["diag"]["code"], "lang.error", "{step}");
-        let first = twice.find("csv_parse(\"a,b\")").expect("the first call");
-        assert!(
-            step["source_span"]["start"].as_u64().expect("a start") as usize >= first
-                && step["source_span"]["end"].as_u64().expect("an end") as usize
-                    <= first + "csv_parse(\"a,b\")".len(),
-            "{step}"
-        );
+        // The report names the first call in source order, anywhere in the
+        // program, from which the raising function can be reached. That
+        // position is a hint at where the library was entered, not a record
+        // of the run: it can be another entry's successful call, or a call in
+        // a branch that did not run. The error text itself says what went
+        // wrong. The span is always inside the submitted source.
+        let reported = |source: &str| {
+            let step = request(source, caps, None);
+            assert_eq!(step["outcome"], "diag", "{step}");
+            assert_eq!(step["diag"]["code"], "lang.error", "{step}");
+            let (start, end) = (
+                step["source_span"]["start"].as_u64().expect("a start") as usize,
+                step["source_span"]["end"].as_u64().expect("an end") as usize,
+            );
+            assert!(start < end && end <= source.len(), "{step}");
+            source[start..end].to_string()
+        };
+        for (source, call, error) in [
+            (
+                "fn main() int {\n    let _a = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n",
+                "csv_parse(\"\\\"unclosed quoted field\")",
+                "CsvError",
+            ),
+            (
+                "fn main() int {\n    let _a = csv_parse(\"a,b\")\n    let _b = csv_parse(\"\\\"unclosed quoted field\")\n    return 0\n}\n",
+                "csv_parse(\"a,b\")",
+                "CsvError",
+            ),
+            // another entry's successful call comes first
+            (
+                "fn main() int {\n    let ok = is_valid(\"{}\")\n    let bad = minify(\"{\")\n    return 0\n}\n",
+                "is_valid(\"{}\")",
+                "JsonError",
+            ),
+            // the failing call sits in a branch
+            (
+                "fn main() int {\n    let a = minify(\"[1]\")\n    if a.len() > 0 {\n        let b = minify(\"[2\")\n    }\n    return 0\n}\n",
+                "minify(\"[1]\")",
+                "JsonError",
+            ),
+            // the library is entered from the program's own function
+            (
+                "fn load(text str) Str {\n    return minify(text)\n}\nfn main() int {\n    let x = load(\"{\")\n    return 0\n}\n",
+                "minify(text)",
+                "JsonError",
+            ),
+        ] {
+            assert_eq!(reported(source), call, "{source}");
+            let step = request(source, caps, None);
+            assert!(
+                step["diag"]["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(error)),
+                "{source}: {step}"
+            );
+        }
 
         let own = "fn boom(msg str) int {\n    fail(msg)\n}\nfn main() int {\n    boom(\"mine\")\n    return 0\n}\n";
         let step = request(own, caps, None);

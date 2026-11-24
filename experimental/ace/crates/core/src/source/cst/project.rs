@@ -15430,9 +15430,11 @@ fn apply_spec_conformance(
                         ));
                         continue;
                     }
-                    if let Some(f) = t.methods.iter().find(|f| {
-                        f.name.name == "json_encode" && f.receiver == Receiver::View
-                    }) {
+                    if let Some(f) = t
+                        .methods
+                        .iter()
+                        .find(|f| f.name.name == "json_encode" && f.receiver == Receiver::View)
+                    {
                         let ok = f.params.is_empty()
                             && matches!(
                                 f.ret.kind,

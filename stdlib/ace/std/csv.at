@@ -28,9 +28,9 @@ pub fn csv_parse_rows(text str, delim str = ",") List<List<Str>> {
         fail("CsvError: input byte budget exceeded")
     }
     let n = text.len()
-    // A cell takes at least two characters, so only long input can reach the
-    // cell budget: its separators are counted before any cell is built.
-    if n >= 131071 {
+    // An empty cell takes no more than its separator, so input long enough to
+    // hold the budget's separators is counted before any cell is built.
+    if n >= 65536 {
         if 1 + __csv_separators(text, d) > 65536 {
             fail("CsvError: cell budget exceeded")
         }
@@ -135,7 +135,8 @@ fn __csv_cp(s str, i int) int {
 
 // Separators outside quoted fields: in valid CSV every delimiter and every
 // line break starts one more cell, and a line break that ends the text
-// closes the last record instead.
+// closes the last record instead. A line break is LF, CRLF or a lone CR,
+// as the parser reads them; each counts once.
 //
 // Reading one scalar of a long text costs the whole text each time, so the
 // count walks over short owned pieces and reads those instead. The count
@@ -146,6 +147,9 @@ fn __csv_separators(text str, d int) int {
     var count = 0
     var quoted = 0
     var last = 0
+    // 1 when the previous scalar was an unquoted CR, so that CRLF counts
+    // once.
+    var after_cr = 0
     var p = 0
     // Cutting a piece costs a pass over the whole text; a longer text
     // takes longer pieces.
@@ -164,6 +168,8 @@ fn __csv_separators(text str, d int) int {
         for i < m {
             let c = piece.char_at(i).to_codepoint()
             last = c
+            let was_cr = after_cr
+            after_cr = 0
             if quoted == 1 {
                 if c == 34 {
                     quoted = 0
@@ -179,10 +185,19 @@ fn __csv_separators(text str, d int) int {
                         }
                     }
                     if c == 10 {
+                        if was_cr == 0 {
+                            count = count + 1
+                            if count > 65536 {
+                                return count
+                            }
+                        }
+                    }
+                    if c == 13 {
                         count = count + 1
                         if count > 65536 {
                             return count
                         }
+                        after_cr = 1
                     }
                 }
             }
@@ -190,7 +205,7 @@ fn __csv_separators(text str, d int) int {
         }
         p = stop
     }
-    if last == 10 {
+    if last == 10 || last == 13 {
         count = count - 1
     }
     return count
@@ -208,9 +223,19 @@ fn __csv_check_delim(delim str) int {
 }
 
 fn __csv_encode_rows_code(rows List<List<Str>>, d int) Str {
-    var out Str = ""
+    // The cell budget is checked before any output is built.
+    var cells = 0
     var r = 0
     let rn = rows.len()
+    for r < rn {
+        cells = cells + rows.get(r).len()
+        if cells > 65536 {
+            fail("CsvError: cell budget exceeded")
+        }
+        r = r + 1
+    }
+    var out Str = ""
+    r = 0
     for r < rn {
         if r > 0 {
             let nl Str = "\n"

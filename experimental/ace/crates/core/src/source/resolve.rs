@@ -18863,10 +18863,8 @@ impl<'a, 's> FnResolver<'a, 's> {
                     }
                     if let VT::Variant(want_vi) = want {
                         if self.coll.variants[want_vi].name == "Option" {
-                            let want_pl = self.coll.variants[want_vi]
-                                .arms
-                                .first()
-                                .and_then(|a| a.1);
+                            let want_pl =
+                                self.coll.variants[want_vi].arms.first().and_then(|a| a.1);
                             if let RExprKind::VariantCtor {
                                 variant,
                                 disc,
@@ -18878,7 +18876,9 @@ impl<'a, 's> FnResolver<'a, 's> {
                                         *variant = want_vi;
                                         v.vt = want;
                                     } else if *disc == 0 {
-                                        if let (Some(want_pl_vt), Some(pl)) = (want_pl, payload.as_mut()) {
+                                        if let (Some(want_pl_vt), Some(pl)) =
+                                            (want_pl, payload.as_mut())
+                                        {
                                             if want_pl_vt == VT::StrOwned
                                                 && pl.vt == VT::Str
                                                 && matches!(pl.kind, RExprKind::StrLit(_))

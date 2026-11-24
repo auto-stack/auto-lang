@@ -58,7 +58,9 @@ pub type JsonValue as JsonEncodable {
     }
 
     fn as_int() int {
-        if .tags.get(.root) != 2 || .ivals.get(.root) == 0 {
+        // A number's flag is 1 for an exact integer, 2 for the literal `-0`,
+        // 3 for a negative literal that rounded to zero, 0 for any other.
+        if .tags.get(.root) != 2 || .ivals.get(.root) == 0 || .ivals.get(.root) == 3 {
             fail("TypeError: json value is not an integer")
         }
         return .nvals.get(.root)
@@ -140,7 +142,7 @@ pub type JsonValue as JsonEncodable {
         if found < 0 {
             fail("JsonError: missing object key")
         }
-        if .tags.get(found) != 2 || .ivals.get(found) == 0 {
+        if .tags.get(found) != 2 || .ivals.get(found) == 0 || .ivals.get(found) == 3 {
             fail("TypeError: json field is not an integer")
         }
         return .nvals.get(found)
@@ -575,6 +577,14 @@ pub fn parse_strict(s str) JsonValue {
                                     }
                                 } else {
                                     fv = __json_parse_f64(s, p, ne)
+                                    // A negative literal that rounds to zero
+                                    // keeps its sign as well (flag 3): the
+                                    // same double reads back only as `-0`.
+                                    if fv == 0.0d {
+                                        if json_cp(s, p) == 45 {
+                                            iv_flag = 3
+                                        }
+                                    }
                                 }
                                 tags.push(2)
                                 ivals.push(iv_flag)
@@ -2004,6 +2014,9 @@ fn __json_scalar_str(
             return __json_int_text(nvals.get(node))
         }
         if ivals.get(node) == 2 {
+            return "-0"
+        }
+        if ivals.get(node) == 3 {
             return "-0"
         }
         return __json_f64_str(fvals.get(node))

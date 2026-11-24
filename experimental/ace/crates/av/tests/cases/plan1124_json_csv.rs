@@ -65,27 +65,63 @@ fn run_stdout_released(src: &str) -> (Value, String) {
     run_with_limits_released(src, ExecLimits::default())
 }
 
-/// A run under a raised step budget — the count and number budgets are
-/// beyond the default one. Returns the value, stdout, the steps used and
-/// the seconds spent running.
-fn run_timed(src: &str, max_steps: u64) -> (Value, String, u64, f64) {
+/// A run under an explicit limit set. Returns the value, stdout, the steps
+/// used, the seconds spent running and the number of allocations the
+/// program made in all.
+fn run_counted_with_limits(src: &str, limits: ExecLimits) -> (Value, String, u64, f64, usize) {
     let loaded = load(&lower(src));
-    let mut limits = ExecLimits::default();
-    limits.max_steps = max_steps;
     let mut capture = ConsoleCapture::default();
     let started = std::time::Instant::now();
     let (outcome, trace) = execute_sched(&loaded, &limits, &CancelFlag::new(false), &mut capture);
     let secs = started.elapsed().as_secs_f64();
     match outcome {
         ExecOutcome::Success { value, steps } => {
-            let _ = assert_released(trace);
+            let allocations = assert_released(trace);
             let out = String::from_utf8(capture.stdout).expect("stdout UTF-8");
-            (value, out, steps, secs)
+            (value, out, steps, secs, allocations)
         }
         other => {
             let out = String::from_utf8_lossy(&capture.stdout);
             panic!("expected success, got {other:?}; stdout={out:?}")
         }
+    }
+}
+/// A run under a raised step budget — the count and number budgets are
+/// beyond the default one.
+fn run_counted(src: &str, max_steps: u64) -> (Value, String, u64, f64, usize) {
+    let mut limits = ExecLimits::default();
+    limits.max_steps = max_steps;
+    run_counted_with_limits(src, limits)
+}
+
+/// The same run without the allocation count.
+fn run_timed(src: &str, max_steps: u64) -> (Value, String, u64, f64) {
+    let (value, out, steps, secs, _) = run_counted(src, max_steps);
+    (value, out, steps, secs)
+}
+
+/// The exit code and the allocation count of a program under the raised
+/// step budget.
+fn exit_and_allocs(src: &str) -> (i32, usize) {
+    let (value, _, _, _, allocations) = run_counted(src, RAISED_STEPS);
+    match value {
+        Value::I32(code) => (code, allocations),
+        other => panic!("expected an int, got {other:?}"),
+    }
+}
+
+/// The exit code and the allocation count under the raised step budget and
+/// a raised slot budget: a table of 65,792 cells holds more live data than
+/// the production budget allows, and the budget under test is the CSV cell
+/// one.
+fn exit_and_allocs_with_slot_budget(src: &str, slot_bytes: usize) -> (i32, usize) {
+    let mut limits = ExecLimits::default();
+    limits.max_steps = RAISED_STEPS;
+    limits.max_slot_bytes = slot_bytes;
+    let (value, _, _, _, allocations) = run_counted_with_limits(src, limits);
+    match value {
+        Value::I32(code) => (code, allocations),
+        other => panic!("expected an int, got {other:?}"),
     }
 }
 
@@ -731,7 +767,11 @@ fn assert_numbers(inputs: &[&str]) {
     for (text, line) in inputs.iter().zip(&lines) {
         // A magnitude past the range is refused; one that underflows is zero.
         let (expected, bits) = match text.parse::<f64>() {
-            Ok(value) if value == 0.0 => ("0".to_string(), Some(0.0f64.to_bits())),
+            // A negative zero reads back only as `-0`.
+            Ok(value) if value == 0.0 => (
+                if value.is_sign_negative() { "-0" } else { "0" }.to_string(),
+                Some(value.to_bits()),
+            ),
             Ok(value) if value.is_finite() => {
                 let expected = reference_number_text(value);
                 let expected = if value.is_sign_negative() && !expected.starts_with('-') {
@@ -1706,4 +1746,310 @@ fn f07_cell_budget_admits_the_last() {
         Value::I32(1),
         "the parser's refusal, and no budget refusal"
     );
+}
+/// F-14 (review r2): a record with its own `json_encode` is encoded as a
+/// list element while it holds copy fields only. A record that owns data
+/// cannot be: a list element is a view, not a whole value, so it cannot be
+/// handed to the method. That is refused by name, at the list field, in
+/// both faces.
+#[test]
+fn f14_override_record_that_owns_data_is_refused_by_name() {
+    const MODEL: &str = r#"
+use std.json.JsonEncodable
+
+pub type Tagged as JsonEncodable {
+    a int
+    name Str
+    fn json_encode() Str {
+        return "{\"a\":" + .a.to(Str) + "}"
+    }
+}
+
+pub type Holder as JsonEncodable {
+    tags List<Tagged>
+}
+"#;
+    const MAIN: &str = "use app.model: Holder\n\npub fn main() int {\n    return 0\n}\n";
+    let (_stage, code, detail) = match compile_pkg(&[
+        pkg_input("app", "model", MODEL),
+        pkg_input("app", "main", MAIN),
+    ]) {
+        Ok(_) => panic!("a record that owns data is not a list element"),
+        Err(e) => e,
+    };
+    assert_eq!(code, "source.json-encode-unsupported", "{detail}");
+    // A cross-module record is named in the checked bundle by its qualified
+    // ident, so the message carries that spelling; the field it names is the
+    // source one.
+    assert!(
+        detail.contains("Tagged") && detail.contains("`name`"),
+        "{detail}"
+    );
+
+    let single = format!(
+        "{}fn main() int {{\n    return 0\n}}\n",
+        MODEL
+            .replace("pub ", "")
+            .replace("use std.json.JsonEncodable\n\n", "")
+    );
+    let (_stage, code) = compile_diag(&single);
+    assert_eq!(code, "source.json-encode-unsupported");
+
+    // The same record without the override is encoded field by field
+    // through the view.
+    let plain = r#"
+type Tagged as JsonEncodable {
+    a int
+    name Str
+}
+
+type Holder as JsonEncodable {
+    tags List<Tagged>
+}
+
+fn main() int {
+    var rows = List<Tagged>.new()
+    rows.push(Tagged { a: 1, name: "n" })
+    let h = Holder { tags: rows.move }
+    print(encode(h))
+    return 0
+}
+"#;
+    let (_, stdout) = run_stdout_released(plain);
+    assert_eq!(stdout, "{\"tags\":[{\"a\":1,\"name\":\"n\"}]}\n");
+
+    // More than one copy field: the override is used.
+    let scalars = r#"
+type Point as JsonEncodable {
+    x int
+    y i64
+    fn json_encode() Str {
+        return "<" + .x.to(Str) + "," + .y.to(Str) + ">"
+    }
+}
+
+type Shape as JsonEncodable {
+    points List<Point>
+}
+
+fn main() int {
+    var rows = List<Point>.new()
+    rows.push(Point { x: 1, y: 2i64 })
+    rows.push(Point { x: 3, y: 4i64 })
+    let s = Shape { points: rows.move }
+    print(encode(s))
+    return 0
+}
+"#;
+    let (_, stdout) = run_stdout_released(scalars);
+    // The override's text is the encoded value wherever the record sits,
+    // exactly as in a plain field: it is not re-escaped as a JSON string.
+    assert_eq!(stdout, "{\"points\":[<1,2>,<3,4>]}\n");
+}
+
+/// A program holding `text` (built by `build`) and `caught`: a parse
+/// refused by the cell budget counts 1, a completed parse 1000.
+fn cell_budget_program(build: &str) -> String {
+    format!(
+        "fn main() int {{\n    var caught = 0\n{build}    try {{\n        let rows = csv_parse_rows(text)\n        caught = caught + 1000\n    }} catch e {{\n        if e.contains(\"cell budget\") {{ caught = caught + 1 }}\n    }}\n    return caught\n}}\n"
+    )
+}
+
+/// An Auto text literal for `s`.
+fn text_lit(s: &str) -> String {
+    let escaped = s
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
+    format!("\"{escaped}\"")
+}
+
+/// Statements that leave `var` holding `<unit>` doubled `doublings` times
+/// with `tail` appended.
+fn doubled(var: &str, unit: &str, doublings: usize, tail: &str) -> String {
+    let counter = format!("k_{var}");
+    format!(
+        "    var {var} Str = {unit}\n    var {counter} = 0\n    for {counter} < {doublings} {{\n        {var} = {var} + {var}\n        {counter} = {counter} + 1\n    }}\n    {var} = {var} + {tail}\n",
+        unit = text_lit(unit),
+        tail = text_lit(tail),
+    )
+}
+
+/// F-15 (review r2): the cell budget is refused before any cell is built —
+/// for every line ending the parser reads and for dense input shorter than
+/// the old threshold. `allocations` is everything the program allocated: a
+/// refusal before building stays in the hundreds, a refusal after building
+/// 65,536 cells needs more than that many.
+fn assert_refused_before_building(label: &str, build: &str) {
+    let (code, allocations) = exit_and_allocs(&cell_budget_program(build));
+    assert_eq!(code, 1, "{label}: refused by the cell budget");
+    assert!(allocations < 2000, "{label}: {allocations} allocations");
+    eprintln!("{label}: {allocations} allocations");
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_lf() {
+    assert_refused_before_building("LF rows", &doubled("text", "a\n", 16, "a\n"));
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_crlf() {
+    assert_refused_before_building("CRLF rows", &doubled("text", "\r\n", 16, "\r\n"));
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_lone_cr() {
+    assert_refused_before_building("lone CR rows", &doubled("text", "a\r", 16, "a\r"));
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_mixed_line_endings() {
+    let build = format!(
+        "{}{}    let text Str = low + high\n",
+        doubled("low", "a\n", 15, ""),
+        doubled("high", "a\r", 15, "a\r")
+    );
+    assert_refused_before_building("LF then CR rows", &build);
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_commas_only() {
+    // 65,536 commas: 65,537 empty cells in 65,536 characters.
+    assert_refused_before_building("commas only", &doubled("text", ",", 16, ""));
+}
+
+#[test]
+fn f15_cell_budget_is_refused_before_building_dense_rows() {
+    // `a,` and a line break: two cells in three characters.
+    assert_refused_before_building("`a,` rows", &doubled("text", "a,\n", 15, "a,\n"));
+}
+
+/// F-15 (review r2): the count starts at 65,536 characters — the shortest
+/// text that can hold the budget's separators. A lone CR is a separator:
+/// 65,536 of them after an invalid start are 65,536 cells, admitted, and
+/// the parser refuses at once; 65,537 are one cell over the budget and the
+/// count refuses them before anything is built.
+#[test]
+fn f15_cell_budget_counts_lone_cr_at_the_new_threshold() {
+    let src = format!(
+        "fn main() int {{\n    var caught = 0\n    var head Str = {}\n{}    let less Str = seps.slice(0, 65536).clone()\n    let last Str = head + less\n    try {{\n        let rows = csv_parse_rows(last)\n        caught = caught + 1000\n    }} catch e {{\n        if e.contains(\"cell budget\") {{ caught = caught + 100 }}\n        if e.contains(\"closing quote\") {{ caught = caught + 10 }}\n    }}\n    let over Str = seps.slice(0, 65537).clone()\n    let beyond Str = head + over\n    try {{\n        let rows = csv_parse_rows(beyond)\n        caught = caught + 1000\n    }} catch e {{\n        if e.contains(\"cell budget\") {{ caught = caught + 1 }}\n    }}\n    return caught\n}}\n",
+        text_lit("\"a\"x"),
+        doubled("seps", "\r", 17, "")
+    );
+    let (code, allocations) = exit_and_allocs(&src);
+    assert_eq!(
+        code, 11,
+        "65,536 cells admitted, 65,537 refused before building"
+    );
+    assert!(allocations < 3000, "{allocations} allocations");
+}
+
+/// F-18 (review r2): a negative literal that rounds to zero keeps its sign
+/// through the tree — the same double reads back only as `-0` — and is not
+/// an integer. A zero computed at runtime has no observable sign and
+/// prints `0`.
+#[test]
+fn f18_negative_zero_literals_keep_their_sign() {
+    let src = r#"
+type Z as JsonEncodable {
+    x f64
+}
+
+fn main() int {
+    print(parse_strict("[-0,-0.0,-0e5,-0.000,-1e-400,0,0.0,1e-400,-1]").json_encode())
+    print(minify("[ -0.0 , -0e5 ]"))
+    let z = parse_strict("-0.0")
+    if z.as_number() == 0.0d {
+        print("zero")
+    } else {
+        print("nonzero")
+    }
+    try {
+        let _i = z.as_int()
+        print("integer")
+    } catch e {
+        if e.contains("not an integer") {
+            print("not an integer")
+        } else {
+            print("other error")
+        }
+    }
+    print(encode(Z { x: 0.0d - 0.0d }))
+    return 0
+}
+"#;
+    let (_, stdout) = run_stdout_released(src);
+    assert_eq!(
+        stdout,
+        concat!(
+            "[-0,-0,-0,-0,-0,0,0,0,-1]\n",
+            "[-0.0,-0e5]\n",
+            "zero\n",
+            "not an integer\n",
+            "{\"x\":0}\n",
+        )
+    );
+}
+
+/// F-18 (review r2): `csv_encode_rows` checks the cell budget before it
+/// builds any output. The control builds the same table and stops. The
+/// table itself is larger than the production slot budget, so both runs
+/// raise it: the budget under test is the CSV cell one.
+#[test]
+fn f18_encode_rows_refuses_over_the_cell_budget_before_building() {
+    const SLOT_BYTES: usize = 64 * 1024 * 1024;
+    // 257 rows of 256 cells: 65,792 cells.
+    let build = r#"
+    var rows = List<List<Str>>.new()
+    var r = 0
+    for r < 257 {
+        var row = List<Str>.new()
+        var c = 0
+        for c < 256 {
+            row.push("".to(Str))
+            c = c + 1
+        }
+        rows.push(row.move)
+        r = r + 1
+    }
+"#;
+    let control = format!("fn main() int {{\n{build}    return 0\n}}\n");
+    let encode = format!(
+        "fn main() int {{\n{build}    var caught = 0\n    try {{\n        let text = csv_encode_rows(rows)\n        if text.len() > 0 {{ caught = caught + 1000 }}\n    }} catch e {{\n        if e.contains(\"cell budget\") {{ caught = caught + 1 }}\n    }}\n    return caught\n}}\n"
+    );
+    let (_, control_allocations) = exit_and_allocs_with_slot_budget(&control, SLOT_BYTES);
+    let (code, allocations) = exit_and_allocs_with_slot_budget(&encode, SLOT_BYTES);
+    assert_eq!(code, 1, "refused by the cell budget");
+    assert!(
+        allocations < control_allocations + 2000,
+        "no output was built: {allocations} allocations against {control_allocations} for the table alone"
+    );
+}
+
+/// F-18 (review r2): the spec is recognized by name. A record of the
+/// program's own that happens to be called `JsonEncodable` changes nothing:
+/// records declared `as JsonEncodable` encode, and a record without that
+/// declaration is still refused.
+#[test]
+fn f18_spec_is_recognized_by_name() {
+    let ok = r#"
+type JsonEncodable {
+    v int
+}
+
+type Item as JsonEncodable {
+    x int
+}
+
+fn main() int {
+    print(encode(Item { x: 1 }))
+    print(encode_pretty(Item { x: 1 }))
+    return 0
+}
+"#;
+    assert_eq!(run_stdout_released(ok).1, "{\"x\":1}\n{\n  \"x\": 1\n}\n");
+    let refused = "type JsonEncodable {\n    v int\n}\n\ntype Item {\n    x int\n}\n\nfn main() int {\n    let t = encode(Item { x: 1 })\n    return t.len()\n}\n";
+    let (_stage, code) = compile_diag(refused);
+    assert_eq!(code, "source.instances-bound");
 }
