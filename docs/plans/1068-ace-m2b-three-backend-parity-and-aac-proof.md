@@ -192,6 +192,37 @@ efhi 回退与 `child_push` 重定位的交互），已回退。
 （活节点/边本身超限），不是回收问题——**只有 1054 T-10 的分页前端能过**（1054 分支实测 103KB
 模块可到 `bind.module`）。因此 T-17 的前置升级为「**1054 分页前端落主**」。
 
+### T-14 for-in HIR 设计（2026-11-24，用户选定方向）
+
+**现状**：`core_hir` 对 `for-in-stmt` 走兜底 `hir.unsupported`（`form != "if-stmt"` 分支）；
+`aac-for-cond-stmt` 已有 loop/if 组合的先例（core_hir.at §loop）。
+
+**方案 A（推荐，少改 MIR）**：把 `for <x> in <xs>` 脱糖成既有 HIR 语句：
+```
+idx = 0                      // 合成局部
+loop {
+  if (idx < b:list.len(xs)) {
+     x = b:list.get(xs, idx)  // 绑定位
+     <body>
+     idx = idx + 1
+  } else break
+}
+```
+需要的 HIR 能力：①闭集 builtin callee `b:list.len` / `b:list.get`（T-14 的
+`callee: "b:<name>"` 形 + verify 白名单）；②合成局部槽（`core_globals`/`core_records`
+已有 local 机制可复用）；③表达式 id 分配（`expression_ids`）。
+
+**方案 B（专用语句 kind）**：新增 `for_in_statement() = 5`，statement stride 不变，
+fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、verify、MIR lowering——
+改动面比 A 大，但 MIR 语义更直接。
+
+**验收（V-14）**：`for x in xs` 的 HIR 文本出现确定形（A：loop/if/assign 组合；B：for-in 语句）；
+既有程序的 HIR 文本逐字节不变；未知 builtin/未知语句 kind 具名拒绝；`run_base_mir_case`
+在 T-15 后执行同一语义（迭代求和 = 字面 oracle）。
+
+**本轮结论**：因剩余预算不足，先落设计；实现从方案 A 的 ①开始（builtin callee 闭集 +
+`list.len`/`list.get`），并与 T-15 的 MIR op 对齐。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
