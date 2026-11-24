@@ -223,7 +223,7 @@ pub fn compile_language_source_prepared(
     src: &str,
     module_path: &str,
     capabilities: &[String],
-    mut prepare: impl FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
+    prepare: impl FnMut(&mut super::ast::Program, &str, bool) -> Result<(), Vec<Diagnostic>>,
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
     compile_language_source_with_metadata(src, module_path, capabilities, prepare)
         .map(|(compiled, _)| compiled)

@@ -51,12 +51,6 @@ pub(crate) fn analyze(program: &Program) -> NameUse {
     refs.use_
 }
 
-/// Every name the program uses as a value, a call target, a type or a spec,
-/// local bindings included.
-pub(crate) fn mentioned_names(program: &Program) -> BTreeSet<String> {
-    analyze(program).mentioned
-}
-
 /// Names of the program's own top-level items (functions, records, enums, …).
 pub(crate) fn declared_names(program: &Program) -> BTreeSet<String> {
     program

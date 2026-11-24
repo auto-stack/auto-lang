@@ -86,6 +86,14 @@ pub fn synthesize_json_encodable_methods(program: &mut Program) -> Result<(), Ve
             _ => None,
         })
         .collect();
+    let enums: BTreeSet<String> = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Enum(e) if e.type_params.is_empty() => Some(e.name.name.clone()),
+            _ => None,
+        })
+        .collect();
 
     let mut diags = Vec::new();
 
@@ -110,6 +118,7 @@ pub fn synthesize_json_encodable_methods(program: &mut Program) -> Result<(), Ve
             record_specs: &record_specs,
             record_fields: &record_fields,
             overrides: &overrides,
+            enums: &enums,
         };
         let mut stack = BTreeSet::new();
         stack.insert(record.name.name.clone());
@@ -132,13 +141,17 @@ struct SynthCtx<'a> {
     record_fields: &'a BTreeMap<String, Vec<(String, TypeAnn, Span)>>,
     /// Records that declare their own `json_encode`.
     overrides: &'a BTreeSet<String>,
+    /// Names declared by `enum` items. A field of such a type may own a
+    /// payload, and the verifier counts a variant as a resource leaf, so the
+    /// refusal below names it like owned text or a list.
+    enums: &'a BTreeSet<String>,
 }
 
 impl SynthCtx<'_> {
     /// The first field of record `name` through which its values own data —
     /// the binder's rule for a list element being a view instead of a value:
-    /// the field types reach owned text, a list, an enum or option, or a
-    /// function, directly or through nested records.
+    /// the field types reach text (owned or borrowed), a list, an enum or
+    /// option, or a function, directly or through nested records.
     fn owned_field(&self, name: &str) -> Option<String> {
         let mut seen = BTreeSet::from([name.to_string()]);
         self.record_fields
@@ -150,9 +163,14 @@ impl SynthCtx<'_> {
 
     fn owns_data(&self, ty: &TypeAnn, seen: &mut BTreeSet<String>) -> bool {
         match &ty.kind {
-            TypeRef::Builtin(TypeWord::StrOwned) => true,
+            // `Str` owns its buffer and `str` is a borrowed text slice; the
+            // verifier counts both as resource leaves.
+            TypeRef::Builtin(TypeWord::Str | TypeWord::StrOwned) => true,
             TypeRef::Generic { name, .. } => name.name == "List",
             TypeRef::Record(record) => {
+                if self.enums.contains(&record.name) {
+                    return true;
+                }
                 seen.insert(record.name.clone())
                     && self.record_fields.get(&record.name).is_some_and(|fields| {
                         fields.iter().any(|(_, ty, _)| self.owns_data(ty, seen))
