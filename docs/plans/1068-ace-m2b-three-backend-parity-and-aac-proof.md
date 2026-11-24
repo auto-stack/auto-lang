@@ -250,6 +250,8 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 
 **HIR 发射尝试（2026-11-24，已回退）**：按上设计在 `core_hir.at` 加 op 23/24/25 + `builtin_text_op` + call 分支发射。构建通过，但 `c.to_codepoint()` 仍 `hir.unsupported`；**决定性探针**：让 `builtin_text_op` 无条件返回 `char_at_op()` 后仍不变 → 该 call 行**同样没有进入 `node_kind == "call"` 的发射分支**（与 `List<T>.new()` 的症状同源：某个 call 行在 HIR 的 `owner >= 0 && hir_value_type(records,t)` 门外被跳过）。已回退到 `7dd8eaaaa`。**根因修正（2026-11-24，探针链）**：在 `lower_expressions` 里对 `c.to_codepoint()` 行做三段探针（返回 `hir.owner`/`hir.type`/`hir.shape` 区分 owner/类型/kind）得到 **`hir.owner` = `kind(row) == "call"`**，且 owner ≥ 0、`hir_value_type(types,t)` 为真——**call 行确实被访问、门也通过**。此前"行不被看见"的判断作废；真正原因在 `builtin_text_op` 的早退（`postfix`/`atom`/`step`/`member` 查找之一返回 -1）或接收者表达式 id 取不到（`operand < 0` → 我们自己的 `hir.unsupported`）。下一步：对 `builtin_text_op` 的每个早退分支编码不同错误码，一次定位是哪一步失败，再修正查找逻辑（不要改 `lower_expressions` 的结构）。
 
+**已定位（2026-11-24，哨兵码实验，已回退）**：给 `builtin_text_op` 的早退分支编 -1/-2/-3 哨兵后跑 `only-codepoint` 得到 **`hir.initialization`** → 函数**已识别出 op 24**（`char_to_codepoint`），失败在接收者表达式 id 取不到。进一步发现 **`core_value_type` 只认 int/bool/text_view/record，`char` 根本不是 HIR 值类型**——所以 `char` 参数/返回值/`char_at` 结果的表达式都不发射。把 `char_type()` 加进 `core_value_type` 后：`only-charat` → `hir.initialization`（接收者 `s` 仍取不到）、`only-codepoint` → `hir.reference`（verify 拒绝 op 24 的引用）。**结论：T-14 的 char/text 内建必须连同「char 作为 HIR 值类型」一起做**（core_value_type + 接收者解析 + verify 白名单三条同步），否则单点接线一定失败。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
