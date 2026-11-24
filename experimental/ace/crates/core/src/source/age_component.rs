@@ -1121,7 +1121,11 @@ fn qualify_store_messages(stmts: &mut [ComponentStmt]) {
 /// `store.<Msg>(args)` 调用识别：返回 (Msg, args)。
 fn store_call_parts(call: &Expr) -> Option<(String, Vec<Expr>)> {
     match &call.kind {
-        ExprKind::MethodCall { recv, name, args, .. } if is_store_base(recv) => {
+        ExprKind::MethodCall { recv, name, args, .. } => {
+            if !is_store_base(recv) {
+                eprintln!("P119DBG store_call_miss recv={:?} name={}", recv.kind, name.name);
+                return None;
+            }
             let mut out = Vec::new();
             for a in args {
                 match a {
