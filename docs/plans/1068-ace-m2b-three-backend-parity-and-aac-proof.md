@@ -292,13 +292,13 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 - [ ] **T-08｜work｜AC-01..04**：核 V-01..05、1096 正式同版验收分母与每个适用 AC Case 的实际结果、对应 W1/W2/W3 与域证据，完整 required 差额为 0 后冻结范围、同版身份及正式结果，交 985/B。
 - [ ] **T-09｜review｜AC-REVIEW**：独立核生产证据、三端运行与逐行 oracle，反查缩分母、AAC 子集冒完整支持、fallback、领域和资源遗漏。
 - [ ] **T-10｜merge｜AC-LAND**：正式合入验收结果、支持范围及证据簿记，交 985/B/986/987；沿原流程清理阶段材料和工作树。
-- [ ] **T-11｜work｜AC-11**：AAC CL 基线与 parser 缺口决策。重绑 master S/std 闭包身份并重跑 85 模块门面清单；判定 `for x in <collection>` 属 profile 缺生产 / 投影未接 / 形状不匹配，落 `plan-artifacts/plan-1068/aaccl-gap-decision.md`（含 grammar data 生成器命令）；同步在 Design59 §3 归属表补记 1068 承接。验证：清单与 1054 证据逐条对齐、`prepare-native` 双 driver rc=0。
+- [ ] **T-11｜work｜AC-11**：AAC CL 基线与 parser 缺口决策（**master 现有前端**：256KiB 模块准入/64K 列表；std 闭包单模块 ≤41KB 全部可测，S 的 341KB grammar_data 留 T-17）。重绑 master S/std 闭包身份并重跑可达模块门面清单（std 18 + S 中 ≤256KiB 的模块）；判定 `for x in <collection>` 属 profile 缺生产 / 投影未接 / 形状不匹配，落 `plan-artifacts/plan-1068/aaccl-gap-decision.md`（含 grammar data 生成器命令）；同步在 Design59 §3 归属表补记 1068 承接。验证：清单与 1054 证据逐条对齐、`prepare-native` 双 driver rc=0。
 - [ ] **T-12｜work｜AC-12**：parser 列表迭代。按 T-11 结论改 aac profile / grammar 源并重新生成 `syntax_grammar_data.at`（不手改数据文件），或补 `syntax_parse` 投影；新 golden 覆盖 List/Str/空集/嵌套与缺 in、range 误用、绑定重名三类负控。验证：`cargo t ace-aac-syntax`（预期 51/51 或仅既有并发账）+ 语义车道 parse 用例 + V-12。
 - [ ] **T-13｜work｜AC-13**：checker 原语与泛型构造。`types/typecheck/binding.at` 增 `Str.char_at`、`char.to_codepoint`、`char.from_codepoint`、`List<T>.new()`（含嵌套）事实；`paged.at` 与 `syntax_grammar_data` 两个 S 内实例单独定位。验证：V-13 + 错参/未知名负控。
 - [ ] **T-14｜work｜AC-14**：HIR builtin callee 闭集。`core_hir.at` 增 `callee: "b:<name>"` 形与 verify 白名单；既有程序 HIR 文本逐字节不变。验证：语义车道 HIR 用例 + V-14。
 - [ ] **T-15｜work｜AC-15**：MIR/ABC 迭代与原语 lowering。`base_ir/lower_base/verify_base/base_abc.at` 落地索引循环与 char/文本原语；缺 op 时按 `av-core` 合同增补 + conformance。验证：`run_base_mir_case` + AV 独立 oracle + V-15。
 - [ ] **T-16｜work｜AC-16**：std 闭包与待办面。project 车道 `std/<stem>` + `gen-next` 物化（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块绑定/定型；`aac.pending-work/1`（env/path/rand/time）与 `std/math` 逐条实现或具名分期（阶段码 + 受影响 CL 行）。验证：V-16 + `cargo t ace-aac ace-aac-gen1` 无新增红。
-- [ ] **T-17｜work｜AC-17**：全树 project 门与固定组。85 模块 project 编译，落 MIR/ABC 或完整具名拒绝清单（阶段 + code + span，零 trap）；扫描脚本落材料区；记录执行/排除/耗时。验证：V-17 + `cargo t ace-aac-syntax ace-aac-gen1 ace-aac`。
+- [ ] **T-17｜work｜AC-17**：全树 project 门与固定组。**前置**：全树需要 PLAN-1054 T-10 的分页前端 + 512KiB 准入（该批在 1054 分支，尚未落主）；1054 交付前本任务只做"std 闭包 + ≤256KiB S 模块"可达门并如实记 pending。1054 交付后补 85 模块 project 编译，落 MIR/ABC 或完整具名拒绝清单（阶段 + code + span，零 trap）；扫描脚本落材料区；记录执行/排除/耗时。验证：V-17 + `cargo t ace-aac-syntax ace-aac-gen1 ace-aac`。
 
 T-01 冻结验收分母。T-02–05 按实际输入签收，T-06/07 最终复验，T-08 汇总，T-09 独立复审，T-10 正式交接。发布差额归零以原 required 行逐条有证为准。
 
