@@ -546,7 +546,7 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 
 **未在本入口观察的面**：多文件包面（`packages` 装配线，`use pkg.module.symbol`）没有嫁接通道，
 `HashMap.new()` 在该面不属本计划交付；该线在未准备的工作树里现成 972 用例即红，观察留待
-`cargo t` 准备后的冻结并集复核。大小写映射沿文本模块的 ASCII 实现（非 ASCII 文本未承诺）。
+`cargo t` 准备后的冻结并集复核。大小写映射沿文本模块既有实现（函数名 `upper_ascii`/`lower_ascii`；复审实测非 ASCII 亦按 Unicode 映射）。
 
 ## PLAN-1122 · 字符串转宽无符号整数
 

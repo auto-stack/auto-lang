@@ -5990,7 +5990,14 @@ fn vt_of_ann_coll(
         ast::TypeRef::Record(id) => match rec_index
             .get(&id.name)
             .copied()
-            .or_else(|| grafted_migration_rec(rec_index, &id.name))
+            // a program-declared enum of the same name keeps its annotation
+            // (it binds below, like before the grafted fallback existed)
+            .or_else(|| {
+                coll.variant_by_name(&id.name)
+                    .is_none()
+                    .then(|| grafted_migration_rec(rec_index, &id.name))
+                    .flatten()
+            })
         {
             Some(i) => VT::Rec(i),
             // Legacy AGE helpers leave the element type unspecified.

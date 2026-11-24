@@ -710,7 +710,8 @@ print("hello".upper())
 
 #[test]
 fn v03_methods_on_split_and_lines_elements() {
-    // legacy.26_str_method_on_heap.001_lower_on_split. The ORIGINAL binding
+    // legacy.26_str_method_on_heap.001_lower_on_split (the first statements
+    // of the original source, verbatim). The ORIGINAL binding
     // `let p1 = parts[1]` names a whole owned element as a value — the
     // element-copy discipline rejects it by name (the approved difference).
     let (stage, code) = diag(
@@ -1071,5 +1072,35 @@ fn main() int {
 "#
         ),
         Value::I32(15)
+    );
+    // a whole line inside a multi-line string literal is data as well: the
+    // text is never blanked (review finding R-1131-01)
+    assert_eq!(
+        ok_value(
+            r#"
+fn main() int {
+    var s = "line one
+use auto.result
+line three"
+    return s.len()
+}
+"#
+        ),
+        Value::I32(35),
+        "line one + use auto.result + line three, with two newlines"
+    );
+    assert_eq!(
+        ok_stdout(
+            r#"
+fn main() int {
+    var s = "a
+use auto.str: len
+b"
+    print(s)
+    return 0
+}
+"#
+        ),
+        "a\nuse auto.str: len\nb\n"
     );
 }

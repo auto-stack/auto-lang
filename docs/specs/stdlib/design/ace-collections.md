@@ -65,7 +65,7 @@ AV/C、AV/Rust 具名 pending。
 ## PLAN-1121 增量（2026-11-23，普通面迁移容器合同）
 
 `HashMap`/`HashSet` 迁移容器（`stdlib/ace/asm/map_str.at`，普通 Auto 面嫁接，非本装配集）的
-键值与生命周期合同（细节见 [m2-stdlib-core](../ace-migration/m2-stdlib-core.md) PLAN-1121 增量）：
+键值与生命周期合同（细节见 [m2-stdlib-core](../../ace-migration/m2-stdlib-core.md) PLAN-1121 增量）：
 
 - **容器资源**：迁移 map 的存储 = 四条并行 List（keys List<Str>/tags List<int>/ivals
   List<int>/svals List<Str>），set = 一条 List<Str>；全部经冻结 collections 方法表
@@ -86,12 +86,13 @@ AV/C、AV/Rust 具名 pending。
 ## PLAN-1131 增量（2026-11-24，跨函数传递、返回与最后所有者）
 
 普通面迁移容器（非本装配集）作公共类型跨函数使用的合同；类型绑定与旧导入见
-[m2-stdlib-core](../ace-migration/m2-stdlib-core.md) PLAN-1131 增量。
+[m2-stdlib-core](../../ace-migration/m2-stdlib-core.md) PLAN-1131 增量。
 
 - **跨函数传递**：持有资源的容器记录作实参按共享引用传递（不复制）：被调方的插入、删除、
   清空对调用者可见，无需 `.move`；`HashMap`/`HashSet` 注解与构造器是同一记录身份。
-- **返回**：被调方 `return m` 把局部容器交给调用者；调用者继续查询、替换、删除均合法，
-  返回后调用者是其所有者。
+- **返回**：被调方 `return m` 把**局部**容器交给调用者；调用者继续查询、替换、删除均合法，
+  返回后调用者是其所有者。经形参收到的容器不可直接返回或存入记录
+  （`mir.return-type` / `mir.aggregate-field-type`，资源记录的既有规则，债务 D-1131-PARAM-RETURN）。
 - **最后所有者与释放**：存储随最后持有帧退出而释放——被调方局部未返回则随被调帧退出；
   返回给调用者则随调用者作用域退出；经形参的失败路径（`fail`）同样对账。arena 上
   分配 == 释放、live = 0；两种归属的分配数相同（同一存储，返回不触发复制）。

@@ -137,7 +137,7 @@ merge 级门。
 
 - **可引用的容器类型**：类型注解位（形参/返回/字段/`var`/`let`）书写 `HashMap`/`HashSet`
   在程序未声明同名类型时绑定到**与构造器同一**嫁接记录（解析器 `grafted_migration_rec`：
-  `__std_HashMap`/`__std_HashSet`）；用户自声明同名类型优先（同构造回退的遮蔽规则）。
+  `__std_HashMap`/`__std_HashSet`）；用户自声明的同名记录类型优先（同构造回退的遮蔽规则）；同名枚举在注解位同样优先。
   注解是受检身份而非擦除：int、另一记录、另一容器作实参在 Verify 以 `source.type-mismatch` 拒。
 - **StringBuilder 嫁接**：`stdlib/ace/asm/builder.at` 的 `__std_StringBuilder` 是纯 Auto 记录
   （`parts List<Str>` + `+` 拼接 + f-string 整数渲染；无自有缓冲或文本算法；**不属于** 972
@@ -146,7 +146,7 @@ merge 级门。
   `clear` 清空；`drop` 为使用结束标记（单元 no-op）。源提及 `StringBuilder` 时嫁接，同名用户类型优先。
 - **文本方法**：`.upper()` 与 `to_upper` 走同一 case intrinsic；`.lines()` 接文本模块的 `lines`。
 - **已验旧导入**：单文件普通面没有 `use` 项。适配器识别且仅识别**整行**的
-  `use auto.str: a, b`（标识符列表）与 `use auto.result`，按字节原位抹空（字节数不变，跨度不变），
+  `use auto.str: a, b`（标识符列表）与 `use auto.result`，按字节原位抹空（字节数不变，跨度不变）；位于字符串字面量之内或含有引号的行是程序数据，绝不抹空，
   再把导入名经转发函数接到既有公共模块，不复制算法：
   - 文本模块 `stdlib/ace/asm/text.at`（`__std_text_*`）：`len`→`byte_len`、`is_empty`→`byte_len == 0`、
     `upper`/`lower`→`upper_ascii`/`lower_ascii`、`contains`/`starts_with`/`ends_with`/`trim`/`replace`/

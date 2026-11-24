@@ -703,13 +703,20 @@ fn is_legacy_name(name: &str) -> bool {
 
 /// Recognise the legacy imports of `src` and answer the source with those
 /// lines blanked (every other byte, and so every user span, is unchanged).
+/// A line inside a string literal, or holding one, is never masked.
 fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
     let mut out = String::with_capacity(src.len());
     let mut imports = LegacyImports::default();
     let mut changed = false;
+    // a line inside a multi-line string literal is program data, never an
+    // import: the mask only touches lines that lie outside every literal
+    let mut in_string = false;
     for line in src.split_inclusive('\n') {
         let body = line.strip_suffix('\n').unwrap_or(line);
         let body = body.strip_suffix('\r').unwrap_or(body);
+        let quotes = body.bytes().filter(|b| *b == b'"').count() % 2 == 1;
+        let literal = in_string || body.contains('"');
+        in_string ^= quotes;
         let text = body.trim();
         let mut names: Vec<String> = Vec::new();
         let mut result = false;
@@ -728,7 +735,7 @@ fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
         } else if text == "use auto.result" {
             result = true;
         }
-        if names.is_empty() && !result {
+        if literal || (names.is_empty() && !result) {
             out.push_str(line);
             continue;
         }
