@@ -235,6 +235,12 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 
 **投影层尝试（2026-11-24，已回退）**：在 `for-in-stmt` 规则里加 `alt(profiles: [aac]) { ... atom-expr(field:"iter") ... }`（先放第一位、重新生成 grammar data、重建驱动）。结果：binder 报告（`AAC1047_TYPED=0`）显示 **`xs` 仍无 `USE`**（iterable 仍未绑定），说明该 alt 未被选中或 `atom-expr` 在该位置未生效；随后 typecheck 阶段 `trap:ListIndex`。已回退（grammar/data/typecheck 全回滚到 `93baf690b`，避免无谓的 S 身份变更）。下一步：先用 1046 驱动 dump 新 grammar 下 for-in 的 AST，确认 alt 选择；或直接在投影实现里对 `for-in-stmt` 的 iter 子节点做包装（不依赖 grammar 顺序）。
 
+**已打通（2026-11-24，worktree `7dd8eaaaa`）**：不需要投影层包装——三处配合即可：
+1. binder 的 occurrence 过滤加 `for-in-stmt` + `role == "iter"`（iterable 现在绑定到参数，`USE 8 xs 0 52..54`）；
+2. `derive` 对 `for-in-stmt` 返回可迭代类型的元素类型（`type_first`），并把该行从 `initializer_category` 分支排除；
+3. `validate` 的初始化断言对 `for-in-stmt` 跳过（否则 `child_with_role(...,"value")` = -1 → `facts.get(-1)` → `trap:ListIndex`，这正是前几轮 trap 的根因）。
+实测：`for x in xs { t = t + x }` → **`hir.unsupported 0 43..80`**（绑定/定型全过，停在 HIR，正是 T-14 的目标边界）；`for` 外使用 `x` 仍 `bind.unresolved`；`ace-aac-syntax` **PASS（11s）**。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
