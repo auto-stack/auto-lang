@@ -907,6 +907,15 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
         }
     }
 
+    /// The first expression under a run of unary nodes: `- -o` and `-o`
+    /// both bottom out at `o`, `- -rate` at `rate`.
+    fn py_unary_bottom(&self, mut id: hir::ExprId) -> hir::ExprId {
+        while let hir::ExprKind::Unary { operand, .. } = self.facts.body.exprs[id.0 as usize].kind {
+            id = operand;
+        }
+        id
+    }
+
     /// The checked VALUE expression at exactly `span`. Frame-construction
     /// nodes (display/concat/borrow, the AV encoding intrinsics and every
     /// py-lane frame helper) are not values and are skipped; a py-op call
@@ -930,6 +939,14 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
     /// lookup keeps its earlier behaviour for these operands — the operand
     /// itself is the value — instead of changing what an admitted program
     /// does.
+    ///
+    /// PLAN-1129 (review R-15): "these operands" is judged at the bottom of
+    /// the WHOLE chain, not one level down. In `- -o` the outer node's own
+    /// operand is the inner negation, which is not an object; judging one
+    /// level down preferred the outer node and emitted `a2x_neg(a2x_neg(o))`,
+    /// the very behaviour R-11 set out to keep. No node of a chain that
+    /// bottoms out in an object is preferred, so at any depth the lookup
+    /// returns what it returned before the R-01 repair.
     fn py_find_value(&self, span: (u32, u32)) -> Option<hir::ExprId> {
         let mut best: Option<(u8, hir::ExprId)> = None;
         let mut unary: Option<hir::ExprId> = None;
@@ -937,9 +954,10 @@ impl<'v, 'a> PyLowerCtx<'v, 'a> {
             if (x.span.start as u32, x.span.end as u32) != span {
                 continue;
             }
-            if let hir::ExprKind::Unary { operand, .. } = x.kind {
-                if !self.py_is_object_expr(operand) {
-                    unary = Some(hir::ExprId(i as u32));
+            if let hir::ExprKind::Unary { .. } = x.kind {
+                let id = hir::ExprId(i as u32);
+                if !self.py_is_object_expr(self.py_unary_bottom(id)) {
+                    unary = Some(id);
                 }
             }
             let rank = match &x.kind {

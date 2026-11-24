@@ -166,12 +166,13 @@ AV 从其装配的 CPython 解析同组包。环境配法见
   旧字面量，重赋值后两端都传旧值；该缺陷随本次一并修掉。
 - **取负实参**：操作数是 Auto 数值（f32、f64、i32 的局部变量、函数结果，或 `.to(double)`、
   `.to(float)`、`.to(int)` 的提取结果）而实参最外层运算符是一元负号时（`-rate`、
-  `-(rate * 2.0d)`、`-twice(1.0d)`、`-o.real.to(double)`、`ndigits: -digits`、`-(-seed)`），Python
-  收到取反后的值。解析器给一元节点的是其操作数的 span，两者同 span；按 span 取表达式时，一元
-  节点的操作数不是 Python 对象才取最外层的取负节点——取与它同 span 的操作数会把符号丢掉
-  （`pack(">d", -rate)` 曾传出 `+0.2`，`sqrt(-seed)` 曾不抛异常）。`a2x_neg` 负责整数：
-  `repr(-n)` 得 `-3`，`round(2.5d, ndigits: -digits)` 得 `0.0`。整数形态只在 A2PY 侧钉住——AV 对
-  程序算出的负整数实参另有早于本计划的缺陷（D-1129-01，见 AV 规范的已知边界）。
+  `-(rate * 2.0d)`、`-twice(1.0d)`、`-o.real.to(double)`、`ndigits: -digits`、`-(-seed)`、
+  `- - -rate`），Python 收到取反后的值。解析器给一元节点的是其操作数的 span，两者同 span；
+  按 span 取表达式时，一元节点所在取负链的链底不是 Python 对象才取最外层的取负节点，套几层
+  取负都一样——取与它同 span 的操作数会把符号丢掉（`pack(">d", -rate)` 曾传出 `+0.2`，
+  `sqrt(-seed)` 曾不抛异常）。`a2x_neg` 负责整数：`repr(-n)` 得 `-3`，
+  `round(2.5d, ndigits: -digits)` 得 `0.0`。整数形态只在 A2PY 侧钉住——AV 对程序算出的负整数
+  实参另有早于本计划的缺陷（D-1129-01，见 AV 规范的已知边界）。
 - **f32 精度**：Python 浮点是双精度，A2PY 此前对 `float` 算术不舍入，f32 类型的值实际携带
   双精度。现在 `float` 的 `+ - * /` 每一步经 `a2x_f32_round` 舍入（ties-to-even，溢出为
   `+/-inf`），与 TypeScript 目标既有的“每步 round”规则一致；传入 Python 调用的 f32 操作数在
@@ -189,14 +190,22 @@ AV 从其装配的 CPython 解析同组包。环境配法见
   `generated_python_negates_an_int_argument` 单独钉住。取负规则按操作数类别钉住：
   `generated_python_negates_every_auto_value_operand_class` 覆盖 19 格 Auto 数值（位置槽与关键字槽），
   `generated_python_keeps_the_earlier_behaviour_for_object_operands` 覆盖 10 格 Python 对象。
+  取负套到两层、三层时，同一规则按整条取负链的链底判断：
+  `generated_python_keeps_the_earlier_behaviour_for_a_unary_chain_over_an_object`（12 格）与
+  `generated_python_keeps_the_earlier_behaviour_for_the_sibling_object_chains`（9 格）把压在
+  Python 对象上的取负链的输出与生成码里的取负层数，钉在取负修复之前（R-01 之前）的实测值；
+  `generated_python_negates_a_unary_chain_over_an_auto_value`（11 格）钉住 Auto 数值链取整条、
+  等于原生。
 - **工程入口**：`M2Build::build(TargetKind::A2py, …)` 编译同一份 PyTorch 源，`ace-m2-build`
   的 `py_float_args_1129` 运行生成程序并核对优化器自报的学习率。
 - **缓存身份**：`a2x_f32_round` 进入基础运行时，运行时内容哈希随之变化，既有片段缓存按身份
   自然换代。
 - **已知边界**：A2PY 的操作数查找把文本拼接表达式与帧构造节点一并跳过，拼接表达式须先绑定
   局部变量再作为实参（早于本计划）。对 Python 对象取负（`-sqrt(0.25d)`、`repr(-o)`、`-o.real`）
-  不在 v1 操作集内：前门放行并按 i32 处理（961 对非数值操作数的回退），A2PY 把对象经 `int()`
-  截断后取负——浮点得 0，复数抛出未归类的 `TypeError`；调用结果与对象局部变量作实参时传入的是
-  操作数本身。这是早于本计划的缺陷（D-1129-09），本计划不改变它。
+  不在 v1 操作集内：前门放行并按 i32 处理（961 对非数值操作数的回退），A2PY 得到的值因形态
+  而异。调用结果、运算结果与对象局部变量作实参时，查找传入的是操作数本身，符号丢失；属性读取
+  上的取负，以及先取负再 `.to()` 的形态，节点按 i32 取负 lowering，即经 `int()` 截断后取负——
+  浮点得 0，复数一类的对象抛出未归类的 `TypeError`。取负套到几层结论都一样：查找按整条取负链
+  的链底判断，链底是 Python 对象就不优先。这是早于本计划的缺陷（D-1129-09），本计划不改变它。
 
 来源见 [PLAN-1129](../../plans/archive/1129-ace-python-runtime-float-arguments.md)。

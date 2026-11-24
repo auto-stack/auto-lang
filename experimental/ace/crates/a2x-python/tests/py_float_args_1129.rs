@@ -867,6 +867,20 @@ fn observed_argument(generated: &str, head: &str, tail: &str) -> String {
         .to_string()
 }
 
+/// Where the argument of a matrix cell's observed call sits in the generated
+/// code: by the slot and the format the cell's statement uses.
+fn observed_slot(statements: &str) -> (&'static str, &'static str) {
+    if statements.contains("pack(\">d\"") {
+        ("l0_pack, None, [\">d\", ", "], {})")
+    } else if statements.contains("pack(\">f\"") {
+        ("l0_pack, None, [\">f\", ", "], {})")
+    } else if statements.contains("repr(") {
+        ("l1_repr, None, [", "], {})")
+    } else {
+        ("None, [], {\"real\": ", ", \"imag\"")
+    }
+}
+
 fn run_matrix(cells: &[Cell], label: &str) {
     for cell in cells {
         let dir = scratch(&format!("matrix-{label}-{}", cell.name.replace(' ', "-")));
@@ -876,15 +890,7 @@ fn run_matrix(cells: &[Cell], label: &str) {
         );
         emit(&dir, &source);
         let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
-        let (head, tail) = if cell.statements.contains("pack(\">d\"") {
-            ("l0_pack, None, [\">d\", ", "], {})")
-        } else if cell.statements.contains("pack(\">f\"") {
-            ("l0_pack, None, [\">f\", ", "], {})")
-        } else if cell.statements.contains("repr(") {
-            ("l1_repr, None, [", "], {})")
-        } else {
-            ("None, [], {\"real\": ", ", \"imag\"")
-        };
+        let (head, tail) = observed_slot(cell.statements);
         let arg = observed_argument(&generated, head, tail);
         let depth = negation_depth(&generated, &arg);
         match cell.shape {
@@ -929,4 +935,320 @@ fn generated_python_negates_every_auto_value_operand_class() {
 #[test]
 fn generated_python_keeps_the_earlier_behaviour_for_object_operands() {
     run_matrix(&PYTHON_OBJECT_CELLS, "object");
+}
+
+// ---- the unary minus stacked more than once (review R-15) ----------------------
+
+/// One cell of the unary-CHAIN matrix: an operand class under two or three
+/// unary minuses, in the positional or the keyword slot. `depth` is how many
+/// unary-minus wrappers must enclose the argument of the observed call in
+/// the generated Python.
+struct ChainCell {
+    name: &'static str,
+    statements: &'static str,
+    expect: &'static str,
+    depth: usize,
+}
+
+/// Unary-minus wrappers around one generated argument. Temporaries, locals
+/// and the extraction wrappers that do not count (`float(..)`,
+/// `a2x_check_i32(..)`, `a2x_f32_round(..)`) are followed to what they hold.
+fn chain_depth(generated: &str, arg: &str) -> usize {
+    let arg = arg.trim();
+    for wrapper in ["-(", "a2x_neg("] {
+        if let Some(inner) = arg.strip_prefix(wrapper) {
+            return 1 + chain_depth(generated, inner.trim_end_matches(')'));
+        }
+    }
+    for wrapper in ["float(", "a2x_check_i32(", "a2x_f32_round("] {
+        if let Some(inner) = arg
+            .strip_prefix(wrapper)
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
+            return chain_depth(generated, inner);
+        }
+    }
+    if arg.starts_with('t') || arg.starts_with('l') {
+        // the LAST assignment: a local is declared as `None` before it is set
+        let line = generated
+            .lines()
+            .rev()
+            .find(|line| line.trim_start().starts_with(&format!("{arg} = ")))
+            .unwrap_or_else(|| panic!("no definition of `{arg}`"));
+        return chain_depth(
+            generated,
+            line.trim_start().split_once(" = ").unwrap().1.trim(),
+        );
+    }
+    0
+}
+
+/// A Python OBJECT under two or three unary minuses, each in the positional
+/// and the keyword slot (review R-15). `expect` is the output MEASURED on the
+/// lookup before the R-01 repair, and `depth` the node it picked: the call
+/// result or the object local itself (0); for an attribute read the innermost
+/// negation (1), because the attribute node's span covers only the attribute
+/// name and the negations are the lookup's only candidates there. The outputs
+/// are the known-wrong ones of D-1129-09. A unary candidate is judged by the
+/// bottom of its whole chain, so no depth changes what an admitted program
+/// does: the first repair negated every depth, the second every depth but
+/// the first.
+const OBJECT_CHAIN_CELLS: [ChainCell; 12] = [
+    ChainCell {
+        name: "C1p call result x2",
+        statements: "print(repr(- -sqrt(0.25d)).to(str))",
+        expect: "0.5",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C1k call result x2",
+        statements: "print(complex(real: - -sqrt(0.25d), imag: 0.0d))",
+        expect: "(0.5+0j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C2p call result x3",
+        statements: "print(repr(- - -sqrt(0.25d)).to(str))",
+        expect: "0.5",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C2k call result x3",
+        statements: "print(complex(real: - - -sqrt(0.25d), imag: 0.0d))",
+        expect: "(0.5+0j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C3p object local x2",
+        statements: "print(repr(- -o).to(str))",
+        expect: "(0.25+0.5j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C3k object local x2",
+        statements: "print(complex(real: - -o, imag: 0.0d))",
+        expect: "(0.25+0.5j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C4p object local x3",
+        statements: "print(repr(- - -o).to(str))",
+        expect: "(0.25+0.5j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C4k object local x3",
+        statements: "print(complex(real: - - -o, imag: 0.0d))",
+        expect: "(0.25+0.5j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C5p attribute read x2",
+        statements: "print(repr(- -o.real).to(str))",
+        expect: "0",
+        depth: 1,
+    },
+    ChainCell {
+        name: "C5k attribute read x2",
+        statements: "print(complex(real: - -o.real, imag: 0.0d))",
+        expect: "0j",
+        depth: 1,
+    },
+    ChainCell {
+        name: "C6p attribute read x3",
+        statements: "print(repr(- - -o.real).to(str))",
+        expect: "0",
+        depth: 1,
+    },
+    ChainCell {
+        name: "C6k attribute read x3",
+        statements: "print(complex(real: - - -o.real, imag: 0.0d))",
+        expect: "0j",
+        depth: 1,
+    },
+];
+
+/// The sibling shapes of the same cause (review R-15): an object read out of
+/// an attribute and bound to a local, an operator result, a negation that
+/// sits under an extraction, and an int call result, under two minuses.
+/// `expect` and `depth` as above. The two cells under an extraction do not
+/// pass through the unary preference at all: the lookup's span there holds
+/// only the extraction node, at every depth.
+const SIBLING_CHAIN_CELLS: [ChainCell; 9] = [
+    ChainCell {
+        name: "C7p object local from an attribute x2",
+        statements: "var q = o.real\n    print(repr(- -q).to(str))",
+        expect: "0.25",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C7k object local from an attribute x2",
+        statements: "var q = o.real\n    print(complex(real: - -q, imag: 0.0d))",
+        expect: "(0.25+0j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C8p operator result x2",
+        statements: "print(repr(- -(o.real * 2.0d)).to(str))",
+        expect: "0.5",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C8k operator result x2",
+        statements: "print(complex(real: - -(o.real * 2.0d), imag: 0.0d))",
+        expect: "(0.5+0j)",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C9p call result then .to(double) x2",
+        statements: "print(pack(\">d\", - -sqrt(0.25d).to(double)).hex().to(str))",
+        expect: "0000000000000000",
+        depth: 2,
+    },
+    ChainCell {
+        name: "C9k call result then .to(double) x2",
+        statements: "print(complex(real: - -sqrt(0.25d).to(double), imag: 0.0d))",
+        expect: "0j",
+        depth: 2,
+    },
+    ChainCell {
+        name: "C10p call result then .to(int) x2",
+        statements: "print(repr(- -len(\"abc\").to(int)).to(str))",
+        expect: "3",
+        depth: 2,
+    },
+    ChainCell {
+        name: "C11p int call result x2",
+        statements: "print(repr(- -len(\"abc\")).to(str))",
+        expect: "3",
+        depth: 0,
+    },
+    ChainCell {
+        name: "C11k int call result x2",
+        statements: "print(complex(real: - -len(\"abc\"), imag: 0.0d))",
+        expect: "(3+0j)",
+        depth: 0,
+    },
+];
+
+/// An Auto VALUE under two or three unary minuses (review R-01 on a chain):
+/// the lookup hands the call the WHOLE chain and Python prints the native
+/// result. Before the R-01 repair it handed the operand, the innermost
+/// negation, the product or the extraction, and the sign was lost.
+const AUTO_CHAIN_CELLS: [ChainCell; 11] = [
+    ChainCell {
+        name: "D1p f64 local x2",
+        statements: "print(pack(\">d\", - -rate).hex().to(str))",
+        expect: "3fc999999999999a",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D1k f64 local x2",
+        statements: "print(complex(real: - -rate, imag: 0.0d))",
+        expect: "(0.2+0j)",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D2p f64 local x3",
+        statements: "print(pack(\">d\", -(-(-rate))).hex().to(str))",
+        expect: "bfc999999999999a",
+        depth: 3,
+    },
+    ChainCell {
+        name: "D2k f64 local x3",
+        statements: "print(complex(real: -(-(-rate)), imag: 0.0d))",
+        expect: "(-0.2+0j)",
+        depth: 3,
+    },
+    ChainCell {
+        name: "D3p i32 local x2",
+        statements: "print(repr(- -n).to(str))",
+        expect: "3",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D4p f64 function result x3",
+        statements: "print(pack(\">d\", - - -twice_d(1.0d)).hex().to(str))",
+        expect: "c000000000000000",
+        depth: 3,
+    },
+    ChainCell {
+        name: "D5p f64 extraction .to(double) x2",
+        statements: "print(pack(\">d\", - -o.real.to(double)).hex().to(str))",
+        expect: "3fd0000000000000",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D5k f64 extraction .to(double) x2",
+        statements: "print(complex(real: - -o.real.to(double), imag: 0.0d))",
+        expect: "(0.25+0j)",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D6p f64 product x2",
+        statements: "print(pack(\">d\", - -(rate * 2.0d)).hex().to(str))",
+        expect: "3fd999999999999a",
+        depth: 2,
+    },
+    ChainCell {
+        name: "D7p f32 local x3",
+        statements: "print(pack(\">f\", - - -seed).hex().to(str))",
+        expect: "becccccd",
+        depth: 3,
+    },
+    ChainCell {
+        name: "D8k i32 function result x2",
+        statements: "print(complex(real: - -inc_i(4), imag: 0.0d))",
+        expect: "(5+0j)",
+        depth: 2,
+    },
+];
+
+fn run_chain(cells: &[ChainCell], label: &str) {
+    for cell in cells {
+        let dir = scratch(&format!("matrix-{label}-{}", cell.name.replace(' ', "-")));
+        let source = format!(
+            "{MATRIX_PROLOGUE}    {}\n    return 0\n}}\n",
+            cell.statements
+        );
+        emit(&dir, &source);
+        let generated = std::fs::read_to_string(dir.join("generated.py")).unwrap();
+        let (head, tail) = observed_slot(cell.statements);
+        let arg = observed_argument(&generated, head, tail);
+        assert_eq!(
+            chain_depth(&generated, &arg),
+            cell.depth,
+            "{}: the observed call is handed `{arg}`",
+            cell.name
+        );
+        assert_eq!(
+            run_generated(&dir),
+            format!("{}\nvalue:0\n", cell.expect),
+            "{}",
+            cell.name
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Review R-15: a unary minus stacked on a Python OBJECT keeps the behaviour
+/// measured before the R-01 repair at every depth. A change here means an
+/// admitted program changed what it does (the complex local went from
+/// printing to an unclassified `TypeError`).
+#[test]
+fn generated_python_keeps_the_earlier_behaviour_for_a_unary_chain_over_an_object() {
+    run_chain(&OBJECT_CHAIN_CELLS, "chain-object");
+}
+
+/// Review R-15, the sibling shapes of the same cause.
+#[test]
+fn generated_python_keeps_the_earlier_behaviour_for_the_sibling_object_chains() {
+    run_chain(&SIBLING_CHAIN_CELLS, "chain-sibling");
+}
+
+/// Review R-01 on a chain: an Auto VALUE keeps its sign under two or three
+/// unary minuses.
+#[test]
+fn generated_python_negates_a_unary_chain_over_an_auto_value() {
+    run_chain(&AUTO_CHAIN_CELLS, "chain-auto");
 }
