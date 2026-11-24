@@ -7908,7 +7908,18 @@ impl<'a> Engine<'a> {
                 crate::source::ast::ExprKind::MethodCall { name, .. } => {
                     let ok = matches!(
                         name.name.as_str(),
-                        "push" | "get" | "len" | "pop" | "clear" | "set"
+                        // PLAN-119（用户 G6 裁定①）：纯函数式转换（无副作用、返回值语义）
+                        // 与列表方法同列——038 在循环体内逐格 `x.to(Str)` 生成显示文本，
+                        // 此前一律判域外导致 transition 发不出来。
+                        "push"
+                            | "get"
+                            | "len"
+                            | "pop"
+                            | "clear"
+                            | "set"
+                            | "to"
+                            | "to_string"
+                            | "to_str"
                     );
                     if !ok {
                         eprintln!("P119DBG foreign_callee={}", name.name);
