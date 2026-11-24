@@ -241,6 +241,13 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 3. `validate` 的初始化断言对 `for-in-stmt` 跳过（否则 `child_with_role(...,"value")` = -1 → `facts.get(-1)` → `trap:ListIndex`，这正是前几轮 trap 的根因）。
 实测：`for x in xs { t = t + x }` → **`hir.unsupported 0 43..80`**（绑定/定型全过，停在 HIR，正是 T-14 的目标边界）；`for` 外使用 `x` 仍 `bind.unresolved`；`ace-aac-syntax` **PASS（11s）**。
 
+**T-14 HIR 面设计（2026-11-24，下一轮实现）**：仿 `text_length_op`（core_hir 定义 + 发射 + verify，lower_base 侧未列入允许集即 `outside_base_profile`）：
+1. `core_hir.at` 增 `char_at_op()=23`、`char_to_codepoint_op()=24`、`char_from_codepoint_op()=25`；
+2. call 发射分支在 `resolved_function` 之前识别 `.char_at/.to_codepoint/.from_codepoint`（postfix + member 拼写），用 `add_expression(..., op, t, operand)` 发射并跳过子节点；
+3. HIR 文本发射处（`form` switch，约 1622 行）补三种 form；
+4. `lower_base.at` 的允许 op 集**暂不加入**这三者 → 得到具名 `mir.base-profile`（T-15 再实现 MIR/AV op）。
+这样 T-14 的可见进展是：`s.char_at(i)` 从 `hir.unsupported` 前进到 `mir.base-profile`。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
