@@ -1314,7 +1314,15 @@ pub(crate) fn project_packages_front_with_widget_lists(
                     crate::source::age_component::inline_store_decl(widget)?;
                 }
             } else if let Some(first) = nodes.first_mut() {
-                first.stores.append(&mut stores);
+                // PLAN-119：**同源前置 store** 已由投影归到首个 node，这里追加
+                // 会把它算成两条（`inline_store_decl` 的 `len() > 1` 具名拒——
+                // 038 Minesweeper 实证：prepared 源仅 1 条 `store` 声明仍报
+                // `multiple store declarations per node`）。按名去重后再追加。
+                for store in stores.drain(..) {
+                    if !first.stores.iter().any(|seen| seen.name.name == store.name.name) {
+                        first.stores.push(store);
+                    }
+                }
                 crate::source::age_component::inline_store_decl(first)?;
             }
             // PLAN-981（W1 跨模块实例身份，2026-11-18 第六批）：场景的
