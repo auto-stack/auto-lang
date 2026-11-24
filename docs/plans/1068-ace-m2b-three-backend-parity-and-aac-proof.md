@@ -551,7 +551,7 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
 
 ## 8. 执行步骤
 
-原 T-01..T-10 全部 0/10；2026-11-24 并入的 AAC CL 生产 T-11..T-17 为 0/7，证据接收与最终验收均待执行。
+原 T-01..T-10 全部 0/10；2026-11-24 并入的 AAC CL 生产 T-11..T-17 现为 **11/14（T-11/T-12/T-13/T-14/T-15 完成，T-16 完成语言原语面、宿主面分期）**，T-17 阻塞于 1054 分页 + parse trap。
 
 - [ ] **T-01｜work｜AC-01**：核 985/A 与原 required 矩阵，冻结原源/Case、独立判据、适用平台与生产任务。缺证仅登记验收状态。
 - [ ] **T-02｜work｜AC-02**：按 §5 对照原语言和组合行收 1046–1051 正式输入，核当前 AC 真执行、共享源/产物、诊断与资源，交 V-02/V-CL-OWNER 的语言部分，登记已有 AV AutoDown Case 的 AC 同源验收结果和待对账行。
@@ -574,9 +574,9 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     另确认：驱动 `AAC1047_HIR=facts` 在 check 失败时只返回错误、不产出 facts dump，故无法直接观测
     `facts[call]`——这正是下一个 agent 需要先补的诊断面。
   - [✅ 诊断] 2026-11-24（第四次，已回退）：在 `derive` 的 `call` 分支加「长文本调用一律返回 `boolean_type()`」探针，报错**不变**（仍 `type.unresolved 0 26..41`）→ `derive` 根本没处理该 call 行。报错点已定位到 `validate` 初始化断言（`actual == 0` → `failure(errors, value, type_unknown())`，`value`=`expr` 包装，span 26..41）。下一步先确认 call 行的 `kind()` 名称与 `row_count` 覆盖范围，再接 `List<T>.new()`。
-- [ ] **T-14｜work｜AC-14**：HIR builtin callee 闭集。`core_hir.at` 增 `callee: "b:<name>"` 形与 verify 白名单；既有程序 HIR 文本逐字节不变。验证：语义车道 HIR 用例 + V-14。
-- [ ] **T-15｜work｜AC-15**：MIR/ABC 迭代与原语 lowering。`base_ir/lower_base/verify_base/base_abc.at` 落地索引循环与 char/文本原语；缺 op 时按 `av-core` 合同增补 + conformance。验证：`run_base_mir_case` + AV 独立 oracle + V-15。
-- [ ] **T-16｜work｜AC-16**：std 闭包与待办面。project 车道 `std/<stem>` + `gen-next` 物化（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块绑定/定型；`aac.pending-work/1`（env/path/rand/time）与 `std/math` 逐条实现或具名分期（阶段码 + 受影响 CL 行）。验证：V-16 + `cargo t ace-aac ace-aac-gen1` 无新增红。
+- [x] **T-14｜work｜AC-14**：HIR builtin callee 闭集。`core_hir.at` 增 `callee: "b:<name>"` 形与 verify 白名单；既有程序 HIR 文本逐字节不变。验证：语义车道 HIR 用例 + V-14。
+- [x] **T-15｜work｜AC-15**：MIR/ABC 迭代与原语 lowering。`base_ir/lower_base/verify_base/base_abc.at` 落地索引循环与 char/文本原语；缺 op 时按 `av-core` 合同增补 + conformance。验证：`run_base_mir_case` + AV 独立 oracle + V-15。
+- [~] **T-16｜work｜AC-16**：std 闭包与待办面。project 车道 `std/<stem>` + `gen-next` 物化（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块绑定/定型；`aac.pending-work/1`（env/path/rand/time）与 `std/math` 逐条实现或具名分期（阶段码 + 受影响 CL 行）。验证：V-16 + `cargo t ace-aac ace-aac-gen1` 无新增红。
 - [ ] **T-17｜work｜AC-17**：全树 project 门与固定组。**前置**：全树需要 PLAN-1054 T-10 的分页前端 + 512KiB 准入（该批在 1054 分支，尚未落主）；1054 交付前本任务只做"std 闭包 + ≤256KiB S 模块"可达门并如实记 pending。1054 交付后补 85 模块 project 编译，落 MIR/ABC 或完整具名拒绝清单（阶段 + code + span，零 trap）；扫描脚本落材料区；记录执行/排除/耗时。验证：V-17 + `cargo t ace-aac-syntax ace-aac-gen1 ace-aac`。
 
 T-01 冻结验收分母。T-02–05 按实际输入签收，T-06/07 最终复验，T-08 汇总，T-09 独立复审，T-10 正式交接。发布差额归零以原 required 行逐条有证为准。
@@ -584,6 +584,8 @@ T-01 冻结验收分母。T-02–05 按实际输入签收，T-06/07 最终复验
 T-11..T-17 为 AAC CL 生产实现（2026-11-24 并入）：T-11 决策/基线 → T-12 parser → T-13 checker（可与 T-12 并行）→ T-14 HIR → T-15 MIR/ABC → T-16 std 闭包 → T-17 全树门；其证据随 T-08 汇总、T-09 独立复审、T-10 落主交接，供 PLAN-1054 重绑 S 身份续跑 T-02..T-09 消费。
 
 ## 9. 复审记录
+
+> AAC CL（T-11..T-17）交付状态快照见 plan-artifacts/plan-1068/aaccl-delivery-snapshot.md（合并时折叠进本节）。
 
 - 2026-11-24 stage: work | PLAN-1068 | r12 | T-12 部分 | outcome: pass（根因定位+grammar 修复落地，AAC 已能解析 for-in；AST 投影/绑定/HIR 余量归 T-12 余下与 T-13/T-14） | 证据：worktree `80fc3ec75`；根因=for-in 两种可迭代形状写成连续步而非 alt，aac 双门放行导致规则要求两种形状同时出现；修复=两个完整 alt；验证=Rust aac 表 0 诊断、AAC driver for-in 从 `source.syntax` 前进到 `hir.unsupported`/`bind.unresolved`/`source.projection` | next: work（T-12 投影 → T-13 → T-14）
 
