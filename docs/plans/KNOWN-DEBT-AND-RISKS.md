@@ -5044,7 +5044,11 @@ PLAN-1109 冻结 `ace-abi` 运行中 25 条 `source_foreign` 用例失败。以�
 
 批量回归中 auto-generation-core plan988_byte_consumers 5 例红：`newest_rlib` 在 archive 运行模式下从测试二进制解包目录（非 target/debug/deps）找 rlib 失败（expect「Cargo must build the current core dependency before this consumer test」）。owner=批量选择机制（PLAN-1108/D-1051-BATCH-SELECTION 线）与 plan988 字节消费者测试维护方；关闭条件=archive 运行保留 rlib 依赖定位或该组改显式 cargo-parented 上下文，同组复跑全绿。非 PLAN-1050 归因。
 
-## D-1121-MAP-PARAM-ANNOTATION — 迁移 HashMap/HashSet 类型不可作函数形参注解（OPEN，2026-11-23）
+## D-1121-MAP-PARAM-ANNOTATION — 迁移 HashMap/HashSet 类型不可作函数形参注解（CLOSED，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) 关闭：形参/返回/字段/局部注解在程序未声明同名类型时绑定到构造器回答的同一嫁接记录；跨函数值面语义已明确（各函数自身观察，见 ace-collections PLAN-1131 增量）；`av.parity.1131.public-types` 29 例全绿。下文为原记录。
+
+
 
 [PLAN-1121](archive/1121-av-stdlib-map-set.md) 复审探针发现：普通 Auto 面的迁移容器（`__std_HashMap`/`__std_HashSet`，mangled 嫁接名）
 **无法被用户书写为函数形参/返回注解**——`fn read(m HashMap) …` 的 `HashMap` 类型引用按
@@ -5178,3 +5182,41 @@ AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todo
 - **现象**：`native_lower_emission_reserves_instruction_and_span_capacity_before_allocation`、`native_lower_container_admission_covers_blocks_stack_slots_and_final_copy`、`native_foreign_call_reserves_declaration_and_arguments_and_releases_evaluation_scratch` 在 master 尖端与带 PLAN-1125 的分支上同为红（同环境基线双向差集为空）。1109 归档的 25 条基线清单不含这 3 条（当时该组执行 314 条，现为 369 条）。
 - **owner**：ACE ABI source_foreign（与 D-1109-ABI-C-RUNTIME-PIN 同族，待 owner 确认）。
 - **关闭条件**：并入该族的基线清单并给出根因，或修复后在 master 上转绿。
+## D-1131-CROSS-FN-FACE — 容器值面的调用点不做静态核对（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) work T-01/T-02 发现。被调函数可向调用者的 map 加入另一值面的条目；值面按各函数自身观察追踪，调用点静态不可判定。运行时面检查兜底：调用者用统一 `get` 读该条目走受检失败通道（ValueError，可 catch，owner 存活），不产生静默错读。owner=普通面迁移容器下一切片；关闭条件=签名可表达值面，或两遍解析后在调用点具名拒。
+
+## D-1131-VAR-LET-ANNOTATION — 普通面的 `var`/`let` 未知类型注解静默通过（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) work T-01 基线探针发现，早于本计划。普通 Auto 面 `var x 未知类型 = …`/`let` 不报类型错，注解只作推断期望、诊断被丢弃（`resolve.rs` 局部声明路径的 discarded diags），接收者按值类型解析。字段/形参/返回注解位会具名拒。关闭条件=未知记录类型在局部注解位具名拒，且既有语料无回归。
+
+## D-1131-PARAM-RETURN — 形参收到的资源记录容器不可直接返回或存入记录（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) 复审 R-1131-05 发现，既有规则。`fn id(m HashMap) HashMap { return m }` 被 `mir.return-type` 拒；`return m.move` 为 `mir.move-type`；`W { m: m }` 为 `mir.aggregate-field-type`。带 `List<int>` 字段的用户记录同样如此，普通无资源记录形参可返回。当前合同：只有被调方局部构造的容器可返回。owner=所有权/借用切片；关闭条件=形参资源记录可经显式移动语义返回或存入，或有具名诊断指向替代写法。
+
+## D-1131-PACKAGES-LANE — 并入冻结装配集的多文件 `packages` 装配线无容器与旧导入嫁接通道（OPEN，范围缩小，2026-11-24）
+
+**范围更新（PLAN-1131 r2，提交 `c7e04b756`）**：普通 AV 的多模块入口是 Auto 包闭包（`bind_packages_auto`），容器公共类型与 `use auto.str`/`use auto.result` 已在其上交付（`plan1131_multi_module.rs` 15 例）。本条只剩并入冻结装配标准库集的 `packages-aggregates-ct` 装配线（无记录类型嫁接通道）；V-01 的“多模块”口径已由用户裁定并兑现。下文为原记录，其中“多文件包面没有做”的表述以本段为准。
+
+
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md)。`HashMap.new()`、`StringBuilder` 与 `use auto.*` 只在单文件普通面交付；多文件包面（`use pkg.module.symbol`）没有嫁接通道。该线另有基线红 [D-1125-01]（`std::list` graft 用例编译失败，owner PLAN-118）；本计划把未准备工作树里 `stdlib_asm_972` 13/15 红归到该条，属按症状推断、未经独立核实。关闭条件=该线自己的容器/导入切片，且 V-01 的“多模块”口径经用户裁定。
+
+## D-1131-RESULT-STR-PAYLOAD — `Result.Ok("y")` 以借用视图作载荷被拒且无跨度（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) 复审 R-1131-06 发现，既有行为：内建 `Ok("y")` 同样被 `mir.type.variant-payload` 拒，`Result.Err(2)` 可用。新限定构造与内建写法一致。关闭条件=字符串字面量作 Ok 载荷可用，或诊断带跨度并说明替代写法。
+
+## D-1131-MASK-NOTES — 旧导入抹空的两处代码备注（CLOSED，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) r2 T-08 关闭（提交 `c7e04b756`）：扫描失败分支改为返回原源；源不含 `use auto.` 时提前返回、不扫描；各补单测（`legacy_import_mask_changes_nothing_without_an_import`）。r2 复审：提前返回有运行证据；扫描失败分支按代码核对——复审者 11 组破损源均无法让扫描失败，该分支无运行证据。下文为原记录。
+
+
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) 复审 R-1131-08/09 发现，均非阻塞。R-08：`adapter.rs::mask_legacy_imports` 在 `literal_spans` 返回 `None` 的分支返回空缓冲而非原源（注释与规范称“不改动”）；潜在缺陷，复审 40 个失败路径探针均未触达（扫描器发 error-leaf token 而非 Err），即使触达也是具名诊断 `expected fn, found end of file` 而非数据被改。R-09：每次普通 Auto 编译都无条件运行字面量扫描，无 `use auto.` 预检，并按行 × 字面量比较；未基准测试，复审视为备注。修复循环已达上限，故登记为债务；关闭条件=失败分支返回原源、无 `use auto.` 时提前返回，并有对应单测。同批：修复后单例计时 0.32–0.45s → 0.59s（复审判断含机器负载，未分离）。
+## D-1131-PKG-IMPORT-DETECT — 包面旧导入检测是按行文本匹配（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) r2 复审 R2-1131-04 发现，非阻塞。`adapter.rs::legacy_auto_imports` 对每个模块源逐行 `starts_with("use auto.str")`/`("use auto.result")`：多行字符串里的同形行、`use auto.string` 也会命中。后果只是多并入一个无人使用的冻结模块，绑定仍以真实导入为准，目前无害；但它与 r1 单文件面上花了三轮才换掉的文本启发式同类。关闭条件=改用包面导入语法树的解析结果，或有对应负例证明字符串内命中无副作用。
+
+## D-1131-PKG-DIAGNOSTICS — 包面两条诊断的提示质量（OPEN，2026-11-24）
+
+[PLAN-1131](archive/1131-av-stdlib-public-types-and-legacy-imports.md) r2 复审 R2-1131-05 发现，非阻塞。(i) 跨模块类型冲突报 `Verify:source.type-mismatch: expected record, found record`，不给出任一类型名；(ii) `use auto.str`（不带成员）报 `source.module-missing: unknown module 'auto'`，而 `auto::str` 其实已并入。两条都是具名拒绝，合同内；关闭条件=诊断给出类型名/准确的模块路径。
