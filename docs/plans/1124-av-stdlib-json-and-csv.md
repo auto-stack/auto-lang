@@ -701,9 +701,20 @@ stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 5 | from: review |
 | `ace-core --lib --tests`（`ace-source` 组目标全量，906 清单 / 本轮 1001 项） | 980/1001 run：**975 passed、5 failed、1 skipped**；5 个失败**在基线 `9a9c296ec` 上逐一同名复现**（`text_record_source::*`，见下） | 18.5 s |
 | `%TEMP%\p1124-*` 目录计数 | 30 → 30（无新增残留；原有 30 个是修复前遗留，merge 收尾清除） | — |
 
-**原红（不是本计划引入）**：`ace-core::conformance text_record_source::{flagship_combination_compiles_and_verifies, generated_atom_carries_the_combination_surface, move_arguments_transfer_whole_roots_not_views, named_ctor_source_order_is_the_written_order, positional_ctor_and_owning_contexts_promote_literals}` 在 `b5ada0bd0` 上失败；把本轮 12 个文件回退到基线 `9a9c296ec` 后同一命令得到**同样 5 个失败**（21 tests: 16 passed, 5 failed），故按原红记，不计在本计划头上。`compile_text_record_source` 走 `compile_parts_observed`，不经过本计划改动的嫁接/合成路径（读码）。
+**原红（不是本计划引入）**：`ace-core::conformance text_record_source::{flagship_combination_compiles_and_verifies, generated_atom_carries_the_combination_surface, move_arguments_transfer_whole_roots_not_views, named_ctor_source_order_is_the_written_order, positional_ctor_and_owning_contexts_promote_literals}` 在 `b5ada0bd0` 上失败；把本轮 12 个文件回退到基线 `9a9c296ec` 后同一命令得到**同样 5 个失败**（21 tests: 16 passed, 5 failed），故按原红记，不计在本计划头上。`compile_text_record_source` 走 `compile_parts_observed`，不经过本计划改动的嫁接/合成路径（读码）。组级原红另有 `ace-av` 13 项与 `case-av-language-parity` 4 项，逐条见下表。
 
-**未执行（留给 T-06 在冻结提交上跑）**：六个冻结组整组（`stdlib`、`ace-stdlib`、`ace-source`、`ace-semantics`、`ace-av`（带 `ace-av/test-case-batch`）、`case-av-language-parity`）、`cargo t all`、`ace-perf`；Linux/WSL 用例按 2026-11-14 裁定排除。`ace-av` 与 `ace-semantics` 只跑了受影响用例与 `ace-source-query`，整组由 merge 兜底。
+**六个受影响固定组整组（`cargo t` 入口，`b5ada0bd0` 源码；已按 `--prepare-only` 准备后 build-free 运行）**
+
+| 组 | 结果 | 原红/环境（在基线 `9a9c296ec` 上逐条复现） | 墙钟 |
+|---|---|---|---|
+| `stdlib` | **PASS**，176 项 | — | 153 s |
+| `ace-stdlib` | **PASS**，2/2 | — | 6 s |
+| `ace-semantics` | **PASS**，295 项 | — | 9 s |
+| `ace-source` | 1001 项：996 passed、1 skipped、5 failed（组红） | `text_record_source::{flagship_combination_compiles_and_verifies, generated_atom_carries_the_combination_surface, move_arguments_transfer_whole_roots_not_views, named_ctor_source_order_is_the_written_order, positional_ctor_and_owning_contexts_promote_literals}`（回退到 `9a9c296ec` 后 13/13 同名失败） | 15 s |
+| `ace-av`（带 `ace-av/test-case-batch`） | 1667 项：1654 passed（2 slow）、23 skipped、13 failed（组红） | `av_method_modes::use_after_move_of_method_arg_rejected`、`av_method_owned::{v03_flagship_value_thirty, v03_token_microprogram_fifty_seven, v10_method_field_borrow_return_zero_alloc, v10_second_alloc_failure_rolls_back_partially_built_output}`、`av_owned_first_case::av_owned_first_case_whole_path_and_live_zero`、`av_owned_recipe::av_owned_recipe_fixture_face_matches_hand_audit`、`av_test_batch::c_data_profile_keeps_its_scalar_entry_boundary`、`component_event_sessions_1106::v02b_text_leaves_are_pure_reads`、`resource_915::{r02_l04_arena_sweep_is_complete, r02_l04_value_sweep_is_complete, r02_l05_v05_sweeps}`、`ace-av-core layout::tests::layout_rejects_non_record_and_empty`（回退到 `9a9c296ec` 后 13/13 同名失败） | 89 s |
+| `case-av-language-parity`（AV 视图，921 行 / 560 RUN 检查） | 组红：4 行非 PASS，其余 PASS（含 `av.parity.1124.*` 9/9） | `av.parity.1093.explicit-c-library` FAIL（`foreign.prepared`）、`av.parity.1093.c-header-spelling-rejected` FAIL（同上）、`py.slicing.1127.numpy-torch` / `py.slicing.1127.torch-zero` ERROR（`av.resource.execution-wall`，foreign 调用超时）；四条用同一套已准备工具在 `9a9c296ec` 上逐条复现同名结果 | 88 s |
+
+**未执行**：`cargo t all`、`ace-perf`；Linux/WSL 用例按 2026-11-14 裁定排除。**T-06 注意**：`ace-source`、`ace-av`、`case-av-language-parity` 的组红全部由上面列出的原红/环境项造成，冻结组并集必须与同一基线比较，不要把组 `rc=1` 直接当成本计划回归。
 
 **F-19 收尾**：材料区登记仍缺（`.retention/policy.json` 无 1124 条目），留给 merge 收尾按生命周期规则处理；`%TEMP%` 下 `p1124-probe.rs`/`p1124-probe.err` 两个 03:20 的 rustfmt 探针残留已移入 `plan-artifacts/plan-1124/work-r2/temp-leftovers/`。
 
