@@ -353,6 +353,10 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     1046 驱动 `parse-source` 同样 `trap:ListIndex`（无 CANON 输出）。
     首要嫌疑：T-12 的 `compact_edges`（`syntax_parse.at`）在节点回收后读到**陈旧 fc/cl**（超出 `m_efhi` 的逻辑前沿）时
     `ef.get((fc+k)*2)` 越界；下一步审计 `compact_edges` 的 fc/cl 有效性与节点回收时的清零，并加边界拒绝。
+  - **trap 阶段再收窄（2026-11-24）**：1046 驱动 `AAC1046_CASE=parse` 单独解析 file.at 也 `trap:ListIndex`
+    → **trap 在 parse 机器本身（不是 projection）**。给 `compact_edges` 两个循环加边界拒绝（返回 7）并让调用点传播后，
+    错误仍是 `trap:ListIndex` → **compaction 不是 trap 源**（守卫未触发）。守卫已回退。
+    下一步：在 `machine_run` 每 128 步写一次「步号单字节文件」，定位 trap 前最后一步，再对照输入位置（这是有界且确定的做法）。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
