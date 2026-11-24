@@ -248,7 +248,7 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 4. `lower_base.at` 的允许 op 集**暂不加入**这三者 → 得到具名 `mir.base-profile`（T-15 再实现 MIR/AV op）。
 这样 T-14 的可见进展是：`s.char_at(i)` 从 `hir.unsupported` 前进到 `mir.base-profile`.
 
-**HIR 发射尝试（2026-11-24，已回退）**：按上设计在 `core_hir.at` 加 op 23/24/25 + `builtin_text_op` + call 分支发射。构建通过，但 `c.to_codepoint()` 仍 `hir.unsupported`；**决定性探针**：让 `builtin_text_op` 无条件返回 `char_at_op()` 后仍不变 → 该 call 行**同样没有进入 `node_kind == "call"` 的发射分支**（与 `List<T>.new()` 的症状同源：某个 call 行在 HIR 的 `owner >= 0 && hir_value_type(records,t)` 门外被跳过）。已回退到 `7dd8eaaaa`。下一步必须**先解决"call 行为何不进入发射/派生分支"**这个共同根因（建议：在 `derive`/`core_hir` 的 call 分支入口针对具体 row 写可观测标记，或 dump `owners`/`facts`），否则 T-14/T-15 的逐 op 接线都会卡在同一处。
+**HIR 发射尝试（2026-11-24，已回退）**：按上设计在 `core_hir.at` 加 op 23/24/25 + `builtin_text_op` + call 分支发射。构建通过，但 `c.to_codepoint()` 仍 `hir.unsupported`；**决定性探针**：让 `builtin_text_op` 无条件返回 `char_at_op()` 后仍不变 → 该 call 行**同样没有进入 `node_kind == "call"` 的发射分支**（与 `List<T>.new()` 的症状同源：某个 call 行在 HIR 的 `owner >= 0 && hir_value_type(records,t)` 门外被跳过）。已回退到 `7dd8eaaaa`。**根因修正（2026-11-24，探针链）**：在 `lower_expressions` 里对 `c.to_codepoint()` 行做三段探针（返回 `hir.owner`/`hir.type`/`hir.shape` 区分 owner/类型/kind）得到 **`hir.owner` = `kind(row) == "call"`**，且 owner ≥ 0、`hir_value_type(types,t)` 为真——**call 行确实被访问、门也通过**。此前"行不被看见"的判断作废；真正原因在 `builtin_text_op` 的早退（`postfix`/`atom`/`step`/`member` 查找之一返回 -1）或接收者表达式 id 取不到（`operand < 0` → 我们自己的 `hir.unsupported`）。下一步：对 `builtin_text_op` 的每个早退分支编码不同错误码，一次定位是哪一步失败，再修正查找逻辑（不要改 `lower_expressions` 的结构）。
 
 ### 规范增量
 
