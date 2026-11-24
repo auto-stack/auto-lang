@@ -376,6 +376,36 @@ provider：worker 请求携带声明性 `foreign: {kind, provider}`，从
 [FFI 作者文件](../../../crates/auto-lang/test/cases/language/ffi/imports-callbacks.case.ad)、
 [PLAN-1093](../../plans/1093-av-parity-foreign-language-surface.md)。
 
+## PLAN-1125 增量（AVP-15a，C provider 的入库来源与闭包身份）
+
+`parity1093_c` 的 C provider 源是入库资产：
+`experimental/ace/crates/foreign-contract/c/parity1093_c/`（注解头 `parity1093_c.h`、
+provider 单元 `parity1093_c.c`、SDK-include 实现单元 `parity1093_c_impl.c`，1094 入库）。
+
+- **准备入口**：`scripts/test-governance/toolchains.json` 的 `av-providers` 工具经
+  `warm_env.ACE_AV_C_PROVIDER_DIR` 指向该工程；`prepare-av-providers` 每次预热把三个源
+  文件**暂存**到 `<ACE_AV_PROVIDER_ROOT>/out/c-provider-src/` 后再 `open_c_provider`
+  （后者会把 `.c-build-<name>/` 写在源目录旁，被跟踪树必须保持干净），产出
+  `parity1093_c.dll` + `parity1093_c.descriptor.json`。变量未设仍是具名 skip，不是静默绿。
+- **来源身份**：描述符记录 `source_sha256`（按文件名的 SHA-256）与
+  `provider_digest`（注解头原文的 blake3）。DLL 的 SHA-256 **每次链接都不同**（PE
+  时间戳），闭包的可重建性指"同一源 → 同一 `provider_digest`/`source_sha256`，DLL 由
+  描述符逐次重验"，不是位级可复现二进制。
+- **worker 加载校验**（`load_prepared_c`，先于任何编译/调用）：描述符
+  `artifact_sha256` ≠ 实际 DLL → `foreign.artifact`；描述符 `source_b64` 的 blake3 ≠
+  `provider_digest` → `foreign.identity`；manifest.provider ≠ 描述符 provider →
+  `foreign.identity`；描述符/DLL 缺失 → `foreign.prepared`。
+- **独立 oracle**（`experimental/ace/crates/av/tests/cases/c_provider_1125.rs`，均
+  ≤0.11 s）：`"hello\0world"`→5、`"héllo😀"`→10（UTF-8 字节）证明调用进入真实 C
+  `strlen` 而非字节长度；身份/工件篡改在**DLL 保持可调用**的副本上被具名拒绝且
+  `runtime_calls`/`host_dispatches` 为 0；撤 `foreign.scalar`/`foreign.resource` →
+  `source.foreign-capability`；`use.c <string.h>` → `source.use-rs.provider`。
+- **公开入口**：`av.parity.1093.explicit-c-library` 与
+  `av.parity.1093.c-header-spelling-rejected` 经 `cargo t case-av-language-parity`
+  复放；闭包缺失时二者均为 `foreign.prepared`，反例不得冒充成功。
+
+见 [PLAN-1125](../../plans/1125-av-c-provider-reproducible-fixtures.md)。
+
 ## PLAN-1094 增量（AVP-16，脚本模式与 Python 对象协议）
 
 普通 `ac-av/language-source-run-v1` 现在对**带 `foreign: {kind, provider: "py"}` 的

@@ -243,3 +243,22 @@ Rust 的 `form=pure ret=i32` 可以声明 `(&F0Callback, i32, i32) -> i32`。Aut
   公共前门；降低时校验 967 冻结 bridge 域；链接=cdylib import lib，DLL 为进程依赖；
   `AutoTrap::Foreign(i32)` 仅语言通道 trap 集。详见
   [project-runtime-and-distribution](../auto-a2r/project-runtime-and-distribution.md)。
+
+## C 测试 provider 的重建来源与身份（PLAN-1125）
+
+- **来源**：AV 日测用的 C provider `parity1093_c` 以入库工程为唯一来源
+  （`experimental/ace/crates/foreign-contract/c/parity1093_c/`：注解头 + provider
+  单元 + SDK-include 实现单元）。仓库内另有 1094 遗留的 `.c-build-parity1093_c/`
+  镜像（含 `.obj`），是 `open_c_provider` 写在源目录旁的构建副产物，**不是**输入。
+- **显式准备边界**：`prepare-av-providers`（`toolchains.json` 的 `av-providers`，
+  debug profile）在预热阶段把工程暂存到 `<root>/out/c-provider-src/` 再编译，被跟踪
+  树零写入；运行阶段只消费已备闭包，缺工件具名失败。`ACE_AV_C_PROVIDER_DIR` 未设
+  = 具名 skip。
+- **身份**：描述符新增 `source_sha256`（三个源文件）；`provider_digest` = 注解头
+  blake3。DLL SHA-256 逐次链接不同（PE 时间戳），不作为跨次可复现身份，仅在单次
+  闭包内由 worker 对实际 DLL 重验。
+- **worker 侧新增拒绝**：头源摘要与 `provider_digest` 不一致、manifest.provider 与
+  闭包 provider 不一致均为 `foreign.identity`，发生在 LoadLibraryW 之前。旧 worker
+  读新描述符因 `deny_unknown_fields` 报 `foreign.prepared`（fail-closed）。
+- 规则正文与 oracle 见 [language-parity](../auto-av/language-parity.md) 的
+  PLAN-1125 增量。
