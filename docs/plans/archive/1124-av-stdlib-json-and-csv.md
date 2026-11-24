@@ -19,7 +19,7 @@ affects: [stdlib, auto-av, auto-semantics]
 
 ## 0. 变更摘要
 
-2026-11-22 起草。承接 [AV 对 AutoVM 的迁移差额](../design/strategy/av-autovm-language-parity.md)的本领域条目，使用 [PLAN-1096 已交语言基线](archive/1096-av-parity-full-language-certification.md)。
+2026-11-22 起草。承接 [AV 对 AutoVM 的迁移差额](../../design/strategy/av-autovm-language-parity.md)的本领域条目，使用 [PLAN-1096 已交语言基线](1096-av-parity-full-language-certification.md)。
 
 ## 1. 目标
 
@@ -37,7 +37,7 @@ affects: [stdlib, auto-av, auto-semantics]
 
 ## 4. 需求分析与背景调查
 
-[975 数据规范](../specs/ace-migration/m2-stdlib-data.md)已验 JSON 语法、路径取值、原语构造和 `decode<T>` 切片，并明确保留完整 `JsonValue`、泛型 encode 和 CSV 差额。旧 [CSV 公共声明](../../stdlib/auto/encoding/csv.at)有默认和自定义分隔符的解析/编码四形。
+[975 数据规范](../../specs/ace-migration/m2-stdlib-data.md)已验 JSON 语法、路径取值、原语构造和 `decode<T>` 切片，并明确保留完整 `JsonValue`、泛型 encode 和 CSV 差额。旧 [CSV 公共声明](../../../stdlib/auto/encoding/csv.at)有默认和自定义分隔符的解析/编码四形。
 
 取材基线为主检出 `f0d9dcaf3` 及同一检出的活动计划。用户本轮授权在 auto-lang 分类立项，计划状态为草案。
 
@@ -67,11 +67,11 @@ affects: [stdlib, auto-av, auto-semantics]
 
 | delta_id | 方式 | 目标 | 规则与理由 | 验收 |
 | --- | --- | --- | --- | --- |
-| SD-01 | modify | [`docs/specs/ace-migration/m2-stdlib-data.md`](../specs/ace-migration/m2-stdlib-data.md) | 增加动态 JSON、泛型编码和 CSV 的独立公共合同、旧 API 映射及受检范围 | AC-01/02 |
+| SD-01 | modify | [`docs/specs/ace-migration/m2-stdlib-data.md`](../../specs/ace-migration/m2-stdlib-data.md) | 增加动态 JSON、泛型编码和 CSV 的独立公共合同、旧 API 映射及受检范围 | AC-01/02 |
 
 ## 6. 测试设计
 
-下列验收尚未执行。用例由对应 work 任务落到真实公开入口，沿 [共享 AutoDown 语料合同](../design/testing/ace-feature-organized-autodown-corpus.md)保留唯一作者。旧结果作迁移参照，新增断言使用独立预期。
+下列验收尚未执行。用例由对应 work 任务落到真实公开入口，沿 [共享 AutoDown 语料合同](../../design/testing/ace-feature-organized-autodown-corpus.md)保留唯一作者。旧结果作迁移参照，新增断言使用独立预期。
 
 | 用例 | 验收与责任任务 | 输入与路径 | 独立预期 |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ affects: [stdlib, auto-av, auto-semantics]
 | V-02 | AC-01/02 · T-03 | 两个跨模块、不同字段形的记录做泛型编码/再读 | 逐字段核独立文本或结构预期，字段重命名使实际输出改变；不满足编码合同的实例具名拒绝。 |
 | V-03 | AC-01/02 · T-04 | 默认及自定义分隔符；被引号包住的逗号、换行、空字段、截断 | 解析得预定二维数据，反向输出按冻结字节合同，合法空字段和未结束引号不同；预算或解析错误后临时值可释放。 |
 
-冻结验证命令为 `cargo t stdlib ace-stdlib ace-source ace-semantics ace-av case-av-language-parity`。按实际改面核对固定组和下游，分列实跑、原红、排除与未跑。Windows 在 Windows 环境验收，Linux 已有标准库义务进入 [1063](1063-ace-stdlib-linux-deferred-validation.md) 的独立执行台账。
+冻结验证命令为 `cargo t stdlib ace-stdlib ace-source ace-semantics ace-av case-av-language-parity`。按实际改面核对固定组和下游，分列实跑、原红、排除与未跑。Windows 在 Windows 环境验收，Linux 已有标准库义务进入 [1063](../1063-ace-stdlib-linux-deferred-validation.md) 的独立执行台账。
 
 ## 7. 验收标准
 
@@ -896,7 +896,7 @@ stage: merge | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | completi
 | `landed` | 主检出 `git merge --ff-only plan-1124-dev` → master tip = `c6443252c`，无 merge commit；主检出他方 `docs/design/**` WIP 未触碰 |
 | `canonical_verified` | `git rev-parse HEAD:docs/specs/ace-migration/m2-stdlib-data.md` = `4b42b18db…`，与交付提交逐字节相同；worktree 同文件 sha256 `17022c7a…`；规范里指向本计划的链接已改指 `plans/archive/` |
 | `archived` | `docs/plans/archive/1124-av-stdlib-json-and-csv.md`，`status: archived`；计划文件与 docs 改动已提交到 master |
-| `cleaned` | 见本节末：wt-guard clean、worktree/分支/组目录移除、`plan-artifacts/plan-1124/` 删除、`.retention/policy.json` 刷新；构建中间产物随 worktree 删除，未回收 |
+| `cleaned` | `wt-guard.ps1` 对实施树与同组 `auto-down` 兄弟树各报 clean；`git worktree remove` 成功、分支 `plan-1124-dev` 删除、组目录 `D:/autostack/.wt/lang-1124/` 移除；`plan-artifacts/plan-1124/` 删除 **15,427 个文件 / 3,337,059,371 字节**（构建中间产物与探针 crate 的 target 树不回收，随 worktree 删除）；`%TEMP%\p1124-*` 遗留 30 个目录清空为 0；`.retention/policy.json` 登记 `deleted-at-merge (no holds)` |
 
 **变基映射与补丁等价**
 
@@ -937,3 +937,11 @@ T-01 冻结 JSON 数字、对象顺序与重复键；记录 CSV 旧边界及规�
   - F-07：预算按字节计，与“1 MiB”的冻结文本一致（`len_bytes()` 可用）。
   - F-08：以正确舍入为目标，并在 T-01 冻结记录写明数值范围与精度承诺。
   - [修复轮 1 已按上述默认取向落实 2026-11-24] 三项都已实现并有永久断言（§9）。
+
+**收尾对账（2026-11-24，cleaned）**
+
+- 实施树与依赖兄弟树（`D:/autostack/.wt/lang-1124/auto-lang`、`.../auto-down`）在移除前各跑一次 `wt-guard.ps1`，均报 clean（无 reparse point）；`git worktree remove` 后两组目录为空并删除，`plan-1124-dev` 分支删除（tip `c6443252c` 已并入 master）。
+- 计划材料区 `D:/autostack/plan-artifacts/plan-1124/` 在证据折叠进本文件后整目录删除：15,427 个文件 / 3,337,059,371 字节；探针 crate 与 gate 工具的构建中间产物随 worktree 删除，未回收。
+- `%TEMP%` 下 `p1124-*` 遗留目录 30 个（F-09 关闭时留下的历史残留，非本轮新增）已清空为 0。
+- `.retention/policy.json` 已登记本计划为 `deleted-at-merge (no holds)`，scope 已不存在，无具名持有。
+- 链接核对：本文件从 `docs/plans/archive/` 出发的全部相对链接（`../../specs/`、`../../design/`、`../../../stdlib/`、`../1063-…`、`1096-…`）逐条 `Test-Path` 为真。
