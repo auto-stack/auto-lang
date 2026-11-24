@@ -7922,7 +7922,6 @@ impl<'a> Engine<'a> {
                             | "to_str"
                     );
                     if !ok {
-                        eprintln!("P119DBG foreign_callee={}", name.name);
                     }
                     ok
                 }
@@ -7996,7 +7995,6 @@ impl<'a> Engine<'a> {
                     } else if let Some(st) = self.project_on_stmt_inner(inner) {
                         stmts.push(st);
                     } else {
-                        eprintln!("P119DBG foreign_stmt @{}..{}", self.cx.span_of(inner).start, self.cx.span_of(inner).end);
                         body_foreign = true;
                     }
                 }
@@ -8008,7 +8006,6 @@ impl<'a> Engine<'a> {
                 self.handler_params(c).into_iter().unzip();
             let mut locals = params.iter().map(|(name, _)| name.clone()).collect();
             let scope_foreign = Self::resolve_handler_scope(&mut stmts, &mut locals, true);
-            if scope_foreign { eprintln!("P119DBG scope_foreign=true"); }
             body_foreign |= scope_foreign;
             let mut assigns = Vec::new();
             Self::flat_handler_assigns(&stmts, &mut assigns);

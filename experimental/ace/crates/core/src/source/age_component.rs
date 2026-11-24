@@ -1123,7 +1123,6 @@ fn store_call_parts(call: &Expr) -> Option<(String, Vec<Expr>)> {
     match &call.kind {
         ExprKind::MethodCall { recv, name, args, .. } => {
             if !is_store_base(recv) {
-                eprintln!("P119DBG store_call_miss recv={:?} name={}", recv.kind, name.name);
                 return None;
             }
             let mut out = Vec::new();
@@ -1675,15 +1674,6 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
     }
 
     for h in &mut node.handlers {
-        eprintln!(
-            "P119DBG widget_handler msg={} stmts={} variants={:?}",
-            h.msg,
-            h.stmts.len(),
-            h.stmts
-                .iter()
-                .map(|s| format!("{s:?}").chars().take(90).collect::<String>())
-                .collect::<Vec<_>>()
-        );
         let stmts = std::mem::take(&mut h.stmts);
         h.stmts = expand_store_calls(stmts, &store_bodies, 0)?;
         // 展开后若不再有调用语句，恢复可执行面（body_foreign 由投影器按调用判定）。

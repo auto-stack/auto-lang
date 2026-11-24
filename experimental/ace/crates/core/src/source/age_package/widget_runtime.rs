@@ -424,24 +424,9 @@ fn add_model(
         let Some(Item::Fn(function)) =
             handler_check_fn(node, index, ordinal, &handler_prefix, true).transpose()?
         else {
-            // PLAN-119 临时诊断（G5 裁定①）：暴露发射面拒的真实分支。
-            eprintln!(
-                "P119DBG handler={} msg={} branch=check_fn_none body_foreign={} stmts={} channels={}",
-                ordinal,
-                handler.msg,
-                handler.body_foreign,
-                handler.stmts.len(),
-                handler.channel_calls.len()
-            );
             return Err(unsupported());
         };
         let Some(function) = model_transition(node, &model_param, model, &queues, function) else {
-            eprintln!(
-                "P119DBG handler={} msg={} branch=model_transition_none stmts={}",
-                ordinal,
-                handler.msg,
-                handler.stmts.len()
-            );
             return Err(unsupported());
         };
         output.handlers.push(AgeWidgetRuntimeHandler {
