@@ -184,6 +184,14 @@ efhi 回退与 `child_push` 重定位的交互），已回退。
 6. 诊断先行：先在 `machine_run` 的每 128 步采样 `(m_thi, m_efhi, nframes)` 到 dmsg（临时），
    用于确认 `nf` 峰值与回溯回收是否生效，再关哨兵。
 
+**实际落地（2026-11-24，worktree `6fd43e52f`，比原设计更省）**：不需要独立 `nf`——改为在
+`machine_run` 里**原地压缩 `ef`**（`compact_edges`：把活节点子边与活帧段按序拷到 `ef` 前部并改写
+`fc`/`cstart`；阈值 `m_efhi()>24000`，边哨兵 `ef.len()>62000`）。实测：**std/file 15.4KB 由
+`PARSE_ERR 5` 变为 CANON（3s）**，std/text、part-22 亦 CANON；`ace-aac-syntax` **PASS（12s）**。
+但 16 个 10–30KB 的 S 模块仍 `source.projection`/`NO_REPORT`：这是**平坦列表 65,536 元素上限**
+（活节点/边本身超限），不是回收问题——**只有 1054 T-10 的分页前端能过**（1054 分支实测 103KB
+模块可到 `bind.module`）。因此 T-17 的前置升级为「**1054 分页前端落主**」。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
