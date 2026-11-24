@@ -551,6 +551,30 @@ fn parse_packages_with(
     parse_packages_with_stores(face, src, budget, scenario, node_base, None)
 }
 
+/// PLAN-1131: the byte ranges of the string and char literals of an
+/// ordinary Auto source, by the Auto grammar's own scanner (comments,
+/// escapes and multi-line literals handled by the grammar). `None` when the
+/// scan fails: callers then change nothing and let the parser's diagnostic
+/// answer.
+pub(crate) fn auto_literal_spans(src: &str) -> Option<Vec<crate::atom_text::Span>> {
+    let cached = profile_grammar(SourceProfile::Auto).ok()?;
+    let pages = std::rc::Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&pages, src);
+    let scanned = ace_syntax_runtime::lexer::lex_all(&cached.program, &cached.scanner, &snap).ok()?;
+    let mut spans = Vec::new();
+    for token in scanned.tokens {
+        let start = usize::try_from(token.start).ok()?;
+        let end = usize::try_from(token.end).ok()?;
+        let Some(text) = src.get(start..end) else {
+            continue;
+        };
+        if text.starts_with('"') || text.starts_with('\'') {
+            spans.push(crate::atom_text::Span { start, end });
+        }
+    }
+    Some(spans)
+}
+
 fn parse_packages_with_stores(
     face: PackagesFace,
     src: &str,

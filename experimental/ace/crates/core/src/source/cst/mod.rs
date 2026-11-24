@@ -25,6 +25,7 @@ mod shift;
 pub mod units;
 
 // PLAN-963（V-G06）：包模块扁平程序的记录模板单态化由绑定层在收尾调用。
+pub(crate) use frontdoor::auto_literal_spans;
 pub(crate) use frontdoor::parse_auto_program_for_instances;
 pub use project::materialize_auto_record_instances;
 pub(crate) use project::monomorphize_package_program;

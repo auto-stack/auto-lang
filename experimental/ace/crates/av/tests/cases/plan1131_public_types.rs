@@ -1149,3 +1149,52 @@ print(len("hello"))
         "5\n"
     );
 }
+
+#[test]
+fn v03_literal_mask_follows_the_scanner_not_a_text_guess() {
+    // review cycle 3, R-1131-01: a quote inside a line comment, and a char
+    // literal holding a quote, are not string literals
+    assert_eq!(
+        ok_stdout(
+            r#"use auto.str: len
+fn main() int {
+    // the " char
+    var s = "a
+use auto.result
+b"
+    print(s)
+    return len("hi")
+}
+"#
+        ),
+        "a\nuse auto.result\nb\n"
+    );
+    // a quote in a comment before a real import does not hide the import
+    assert_eq!(
+        ok_value(
+            r#"// the " char
+use auto.str: len
+fn main() int {
+    return len("hello")
+}
+"#
+        ),
+        Value::I32(5)
+    );
+    // ... nor does a char literal holding a quote
+    assert_eq!(
+        ok_value(
+            r#"fn quirk() int {
+    var c = '"'
+    return c.to_codepoint()
+}
+use auto.str: len
+fn main() int {
+    return len("hello") * 100 + quirk()
+}
+"#
+        ),
+        Value::I32(534),
+        "len 5, and the quote char reads as codepoint 34"
+    );
+}

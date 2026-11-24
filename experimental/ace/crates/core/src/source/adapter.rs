@@ -701,40 +701,34 @@ fn is_legacy_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
 }
 
-/// Whether a line ends inside a string literal it opened or continued.
-/// Only an unescaped quote opens or closes one.
-fn ends_inside_literal(line: &str) -> bool {
-    let bytes = line.as_bytes();
-    let mut inside = false;
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => i += 2,
-            b'"' => {
-                inside = !inside;
-                i += 1;
-            }
-            _ => i += 1,
-        }
-    }
-    inside
+/// The byte ranges of the string and char literals of `src`, as the Auto
+/// grammar's own scanner sees them (comments, escapes and multi-line
+/// literals included). `None` when the scan fails: nothing is masked then,
+/// and the parser's own diagnostic is the answer.
+fn literal_spans(src: &str) -> Option<Vec<Span>> {
+    super::cst::auto_literal_spans(src)
 }
 
 /// Recognise the legacy imports of `src` and answer the source with those
 /// lines blanked (every other byte, and so every user span, is unchanged).
-/// A line inside a string literal, or holding one, is never masked.
+/// A line that meets a literal is program data and is never masked; the
+/// decision comes from the lexer's literal ranges, never from a text guess.
 fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
     let mut out = String::with_capacity(src.len());
     let mut imports = LegacyImports::default();
+    let Some(literals) = literal_spans(src) else {
+        return (out, imports);
+    };
     let mut changed = false;
-    // a line inside a multi-line string literal is program data, never an
-    // import: the mask only touches lines that lie outside every literal
-    let mut in_string = false;
+    let mut at = 0usize;
     for line in src.split_inclusive('\n') {
         let body = line.strip_suffix('\n').unwrap_or(line);
         let body = body.strip_suffix('\r').unwrap_or(body);
-        let literal = in_string || body.contains('"');
-        in_string ^= ends_inside_literal(body);
+        let literal = body.contains(['"', '\''])
+            || literals
+                .iter()
+                .any(|span| span.start < at + body.len() && at < span.end);
+        at += line.len();
         let text = body.trim();
         let mut names: Vec<String> = Vec::new();
         let mut result = false;
