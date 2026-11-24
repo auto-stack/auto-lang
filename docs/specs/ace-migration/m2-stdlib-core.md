@@ -168,8 +168,8 @@ merge 级门。
   - 包绑定器把 `HashMap`/`HashSet`/`StringBuilder` 当作内建名义类型：名字原样交给解析器，由
     嫁接回退绑定；**模块自己声明或导入的同名类型优先**（在同名判断之前解析）；
   - `use auto.str: a, b` 在包面是"模块成员导入"：冻结的 `auto::str` 模块承载 `text.at`
-    （改名后的同一实现）与单文件面同一组转发函数（公开函数）；模块写了该导入而工程没带
-    同名模块时，由 `compile_package_product_auto` 自动并入；
+    （改名后的同一实现）与单文件面同一组转发函数（公开函数）；模块写了该导入而工程的 `auto` 包没带
+    同名模块时，由 `compile_package_product_auto` 自动并入（工程自带的 `auto::str` 优先）；
   - `use auto.result` 是模块导入（同 `use std.json`）：冻结的 `auto::result` 模块只给导入一个
     目标，Result/Ok/Err 本身内建。
   - 该面既有边界（非本计划引入，未改）：非入口函数的 `!int` 形参不被接纳；`print` 需要宿主。

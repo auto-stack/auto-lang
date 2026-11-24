@@ -532,35 +532,6 @@ fn main() int {
 }
 
 #[test]
-fn v05_program_module_of_the_same_name_wins_over_the_legacy_import() {
-    assert_eq!(
-        ok_value(
-            "v05-own-str",
-            &[
-                module(
-                    "str",
-                    r#"
-pub fn len(s Str) int {
-    return 99
-}
-"#,
-                ),
-                module(
-                    "main",
-                    r#"
-use app.str.len
-fn main() int {
-    return len("hello")
-}
-"#,
-                ),
-            ]
-        ),
-        Value::I32(99)
-    );
-}
-
-#[test]
 fn v05_unknown_legacy_module_stays_a_named_rejection() {
     let (module_id, _stage, code) = diag(&[module(
         "main",
@@ -584,5 +555,122 @@ fn v05_control_a_module_without_containers_or_imports_is_unchanged() {
             ]
         ),
         Value::I32(42)
+    );
+}
+
+/// A module of a named package (the legacy imports live in package `auto`).
+fn package_module(package: &str, id: &str, source: &str) -> PackageModuleInput {
+    PackageModuleInput {
+        package: package.into(),
+        version: "1.0.0".into(),
+        id: id.into(),
+        source: source.into(),
+        provider: None,
+    }
+}
+
+/// V-04: changes made through a callee never reach another instance. Two
+/// caller-owned maps go through the same function in turn.
+#[test]
+fn v04_two_instances_stay_isolated_through_one_callee() {
+    let (value, allocations, releases, live, frames_left) = run(
+        "v04-isolated",
+        &[
+            module(
+                "lib",
+                r#"
+pub fn add_a(m HashMap) int {
+    m.insert("a", 1)
+    return m.size()
+}
+"#,
+            ),
+            module(
+                "main",
+                r#"
+use app.lib.add_a
+fn main() int {
+    var first = HashMap.new()
+    var second = HashMap.new()
+    first.insert("z", 9)
+    second.insert("z", 9)
+    var n1 = add_a(first)
+    var n2 = add_a(second)
+    var c = 0
+    if n1 == 2 { c = c + 1 }
+    if n2 == 2 { c = c + 1 }
+    if first.get_int("a") == 1 { c = c + 1 }
+    if second.get_int("a") == 1 { c = c + 1 }
+    if first.contains("z") { c = c + 1 }
+    if second.contains("z") { c = c + 1 }
+    var removed = 0
+    if first.remove("a") { removed = 1 }
+    if second.contains("a") { c = c + 100 }
+    return c * 10 + removed
+}
+"#,
+            ),
+        ],
+    );
+    assert_eq!(value, Value::I32(1061), "six checks hold (106); the removal from the first leaves the second intact");
+    assert_eq!(frames_left, 0);
+    assert_eq!(allocations, releases, "every allocation is released");
+    assert_eq!(live, 0);
+}
+
+/// V-05: a project module of the SAME package and name (`auto::str`) wins
+/// over the frozen legacy module — the entry adds the frozen one only when
+/// the project brings none.
+#[test]
+fn v05_project_auto_str_module_wins_over_the_frozen_one() {
+    assert_eq!(
+        ok_value(
+            "v05-project-auto-str",
+            &[
+                package_module("auto", "str", "pub fn len(s Str) int {\n    return 99\n}\n"),
+                module(
+                    "main",
+                    "use auto.str: len\nfn main() int {\n    return len(\"hello\")\n}\n",
+                ),
+            ]
+        ),
+        Value::I32(99)
+    );
+    // ... and the same for `auto::result`
+    assert_eq!(
+        ok_value(
+            "v05-project-auto-result",
+            &[
+                package_module("auto", "result", "pub fn marker() int {\n    return 7\n}\n"),
+                module(
+                    "main",
+                    "use auto.result: marker\nfn main() int {\n    return marker()\n}\n",
+                ),
+            ]
+        ),
+        Value::I32(7)
+    );
+}
+
+/// A module of another package (`app::str`) is an ordinary import and has
+/// nothing to do with the legacy `auto.str` — this is a control for normal
+/// binding, not for the legacy-import shadow rule.
+#[test]
+fn v05_control_project_module_import_binds_normally() {
+    assert_eq!(
+        ok_value(
+            "v05-own-str",
+            &[
+                module(
+                    "str",
+                    "pub fn len(s Str) int {\n    return 99\n}\n",
+                ),
+                module(
+                    "main",
+                    "use app.str.len\nfn main() int {\n    return len(\"hello\")\n}\n",
+                ),
+            ]
+        ),
+        Value::I32(99)
     );
 }

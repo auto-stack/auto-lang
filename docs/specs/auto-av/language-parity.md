@@ -546,8 +546,10 @@ case-av-language-parity 固定组）真实执行并核逐行身份。本包新�
 
 **多文件入口（r2，2026-11-24 用户裁定后补齐）**：V-01 的"多模块 AutoDown Case"在普通 Auto 包闭包
 （`bind_packages_auto`）上兑现——证据 `experimental/ace/crates/av/tests/cases/plan1131_multi_module.rs`（13 例）：
-容器公共类型跨真实模块边界成立（形参/返回/记录字段/模块链），`use auto.str: …` 与 `use auto.result` 在依赖
-模块与入口模块均可用，模块同名类型与工程同名模块优先，未知模块保持 `source.module-missing`。
+容器公共类型跨真实模块边界成立（形参/返回/记录字段/模块链；另一实例不受被调修改影响），`use auto.str: …` 与
+`use auto.result` 在依赖模块与入口模块均可用，模块同名类型与工程自带的 `auto` 包同名模块（`auto::str`/`auto::result`）
+优先，未知模块与未知成员保持具名拒（`source.module-missing`/`source.module-symbol`）。其他包（如 `app::str`）的
+同名模块是普通导入，与旧导入无关。
 `packages` **装配线**（并入冻结装配标准库集的 `packages-aggregates-ct` 线）不在本计划范围：那条线没有记录类型
 嫁接通道，且另有基线红 D-1125-01（`list.at` 私有 `fn`，owner PLAN-118）；本计划的用例只含工程模块，不触及它。
 
