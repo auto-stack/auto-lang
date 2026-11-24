@@ -56,6 +56,10 @@ pub struct ProviderDescriptor {
     /// real preprocessor, so the manifest rides the closure), base64.
     #[serde(default)]
     pub manifest_b64: Option<String>,
+    /// SHA-256 hex of every staged C project source, keyed by file name
+    /// (c only; written by the prepare lane — PLAN-1125 provenance).
+    #[serde(default)]
+    pub source_sha256: Option<std::collections::BTreeMap<String, String>>,
     /// The rustc identity the prepared Rust build used (stamp axis).
     #[serde(default)]
     pub rustc_identity: Option<String>,
@@ -480,6 +484,15 @@ fn load_prepared_c(
     let manifest: ace_foreign_contract::manual::ManualManifest =
         serde_json::from_slice(&b64_bytes(manifest_b64, "foreign.manifest")?)
             .map_err(|e| diag("foreign.manifest", format!("{e}")))?;
+    if manifest.provider != descriptor.provider {
+        return Err(diag(
+            "foreign.identity",
+            format!(
+                "prepared C manifest declares provider `{}` but the closure is `{}`",
+                manifest.provider, descriptor.provider
+            ),
+        ));
+    }
     let dll_name = descriptor
         .dll
         .clone()
@@ -499,6 +512,23 @@ fn load_prepared_c(
         .provider_digest
         .clone()
         .ok_or_else(|| diag("foreign.prepared", "c provider closure lacks a header digest"))?;
+    // PLAN-1125: the admitted header digest is bound to the closure's own
+    // frozen header source — a descriptor cannot vouch for a digest that
+    // another header produced.
+    let header = descriptor
+        .source_b64
+        .as_deref()
+        .ok_or_else(|| diag("foreign.prepared", "c provider closure lacks its header source"))?;
+    let header_source = b64_bytes(header, "foreign.source")?;
+    if ace_foreign_contract::blake3_hex(&header_source) != provider_digest {
+        return Err(diag(
+            "foreign.identity",
+            format!(
+                "prepared C header source hashes to {} but the closure declares {provider_digest}",
+                ace_foreign_contract::blake3_hex(&header_source)
+            ),
+        ));
+    }
     let authority = ace_foreign_contract::manual::HostAuthority {
         review_id: manifest.review_id.clone(),
         contract_digest: manifest

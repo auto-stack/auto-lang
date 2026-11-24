@@ -205,6 +205,9 @@
       "profile": "debug",
       "target": "experimental/ace/target",
       "dir_env": "ACE_AV_PROVIDER_ROOT",
+      "warm_env": {
+        "ACE_AV_C_PROVIDER_DIR": "crates/foreign-contract/c/parity1093_c"
+      },
       "warm": [
         "prepare-av-providers"
       ]

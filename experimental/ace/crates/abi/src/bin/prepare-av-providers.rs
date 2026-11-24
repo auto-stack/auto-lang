@@ -6,11 +6,11 @@
 //!   - `rust f0_text` — the frozen 967 F0 text provider (repo source).
 //!   - `rust py`      — the 1026 CPython adapter (pinned pyo3 closure,
 //!                      built once and cached under the OS temp dir).
-//!   - `c parity1093_c`— prepared only when the annotated C provider project
-//!                      is supplied (`ACE_AV_C_PROVIDER_DIR`); the 1093
-//!                      provider sources were never canonized in the repo
-//!                      (known debt), so an absent project is a named skip,
-//!                      not a silent green.
+//!   - `c parity1093_c`— the in-repo canonical project
+//!                      (`ace/crates/foreign-contract/c/parity1093_c`),
+//!                      supplied by the prepare tool's warm env
+//!                      (`ACE_AV_C_PROVIDER_DIR`, PLAN-1125); an unset
+//!                      project is a named skip, not a silent green.
 //!
 //! The run phase never compiles: every closure is fully materialized here,
 //! and the worker verifies stamp + DLL SHA-256 at load time.
@@ -133,14 +133,19 @@ fn prepare_py(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The 1093 C provider: prepared ONLY when the annotated provider project
-/// is supplied (sources were never canonized in the repo — known debt).
+/// The 1093 C provider: the in-repo canonical project
+/// (`ace/crates/foreign-contract/c/parity1093_c` — annotated header,
+/// provider unit, SDK-include impl unit; PLAN-1125) supplied through
+/// `ACE_AV_C_PROVIDER_DIR` by the prepare tool's warm env. The project
+/// is STAGED into the closure root first: `open_c_provider` writes its
+/// `.c-build-<name>/` beside the sources, and the tracked tree must
+/// stay clean. The descriptor records every staged source's SHA-256.
 fn prepare_c(root: &Path) -> Result<()> {
     use ace_abi::rust_provider::{
         build_c_dll_with, c_authority, compile_c_unit, open_c_provider, sdk_include_dirs,
     };
     let Some(dir) = std::env::var_os("ACE_AV_C_PROVIDER_DIR") else {
-        println!("parity1093_c: skipped (ACE_AV_C_PROVIDER_DIR unset; provider sources are 1093-owned debt)");
+        println!("parity1093_c: skipped (ACE_AV_C_PROVIDER_DIR unset; the prepare tool must point it at the in-repo C provider project)");
         return Ok(());
     };
     let project = PathBuf::from(dir);
@@ -149,6 +154,21 @@ fn prepare_c(root: &Path) -> Result<()> {
         println!("parity1093_c: skipped (annotated header {name}.h not found in {})", project.display());
         return Ok(());
     }
+    // The staged copy is rebuilt from the project on every prepare run.
+    let stage = root.join("out").join("c-provider-src");
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir_all(&stage)?;
+    let mut source_sha256 = serde_json::Map::new();
+    for file in [format!("{name}.h"), format!("{name}.c"), format!("{name}_impl.c")] {
+        let from = project.join(&file);
+        if !from.is_file() {
+            return Err(format!("C provider source missing: {}", from.display()).into());
+        }
+        let bytes = std::fs::read(&from)?;
+        source_sha256.insert(file.clone(), serde_json::json!(ace_core::runtime_contract::sha256_hex(&bytes)));
+        std::fs::write(stage.join(&file), &bytes)?;
+    }
+    let project = stage;
     let provider = open_c_provider(&project, name)?;
     let mut extra_units = Vec::new();
     let mut extra_includes = Vec::new();
@@ -177,6 +197,7 @@ fn prepare_c(root: &Path) -> Result<()> {
         "manifest_b64": b64(&String::from_utf8(manifest_bytes)?),
         "provider_digest": provider.provider_digest,
         "dll": format!("{name}.dll"),
+        "source_sha256": source_sha256,
     });
     std::fs::write(
         root.join(format!("{name}.descriptor.json")),

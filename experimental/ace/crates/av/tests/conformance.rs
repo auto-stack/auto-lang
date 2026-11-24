@@ -1,3 +1,5 @@
+#[path = "cases/c_provider_1125.rs"]
+mod c_provider_1125;
 #[path = "cases/plan105_list_handlers.rs"]
 mod plan105_list_handlers;
 #[path = "cases/py_lane_probe_1094.rs"]
