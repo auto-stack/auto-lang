@@ -252,6 +252,14 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 
 **已定位（2026-11-24，哨兵码实验，已回退）**：给 `builtin_text_op` 的早退分支编 -1/-2/-3 哨兵后跑 `only-codepoint` 得到 **`hir.initialization`** → 函数**已识别出 op 24**（`char_to_codepoint`），失败在接收者表达式 id 取不到。进一步发现 **`core_value_type` 只认 int/bool/text_view/record，`char` 根本不是 HIR 值类型**——所以 `char` 参数/返回值/`char_at` 结果的表达式都不发射。把 `char_type()` 加进 `core_value_type` 后：`only-charat` → `hir.initialization`（接收者 `s` 仍取不到）、`only-codepoint` → `hir.reference`（verify 拒绝 op 24 的引用）。**结论：T-14 的 char/text 内建必须连同「char 作为 HIR 值类型」一起做**（core_value_type + 接收者解析 + verify 白名单三条同步），否则单点接线一定失败。
 
+**三同步实施（2026-11-24，已回退，但已验证到 `mir.base-profile`）**：按三条同步落地
+（`core_value_type` 加 char + owned_text；op 23/24/25 发射 + `verify_unary_builtin` 白名单 + HIR 文本 form）后：
+- `c.to_codepoint()` → **`mir.base-profile`**（HIR 全过，lowering 拒——正是 T-14 想要的可见进展）；
+- `s.char_at(i)` → 停在 `hir.reference`（47..48，即实参 `i`）：`verify_usage` 要求实参表达式经 args 三元组引用，
+  但 `verify_unary_builtin` 的 `unary_operand` 在"接收者+实参"两个三元组里会取到实参而判失败；去掉接收者三元组则
+  `verify_usage` 报接收者未引用。**剩余问题 = 内建 op 的 args 布局与 verify 语义冲突**，下轮正解：
+  给内建一元 op 固定 args 布局（接收者三元组在首位），并让 verify 用「该表达式的第一个三元组」而非 `unary_operand`。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
