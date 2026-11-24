@@ -233,6 +233,8 @@ fields = (binding, iterable_expr, body_block)；需同时改 HIR 文本渲染、
 `ace-aac-syntax` **PASS（12s）**。余：绑定元素类型未传播（`t + x` 仍 `type.unresolved`）——`facts[iterable]`
 在该时刻为 0，未能从 `iter` 角色或 `in` 后继定位到可用的可迭代表达式节点，**AST 定位（2026-11-24）**：for-in 节点（kind 2097492=340）子节点与字段：`for`(-1) / 绑定 ident(14) / `in`(-1) / **可迭代 ident(107)** / `body` block(13)。即 `iter` 角色与 `in` 后继都应命中 `xs`（[52,54)）；但重新构建后 `facts[iterable]` 仍为 0（`lane <= 0` 返回 0），故 `t + x` 仍 `type.unresolved`。下轮需要一个能观测 facts 的探针（或在 `derive` 里把 `lane`、`type_kind` 写入错误码区分），先确认 iterable 的 fact 到底是 0 还是非 list。**已查明（2026-11-24）**：用「把 probe 结果编码进已知错误码」的方式确认 `facts[iterable] == 0`（得到 `type.argument`）——根因是 binder 的 occurrence 过滤只认 `atom-expr`/`condition-atom`/write/type/scrutinee，for-in 的可迭代 ident 父节点是 `for-in-stmt`，**从未被绑定**（`uses=-1` → fact 0）。**尝试修复**：在过滤里加 `node_kind == "for-in-stmt" && role == "iter"`，但 `fi-param` 变成 **`trap:ListIndex`**（即使只保留这一个改动、typecheck 全回退）。已回退到 `93baf690b`。结论：for-in 的 iterable 要么在**投影层**包成 `atom-expr`（最省），要么在 binder 里绑定后同步修掉下游对它的假设；单点改过滤不够。
 
+**投影层尝试（2026-11-24，已回退）**：在 `for-in-stmt` 规则里加 `alt(profiles: [aac]) { ... atom-expr(field:"iter") ... }`（先放第一位、重新生成 grammar data、重建驱动）。结果：binder 报告（`AAC1047_TYPED=0`）显示 **`xs` 仍无 `USE`**（iterable 仍未绑定），说明该 alt 未被选中或 `atom-expr` 在该位置未生效；随后 typecheck 阶段 `trap:ListIndex`。已回退（grammar/data/typecheck 全回滚到 `93baf690b`，避免无谓的 S 身份变更）。下一步：先用 1046 驱动 dump 新 grammar 下 for-in 的 AST，确认 alt 选择；或直接在投影实现里对 `for-in-stmt` 的 iter 子节点做包装（不依赖 grammar 顺序）。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
