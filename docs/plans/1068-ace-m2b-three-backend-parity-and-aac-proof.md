@@ -334,6 +334,12 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     而合成程序 `fn g(a int)` 的三次调用**不 trap** → 触发与「被调用函数带 `str` 形参 + 多调用」相关，
     不是单纯调用数。下一步：用 `fn g(a str) int` + 3 次调用构造最小独立 reproducer，再查 binder 的
     `call_parameter_slots`/`mappings` 是否对 str 形参映射取到 `-1`。
+  - **`aac.pending-work/1` 决策已落（2026-11-24）**：`plan-artifacts/plan-1068/t16-pending-work-decision.md`。
+    8 个 std 模块分布 + 宿主能力逐条决策：`net.tcp`（net/redis 的 `net_tcp_connect`）、`sqlite.open`（`db_open(path)`）
+    一律先声明为 **external 签名**放行绑定/定型，实现具名分期；`env/path/rand/time` 同策略；`text`/`url`
+    属语言原语面（`STR_CLONE`、`str→Str` 所有权）需在 T-15/T-16 内实现；json 的驱动 trap 单列。
+  - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
+    → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
   再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
