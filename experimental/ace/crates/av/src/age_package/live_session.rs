@@ -642,6 +642,38 @@ impl WidgetSession {
         }
     }
 
+    /// PLAN-118（T-03）：模型列表字段的文本元素读面——画布场景五平行列表
+    /// （`<scene>_pts/_meta/_nodes/_edges/_labels`）由宿主读回、解析成场景。
+    pub fn list_field(&self, name: &str) -> Result<Option<Vec<String>>, String> {
+        let cells = self.snapshot.global_cells();
+        let Some(Value::Record(model)) = cells.get(self.program.model_cell) else {
+            return Err("widget model cell is not initialized".into());
+        };
+        let Some(index) = self
+            .program
+            .fields
+            .iter()
+            .position(|(field, _)| field == name)
+        else {
+            return Ok(None);
+        };
+        let Some(Value::List(list)) = model.fields.get(index) else {
+            return Ok(None);
+        };
+        let items = list
+            .rc
+            .borrow()
+            .elems
+            .iter()
+            .map(|value| {
+                live_view::text(value)
+                    .map(str::to_owned)
+                    .map_err(|_| format!("widget model `{name}` holds a non-text element"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(items))
+    }
+
     pub fn scalar_states(&self) -> Result<Vec<(String, ComponentFieldValue)>, String> {
         let cells = self.snapshot.global_cells();
         let Some(Value::Record(model)) = cells.get(self.program.model_cell) else {
