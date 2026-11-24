@@ -166,8 +166,22 @@ pub fn shim_sys_uptime_s(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
     Ok(())
 }
 
-pub fn shim_sys_kill(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+/// `sys.kill(pid) -> Bool` — PLAN-112 起先咨询宿主结束进程授权门：
+/// 无门（None）= 迁移前行为逐字不变；`Deny` 在刷新采样与 OS 结束**之前**
+/// 抛 `VMError`（稳定码 + 宿主原因 + pid），handler 中止而 VM/窗口存活；
+/// `Allow` 继续走既有 `libs::sys::kill`。
+pub fn shim_sys_kill(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let pid = pop_arg_i32(task);
+    if let Some(gate) = vm.native_interface.sys_kill_gate() {
+        if let crate::vm::host_capabilities::SysKillDecision::Deny { reason } = gate.decision(pid) {
+            return Err(VMError::RuntimeError(format!(
+                "{}: {} (pid {})",
+                crate::vm::host_capabilities::SYS_KILL_PERMISSION_DENIED,
+                reason,
+                pid
+            )));
+        }
+    }
     let ok = crate::libs::sys::kill(pid);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())

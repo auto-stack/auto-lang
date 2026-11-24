@@ -131,6 +131,11 @@ pub struct NativeInterface {
     /// 不撤 proof（绑定身份不变，§host_capabilities 契约注释）。
     frame_provider:
         std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
+    /// PLAN-112: 结束进程授权门槽（2431 auto.sys.kill）。None = 无门→旧行为
+    /// 逐字不变（方向与其它族相反：缺席不是错误/值降级，而是保留既有直接
+    /// 结束进程的宿主行为）；注入不动绑定身份。
+    sys_kill_gate:
+        std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::SysKillGate>>>,
     /// PLAN-785: 文本剪贴板能力槽（2925/2926）。语义与 frame_provider
     /// 槽逐条相同（per-NativeInterface 持有、Clone 保留、注入不动绑定
     /// 身份）；None = 缺席 → shim 报 feature-disabled 形 VMError。
@@ -231,6 +236,14 @@ impl Clone for NativeInterface {
                     .expect("frame_provider poisoned")
                     .clone(),
             ),
+            // PLAN-112: 结束进程授权门随装配克隆保留（merge 经 Clone+merge
+            // 不丢宿主策略；注入不 bump revision 的既有纪律同族）。
+            sys_kill_gate: std::sync::RwLock::new(
+                self.sys_kill_gate
+                    .read()
+                    .expect("sys_kill_gate poisoned")
+                    .clone(),
+            ),
             // PLAN-785: clipboard text provider 随装配克隆保留（同上，
             // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
             clipboard_text_provider: std::sync::RwLock::new(
@@ -322,6 +335,7 @@ impl NativeInterface {
             binding_conflicts: Vec::new(),
             reference_proofs: std::sync::Mutex::new(HashMap::new()),
             frame_provider: std::sync::RwLock::new(None),
+            sys_kill_gate: std::sync::RwLock::new(None),
             clipboard_text_provider: std::sync::RwLock::new(None),
             clipboard_media_provider: std::sync::RwLock::new(None),
             scroll_host_provider: std::sync::RwLock::new(None),
@@ -355,6 +369,28 @@ impl NativeInterface {
         self.frame_provider
             .read()
             .expect("frame_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-112: 注入/替换本接口（=本 VM）的结束进程授权门。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_sys_kill_gate(
+        &self,
+        gate: std::sync::Arc<dyn crate::vm::host_capabilities::SysKillGate>,
+    ) {
+        *self
+            .sys_kill_gate
+            .write()
+            .expect("sys_kill_gate poisoned") = Some(gate);
+    }
+
+    /// PLAN-112: 当前结束进程授权门（None=无门→旧行为）。
+    pub fn sys_kill_gate(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::SysKillGate>> {
+        self.sys_kill_gate
+            .read()
+            .expect("sys_kill_gate poisoned")
             .clone()
     }
 

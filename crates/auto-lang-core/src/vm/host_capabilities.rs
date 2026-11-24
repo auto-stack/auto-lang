@@ -773,6 +773,80 @@ pub fn clear_process_default_terminal_host_provider() {
     *slot = None;
 }
 
+// ── PLAN-112: 结束进程授权门（auto.sys.kill 2431，VM 宿主面）──────────────
+//
+// 破坏性操作（结束本机进程）的宿主授权门。与 auto-ui `back_proxy` 的 HTTP
+// 会话代理门同策略语义、同稳定码，但落在**VM 内进程直调**这条调用链上：
+// `auto run -r vm` 合并模式把前端与 back.api 装进同一 VM，`kill_process`
+// 最终直达 `shim_sys_kill`，不经 HTTP 代理。
+//
+// 缺席语义与其它 provider 族**方向相反**：未注册 = 无门，shim 直接走既有
+// `libs::sys::kill`（结束进程自 Plan 541 起在 VM 宿主里一直无条件可用）。
+// 本族缺席既不是错误也不是值降级，只为"登记才设门"的宿主策略服务；
+// `AllowAll` 显式登记等价未注册。
+//
+// 装配三层与 779/785/… 同构：进程默认显式注册 → `AutoVM::new` 构造期快照
+// 进实例 → `NativeInterface::set_sys_kill_gate` 实例覆盖。注入不动绑定身份
+//（shim/ID/contract 不变，不 bump binding_revision、不撤 proof）。
+
+/// 结束进程授权判定（owned 值语义；`reason` 由宿主给出，进入错误文本）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SysKillDecision {
+    /// 放行：shim 走既有 `libs::sys::kill`。
+    Allow,
+    /// 拒绝：shim 在刷新/结束**之前**抛 `VMError`（稳定码 + reason + pid）。
+    Deny { reason: String },
+}
+
+/// 结束进程授权门接口（owned 值域，无 UI 类型）。
+///
+/// 实现契约：方法在 VM 锁外调用（accessor 先 clone Arc 再返回）；实现方
+/// 自管内部同步；`decision` 不得触碰目标进程或刷新采样器。
+pub trait SysKillGate: Send + Sync {
+    fn decision(&self, pid: i32) -> SysKillDecision;
+}
+
+/// 拒绝诊断的稳定码——与 auto-ui `back_proxy::SYS_KILL_PERMISSION_DENIED`
+/// 同一字面量（两个调用链的门、一个字面码）。
+pub const SYS_KILL_PERMISSION_DENIED: &str = "sys.kill.permission_denied";
+
+/// 进程级默认 gate（显式注册；None = 无门 → 旧行为）。
+static PROCESS_DEFAULT_SYS_KILL_GATE: RwLock<Option<Arc<dyn SysKillGate>>> = RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_sys_kill_gate(gate: Arc<dyn SysKillGate>) {
+    let mut slot = PROCESS_DEFAULT_SYS_KILL_GATE
+        .write()
+        .expect("PROCESS_DEFAULT_SYS_KILL_GATE poisoned");
+    *slot = Some(gate);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子）。
+pub fn set_process_default_sys_kill_gate_if_absent(gate: Arc<dyn SysKillGate>) {
+    let mut slot = PROCESS_DEFAULT_SYS_KILL_GATE
+        .write()
+        .expect("PROCESS_DEFAULT_SYS_KILL_GATE poisoned");
+    if slot.is_none() {
+        *slot = Some(gate);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_sys_kill_gate() -> Option<Arc<dyn SysKillGate>> {
+    PROCESS_DEFAULT_SYS_KILL_GATE
+        .read()
+        .expect("PROCESS_DEFAULT_SYS_KILL_GATE poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到无门/旧行为语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_sys_kill_gate() {
+    let mut slot = PROCESS_DEFAULT_SYS_KILL_GATE
+        .write()
+        .expect("PROCESS_DEFAULT_SYS_KILL_GATE poisoned");
+    *slot = None;
+}
+
 /// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
 /// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
 /// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对

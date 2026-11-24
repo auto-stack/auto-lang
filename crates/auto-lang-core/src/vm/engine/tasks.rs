@@ -38,6 +38,22 @@ impl AutoVM {
         self.native_interface.frame_provider()
     }
 
+    /// PLAN-112: 实例级结束进程授权门注入/覆盖（宿主 adapter、外部
+    /// consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰绑定身份。
+    pub fn set_sys_kill_gate(
+        &self,
+        gate: std::sync::Arc<dyn crate::vm::host_capabilities::SysKillGate>,
+    ) {
+        self.native_interface.set_sys_kill_gate(gate);
+    }
+
+    /// PLAN-112: 本 VM 当前结束进程授权门（None=无门→旧行为）。
+    pub fn sys_kill_gate(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::SysKillGate>> {
+        self.native_interface.sys_kill_gate()
+    }
+
     /// Plan 317 Phase 1: Find the bytecode offset of the handler for a message.
     ///
     /// Used by both HANDLE_MSG (opcode path) and run_task_loop (message wake

@@ -904,6 +904,13 @@ impl AutoVM {
                 native_interface.set_frame_provider(provider);
             }
 
+            // PLAN-112: 同纪律快照结束进程授权门（2431）。缺席快照 = 无门，
+            // shim 走既有 `libs::sys::kill`——与迁移前逐字同（本族缺席不是
+            // 错误/值降级，见 host_capabilities::SysKillGate 注释）。
+            if let Some(gate) = crate::vm::host_capabilities::process_default_sys_kill_gate() {
+                native_interface.set_sys_kill_gate(gate);
+            }
+
             // PLAN-785: 同纪律快照文本剪贴板 provider（2925/2926 能力=
             // 注入；缺席快照 = shim 侧 feature-disabled 形 VMError，与
             // no-ui 构建迁移前行为一致）。

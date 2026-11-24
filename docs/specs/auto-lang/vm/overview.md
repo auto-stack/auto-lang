@@ -107,6 +107,11 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   不是空值），保留旧无 UI 驱动行为；UI 宿主安装 adapter 后才有输入/
   几何/menu/scroll/window/palette 面。详见
   [terminal native 宿主能力（PLAN-808）](#terminal-native-宿主能力plan-808)。
+- 结束进程 native 2431（`auto.sys.kill`）为 VM 宿主授权门（PLAN-112）：core
+  shim 经 per-VM `vm::host_capabilities::SysKillGate` 判定，缺席 = 无门（旧
+  行为逐字不变）、`Deny` 在触碰 OS 前以稳定码 `sys.kill.permission_denied`
+  具名拒（VMError，handler 中止而 VM/窗口存活）。详见
+  [结束进程宿主授权门（PLAN-112）](#结束进程宿主授权门plan-112)。
 
 ## 绑定序与生效实现（PLAN-872）
 
@@ -362,6 +367,28 @@ display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
 外部 no-UI 宿主可注入自定义 provider；真 no-UI 消费方探针
 （test/fixtures/modularity/terminal-core-consumer，独立 workspace）与
 真实 DLL 生命周期 driver（`AUTOTERM_ENGINE_DLL`）为验收 oracle。
+
+## 结束进程宿主授权门（PLAN-112）
+
+`auto.sys.kill`（2431，`sys.kill(pid) -> Bool`）是破坏性操作。VM 内进程直调
+（`auto run -r vm` 合并模式：前端 → `back.api` → sys.kill 全在同一 VM）经
+per-VM `vm::host_capabilities::SysKillGate` 供判定；canonical 名/ID/签名
+不变，`shim_sys_kill` 是唯一消费点。
+
+- **判定**：`Allow` = 走既有 `libs::sys::kill`；`Deny { reason }` = 在刷新
+  采样与 OS 结束**之前**抛 `VMError`，文本 = 稳定码
+  `sys.kill.permission_denied` + reason + pid（handler 中止、VM/窗口存活）。
+- **缺席语义**（与其它 provider 族反向）：未注册 = 无门，shim 直接
+  `libs::sys::kill`——迁移前行为逐字不变；`AllowAll` 显式登记等价未注册。
+  本族缺席**不是**错误也不是值降级。
+- **装配**：779/785/… 同构三级（实例注入 > `AutoVM::new` 构造期进程默认
+  快照 > 兼容 if-absent）；注入不 bump binding_revision/不撤 proof；NI
+  Clone/VM merge 保 gate。宿主入口 = auto-ui `run_vm`
+  （`AUTO_UI_VM_SYS_KILL_POLICY`），策略语义与 HTTP 会话代理门
+  （`back_proxy::SysKillPolicy`）同源，两门分属两条调用链。
+- **永久用例**：`crates/auto-lang/tests/plan112_vm_sys_kill_gate.rs`
+  （缺席/`AllowAll` 真杀、`Deny` 具名且目标存活、`AllowedPids` 内外分流、
+  构造期快照）。
 
 ## 图像媒体 native 与媒体 HTTP 快路径（PLAN-811）
 
