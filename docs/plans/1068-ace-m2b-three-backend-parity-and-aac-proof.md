@@ -311,6 +311,11 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
   正解：需要时在标量段末尾追加一个 **TY_CHAR(8)** 表项（索引 9），并把 `record_index`/`text_type_base`/fn 类型计数与
   `wire_lane_type(5)` 全部按 +1 平移（char 不出现时保持 9 不变，避免既有程序改动）。测试
   `aac1068_t15_char_builtins_execute_in_av` 已落地并 `#[ignore]`，补完类型表后取消 ignore 即可验证 66。
+- **T-15 完成（worktree `3a9162525`）**：`base_abc` 在需要时于 9 个标量表项后追加 **TY_CHAR(8)**（`char_lane_present` 判定；
+  `record_index`/`text_type_base`/fn 类型计数/`wire_lane_type(5)` 全部按 `extra` 平移；char 不出现时零改动）。
+  解锁：`aac1068_t15_char_builtins_execute_in_av` **PASS** —— AV 真实执行
+  `fn main() int { return "ABC".char_at(1).to_codepoint() }` 并返回 **66（'B'）**；
+  `ace-aac-syntax` **PASS（14s）**，既有 record/text 程序零回归。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
   再跑 AV 执行断言 66；同样会解锁既有 Text 程序的 AV 执行。
 - 剩余：用 AV 执行 244 字节的 ABC，断言返回 66（'B'）——`semantic_conformance.rs` 里有 MIR/ABC 运行夹具，下轮接上；随后补 char 字面量与 owned-Str 接收者的 view 视图化。
