@@ -701,6 +701,25 @@ fn is_legacy_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
 }
 
+/// Whether a line ends inside a string literal it opened or continued.
+/// Only an unescaped quote opens or closes one.
+fn ends_inside_literal(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut inside = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'"' => {
+                inside = !inside;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    inside
+}
+
 /// Recognise the legacy imports of `src` and answer the source with those
 /// lines blanked (every other byte, and so every user span, is unchanged).
 /// A line inside a string literal, or holding one, is never masked.
@@ -714,9 +733,8 @@ fn mask_legacy_imports(src: &str) -> (String, LegacyImports) {
     for line in src.split_inclusive('\n') {
         let body = line.strip_suffix('\n').unwrap_or(line);
         let body = body.strip_suffix('\r').unwrap_or(body);
-        let quotes = body.bytes().filter(|b| *b == b'"').count() % 2 == 1;
         let literal = in_string || body.contains('"');
-        in_string ^= quotes;
+        in_string ^= ends_inside_literal(body);
         let text = body.trim();
         let mut names: Vec<String> = Vec::new();
         let mut result = false;

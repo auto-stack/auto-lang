@@ -1104,3 +1104,48 @@ b"
         "a\nuse auto.str: len\nb\n"
     );
 }
+
+#[test]
+fn v03_escaped_quotes_do_not_flip_the_import_mask() {
+    // review cycle 2, R-1131-01: an escaped quote neither opens nor closes
+    // a literal, so the mask's literal state does not flip on it
+    assert_eq!(
+        ok_stdout(
+            r#"fn main() int {
+    var s = "say \"hi
+use auto.result
+end"
+    print(s)
+    return 0
+}
+"#
+        ),
+        "say \"hi\nuse auto.result\nend\n",
+        "the lookalike line after an escaped quote is still data"
+    );
+    assert_eq!(
+        ok_stdout(
+            r#"fn main() int {
+    var a = "a\""
+    var s = "b
+use auto.result
+c"
+    print(s)
+    return 0
+}
+"#
+        ),
+        "b\nuse auto.result\nc\n",
+        "a closed string holding an escaped quote does not poison later literals"
+    );
+    // ... and does not hide a real import on the next line
+    assert_eq!(
+        ok_stdout(
+            r#"var a = "a\""
+use auto.str: len
+print(len("hello"))
+"#
+        ),
+        "5\n"
+    );
+}
