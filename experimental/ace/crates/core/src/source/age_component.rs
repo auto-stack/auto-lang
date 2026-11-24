@@ -1649,7 +1649,11 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
 
     fn contains_call(stmts: &[ComponentStmt]) -> bool {
         stmts.iter().any(|stmt| match stmt {
-            ComponentStmt::Call { .. } => true,
+            // PLAN-119：只有**域外**调用才算「体不可执行」。列表方法与纯转换
+            // （`push/get/len/pop/clear/set/to/to_string/to_str`）与
+            // `stmts_have_foreign_call` 同一白名单——否则 store 展开后的体
+            // 永远残留 Call，`body_foreign` 不被清除、transition 发不出来。
+            ComponentStmt::Call { call, .. } => !is_emittable_call(call),
             ComponentStmt::If { then, els, .. } => {
                 contains_call(then) || els.as_deref().is_some_and(contains_call)
             }
@@ -1659,12 +1663,26 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
         })
     }
 
+    /// 与投影器 `stmts_have_foreign_call` 同集合的可发射方法调用。
+    fn is_emittable_call(call: &Expr) -> bool {
+        match &call.kind {
+            ExprKind::MethodCall { name, .. } => matches!(
+                name.name.as_str(),
+                "push" | "get" | "len" | "pop" | "clear" | "set" | "to" | "to_string" | "to_str"
+            ),
+            _ => false,
+        }
+    }
+
     for h in &mut node.handlers {
         eprintln!(
-            "P119DBG widget_handler msg={} stmts={} store_keys={:?}",
+            "P119DBG widget_handler msg={} stmts={} variants={:?}",
             h.msg,
             h.stmts.len(),
-            store_bodies.iter().map(|(m, _, _)| m.clone()).collect::<Vec<_>>()
+            h.stmts
+                .iter()
+                .map(|s| format!("{s:?}").chars().take(90).collect::<String>())
+                .collect::<Vec<_>>()
         );
         let stmts = std::mem::take(&mut h.stmts);
         h.stmts = expand_store_calls(stmts, &store_bodies, 0)?;
