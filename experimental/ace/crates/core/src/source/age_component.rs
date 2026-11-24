@@ -1622,6 +1622,12 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
     }
 
     for h in &mut node.handlers {
+        eprintln!(
+            "P119DBG widget_handler msg={} stmts={} store_keys={:?}",
+            h.msg,
+            h.stmts.len(),
+            store_bodies.iter().map(|(m, _, _)| m.clone()).collect::<Vec<_>>()
+        );
         let stmts = std::mem::take(&mut h.stmts);
         h.stmts = expand_store_calls(stmts, &store_bodies, 0)?;
         // 展开后若不再有调用语句，恢复可执行面（body_foreign 由投影器按调用判定）。
