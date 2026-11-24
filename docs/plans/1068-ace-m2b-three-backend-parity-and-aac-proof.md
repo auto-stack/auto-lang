@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-11-16
 updated_at: 2026-11-24
 plan_revision: 12
-current_step: 0
+current_step: 5
 total_steps: 17
 depends_on: [PLAN-1067, PLAN-1064, PLAN-974, PLAN-975, PLAN-978, PLAN-1044, PLAN-1045]
 supersedes_spec_components: [docs/specs/ace-migration/replacement-scope-and-evidence.md, docs/specs/ace-migration/m2-certification.md]
@@ -573,7 +573,10 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     `plan-artifacts/plan-1068/list-new-issue-report.md`（环境/复现/AST 形状/七次诊断证据链/剩余假设）。
     另确认：驱动 `AAC1047_HIR=facts` 在 check 失败时只返回错误、不产出 facts dump，故无法直接观测
     `facts[call]`——这正是下一个 agent 需要先补的诊断面。
-  - [✅ 诊断] 2026-11-24（第四次，已回退）：在 `derive` 的 `call` 分支加「长文本调用一律返回 `boolean_type()`」探针，报错**不变**（仍 `type.unresolved 0 26..41`）→ `derive` 根本没处理该 call 行。报错点已定位到 `validate` 初始化断言（`actual == 0` → `failure(errors, value, type_unknown())`，`value`=`expr` 包装，span 26..41）。下一步先确认 call 行的 `kind()` 名称与 `row_count` 覆盖范围，再接 `List<T>.new()`。
+  - [✅ 诊断修正] 2026-11-24：语义驱动行级探针显示，`var-stmt`（13）、`expr`（17）和 `call`（18）均收到探针写入的 bool 类型。后续的普通间接调用校验在第 18 行返回 `type.unresolved`。第 17、18 行均为 26..41，单看跨度会把错误归到表达式初始化校验。本条结论取代早先“derive 未执行”的推断。
+  - [✅ V-13 构造器类型检查] 2026-11-24，`plan-1068-dev@d4e5cf739`：在推导和校验中共用 `generic-atom` 的 `List` / `new` 识别。推导复用注解类型应用与 intern 表，按零实参构造 `List<T>`，保留嵌套元素类型。额外实参返回 `type.argument`，未知类型、类型参数数错误、未知方法和裸成员返回 `type.unresolved`。用 `syntax_grammar_data.at:7` 的 `List<Str>.new()` 和 PLAN-1054 `paged.at:66` 的 `List<List<int>>.new()` 构造式做定型重放。
+  - **本轮验证**：`prepare-native … semantic` 成功，115.659s。1047 源身份 BLAKE3 `09b04fd2de37086656480973f9761b690471d3bf9db2a818a289bc0daf1ce320`，二进制 BLAKE3 `71c0d60056a6ee50d9e4c4f0ebedf316ee87839ea4302d8e8978595dc89984f0`。正式驱动重放 8/8，2.120s（逐例 0.173–0.270s），`for-in` 与字符调用的正负结果对 t130 逐字节一致，`List<int>.new()` 从旧驱动的 `type.unresolved` 变为正确列表事实。语义回归 `cargo nextest run … --features aac-semantics --test semantic_conformance -E <3 例>` 3/3，通过 3 例、过滤 66 例（构建 8.540s、测试 1.348s、总 10.973s）。新增正例 `types_list_new_with_primitive_and_nested_elements` 0.444s，断言 int/Str/嵌套列表的 call/expr 类型与嵌套返回。新增负例 `rejects_invalid_list_new_calls` 1.346s，断言五种拒绝及跨度。既有命名实参对照 0.787s。
+  - **固定组**：`cargo t ace-aac-syntax` 按显式 `--prepare-only` / `--run-prepared` 入口串行运行，51/51 PASS。准备 5.002s，发现 1.796s，执行命令 43.056s（Nextest 套件 41.424s），运行命令总耗时 45.869s。清理没有单独计时。首轮普通入口返回 `PREPARATION_REQUIRED`，没有执行测试。随后显式准备并通过。本轮原始证据、驱动 manifest、用例与固定组收据位于 `plan-artifacts/plan-1068/list-new-codex/`。本条证据覆盖 checker，List 构造的 HIR/MIR 执行按对应车道另核。
 - [x] **T-14｜work｜AC-14**：HIR builtin callee 闭集。`core_hir.at` 增 `callee: "b:<name>"` 形与 verify 白名单；既有程序 HIR 文本逐字节不变。验证：语义车道 HIR 用例 + V-14。
 - [x] **T-15｜work｜AC-15**：MIR/ABC 迭代与原语 lowering。`base_ir/lower_base/verify_base/base_abc.at` 落地索引循环与 char/文本原语；缺 op 时按 `av-core` 合同增补 + conformance。验证：`run_base_mir_case` + AV 独立 oracle + V-15。
 - [~] **T-16｜work｜AC-16**：std 闭包与待办面。project 车道 `std/<stem>` + `gen-next` 物化（Windows 过滤 `*_lnx`）；S 的 10 个 std 模块绑定/定型；`aac.pending-work/1`（env/path/rand/time）与 `std/math` 逐条实现或具名分期（阶段码 + 受影响 CL 行）。验证：V-16 + `cargo t ace-aac ace-aac-gen1` 无新增红。
@@ -584,6 +587,8 @@ T-01 冻结验收分母。T-02–05 按实际输入签收，T-06/07 最终复验
 T-11..T-17 为 AAC CL 生产实现（2026-11-24 并入）：T-11 决策/基线 → T-12 parser → T-13 checker（可与 T-12 并行）→ T-14 HIR → T-15 MIR/ABC → T-16 std 闭包 → T-17 全树门；其证据随 T-08 汇总、T-09 独立复审、T-10 落主交接，供 PLAN-1054 重绑 S 身份续跑 T-02..T-09 消费。
 
 ## 9. 复审记录
+
+- 2026-11-24 stage: work | PLAN-1068 r12 | T-13 | outcome: pass（V-13 构造器切片） | worktree: `D:/autostack/.wt/lang-1068/auto-lang` | branch: `plan-1068-dev` | base: `4450c319e` | code: `d4e5cf739` | evidence: §8 的 1047 重备、8 项重放、3 例语义回归与固定组收据 | next: work（T-16/T-17）
 
 > AAC CL（T-11..T-17）交付状态快照见 plan-artifacts/plan-1068/aaccl-delivery-snapshot.md（合并时折叠进本节）。
 
