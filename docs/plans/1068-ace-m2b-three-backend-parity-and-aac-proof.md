@@ -344,6 +344,10 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     `file.at` 二分：v21（到 379 行）报 pending，v24（到 431 行）起 trap → 触发区间是 380..431 的
     `append_text`/`write_bytes`/`write_bytes_all` 一带；已排除的最小构造：递归 + `List<int>` 形参、
     未定义调用（→ `bind.unresolved`）、if 内调用，均不重现。
+  - **file.at trap 进一步定位（2026-11-24）**：v23=418 行（`write_bytes_all` 之前）报 pending；追加 `write_bytes_all`（419..431）
+    即 trap。该函数**单独**（配 stub）在三种形态（stub 前置/后置/去掉递归）下都**不重现**，缺任一 stub 只报 `bind.unresolved`；
+    在 v23 之后追加任意 trivial 函数也**不 trap** → 触发需要「v23 的 pending 上下文 + 该函数的未解析调用/递归组合」。
+    结论：这是**驱动级 trap（无 span）**，盲二分收益已很低；需要给驱动加 trap-safe 报告（捕获并输出阶段/行）或交给更强的 agent。
   - **json trap 补充（2026-11-24）**：单文件 `str` 形参 + 3 调用**不重现**；`ws` 形状（for + 嵌套 if + 调用）也不重现
     → 需要 json 基座内容参与，暂列具名 pending（驱动级 `trap:ListIndex`，无 span 输出）。
 - 下一步：按 av-core `abc.rs` 编码器的段序（magic/version/profile → 类型表 → HOST → 函数体）在 `base_abc` 补 `HOST` 段（无宿主导入时写 `"HOST"` + u16 0），
