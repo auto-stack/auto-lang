@@ -1603,6 +1603,44 @@ pub(crate) fn inline_store_decl(node: &mut ComponentNode) -> Result<(), Vec<Diag
                         span,
                     });
                 }
+                // PLAN-119（用户 A 裁定）：带实参的 `store.X(args)` 独立语句在包面
+                // 投影成 `Effect { value: MethodCall }`，此前只有 `Call` 参与展开，
+                // 于是调用留在体里被记为域外（`body_foreign`）→ 无 transition。
+                // 这里与 `Call` 走同一展开逻辑。
+                ComponentStmt::Effect { value, span } => {
+                    if let Some((msg, args)) = store_call_parts(&value) {
+                        let Some((_, body, params)) = bodies.iter().find(|(m, _, _)| *m == msg)
+                        else {
+                            return Err(vec![text_diag(
+                                "source.age.component-unsupported",
+                                format!("`store.{msg}(…)` has no store handler `{msg}` (S1)"),
+                                span,
+                            )]);
+                        };
+                        if params.len() != args.len() {
+                            return Err(vec![text_diag(
+                                "source.age.component-unsupported",
+                                format!(
+                                    "`store.{msg}(…)` passes {} arg(s) but the store handler takes {}",
+                                    args.len(),
+                                    params.len()
+                                ),
+                                span,
+                            )]);
+                        }
+                        let subs: Vec<(String, Expr)> = params
+                            .iter()
+                            .zip(args.into_iter())
+                            .map(|((p, _), a)| (p.clone(), a))
+                            .collect();
+                        let mut expanded = body.clone();
+                        subst_params_stmts(&mut expanded, &subs);
+                        let expanded = expand_store_calls(expanded, bodies, depth + 1)?;
+                        out.extend(expanded);
+                    } else {
+                        out.push(ComponentStmt::Effect { value, span });
+                    }
+                }
                 other => out.push(other),
             }
         }
