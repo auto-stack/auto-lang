@@ -587,6 +587,8 @@ T-11..T-17 为 AAC CL 生产实现（2026-11-24 并入）：T-11 决策/基线 �
 
 > AAC CL（T-11..T-17）交付状态快照见 plan-artifacts/plan-1068/aaccl-delivery-snapshot.md（合并时折叠进本节）。
 
+- 2026-11-24 stage: work | PLAN-1068 | r13 | V-13 负控复核（只读，未改源码） | outcome: 部分通过 | 证据：`plan-artifacts/plan-1068/aaccl-delivery-snapshot.md` §3.1；`x.char_at(0)`（int 接收者）→ `type.member`、未知方法 → `type.unresolved` 正确；但 **char_at/clone/slice/remove/from_codepoint 的错参全部退化为 `type.unresolved`** 而非 `type.argument`（`builtin_member_call` 在实参不匹配时返回 -1）。列为下轮代码任务（接收者匹配即返回结果类型，实参校验交 validate） | next: work（等 worktree 释放或换独立 worktree）
+
 - 2026-11-24 stage: work | PLAN-1068 | r12 | T-12 部分 | outcome: pass（根因定位+grammar 修复落地，AAC 已能解析 for-in；AST 投影/绑定/HIR 余量归 T-12 余下与 T-13/T-14） | 证据：worktree `80fc3ec75`；根因=for-in 两种可迭代形状写成连续步而非 alt，aac 双门放行导致规则要求两种形状同时出现；修复=两个完整 alt；验证=Rust aac 表 0 诊断、AAC driver for-in 从 `source.syntax` 前进到 `hir.unsupported`/`bind.unresolved`/`source.projection` | next: work（T-12 投影 → T-13 → T-14）
 
 - 2026-11-24 stage: work | PLAN-1068 | r12 | T-11 执行 | outcome: pass（AC-11 达成：决策记录+基线清单+身份落地） | 证据：`plan-artifacts/plan-1068/aaccl-gap-decision.md`、`t11-scan-master.txt`、`t11-drivers/`；关键事实：master@7bb90b1f7 无分页前端，≥50KB S 模块 `trap:ListIndex`（8 个），`for x in xs` 在 aac 面 `source.syntax`，grammar 已有 for-in 规则（aac 表含名），Rust 参考 auto/aggregates 解析同源 OK；结论=缺陷在自举解析器分派/回退或 aac 裁剪，T-12 首步二分定位 | next: work（T-12）
