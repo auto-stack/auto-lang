@@ -347,6 +347,14 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     Auto 侧 `base_ir.view_instruction()` 也是 12（同码）。→ 正解：`lower_base` 在文本操作数的 lane 为 owned text 时先发一条
     `VIEW` 到临时槽，再让 op 读该 view；配套 `data_value` 纳入 owned text。本轮因脚本化编辑把 `lower_base` 改乱已整体回退
     （tree 保持 `4450c319e` 干净），下轮用逐处 `edit` 重做该改动并跑 clone 执行测试。
+  - **逐处重做遇到新的语法门（2026-11-24）**：用 `edit` 逐处改 `core_hir`（op 26/verify/form）、`base_ir`（`str_to_owned_instruction`=24）、
+    `lower_base`（`slot_lane`/`view_operand` 助手、clone 分支、text_length/len_bytes 的 view 包装、`data_value` 纳入 owned text）、
+    `verify_base`（clone 与 VIEW 的类型规则）、`base_abc`（编码）后，**Gen0 编译前端报
+    `app::lower_base: source.syntax "expected , or ) found i64"`，span 4266 = `lower_expression` 的第 15 个形参 `deadline i64`**；
+    移除新助手后同点仍报，说明不是助手本身，而是**对该文件的任何新增都可能触发**（疑为形参数量/文件规模的解析边界）。
+    WIP diff 存档 `plan-artifacts/plan-1068/t128/clone-view-wip.diff`（11,368B），源码已回退，tree 干净 `4450c319e`。
+    下轮首个实验（便宜且决定性）：在干净树上给 `lower_base.at` 加一个**空操作函数**再编译——若同样报 4266，则确认是解析边界，
+    须改用「不改函数数量的等价写法」（例如把 view 包装内联进现有分支、不新增顶层函数）。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
   - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
     `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
