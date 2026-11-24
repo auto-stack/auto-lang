@@ -444,6 +444,8 @@ stage: work | plan_id: PLAN-1124 | plan_revision: r1 | outcome: pass | worktree_
 
 stage: goal | plan_id: PLAN-1124 | plan_revision: r1 | round: 4 | from: work | to: review | status: execution_done | outcome: pass | worktree: D:/autostack/.wt/lang-1124/auto-lang | commit: 9a9c296ec | next: review
 
+2026-11-24 · stage: review · review_scope: repair · status: in-progress（进行中的标记，不是收据）。独立复审子代理 04:56 启动，07:47 因账号使用上限中断，08:37 带原上下文续跑；受审提交 `9a9c296ec`；证据目录 `D:/autostack/plan-artifacts/plan-1124/review2/`。复审记录与路由收据待其返回后追加在本行之后；若此时会话再次中断，续接的轮次应先读该目录里已有的证据，再决定重审还缺什么，不要从头重复。
+
 ## 10. 待澄清事项
 
 T-01 冻结 JSON 数字、对象顺序与重复键；记录 CSV 旧边界及规范化。若编码依赖更广反射，先以现有受检接口落定机制和必要共享差额。
