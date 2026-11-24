@@ -342,6 +342,11 @@ T-14 的 HIR 面完成：char/owned_text 纳入 `core_value_type`、op 23/24 的
     `mir.type` 拒）。这是独立的「owned text 隐式借用」缺口，不属于 clone 本身。
     已回退全部实验改动（5 文件），保持 `4450c319e` 干净。下一步：实现文本操作数的 owned→view 隐式转换
     （lower_base 在 view 位置插入 view 指令，或 AV 侧确认 STR_LEN 是否接受 owned），再接 clone 的执行测试。
+  - **owned→view 方案确认（2026-11-24）**：AV 的 `STR_LEN`/`STR_LEN_BYTES` 经 `want_strview_i32` **严格要求 StrView**（owned 被拒），
+    但 AV 已有通用 **`VIEW` 指令（opcode 0x0C=12，`MirInstr::View`）**：`src Str -> dst StrView`，正是所需的隐式借用。
+    Auto 侧 `base_ir.view_instruction()` 也是 12（同码）。→ 正解：`lower_base` 在文本操作数的 lane 为 owned text 时先发一条
+    `VIEW` 到临时槽，再让 op 读该 view；配套 `data_value` 纳入 owned text。本轮因脚本化编辑把 `lower_base` 改乱已整体回退
+    （tree 保持 `4450c319e` 干净），下轮用逐处 `edit` 重做该改动并跑 clone 执行测试。
   - 剩余 std 原语：`Str.clone()`（AV 无对应 opcode，需要新增）；url 的 Str 所有权转换；json 的驱动 trap。
   - **json 驱动 trap 已二分定位（2026-11-24）**：`stdlib/ace/std/json.at`（1148 行）按顶层声明二分：
     `v20`（到 528 行）绑定通过，追加 `json_is_valid`（531..546）后 `trap:ListIndex`。
