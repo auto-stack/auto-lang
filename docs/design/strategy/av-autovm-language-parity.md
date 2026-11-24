@@ -273,7 +273,7 @@ AVP-00新增`SourceProfile::Auto`（拟名）、源码准入键`ac.source.langua
 | 标准库转换 | [1122 宽无符号转换](../../plans/1122-av-stdlib-wide-unsigned-conversion.md) | 可并行。承 `legacy.25_method_u64.001–011`，区分旧 `Str.to_uint()` 的实际表示与受检 `u64` 公共操作。 |
 | 标准库网络 | [1123 HTTPS/代理](../../plans/1123-av-stdlib-https-proxy.md) | 可并行，先直连再代理。Windows 证据交 982，Linux 交 1063。1119 可按实际需求消费公共能力。 |
 | 标准库数据 | [1124 JSON/CSV](../../plans/archive/1124-av-stdlib-json-and-csv.md) | 可独立推进。先固定动态值与编码事实，再实现泛型编码。CSV 依赖自己的格式合同。 |
-| C 验收工件 | [1125 C provider 可重建](../../plans/1125-av-c-provider-reproducible-fixtures.md) | 可并行。关闭 1093 的两项具体闭包失败。固定组其他红项仍按 [1108](../../plans/1108-batch-regression-gate-repair-after-1098.md)的现有职责处理，若同根因则复用修复。 |
+| C 验收工件 | [1125 C provider 可重建](../../plans/archive/1125-av-c-provider-reproducible-fixtures.md)（已交付 `8ea33745f`，2026-11-24） | 可并行。关闭 1093 的两项具体闭包失败。固定组其他红项仍按 [1108](../../plans/1108-batch-regression-gate-repair-after-1098.md)的现有职责处理，若同根因则复用修复。 |
 | 旧脚本整支迁移 | [982/EXEC](../../plans/982-ace-m2-man-gen.md) | 先用原 [03_image_scraper.at](../../../examples/a2rs/03_image_scraper.at)核 CLI 参数、HTTP 和文件装配。通过受控服务和临时输出验证响应及文件副作用，脚本实际需要 HTTPS 时消费 1123。 |
 | Linux 平台验收 | [1063](../../plans/1063-ace-stdlib-linux-deferred-validation.md) | 接各计划的 Linux 义务、原源码和独立 oracle，待专用 Linux 环境执行。 |
 

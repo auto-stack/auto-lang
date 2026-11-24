@@ -5147,3 +5147,34 @@ AutoWeb VM/Gallery proxy 的旧 013 路由表会先匹配动态 DELETE /api/todo
 - **主检出对照**：用 master-only 工具（从 `365d38772` 单独准备，清单 `7f9566b2ee9959a9`）重放，失败消息逐字相同；PLAN-1129 的 9 个提交不含这两条用例与其解析/求值路径。原始输出在 `D:/autostack/plan-artifacts/plan-1129/t06/m01-master-baseline-cases.txt`（该目录已随 merge 删除，结论已折入归档计划 §9「merge」）。
 - **owner**：PLAN-1068 / PLAN-117 一侧（master 上 `[]` 字面量与 dyn-type 捕获的当前行为），以及语料期望的维护者。
 - **关闭条件**：两条用例在 master 上重新通过，或语料期望按已批准的语义变更改写并记录理由；下一次到期批次回归（`cargo t all`）应把它作为已知红或新增红显式列出。
+
+## D-1125-01 — master 的 `stdlib/ace/asm/list.at` 含私有 `fn`，graft `std::list` 的 AV 用例 38 条编译失败（OPEN，2026-11-24 PLAN-1125 merge 冻结并集发现，早于本计划）
+
+- **现象**：`cargo t ace-av` 在 master `38d2b86ce` 上 51 红（继承基线 13 + 本条 38），失败信息一致：`"std::list" … source.unsupported `fn` is not part of this source profile @1526..1528`。涉及 `stdlib_asm_972_*`、`sys973_*`、`bstr_1064_*`、`kv_zip_1064::v03_*`、`v10_layers_972` 等。
+- **来源**：提交 `6c90a3569`（PLAN-118）在 `list.at` 新增 `pub fn join` 与非 pub 的 `fn join_into`；asm 标准库 profile 不接受私有 `fn`。
+- **owner**：PLAN-118（AV live session 列表读 / list join）。
+- **关闭条件**：`list.at` 恢复为该 profile 可编译（`join_into` 改为 profile 允许的形式或移出），`cargo t ace-av` 回到 13 红继承基线。
+
+## D-1125-02 — 被误跟踪的构建副产物 `.c-build-parity1093_c/`（OPEN，2026-11-24 PLAN-1125 work T-01 发现，早于本计划）
+
+- **现象**：`experimental/ace/crates/foreign-contract/c/parity1093_c/.c-build-parity1093_c/` 被跟踪，含 696B `.obj` 与 `.c/.h` 镜像。它是 `open_c_provider` 写在源目录旁的副产物（1094 入库），不是 provider 输入。
+- **owner**：ACE foreign-contract。
+- **关闭条件**：`git rm -r --cached` 该目录并加入忽略规则；PLAN-1125 的准备器已改为暂存后再编译，不再在源目录生成它。
+
+## D-1125-03 — `ac.source.language.av/v1` 在 AV worker 上不是必需能力（OPEN，2026-11-24 PLAN-1125 复审观察 O-01，早于本计划）
+
+- **现象**：普通链与 foreign 链上，仅给 `['console.stdout']` 甚至空 caps 的 `fn main() int { return 6*7 }` 仍 success；与 `language_source_worker.rs` 中"declared caps enter the source admission axis"的注释读法不符。
+- **owner**：AV 语言源 worker。
+- **关闭条件**：裁定该能力是否应为必需，并补一条缺该能力被具名拒绝（或明确记录为可选）的用例。非阻塞。
+
+## D-1125-04 — C provider 描述符不记录构建参数与工具链身份，DLL 不可位级复现（OPEN，2026-11-24 PLAN-1125 复审边界）
+
+- **现象**：同一份 `parity1093_c` 源多次准备出的 DLL SHA-256 各不相同（PE 时间戳等），稳定的只有 `provider_digest`（头 blake3）与 `source_sha256`。cl 版本、include 闭包、`-O1` 不进描述符；签名由 manifest 的 `contract_digest` 在 `admit` 内覆盖，未单独绑定。PLAN-1125 §5 的"绑定签名与构建参数"因此只做了输入与输出身份，未做构建参数。
+- **owner**：ACE ABI prepare lane。
+- **关闭条件**：描述符记录工具链身份与构建参数，且 worker 或准备收据对其重验。非阻塞。
+
+## D-1125-05 — `ace-abi::source_resources` 的 3 条 `source_foreign` 基线红未入继承清单（OPEN，2026-11-24 PLAN-1125 merge 冻结并集核对）
+
+- **现象**：`native_lower_emission_reserves_instruction_and_span_capacity_before_allocation`、`native_lower_container_admission_covers_blocks_stack_slots_and_final_copy`、`native_foreign_call_reserves_declaration_and_arguments_and_releases_evaluation_scratch` 在 master 尖端与带 PLAN-1125 的分支上同为红（同环境基线双向差集为空）。1109 归档的 25 条基线清单不含这 3 条（当时该组执行 314 条，现为 369 条）。
+- **owner**：ACE ABI source_foreign（与 D-1109-ABI-C-RUNTIME-PIN 同族，待 owner 确认）。
+- **关闭条件**：并入该族的基线清单并给出根因，或修复后在 master 上转绿。
