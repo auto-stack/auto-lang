@@ -162,6 +162,28 @@ T-01 重绑源码、规范、工具、ABI 与 SDK 身份。源或合同变化按
 边界：Gen2 native PE/代际签章仍归 PLAN-1054 T-02；G2（mn 16MiB）归 AGE elem-view owner；
 53 个 CL 族的 oracle/行不删；Linux host 不扩。
 
+### T-12 边 arena 设计决策（2026-11-24，待实施）
+
+**问题**：`ef` 同时承载帧段（transient，靠 `m_efhi` 前沿+重定位回收）与节点子边（immutable），
+节点复制一律物理追加 → 回溯分配的复制永久占用；密集代码 6–15KB 即撞 `ef.len()>60000`。
+两次"把节点复制也放到前沿并回退 efhi"的尝试都在最小程序挂起（已排除自覆盖；剩余为
+efhi 回退与 `child_push` 重定位的交互），已回退。
+
+**决策（下轮实施）**：**独立节点边 arena `nf` + 完成后压缩**，避免改动跨模块读者：
+1. 新增 `nf`（pairs）与 `m_nfhi`；节点 `fc` 用 `NF_BASE`（如 1e9）标记：`fc-NF_BASE` = nf 下标。
+2. 节点分配（`alloc_node`/`alloc_kids`/`wrap_error`/`graft_copy_range`/`parse_finish` 的 root
+   追加）把 children 写进 `nf`；`nf` 无重定位，`save_capture`/`save_restore` 直接记录/回退
+   `m_nfhi`（与 `m_thi` 同法）。
+3. `parse_finish` 末尾做一次**压缩**：遍历 `0..m_thi`，把每个 `fc>=NF_BASE` 节点的 `cl` 条边
+   按顺序拷进 `ef`（从头紧凑分配），改写 `fc`，使交给调用方的树 `fc<NF_BASE`——
+   `syntax_cst.at` 等 13+ 处读者**零改动**。
+4. `parse_cst` 内部把 `nf` 从 `parse_tokens_n` 起随机器元组下传（机械改动，集中在
+   `experimental/ace/aac/syntax/syntax_parse.at`）；`mem_estimate` 计入 `nf`。
+5. 验收：最小程序 + part-22 + std/file(15.4KB) + 20 个 projection 模块解析通过；
+   `ace-aac-syntax` 全绿（含 canonical 对拍）；Rust 参考对拍；解析耗时与 `nf` 峰值记录。
+6. 诊断先行：先在 `machine_run` 的每 128 步采样 `(m_thi, m_efhi, nframes)` 到 dmsg（临时），
+   用于确认 `nf` 峰值与回溯回收是否生效，再关哨兵。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
